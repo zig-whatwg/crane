@@ -106,14 +106,7 @@ pub const GamepadHapticActuator = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_effects(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_effects) |cached| {
-            return cached;
-        }
-        const value = try GamepadHapticActuatorImpl.get_effects(instance);
-        state.own.cached_effects = value;
-        return value;
+        return try GamepadHapticActuatorImpl.get_effects(instance);
     }
 
     pub fn call_reset(instance: *runtime.Instance) anyerror!runtime.JSValue {

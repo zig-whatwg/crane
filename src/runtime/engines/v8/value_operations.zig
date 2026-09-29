@@ -148,14 +148,12 @@ fn wtf8ToUtf16(bytes: []const u8, units: []u16) usize {
 
 /// The V8 value a `.handle` JSValue holds, BORROWED; null for any other kind.
 ///
-/// The pointer is a Global<Value>* whichever way `handle_scope` is tagged.
-/// `.local` says who owns it and how long it lives - the binding's own
-/// handle for an argument, valid for the call (conversions.fromV8Value) -
-/// not that it is a Local's slot: every value this FFI hands out is a
-/// Global. Reading a `.local` one as a Local (v8_Value_ToGlobal,
-/// v8_Value_IsFunction_Local) reinterprets the Global's address as the
-/// value, which is how AbortSignal.abort({...}).throwIfAborted() came to
-/// throw a number.
+/// The pointer is always a Global<Value>*, an argument's included (the
+/// binding's own handle, valid for the call - conversions.fromV8Value): every
+/// value this FFI hands out is a Global. Reading one as a Local
+/// (v8_Value_ToGlobal, v8_Value_IsFunction_Local) reinterprets the Global's
+/// address as the value, which is how AbortSignal.abort({...}).throwIfAborted()
+/// came to throw a number.
 pub fn handleOf(value: runtime.JSValue) ?*ffi.Value {
     return switch (value) {
         .handle => |h| @ptrCast(@alignCast(h.ptr)),
@@ -169,7 +167,7 @@ pub fn retainValue(realm: runtime.Context, value: runtime.JSValue) EngineError!r
     defer entered.leaveAgent();
     defer entered.leaveScope();
     const held = try ownHandle(entered.isolate, entered.scope.context, value);
-    return .{ .handle = .{ .ptr = @ptrCast(held), .needs_disposal = true, .handle_scope = .global } };
+    return .{ .handle = .{ .ptr = @ptrCast(held) } };
 }
 
 /// Engine table `throwValue`: `value` (borrowed) becomes the pending
@@ -205,5 +203,5 @@ pub fn createFrozenArrayOfPlatformObjects(realm: runtime.Context, instances: []c
     // 2. Perform ! SetIntegrityLevel(array, "frozen").
     if (!ffi.v8_Object_Freeze(@ptrCast(array), context)) return EngineError.OperationFailed;
     // 3. Return array.
-    return .{ .handle = .{ .ptr = @ptrCast(array), .needs_disposal = true, .handle_scope = .global } };
+    return .{ .handle = .{ .ptr = @ptrCast(array) } };
 }

@@ -105,11 +105,11 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
     const realm = try js.Realm.of(instance);
     // Step 1: A locked stream rejects with a TypeError.
     if (sw.isLocked(stream))
-        return sw.give(&stream.returned, try realm.promiseRejectedWithTypeError("Cannot abort a stream that is locked to a writer"));
+        return sw.give(try realm.promiseRejectedWithTypeError("Cannot abort a stream that is locked to a writer"));
     // Step 2: Return ! WritableStreamAbort(this, reason).
     const r = try realm.fromOptional(reason);
     defer js.dispose(r);
-    return sw.give(&stream.returned, try sw.abort(realm, instance, r));
+    return sw.give(try sw.abort(realm, instance, r));
 }
 
 /// `close()` - § 5.2.4.
@@ -118,12 +118,12 @@ pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const realm = try js.Realm.of(instance);
     // Step 1: A locked stream rejects with a TypeError.
     if (sw.isLocked(stream))
-        return sw.give(&stream.returned, try realm.promiseRejectedWithTypeError("Cannot close a stream that is locked to a writer"));
+        return sw.give(try realm.promiseRejectedWithTypeError("Cannot close a stream that is locked to a writer"));
     // Step 2: So does one already closing.
     if (sw.closeQueuedOrInFlight(stream))
-        return sw.give(&stream.returned, try realm.promiseRejectedWithTypeError("Cannot close a stream that is already closing"));
+        return sw.give(try realm.promiseRejectedWithTypeError("Cannot close a stream that is already closing"));
     // Step 3: Return ! WritableStreamClose(this).
-    return sw.give(&stream.returned, try sw.close(realm, instance));
+    return sw.give(try sw.close(realm, instance));
 }
 
 /// `getWriter()` - § 5.2.4: Return ? AcquireWritableStreamDefaultWriter(this).

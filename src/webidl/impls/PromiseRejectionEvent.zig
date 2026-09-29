@@ -124,8 +124,8 @@ fn hold(realm: runtime.Context, value: runtime.JSValue) !?engine.Owned {
 /// Spec: "The promise attribute must return the value it was initialized to."
 pub fn get_promise(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return runtime.JSValue.jsUndefined;
-    // BORROWED: the event keeps it.
-    if (internal.promise) |value| return value.borrow();
+    // The event keeps it; the binding gets a hold of its own.
+    if (internal.promise) |value| return (try engine.retainValue(instance.ctx, value.value)).take();
     return runtime.JSValue.jsUndefined;
 }
 
@@ -133,6 +133,6 @@ pub fn get_promise(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// Spec: "The reason attribute must return the value it was initialized to."
 pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return runtime.JSValue.jsUndefined;
-    if (internal.reason) |value| return value.borrow();
+    if (internal.reason) |value| return (try engine.retainValue(instance.ctx, value.value)).take();
     return runtime.JSValue.jsUndefined;
 }

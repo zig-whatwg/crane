@@ -19,6 +19,7 @@ const std = @import("std");
 const dom_names = @import("dom").names;
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -401,8 +402,7 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!r
 
     // Step 1: If definition set contains an item with name, return that item's constructor
     if (internal.getDefinitionByName(name_str)) |def| {
-        // Return the constructor - it's stored as a V8 handle
-        return runtime.JSValue.fromHandleNonOwning(@constCast(def.constructor));
+        return constructorValue(instance.ctx, def);
     }
 
     // Step 2: no definition matches, so return undefined.
@@ -412,6 +412,19 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!r
     // it to hand back undefined, and feature detection of the form
     // `if (customElements.get(name))` blew up instead of taking the false branch.
     return runtime.JSValue.jsUndefined;
+}
+
+/// `def`'s constructor as a result: a hold of the binding's own.
+///
+/// `def.constructor` is define()'s argument as the binding converted it - a
+/// callback function, whose handle is TAGGED (conversions.zig, "callback
+/// function") and so is not a Global to read as one. Taking it as a
+/// CallbackFunction reads the function without copying it; the definition
+/// keeps its handle, so that view is never released, and the result is a
+/// second hold (retainValue).
+fn constructorValue(realm: runtime.Context, def: *const CustomElementDefinition) !runtime.JSValue {
+    const constructor = engine.takeCallbackFunction(@ptrCast(def.constructor));
+    return (try engine.retainValue(realm, constructor.function.borrow())).take();
 }
 
 /// Operation: getName(constructor)
@@ -491,8 +504,7 @@ pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) an
 
     // Step 2: If already defined, return resolved promise with constructor
     if (internal.getDefinitionByName(name_str)) |def| {
-        // Return the constructor - it's stored as a V8 handle
-        return runtime.JSValue.fromHandleNonOwning(@constCast(def.constructor));
+        return constructorValue(instance.ctx, def);
     }
 
     // Step 3: Create/return pending promise

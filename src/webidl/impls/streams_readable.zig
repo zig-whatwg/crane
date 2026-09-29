@@ -44,11 +44,9 @@ pub const Stream = struct {
     /// A ReadableStreamDefaultController or ReadableByteStreamController instance.
     controller: ?*runtime.Instance = null,
     disturbed: bool = false,
-    returned: ?Value = null,
 
     pub fn deinit(self: *Stream) void {
         js.disposeOptional(&self.stored_error);
-        js.disposeOptional(&self.returned);
         self.allocator.destroy(self);
     }
 };
@@ -90,7 +88,6 @@ pub const Reader = struct {
     closed_promise: ?Deferred = null,
     read_requests: std.ArrayList(ReadRequest) = .empty,
     read_into_requests: std.ArrayList(ReadIntoRequest) = .empty,
-    returned: ?Value = null,
 
     pub fn deinit(self: *Reader) void {
         for (self.read_requests.items) |r| r.vtable.drop(r.ctx);
@@ -98,7 +95,6 @@ pub const Reader = struct {
         for (self.read_into_requests.items) |r| r.vtable.drop(r.ctx);
         self.read_into_requests.deinit(self.allocator);
         if (self.closed_promise) |d| d.deinit();
-        js.disposeOptional(&self.returned);
         self.allocator.destroy(self);
     }
 };
@@ -2039,8 +2035,10 @@ fn pipeAbortAlgorithmErased(ctx: *anyopaque) void {
 fn pipeAbortAlgorithm(state: *PipeState) void {
     const realm = Realm.of(state.source) catch return;
     // 14.1.1 Let error be signal's abort reason.
-    const reason = interfaces.AbortSignal.get_reason(state.signal.?) catch runtime.JSValue.jsUndefined;
-    const err = realm.fromRuntime(reason) catch return;
+    // The getter's result is a hold of ours; the Value takes its own.
+    const reason: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(state.signal.?) catch runtime.JSValue.jsUndefined };
+    defer reason.release();
+    const err = realm.fromRuntime(reason.value) catch return;
     defer js.dispose(err);
     // 14.1.2-14.1.5: abort dest and/or cancel source, per the prevent flags.
     const action: PipeState.Action = if (!state.prevent_abort and !state.prevent_cancel)

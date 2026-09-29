@@ -112,14 +112,7 @@ pub const CSSMarginRule = struct {
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
     pub fn get_style(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_style) |cached| {
-            return cached;
-        }
-        const value = try CSSMarginRuleImpl.get_style(instance);
-        state.own.cached_style = value;
-        return value;
+        return try CSSMarginRuleImpl.get_style(instance);
     }
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]

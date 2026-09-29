@@ -1129,7 +1129,6 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("clock", clock_mod);
     impls_mod.addImport("host", host_mod);
     impls_mod.addImport("runtime", runtime_mod);
-    impls_mod.addImport("v8", v8_mod);
     impls_mod.addImport("storage", storage_mod); // For IndexedDB and Storage impl connections
     impls_mod.addImport("cookiestore", cookiestore_mod); // For CookieStore impl
     impls_mod.addOptions("build_options", build_options);
@@ -1200,16 +1199,13 @@ pub fn build(b: *std.Build) void {
     dictionaries_mod.addImport("enums", enums_mod);
     dictionaries_mod.addImport("callbacks", callbacks_mod);
 
-    // WebIDL modules need v8 for JSValue type (any/object WebIDL types)
-    callbacks_mod.addImport("v8", v8_mod);
-    dictionaries_mod.addImport("v8", v8_mod);
-    typedefs_mod.addImport("v8", v8_mod);
-    interfaces_mod.addImport("v8", v8_mod);
-    namespaces_mod.addImport("v8", v8_mod);
+    // AGENTS.md "The engine boundary": no module outside the V8 adapter (and
+    // its tests and tools) imports "v8" - the module graph, not only
+    // lint-engine, keeps V8 inside the adapter. The engine is reached through
+    // `engine`, which build.zig binds to the adapter.
     // The adapter registers the namespaces a snapshot lacks when it creates a
     // Window realm (an Engine function pointer cannot take a comptime module).
     v8_mod.addImport("namespaces", namespaces_mod);
-    // Note: impls also needs "v8" for JSValue types in generated signatures
 
     // DOM module
     const dom_mod = b.addModule("dom", .{
@@ -2023,7 +2019,6 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("infra", infra_mod);
     html_mod.addImport("fetch", fetch_mod);
     html_mod.addImport("csp", csp_mod);
-    html_mod.addImport("v8", v8_mod);
     // The engine protocol (AGENTS.md "The engine boundary"): html's
     // engine-neutral code calls `engine.op`.
     html_mod.addImport("engine", engine_mod);
@@ -2067,7 +2062,6 @@ pub fn build(b: *std.Build) void {
     });
     browser_mod.addImport("clock", clock_mod);
     browser_mod.addImport("host", host_mod);
-    browser_mod.addImport("v8", v8_mod);
     browser_mod.addImport("engine", engine_mod);
     browser_mod.addImport("runtime", runtime_mod);
     browser_mod.addImport("interfaces", interfaces_mod);
@@ -2821,7 +2815,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "host", .module = host_mod },
             .{ .name = "browser", .module = browser_mod },
-            .{ .name = "v8", .module = v8_mod },
             .{ .name = "runtime", .module = runtime_mod },
         };
         addTestFilesFromDir(b, bench_step, "tests/benchmarks", target, &benchmark_imports, true) catch |err| {
@@ -3130,7 +3123,9 @@ pub fn build(b: *std.Build) void {
     crane_mod.addImport("runtime", runtime_mod);
     crane_mod.addImport("webidl", webidl_mod);
     crane_mod.addImport("infra", infra_mod);
-    crane_mod.addImport("v8", v8_mod);
+    // lib_exports.zig reaches the engine through the protocol, as
+    // lib_exports_mod does; it had "v8" and no "engine", so it did not compile.
+    crane_mod.addImport("engine", engine_mod);
     crane_mod.addImport("interfaces", interfaces_mod);
     crane_mod.addImport("impls", impls_mod);
     crane_mod.addImport("namespaces", namespaces_mod);
@@ -3213,7 +3208,6 @@ pub fn build(b: *std.Build) void {
 
     // Add all imports to crane executable
     crane_exe.root_module.addImport("runtime", runtime_mod);
-    crane_exe.root_module.addImport("v8", v8_mod);
     crane_exe.root_module.addImport("interfaces", interfaces_mod);
     crane_exe.root_module.addImport("namespaces", namespaces_mod);
     crane_exe.root_module.addImport("browser", browser_mod);
@@ -3663,7 +3657,6 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "clock", .module = clock_mod },
                 .{ .name = "host", .module = host_mod },
                 .{ .name = "runtime", .module = runtime_mod },
-                .{ .name = "v8", .module = v8_mod },
                 .{ .name = "engine", .module = engine_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },

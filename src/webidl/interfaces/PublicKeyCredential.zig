@@ -147,14 +147,7 @@ pub const PublicKeyCredential = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_rawId(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_rawId) |cached| {
-            return cached;
-        }
-        const value = try PublicKeyCredentialImpl.get_rawId(instance);
-        state.own.cached_rawId = value;
-        return value;
+        return try PublicKeyCredentialImpl.get_rawId(instance);
     }
 
     /// Extended attributes: [SameObject]

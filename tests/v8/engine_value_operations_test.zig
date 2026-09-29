@@ -67,12 +67,12 @@ fn setGlobal(name: []const u8, handle: *anyopaque) !void {
 }
 
 fn asValue(handle: *ffi.Value) runtime.JSValue {
-    return .{ .handle = .{ .ptr = @ptrCast(handle), .needs_disposal = false, .handle_scope = .global } };
+    return .{ .handle = .{ .ptr = @ptrCast(handle) } };
 }
 
 /// An argument as the binding hands it to an impl: conversions.fromV8Value's
-/// runtime.JSValue branch. An object is a `.handle` tagged `.local` - borrowed
-/// for the call - whose pointer is the argument's Global<Value>, not a Local.
+/// runtime.JSValue branch. An object is a `.handle` - borrowed for the call -
+/// whose pointer is the argument's Global<Value>, not a Local.
 fn asArgument(argument: *ffi.Value) !runtime.JSValue {
     return v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, argument);
 }
@@ -89,8 +89,7 @@ test "a retained value is the caller's own handle, and outlives the one it came 
     ffi.v8_Value_Dispose(object);
     defer v8.engine.v8ReleaseValue(kept);
     try std.testing.expect(kept == .handle);
-    try std.testing.expect(kept.handle.needs_disposal);
-    try std.testing.expectEqual(runtime.JSValue.EngineHandle.HandleScope.global, kept.handle.handle_scope);
+    try std.testing.expect(kept == .handle);
     try setGlobal("kept", kept.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("globalThis.kept === globalThis.original ? 1 : 0"));
 }

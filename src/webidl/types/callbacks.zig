@@ -20,9 +20,8 @@
 //! beyond the HandleScope where it was created. This prevents use-after-free bugs
 //! when storing callbacks for later invocation.
 //!
-//! When using with runtime.JSValue (in impls), ensure the handle has:
-//! - handle_scope == .global (can be stored)
-//! - NOT handle_scope == .local (use-after-free risk!)
+//! A runtime.JSValue handle (in impls) is BORROWED: hold one of your own
+//! (engine.retainValue) before storing it.
 
 const std = @import("std");
 const primitives = @import("primitives.zig");
@@ -45,8 +44,7 @@ const primitives = @import("primitives.zig");
 /// use-after-free when the callback is stored and invoked later.
 ///
 /// When using with runtime.JSValue:
-/// - Store handles with handle_scope == .global
-/// - Convert Local handles to Global before storing
+/// - A JSValue handle is borrowed: store a hold of your own (engine.retainValue)
 /// - Call deinit() when callback is no longer needed
 ///
 /// Example usage:
@@ -65,9 +63,8 @@ pub const GenericCallback = struct {
     /// - JSC: JSObjectRef (retained)
     /// - SpiderMonkey: JS::PersistentRooted<JSObject*>*
     ///
-    /// When converting from runtime.JSValue, ensure:
-    /// - handle.handle_scope == .global (safe to store)
-    /// - NOT handle.handle_scope == .local (use-after-free!)
+    /// When converting from runtime.JSValue, hold a handle of your own: the
+    /// JSValue's is borrowed.
     handle: *anyopaque,
 
     /// Engine-specific context (for multi-isolate support)

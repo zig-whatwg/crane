@@ -326,9 +326,10 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
     if (xhr_state.response_object == .failure) return .{ .null = {} };
 
     // Step 4: If this's response object is non-null, then return it - the
-    // same object every time. Borrowed: this XHR keeps holding it.
+    // same object every time. This XHR keeps holding it; the binding gets a
+    // hold of its own.
     const internal = getInternal(instance);
-    if (internal.response_value) |value| return value.borrow();
+    if (internal.response_value) |value| return (try engine.retainValue(instance.ctx, value.value)).take();
 
     switch (xhr_state.response_type) {
         // Step 8: the JSON response.
@@ -376,8 +377,8 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
         .empty, .text => unreachable, // handled by step 1
     }
 
-    // Step 9: Return this's response object.
-    return internal.response_value.?.borrow();
+    // Step 9: Return this's response object (a hold of the binding's own).
+    return (try engine.retainValue(instance.ctx, internal.response_value.?.value)).take();
 }
 
 /// Getter for responseText

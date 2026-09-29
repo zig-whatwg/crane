@@ -103,13 +103,6 @@ pub const PushSubscriptionOptions = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_applicationServerKey(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_applicationServerKey) |cached| {
-            return cached;
-        }
-        const value = try PushSubscriptionOptionsImpl.get_applicationServerKey(instance);
-        state.own.cached_applicationServerKey = value;
-        return value;
+        return try PushSubscriptionOptionsImpl.get_applicationServerKey(instance);
     }
 };

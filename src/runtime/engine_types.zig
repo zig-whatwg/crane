@@ -114,8 +114,7 @@ pub const ErrorInfo = struct {
     /// 1-based, as every engine that reports ErrorEvent.colno counts; 0 when
     /// unknown.
     colno: u32,
-    /// The thrown value itself - `runtime.JSValue.handle` with
-    /// `needs_disposal = false`, since the engine owns it.
+    /// The thrown value itself, BORROWED: the engine keeps it.
     error_value: ?JSValue,
 };
 
@@ -286,8 +285,9 @@ pub const WorkerRealm = struct {
 /// The steps of a built-in function a host defines (`defineBuiltinFunction`):
 /// `data` is the pointer the host gave; `args` are BORROWED for the call (a
 /// primitive as itself, a string as UTF-8, anything else a handle). The
-/// result is returned to script: a value made for it, or an OWNED handle
-/// (needs_disposal) the engine releases, or a borrowed one it leaves.
+/// result is returned to script and is the engine's: a value made for it, or
+/// a handle it releases once it is the result - a value the host keeps goes
+/// back as `retainValue(...).take()`.
 /// ExceptionPending leaves what was thrown in flight; any other error is
 /// thrown as WebIDL does an impl's.
 pub const BuiltinSteps = *const fn (data: ?*anyopaque, args: []const JSValue) EngineError!JSValue;

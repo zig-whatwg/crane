@@ -155,13 +155,6 @@ pub const MediaMetadata = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_chapterInfo(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_chapterInfo) |cached| {
-            return cached;
-        }
-        const value = try MediaMetadataImpl.get_chapterInfo(instance);
-        state.own.cached_chapterInfo = value;
-        return value;
+        return try MediaMetadataImpl.get_chapterInfo(instance);
     }
 };

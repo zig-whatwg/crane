@@ -192,7 +192,7 @@ pub fn convertToSequenceOfObjects(
         return EngineError.OutOfMemory;
     };
     for (items, 0..) |item, i| {
-        values[i] = .{ .handle = .{ .ptr = @ptrCast(item), .needs_disposal = true, .handle_scope = .global } };
+        values[i] = .{ .handle = .{ .ptr = @ptrCast(item) } };
     }
     return values;
 }
@@ -427,5 +427,5 @@ pub fn createSequenceOfValues(realm: runtime.Context, values: []const runtime.JS
         defer ffi.v8_Global_Dispose(item);
         if (!ffi.v8_Array_Set(array, context, @intCast(i), item)) return EngineError.OperationFailed;
     }
-    return .{ .handle = .{ .ptr = @ptrCast(array), .needs_disposal = true, .handle_scope = .global } };
+    return .{ .handle = .{ .ptr = @ptrCast(array) } };
 }

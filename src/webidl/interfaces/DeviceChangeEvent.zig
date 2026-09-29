@@ -118,25 +118,11 @@ pub const DeviceChangeEvent = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_devices(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_devices) |cached| {
-            return cached;
-        }
-        const value = try DeviceChangeEventImpl.get_devices(instance);
-        state.own.cached_devices = value;
-        return value;
+        return try DeviceChangeEventImpl.get_devices(instance);
     }
 
     /// Extended attributes: [SameObject]
     pub fn get_userInsertedDevices(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_userInsertedDevices) |cached| {
-            return cached;
-        }
-        const value = try DeviceChangeEventImpl.get_userInsertedDevices(instance);
-        state.own.cached_userInsertedDevices = value;
-        return value;
+        return try DeviceChangeEventImpl.get_userInsertedDevices(instance);
     }
 };

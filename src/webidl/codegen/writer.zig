@@ -1675,8 +1675,9 @@ pub fn writeGeneratedState(
                 if (type_kind) |kind| {
                     switch (kind) {
                         .callback_interface => {
-                            // Callback interface types use ?*runtime.CallbackWrapper
-                            try writer.writeAll("?*runtime.CallbackWrapper");
+                            // A callback interface attribute is the object
+                            // that was given (NodeIterator.filter): a value.
+                            try writer.writeAll("runtime.JSValue");
                         },
                         .interface, .mixin => {
                             // Interface/mixin types use *runtime.Instance
@@ -1773,8 +1774,8 @@ pub fn writeGeneratedState(
                 const is_callback_interface_type = type_kind != null and type_kind.? == .callback_interface;
 
                 if (is_callback_interface_type) {
-                    // Callback interface types use ?*runtime.CallbackWrapper
-                    try writer.writeAll("?*runtime.CallbackWrapper");
+                    // A callback interface attribute's value: the object.
+                    try writer.writeAll("runtime.JSValue");
                 } else if (is_interface_type) {
                     // Interface types use *runtime.Instance
                     try writer.writeAll("*runtime.Instance");
@@ -2780,7 +2781,8 @@ fn writeOperationDelegate(
         }
 
         // Check if parameter type is an interface - if so, use *runtime.Instance
-        // Callback interfaces use ?*runtime.CallbackWrapper through EngineInterface
+        // Callback interfaces use ?*runtime.CallbackWrapper: the binding's
+        // wrapper, borrowed for the call (engine.takeCallbackInterface)
         const type_kind = if (type_registry) |reg| reg.lookup(arg.idlType.type) else null;
         const is_interface_param = type_kind != null and type_kind.? == .interface;
         const is_callback_interface_param = type_kind != null and type_kind.? == .callback_interface;
@@ -3684,13 +3686,15 @@ pub fn writeDelegateFunctions(
     // Write attribute getters - ONLY for own attributes (not inherited)
     for (own_attributes) |attr| {
         // Check if this is an interface type - if so, use *runtime.Instance
-        // Callback interfaces use ?*runtime.CallbackWrapper
+        // A callback interface attribute returns the object that was given
+        // (NodeIterator.filter): a runtime.JSValue. Only an ARGUMENT of a
+        // callback interface type is a *runtime.CallbackWrapper.
         const attr_type_kind = if (type_registry) |reg| reg.lookup(attr.idlType.type) else null;
         const is_interface_type = attr_type_kind != null and attr_type_kind.? == .interface;
         const is_callback_interface_type = attr_type_kind != null and attr_type_kind.? == .callback_interface;
 
         var return_type = if (is_callback_interface_type)
-            "?*runtime.CallbackWrapper"
+            "runtime.JSValue"
         else if (is_interface_type)
             "*runtime.Instance"
         else if (type_registry) |reg|
@@ -3739,7 +3743,13 @@ pub fn writeDelegateFunctions(
         const get_prefix = getterPrefix(attr);
         const set_prefix = setterPrefix(attr);
 
-        const caches = has_same_object and !attr.static and options.same_object_cache;
+        // A [SameObject] value that is an engine value (runtime.JSValue) is
+        // not cached here: the binding releases what a getter returns, and
+        // generated code cannot take a hold of its own (it never calls the
+        // engine). Such an impl keeps its value and returns a hold of it
+        // (engine.retainValue(...).take()) - the same object every read.
+        const caches = has_same_object and !attr.static and options.same_object_cache and
+            !std.mem.eql(u8, return_type, "runtime.JSValue");
         if (inherited) |mixin| if (!caches) {
             try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ get_prefix, sanitized_name, mixin, get_prefix, sanitized_name });
             if (mixinModuleHasSetter(attr)) {

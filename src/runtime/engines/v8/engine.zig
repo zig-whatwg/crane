@@ -15,7 +15,6 @@ const EngineError = runtime.EngineError;
 const ffi = @import("ffi.zig");
 const js_scope = @import("js_scope.zig");
 const v8_conversions = @import("conversions.zig");
-const callback_wrapper_mod = @import("callback_wrapper.zig");
 const pointer_tag = @import("pointer_tag.zig");
 const TaggedPointer = pointer_tag.TaggedPointer;
 const DebugAssertions = pointer_tag.DebugAssertions;
@@ -174,7 +173,7 @@ pub fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: [
     defer entered.leaveScope();
     const value = v8_conversions.newDOMExceptionFromContext(entered.isolate, entered.scope.context, name, message) orelse
         return EngineError.OperationFailed;
-    return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
+    return .{ .handle = .{ .ptr = value } };
 }
 
 pub fn v8StructuredSerializeForStorage(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) EngineError![]u8 {
@@ -205,7 +204,7 @@ pub fn v8StructuredDeserialize(realm: runtime.Context, bytes: []const u8) Engine
     var code: c_int = 0;
     const value = ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(bytes.ptr, bytes.len, &no_buffers, 0, &code) orelse
         return EngineError.DataCloneError;
-    return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
+    return .{ .handle = .{ .ptr = value } };
 }
 
 pub fn v8RejectPromiseWithValue(promise_handle: *anyopaque, value: runtime.JSValue) EngineError!void {
@@ -224,11 +223,12 @@ pub fn v8RejectPromiseWithValue(promise_handle: *anyopaque, value: runtime.JSVal
     if (!ffi.v8_PromiseResolver_Reject(handle.resolver, handle.context, reason)) return EngineError.PromiseError;
 }
 
+/// Release an OWNED value (engine.Owned.release): its handle, if it has one.
+/// Only an Owned reaches here - a borrowed JSValue is never released - so a
+/// handle is disposed unconditionally.
 pub fn v8ReleaseValue(value: runtime.JSValue) void {
     switch (value) {
-        .handle => |h| if (h.needs_disposal and h.handle_scope == .global) {
-            ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr)));
-        },
+        .handle => |h| ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr))),
         else => {},
     }
 }
@@ -258,26 +258,6 @@ pub fn v8CreateArrayBuffer(
 }
 
 // ============================================================================
-// Callback interfaces as the binding converts them (runtime.CallbackWrapper)
-// ============================================================================
-
-/// What a runtime.CallbackWrapper the binding makes needs from the adapter:
-/// the operation that ends it. The binding's callback interface conversion
-/// (conversions.zig) names it by this old name - it was the runtime Engine
-/// table, which is gone. TRANSITIONAL: goes with runtime.CallbackWrapper.
-pub const v8_engine_interface: runtime.CallbackOperations = .{
-    .destroyCallbackWrapper = v8DestroyCallbackWrapper,
-};
-
-/// Destroy a V8 callback wrapper
-fn v8DestroyCallbackWrapper(
-    callback_wrapper: *anyopaque,
-) void {
-    const wrapper: *callback_wrapper_mod.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper));
-    wrapper.deinit();
-}
-
-// ============================================================================
 // Wrappers
 // ============================================================================
 
@@ -304,13 +284,3 @@ pub fn v8GetWrapperForInstance(
     }
     return null;
 }
-
-// ============================================================================
-// Dynamic Import Support
-// ============================================================================
-
-/// Did clear the per-isolate legacy import() handler, which is gone: every
-/// agent's import() is the engine protocol's (HostHooks.loadImportedModule,
-/// installed by createAgent). A no-op until template_registry.clear stops
-/// calling it. TODO(protocol): delete with that call.
-pub fn clearDynamicImportHandler() void {}
