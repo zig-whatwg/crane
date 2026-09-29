@@ -253,8 +253,16 @@ pub const Agent = opaque {};
 /// What a host gives the engine for a worker realm (HTML "run a worker" steps
 /// 5-7).
 pub const WorkerRealmOptions = struct {
+    /// The kinds of HTML's "worker global scope": what "run a worker" step 5
+    /// makes the realm's global object - a new DedicatedWorkerGlobalScope, or,
+    /// when `is shared`, a new SharedWorkerGlobalScope. (A service worker's
+    /// ServiceWorkerGlobalScope would be a third.)
+    pub const WorkerGlobal = enum { dedicated, shared };
+
     /// The worker's script URL: the realm's API base URL. Borrowed.
     url: []const u8,
+    /// The realm's global object, and so the interfaces [Exposed] in it.
+    global: WorkerGlobal = .dedicated,
     /// The timers the realm's tasks run on.
     timer: ?TimerInterface,
     /// What ends a task in the realm (see ContextData.end_of_task).
@@ -270,8 +278,8 @@ pub const WorkerRealmOptions = struct {
 /// A worker realm and its global object.
 pub const WorkerRealm = struct {
     realm: Context,
-    /// The DedicatedWorkerGlobalScope behind the global object. The realm owns
-    /// it.
+    /// The DedicatedWorkerGlobalScope or SharedWorkerGlobalScope behind the
+    /// global object, as `WorkerRealmOptions.global` asked. The realm owns it.
     global_scope: *Instance,
 };
 
