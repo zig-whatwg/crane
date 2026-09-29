@@ -698,10 +698,11 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // may not, so it fetches a clone: nothing script can observe tells the
     // two apart, since the fetch changes only request's current URL.
     const fetched_request = try request.clone();
-    // Fetch "fetch" step 13: "If request's origin is "client", then set
-    // request's origin to request's client's origin" - this global's
-    // settings object's.
-    if (fetched_request.origin == .client) setClientOrigin(instance, fetched_request) catch {
+    // Scheme fetch "blob" reads the blob URL store through this.
+    fetch_body.installBlobURLResolver();
+    // Fetch "populate request from client": the request's client is this
+    // global's settings object.
+    populateRequestFromClient(instance, fetched_request) catch {
         fetched_request.deinit();
         return error.OutOfMemory;
     };
@@ -755,15 +756,12 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     return p.take();
 }
 
-/// Set `request`'s origin to `global`'s settings object's origin,
-/// serialized. A global with no settings leaves it "client".
-fn setClientOrigin(global: *runtime.Instance, request: *@import("fetch").internal.InternalRequest) !void {
-    const settings = global_settings.of(global) orelse return;
-    const origin = settings.origin(global) catch return;
-    defer global.ctx.allocator.free(origin);
-    // An origin the global does not know yet stays "client".
-    if (origin.len == 0) return;
-    try request.setOrigin(origin);
+/// Fetch "populate request from client", for a request whose client is
+/// `global`'s settings object.
+fn populateRequestFromClient(global: *runtime.Instance, request: *@import("fetch").internal.InternalRequest) !void {
+    var client = try global_settings.requestClient(global);
+    defer client.deinit();
+    try @import("fetch").internal.populateRequestFromClient(request, client.request);
 }
 
 fn rejectWithTypeError(realm: runtime.Context, capability: *engine.PromiseCapability, message: []const u8) void {

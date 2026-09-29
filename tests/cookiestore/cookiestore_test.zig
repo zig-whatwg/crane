@@ -203,10 +203,8 @@ test "integration - Set-Cookie header parsing" {
     var jar = cookiestore.CookieJar.init(allocator);
     defer jar.deinit();
 
-    // Parse a Set-Cookie header
-    var cookie = try cookiestore.parseSetCookieHeader(allocator, "session=abc123; Path=/; SameSite=Lax", "example.com", "/", true);
-    defer cookie.deinit();
-    try jar.store(cookie);
+    // Parse and store a Set-Cookie header
+    _ = try cookiestore.parseAndStoreCookie(allocator, &jar, "session=abc123; Path=/; SameSite=Lax", "/", .{ .is_secure = true, .host = "example.com", .http_only_allowed = true });
 
     // Verify the cookie was stored
     var items = try cookiestore.queryCookies(
@@ -288,7 +286,7 @@ test "integration - SameSite policy enforcement" {
     var same_site = try jar.retrieve(.{
         .host = "example.com",
         .is_http = true,
-        .same_site_context = .same_site,
+        .same_site = .strict_or_less,
     });
     defer {
         for (same_site.items) |*c| c.deinit();
@@ -296,11 +294,11 @@ test "integration - SameSite policy enforcement" {
     }
     try std.testing.expectEqual(@as(usize, 2), same_site.items.len);
 
-    // Cross-site safe context only gets Lax
+    // "lax-or-less" only gets Lax
     var cross_safe = try jar.retrieve(.{
         .host = "example.com",
         .is_http = true,
-        .same_site_context = .cross_site_safe,
+        .same_site = .lax_or_less,
     });
     defer {
         for (cross_safe.items) |*c| c.deinit();
@@ -309,11 +307,11 @@ test "integration - SameSite policy enforcement" {
     try std.testing.expectEqual(@as(usize, 1), cross_safe.items.len);
     try std.testing.expectEqualStrings("lax", cross_safe.items[0].name);
 
-    // Cross-site unsafe gets neither
+    // "unset-or-less" gets neither
     var cross_unsafe = try jar.retrieve(.{
         .host = "example.com",
         .is_http = true,
-        .same_site_context = .cross_site_unsafe,
+        .same_site = .unset_or_less,
     });
     defer {
         for (cross_unsafe.items) |*c| c.deinit();

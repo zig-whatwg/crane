@@ -86,6 +86,25 @@ pub const Extracted = struct {
     }
 };
 
+/// Install scheme fetch "blob"'s resolver: the File API's blob URL store,
+/// which is the file module's, so fetch reaches it only through this.
+/// fetch() and XMLHttpRequest's send() call it before they fetch; it is
+/// idempotent.
+pub fn installBlobURLResolver() void {
+    fetch.algorithms.scheme_fetch.installBlobResolver(&resolveBlobURL);
+}
+
+/// "Obtain a blob object" for scheme fetch: the blob `url` names, if its
+/// entry is live and was made by `origin` (the store's same-origin check),
+/// copied - its bytes and type.
+fn resolveBlobURL(allocator: std.mem.Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?fetch.algorithms.scheme_fetch.ResolvedBlob {
+    const store = @import("file").getGlobalBlobURLStore() orelse return null;
+    const data = store.resolve(url, origin) orelse return null;
+    const bytes = try allocator.dupe(u8, data.bytes);
+    errdefer allocator.free(bytes);
+    return .{ .bytes = bytes, .content_type = try allocator.dupe(u8, data.mime_type) };
+}
+
 /// Fetch "extract a body" from `object`, with `keepalive` (default false).
 pub fn extract(allocator: std.mem.Allocator, object: typedefs.BodyInit, keepalive: bool) Error!Extracted {
     var result: Extracted = .{ .allocator = allocator };

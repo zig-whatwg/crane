@@ -14,6 +14,8 @@ const webidl = @import("webidl");
 const HeaderList = fetch.internal.HeaderList;
 const HeaderGuard = fetch.internal.HeaderGuard;
 const validation = fetch.internal.validation;
+const headers_class = fetch.webidl.headers;
+const engine = @import("engine");
 
 const Headers = interfaces.Headers;
 const same_object = @import("same_object.zig");
@@ -193,19 +195,16 @@ pub fn call_constructor(ctx: runtime.Context, init_data: webidl.Opt(typedefs.Hea
     // Handle init_data based on its variant
     if (init_data.wasPassed()) {
         const headers_init = init_data.getValue();
+        // 2. Fill this with init: every sequence item a pair, then Headers'
+        //    "append" - under this object's guard, "none".
+        const internal = instance.getState(State).own._internal.?;
         switch (headers_init) {
             .sequence_byte_string_sequence => |outer_seq| {
-                // Array of [name, value] pairs: sequence<sequence<ByteString>>
-                for (outer_seq) |inner_seq| {
-                    if (inner_seq.len >= 2) {
-                        try call_append(instance, inner_seq[0], inner_seq[1]);
-                    }
-                }
+                try headers_class.fillFromSequence(internal.allocator, internal.list, internal.guard, outer_seq);
             },
             .byte_string_byte_string_record => |entries| {
-                // Object with header entries: record<ByteString, ByteString>
                 for (entries) |entry| {
-                    try call_append(instance, entry.key, entry.value);
+                    try headers_class.append(internal.allocator, internal.list, internal.guard, entry.key, entry.value);
                 }
             },
         }
@@ -224,58 +223,35 @@ fn initHeaders(
     return init(allocator, StateType, vtable, ctx);
 }
 
-/// append(name, value)
+/// append(name, value): Fetch "append" under this object's guard.
+///
+/// Spec: https://fetch.spec.whatwg.org/#dom-headers-append
 pub fn call_append(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Validate name and value
-    if (!validation.isValidHeaderName(name)) {
-        return error.TypeError;
-    }
-    if (!validation.isValidHeaderValue(value)) {
-        return error.TypeError;
-    }
-
-    // Check guard
-    if (!canMutate(internal, name)) {
-        return; // Silently fail per spec
-    }
-
-    // Delegate to HeaderList
-    try internal.list.append(name, value);
+    const internal = instance.getState(State).own._internal.?;
+    try headers_class.append(internal.allocator, internal.list, internal.guard, name, value);
 }
 
 /// delete(name)
+///
+/// Spec: https://fetch.spec.whatwg.org/#dom-headers-delete
 pub fn call_delete(instance: *runtime.Instance, name: runtime.ByteString) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Validate name
-    if (!validation.isValidHeaderName(name)) {
-        return error.TypeError;
-    }
-
-    // Check guard
-    if (!canMutate(internal, name)) {
-        return; // Silently fail per spec
-    }
-
-    // Delegate to HeaderList
-    internal.list.delete(name);
+    const internal = instance.getState(State).own._internal.?;
+    try headers_class.delete(internal.list, internal.guard, name);
 }
 
 /// get(name) -> ByteString?
+///
+/// Spec: https://fetch.spec.whatwg.org/#dom-headers-get
 pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) anyerror!?runtime.ByteString {
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    // Validate name
+    // 1. If name is not a header name, then throw a TypeError.
     if (!validation.isValidHeaderName(name)) {
         return error.TypeError;
     }
 
-    // Delegate to HeaderList
+    // 2. Return the result of getting name from this's header list.
     return internal.list.get(internal.allocator, name) catch |err| {
         return switch (err) {
             error.OutOfMemory => error.OutOfMemory,
@@ -283,21 +259,53 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.ByteString) anyerror!
     };
 }
 
-/// getSetCookie() -> sequence<ByteString>
+/// getSetCookie() -> sequence<ByteString>: the values of every `Set-Cookie`
+/// header, in order - not combined, and an empty list when there is none.
+///
+/// Spec: https://fetch.spec.whatwg.org/#dom-headers-getsetcookie
 pub fn call_getSetCookie(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
+    const internal = instance.getState(State).own._internal.?;
+    const allocator = internal.allocator;
 
-    // Get all Set-Cookie headers
-    const values = internal.list.getSetCookie(internal.allocator) catch |err| {
-        return switch (err) {
-            error.OutOfMemory => error.OutOfMemory,
+    // The return value IS the JavaScript value (AGENTS.md), so the Array is
+    // made here. A ByteString is isomorphic-decoded: each byte one code
+    // point.
+    var decoded: std.ArrayListUnmanaged([]u8) = .empty;
+    defer {
+        for (decoded.items) |d| allocator.free(d);
+        decoded.deinit(allocator);
+    }
+    var values: std.ArrayListUnmanaged(runtime.JSValue) = .empty;
+    defer values.deinit(allocator);
+    // 1. If this's header list does not contain `Set-Cookie`, then return «».
+    // 2. Return the values of all headers in this's header list whose name
+    //    is a byte-case-insensitive match for `Set-Cookie`, in order.
+    for (internal.list.entries.items) |header| {
+        if (!std.ascii.eqlIgnoreCase(header.name, "set-cookie")) continue;
+        const text = try isomorphicDecode(allocator, header.value);
+        decoded.append(allocator, text) catch |err| {
+            allocator.free(text);
+            return err;
         };
-    };
+        try values.append(allocator, runtime.JSValue.fromStringRef(text));
+    }
+    const array = try engine.createSequenceOfValues(engine.currentRealm() orelse instance.ctx, values.items);
+    return array.take();
+}
 
-    // TODO: Return proper V8 Array of strings - need V8 array creation utility
-    _ = values;
-    return runtime.JSValue.jsUndefined;
+/// Infra "isomorphic decode", as UTF-8: each byte the code point of its
+/// value. Owned.
+fn isomorphicDecode(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer out.deinit(allocator);
+    for (bytes) |byte| {
+        if (byte < 0x80) {
+            try out.append(allocator, byte);
+        } else {
+            try out.appendSlice(allocator, &.{ 0xC0 | (byte >> 6), 0x80 | (byte & 0x3F) });
+        }
+    }
+    return out.toOwnedSlice(allocator);
 }
 
 /// has(name) -> boolean
@@ -314,25 +322,11 @@ pub fn call_has(instance: *runtime.Instance, name: runtime.ByteString) anyerror!
 }
 
 /// set(name, value)
+///
+/// Spec: https://fetch.spec.whatwg.org/#dom-headers-set
 pub fn call_set(instance: *runtime.Instance, name: runtime.ByteString, value: runtime.ByteString) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal.?;
-
-    // Validate name and value
-    if (!validation.isValidHeaderName(name)) {
-        return error.TypeError;
-    }
-    if (!validation.isValidHeaderValue(value)) {
-        return error.TypeError;
-    }
-
-    // Check guard
-    if (!canMutate(internal, name)) {
-        return; // Silently fail per spec
-    }
-
-    // Delegate to HeaderList
-    try internal.list.set(name, value);
+    const internal = instance.getState(State).own._internal.?;
+    try headers_class.set(internal.list, internal.guard, name, value);
 }
 
 /// forEach(callback)
@@ -371,18 +365,4 @@ pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const IterableEntry {
     internal.sorted_list = sorted_list;
 
     return internal.sorted_list.?.entries.items;
-}
-
-// === Helper Functions ===
-
-/// Check if mutation is allowed for this header name
-fn canMutate(internal: *const InternalState, name: []const u8) bool {
-    return switch (internal.guard) {
-        .immutable => false,
-        .request => !validation.isForbiddenRequestHeader(name, ""),
-        .request_no_cors => !validation.isForbiddenRequestHeader(name, "") and
-            validation.isNoCORSSafelistedRequestHeaderName(name),
-        .response => !validation.isForbiddenResponseHeaderName(name),
-        .none => true,
-    };
 }

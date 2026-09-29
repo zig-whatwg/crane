@@ -412,6 +412,10 @@ pub const WebSocketConnection = struct {
         protocols: ?[]const []const u8 = null,
         /// The client's serialized origin, for the `Origin` header.
         origin: ?[]const u8 = null,
+        /// The user agent's cookie jar, as the client reaches it (borrowed
+        /// for the connection's life): the handshake sends and stores
+        /// cookies through it.
+        cookie_jar: ?*@import("cookiestore").CookieJar = null,
     };
 
     /// Establish the WebSocket connection, waiting for it. For callers with
@@ -439,6 +443,7 @@ pub const WebSocketConnection = struct {
         const backend = try curl_backend.CurlWebSocket.initWithOptions(self.allocator, self.url, .{
             .protocols = options.protocols,
             .origin = options.origin,
+            .cookie_jar = options.cookie_jar,
         });
         self.backend = backend;
 

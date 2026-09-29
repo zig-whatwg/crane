@@ -27,7 +27,6 @@ const curl = @import("curl_ffi.zig");
 const curl_options = @import("curl_options");
 const curl_error = @import("curl_error.zig");
 const clock = @import("clock");
-const CurlCookieManager = @import("curl_cookies.zig").CurlCookieManager;
 
 // =============================================================================
 // Global State Management
@@ -165,6 +164,14 @@ pub fn globalCleanup() void {
     }
 }
 
+/// How many holders the global state has - `globalInit` calls not yet
+/// matched by `globalCleanup`. A Browser is one for its life.
+pub fn globalReferences() usize {
+    std.Io.Threaded.mutexLock(&global_init_mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_init_mutex);
+    return global_init_count;
+}
+
 /// Get the global share handle for connection pooling.
 /// Returns null if globalInit() hasn't been called.
 pub fn getGlobalShare() ?*curl.CURLSH {
@@ -203,33 +210,15 @@ pub const LibcurlBackend = struct {
     /// Abort flag - set to true to cancel in-progress request
     aborted: std.atomic.Value(bool),
 
-    /// Shared cookie manager (null = cookies disabled)
-    cookie_manager: ?*CurlCookieManager,
-
-    /// Whether we own the cookie manager (should deinit on cleanup)
-    owns_cookie_manager: bool,
-
     const Self = @This();
-
-    /// Options for LibcurlBackend initialization
-    pub const Options = struct {
-        /// Enable cookie handling (default: true)
-        enable_cookies: bool = true,
-
-        /// Custom cookie manager (null = create new one)
-        /// If provided, caller retains ownership
-        cookie_manager: ?*CurlCookieManager = null,
-    };
 
     /// Initialize a new LibcurlBackend.
     /// Automatically calls globalInit() if not already initialized.
+    ///
+    /// Cookies are not the network's: fetch sends and stores them through
+    /// the user agent's jar (fetch/algorithms/cookies.zig), and curl's own
+    /// cookie engine is never turned on.
     pub fn init(allocator: Allocator) !*Self {
-        return initWithOptions(allocator, .{});
-    }
-
-    /// Initialize with options (including cookie configuration)
-    /// Automatically calls globalInit() if not already initialized.
-    pub fn initWithOptions(allocator: Allocator, options: Options) !*Self {
         // Ensure global curl is initialized (idempotent, thread-safe)
         // We only call globalInit if not already initialized, to avoid
         // incrementing the reference count on every request.
@@ -241,26 +230,9 @@ pub const LibcurlBackend = struct {
         }
 
         const self = try allocator.create(Self);
-        errdefer allocator.destroy(self);
-
-        var cookie_manager: ?*CurlCookieManager = null;
-        var owns_manager = false;
-
-        if (options.enable_cookies) {
-            if (options.cookie_manager) |cm| {
-                cookie_manager = cm;
-                owns_manager = false; // Caller owns it
-            } else {
-                cookie_manager = try CurlCookieManager.init(allocator, null);
-                owns_manager = true; // We own it
-            }
-        }
-
         self.* = .{
             .allocator = allocator,
             .aborted = std.atomic.Value(bool).init(false),
-            .cookie_manager = cookie_manager,
-            .owns_cookie_manager = owns_manager,
         };
         return self;
     }
@@ -274,22 +246,12 @@ pub const LibcurlBackend = struct {
     /// connection pool via CURLOPT_SHARE.
     pub fn deinit(self: *Self) void {
         log.debug("[CURL] Backend deinit (NOT calling globalCleanup - share persists)\n", .{});
-        if (self.owns_cookie_manager) {
-            if (self.cookie_manager) |cm| {
-                cm.deinit();
-            }
-        }
         self.allocator.destroy(self);
 
         // NOTE: We used to call globalCleanup() here, but this caused the global share
         // to be destroyed after each request, preventing connection reuse.
         // The global state now persists for the application lifetime.
         // If you need explicit cleanup, call globalCleanup() directly at app shutdown.
-    }
-
-    /// Get the cookie manager (for sharing with CookieStore API)
-    pub fn getCookieManager(self: *Self) ?*CurlCookieManager {
-        return self.cookie_manager;
     }
 
     /// Get as NetworkBackend interface.
@@ -365,7 +327,6 @@ pub const LibcurlBackend = struct {
         self.aborted.store(false, .seq_cst);
 
         const transfer = try Transfer.create(allocator, request, .{
-            .cookie_manager = self.cookie_manager,
             .aborted = &self.aborted,
         });
         defer transfer.destroy();
@@ -616,17 +577,8 @@ pub const Transfer = struct {
     /// The request's method and URL, for the diagnostics `finish` writes.
     method: []u8,
     url: []u8,
-    /// Set when `create` made the cookie manager, which then goes with the
-    /// transfer. It is released after the handle, which holds its share.
-    owned_cookie_manager: ?*CurlCookieManager,
 
     pub const Options = struct {
-        /// Cookies go through this manager. Borrowed; it must outlive the
-        /// transfer.
-        cookie_manager: ?*CurlCookieManager = null,
-        /// With no `cookie_manager`, make one for this transfer alone - what
-        /// `LibcurlBackend.initWithOptions` does for the one request it sends.
-        own_cookies: bool = false,
         /// The flag an abort sets. Null: the transfer's own.
         aborted: ?*std.atomic.Value(bool) = null,
     };
@@ -643,16 +595,6 @@ pub const Transfer = struct {
         const url = allocator.dupe(u8, request.url) catch return NetworkError.OutOfMemory;
         errdefer allocator.free(url);
 
-        // Before the handle, so that on an error the handle - which holds the
-        // manager's share - is cleaned up first.
-        var cookie_manager = options.cookie_manager;
-        var owned_cookie_manager: ?*CurlCookieManager = null;
-        if (cookie_manager == null and options.own_cookies) {
-            owned_cookie_manager = CurlCookieManager.init(allocator, null) catch return NetworkError.OutOfMemory;
-            cookie_manager = owned_cookie_manager;
-        }
-        errdefer if (owned_cookie_manager) |cm| cm.deinit();
-
         const handle = curl.easy_init() orelse {
             log.warn("{s} {s}: curl_easy_init failed (out of memory)", .{ request.method, request.url });
             return NetworkError.OutOfMemory;
@@ -667,7 +609,6 @@ pub const Transfer = struct {
             .own_aborted = std.atomic.Value(bool).init(false),
             .method = method,
             .url = url,
-            .owned_cookie_manager = owned_cookie_manager,
         };
         self.ctx = LibcurlBackend.CallbackContext.init(allocator, options.aborted orelse &self.own_aborted);
         errdefer self.ctx.deinit();
@@ -676,11 +617,6 @@ pub const Transfer = struct {
         // This enables connection reuse across easy handles, preventing socket exhaustion
         if (getGlobalShare()) |share| {
             _ = curl.easy_setopt(handle, curl.CURLOPT_SHARE, share);
-        }
-
-        // Attach cookie manager if available
-        if (cookie_manager) |cm| {
-            cm.attachToHandle(handle);
         }
 
         // Give curl somewhere to explain itself.
@@ -708,8 +644,6 @@ pub const Transfer = struct {
     pub fn destroy(self: *Transfer) void {
         const allocator = self.allocator;
         curl.easy_cleanup(self.handle);
-        // After the handle: a share still attached to one cannot be cleaned.
-        if (self.owned_cookie_manager) |cm| cm.deinit();
         self.ctx.deinit();
         allocator.free(self.method);
         allocator.free(self.url);

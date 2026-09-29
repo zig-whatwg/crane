@@ -44,6 +44,8 @@ pub const canDelete = guards.canDelete;
 pub const canGet = guards.canGet;
 
 pub const origins = @import("origins.zig");
+pub const mime = @import("mime.zig");
+pub const user_agent = @import("user_agent.zig");
 
 pub const body = @import("body.zig");
 pub const body_pipe = @import("body_pipe.zig");
@@ -66,6 +68,11 @@ pub const clampAndCoarsenConnectionTimingInfo = fetch_timing.clampAndCoarsenConn
 
 pub const request = @import("request.zig");
 pub const InternalRequest = request.InternalRequest;
+pub const CookieJar = request.CookieJar;
+
+pub const request_client = @import("request_client.zig");
+pub const RequestClient = request_client.RequestClient;
+pub const populateRequestFromClient = request_client.populateRequestFromClient;
 pub const ServiceWorkersMode = request.ServiceWorkersMode;
 pub const Initiator = request.Initiator;
 pub const Destination = request.Destination;
@@ -128,6 +135,8 @@ pub const cloneResponseBodyOrThrow = body_cloning.cloneResponseBodyOrThrow;
 
 test {
     _ = origins;
+    _ = mime;
+    _ = user_agent;
     _ = header_list;
     _ = validation;
     _ = parsing;
@@ -136,6 +145,7 @@ test {
     _ = body_pipe;
     _ = fetch_timing;
     _ = request;
+    _ = request_client;
     _ = response;
     _ = fetch_controller;
     _ = fetch_params;

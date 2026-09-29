@@ -121,6 +121,11 @@ pub const NavigationFetchOptions = struct {
     /// Redirect behavior
     redirect: Redirect = .follow,
 
+    /// The user agent's cookie jar, as the navigable reaches it (BORROWED).
+    /// A navigation request's credentials mode is "include", so its fetch
+    /// sends the jar's cookies and stores the response's. Null: none.
+    cookie_jar: ?*fetch.internal.CookieJar = null,
+
     pub const Destination = enum {
         document,
         iframe,
@@ -287,6 +292,9 @@ pub fn navigationRequest(
     if (options.origin) |org| {
         internal_request.origin = .{ .origin = org };
     }
+
+    // The cookie store its fetch sends from and stores to.
+    internal_request.cookie_jar = options.cookie_jar;
     return internal_request;
 }
 

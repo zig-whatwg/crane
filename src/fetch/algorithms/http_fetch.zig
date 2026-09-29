@@ -17,6 +17,7 @@ const Allocator = std.mem.Allocator;
 const internal_response = @import("../internal/response.zig");
 const origins = @import("../internal/origins.zig");
 const validation = @import("../internal/validation.zig");
+const referrer_policy = @import("referrer_policy");
 const InternalResponse = internal_response.InternalResponse;
 const ResponseType = internal_response.ResponseType;
 const internal_request = @import("../internal/request.zig");
@@ -29,9 +30,9 @@ const network = @import("../network/root.zig");
 const NetworkRequest = network.NetworkRequest;
 const NetworkResponse = network.NetworkResponse;
 const NetworkError = network.NetworkError;
-const CurlCookieManager = network.curl_cookies.CurlCookieManager;
 const clock = @import("clock");
 const BodyPipe = @import("../internal/body_pipe.zig").BodyPipe;
+const cookies = @import("cookies.zig");
 
 // URL Standard, for a redirect's location URL. The same three modules `xhr`
 // takes for `open()` - `url`'s root re-exports neither the serializer nor a
@@ -52,13 +53,9 @@ pub const HttpFetchResult = struct {
     response: *InternalResponse,
 };
 
-/// Options for HTTP fetch.
-pub const HttpFetchOptions = struct {
-    /// Cookie manager for credentials handling (optional)
-    /// If null, LibcurlBackend creates its own cookie manager.
-    /// Cookies are handled automatically by libcurl when attached.
-    cookie_manager: ?*CurlCookieManager = null,
-};
+/// Options for HTTP fetch. Main fetch passes none; cookies are the
+/// request's jar's (`InternalRequest.cookie_jar`).
+pub const HttpFetchOptions = struct {};
 
 /// What HTTP fetch does with the response HTTP-network-or-cache fetch gave it.
 pub const HttpFetchNext = union(enum) {
@@ -182,9 +179,13 @@ pub fn httpRedirectFetchStart(
     const location_url = location orelse return .{ .response = response };
     defer allocator.free(location_url);
 
-    // Everything below needs only the status, so read it before letting the
-    // redirect response go.
+    // Everything below needs only the status and step 19's policy, so read
+    // them before letting the redirect response go.
     const status = response.status;
+    const redirect_policy = referrerPolicyOf(allocator, response) catch {
+        response.deinit();
+        return HttpFetchError.OutOfMemory;
+    };
     response.deinit();
 
     // Step 6: If locationURL's scheme is not an HTTP(S) scheme, return a
@@ -268,9 +269,9 @@ pub fn httpRedirectFetchStart(
     // Step 18: Append locationURL to request's URL list.
     request.addUrl(location_url) catch return HttpFetchError.OutOfMemory;
 
-    // Step 19: set request's referrer policy on redirect.
-    // TODO: needs the response's `Referrer-Policy` header parsed; the policy
-    // is left unchanged until then.
+    // Step 19: set request's referrer policy on redirect: "If policy is not
+    // the empty string, then set request's referrer policy to policy."
+    if (redirect_policy) |policy| request.referrer_policy = policy;
 
     // Steps 20-22: recursive main fetch. Redirect mode "manual" only reaches
     // here for a navigation, which this layer does not do, so recursive stays
@@ -312,6 +313,16 @@ const request_body_header_names = [_][]const u8{
     "Content-Location",
     "Content-Type",
 };
+
+/// Referrer Policy "parse a referrer policy from a Referrer-Policy header"
+/// on `response`: the last of its `Referrer-Policy` values that is a
+/// referrer policy, or null for the empty string (none is).
+fn referrerPolicyOf(allocator: Allocator, response: *InternalResponse) !?internal_request.ReferrerPolicy {
+    const value = (try response.header_list.get(allocator, "Referrer-Policy")) orelse return null;
+    defer allocator.free(value);
+    const parsed = referrer_policy.parseReferrerPolicyHeader(value) orelse return null;
+    return std.meta.stringToEnum(internal_request.ReferrerPolicy, @tagName(parsed));
+}
 
 /// URL "includes credentials": a non-empty username or password.
 fn urlIncludesCredentials(allocator: Allocator, url: []const u8) !bool {
@@ -458,19 +469,114 @@ pub fn httpNetworkOrCacheFetchStart(
         },
     };
 
-    // Step 8.12: Append a request `Origin` header for httpRequest - on the
-    // request sent, not on request itself: httpRequest is its clone, and a
-    // redirect's main fetch appends its own.
-    const origin_value = requestOriginHeader(allocator, request) catch return HttpFetchError.OutOfMemory;
+    // Steps 8.7-8.19 add headers to httpRequest - here, to the request
+    // sent, not to request itself: httpRequest is its clone, and a redirect's
+    // main fetch adds its own.
+    var added: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
+    defer added.deinit(allocator);
+    errdefer for (added.items) |header| allocator.free(header.value);
+    httpRequestHeaders(allocator, request, &added) catch return HttpFetchError.OutOfMemory;
 
     // HTTP-network fetch, step 1: Build NetworkRequest from InternalRequest
-    var network_request = buildNetworkRequest(allocator, request, origin_value) catch {
-        if (origin_value) |v| allocator.free(v);
+    var network_request = buildNetworkRequest(allocator, request, added.items) catch {
         return HttpFetchError.OutOfMemory;
     };
     network_request.require_http2 = require_http2;
     return .{ .network = network_request };
 }
+
+/// HTTP-network-or-cache fetch, once HTTP-network fetch has returned
+/// `response` (ownership passes in and out): step 14, a 401.
+///
+/// "If response's status is 401, httpRequest's response tainting is not
+/// "cors", includeCredentials is true, and request's traversable for user
+/// prompts is a traversable navigable", a request whose body has a null
+/// source - a stream, which cannot be sent again - is a network error
+/// (14.2.1). The rest of the step prompts the end user for a username and
+/// password and fetches again; there is no one to prompt here, so the
+/// prompt is as good as cancelled and the 401 is the response.
+pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, request: *const InternalRequest, response: *InternalResponse) HttpFetchError!*InternalResponse {
+    if (response.status != 401) return response;
+    if (request.response_tainting == .cors or !httpNetworkFetchUsesCookies(request)) return response;
+    if (request.traversable_for_user_prompts != .traversable) return response;
+    const body = request.body orelse return response;
+    switch (body) {
+        .bytes => return response,
+        .body => |b| if (b.source != .none) return response,
+    }
+    response.deinit();
+    return internal_response.networkError(allocator) catch HttpFetchError.OutOfMemory;
+}
+
+/// HTTP-network-or-cache fetch step 8's headers for httpRequest: those it
+/// appends to the request's header list, gathered for the request sent (each
+/// value owned). curl adds `Host`, and `Content-Length` for a body, itself.
+fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *std.ArrayListUnmanaged(NetworkRequest.Header)) !void {
+    const list = &request.header_list;
+    // 8.5-8.9: a null body's Content-Length is `0` for POST and PUT.
+    // (A body's own length curl sends with it.)
+    if (request.body == null and (std.mem.eql(u8, request.method, "POST") or std.mem.eql(u8, request.method, "PUT"))) {
+        try addHeader(allocator, added, "Content-Length", "0");
+    }
+    // 8.11. If httpRequest's referrer is a URL, append (`Referer`, it
+    //       serialized and isomorphic encoded).
+    if (request.referrer == .url) try addHeader(allocator, added, "Referer", request.referrer.url);
+    // 8.12. Append a request `Origin` header for httpRequest.
+    if (try requestOriginHeader(allocator, request)) |origin_value| {
+        added.append(allocator, .{ .name = "Origin", .value = origin_value }) catch |err| {
+            allocator.free(origin_value);
+            return err;
+        };
+    }
+    // 8.15. If httpRequest's header list does not contain `User-Agent`,
+    //       append (`User-Agent`, the environment default `User-Agent`
+    //       value).
+    if (!list.contains("User-Agent")) try addHeader(allocator, added, "User-Agent", default_user_agent);
+    // 8.16. A conditional request in cache mode "default" is "no-store".
+    var cache_mode = request.cache_mode;
+    if (cache_mode == .default) {
+        for ([_][]const u8{ "If-Modified-Since", "If-None-Match", "If-Unmodified-Since", "If-Match", "If-Range" }) |name| {
+            if (list.contains(name)) cache_mode = .no_store;
+        }
+    }
+    // 8.17. "no-cache": (`Cache-Control`, `max-age=0`), unless the request
+    //       has one or its prevent-modification flag is set.
+    if (cache_mode == .no_cache and !request.prevent_no_cache_cache_control_header_modification and !list.contains("Cache-Control")) {
+        try addHeader(allocator, added, "Cache-Control", "max-age=0");
+    }
+    // 8.18. "no-store" and "reload": `Pragma` and `Cache-Control` both
+    //       `no-cache`, each unless the request has one.
+    if (cache_mode == .no_store or cache_mode == .reload) {
+        if (!list.contains("Pragma")) try addHeader(allocator, added, "Pragma", "no-cache");
+        if (!list.contains("Cache-Control")) try addHeader(allocator, added, "Cache-Control", "no-cache");
+    }
+    // 8.19. If httpRequest's header list contains `Range`, then append
+    //       (`Accept-Encoding`, `identity`).
+    if (list.contains("Range")) try addHeader(allocator, added, "Accept-Encoding", "identity");
+    // 8.21. If includeCredentials is true, then:
+    if (httpNetworkFetchUsesCookies(request)) {
+        // 8.21.1. Append a request `Cookie` header for httpRequest.
+        if (try cookies.requestCookieHeader(allocator, request)) |value| {
+            added.append(allocator, .{ .name = "Cookie", .value = value }) catch |err| {
+                allocator.free(value);
+                return err;
+            };
+        }
+        // TODO: 8.21.2, the `Authorization` header from an authentication
+        //       entry or the URL's credentials.
+    }
+}
+
+fn addHeader(allocator: Allocator, added: *std.ArrayListUnmanaged(NetworkRequest.Header), name: []const u8, value: []const u8) !void {
+    const copy = try allocator.dupe(u8, value);
+    added.append(allocator, .{ .name = name, .value = copy }) catch |err| {
+        allocator.free(copy);
+        return err;
+    };
+}
+
+/// The environment default `User-Agent` value (internal/user_agent.zig).
+pub const default_user_agent = @import("../internal/user_agent.zig").default_user_agent;
 
 /// Fetch "append a request `Origin` header" for `request`: the value to
 /// append, or null when it appends none. OWNED.
@@ -515,13 +621,11 @@ fn requestOriginHeader(allocator: Allocator, request: *InternalRequest) !?[]u8 {
     return serialized;
 }
 
-/// Whether HTTP-network fetch sends and stores cookies for `request`:
-/// HTTP-network-or-cache fetch's includeCredentials - credentials mode
-/// "include", or "same-origin" while the response tainting is "basic" (a
-/// cross-origin request in "cors" mode sends its cookies only when it asks
-/// to). Cookie handling itself is libcurl's, through CurlCookieManager - it
-/// sends the matching cookies (Fetch spec §4.9 step 5) and stores the
-/// `Set-Cookie` ones (step 11).
+/// HTTP-network-or-cache fetch's includeCredentials for `request`:
+/// credentials mode "include", or "same-origin" while the response tainting
+/// is "basic" (a cross-origin request in "cors" mode sends its cookies only
+/// when it asks to). When it is true, step 8.21 sends the request's cookies
+/// and HTTP-network fetch step 16 stores the response's (cookies.zig).
 pub fn httpNetworkFetchUsesCookies(request: *const InternalRequest) bool {
     return switch (request.credentials_mode) {
         .include => true,
@@ -590,6 +694,15 @@ pub fn httpNetworkFetchFinish(
         };
     }
 
+    // Step 16: If includeCredentials is true, then the user agent should
+    // parse and store response `Set-Cookie` headers given request and
+    // response. Every response HTTP-network fetch returns, a redirect's too.
+    if (httpNetworkFetchUsesCookies(request)) {
+        cookies.storeResponseCookies(allocator, request, &response.header_list) catch {
+            return HttpFetchError.OutOfMemory;
+        };
+    }
+
     // Set body if present
     if (network_response.body) |body_bytes| {
         const body = @import("../internal/body.zig").Body.fromBytes(allocator, body_bytes) catch {
@@ -606,20 +719,19 @@ pub fn httpNetworkFetchFinish(
     return response;
 }
 
-/// Build a NetworkRequest from an InternalRequest, with `origin_value` - owned,
-/// and the NetworkRequest's once this returns - as an `Origin` header after
-/// its own.
-fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, origin_value: ?[]const u8) !NetworkRequest {
+/// Build a NetworkRequest from an InternalRequest, with `added` after its own
+/// headers - their values owned, and the NetworkRequest's once this returns
+/// (on error, still the caller's).
+fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, added: []const NetworkRequest.Header) !NetworkRequest {
     // Get headers from header list using iterator()
     const header_entries = request.header_list.iterator();
 
     // Allocate headers array
-    const extra: usize = if (origin_value != null) 1 else 0;
-    const headers = try allocator.alloc(NetworkRequest.Header, header_entries.len + extra);
+    const headers = try allocator.alloc(NetworkRequest.Header, header_entries.len + added.len);
     errdefer allocator.free(headers);
-    const owned_values = try allocator.alloc([]const u8, extra);
+    const owned_values = try allocator.alloc([]const u8, added.len);
     errdefer allocator.free(owned_values);
-    if (origin_value) |value| owned_values[0] = value;
+    for (added, 0..) |header, i| owned_values[i] = header.value;
 
     for (header_entries, 0..) |header, i| {
         headers[i] = .{
@@ -627,7 +739,7 @@ fn buildNetworkRequest(allocator: Allocator, request: *InternalRequest, origin_v
             .value = header.value,
         };
     }
-    if (origin_value) |value| headers[header_entries.len] = .{ .name = "Origin", .value = value };
+    for (added, 0..) |header, i| headers[header_entries.len + i] = header;
 
     // Get body bytes if present
     const body: ?[]const u8 = if (request.body) |b| switch (b) {
@@ -764,6 +876,16 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
         };
         try headers.append(allocator, .{ .name = "Access-Control-Request-Headers", .value = value });
     }
+    // The preflight's referrer is request's (which main fetch step 9 has
+    // determined): HTTP-network-or-cache fetch 8.11 sends it as `Referer`.
+    if (request.referrer == .url) {
+        const referer = try allocator.dupe(u8, request.referrer.url);
+        owned.append(allocator, referer) catch |err| {
+            allocator.free(referer);
+            return err;
+        };
+        try headers.append(allocator, .{ .name = "Referer", .value = referer });
+    }
     if (request.origin != .client) {
         const origin = try request.serializeOrigin(allocator);
         owned.append(allocator, origin) catch |err| {
@@ -772,6 +894,8 @@ fn buildPreflightRequest(allocator: Allocator, request: *InternalRequest) !Netwo
         };
         try headers.append(allocator, .{ .name = "Origin", .value = origin });
     }
+    // 8.15 runs for the preflight too: its header list has no User-Agent.
+    try headers.append(allocator, .{ .name = "User-Agent", .value = default_user_agent });
 
     const header_slice = try headers.toOwnedSlice(allocator);
     errdefer allocator.free(header_slice);
@@ -1235,6 +1359,7 @@ test "CORS-preflight fetch: an OPTIONS request with the method, the unsafe heade
     const request = try InternalRequest.init(allocator, "http://b.test/x");
     defer request.deinit();
     try request.setOrigin("http://a.test");
+    try request.setReferrerUrl("http://a.test/page");
     try request.setMethod("PUT");
     try request.header_list.append("X-B", "1");
     try request.header_list.append("Content-Type", "text/plain");
@@ -1250,7 +1375,9 @@ test "CORS-preflight fetch: an OPTIONS request with the method, the unsafe heade
         .{ "Access-Control-Request-Method", "PUT" },
         // Sorted, lowercased, joined by a bare comma.
         .{ "Access-Control-Request-Headers", "x-a,x-b" },
+        .{ "Referer", "http://a.test/page" },
         .{ "Origin", "http://a.test" },
+        .{ "User-Agent", default_user_agent },
     };
     try std.testing.expectEqual(expected.len, preflight.headers.len);
     for (expected, preflight.headers) |want, got| {
@@ -1336,4 +1463,191 @@ test "CORS-preflight fetch step 7.4: with the use-CORS-preflight flag, no Allow-
     try std.testing.expect(!try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &bare)));
     request.use_cors_preflight = true;
     try std.testing.expect(try corsPreflightFetchFinish(allocator, request, &preflightAnswer(200, &bare)));
+}
+
+test "HTTP-network-or-cache fetch step 14: a 401 to a stream upload from a window is a network error" {
+    const allocator = std.testing.allocator;
+    const Body = @import("../internal/body.zig").Body;
+
+    var window_token: u8 = 0;
+    const request = try InternalRequest.init(allocator, "https://a.test/upload");
+    defer request.deinit();
+    try request.setOrigin("https://a.test");
+    try request.setMethod("POST");
+    request.traversable_for_user_prompts = .{ .traversable = &window_token };
+    request.body = .{ .body = try Body.fromSource(allocator, .none, 0) };
+
+    // A 401: the body cannot be sent again for the credentials a prompt
+    // would ask for, so a network error.
+    const unauthorized = try InternalResponse.init(allocator);
+    unauthorized.status = 401;
+    const refused = try httpNetworkOrCacheFetchFinish(allocator, request, unauthorized);
+    defer refused.deinit();
+    try std.testing.expect(isNetworkError(refused));
+
+    // Any other status goes on as it is.
+    const ok = try InternalResponse.init(allocator);
+    ok.status = 200;
+    const kept = try httpNetworkOrCacheFetchFinish(allocator, request, ok);
+    try std.testing.expect(kept == ok);
+    kept.deinit();
+
+    // With no traversable to prompt in (a worker's request), the 401 stands.
+    request.traversable_for_user_prompts = .no_traversable;
+    const worker_401 = try InternalResponse.init(allocator);
+    worker_401.status = 401;
+    const stands = try httpNetworkOrCacheFetchFinish(allocator, request, worker_401);
+    try std.testing.expect(stands == worker_401);
+    stands.deinit();
+
+    // Nor for a CORS request, or one without credentials.
+    request.traversable_for_user_prompts = .{ .traversable = &window_token };
+    request.response_tainting = .cors;
+    const cors_401 = try InternalResponse.init(allocator);
+    cors_401.status = 401;
+    const cors_kept = try httpNetworkOrCacheFetchFinish(allocator, request, cors_401);
+    try std.testing.expect(cors_kept == cors_401);
+    cors_kept.deinit();
+}
+
+test "HTTP-redirect fetch step 19: a redirect's Referrer-Policy becomes the request's" {
+    const allocator = std.testing.allocator;
+    const response = try InternalResponse.init(allocator);
+    defer response.deinit();
+    try std.testing.expect((try referrerPolicyOf(allocator, response)) == null);
+    try response.header_list.append("Referrer-Policy", "no-referrer, bogus");
+    try response.header_list.append("Referrer-Policy", "origin");
+    try std.testing.expectEqual(internal_request.ReferrerPolicy.origin, (try referrerPolicyOf(allocator, response)).?);
+}
+
+test "HTTP-network-or-cache fetch step 8.11: a URL referrer is sent as Referer, before Origin" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    try request.setReferrerUrl("http://a.test/page");
+    request.mode = .cors;
+    request.response_tainting = .cors;
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    const started = try httpNetworkOrCacheFetchStart(allocator, params, .{});
+    const network_request = started.network;
+    defer freeNetworkRequest(allocator, network_request);
+    var referer_at: ?usize = null;
+    var origin_at: ?usize = null;
+    for (network_request.headers, 0..) |header, i| {
+        if (std.mem.eql(u8, header.name, "Referer")) {
+            referer_at = i;
+            try std.testing.expectEqualStrings("http://a.test/page", header.value);
+        }
+        if (std.mem.eql(u8, header.name, "Origin")) origin_at = i;
+    }
+    try std.testing.expect(referer_at.? < origin_at.?);
+    try std.testing.expect(!request.header_list.contains("Referer"));
+}
+
+test "HTTP-network-or-cache fetch step 8.21: includeCredentials sends the jar's cookies, last" {
+    const allocator = std.testing.allocator;
+    var jar = @import("cookiestore").CookieJar.init(allocator);
+    defer jar.deinit();
+    try @import("cookiestore").http_integration.processSetCookieHeaders(allocator, &jar, &.{"sid=1; Path=/"}, "/", .{ .is_secure = false, .host = "a.test", .http_only_allowed = true });
+
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    request.cookie_jar = &jar;
+    request.credentials_mode = .include;
+
+    var added: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
+    defer {
+        for (added.items) |h| allocator.free(h.value);
+        added.deinit(allocator);
+    }
+    try httpRequestHeaders(allocator, request, &added);
+    const last = added.items[added.items.len - 1];
+    try std.testing.expectEqualStrings("Cookie", last.name);
+    try std.testing.expectEqualStrings("sid=1", last.value);
+
+    // includeCredentials false: no Cookie.
+    for (added.items) |h| allocator.free(h.value);
+    added.clearRetainingCapacity();
+    request.credentials_mode = .omit;
+    try httpRequestHeaders(allocator, request, &added);
+    for (added.items) |h| try std.testing.expect(!std.ascii.eqlIgnoreCase(h.name, "Cookie"));
+}
+
+test "HTTP-network fetch step 16: includeCredentials stores the response's Set-Cookie" {
+    const allocator = std.testing.allocator;
+    var jar = @import("cookiestore").CookieJar.init(allocator);
+    defer jar.deinit();
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    request.cookie_jar = &jar;
+    const controller = try @import("../internal/fetch_controller.zig").FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = @import("../internal/fetch_timing.zig").FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    var headers = [_]NetworkResponse.Header{.{ .name = "Set-Cookie", .value = "sid=1; Path=/" }};
+    const answer = preflightAnswer(200, &headers);
+    request.credentials_mode = .omit;
+    const ignored = try httpNetworkFetchFinish(allocator, params, &answer, 0, null);
+    ignored.deinit();
+    try std.testing.expectEqual(0, jar.count());
+
+    request.credentials_mode = .same_origin;
+    const stored = try httpNetworkFetchFinish(allocator, params, &answer, 0, null);
+    stored.deinit();
+    try std.testing.expectEqual(1, jar.count());
+}
+
+test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Length, and the cache headers" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setMethod("POST");
+    request.cache_mode = .no_store;
+    try request.header_list.append("Range", "bytes=0-1");
+
+    var added: std.ArrayListUnmanaged(NetworkRequest.Header) = .empty;
+    defer {
+        for (added.items) |h| allocator.free(h.value);
+        added.deinit(allocator);
+    }
+    try httpRequestHeaders(allocator, request, &added);
+    const want = [_][2][]const u8{
+        .{ "Content-Length", "0" },
+        .{ "User-Agent", default_user_agent },
+        .{ "Pragma", "no-cache" },
+        .{ "Cache-Control", "no-cache" },
+        .{ "Accept-Encoding", "identity" },
+    };
+    try std.testing.expectEqual(want.len, added.items.len);
+    for (want, added.items) |w, got| {
+        try std.testing.expectEqualStrings(w[0], got.name);
+        try std.testing.expectEqualStrings(w[1], got.value);
+    }
+
+    // A request's own User-Agent and Cache-Control stand; a conditional
+    // request in "default" mode is "no-store".
+    for (added.items) |h| allocator.free(h.value);
+    added.clearRetainingCapacity();
+    try request.setMethod("GET");
+    request.cache_mode = .default;
+    request.header_list.delete("Range");
+    try request.header_list.append("User-Agent", "mine");
+    try request.header_list.append("If-None-Match", "x");
+    try httpRequestHeaders(allocator, request, &added);
+    try std.testing.expectEqual(2, added.items.len);
+    try std.testing.expectEqualStrings("Pragma", added.items[0].name);
+    try std.testing.expectEqualStrings("Cache-Control", added.items[1].name);
 }

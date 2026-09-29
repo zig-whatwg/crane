@@ -316,7 +316,9 @@ pub fn get_appName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Per HTML Standard: Returns version info.
 pub fn get_appVersion(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return runtime.DOMString.initInterned("5.0 (WhatWG-Zig/1.0)");
+    // The Chrome/WebKit compatibility mode's: the user agent string without
+    // its leading "Mozilla/".
+    return runtime.DOMString.initInterned(@import("fetch").internal.user_agent.app_version);
 }
 
 /// Getter for platform
@@ -348,17 +350,11 @@ pub fn get_productSub(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Getter for userAgent
-/// Per HTML Standard: Returns the user agent string identifying the browser.
-/// Format: Mozilla/5.0 (platform) WhatWG-Zig/1.0
+/// Per HTML Standard: the default `User-Agent` value - Fetch's, the one
+/// fetch() sends (fetch.internal.user_agent), so the two always agree.
 pub fn get_userAgent(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    const builtin = @import("builtin");
-    return runtime.DOMString.initInterned(switch (builtin.os.tag) {
-        .macos => "Mozilla/5.0 (Macintosh; Intel Mac OS X) WhatWG-Zig/1.0",
-        .linux => "Mozilla/5.0 (X11; Linux x86_64) WhatWG-Zig/1.0",
-        .windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WhatWG-Zig/1.0",
-        else => "Mozilla/5.0 WhatWG-Zig/1.0",
-    });
+    return runtime.DOMString.initInterned(@import("fetch").internal.user_agent.default_user_agent);
 }
 
 /// Getter for vendor

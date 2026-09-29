@@ -1001,6 +1001,9 @@ fn startFetch(record: *Navigation) void {
             .destination = if (record.integration.iframe_element != null) .iframe else .document,
             .mode = .navigate,
             .redirect = .follow,
+            // The navigable's cookie jar: a frame's top's, a popup's own
+            // (its opener's).
+            .cookie_jar = if (record.integration.browsing_context) |bc| bc.cookieJar() else null,
         }) catch {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
@@ -2295,6 +2298,9 @@ fn createAuxiliaryNavigable(
     };
     // From here the integration owns the browsing context: its deinit frees it.
     integration.browsing_context = browsing_context;
+    // A new top-level context, but the same user agent: the opener's cookie
+    // jar (it has no parent to reach one through).
+    browsing_context.cookie_jar = opener_bc.cookieJar();
     integration.container_origin = parseOriginFromString(opener_origin);
     integration.state = .creating_initial_document;
     // Its WindowProxy, whose document origin - the initial about:blank's, the

@@ -18,9 +18,9 @@ const CookieListItem = @import("cookie.zig").CookieListItem;
 const CookieChangeObserver = @import("change_observer.zig").CookieChangeObserver;
 const CookieJar = @import("jar.zig").CookieJar;
 const RetrieveOptions = @import("jar.zig").RetrieveOptions;
-const SameSiteContext = @import("jar.zig").SameSiteContext;
 const validation = @import("validation.zig");
 const domain_matching = @import("domain_matching.zig");
+const http_integration = @import("http_integration.zig");
 
 /// Error types for cookie operations
 pub const CookieError = error{
@@ -114,7 +114,7 @@ pub fn queryCookies(
         .path = url_path,
         .is_http = false, // CookieStore API is non-HTTP
         .is_secure = true, // Assume secure context (required by spec)
-        .same_site_context = .same_site,
+        .same_site = .strict_or_less,
         .name = normalized_name,
     });
     defer {
@@ -252,26 +252,19 @@ pub fn setCookieObserved(
     // Step 19: Partitioned handling
     const partitioned = options.partitioned;
 
-    // Create the cookie
-    var cookie = try Cookie.init(allocator, name, value);
-    errdefer cookie.deinit();
-
+    // The cookie the attributes describe (steps 11-23): Domain if given,
+    // Expires or Max-Age, Path (always - it has a Path attribute), Secure,
+    // SameSite and Partitioned.
+    var parsed: http_integration.ParsedCookie = .{ .cookie = try Cookie.init(allocator, name, value) };
+    defer parsed.deinit();
+    const cookie = &parsed.cookie;
     cookie.secure = secure;
     cookie.same_site = same_site;
-    cookie.host_only = host_only;
     cookie.expiry_time = expiry_time;
-
-    if (cookie_domain) |d| {
-        try cookie.setDomain(d);
-    } else {
-        // Host-only cookies must store the request host for proper matching
-        try cookie.setDomain(host);
-    }
-
-    if (!std.mem.eql(u8, path, "/")) {
-        try cookie.setPath(path);
-    }
-
+    if (cookie_domain) |d| try cookie.setDomain(d);
+    cookie.host_only = host_only;
+    try cookie.setPath(path);
+    cookie.has_path = true;
     if (partitioned) {
         if (options.partition_key) |pk| {
             try cookie.setPartitionKey(pk);
@@ -279,23 +272,37 @@ pub fn setCookieObserved(
     }
 
     // Whether this displaces an existing cookie has to be read before the
-    // store, because storing an expired cookie removes the old one.
-    const displaced = jarHolds(jar, cookie);
+    // store, because storing an expired cookie removes the old one. A
+    // host-only cookie's host is the URL's, which the store gives it.
+    const displaced = blk: {
+        if (!host_only) break :blk jarHolds(jar, cookie.*);
+        var probe = try cookie.clone(allocator);
+        defer probe.deinit();
+        try probe.setDomain(host);
+        probe.host_only = true;
+        break :blk jarHolds(jar, probe);
+    };
 
-    // Store the cookie
-    try jar.store(cookie);
+    // Step 24: the storage model, as for a cookie received from a
+    // "non-HTTP" API - which may neither set nor replace an HttpOnly one.
+    // The Cookie Store API is SecureContext-only, so the URL is secure.
+    const result = try http_integration.storeCookie(allocator, jar, &parsed, .{
+        .is_secure = true,
+        .host = host,
+        .http_only_allowed = false,
+    });
+    // Step 25: success, whatever the storage model made of it - an ignored
+    // or unchanged cookie is no change to observe.
+    if (result != .stored) return;
 
     if (observer) |obs| {
         if (cookie.isExpired()) {
             // Nothing was there to delete, so nothing is observable.
-            if (displaced) try obs.recordChange(.deleted, cookie);
+            if (displaced) try obs.recordChange(.deleted, cookie.*);
         } else {
-            try obs.recordChange(.changed, cookie);
+            try obs.recordChange(.changed, cookie.*);
         }
     }
-
-    // Clean up our temporary cookie (jar clones it)
-    cookie.deinit();
 }
 
 /// Whether the jar already holds a cookie of the same identity

@@ -60,6 +60,9 @@ pub const NavigationOptions = struct {
     follow_redirects: bool = true,
     /// Maximum redirects to follow
     max_redirects: u8 = 20,
+    /// The user agent's cookie jar (BORROWED): an http(s) navigation's
+    /// request sends its cookies and stores the response's. Null: none.
+    cookie_jar: ?*@import("fetch").internal.CookieJar = null,
 
     pub const Header = struct {
         name: []const u8,
@@ -274,8 +277,6 @@ fn fetchHttpUrl(
     url: []const u8,
     options: NavigationOptions,
 ) NavigationError!NavigationResult {
-    _ = options;
-
     // For HTTP URLs, we need to use libcurl which is set up in the full build.
     // In the browser module context, we'll use the fetch module via imports.
     // For standalone testing, return a stub indicating HTTP is not available.
@@ -287,6 +288,11 @@ fn fetchHttpUrl(
 
     var request = InternalRequest.init(allocator, url) catch return NavigationError.OutOfMemory;
     defer request.deinit();
+    // HTML "create a navigation request": credentials mode "include" - the
+    // page's request sends the jar's cookies and its response's Set-Cookie
+    // is stored.
+    request.credentials_mode = .include;
+    request.cookie_jar = options.cookie_jar;
 
     // Perform fetch using the fetch algorithms
     var result = fetch_mod.algorithms.fetch(allocator, request, .{}) catch |err| {

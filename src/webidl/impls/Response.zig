@@ -273,19 +273,19 @@ fn initializeResponse(instance: *runtime.Instance, init_dict: dictionaries.Respo
     //    message: statusText defaults to the empty string.)
     if (init_dict.statusText) |status_text| try internal.response.setStatusMessage(status_text);
 
-    // 5. If init["headers"] exists, then fill response's headers with it.
+    // 5. If init["headers"] exists, then fill response's headers with it:
+    //    Headers' "append" for each pair under its guard, "response" - an
+    //    invalid pair throws, a forbidden response-header name is left out.
     if (init_dict.headers) |headers_init| {
+        const headers_class = fetch.webidl.headers;
+        const list = &internal.response.header_list;
         switch (headers_init) {
             .sequence_byte_string_sequence => |outer_seq| {
-                for (outer_seq) |inner_seq| {
-                    if (inner_seq.len >= 2) {
-                        try internal.response.header_list.append(inner_seq[0], inner_seq[1]);
-                    }
-                }
+                try headers_class.fillFromSequence(internal.response.allocator, list, .response, outer_seq);
             },
             .byte_string_byte_string_record => |entries| {
                 for (entries) |entry| {
-                    try internal.response.header_list.append(entry.key, entry.value);
+                    try headers_class.append(internal.response.allocator, list, .response, entry.key, entry.value);
                 }
             },
         }

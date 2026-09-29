@@ -1,7 +1,6 @@
 //! Storage - Browser Persistent Storage Manager
 //!
 //! This module manages persistent storage for the browser, including:
-//! - Cookies
 //! - LocalStorage / SessionStorage
 //! - HTTP Cache
 //! - IndexedDB
@@ -12,7 +11,6 @@
 //!
 //! ```
 //! ~/.whatwg/
-//!     ├── cookies.db        (SQLite)
 //!     ├── local_storage/    (Per-origin JSON files)
 //!     │   └── {origin}/
 //!     ├── cache/            (HTTP cache)
@@ -27,9 +25,6 @@
 //! ```zig
 //! const storage = try Storage.init(allocator, null, true);
 //! defer storage.deinit();
-//!
-//! // Get cookie jar for domain
-//! const cookies = try storage.cookies.getCookies("example.com", "/");
 //!
 //! // Get localStorage for origin
 //! const local = try storage.getLocalStorage("https://example.com");
@@ -49,8 +44,6 @@ pub const Storage = struct {
     root_path: []const u8,
     /// Whether to persist to disk
     persist: bool,
-    /// Cookies storage (in-memory, optionally persisted)
-    cookies: CookieStore,
     /// LocalStorage per origin
     local_storage: std.StringHashMap(*LocalStorage),
     /// SessionStorage per origin (not persisted)
@@ -76,7 +69,6 @@ pub const Storage = struct {
             .allocator = allocator,
             .root_path = root,
             .persist = persist,
-            .cookies = CookieStore.init(allocator),
             .local_storage = std.StringHashMap(*LocalStorage).init(allocator),
             .session_storage = std.StringHashMap(*SessionStorage).init(allocator),
             .initialized = false,
@@ -149,9 +141,6 @@ pub const Storage = struct {
     pub fn flush(self: *Storage) !void {
         if (!self.persist) return;
 
-        // Flush cookies
-        try self.cookies.flush(self.root_path);
-
         // Flush all LocalStorage instances
         var ls_iter = self.local_storage.iterator();
         while (ls_iter.next()) |entry| {
@@ -161,9 +150,6 @@ pub const Storage = struct {
 
     /// Deinitialize the storage subsystem
     pub fn deinit(self: *Storage) void {
-        // Cleanup cookies
-        self.cookies.deinit();
-
         // Cleanup local storage
         var ls_iter = self.local_storage.iterator();
         while (ls_iter.next()) |entry| {
@@ -187,8 +173,6 @@ pub const Storage = struct {
 
     /// Clear all storage (for testing)
     pub fn clear(self: *Storage) void {
-        self.cookies.clear();
-
         var ls_iter = self.local_storage.iterator();
         while (ls_iter.next()) |entry| {
             entry.value_ptr.*.clear();
@@ -198,68 +182,6 @@ pub const Storage = struct {
         while (ss_iter.next()) |entry| {
             entry.value_ptr.*.clear();
         }
-    }
-};
-
-/// Cookie storage (in-memory with optional persistence)
-pub const CookieStore = struct {
-    allocator: std.mem.Allocator,
-    /// Cookies indexed by domain
-    cookies: std.StringHashMap(std.ArrayListUnmanaged(Cookie)),
-
-    pub fn init(allocator: std.mem.Allocator) CookieStore {
-        return CookieStore{
-            .allocator = allocator,
-            .cookies = std.StringHashMap(std.ArrayListUnmanaged(Cookie)).init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *CookieStore) void {
-        var iter = self.cookies.iterator();
-        while (iter.next()) |entry| {
-            for (entry.value_ptr.items) |*cookie| {
-                cookie.deinit(self.allocator);
-            }
-            entry.value_ptr.deinit(self.allocator);
-            self.allocator.free(entry.key_ptr.*);
-        }
-        self.cookies.deinit();
-    }
-
-    pub fn clear(self: *CookieStore) void {
-        var iter = self.cookies.iterator();
-        while (iter.next()) |entry| {
-            for (entry.value_ptr.items) |*cookie| {
-                cookie.deinit(self.allocator);
-            }
-            entry.value_ptr.clearRetainingCapacity();
-        }
-    }
-
-    pub fn flush(self: *CookieStore, _: []const u8) !void {
-        // TODO: Persist to SQLite
-        _ = self;
-    }
-};
-
-/// Individual cookie
-pub const Cookie = struct {
-    name: []const u8,
-    value: []const u8,
-    domain: []const u8,
-    path: []const u8,
-    expires: ?i64,
-    secure: bool,
-    http_only: bool,
-    same_site: SameSite,
-
-    pub const SameSite = enum { strict, lax, none };
-
-    pub fn deinit(self: *Cookie, allocator: std.mem.Allocator) void {
-        allocator.free(self.name);
-        allocator.free(self.value);
-        allocator.free(self.domain);
-        allocator.free(self.path);
     }
 };
 

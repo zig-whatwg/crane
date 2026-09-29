@@ -1,9 +1,12 @@
 // Cookie Sharing Integration Test (V8)
 // Tests that cookies set via Fetch API are shared with WebSocket connections
 //
-// CURRENT STATUS: IMPLEMENTED
-// The REPL's fetch() uses LibcurlBackend with CurlCookieManager for cookie support.
-// Cookies are automatically stored and sent on subsequent requests.
+// CURRENT STATUS: needs a Browser
+// fetch() and the WebSocket handshake send and store cookies through the user
+// agent's cookie jar, which a Browser owns (src/cookiestore; fetch's
+// algorithms/cookies.zig). A realm no Browser made reaches no jar, and sends
+// and keeps no cookies. (It used to name curl's CurlCookieManager, which is
+// gone: it was made per request, so it never kept a cookie between two.)
 //
 // NOTE: The WebSocket cookie sharing test requires setTimeout which is not
 // implemented in the REPL. That test will fail until setTimeout is added.
@@ -159,7 +162,7 @@ test("Fetch cookies are shared with WebSocket", async () => {
     console.log("  Cookie set with token: " + data.token);
     
     // Step 2: Open WebSocket connection
-    // The WebSocket should automatically include the cookie (via CurlCookieManager)
+    // The WebSocket should automatically include the cookie (from the jar)
     return new Promise((resolve) => {
         try {
             const ws = new WebSocket("ws://localhost:8080/ws/cookies");

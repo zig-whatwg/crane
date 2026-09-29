@@ -50,8 +50,6 @@ pub const NavigationError = navigation.NavigationError;
 
 pub const storage = @import("storage/Storage.zig");
 pub const Storage = storage.Storage;
-pub const CookieStore = storage.CookieStore;
-pub const Cookie = storage.Cookie;
 pub const LocalStorage = storage.LocalStorage;
 pub const SessionStorage = storage.SessionStorage;
 

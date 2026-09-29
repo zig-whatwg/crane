@@ -210,7 +210,6 @@ pub const AsyncFetch = struct {
                     self.transfer = self.scheduler.startStreaming(
                         self.allocator,
                         needed.request,
-                        .{ .cookies = needed.cookies },
                         .{ .context = self, .head = networkHead, .data = networkData, .end = networkEnd },
                     ) catch |err| {
                         // Not sent at all: that is the network's answer.

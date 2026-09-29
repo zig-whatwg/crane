@@ -235,9 +235,11 @@ pub fn createRequest(
     // unsafe-request flag: set.
     request.unsafe_request = true;
 
-    // origin: this's relevant settings object's origin (Fetch "fetch" step
-    // 13 sets request's origin to its client's).
-    if (state.client_origin) |origin| try request.setOrigin(origin);
+    // client: this's relevant settings object. "Populate request from
+    // client" gives the request its origin (Fetch "fetch" step 13), resolves
+    // the "client" referrer to its source - which main fetch step 9
+    // determines the request's referrer from - and hands it the cookie jar.
+    try fetch_mod.internal.populateRequestFromClient(request, state.client);
 
     // body: this's request body. Borrowed - `InternalRequest.deinit` frees only
     // the `.body` arm of the union, never `.bytes`.
