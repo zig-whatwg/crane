@@ -1481,6 +1481,9 @@ pub fn build(b: *std.Build) void {
     url_basic_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
     url_basic_parser_mod.addImport("encode_sets", url_encode_sets_mod);
     url_basic_parser_mod.addImport("windows_drive", url_windows_drive_mod);
+    // The URL parser's query state percent-encodes after encoding with the
+    // given encoding (HTML "encoding-parse a URL": the document's).
+    url_basic_parser_mod.addImport("encoding", encoding_mod);
 
     const url_special_schemes_mod = b.createModule(.{
         .root_source_file = b.path("src/url/internal/special_schemes.zig"),
