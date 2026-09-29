@@ -284,9 +284,18 @@ const ChangeTask = struct {
 fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
     const allocator = internal.allocator;
     const observer = &internal.change_observer;
+    // The changes this event reports, taken out of the store's list NOW:
+    // dispatching runs script, and the microtasks it releases run before
+    // the dispatch returns - a listener that sets or deletes a cookie adds
+    // to the list mid-event, and schedules the next task. Those changes are
+    // that task's. (Clearing the list after the dispatch dropped them, so
+    // their event never came: change_eventhandler_for_already_expired's
+    // second test waited forever for one.)
+    var changes = observer.pending_changes;
+    observer.pending_changes = .empty;
     defer {
-        for (observer.pending_changes.items) |*change| change.deinit();
-        observer.pending_changes.clearRetainingCapacity();
+        for (changes.items) |*change| change.deinit();
+        changes.deinit(observer.allocator);
     }
     const client = clientOf(instance) orelse return;
     const url = cookiestore.RequestUrl.of(client.url) orelse return;
@@ -304,7 +313,7 @@ fn fireChangeEvent(instance: *runtime.Instance, internal: *InternalState) void {
     defer changed.deinit(allocator);
     var deleted: std.ArrayListUnmanaged(dictionaries.CookieListItem) = .empty;
     defer deleted.deinit(allocator);
-    for (observer.pending_changes.items) |*change| {
+    for (changes.items) |*change| {
         if (!CookieJar.cookieMatches(&change.cookie, options)) continue;
         const list = if (change.change_type == .changed) &changed else &deleted;
         list.append(allocator, .{
