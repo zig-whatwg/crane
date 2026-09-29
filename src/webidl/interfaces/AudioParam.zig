@@ -187,4 +187,18 @@ pub const AudioParam = struct {
     pub fn call_setValueCurveAtTime(instance: *runtime.Instance, values: runtime.JSValue, startTime: f64, duration: f64) anyerror!*runtime.Instance {
         return try AudioParamImpl.call_setValueCurveAtTime(instance, values, startTime, duration);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_value", 0b1 },
+        .{ "call_setValueAtTime", 0b11 },
+        .{ "call_setTargetAtTime", 0b111 },
+        .{ "call_cancelScheduledValues", 0b1 },
+        .{ "call_exponentialRampToValueAtTime", 0b11 },
+        .{ "call_cancelAndHoldAtTime", 0b1 },
+        .{ "call_linearRampToValueAtTime", 0b11 },
+        .{ "call_setValueCurveAtTime", 0b111 },
+    };
 };

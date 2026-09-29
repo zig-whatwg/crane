@@ -343,16 +343,9 @@ pub const JSValue = union(enum) {
             .null_value => v8.v8_Null(isolate) orelse unreachable,
             .boolean => |b| v8.v8_Boolean_New(isolate, b) orelse unreachable,
             .number => |n| @ptrCast(v8.v8_Number_New(isolate, n)),
-            .string => |s| blk: {
-                const str = v8.v8_String_NewFromUtf8(
-                    isolate,
-                    s.data.ptr,
-                    @intCast(s.data.len),
-                ) orelse {
-                    break :blk v8.v8_Undefined(isolate) orelse unreachable;
-                };
-                break :blk @ptrCast(str);
-            },
+            // WTF-8: its lone surrogates kept.
+            .string => |s| @import("conversions.zig").newStringFromWtf8(isolate, s.data) orelse
+                (v8.v8_Undefined(isolate) orelse unreachable),
             .global => |g| blk: {
                 // Global handles are already Global<Value>* - return directly
                 // setReturnValue expects Global pointers

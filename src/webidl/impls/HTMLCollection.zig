@@ -107,6 +107,92 @@ fn refillElementChildren(collection: *runtime.Instance, root: *runtime.Instance)
     }
 }
 
+/// `dom.live_collections`' class-names filter: DOM's "list of elements with
+/// class names `classNames`" for `root`, for a non-empty set of classes.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-getelementsbyclassname
+/// "3. Return an HTMLCollection rooted at root, whose filter matches
+///  descendant elements that have all their classes in classes."
+///
+/// The class names are kept as given and parsed on each refill: the ordered
+/// set parser's tokens are the ASCII-whitespace-separated pieces, and a
+/// duplicate changes nothing about "all their classes".
+fn makeClassNames(collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) error{OutOfMemory}!void {
+    const internal = getInternal(collection) orelse return;
+    if (internal.filter_class) |*old| old.deinit(internal.allocator);
+    internal.filter_class = try runtime.DOMString.initDupe(internal.allocator, class_names);
+    makeLive(collection, root, &refillClassNames);
+}
+
+/// `root`'s descendant elements, in tree order, that have every class the
+/// collection's class names name. "The comparisons for the classes must be
+/// done in an ASCII case-insensitive manner if root's node document's mode is
+/// "quirks"; otherwise in an identical to manner" - read at each refill, as
+/// the comparison is made.
+fn refillClassNames(collection: *runtime.Instance, root: *runtime.Instance) void {
+    const internal = getInternal(collection) orelse return;
+    const class_names = if (internal.filter_class) |c| c.asSlice() else return;
+    const quirks = isQuirksMode(root);
+    const element_node = interfaces.Node.get_ELEMENT_NODE();
+
+    // Tree order over root's descendants (root itself is not one).
+    var node = interfaces.Node.get_firstChild(root) catch return;
+    while (node) |n| {
+        if ((interfaces.Node.get_nodeType(n) catch 0) == element_node and hasAllClasses(n, class_names, quirks)) {
+            addElement(collection, n) catch return;
+        }
+        node = nextInTreeOrder(n, root);
+    }
+}
+
+/// The node after `node` in tree order within `root`'s descendants, or null.
+fn nextInTreeOrder(node: *runtime.Instance, root: *runtime.Instance) ?*runtime.Instance {
+    if (interfaces.Node.get_firstChild(node) catch null) |child| return child;
+    var current = node;
+    while (current != root) {
+        if (interfaces.Node.get_nextSibling(current) catch null) |sibling| return sibling;
+        current = (interfaces.Node.get_parentNode(current) catch null) orelse return null;
+    }
+    return null;
+}
+
+/// Whether `element`'s classes - its class attribute's value run through the
+/// ordered set parser - include every token of `class_names`.
+fn hasAllClasses(element: *runtime.Instance, class_names: []const u8, quirks: bool) bool {
+    // A borrowed view of the attribute's value.
+    const value = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("class")) catch return false) orelse return false;
+    const classes = value.asSlice();
+    var wanted = std.mem.tokenizeAny(u8, class_names, ascii_whitespace);
+    while (wanted.next()) |name| {
+        if (!hasClass(classes, name, quirks)) return false;
+    }
+    return true;
+}
+
+fn hasClass(classes: []const u8, name: []const u8, quirks: bool) bool {
+    var it = std.mem.tokenizeAny(u8, classes, ascii_whitespace);
+    while (it.next()) |class| {
+        const same = if (quirks) std.ascii.eqlIgnoreCase(class, name) else std.mem.eql(u8, class, name);
+        if (same) return true;
+    }
+    return false;
+}
+
+/// Infra's ASCII whitespace: TAB, LF, FF, CR, SPACE (not VT).
+const ascii_whitespace = "\t\n\x0C\r ";
+
+/// Whether `root`'s node document is in quirks mode: its compatMode is
+/// "BackCompat" exactly when its mode is "quirks".
+fn isQuirksMode(root: *runtime.Instance) bool {
+    const document = if ((interfaces.Node.get_nodeType(root) catch 0) == interfaces.Node.get_DOCUMENT_NODE())
+        root
+    else
+        (interfaces.Node.get_ownerDocument(root) catch null) orelse return false;
+    var mode = interfaces.Document.get_compatMode(document) catch return false;
+    defer mode.deinit(root.ctx.allocator);
+    return std.mem.eql(u8, mode.asSlice(), "BackCompat");
+}
+
 /// Bring a live collection up to date with its root.
 fn refresh(instance: *runtime.Instance, internal: *InternalState) void {
     const refill = internal.refill orelse return;
@@ -144,7 +230,7 @@ pub fn init(
     state.own.length = 0;
 
     // Other impls make a collection live through dom.live_collections.
-    live_collections.install(.{ .element_children = &makeElementChildren });
+    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames });
 
     return instance;
 }

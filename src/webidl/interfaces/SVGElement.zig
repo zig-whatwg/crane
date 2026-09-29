@@ -446,15 +446,14 @@ pub const SVGElement = struct {
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
             .{ "correspondingElement", "get_correspondingElement", null },
             .{ "correspondingUseElement", "get_correspondingUseElement", null },
+            .{ "dataset", "get_dataset", null },
             .{ "nonce", "get_nonce", "set_nonce" },
             .{ "autofocus", "get_autofocus", "set_autofocus" },
+            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "dataset", "get_dataset", null },
-            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = false;
     };

@@ -146,20 +146,9 @@ pub fn parseHTML(
     // Set document type to HTML
     document_internals.setDocumentType(document, .html) catch {};
 
-    // Set quirks mode based on parser result
-    {
-        switch (tree_builder.quirks_mode) {
-            .quirks => {
-                // Set quirks mode (full)
-            },
-            .limited_quirks => {
-                // Set limited quirks mode
-            },
-            .no_quirks => {
-                // Standards mode (default)
-            },
-        }
-    }
+    // The document's mode, as the "initial" insertion mode set it. Nothing
+    // runs script during this parse, so it can follow the parse.
+    document_internals.setMode(document, parser_script_execution.documentMode(tree_builder.quirks_mode)) catch {};
 
     // Step 6: Convert TreeNode tree to DOM nodes
     try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document);
@@ -382,6 +371,19 @@ pub fn parseFragment(
     } else null;
     defer if (context_node) |node| node.deinit();
     tree_builder.fragment_context = context_node;
+
+    // Steps 2-3: the fragment's document takes the mode of the context
+    // element's node document - quirks, or limited-quirks - which the tree
+    // builder reads for its mode-dependent rules.
+    if (context_element) |elem| {
+        if (interfaces.Node.get_ownerDocument(elem) catch null) |context_document| {
+            if (document_internals.getMode(context_document)) |mode| tree_builder.quirks_mode = switch (mode) {
+                .no_quirks => .no_quirks,
+                .quirks => .quirks,
+                .limited_quirks => .limited_quirks,
+            };
+        }
+    }
 
     // Step 4: Set up fragment parsing context
     if (context_namespace != .html) {

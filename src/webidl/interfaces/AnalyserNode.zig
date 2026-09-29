@@ -211,4 +211,13 @@ pub const AnalyserNode = struct {
     pub fn call_getByteTimeDomainData(instance: *runtime.Instance, array: runtime.JSValue) anyerror!void {
         return try AnalyserNodeImpl.call_getByteTimeDomainData(instance, array);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_minDecibels", 0b1 },
+        .{ "set_maxDecibels", 0b1 },
+        .{ "set_smoothingTimeConstant", 0b1 },
+    };
 };

@@ -8,4 +8,8 @@ const typedefs = @import("typedefs");
 pub const LanguageDetectionResult = struct {
     detectedLanguage: ?runtime.DOMString = null,
     confidence: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"confidence"};
 };

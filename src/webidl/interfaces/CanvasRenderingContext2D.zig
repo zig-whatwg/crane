@@ -238,6 +238,7 @@ pub const CanvasRenderingContext2D = struct {
             .{ "lineJoin", "get_lineJoin", "set_lineJoin" },
             .{ "miterLimit", "get_miterLimit", "set_miterLimit" },
             .{ "lineDashOffset", "get_lineDashOffset", "set_lineDashOffset" },
+            .{ "lang", "get_lang", "set_lang" },
             .{ "font", "get_font", "set_font" },
             .{ "textAlign", "get_textAlign", "set_textAlign" },
             .{ "textBaseline", "get_textBaseline", "set_textBaseline" },
@@ -251,9 +252,7 @@ pub const CanvasRenderingContext2D = struct {
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "lang", "get_lang", "set_lang" },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = false;
     };
@@ -747,5 +746,14 @@ pub const CanvasRenderingContext2D = struct {
     /// (bit i = argument i; an attribute setter's value is bit 0).
     pub const legacy_null_to_empty = .{
         .{ "call_createPattern", 0b10 },
+    };
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_createRadialGradient", 0b111111 },
+        .{ "call_createConicGradient", 0b111 },
+        .{ "call_createLinearGradient", 0b1111 },
     };
 };

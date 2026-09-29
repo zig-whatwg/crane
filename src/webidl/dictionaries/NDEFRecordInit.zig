@@ -11,4 +11,8 @@ pub const NDEFRecordInit = struct {
     encoding: ?runtime.USVString = null,
     lang: ?runtime.USVString = null,
     data: ?runtime.JSValue = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"data"};
 };

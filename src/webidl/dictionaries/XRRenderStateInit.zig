@@ -11,4 +11,8 @@ pub const XRRenderStateInit = struct {
     inlineVerticalFieldOfView: ?f64 = null,
     baseLayer: ?*runtime.Instance = null,
     layers: ?[]const *runtime.Instance = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "depthNear", "depthFar", "inlineVerticalFieldOfView" };
 };

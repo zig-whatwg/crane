@@ -1901,20 +1901,24 @@ pub const Tokenizer = struct {
             try self.token_queue.append(Token.eof);
             return doctype;
         } else {
-            // Check for PUBLIC or SYSTEM
-            if (self.inputMatchesAsciiCaseInsensitive("PUBLIC")) {
-                // Need to "unconsume" current char and consume "PUBLIC"
-                self.reconsume = true;
-                if (self.inputConsumeAsciiCaseInsensitive("PUBLIC")) {
-                    self.state = .after_doctype_public_keyword;
-                    return null;
-                }
-            } else if (self.inputMatchesAsciiCaseInsensitive("SYSTEM")) {
-                self.reconsume = true;
-                if (self.inputConsumeAsciiCaseInsensitive("SYSTEM")) {
-                    self.state = .after_doctype_system_keyword;
-                    return null;
-                }
+            // "If the six characters starting from the current input character
+            // are an ASCII case-insensitive match for the word "PUBLIC", then
+            // consume those characters and switch to the after DOCTYPE public
+            // keyword state." Likewise "SYSTEM". The current input character
+            // has been consumed already, so it is matched on its own and the
+            // other five in the input after it. (Matching all six in the input
+            // after it failed every keyword, and every DOCTYPE with a public
+            // or system identifier went to the bogus DOCTYPE state, in quirks
+            // mode.)
+            const cp = char.getCodepoint() orelse 0;
+            const lower: u21 = if (cp >= 'A' and cp <= 'Z') cp + 0x20 else cp;
+            if (lower == 'p' and self.inputConsumeAsciiCaseInsensitive("UBLIC")) {
+                self.state = .after_doctype_public_keyword;
+                return null;
+            }
+            if (lower == 's' and self.inputConsumeAsciiCaseInsensitive("YSTEM")) {
+                self.state = .after_doctype_system_keyword;
+                return null;
             }
 
             self.reportError(.invalid_character_sequence_after_doctype_name);

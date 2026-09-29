@@ -13,4 +13,8 @@ pub const AnalyserOptions = struct {
     maxDecibels: ?f64 = null,
     minDecibels: ?f64 = null,
     smoothingTimeConstant: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "maxDecibels", "minDecibels", "smoothingTimeConstant" };
 };

@@ -15,4 +15,8 @@ pub const AttributionConversionOptions = struct {
     credit: ?[]const f64 = null,
     value: ?u32 = null,
     maxValue: ?u32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "epsilon", "credit" };
 };

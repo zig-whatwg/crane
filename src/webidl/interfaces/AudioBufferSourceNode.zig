@@ -202,4 +202,13 @@ pub const AudioBufferSourceNode = struct {
     pub fn call_start(instance: *runtime.Instance, when: webidl.Opt(f64), offset: webidl.Opt(f64), duration: webidl.Opt(f64)) anyerror!void {
         return try AudioBufferSourceNodeImpl.call_start(instance, when, offset, duration);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_loopStart", 0b1 },
+        .{ "set_loopEnd", 0b1 },
+        .{ "call_start", 0b111 },
+    };
 };

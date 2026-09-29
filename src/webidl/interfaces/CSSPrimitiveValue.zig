@@ -334,4 +334,11 @@ pub const CSSPrimitiveValue = struct {
     pub fn call_getCounterValue(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CSSPrimitiveValueImpl.call_getCounterValue(instance);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_setFloatValue", 0b10 },
+    };
 };

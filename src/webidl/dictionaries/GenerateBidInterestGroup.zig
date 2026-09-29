@@ -27,4 +27,8 @@ pub const GenerateBidInterestGroup = struct {
     adComponents: ?[]const AuctionAd = null,
     adSizes: ?[]const struct { key: runtime.DOMString, value: AuctionAdInterestGroupSize } = null,
     sizeGroups: ?[]const struct { key: runtime.DOMString, value: []const runtime.DOMString } = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"userBiddingSignals"};
 };

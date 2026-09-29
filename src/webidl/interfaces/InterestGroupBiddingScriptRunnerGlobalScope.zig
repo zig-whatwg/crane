@@ -113,4 +113,12 @@ pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
     pub fn call_setPrioritySignalsOverride(instance: *runtime.Instance, key: DOMString, priority: webidl.Opt(?f64)) anyerror!void {
         return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setPrioritySignalsOverride(instance, key, priority);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_setPriority", 0b1 },
+        .{ "call_setPrioritySignalsOverride", 0b10 },
+    };
 };

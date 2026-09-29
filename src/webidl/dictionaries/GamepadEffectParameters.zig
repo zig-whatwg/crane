@@ -11,4 +11,8 @@ pub const GamepadEffectParameters = struct {
     weakMagnitude: ?f64 = null,
     leftTrigger: ?f64 = null,
     rightTrigger: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "strongMagnitude", "weakMagnitude", "leftTrigger", "rightTrigger" };
 };

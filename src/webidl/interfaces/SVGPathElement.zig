@@ -288,4 +288,12 @@ pub const SVGPathElement = struct {
     pub fn call_getPointAtLength(instance: *runtime.Instance, distance: f32) anyerror!*runtime.Instance {
         return try SVGPathElementImpl.call_getPointAtLength(instance, distance);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_getPathSegmentAtLength", 0b1 },
+        .{ "call_getPointAtLength", 0b1 },
+    };
 };

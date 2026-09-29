@@ -11,4 +11,8 @@ pub const DelayOptions = struct {
 
     maxDelayTime: ?f64 = null,
     delayTime: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "maxDelayTime", "delayTime" };
 };

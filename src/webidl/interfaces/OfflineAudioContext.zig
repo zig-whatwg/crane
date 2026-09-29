@@ -210,6 +210,13 @@ pub const OfflineAudioContext = struct {
         return try OfflineAudioContextImpl.call_suspend(instance, suspendTime);
     }
 
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_suspend", 0b1 },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

@@ -10,6 +10,15 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLInputElement = interfaces.HTMLInputElement;
 const ElementImpl = @import("Element.zig");
+const reflection = @import("reflection.zig");
+
+/// `size` reflects, but not as its IDL says. html.idl (webref, and the live
+/// spec) declares `[CEReactions, Reflect] attribute unsigned long size;`,
+/// while 4.10.5.3.2's prose says "The size IDL attribute is limited to only
+/// positive numbers and has a default value of 20" - which reflection-forms
+/// and every engine follow. The generated reflection would implement the IDL
+/// (default 0, no IndexSizeError), so this impl states the prose's modifiers.
+const size_reflection: reflection.Spec = .{ .name = "size", .limit = .positive, .default = 20 };
 const autofill = @import("html").autofill;
 
 pub const State = HTMLInputElement.State;
@@ -250,8 +259,7 @@ pub fn get_list(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 
 /// Getter for size
 pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+    return reflection.get(u32, instance, size_reflection);
 }
 
 /// Getter for type
@@ -412,9 +420,7 @@ pub fn set_indeterminate(instance: *runtime.Instance, value: bool) anyerror!void
 
 /// Setter for size
 pub fn set_size(instance: *runtime.Instance, value: u32) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    return reflection.set(u32, instance, size_reflection, value);
 }
 
 /// Setter for type

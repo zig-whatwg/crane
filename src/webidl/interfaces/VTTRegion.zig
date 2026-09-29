@@ -198,4 +198,15 @@ pub const VTTRegion = struct {
     pub fn set_scroll(instance: *runtime.Instance, value: ScrollSetting) anyerror!void {
         try VTTRegionImpl.set_scroll(instance, value);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_width", 0b1 },
+        .{ "set_regionAnchorX", 0b1 },
+        .{ "set_regionAnchorY", 0b1 },
+        .{ "set_viewportAnchorX", 0b1 },
+        .{ "set_viewportAnchorY", 0b1 },
+    };
 };

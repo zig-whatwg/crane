@@ -107,6 +107,8 @@ pub const Notification = struct {
             .{ "onerror", "get_onerror", "set_onerror" },
             .{ "onclose", "get_onclose", "set_onclose" },
             .{ "title", "get_title", null },
+            .{ "dir", "get_dir", null },
+            .{ "lang", "get_lang", null },
             .{ "body", "get_body", null },
             .{ "navigate", "get_navigate", null },
             .{ "tag", "get_tag", null },
@@ -123,10 +125,7 @@ pub const Notification = struct {
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "dir", "get_dir", null },
-            .{ "lang", "get_lang", null },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = true;
     };

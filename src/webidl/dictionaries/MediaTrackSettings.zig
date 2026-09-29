@@ -46,4 +46,8 @@ pub const MediaTrackSettings = struct {
     restrictOwnAudio: ?bool = null,
     suppressLocalAudioPlayback: ?bool = null,
     screenPixelRatio: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "aspectRatio", "frameRate", "latency", "exposureCompensation", "exposureTime", "colorTemperature", "iso", "brightness", "contrast", "saturation", "sharpness", "focusDistance", "pan", "tilt", "zoom", "screenPixelRatio" };
 };

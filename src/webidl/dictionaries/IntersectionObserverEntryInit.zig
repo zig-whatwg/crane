@@ -15,4 +15,8 @@ pub const IntersectionObserverEntryInit = struct {
     isVisible: bool,
     intersectionRatio: f64,
     target: *runtime.Instance,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "time", "intersectionRatio" };
 };

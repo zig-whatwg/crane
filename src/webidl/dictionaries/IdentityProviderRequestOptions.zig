@@ -14,4 +14,8 @@ pub const IdentityProviderRequestOptions = struct {
     domainHint: ?runtime.DOMString = null,
     fields: ?[]const runtime.USVString = null,
     params: ?runtime.JSValue = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"params"};
 };

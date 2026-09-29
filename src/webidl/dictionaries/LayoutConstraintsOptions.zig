@@ -15,4 +15,12 @@ pub const LayoutConstraintsOptions = struct {
     blockFragmentationOffset: ?f64 = null,
     blockFragmentationType: ?enums.BlockFragmentationType = null,
     data: ?runtime.JSValue = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "availableInlineSize", "availableBlockSize", "fixedInlineSize", "fixedBlockSize", "percentageInlineSize", "percentageBlockSize", "blockFragmentationOffset" };
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"data"};
 };

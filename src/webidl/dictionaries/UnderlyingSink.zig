@@ -11,4 +11,8 @@ pub const UnderlyingSink = struct {
     close: ?callbacks.UnderlyingSinkCloseCallback = null,
     abort: ?callbacks.UnderlyingSinkAbortCallback = null,
     type: ?runtime.JSValue = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"type"};
 };

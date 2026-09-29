@@ -230,12 +230,13 @@ progress = [
   "c21d276cf - a string's lone surrogates survive the protocol's own copy of it (engine-boundary lane)",
   "7423457f9, 991373fec, ff17c8591 (merged 659f28649, 4ee159b9b) - scripting lane: classic scripts through engine.runClassicScript (R31); the window agent's module hooks and import() in a ShadowRealm; the legacy import() handler deleted",
   "bc392d1c2..eaff8f879 (merged 6f94e66a5) - scripting lane: the runtime Engine table deleted (the runtime tier calls the protocol); Realm.v8_context/isolate renamed; worker realms end with their Browser; an agent records its host role when made",
+  "da2d7ee90, 00f329ef5, 07bf59d55 (merged f40664c23) - reflection lane: Element.zig on the protocol, so the engine-boundary baseline reaches 0 references in 0 files; the lazy getter path and its per-read Context Global leak gone; Realm.wrap refuses what the wrapper cache does not hold strongly",
   "3b710e930, 1248c3fa5, 0deed5ad3, e014e7fc0, 639478ab1, d75fcb45a, 53188e412 (merged 505cfb9e3) - navigation lane: Browser, Node, Document, Window, Location, EventTarget, HTMLIFrameElement and the navigation API on the protocol; frames' realms come from createWindowRealm and context_manager's child contexts are deleted; the microtask checkpoint and queueMicrotask are the agent's; a realm's wrapper cache leaves a node in a tree to its tree",
 ]
 
   [[infra.items]]
   name = "Engine adapter: no V8 outside src/runtime/engines/v8"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "The engine is a statically dispatched protocol (src/runtime/engine_protocol.zig): every operation conformance-checked at comptime against every adapter, ownership in its types"
@@ -255,7 +256,7 @@ progress = [
 
   [[infra.items]]
   name = "The paused lanes' held files move onto the protocol when their lanes resume; navigation's Browser creates its agent with createAgent, retiring the legacy host-hook shims"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "The runtime Engine table (engine_interface.zig, ctx.getEngine()) is deleted, once its last callers have moved"

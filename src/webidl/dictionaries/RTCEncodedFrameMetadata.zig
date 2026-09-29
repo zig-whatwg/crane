@@ -14,4 +14,8 @@ pub const RTCEncodedFrameMetadata = struct {
     captureTime: ?typedefs.DOMHighResTimeStamp = null,
     senderCaptureTimeOffset: ?typedefs.DOMHighResTimeStamp = null,
     mimeType: ?runtime.DOMString = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "receiveTime", "captureTime", "senderCaptureTimeOffset" };
 };

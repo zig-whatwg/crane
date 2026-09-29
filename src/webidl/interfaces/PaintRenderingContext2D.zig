@@ -560,4 +560,13 @@ pub const PaintRenderingContext2D = struct {
     pub const legacy_null_to_empty = .{
         .{ "call_createPattern", 0b10 },
     };
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_createRadialGradient", 0b111111 },
+        .{ "call_createConicGradient", 0b111 },
+        .{ "call_createLinearGradient", 0b1111 },
+    };
 };

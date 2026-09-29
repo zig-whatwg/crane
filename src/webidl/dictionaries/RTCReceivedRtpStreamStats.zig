@@ -16,4 +16,8 @@ pub const RTCReceivedRtpStreamStats = struct {
     packetsReportedAsLostButRecovered: ?u64 = null,
     packetsLost: ?i64 = null,
     jitter: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"jitter"};
 };

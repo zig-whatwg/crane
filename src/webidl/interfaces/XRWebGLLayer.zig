@@ -195,4 +195,11 @@ pub const XRWebGLLayer = struct {
     pub fn call_static_getNativeFramebufferScaleFactor(instance: *runtime.Instance, session: *runtime.Instance) anyerror!f64 {
         return try XRWebGLLayerImpl.call_static_getNativeFramebufferScaleFactor(instance, session);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_fixedFoveation", 0b1 },
+    };
 };

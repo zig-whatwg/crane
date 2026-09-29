@@ -140,4 +140,11 @@ pub const CSSUnitValue = struct {
     pub fn get_unit(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try CSSUnitValueImpl.get_unit(instance);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_value", 0b1 },
+    };
 };

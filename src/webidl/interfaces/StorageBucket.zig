@@ -182,6 +182,13 @@ pub const StorageBucket = struct {
         return try StorageBucketImpl.call_estimate(instance);
     }
 
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_setExpires", 0b1 },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

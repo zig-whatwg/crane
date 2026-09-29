@@ -37,6 +37,7 @@ pub const Storage = struct {
             .{ "key", "call_key", 1 },
             .{ "getItem", "call_getItem", 1 },
             .{ "setItem", "call_setItem", 2 },
+            .{ "removeItem", "call_removeItem", 1 },
             .{ "clear", "call_clear", 0 },
         };
 
@@ -45,6 +46,7 @@ pub const Storage = struct {
             "key",
             "getItem",
             "setItem",
+            "removeItem",
             "clear",
         };
 

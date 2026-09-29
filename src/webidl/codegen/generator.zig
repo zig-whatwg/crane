@@ -762,6 +762,7 @@ pub fn generateMixin(
     try writer.writeDelegateFunctions(w, impl_name, type_registry, attrs.items, ops.items, overload_ops.items, .{
         .same_object_cache = false,
         .reflect_on_element = reflectsOnElement(model, mixin_name),
+        .model = model,
     });
 
     try w.flush();
@@ -1763,6 +1764,7 @@ fn generateInterfaceFile(
     const type_reg = if (ir) |ir_ptr| &ir_ptr.type_registry else null;
     try writer.writeDelegateFunctions(w, impl_name, type_reg, own_attrs.items, own_ops.items, own_overload_ops.items, .{
         .reflect_on_element = if (ir) |ir_ptr| reflectsOnElement(ir_ptr, interface.name) else false,
+        .model = ir,
     });
 
     // Generate iterable support if interface has iterable declaration
@@ -2818,6 +2820,12 @@ pub fn generateDictionary(
 
         try w.writeAll(",\n");
     }
+
+    // Which members' NaN and infinities are a TypeError (the dictionary
+    // converter reads it).
+    try writer.writeRestrictedMembers(w, dictionary.members, ir);
+    // Which members keep a present null as `.null` (the converter reads it).
+    try writer.writeAnyMembers(w, dictionary.members);
 
     try w.writeAll("};\n");
 

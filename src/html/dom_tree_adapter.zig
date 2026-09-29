@@ -145,6 +145,13 @@ pub const DomTreeAdapter = struct {
             onTextContentChangedCallback,
         );
         tree_builder.setDomAdapterAttributeCallback(onAttributeAddedCallback);
+        tree_builder.setDomAdapterModeCallback(onModeSetCallback);
+    }
+
+    /// The document mode the parser set: the Document takes it.
+    fn onModeSetCallback(mode: html_core.parser.QuirksMode, context: ?*anyopaque) void {
+        const self: *DomTreeAdapter = @ptrCast(@alignCast(context));
+        document_internals.setMode(self.document, parser_script_execution.documentMode(mode)) catch {};
     }
 
     fn onAttributeAddedCallback(tree_node: *TreeNode, attr: *const TreeNode.Attribute, context: ?*anyopaque) void {

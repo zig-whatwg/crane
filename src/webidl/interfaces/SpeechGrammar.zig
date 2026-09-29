@@ -111,4 +111,11 @@ pub const SpeechGrammar = struct {
     pub fn set_weight(instance: *runtime.Instance, value: f32) anyerror!void {
         try SpeechGrammarImpl.set_weight(instance, value);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_weight", 0b1 },
+    };
 };

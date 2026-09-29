@@ -18,4 +18,8 @@ pub const VideoConfiguration = struct {
     transferFunction: ?enums.TransferFunction = null,
     scalabilityMode: ?runtime.DOMString = null,
     spatialScalability: ?bool = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"framerate"};
 };

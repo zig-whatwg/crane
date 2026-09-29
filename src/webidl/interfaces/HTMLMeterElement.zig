@@ -380,4 +380,16 @@ pub const HTMLMeterElement = struct {
     pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLMeterElementImpl.get_labels(instance);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_value", 0b1 },
+        .{ "set_min", 0b1 },
+        .{ "set_max", 0b1 },
+        .{ "set_low", 0b1 },
+        .{ "set_high", 0b1 },
+        .{ "set_optimum", 0b1 },
+    };
 };

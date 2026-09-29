@@ -15,4 +15,8 @@ pub const DeviceMotionEventInit = struct {
     accelerationIncludingGravity: ?DeviceMotionEventAccelerationInit = null,
     rotationRate: ?DeviceMotionEventRotationRateInit = null,
     interval: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"interval"};
 };

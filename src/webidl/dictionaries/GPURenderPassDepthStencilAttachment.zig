@@ -16,4 +16,8 @@ pub const GPURenderPassDepthStencilAttachment = struct {
     stencilLoadOp: ?enums.GPULoadOp = null,
     stencilStoreOp: ?enums.GPUStoreOp = null,
     stencilReadOnly: ?bool = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"depthClearValue"};
 };

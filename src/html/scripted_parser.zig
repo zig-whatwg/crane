@@ -121,6 +121,17 @@ fn processInsertedCharacters(context: *anyopaque) void {
 /// the stream, a script the parser runs has an insertion point, and what it
 /// writes is parsed before write() returns (the document write steps, step
 /// 11). "The end" is the caller's.
+/// Whether `url` matches about:srcdoc: "about:srcdoc", with nothing after it
+/// but a query or a fragment.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#matches-about:srcdoc
+fn matchesAboutSrcdoc(url: []const u8) bool {
+    const prefix = "about:srcdoc";
+    if (!std.mem.startsWith(u8, url, prefix)) return false;
+    if (url.len == prefix.len) return true;
+    return url[prefix.len] == '?' or url[prefix.len] == '#';
+}
+
 pub fn parseHTMLWithScripting(
     allocator: Allocator,
     ctx: runtime.Context,
@@ -168,6 +179,11 @@ pub fn parseHTMLWithScripting(
         &parser_scripts.domAdapterOnTextContentChanged,
     );
     tree_builder.setDomAdapterAttributeCallback(&parser_scripts.domAdapterOnAttributeAdded);
+    // The document's mode: the "initial" insertion mode sets it on the
+    // Document as it parses the DOCTYPE, where script can already read it -
+    // except in an iframe srcdoc document, whose URL matches about:srcdoc.
+    tree_builder.setDomAdapterModeCallback(&parser_scripts.domAdapterOnModeSet);
+    if (document_internals.getURL(document)) |url| tree_builder.iframe_srcdoc = matchesAboutSrcdoc(url);
 
     // Step 5: the script end-tag steps.
     var script_context = ParserScriptContext.init(

@@ -220,4 +220,15 @@ pub const SVGTransform = struct {
     pub fn call_setRotate(instance: *runtime.Instance, angle: f32, cx: f32, cy: f32) anyerror!void {
         return try SVGTransformImpl.call_setRotate(instance, angle, cx, cy);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_setSkewY", 0b1 },
+        .{ "call_setTranslate", 0b11 },
+        .{ "call_setScale", 0b11 },
+        .{ "call_setSkewX", 0b1 },
+        .{ "call_setRotate", 0b111 },
+    };
 };

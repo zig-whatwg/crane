@@ -96,4 +96,11 @@ pub const HighlightRegistry = struct {
     pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: webidl.Opt(HighlightsFromPointOptions)) anyerror!runtime.JSValue {
         return try HighlightRegistryImpl.call_highlightsFromPoint(instance, x, y, options);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_highlightsFromPoint", 0b11 },
+    };
 };

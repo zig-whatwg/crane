@@ -113,4 +113,11 @@ pub const XRCPUDepthInformation = struct {
     pub fn call_getDepthInMeters(instance: *runtime.Instance, x: f32, y: f32) anyerror!f32 {
         return try XRCPUDepthInformationImpl.call_getDepthInMeters(instance, x, y);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_getDepthInMeters", 0b11 },
+    };
 };

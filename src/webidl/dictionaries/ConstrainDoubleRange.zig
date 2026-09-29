@@ -11,4 +11,8 @@ pub const ConstrainDoubleRange = struct {
 
     exact: ?f64 = null,
     ideal: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "exact", "ideal" };
 };

@@ -265,4 +265,11 @@ pub const MediaSource = struct {
     pub fn call_addSourceBuffer(instance: *runtime.Instance, @"type": DOMString) anyerror!*runtime.Instance {
         return try MediaSourceImpl.call_addSourceBuffer(instance, @"type");
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_setLiveSeekableRange", 0b11 },
+    };
 };

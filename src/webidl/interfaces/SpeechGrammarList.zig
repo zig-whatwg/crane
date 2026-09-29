@@ -125,4 +125,12 @@ pub const SpeechGrammarList = struct {
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         return try SpeechGrammarListImpl.call_item(instance, index);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_addFromString", 0b10 },
+        .{ "call_addFromURI", 0b10 },
+    };
 };

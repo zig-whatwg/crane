@@ -339,6 +339,16 @@ pub const BaseAudioContext = struct {
         return try BaseAudioContextImpl.call_createPeriodicWave(instance, real, imag, constraints);
     }
 
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_createDelay", 0b1 },
+        .{ "call_createIIRFilter", 0b11 },
+        .{ "call_createBuffer", 0b100 },
+        .{ "call_createPeriodicWave", 0b11 },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

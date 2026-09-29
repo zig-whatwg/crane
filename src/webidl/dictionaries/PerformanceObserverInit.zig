@@ -10,4 +10,8 @@ pub const PerformanceObserverInit = struct {
     type: ?runtime.DOMString = null,
     buffered: ?bool = null,
     durationThreshold: ?typedefs.DOMHighResTimeStamp = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"durationThreshold"};
 };

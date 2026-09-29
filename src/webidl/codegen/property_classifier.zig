@@ -1,7 +1,7 @@
-//! Property Classification Heuristics
-//!
-//! Classifies WebIDL properties as "eager" (define immediately) or "lazy" (define on first access)
-//! for performance optimization.
+//! Property classification: whether the binding defines an attribute's
+//! accessor up front ("eager") or through the prototype's named interceptor on
+//! first access ("lazy"). Every attribute is eager now - see
+//! `classifyProperty` - and `Meta.lazy_properties` is always empty.
 
 const std = @import("std");
 
@@ -14,167 +14,38 @@ pub const PropertyClass = enum {
     lazy,
 };
 
-/// Classify a property based on its name and extended attributes
+/// Classify an attribute. Every attribute is eager.
+///
+/// WebIDL 3.7.6 makes an attribute an accessor property on the interface
+/// prototype object, and only a real accessor is one. A "lazy" property was
+/// served by a named property interceptor on the prototype template, and V8
+/// calls a named SETTER interceptor only when the interceptor's holder is the
+/// receiver (objects.cc, Object::SetPropertyInternal,
+/// LookupIterator::INTERCEPTOR, V8 13.1). For an instance the holder is its
+/// prototype, so V8 asked the getter whether the property existed and then
+/// stored an own data property on the instance: `div.lang = "x"` never ran
+/// the setter, never changed the content attribute, and shadowed the getter
+/// for good (2,142 reflection subtests each for lang and accessKey, and
+/// tabIndex, inert, dir, hidden, ... likewise). A read-only one was no better:
+/// assigning to it shadowed it the same way, and
+/// `Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")` ran
+/// the getter with the prototype as `this` and threw. Deferring 65 accessor
+/// definitions was never worth that.
 pub fn classifyProperty(
     property_name: []const u8,
     extended_attrs: []const []const u8,
 ) PropertyClass {
-    // Check extended attributes first - they take precedence
-    for (extended_attrs) |attr| {
-        // [CEReactions] and [Reflect] properties are accessed frequently
-        if (std.mem.eql(u8, attr, "CEReactions") or
-            std.mem.eql(u8, attr, "Reflect"))
-        {
-            return .eager;
-        }
-    }
-
-    // Common frequently-accessed properties (eager)
-    const eager_properties = &[_][]const u8{
-        // Core identity
-        "id",
-        "className",
-        "classList",
-        "tagName",
-        "nodeName",
-        "nodeType",
-
-        // Content
-        "textContent",
-        "innerHTML",
-        "outerHTML",
-        "innerText",
-        "value",
-        "checked",
-        "selected",
-
-        // Style
-        "style",
-
-        // Common DOM traversal
-        "parentNode",
-        "parentElement",
-        "childNodes",
-        "children",
-        "firstChild",
-        "lastChild",
-        "nextSibling",
-        "previousSibling",
-
-        // Common attributes
-        "href",
-        "src",
-        "alt",
-        "title",
-        "type",
-        "name",
-
-        // Event handlers (very common)
-        "onclick",
-        "onload",
-        "onerror",
-        "onchange",
-        "oninput",
-    };
-
-    for (eager_properties) |eager_prop| {
-        if (std.mem.eql(u8, property_name, eager_prop)) {
-            return .eager;
-        }
-    }
-
-    // Computed layout properties (lazy - expensive to compute)
-    const lazy_layout_properties = &[_][]const u8{
-        "offsetWidth",
-        "offsetHeight",
-        "offsetTop",
-        "offsetLeft",
-        "offsetParent",
-        "scrollWidth",
-        "scrollHeight",
-        "scrollTop",
-        "scrollLeft",
-        "clientWidth",
-        "clientHeight",
-        "clientTop",
-        "clientLeft",
-    };
-
-    for (lazy_layout_properties) |lazy_prop| {
-        if (std.mem.eql(u8, property_name, lazy_prop)) {
-            return .lazy;
-        }
-    }
-
-    // Rare/advanced properties (lazy)
-    const lazy_advanced_properties = &[_][]const u8{
-        "dataset",
-        "attributes",
-        "namespaceURI",
-        "prefix",
-        "localName",
-        "baseURI",
-        "isConnected",
-        "ownerDocument",
-        "shadowRoot",
-        "assignedSlot",
-        "slot",
-        "tabIndex",
-        "accessKey",
-        "contentEditable",
-        "isContentEditable",
-        "draggable",
-        "spellcheck",
-        "autocapitalize",
-        "translate",
-        "dir",
-        "lang",
-        "hidden",
-        "inert",
-    };
-
-    for (lazy_advanced_properties) |lazy_prop| {
-        if (std.mem.eql(u8, property_name, lazy_prop)) {
-            return .lazy;
-        }
-    }
-
-    // Default: properties not explicitly listed are eager
-    // This is conservative - we only lazify known rarely-used properties
+    _ = property_name;
+    _ = extended_attrs;
     return .eager;
 }
 
 // =============================================================================
-// Tests
+// Tests (tests/codegen/eager_attributes_test.zig pins what the writer emits)
 // =============================================================================
 
-test "classify common properties as eager" {
-    try std.testing.expectEqual(PropertyClass.eager, classifyProperty("id", &.{}));
-    try std.testing.expectEqual(PropertyClass.eager, classifyProperty("className", &.{}));
-    try std.testing.expectEqual(PropertyClass.eager, classifyProperty("innerHTML", &.{}));
-    try std.testing.expectEqual(PropertyClass.eager, classifyProperty("value", &.{}));
-}
-
-test "classify layout properties as lazy" {
-    try std.testing.expectEqual(PropertyClass.lazy, classifyProperty("offsetWidth", &.{}));
-    try std.testing.expectEqual(PropertyClass.lazy, classifyProperty("scrollHeight", &.{}));
-    try std.testing.expectEqual(PropertyClass.lazy, classifyProperty("clientTop", &.{}));
-}
-
-test "classify advanced properties as lazy" {
-    try std.testing.expectEqual(PropertyClass.lazy, classifyProperty("dataset", &.{}));
-    try std.testing.expectEqual(PropertyClass.lazy, classifyProperty("namespaceURI", &.{}));
-    try std.testing.expectEqual(PropertyClass.lazy, classifyProperty("shadowRoot", &.{}));
-}
-
-test "CEReactions attribute makes property eager" {
-    try std.testing.expectEqual(PropertyClass.eager, classifyProperty("someProperty", &.{"CEReactions"}));
-}
-
-test "Reflect attribute makes property eager" {
-    try std.testing.expectEqual(PropertyClass.eager, classifyProperty("someProperty", &.{"Reflect"}));
-}
-
-test "unknown properties default to eager" {
-    try std.testing.expectEqual(PropertyClass.eager, classifyProperty("unknownProperty", &.{}));
+test "every property is eager" {
+    try std.testing.expectEqual(PropertyClass.eager, classifyProperty("lang", &.{}));
+    try std.testing.expectEqual(PropertyClass.eager, classifyProperty("offsetWidth", &.{}));
+    try std.testing.expectEqual(PropertyClass.eager, classifyProperty("id", &.{"CEReactions"}));
 }

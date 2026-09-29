@@ -15,4 +15,8 @@ pub const ErrorEventInit = struct {
     lineno: ?u32 = null,
     colno: ?u32 = null,
     @"error": ?runtime.JSValue = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"error"};
 };

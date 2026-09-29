@@ -66,6 +66,8 @@ pub const VisualViewport = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "offsetLeft", "get_offsetLeft", null },
+            .{ "offsetTop", "get_offsetTop", null },
             .{ "pageLeft", "get_pageLeft", null },
             .{ "pageTop", "get_pageTop", null },
             .{ "width", "get_width", null },
@@ -77,10 +79,7 @@ pub const VisualViewport = struct {
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "offsetLeft", "get_offsetLeft", null },
-            .{ "offsetTop", "get_offsetTop", null },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = false;
     };

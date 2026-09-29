@@ -24,4 +24,8 @@ pub const VideoFrameBufferInit = struct {
     colorSpace: ?VideoColorSpaceInit = null,
     transfer: ?[]const runtime.JSValue = null,
     metadata: ?VideoFrameMetadata = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"rotation"};
 };

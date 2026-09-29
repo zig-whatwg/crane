@@ -14,4 +14,8 @@ pub const MLGemmOptions = struct {
     beta: ?f64 = null,
     aTranspose: ?bool = null,
     bTranspose: ?bool = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "alpha", "beta" };
 };

@@ -10,4 +10,8 @@ pub const CustomEventInit = struct {
     base: EventInit,
 
     detail: ?runtime.JSValue = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"detail"};
 };
