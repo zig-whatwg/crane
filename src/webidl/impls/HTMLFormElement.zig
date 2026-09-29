@@ -687,7 +687,7 @@ fn submitForm(form: *runtime.Instance) !void {
     // Steps 18-23: the target. The navigable for it is chosen when the
     // planned navigation runs (dom.navigables), which opens a new one for
     // "_blank" or a name nothing has.
-    const target = (try attributeValue(allocator, form, "target")) orelse try allocator.dupe(u8, "");
+    const target = try elementTarget(allocator, form, document);
     errdefer allocator.free(target);
 
     // Step 26: the scheme and method pick the behaviour.
@@ -730,6 +730,23 @@ fn submitForm(form: *runtime.Instance) !void {
 
     const url = try url_serializer.serialize(allocator, &parsed_action, false);
     planNavigation(form, url, target);
+}
+
+/// HTML "get an element's target" for the form: its target attribute, else
+/// the target of the document's first base element that has one, else "";
+/// one with an ASCII tab or newline and a "<" in it is "_blank" (dangling
+/// markup). Owned.
+fn elementTarget(allocator: std.mem.Allocator, form: *runtime.Instance, document: *runtime.Instance) ![]u8 {
+    const given = (try attributeValue(allocator, form, "target")) orelse blk: {
+        const base = (interfaces.Document.call_querySelector(document, runtime.DOMString.initInterned("base[target]")) catch null) orelse
+            break :blk try allocator.dupe(u8, "");
+        break :blk (try attributeValue(allocator, base, "target")) orelse try allocator.dupe(u8, "");
+    };
+    if (std.mem.indexOfAny(u8, given, "\t\n\r") != null and std.mem.indexOfScalar(u8, given, '<') != null) {
+        allocator.free(given);
+        return allocator.dupe(u8, "_blank");
+    }
+    return given;
 }
 
 /// A POST resource (HTML "POST resource"): its request body and request

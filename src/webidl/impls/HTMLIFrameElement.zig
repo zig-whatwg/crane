@@ -1945,10 +1945,14 @@ fn followHyperlink(subject: *runtime.Instance) void {
     const is_anchor = subject.stateAs(interfaces.HTMLAnchorElement.State) != null;
     if (!is_anchor and !(NodeImpl.get_isConnected(subject) catch false)) return;
 
-    // Steps 2-3: the element's target - its target attribute, else the
-    // document's first base element with one.
+    // Steps 2-3: "get an element's target" - its target attribute, else the
+    // document's first base element with one; "if target is not null, and
+    // contains an ASCII tab or newline and a U+003C (<), then set target to
+    // "_blank"" (dangling markup).
     const target_attr = ElementImpl.call_getAttribute(subject, runtime.DOMString.initInterned("target")) catch null;
-    const target: []const u8 = if (target_attr) |t| t.asSlice() else baseTarget(document);
+    const given_target: []const u8 = if (target_attr) |t| t.asSlice() else baseTarget(document);
+    const dangling = std.mem.indexOfAny(u8, given_target, "\t\n\r") != null and std.mem.indexOfScalar(u8, given_target, '<') != null;
+    const target: []const u8 = if (dangling) "_blank" else given_target;
 
     // Steps 4-5: the URL, encoding-parsed relative to the node document.
     const href = (ElementImpl.call_getAttribute(subject, runtime.DOMString.initInterned("href")) catch null) orelse return;
