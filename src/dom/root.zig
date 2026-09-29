@@ -66,6 +66,7 @@ pub const child_navigables = @import("child_navigables.zig");
 pub const window_globals = @import("window_globals.zig");
 pub const content_navigables = @import("content_navigables.zig");
 pub const attribute_change_steps = @import("attribute_change_steps.zig");
+pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
 pub const navigables = @import("navigables.zig");
 pub const navigation_api = @import("navigation_api.zig");

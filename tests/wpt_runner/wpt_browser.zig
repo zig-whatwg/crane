@@ -385,84 +385,32 @@ pub const WptBrowser = struct {
         origin: []const u8,
     };
 
-    /// Callback for loading external scripts during HTML parsing
+    /// The embedder's script loader for the parser: it answers only for
+    /// testharness.js and testharnessreport.js, which `loadTestHarness`
+    /// already ran before parsing began - running them again would make a new
+    /// Tests object and lose the runner's completion callback.
     ///
-    /// Fetches scripts via HTTP, mimicking real browser behavior.
+    /// Every other script returns null, so the engine fetches it with HTML's
+    /// "fetch a classic script": a request with destination "script", the
+    /// element's CORS mode and credentials, and the document's origin and
+    /// referrer, resolved against the document base URL. This used to fetch
+    /// every parser-inserted script itself - through navigation.fetchUrl, with
+    /// no destination, relative to the test file's path - so no WPT page's
+    /// `<script src>` ever reached Fetch's MIME type and nosniff checks, a
+    /// `<base href>` was ignored, and a data: URL was fetched as a path. (The
+    /// WebIDLParser.js -> webidl2.js rewrite it applied is wpt serve's own.)
     fn scriptLoaderCallback(ctx_ptr: *anyopaque, url: []const u8) ?[]const u8 {
         const loader_ctx: *const ScriptLoaderContext = @ptrCast(@alignCast(ctx_ptr));
         const self = loader_ctx.wpt_browser;
 
-        log.debug("scriptLoaderCallback: url='{s}'", .{url});
-
-        // Skip testharness.js and testharnessreport.js - they're already loaded
-        // via loadTestHarness() before HTML parsing starts. Loading them again
-        // would reinitialize the Tests object and lose our completion callback.
         if (std.mem.eql(u8, url, "/resources/testharness.js") or
             std.mem.eql(u8, url, "/resources/testharnessreport.js"))
         {
             log.debug("scriptLoaderCallback: skipping {s} (already loaded)", .{url});
-            // Return empty script to prevent double-loading
+            // An empty script, so the element still runs and fires load.
             return self.allocator.dupe(u8, "// Already loaded by WPT runner") catch null;
         }
-
-        // Apply WPT URL rewrites (matching wpt serve behavior)
-        const rewritten_url = applyWptRewrites(url);
-
-        // Build full HTTP URL and fetch via HTTP
-        const http_url = blk: {
-            if (std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://")) {
-                // Already a full URL
-                break :blk self.allocator.dupe(u8, url) catch return null;
-            } else if (std.mem.startsWith(u8, rewritten_url, "/")) {
-                // Absolute path from WPT root - build full URL
-                break :blk std.fmt.allocPrint(
-                    self.allocator,
-                    "{s}{s}",
-                    .{ loader_ctx.origin, rewritten_url },
-                ) catch return null;
-            } else {
-                // Relative path - resolve relative to test path
-                const test_dir = std.fs.path.dirname(loader_ctx.test_path) orelse "";
-                if (test_dir.len > 0) {
-                    break :blk std.fmt.allocPrint(
-                        self.allocator,
-                        "{s}/{s}/{s}",
-                        .{ loader_ctx.origin, test_dir, url },
-                    ) catch return null;
-                } else {
-                    break :blk std.fmt.allocPrint(
-                        self.allocator,
-                        "{s}/{s}",
-                        .{ loader_ctx.origin, url },
-                    ) catch return null;
-                }
-            }
-        };
-        defer self.allocator.free(http_url);
-
-        log.debug("scriptLoaderCallback: fetching {s}", .{http_url});
-
-        // Fetch the script via HTTP
-        const result = navigation.fetchUrl(self.allocator, http_url, .{}) catch |err| {
-            log.warn("scriptLoaderCallback: fetch failed: {}", .{err});
-            return null;
-        };
-        defer {
-            self.allocator.free(result.content_type);
-            self.allocator.free(result.final_url);
-        }
-
-        // Check for success
-        if (result.status_code >= 400) {
-            log.warn("scriptLoaderCallback: HTTP {d} for {s}", .{ result.status_code, http_url });
-            self.allocator.free(result.body);
-            return null;
-        }
-
-        log.debug("scriptLoaderCallback: loaded {d} bytes from {s}", .{ result.body.len, http_url });
-
-        // Return the body - caller owns this memory
-        return result.body;
+        return null;
     }
 
     /// Load testharness.js and testharnessreport.js into the context

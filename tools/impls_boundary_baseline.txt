@@ -46,8 +46,6 @@ src/html/dom_tree_adapter.zig Document.createHTMLElement 1
 src/html/dom_tree_adapter.zig DocumentType.getInternal 1
 src/html/dom_tree_adapter.zig Element.setLocalName 1
 src/html/dom_tree_adapter.zig Element.setNamespaceURI 1
-src/html/dom_tree_adapter.zig HTMLScriptElement.clearForceAsync 1
-src/html/dom_tree_adapter.zig HTMLScriptElement.setParserDocument 1
 src/html/dom_tree_adapter.zig Node.NodeType 3
 src/html/dom_tree_adapter.zig Node.setNodeType 3
 src/html/event_utils.zig ErrorEvent.createErrorEvent 1
@@ -62,9 +60,6 @@ src/html/external_script_loader.zig HTMLScriptElement.setFromExternalFile 3
 src/html/parser_script_execution.zig DocumentType.getInternal 1
 src/html/parser_script_execution.zig Element.setLocalName 1
 src/html/parser_script_execution.zig Element.setNamespaceURI 1
-src/html/parser_script_execution.zig HTMLScriptElement.cacheSourceText 2
-src/html/parser_script_execution.zig HTMLScriptElement.clearForceAsync 1
-src/html/parser_script_execution.zig HTMLScriptElement.setParserDocument 3
 src/html/parser_script_execution.zig Node.NodeType 12
 src/html/parser_script_execution.zig Node.deinitNodeByType 4
 src/html/parser_script_execution.zig Node.getParent 4
@@ -93,12 +88,12 @@ src/html/script_execution.zig Document.isScriptingEnabled 1
 src/html/script_execution.zig Document.popFirstScriptToExecuteInOrderAsap 1
 src/html/script_execution.zig Document.removeScriptFromExecuteAsap 1
 src/html/script_execution.zig Document.resolveImportSpecifier 1
-src/html/script_execution.zig Document.setCurrentScript 2
+src/html/script_execution.zig Document.setCurrentScript 1
 src/html/script_execution.zig Document.setImportMapAcquired 1
 src/html/script_execution.zig Document.setModule 1
 src/html/script_execution.zig Document.setModuleDisposeFunction 1
-src/html/script_execution.zig Document.setPendingParsingBlockingScript 2
-src/html/script_execution.zig Element.getInternal 2
+src/html/script_execution.zig Document.setPendingParsingBlockingScript 1
+src/html/script_execution.zig Element.getInternal 1
 src/html/script_execution.zig HTMLScriptElement.ClassicScript 1
 src/html/script_execution.zig HTMLScriptElement.ModuleScript 1
 src/html/script_execution.zig HTMLScriptElement.ScriptResult 4
@@ -184,7 +179,7 @@ src/webidl/impls/Document.zig Element.setNamespaceURI 8
 src/webidl/impls/Document.zig Element.setPrefix 8
 src/webidl/impls/Document.zig Event.setInitializedFlag 1
 src/webidl/impls/Document.zig HTMLCollection.addElement 16
-src/webidl/impls/Document.zig HTMLParser.parseFragment 4
+src/webidl/impls/Document.zig HTMLParser.parseFragment 1
 src/webidl/impls/Document.zig ProcessingInstruction.createProcessingInstruction 2
 src/webidl/impls/Document.zig ProcessingInstruction.getTarget 1
 src/webidl/impls/Document.zig Range.call_deleteContents 1
@@ -251,8 +246,6 @@ src/webidl/impls/HTMLParser.zig DocumentType.getInternal 1
 src/webidl/impls/HTMLParser.zig Element.getInternal 1
 src/webidl/impls/HTMLParser.zig Element.setLocalName 1
 src/webidl/impls/HTMLParser.zig Element.setNamespaceURI 1
-src/webidl/impls/HTMLParser.zig HTMLScriptElement.clearForceAsync 1
-src/webidl/impls/HTMLParser.zig HTMLScriptElement.setParserDocument 1
 src/webidl/impls/HTMLParser.zig Node.NodeType 3
 src/webidl/impls/HTMLParser.zig Node.deinitNodeByType 1
 src/webidl/impls/HTMLParser.zig Node.setNodeType 3

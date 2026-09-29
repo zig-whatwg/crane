@@ -2315,15 +2315,22 @@ const html_namespace = "http://www.w3.org/1999/xhtml";
 /// to prefix, local name set to localName ... and node document set to
 /// document".
 ///
-/// Deviation: only the HTML namespace has element interfaces here - an SVG or
-/// MathML element is a plain Element (TODO).
+/// Deviation: of the other namespaces' element interfaces only the SVG
+/// script's, SVGScriptElement, is made - every other SVG or MathML element is
+/// a plain Element (TODO).
 fn createAnElement(instance: *runtime.Instance, local_name: []const u8, namespace: ?[]const u8, prefix: ?[]const u8) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ElementImpl = @import("Element.zig");
     const is_html = if (namespace) |ns| std.mem.eql(u8, ns, html_namespace) else false;
+    const is_svg_script = if (namespace) |ns|
+        std.mem.eql(u8, ns, svg_namespace) and std.mem.eql(u8, local_name, "script")
+    else
+        false;
 
     const element = if (is_html)
         try createHTMLElement(internal.allocator, instance.ctx, local_name)
+    else if (is_svg_script)
+        try interfaces.SVGScriptElement.init(internal.allocator, instance.ctx)
     else
         try interfaces.Element.init(internal.allocator, instance.ctx);
     errdefer runtime.Instance.deinit(element);
@@ -2668,117 +2675,114 @@ pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instan
 }
 
 /// Operation: write
-/// HTML §8.4.3 - Writes text to the document
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-write
-///
-/// Algorithm (HTML §8.4.3.2 "document.write()"):
-/// 1. If document is an XML document, throw InvalidStateError
-/// 2. If document's throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
-/// 3. If document is not active, return
-/// 4. If document's origin is opaque, return
-/// 5. If ignore-destructive-writes counter > 0 and insert-only-flag is not set, return
-/// 6. If insertion point is undefined (no active parser), implicitly call document.open()
-/// 7. Insert the input into the input stream just before the insertion point
-///
-/// This implementation handles two modes:
-/// - During parsing: inserts into InputStreamManager at insertion point
-/// - After parsing: accumulates in write_buffer (parsed on document.close())
+/// "The document.write(...text) method steps are to run the document write
+/// steps with this, text, false, and "Document write"."
 pub fn call_write(instance: *runtime.Instance, text: []const runtime.DOMString) anyerror!void {
+    return documentWriteSteps(instance, text, false);
+}
+
+/// The document write steps, given `instance`, `text` and `line_feed`.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-write-steps
+///
+/// Deviation, stated: steps 2 and 4 (Trusted Types) are not run - `text`
+/// arrives as strings.
+fn documentWriteSteps(instance: *runtime.Instance, text: []const runtime.DOMString, line_feed: bool) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Step 1: If this is an XML document, throw InvalidStateError
-    if (internal.doc_type == .xml) {
-        return error.InvalidStateError;
+    // Steps 1, 3 and 5: string is the concatenation of text, then a line feed.
+    var string: std.ArrayList(u8) = .empty;
+    defer string.deinit(internal.allocator);
+    for (text) |t| try string.appendSlice(internal.allocator, t.asSlice());
+    if (line_feed) try string.append(internal.allocator, '\n');
+
+    // Step 6: "If document is an XML document, then throw an
+    // "InvalidStateError" DOMException."
+    if (internal.doc_type == .xml) return error.InvalidStateError;
+
+    // Step 7: "If document's throw-on-dynamic-markup-insertion counter is
+    // greater than 0, then throw an "InvalidStateError" DOMException."
+    if (internal.throw_on_dynamic_markup_insertion_counter > 0) return error.InvalidStateError;
+
+    // Step 8: "If document's active parser was aborted is true, then return."
+    if (internal.active_parser_was_aborted) return;
+
+    // A parser is running (the document's own, a frame's, or document.close()'s)
+    // and has an insertion point - it runs the script calling us, or a script
+    // that script's write() inserted.
+    if (internal.input_stream_manager) |stream| {
+        if (stream.hasInsertionPoint()) {
+            // Step 10: "Insert string into the input stream just before the
+            // insertion point."
+            try stream.insert(string.items);
+            // Step 11: "If document's pending parsing-blocking script is
+            // null, then have the HTML parser process string, one code point
+            // at a time, processing resulting tokens as they are emitted, and
+            // stopping when the tokenizer reaches the insertion point or when
+            // the processing of the tokenizer is aborted by the tree
+            // construction stage."
+            if (internal.pending_parsing_blocking_script == null) stream.processInserted();
+            return;
+        }
     }
 
-    // Step 2: If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
-    // This happens during custom element reactions and other restricted contexts
-    if (internal.throw_on_dynamic_markup_insertion_counter > 0) {
-        return error.InvalidStateError;
-    }
-
-    // Step 3/4: If active parser was aborted (e.g., by navigation), ignore
-    if (internal.active_parser_was_aborted) {
-        return;
-    }
-
-    // Step 5: If insertion point is undefined (no active parser)
+    // Step 9: the insertion point is undefined.
     if (internal.insertion_point == null) {
-        // Check if destructive writes should be ignored
+        // Step 9.1: "If document's unload counter is greater than 0 or
+        // document's ignore-destructive-writes counter is greater than 0, then
+        // return."
         if (internal.ignore_destructive_writes_counter > 0 or internal.unload_counter > 0) {
             return;
         }
-        // Implicitly call document.open() - this creates a script-created parser
-        // For now, just set up write mode
+        // Step 9.2: "Run the document open steps with document." Deviation,
+        // stated: only the script-created parser's state is set up here -
+        // the document is not emptied, and what is written is buffered for
+        // document.close() (see below).
         internal.is_script_created_parser = true;
         internal.insertion_point = 0;
         internal.write_buffer.clearRetainingCapacity();
     }
 
-    // Concatenate all text arguments per spec
-    // Spec: "Let input be the concatenation of all the arguments"
-    var total_len: usize = 0;
-    for (text) |t| {
-        total_len += t.asSlice().len;
-    }
+    if (string.items.len == 0) return;
+    try appendToScriptCreatedParserInput(instance, internal, string.items);
+}
 
-    if (total_len == 0) return;
+/// A script-created parser's input: buffered for document.close() to parse,
+/// and - so the document shows it before then - parsed as a fragment into the
+/// body. Deviation, stated: the script-created parser does not process each
+/// write as it arrives; that needs document.open()'s parser, which is not this
+/// function's to create.
+fn appendToScriptCreatedParserInput(instance: *runtime.Instance, internal: *InternalState, buffer: []const u8) !void {
+    internal.write_buffer.appendSlice(internal.allocator, buffer) catch {
+        return error.OutOfMemory;
+    };
 
-    // Allocate buffer for concatenated text
-    const buffer = try internal.allocator.alloc(u8, total_len);
-    defer internal.allocator.free(buffer);
+    // For immediate effect (backwards compatibility), also append to body
+    // This handles the common case where document.write is called after parsing
+    const body = get_body(instance) catch null;
+    if (body) |body_elem| {
+        const HTMLParser = @import("HTMLParser.zig");
 
-    var offset: usize = 0;
-    for (text) |t| {
-        const slice = t.asSlice();
-        @memcpy(buffer[offset..][0..slice.len], slice);
-        offset += slice.len;
-    }
-
-    // Step 7: Insert input into the input stream
-    // Check if we have an active parser with InputStreamManager
-    if (internal.input_stream_manager) |ism| {
-        // During parsing: insert into InputStreamManager at insertion point
-        // This allows the parser to process the inserted content inline
-        ism.insert(buffer) catch |err| {
-            return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-            };
+        const fragment = HTMLParser.parseFragment(
+            internal.allocator,
+            instance.ctx,
+            buffer,
+            body_elem,
+        ) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return,
         };
-    } else {
-        // After parsing / script-created parser mode:
-        // Accumulate in write_buffer, to be parsed when document.close() is called
-        // or when we need to flush content
-        internal.write_buffer.appendSlice(internal.allocator, buffer) catch {
-            return error.OutOfMemory;
-        };
+        defer interfaces.DocumentFragment.deinit(fragment);
 
-        // For immediate effect (backwards compatibility), also append to body
-        // This handles the common case where document.write is called after parsing
-        const body = get_body(instance) catch null;
-        if (body) |body_elem| {
-            const HTMLParser = @import("HTMLParser.zig");
-
-            const fragment = HTMLParser.parseFragment(
-                internal.allocator,
-                instance.ctx,
-                buffer,
-                body_elem,
-            ) catch |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
-                else => return,
-            };
-            defer interfaces.DocumentFragment.deinit(fragment);
-
-            // Move children from fragment to body
-            var child = NodeImpl.getFirstChild(fragment);
-            while (child) |c| {
-                const next = NodeImpl.getNextSibling(c);
-                // Use interface instead of impl (per Golden Rule #13)
-                _ = interfaces.Node.call_removeChild(fragment, c) catch break;
-                _ = interfaces.Node.call_appendChild(body_elem, c) catch break;
-                child = next;
-            }
+        // Move children from fragment to body
+        var child = NodeImpl.getFirstChild(fragment);
+        while (child) |c| {
+            const next = NodeImpl.getNextSibling(c);
+            // Use interface instead of impl (per Golden Rule #13)
+            _ = interfaces.Node.call_removeChild(fragment, c) catch break;
+            _ = interfaces.Node.call_appendChild(body_elem, c) catch break;
+            child = next;
         }
     }
 }
@@ -3604,100 +3608,11 @@ fn collectElementsByName(
 }
 
 /// Operation: writeln
-/// HTML §8.4.3 - Writes text to the document followed by a newline
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-writeln
-///
-/// Same as write() but appends a newline character.
-/// Algorithm: Concatenate text arguments with "\n" at end, then call write() logic.
+/// "The document.writeln(...text) method steps are to run the document write
+/// steps with this, text, true, and "Document writeln"."
 pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Step 1: If this is an XML document, throw InvalidStateError
-    if (internal.doc_type == .xml) {
-        return error.InvalidStateError;
-    }
-
-    // Step 2: If throw-on-dynamic-markup-insertion counter > 0, throw InvalidStateError
-    if (internal.throw_on_dynamic_markup_insertion_counter > 0) {
-        return error.InvalidStateError;
-    }
-
-    // Step 3/4: If active parser was aborted, ignore
-    if (internal.active_parser_was_aborted) {
-        return;
-    }
-
-    // Step 5: If insertion point is undefined (no active parser)
-    if (internal.insertion_point == null) {
-        // Check if destructive writes should be ignored
-        if (internal.ignore_destructive_writes_counter > 0 or internal.unload_counter > 0) {
-            return;
-        }
-        // Implicitly call document.open()
-        internal.is_script_created_parser = true;
-        internal.insertion_point = 0;
-        internal.write_buffer.clearRetainingCapacity();
-    }
-
-    // Calculate total length including newline
-    var total_len: usize = 0;
-    for (text) |t| {
-        total_len += t.asSlice().len;
-    }
-    total_len += 1; // For newline
-
-    // Allocate buffer for concatenated text plus newline
-    const buffer = try internal.allocator.alloc(u8, total_len);
-    defer internal.allocator.free(buffer);
-
-    var offset: usize = 0;
-    for (text) |t| {
-        const slice = t.asSlice();
-        @memcpy(buffer[offset..][0..slice.len], slice);
-        offset += slice.len;
-    }
-    buffer[offset] = '\n';
-
-    // Insert into input stream or write buffer
-    if (internal.input_stream_manager) |ism| {
-        // During parsing: insert into InputStreamManager
-        ism.insert(buffer) catch |err| {
-            return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-            };
-        };
-    } else {
-        // After parsing: accumulate in write_buffer
-        internal.write_buffer.appendSlice(internal.allocator, buffer) catch {
-            return error.OutOfMemory;
-        };
-
-        // Also append to body for immediate effect
-        const body = get_body(instance) catch null;
-        if (body) |body_elem| {
-            const HTMLParser = @import("HTMLParser.zig");
-
-            const fragment = HTMLParser.parseFragment(
-                internal.allocator,
-                instance.ctx,
-                buffer,
-                body_elem,
-            ) catch |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
-                else => return,
-            };
-            defer interfaces.DocumentFragment.deinit(fragment);
-
-            // Move children from fragment to body
-            var child = NodeImpl.getFirstChild(fragment);
-            while (child) |c| {
-                const next = NodeImpl.getNextSibling(c);
-                _ = interfaces.Node.call_removeChild(fragment, c) catch break;
-                _ = interfaces.Node.call_appendChild(body_elem, c) catch break;
-                child = next;
-            }
-        }
-    }
+    return documentWriteSteps(instance, text, true);
 }
 
 /// Operation: convertRectFromNode

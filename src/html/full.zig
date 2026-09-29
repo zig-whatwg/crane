@@ -159,6 +159,7 @@ pub const runtime = @import("runtime");
 
 /// Script execution algorithms (prepare/execute script element)
 pub const script_execution = @import("script_execution.zig");
+pub const script_request = @import("script_request.zig");
 
 /// "Report an exception": runtime script errors reach the global's error
 /// event and `onerror` through here.

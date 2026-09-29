@@ -33,6 +33,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const fetch = @import("fetch");
+const script_request = @import("script_request.zig");
 const engine = @import("engine");
 
 const log = std.log.scoped(.module_script);
@@ -362,12 +363,40 @@ fn fetchSingleModuleScript(env: *const Environment, url: []const u8, module_type
 }
 
 fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleType) ?*ModuleScript {
-    // Step 13: fetch. A transport failure comes back in-band as a network-error
-    // response (status 0), which the ok-status check rejects.
-    const response = fetch.fetchSimple(env.allocator, url) catch return null;
+    // "Let request be a new request whose URL is url, mode is "cors",
+    // referrer is referrer, and client is fetchClient." "Set request's
+    // destination to the result of running the fetch destination from module
+    // type steps given destination and moduleType" - "json" for a JSON
+    // module, "style" for a CSS one, "script" otherwise. "Set request's
+    // initiator type to "script"." Then "set up the module script request":
+    // its credentials mode is the fetch options', "same-origin" by default.
+    //
+    // Deviation, stated: the script fetch options are not carried here, so
+    // the credentials mode is always "same-origin" - a module script with
+    // crossorigin=use-credentials fetches without credentials - and the
+    // referrer is the client's.
+    const request = script_request.InternalRequest.init(env.allocator, url) catch return null;
+    defer request.deinit();
+    request.mode = .cors;
+    request.credentials_mode = .same_origin;
+    request.destination = switch (module_type) {
+        .javascript => .script,
+        .json => .json,
+        .css => .style,
+    };
+    request.initiator_type = .script;
+    script_request.populateRequestFromClient(request, env.context_instance.ctx);
+
+    // Step 13: fetch. A failure - transport, CORS, or main fetch step 19's MIME
+    // type / nosniff block, which keys on the destination - comes back
+    // in-band as a network-error response.
+    var fetched = fetch.algorithms.fetch(env.allocator, request, .{}) catch return null;
+    defer fetched.timing_info.deinit();
+    const response = fetched.response;
     defer response.deinit();
 
     // Step 13.1: bodyBytes null, or not an ok status (200-299).
+    if (response.response_type == .@"error") return null;
     if (response.status < 200 or response.status >= 300) return null;
 
     const body: []const u8 = if (response.body) |b| b.data.items else "";
