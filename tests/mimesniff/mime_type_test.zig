@@ -260,3 +260,21 @@ test "parseMimeType - custom type with + in subtype and multiple parameters" {
     // Note: Parameter names are lowercased, but values preserve case
     try std.testing.expectEqualStrings("text/swiftui+vml;target=ios;charset=UTF-8", serialized);
 }
+
+// "text/html;;;;charset=gbk" hung the parser forever (xhr/overridemimetype-blob
+// sat at 100% CPU). Parse a MIME type step 11 starts each round by advancing
+// past a ';', and the parameters began at the character after the first ';',
+// so an empty parameter at position 0 never advanced.
+test "parseMimeType - empty parameters between semicolons are skipped, and parsing ends" {
+    const allocator = std.testing.allocator;
+    for ([_][]const u8{ "text/html;;;;charset=gbk", "text/html ; ; charset=gbk", "text/html;", "text/html;;", "text/html;;;" }) |input| {
+        var mime = (try mimesniff.parseMimeType(allocator, input)) orelse return error.ParseFailed;
+        defer mime.deinit();
+        const serialized = try mimesniff.serializeMimeType(allocator, mime);
+        defer allocator.free(serialized);
+        const want = if (std.mem.indexOf(u8, input, "charset") != null) "text/html;charset=gbk" else "text/html";
+        const expected = try infra.bytes.isomorphicDecode(allocator, want);
+        defer allocator.free(expected);
+        try std.testing.expect(std.mem.eql(u16, serialized, expected));
+    }
+}

@@ -2079,8 +2079,9 @@ fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) 
 
 /// HTML "shared attribute processing steps for iframe and frame elements":
 /// the src URL (owned by the element's context allocator), about:blank when
-/// src is absent, empty or does not parse, or null when an inclusive
-/// ancestor navigable already shows it (step 3: no infinite nesting).
+/// src is absent, empty or does not parse, or null when two inclusive
+/// ancestor navigables already show it (step 3: no infinite nesting - see
+/// ancestorShows for the one level engines allow).
 /// Step 4 (URL and history update steps for about:blank?query) is not
 /// modelled.
 fn sharedAttributeProcessingSteps(element: *runtime.Instance) ?[]const u8 {
@@ -2095,18 +2096,42 @@ fn sharedAttributeProcessingSteps(element: *runtime.Instance) ?[]const u8 {
     return url;
 }
 
-/// Step 3: whether a navigable among `element`'s node navigable and its
-/// ancestors shows a document whose URL equals `url` without fragments.
+/// Step 3: whether `url` would nest a document inside itself too deeply -
+/// whether TWO navigables among `element`'s node navigable and its
+/// ancestors show a document whose URL equals `url` without fragments.
+///
+/// Deviation, on purpose: the spec refuses the first match (any inclusive
+/// ancestor showing `url` returns null). The shipping engines allow one
+/// level of self-reference and refuse the second: WebKit's
+/// HTMLFrameOwnerElement::isProhibitedSelfReference ("We allow one level of
+/// self-reference because some websites depend on that, but we don't allow
+/// more than one"), Blink's frame URL check the same way (wpt.fyi's Edge
+/// run of src-repeated-in-ancestor.html is 1/4, as Crane's is), and Gecko's
+/// nsFrameLoader::CheckForRecursiveLoad (MAX_SAME_URL_CONTENT_FRAMES 2).
+/// WPT relies on it - the feature-policy helpers embed the test page in
+/// itself, and xhr/xmlhttprequest-sync-default-feature-policy.sub.html hung
+/// under the literal rule.
+///
+/// The known cost: html/semantics/embedded-content/the-iframe-element/
+/// src-repeated-in-ancestor.html tests the literal rule, and three of its
+/// four subtests (an iframe set to the page's own URL, with or without a
+/// fragment, directly or through an intermediate frame) fail here as they
+/// do in Blink. No whatwg/html issue on the difference was found
+/// (2026-09-29).
 fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
     if (navigate_steps.matchesAboutBlank(url)) return false;
     const NodeImpl = @import("Node.zig");
     var document = NodeImpl.getOwnerDocument(element);
     var depth: usize = 0;
+    var found_one_self_reference = false;
     while (document) |doc| : (depth += 1) {
         if (depth > 32) return false;
         const doc_url = documentUrlOf(doc, element.ctx.allocator) catch return false;
         defer element.ctx.allocator.free(doc_url);
-        if (navigate_steps.equalsExcludingFragments(doc_url, url)) return true;
+        if (navigate_steps.equalsExcludingFragments(doc_url, url)) {
+            if (found_one_self_reference) return true;
+            found_one_self_reference = true;
+        }
         const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return false;
         const container = dom_module.navigable_container.of(window) orelse return false;
         document = NodeImpl.getOwnerDocument(container);

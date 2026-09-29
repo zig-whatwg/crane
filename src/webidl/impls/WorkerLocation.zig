@@ -15,6 +15,14 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const WorkerLocation = interfaces.WorkerLocation;
 
+// The URL Standard: the worker's URL as a URL record, and its getters'
+// serializations (the same ones URL's getters use).
+const URLRecord = @import("url_record").URLRecord;
+const api_parser = @import("api_parser");
+const url_serializer = @import("url_serializer");
+const host_serializer = @import("host_serializer");
+const path_serializer = @import("path_serializer");
+
 // Import workers infrastructure
 const html_core = @import("html_core");
 const workers = html_core.workers;
@@ -95,21 +103,26 @@ pub fn deinit(instance: *runtime.Instance) void {
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-// Every getter returns a copy: the binding frees what a getter returns (with
-// the instance's context allocator), and handing out the internal location's
-// own slices freed them on the first read - a double free on the second.
+// Every getter returns memory the binding frees with the instance's context
+// allocator: a fresh serialization of the worker's URL record.
+//
+// Each reads the URL record, as HTML's WorkerLocation getters do - the
+// worker's global scope's url, parsed by the URL Standard. The internal
+// location split the string by hand and found a scheme only after "://", so
+// a data: worker's protocol was "" and its pathname "/".
 
-/// Getter for href
-///
-/// Spec: HTML Standard § 10.1.2
-/// "The href attribute must return the WorkerLocation object's associated
-/// WorkerGlobalScope object's url, serialized."
+/// The worker's URL, as a URL record. OWNED (`deinit`).
+fn recordOf(instance: *runtime.Instance) !URLRecord {
+    const internal = instance.getState(State).own._internal orelse return error.NotImplemented;
+    return api_parser.parseURL(instance.ctx.allocator, internal.internal_location.getHref(), null) catch error.NotImplemented;
+}
+
+/// HTML: "The href getter steps are to return this's WorkerGlobalScope
+/// object's url, serialized."
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return instance.ctx.allocator.dupe(u8, internal.internal_location.getHref());
-    }
-    return error.NotImplemented;
+    var record = try recordOf(instance);
+    defer record.deinit();
+    return url_serializer.serialize(instance.ctx.allocator, &record, false);
 }
 
 /// Getter for origin
@@ -125,93 +138,81 @@ pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
     return error.NotImplemented;
 }
 
-/// Getter for protocol
-///
-/// Spec: HTML Standard § 10.1.2
-/// "The protocol attribute must return the WorkerLocation object's url's scheme,
-/// followed by ':'."
+/// HTML: "return this's WorkerGlobalScope object's url's scheme, followed by
+/// ":"."
 pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return instance.ctx.allocator.dupe(u8, internal.internal_location.getProtocol());
-    }
-    return error.NotImplemented;
+    var record = try recordOf(instance);
+    defer record.deinit();
+    const scheme = record.scheme();
+    const result = try instance.ctx.allocator.alloc(u8, scheme.len + 1);
+    @memcpy(result[0..scheme.len], scheme);
+    result[scheme.len] = ':';
+    return result;
 }
 
-/// Getter for host
-///
-/// Spec: HTML Standard § 10.1.2
-/// "The host attribute must return the WorkerLocation object's url's host,
-/// serialized, followed by ':' and the url's port, serialized."
+/// HTML: "1. Let url be this's WorkerGlobalScope object's url. 2. If url's
+/// host is null, return the empty string. 3. If url's port is null, return
+/// url's host, serialized. 4. Return url's host, serialized, followed by ":"
+/// and url's port, serialized."
 pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return instance.ctx.allocator.dupe(u8, internal.internal_location.getHost());
-    }
-    return error.NotImplemented;
+    const allocator = instance.ctx.allocator;
+    var record = try recordOf(instance);
+    defer record.deinit();
+    const host = record.host orelse return allocator.dupe(u8, "");
+    const port = record.port orelse return host_serializer.serializeHost(allocator, host);
+    const serialized = try host_serializer.serializeHost(allocator, host);
+    defer allocator.free(serialized);
+    return std.fmt.allocPrint(allocator, "{s}:{d}", .{ serialized, port });
 }
 
-/// Getter for hostname
-///
-/// Spec: HTML Standard § 10.1.2
-/// "The hostname attribute must return the WorkerLocation object's url's host,
-/// serialized."
+/// HTML: "1. Let host be this's WorkerGlobalScope object's url's host. 2. If
+/// host is null, return the empty string. 3. Return host, serialized."
 pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return instance.ctx.allocator.dupe(u8, internal.internal_location.getHostname());
-    }
-    return error.NotImplemented;
+    const allocator = instance.ctx.allocator;
+    var record = try recordOf(instance);
+    defer record.deinit();
+    const host = record.host orelse return allocator.dupe(u8, "");
+    return host_serializer.serializeHost(allocator, host);
 }
 
-/// Getter for port
-///
-/// Spec: HTML Standard § 10.1.2
-/// "The port attribute must return the WorkerLocation object's url's port,
-/// serialized."
+/// HTML: "1. Let port be this's WorkerGlobalScope object's url's port. 2. If
+/// port is null, return the empty string. 3. Return port, serialized."
 pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return instance.ctx.allocator.dupe(u8, internal.internal_location.getPort());
-    }
-    return error.NotImplemented;
+    const allocator = instance.ctx.allocator;
+    var record = try recordOf(instance);
+    defer record.deinit();
+    const port = record.port orelse return allocator.dupe(u8, "");
+    return std.fmt.allocPrint(allocator, "{d}", .{port});
 }
 
-/// Getter for pathname
-///
-/// Spec: HTML Standard § 10.1.2
-/// "The pathname attribute must return the result of URL path serializing the
-/// WorkerLocation object's url."
+/// HTML: "return the result of URL path serializing this's WorkerGlobalScope
+/// object's url."
 pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return instance.ctx.allocator.dupe(u8, internal.internal_location.getPathname());
-    }
-    return error.NotImplemented;
+    var record = try recordOf(instance);
+    defer record.deinit();
+    return path_serializer.serializePath(instance.ctx.allocator, &record);
 }
 
-/// Getter for search
-///
-/// Spec: HTML Standard § 10.1.2
-/// "The search attribute must return '?' followed by the WorkerLocation object's
-/// url's query, or the empty string if query is null."
+/// HTML: "1. Let query be this's WorkerGlobalScope object's url's query. 2. If
+/// query is either null or the empty string, return the empty string.
+/// 3. Return "?", followed by query."
 pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return instance.ctx.allocator.dupe(u8, internal.internal_location.getSearch());
-    }
-    return error.NotImplemented;
+    const allocator = instance.ctx.allocator;
+    var record = try recordOf(instance);
+    defer record.deinit();
+    const query = record.query() orelse return allocator.dupe(u8, "");
+    if (query.len == 0) return allocator.dupe(u8, "");
+    return std.fmt.allocPrint(allocator, "?{s}", .{query});
 }
 
-/// Getter for hash
-///
-/// Spec: HTML Standard § 10.1.2
-/// "The hash attribute must return '#' followed by the WorkerLocation object's
-/// url's fragment, or the empty string if fragment is null."
+/// HTML: "1. Let fragment be this's WorkerGlobalScope object's url's fragment.
+/// 2. If fragment is either null or the empty string, return the empty
+/// string. 3. Return "#", followed by fragment."
 pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return instance.ctx.allocator.dupe(u8, internal.internal_location.getHash());
-    }
-    return error.NotImplemented;
+    const allocator = instance.ctx.allocator;
+    var record = try recordOf(instance);
+    defer record.deinit();
+    const fragment = record.fragment() orelse return allocator.dupe(u8, "");
+    if (fragment.len == 0) return allocator.dupe(u8, "");
+    return std.fmt.allocPrint(allocator, "#{s}", .{fragment});
 }

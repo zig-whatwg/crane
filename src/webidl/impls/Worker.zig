@@ -407,9 +407,10 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     if (ctx.getOptionalEventLoop()) |event_loop| {
         WorkerTask.queue(event_loop, instance, &initializeWorker);
     } else {
-        // Fallback: try timer if no event loop available
-        const timer = ctx.timer orelse WorkerHost.getTimerInterface();
-        if (timer) |t| {
+        // A realm with no event loop - a worker's, making a nested worker -
+        // runs its tasks as timers on the loop its host runs on, which its
+        // realm records.
+        if (ctx.timer) |t| {
             WorkerTask.arm(t, 1, instance, &initializeWorker);
         } else {
             std.log.warn("Worker: no timer available, using synchronous initialization", .{});
@@ -575,10 +576,13 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
 
     // The worker's agent ("run a worker" step 4), for the pre-fetched
     // script's final URL.
+    // Its tasks run on its creator's loop: the timers the creator's realm
+    // records.
     const host = WorkerHost.init(
         allocator,
         script_final_url,
         worker_type,
+        ctx.getOptionalTimer(),
     ) catch |err| {
         std.log.warn("Failed to create the worker's agent: {}", .{err});
         return;
@@ -601,11 +605,6 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     } else {
         std.log.warn("WorkerContext not created after startWithContext", .{});
         return;
-    }
-
-    // Set up the timer interface for worker timers
-    if (ctx.timer) |timer| {
-        WorkerHost.setTimerInterface(timer);
     }
 
     // Set up DedicatedWorkerGlobalScope with proper globals
@@ -1040,9 +1039,10 @@ fn dispatchWorkerErrorEvent(instance: *runtime.Instance, error_event: *WorkerErr
     defer error_event.deinit();
     const internal = getInternal(instance) orelse return;
     const ctx = internal.ctx orelse return;
-    // A task of the owner's realm, entered from the event loop.
+    // A task of the owner's realm, entered from the event loop, and ended
+    // the owner's way (see `dispatchMessageEvent`).
     var fire = ErrorFire{ .worker = instance, .error_event = error_event };
-    engine.runInRealm(ctx, ErrorFire.steps, &fire) catch {};
+    engine.runTaskInRealm(ctx, ErrorFire.steps, &fire) catch {};
 }
 
 const ErrorFire = struct {
@@ -1083,7 +1083,13 @@ fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
     const ctx = internal.ctx orelse return;
     const message = if (msg.engine_message) |*m| m else return;
     var delivery = Delivery{ .worker = instance, .message = message };
-    engine.runInRealm(ctx, Delivery.steps, &delivery) catch {};
+    // The owner's task: its realm entered from the loop, then the task's
+    // end - which for a worker's realm (a nested worker's owner) is the
+    // worker's own: a microtask checkpoint, and what the handler posted
+    // leaving for the worker's owner. Entered with runInRealm, the task had
+    // no end there, so a nested worker's messages reached the outer worker's
+    // handler and whatever it posted on sat in its queue.
+    engine.runTaskInRealm(ctx, Delivery.steps, &delivery) catch {};
 }
 
 const Delivery = struct {

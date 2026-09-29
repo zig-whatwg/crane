@@ -863,6 +863,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [An agent's role is recorded when it is made](docs/lessons/architecture-an-agent-s-role-is-recorded-when-it-is-made.md) - Record a role when it is taken; a predicate over teardown-time state is answered by whoever happens to be tearing down.
 - [State set around a call is seen by everything the call runs](docs/lessons/architecture-state-set-around-a-call-is-seen-by-everything-it-runs.md) - A value set around a call is visible to every callee, including ones working on other objects; key it to the object it is for, not to the time it is set.
 - [A wrapper made and released before you take your hold can be collected in between](docs/lessons/architecture-a-wrapper-made-and-released-before-you-take-your-hold-can-be-collected-in-between.md) - A wrapper nobody holds can be collected at the next allocation; make the wrapper and take the hold in one step, and make any "make and release" helper refuse the objects it cannot hold.
+- [A Worker object can live in a worker's realm](docs/lessons/architecture-a-worker-object-can-live-in-a-worker-s-realm.md) - Deliver to an object as a task of its own realm (`runTaskInRealm`); `runInRealm` is only for a step inside a task already running.
 
 ### Spec Compliance
 

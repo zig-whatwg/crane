@@ -253,8 +253,9 @@ pub fn parseMimeTypeFromString(
 
     // 11. While position is not past end: parse parameters
     if (semi_pos) |semi| {
-        pos = semi + 1;
-        try parseParameters(allocator, temp_allocator, trimmed[pos..], &mime_type.parameters);
+        // 11. The parameters, from the U+003B (;) that ends the subtype:
+        //     each round of the loop starts by advancing past one.
+        try parseParameters(allocator, temp_allocator, trimmed[semi..], &mime_type.parameters);
     }
 
     // 12. Return mimeType
@@ -274,11 +275,15 @@ fn parseParameters(
     input: infra.String,
     parameters: *infra.OrderedMap(infra.String, infra.String),
 ) !void {
+    // `input` starts at a U+003B (;), and every round ends at one or at the
+    // end: 11.1 always advances past it. (It used to start past the first
+    // ';' and advance only when position > 0, so an empty parameter at the
+    // start - "text/html;;charset=gbk" - left position at 0 forever.)
     var pos: usize = 0;
 
     while (pos < input.len) {
-        // 11.1. Advance position by 1 (skip ';' from previous iteration or initial)
-        if (pos > 0) pos += 1;
+        // 11.1. Advance position by 1. (This skips past U+003B (;).)
+        pos += 1;
         if (pos >= input.len) break;
 
         // 11.2. Collect a sequence of HTTP whitespace
