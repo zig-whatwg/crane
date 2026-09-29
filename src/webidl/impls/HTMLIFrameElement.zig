@@ -1265,10 +1265,23 @@ fn runCommit(context: ?*anyopaque) void {
     // "Create and initialize a Document object" steps 5-7: the realm the new
     // document goes in - the active one, or a new Window's around the same
     // WindowProxy - decided with no realm entered.
-    integration.realmForDocument(integration.responseOrigin(record.url, response)) catch |err| {
+    const new_origin = integration.responseOrigin(record.url, response);
+    const old_origin: ?Origin = if (integration.window_proxy) |proxy| proxy.document_origin else null;
+    integration.realmForDocument(new_origin) catch |err| {
         log.warn("[navigation] no realm for {s}: {s}", .{ record.url, @errorName(err) });
         return endLoadDelay(integration);
     };
+    // "Finalize a cross-document navigation" step 4: a top-level
+    // traversable - not an auxiliary browsing context whose opener browsing
+    // context is non-null - navigated to a document of another origin loses
+    // its target name (window.name).
+    if (integration.iframe_element == null) {
+        if (integration.browsing_context) |bc| {
+            const has_opener = bc.opener != null and !bc.disowned;
+            const same_origin = if (old_origin) |old| new_origin.isSameOrigin(old) else false;
+            if (bc.parent == null and !has_opener and !same_origin) bc.setTargetName("") catch {};
+        }
+    }
     // The document state's about base URL, for an about:blank or
     // about:srcdoc document: the initiator's base URL snapshot.
     integration.setNextAboutBaseUrl(record.initiator_base_url);
