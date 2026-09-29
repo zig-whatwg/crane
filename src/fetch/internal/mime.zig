@@ -88,6 +88,15 @@ pub fn parameterIndex(record: mimesniff.MimeType, comptime name: []const u8) ?us
     return null;
 }
 
+/// The essence of the MIME type "extract a MIME type" gives from `headers`,
+/// as lowercase bytes (OWNED), or null for failure: what a Content-Type
+/// check - nosniff, a style sheet's text/css - compares.
+pub fn extractMimeEssence(allocator: std.mem.Allocator, headers: *const HeaderList) !?[]u8 {
+    var extracted = (try extractMimeType(allocator, headers)) orelse return null;
+    defer extracted.deinit();
+    return try essenceBytes(allocator, extracted);
+}
+
 /// The essence of `mime` ("type/subtype"), as bytes - a MIME type's type
 /// and subtype are HTTP token code points, all ASCII. OWNED.
 pub fn essenceBytes(allocator: std.mem.Allocator, mime: mimesniff.MimeType) ![]u8 {
@@ -127,4 +136,26 @@ test "extract a MIME type: Fetch's examples" {
     try expectExtracted(null, &.{});
     try expectExtracted(null, &.{"*/*"});
     try expectExtracted(null, &.{"bogus"});
+}
+
+test "extract a MIME type's essence: lowercase, parameters dropped, failure null" {
+    const allocator = std.testing.allocator;
+    const cases = [_]struct { values: []const []const u8, want: ?[]const u8 }{
+        .{ .values = &.{"Text/CSS; charset=utf-8"}, .want = "text/css" },
+        .{ .values = &.{"text/plain"}, .want = "text/plain" },
+        .{ .values = &.{"oops"}, .want = null },
+        .{ .values = &.{}, .want = null },
+    };
+    for (cases) |case| {
+        var headers = HeaderList.init(allocator);
+        defer headers.deinit();
+        for (case.values) |v| try headers.append("Content-Type", v);
+        const got = try extractMimeEssence(allocator, &headers);
+        defer if (got) |g| allocator.free(g);
+        if (case.want) |want| {
+            try std.testing.expectEqualStrings(want, got.?);
+        } else {
+            try std.testing.expect(got == null);
+        }
+    }
 }
