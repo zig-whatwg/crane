@@ -485,3 +485,26 @@ test "in frameset, whitespace in a run of text is inserted and the rest ignored"
         \\
     );
 }
+
+test "a DOCTYPE's PUBLIC and SYSTEM keywords are matched from the current input character" {
+    // "After DOCTYPE name state": "If the six characters starting from the
+    // current input character are an ASCII case-insensitive match for the word
+    // "PUBLIC"" (or "SYSTEM"), the identifiers follow; otherwise the DOCTYPE
+    // is bogus, with its force-quirks flag on.
+    const Case = struct { input: []const u8, public_id: ?[]const u8, system_id: ?[]const u8 };
+    const cases = [_]Case{
+        .{ .input = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">", .public_id = "-//W3C//DTD HTML 4.01//EN", .system_id = "http://www.w3.org/TR/html4/strict.dtd" },
+        .{ .input = "<!DOCTYPE html system \"about:legacy-compat\">", .public_id = null, .system_id = "about:legacy-compat" },
+        .{ .input = "<!DOCTYPE html PuBlIc \"\" \"\">", .public_id = "", .system_id = "" },
+    };
+    for (cases) |case| {
+        var tokenizer = Tokenizer.init(testing.allocator, case.input);
+        defer tokenizer.deinit();
+        var token = (try tokenizer.nextToken()).?;
+        defer token.deinit();
+        const doctype = token.doctype;
+        try testing.expect(!doctype.force_quirks);
+        if (case.public_id) |p| try testing.expectEqualStrings(p, doctype.getPublicIdentifier().?) else try testing.expect(doctype.getPublicIdentifier() == null);
+        if (case.system_id) |s| try testing.expectEqualStrings(s, doctype.getSystemIdentifier().?) else try testing.expect(doctype.getSystemIdentifier() == null);
+    }
+}
