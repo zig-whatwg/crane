@@ -492,9 +492,12 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
                 self.pending_request = null;
                 const cancel_realm = streams_js.Realm.ofContext(self.ctx) catch null;
                 const reason: ?streams_js.Value = if (signal) |s| blk: {
-                    const value = interfaces.AbortSignal.get_reason(s) catch break :blk null;
+                    // The getter's result is a hold of ours; the Value
+                    // takes its own.
+                    const value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(s) catch break :blk null };
+                    defer value.release();
                     const r = cancel_realm orelse break :blk null;
-                    break :blk r.fromRuntime(value) catch null;
+                    break :blk r.fromRuntime(value.value) catch null;
                 } else null;
                 if (reason) |r| {
                     defer streams_js.dispose(r);
@@ -533,14 +536,18 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         /// signal's abort reason, held for as long as the body needs it.
         fn abortFailure(self: *Self, signal: ?*runtime.Instance) fetch.algorithms.async_fetch.Failure {
             const s = signal orelse return .{ .kind = .aborted };
-            const reason_value = interfaces.AbortSignal.get_reason(s) catch return .{ .kind = .aborted };
-            const held = fetch_body.AbortReason.create(self.ctx, reason_value) orelse return .{ .kind = .aborted };
+            // The getter's result is a hold of ours; AbortReason takes its own.
+            const reason_value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(s) catch return .{ .kind = .aborted } };
+            defer reason_value.release();
+            const held = fetch_body.AbortReason.create(self.ctx, reason_value.value) orelse return .{ .kind = .aborted };
             return .{ .kind = .aborted, .reason = held, .release_reason = fetch_body.AbortReason.release };
         }
 
         fn rejectWithAbortReason(self: *Self, signal: *runtime.Instance) void {
-            const reason_value = interfaces.AbortSignal.get_reason(signal) catch return;
-            engine.rejectPromise(&self.capability, reason_value) catch {};
+            // The getter's result is a hold of ours.
+            const reason_value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(signal) catch return };
+            defer reason_value.release();
+            engine.rejectPromise(&self.capability, reason_value.value) catch {};
         }
 
         fn liveSignal(self: *const Self) ?*runtime.Instance {
@@ -680,7 +687,10 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // with p, request, null, and the signal's abort reason, and return p.
     const signal = try interfaces.Request.get_signal(request_object);
     if (try interfaces.AbortSignal.get_aborted(signal)) {
-        const reason = try realm.fromRuntime(try interfaces.AbortSignal.get_reason(signal));
+        // The getter's result is a hold of ours; the Value takes its own.
+        const reason_value: engine.Owned = .{ .value = try interfaces.AbortSignal.get_reason(signal) };
+        defer reason_value.release();
+        const reason = try realm.fromRuntime(reason_value.value);
         defer streams_js.dispose(reason);
         // "Abort the fetch() call" step 1: reject p; step 2: cancel
         // request's body, if it is readable.

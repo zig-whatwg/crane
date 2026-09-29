@@ -1449,10 +1449,12 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
 
 /// The five arguments `onerror` on a global is invoked with: the ErrorEvent's
 /// message, filename, lineno, colno and error. The strings are the getters'
-/// copies, freed by `deinit`; the error is the event's own, BORROWED.
+/// copies and the error is the getter's hold (a getter's result is its
+/// caller's - retainValue().take()), all released by `deinit`.
 const ErrorEventArguments = struct {
     message: runtime.DOMString,
     filename: []const u8,
+    @"error": engine.Owned,
     values: [5]runtime.JSValue,
 
     fn of(event: *runtime.Instance) !ErrorEventArguments {
@@ -1462,15 +1464,17 @@ const ErrorEventArguments = struct {
         var message = try ErrorEvent.get_message(event);
         errdefer message.deinit(allocator);
         const filename = try ErrorEvent.get_filename(event);
+        const @"error": engine.Owned = .{ .value = ErrorEvent.get_error(event) catch runtime.JSValue.jsUndefined };
         return .{
             .message = message,
             .filename = filename,
+            .@"error" = @"error",
             .values = .{
                 runtime.JSValue.fromStringRef(message.asSlice()),
                 runtime.JSValue.fromStringRef(filename),
                 runtime.JSValue.fromNumber(@floatFromInt(ErrorEvent.get_lineno(event) catch 0)),
                 runtime.JSValue.fromNumber(@floatFromInt(ErrorEvent.get_colno(event) catch 0)),
-                ErrorEvent.get_error(event) catch runtime.JSValue.jsUndefined,
+                @"error".value,
             },
         };
     }
@@ -1478,6 +1482,7 @@ const ErrorEventArguments = struct {
     fn deinit(self: *ErrorEventArguments, allocator: std.mem.Allocator) void {
         self.message.deinit(allocator);
         if (self.filename.len > 0) allocator.free(self.filename);
+        self.@"error".release();
     }
 };
 

@@ -1787,3 +1787,125 @@ test "protocol: what a getter returns is the binding's - a kept value reads the 
         return error.HandlesLeaked;
     }
 }
+
+test "protocol: engine code that reads a kept value through its getter releases the hold it gets" {
+    // A getter's result is a hold of the caller's own (retainValue().take()),
+    // for engine code that calls the getter through `interfaces` as much as
+    // for the binding. The special error event handling reads
+    // ErrorEvent.error (EventTarget's ErrorEventArguments), and fetch() with
+    // an aborted signal reads AbortSignal.reason: each must release what it
+    // was given, or every onerror call and every aborted fetch leaks a
+    // handle. The controls take the same paths with a primitive - which
+    // retainValue holds by value, with no handle - so only the object's hold
+    // is left to count.
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    try expectEval(w,
+        \\globalThis.seen = [];
+        \\onerror = (message, filename, lineno, colno, error) => { seen.push(error); };
+        \\globalThis.object = { o: 1 };
+        \\globalThis.errorEvent = new ErrorEvent('error', { error: object });
+        \\globalThis.primitiveEvent = new ErrorEvent('error', { error: 1 });
+        \\globalThis.aborted = AbortSignal.abort(object);
+        \\globalThis.abortedPrimitive = AbortSignal.abort(1);
+        \\globalThis.rejections = [];
+        \\globalThis.fetchAborted = (signal) =>
+        \\  fetch('https://example.test/x', { signal }).catch((reason) => { rejections.push(reason); });
+        \\dispatchEvent(errorEvent); dispatchEvent(primitiveEvent);
+        \\fetchAborted(aborted); fetchAborted(abortedPrimitive);
+        \\'set'
+    , "set");
+    // The paths were taken: onerror had the error, and fetch rejected with
+    // the signal's reason.
+    try expectEval(w, "[seen[0] === object, seen[1] === 1, rejections[0] === object, rejections[1] === 1].join()", "true,true,true,true");
+
+    const isolate = isolate_once.?;
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    try std.testing.expect(handle_bytes > 0);
+
+    const rounds = 64;
+    const Pair = struct { name: []const u8, control: []const u8, read: []const u8 };
+    const pairs = [_]Pair{
+        .{
+            .name = "onerror's error",
+            .control = "for (let n = 0; n < 64; n++) dispatchEvent(primitiveEvent); 'control'",
+            .read = "for (let n = 0; n < 64; n++) dispatchEvent(errorEvent); 'read'",
+        },
+        .{
+            .name = "an aborted fetch's reason",
+            .control = "for (let n = 0; n < 64; n++) fetchAborted(abortedPrimitive); 'control'",
+            .read = "for (let n = 0; n < 64; n++) fetchAborted(aborted); 'read'",
+        },
+    };
+    for (pairs) |pair| {
+        // Warm both paths first; each is then measured over its own run.
+        try expectEval(w, pair.control, "control");
+        try expectEval(w, pair.read, "read");
+        var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        try expectEval(w, pair.control, "control");
+        const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+        start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        try expectEval(w, pair.read, "read");
+        const read = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+        if (read -| control >= handle_bytes * rounds / 4) {
+            std.debug.print("{s}: {d} rounds left {d} bytes of global handles; the control {d} ({d} bytes a handle)\n", .{ pair.name, rounds, read, control, handle_bytes });
+            return error.HandlesLeaked;
+        }
+    }
+}
+
+test "protocol: a MessageEvent made with ports keeps one frozen array, and leaves no handle once collected" {
+    // The constructor makes the event's frozen ports array at once (the
+    // array is what keeps the ports). It did that by calling get_ports and
+    // dropping the result - a hold of the caller's own, since the binding
+    // releases what a getter returns - so every such event left a handle
+    // behind after it was collected.
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    // FrozenArray: the array made at construction is the one every read
+    // returns, before a collection and after it. The WeakMap marks it without
+    // keeping it: only the event's own hold does.
+    try expectEval(w,
+        \\globalThis.port = new MessageChannel().port1;
+        \\globalThis.withPorts = new MessageEvent('x', { ports: [port] });
+        \\globalThis.marks = new WeakMap([[withPorts.ports, 1]]);
+        \\[withPorts.ports === withPorts.ports, withPorts.ports[0] === port, Object.isFrozen(withPorts.ports)].join()
+    , "true,true,true");
+    const isolate = isolate_once.?;
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    try expectEval(w, "[marks.has(withPorts.ports), withPorts.ports === withPorts.ports, withPorts.ports[0] === port].join()", "true,true,true");
+
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    const rounds = 32;
+    const Measure = struct {
+        fn leftAfter(r: runtime.Context, i: *ffi.Isolate, comptime construction: []const u8) !usize {
+            try expectEval(r, "void (" ++ construction ++ "); 'once'", "once");
+            ffi.v8_Isolate_RequestGarbageCollection(i);
+            const before = ffi.v8_Isolate_GetGlobalHandleBytes(i);
+            try expectEval(r, "for (let i = 0; i < 32; i++) void (" ++ construction ++ "); 'many'", "many");
+            ffi.v8_Isolate_RequestGarbageCollection(i);
+            return ffi.v8_Isolate_GetGlobalHandleBytes(i) -| before;
+        }
+    };
+    // The control: the same constructor without ports makes no array.
+    const without = try Measure.leftAfter(w, isolate, "new MessageEvent('x')");
+    const with = try Measure.leftAfter(w, isolate, "new MessageEvent('x', { ports: [port] })");
+    if (with -| without >= handle_bytes * rounds / 4) {
+        std.debug.print("{d} MessageEvents with a port left {d} bytes of global handles; without, {d} ({d} bytes a handle)\n", .{ rounds, with, without, handle_bytes });
+        return error.HandlesLeaked;
+    }
+}

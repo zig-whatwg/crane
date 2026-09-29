@@ -201,8 +201,10 @@ fn abortReason(instance: *runtime.Instance, realm: js.Realm) ?js.Value {
     const internal = instance.getState(State).own._internal orelse return null;
     const signal = internal.liveSignal() orelse return null;
     if (!(interfaces.AbortSignal.get_aborted(signal) catch false)) return null;
-    const reason = interfaces.AbortSignal.get_reason(signal) catch return null;
-    return realm.fromRuntime(reason) catch null;
+    // The getter's result is a hold of ours; the Value takes its own.
+    const reason: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(signal) catch return null };
+    defer reason.release();
+    return realm.fromRuntime(reason.value) catch null;
 }
 
 /// Error `stream`, if it is readable, with the followed signal's abort
