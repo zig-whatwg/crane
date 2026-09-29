@@ -31,6 +31,78 @@ fn workerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
     });
 }
 
+fn sharedWorkerRealm(agent: *runtime.Agent) !runtime.WorkerRealm {
+    return v8.worker_realm.createWorkerRealm(agent, .{
+        .url = "http://web-platform.test:8000/workers/shared.js",
+        .timer = null,
+        .global = .shared,
+        .allocator = std.heap.page_allocator,
+    });
+}
+
+/// `code`, run in `realm` of `agent`, as an int32.
+fn evalIntIn(agent: *runtime.Agent, realm: runtime.Context, code: []const u8) !i32 {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    ffi.v8_Isolate_Enter(isolate);
+    defer ffi.v8_Isolate_Exit(isolate);
+    const scope = ffi.v8_HandleScope_New(isolate) orelse return error.HandleScopeFailed;
+    defer ffi.v8_HandleScope_Dispose(scope);
+    const context: *ffi.Context = @ptrCast(@alignCast(realm.engine_ctx orelse return error.NoContext));
+    ffi.v8_Context_Enter(context);
+    defer ffi.v8_Context_Exit(context);
+    const text = ffi.v8_String_NewFromUtf8(isolate, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(text);
+    const script = ffi.v8_Script_Compile(context, text) orelse return error.CompileFailed;
+    defer ffi.v8_Script_Dispose(script);
+    const value = ffi.v8_Script_Run(context, script) orelse return error.RunFailed;
+    defer ffi.v8_Value_Dispose(value);
+    return ffi.v8_Value_Int32Value(value, context);
+}
+
+// HTML "run a worker" step 5: for a shared worker, the realm's global object
+// is a new SharedWorkerGlobalScope - its record says so, script sees it as
+// the global with SharedWorkerGlobalScope's prototype chain, its own members
+// (onconnect, name, close) are on it, and the set [Exposed] to a shared
+// worker is installed: not DedicatedWorkerGlobalScope, nor its postMessage.
+test "a shared worker realm's global object is a SharedWorkerGlobalScope" {
+    setup();
+    const agent = try v8.worker_realm.createAgent();
+    defer v8.worker_realm.destroyAgent(agent);
+    const made = try sharedWorkerRealm(agent);
+    defer v8.worker_realm.destroyWorkerRealm(made.realm, null, null);
+
+    const record = made.realm.getRealm() orelse return error.NoRealmRecord;
+    try std.testing.expectEqual(runtime.realm.ContextType.shared_worker, record.info.context_type);
+    try std.testing.expectEqual(@as(?*anyopaque, @ptrCast(made.global_scope)), record.global_object);
+    try std.testing.expectEqual(@as(i32, 1), try evalIntIn(agent, made.realm,
+        \\Object.getPrototypeOf(self) === SharedWorkerGlobalScope.prototype &&
+        \\Object.getPrototypeOf(SharedWorkerGlobalScope.prototype) === WorkerGlobalScope.prototype &&
+        \\Object.getPrototypeOf(WorkerGlobalScope.prototype) === EventTarget.prototype &&
+        \\self instanceof SharedWorkerGlobalScope && self === globalThis ? 1 : 0
+    ));
+    try std.testing.expectEqual(@as(i32, 1), try evalIntIn(agent, made.realm,
+        \\"onconnect" in self && self.onconnect === null && typeof self.close === "function" && "name" in self ? 1 : 0
+    ));
+    try std.testing.expectEqual(@as(i32, 0), try evalIntIn(agent, made.realm,
+        \\"DedicatedWorkerGlobalScope" in self || "postMessage" in self || "onmessage" in self ? 1 : 0
+    ));
+}
+
+// The default is unchanged: a worker realm's global is a
+// DedicatedWorkerGlobalScope, and SharedWorkerGlobalScope is not exposed to it.
+test "a worker realm's global object is a DedicatedWorkerGlobalScope unless asked for a shared one" {
+    setup();
+    const agent = try v8.worker_realm.createAgent();
+    defer v8.worker_realm.destroyAgent(agent);
+    const made = try workerRealm(agent);
+    defer v8.worker_realm.destroyWorkerRealm(made.realm, null, null);
+
+    try std.testing.expectEqual(@as(i32, 1), try evalIntIn(agent, made.realm,
+        \\Object.getPrototypeOf(self) === DedicatedWorkerGlobalScope.prototype &&
+        \\"onmessage" in self && !("SharedWorkerGlobalScope" in self) && !("onconnect" in self) ? 1 : 0
+    ));
+}
+
 test "a worker realm's record is a dedicated worker's, its global object the global scope, its intrinsics populated" {
     setup();
     const agent = try v8.worker_realm.createAgent();
@@ -64,7 +136,7 @@ fn recordRound(isolate: *ffi.Isolate) !void {
     const realm = try v8.context_manager.getOrCreateWithExternalEventLoop(context, null, null, std.heap.page_allocator);
     // Stands in for the DedicatedWorkerGlobalScope: the record keeps only its address.
     var global_scope: runtime.Instance = undefined;
-    try v8.worker_realm.recordRealm(isolate, context, realm, &global_scope);
+    try v8.worker_realm.recordRealm(isolate, context, realm, &global_scope, .dedicated_worker);
     try std.testing.expect(realm.getRealm().?.getIntrinsics().isPopulated());
     v8.context_manager.removeContext(context);
 }

@@ -67,18 +67,40 @@ const Tracked = struct {
     about_to_be_notified: std.ArrayListUnmanaged(Rejected) = .empty,
     /// "outstanding rejected promises weak set".
     outstanding: std.ArrayListUnmanaged(Rejected) = .empty,
+    /// Notifications queued as timers (a worker's realm has no event loop of
+    /// its own) that have not run: `forgetGlobal` cancels them, since the
+    /// promises they carry belong to an agent that is about to end.
+    armed: std.ArrayListUnmanaged(Armed) = .empty,
 
     fn isAlive(self: *const Tracked) bool {
         return runtime.SlabAllocator.generationOf(self.global) == self.generation;
     }
 
+    /// Whether the global's realm is one of `agent`'s.
+    fn inAgent(self: *const Tracked, agent: *engine.Agent) bool {
+        const own = self.global.ctx.agent orelse return false;
+        return @intFromPtr(own) == @intFromPtr(agent);
+    }
+
     fn destroy(self: *Tracked) void {
+        for (self.armed.items) |armed| {
+            _ = armed.timer.clearTimeout(armed.id);
+            armed.task.discard();
+        }
+        self.armed.deinit(allocator);
         releaseAll(self.about_to_be_notified.items);
         releaseAll(self.outstanding.items);
         self.about_to_be_notified.deinit(allocator);
         self.outstanding.deinit(allocator);
         allocator.destroy(self);
     }
+};
+
+/// A notification armed as a timer, and its id.
+const Armed = struct {
+    task: *Notification,
+    timer: runtime.TimerInterface,
+    id: runtime.TimerId,
 };
 
 var tracked: std.ArrayListUnmanaged(*Tracked) = .empty;
@@ -92,6 +114,22 @@ pub fn releaseTracked() void {
     for (tracked.items) |t| t.destroy();
     tracked.deinit(allocator);
     tracked = .empty;
+}
+
+/// Release what is held for `global` - its lists, and the notifications
+/// queued for it that have not run - while its agent still exists: a worker's
+/// realm ends, and one timer later its agent (worker_host teardownRealm).
+/// Every promise here is a Global of that agent, and releasing one after its
+/// isolate is disposed touches freed memory: before disposing an isolate,
+/// find everything the process keeps for it
+/// (docs/lessons/architecture-before-disposing-an-isolate-find-everything-the.md).
+pub fn forgetGlobal(global: *runtime.Instance) void {
+    for (tracked.items, 0..) |t, i| {
+        if (t.global != global) continue;
+        _ = tracked.swapRemove(i);
+        t.destroy();
+        return;
+    }
 }
 
 /// The bookkeeping for `global`, created on first use. Entries whose global
@@ -169,11 +207,15 @@ fn promiseRejectionTracker(host: ?*anyopaque, realm: runtime.Context, promise: e
     }
 }
 
-/// "Perform a microtask checkpoint" step 5: "notify about rejected promises"
-/// for every global with promises waiting.
+/// "Perform a microtask checkpoint" step 5: "for each environment settings
+/// object settingsObject whose responsible event loop is this event loop,
+/// notify about rejected promises given settingsObject's global object" -
+/// the globals of the checkpointing agent's realms: a window's and its
+/// frames' share one, a worker's is its own. Every tracked global used to
+/// be notified at every checkpoint, which once workers track rejections too
+/// would notify the page's at a worker's.
 fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
     _ = host;
-    _ = agent;
     var i: usize = 0;
     while (i < tracked.items.len) {
         const t = tracked.items[i];
@@ -183,6 +225,7 @@ fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
             continue;
         }
         i += 1;
+        if (!t.inAgent(agent)) continue;
         // Steps 1-3: take the list, leaving it empty; nothing to do when it
         // is empty.
         if (t.about_to_be_notified.items.len == 0) continue;
@@ -201,13 +244,26 @@ const Notification = struct {
     kind: Kind,
     /// Owned.
     promises: []Rejected,
+
+    /// The task will not run: release what it carries.
+    fn discard(self: *Notification) void {
+        releaseAll(self.promises);
+        allocator.free(self.promises);
+        allocator.destroy(self);
+    }
 };
 
 /// Queue a global task on the DOM manipulation task source to run
 /// `runNotification`. Takes ownership of every entry in `promises` (the
 /// slice itself is copied).
+///
+/// A window's realm has an event loop. A worker's has none of its own: its
+/// tasks run as timers on its owner's loop, and so does this one - tracked,
+/// so that the worker's end can cancel it (`forgetGlobal`).
 fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const Rejected) void {
-    const loop = global.ctx.getOptionalEventLoop() orelse return releaseAll(promises);
+    const loop = global.ctx.getOptionalEventLoop();
+    const timer = if (loop == null) global.ctx.getOptionalTimer() else null;
+    if (loop == null and timer == null) return releaseAll(promises);
     const task = allocator.create(Notification) catch return releaseAll(promises);
     const copy = allocator.dupe(Rejected, promises) catch {
         allocator.destroy(task);
@@ -219,18 +275,36 @@ fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const Re
         .kind = kind,
         .promises = copy,
     };
-    loop.queueTask(.{ .callback = &runNotification, .context = task });
+    if (loop) |l| return l.queueTask(.{ .callback = &runNotification, .context = task });
+    const t = trackedFor(global, true) orelse return task.discard();
+    const id = timer.?.setTimeout(0, &runNotification, task);
+    if (id == 0) return task.discard();
+    t.armed.append(allocator, .{ .task = task, .timer = timer.?, .id = id }) catch {};
 }
 
-/// The queued global task: its steps run as a task of the global's realm.
+/// The queued global task: its steps run as a task of the global's realm -
+/// for a worker's, ended the worker's way.
 fn runNotification(data: ?*anyopaque) void {
     const task: *Notification = @ptrCast(@alignCast(data orelse return));
+    forgetArmed(task);
     defer {
         allocator.free(task.promises);
         allocator.destroy(task);
     }
     if (runtime.SlabAllocator.generationOf(task.global) != task.generation) return releaseAll(task.promises);
     engine.runTaskInRealm(task.global.ctx, notificationSteps, task) catch releaseAll(task.promises);
+}
+
+/// `task` has fired: it is no longer armed.
+fn forgetArmed(task: *Notification) void {
+    for (tracked.items) |t| {
+        for (t.armed.items, 0..) |armed, i| {
+            if (armed.task == task) {
+                _ = t.armed.swapRemove(i);
+                return;
+            }
+        }
+    }
 }
 
 fn notificationSteps(data: ?*anyopaque) void {

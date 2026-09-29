@@ -151,7 +151,7 @@ adapter will use Crane's own walker (src/html/structured_clone).
 | Area | Operations |
 |---|---|
 | Engine and agents | `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks`), `destroyAgent`, `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `requestGarbageCollection` (testing only) |
-| Realms | `createWindowRealm`, `destroyWindowRealm`, `createWorkerRealm`, `destroyWorkerRealm`, `currentRealm`, `entryRealm`, `incumbentRealm`, `functionRealm`, `installWindowOperations`, `defineBuiltinFunction` |
+| Realms | `createWindowRealm`, `destroyWindowRealm`, `createWorkerRealm` (HTML "run a worker" step 5: `WorkerRealmOptions.global` picks the global object, a DedicatedWorkerGlobalScope or, for a shared worker, a SharedWorkerGlobalScope), `destroyWorkerRealm`, `currentRealm`, `entryRealm`, `incumbentRealm`, `functionRealm`, `installWindowOperations`, `defineBuiltinFunction` |
 | Running script (HTML 8.1.4) | `runClassicScript`, `evaluateClassicScript`, `evaluateClassicScriptToString`, `compileEventHandler`, `prepareToRunScript` / `cleanUpAfterRunningScript`, `runInRealm`, `runTaskInRealm`, `performMicrotaskCheckpoint` and `queueMicrotask` (the agent's - an event loop's), `extractErrorInformation` |
 | Modules [module_scripts] | `parseModule`, `parseJSONModule`, `moduleRequests`, `linkModule`, `evaluateModule`, `finishDynamicImport`, `releaseModuleRecord` |
 | Callbacks (WebIDL) | `invokeCallbackFunction`, `callUserObjectOperation`, `isCallable`, `takeCallbackFunction` / `takeCallbackInterface` (transitional) |

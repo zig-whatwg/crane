@@ -148,7 +148,7 @@ pub fn initWithInternal(
     errdefer EventTargetImpl.deinit(instance);
 
     // Nobody can hold a port to transfer before one exists.
-    message_ports.install(.{ .transferable_state = transferableState, .ship = ship, .receive = receive });
+    message_ports.install(.{ .transferable_state = transferableState, .ship = ship, .receive = receive, .discard = discard });
 
     const internal_state = try allocator.create(InternalState);
     errdefer allocator.destroy(internal_state);
@@ -343,6 +343,13 @@ fn ship(instance: *runtime.Instance) ?*anyopaque {
     // Detached: no pending activity is left on this object.
     syncPendingActivity(instance);
     return @ptrCast(end);
+}
+
+/// Free an end no port took: disentangled from its other end (whose port
+/// then has nothing to post to), its queue freed.
+fn discard(end: *anyopaque) void {
+    const port: *InternalMessagePort = @ptrCast(@alignCast(end));
+    port.deinit();
 }
 
 /// The transfer-receiving steps: a new MessagePort of `realm` on `end`.

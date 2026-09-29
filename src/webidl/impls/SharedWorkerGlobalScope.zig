@@ -1,11 +1,13 @@
 //! Implementation for SharedWorkerGlobalScope interface
 //!
-//! Spec: HTML Standard § 10.2.4.2 The SharedWorkerGlobalScope interface
-//! https://html.spec.whatwg.org/#sharedworkerglobalscope
+//! Spec: HTML Standard § 10.2.2.3 Shared workers and the
+//! SharedWorkerGlobalScope interface
+//! https://html.spec.whatwg.org/multipage/workers.html#shared-workers-and-the-sharedworkerglobalscope-interface
 //!
-//! The global scope object inside a shared worker. Extends WorkerGlobalScope
-//! with shared worker-specific functionality like the name attribute and
-//! connect event.
+//! The global object of a shared worker's realm ("run a worker" step 5, when
+//! `is shared`). The worker host (src/html/worker_host.zig) runs the worker:
+//! its agent, its tasks, its `connect` events, its end. What is here is the
+//! scope's own members - its name, `onconnect`, close().
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -16,12 +18,13 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const SharedWorkerGlobalScope = interfaces.SharedWorkerGlobalScope;
 
-// Import workers infrastructure
-const html_core = @import("html_core");
-const workers = html_core.workers;
-const InternalSharedWorker = workers.SharedWorker;
-const SharedWorkerConnection = workers.SharedWorkerConnection;
-const WorkerPort = workers.WorkerPort;
+// Ancestors: a SharedWorkerGlobalScope IS a WorkerGlobalScope and an
+// EventTarget, and reaches their state through their impls.
+const WorkerGlobalScopeImpl = @import("WorkerGlobalScope.zig");
+const EventTargetImpl = @import("EventTarget.zig");
+
+/// The worker host: the side of "run a worker" that owns this scope's agent.
+const worker_host = @import("html").worker_host;
 
 pub const State = SharedWorkerGlobalScope.State;
 
@@ -30,78 +33,55 @@ pub const ImplError = error{
     WorkerClosed,
 };
 
-/// Internal state for SharedWorkerGlobalScope implementation
-///
-/// Contains a reference to the backing SharedWorker.
+/// The scope's own state.
 pub const InternalState = struct {
-    /// Reference to the shared worker (not owned)
-    shared_worker: ?*InternalSharedWorker = null,
+    /// HTML: the global scope's name - options["name"] of the SharedWorker
+    /// that started the worker ("run a worker" step 8). OWNED.
+    name: []const u8,
 
-    /// Worker name
-    name: []const u8 = "",
-
-    /// Allocator used for this state
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState) void {
-        // We don't own the shared_worker, so don't deinit it
-        _ = self;
+        self.allocator.free(self.name);
     }
 };
 
-/// Initialize instance (creates the instance)
+/// Initialize instance.
+///
+/// Chains to WorkerGlobalScope, and so to EventTarget. When `ctx` is the realm
+/// of a worker the host is running, the scope takes that worker's name.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    const instance = try WorkerGlobalScopeImpl.init(allocator, StateType, vtable, ctx);
+    errdefer WorkerGlobalScopeImpl.deinit(instance);
+    if (worker_host.scopeSettings(ctx)) |settings| {
+        const internal_state = try allocator.create(InternalState);
+        errdefer allocator.destroy(internal_state);
+        internal_state.* = .{
+            .name = try allocator.dupe(u8, settings.name),
+            .allocator = allocator,
+        };
+        instance.getState(State).own._internal = internal_state;
+    }
     return instance;
 }
 
-/// Initialize with a backing shared worker
-pub fn initWithWorker(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-    shared_worker: *InternalSharedWorker,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    // Create internal state
-    const internal_state = try allocator.create(InternalState);
-    internal_state.* = .{
-        .shared_worker = shared_worker,
-        .name = shared_worker.getName(),
-        .allocator = allocator,
-    };
-
-    // Store internal state
-    var state = instance.getState(State);
-    state.own._internal = internal_state;
-
-    return instance;
-}
-
-/// Deinitialize instance
+/// Deinitialize instance.
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+    WorkerGlobalScopeImpl.deinit(instance);
 }
 
-/// Getter for name
-///
-/// Spec: HTML Standard § 10.2.4.2
-/// "The name attribute must return the SharedWorkerGlobalScope object's name."
-/// This is the name provided in the SharedWorker constructor.
-/// Note: Returns owned DOMString - interface layer will free after V8 conversion.
+/// Getter for name: "The name getter steps are to return this's name."
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
@@ -110,80 +90,26 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return runtime.DOMString.initEmpty();
 }
 
+// Event handler IDL attribute (HTML §8.1.8.1): its value lives in
+// EventTarget's event handler map, where the host's `connect` event finds it.
+
 /// Getter for onconnect
-///
-/// Spec: HTML Standard § 10.2.4.2
-/// "The onconnect attribute is an event handler IDL attribute whose event handler
-/// event type is connect."
-/// This event fires when a new context connects to the shared worker.
 pub fn get_onconnect(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onconnect;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "connect");
 }
 
 /// Setter for onconnect
 pub fn set_onconnect(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onconnect = value;
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "connect", value);
 }
 
 /// Operation: close
 ///
-/// Spec: HTML Standard § 10.2.4.2 close()
-/// "The close() method, when invoked, must run these steps:
-/// 1. Discard any tasks that have been added to this's relevant agent's event loop's task queues.
-/// 2. Set this's closing flag to true."
+/// Spec: HTML Standard, SharedWorkerGlobalScope close(): "1. Discard any
+/// tasks that have been added to this's relevant agent's event loop's task
+/// queues. 2. Set this's closing flag to true." The worker host keeps the
+/// agent's event loop, so it runs both steps - and, the flag set, the scope
+/// is no longer found by a SharedWorker constructor.
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.shared_worker) |worker| {
-            worker.close();
-        }
-    }
-}
-
-/// Fire a connect event for a new connection
-///
-/// Spec: HTML Standard § 10.2.4.1 step 17
-/// "queue a global task on the DOM manipulation task source given
-/// workerGlobalScope to fire an event named connect at workerGlobalScope,
-/// using MessageEvent, with the data attribute initialized to the empty string,
-/// the ports attribute initialized to a new frozen array containing inside port..."
-///
-/// This is called when a new client connects to the shared worker.
-/// The inside port from the connection is passed in the event's ports array.
-pub fn fireConnectEvent(instance: *runtime.Instance, connection: *SharedWorkerConnection) void {
-    const state = instance.getState(State);
-
-    // Get the inside port from the connection
-    const inside_port = connection.getInsidePort();
-    if (inside_port == null) {
-        return; // No port to pass
-    }
-
-    // Check if onconnect handler is set
-    const handler = state.own.onconnect;
-    if (handler == null or handler.? == null) {
-        // No handler set, enable the port's queue anyway
-        // so messages aren't lost if handler is set later
-        inside_port.?.start();
-        return;
-    }
-
-    // In a full implementation, we would:
-    // 1. Create a MessageEvent
-    // 2. Set event.data = ""
-    // 3. Set event.ports = [inside_port]
-    // 4. Dispatch the event to the global scope
-    //
-    // For now, we just enable the port's queue so it can receive messages
-    inside_port.?.start();
-
-    // TODO: Actually dispatch the MessageEvent through the DOM event system
-    // This requires integration with the event loop and event dispatch mechanism
-}
-
-/// Get the inside port for a connection (for event dispatch)
-pub fn getInsidePort(_: *runtime.Instance, connection: *SharedWorkerConnection) ?*WorkerPort {
-    return connection.getInsidePort();
+    worker_host.closeScope(instance.ctx);
 }
