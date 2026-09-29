@@ -2363,9 +2363,9 @@ pub fn call_resizeBy(instance: *runtime.Instance, x: i32, y: i32) anyerror!void 
 /// Spec: HTML "window open steps"
 /// https://html.spec.whatwg.org/multipage/nav-history-apis.html#window-open-steps
 ///
-/// Deviation, stated: `_self`, `_parent` and `_top` return this window without
-/// navigating it - navigating the page a test runs in is not supported - so
-/// only a new or named navigable is navigated.
+/// `_self`, `_parent` and `_top` navigate the navigable they name (step 16.1)
+/// through dom.navigables, which for the top-level page runs what this engine
+/// can of "navigate" - a fragment navigation and the navigate event.
 pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) anyerror!?typedefs.WindowProxy {
     if ((getInternal(this) orelse return error.InvalidStateError).closed) return null;
     // Step 1: "If the event loop's termination nesting level is nonzero,
@@ -2405,6 +2405,17 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
         std.ascii.eqlIgnoreCase(target_str, "_parent") or
         std.ascii.eqlIgnoreCase(target_str, "_top"))
     {
+        // Step 16.1: "If urlRecord is not null, then navigate targetNavigable
+        // to urlRecord using sourceDocument". The navigable containers
+        // install the navigation; a page with none makes one to install it.
+        if (url_record) |u| {
+            const navigables = @import("dom").navigables;
+            if (!navigables.isInstalled()) {
+                const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
+                installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+            }
+            navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .noopener = noopener });
+        }
         return if (noopener) null else getWindowProxy(instance);
     }
 
