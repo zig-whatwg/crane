@@ -341,7 +341,7 @@ test "a streamed transfer hands on its headers before its body, and its body as 
     const request = get(try urlFor(&url_buf, server, "/trickle/10"));
     var record: StreamRecord = .{};
     defer record.deinit();
-    _ = try scheduler.startStreaming(testing.allocator, &request, .{}, record.client());
+    _ = try scheduler.startStreaming(testing.allocator, &request, record.client());
 
     const longest = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &record);
 
@@ -371,7 +371,7 @@ test "a streamed transfer that fails after its headers ends in error" {
     const request = get(try urlFor(&url_buf, server, "/bad-chunk"));
     var record: StreamRecord = .{};
     defer record.deinit();
-    _ = try scheduler.startStreaming(testing.allocator, &request, .{}, record.client());
+    _ = try scheduler.startStreaming(testing.allocator, &request, record.client());
 
     _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &record);
 
@@ -390,7 +390,7 @@ test "a streamed transfer that never connects ends with no headers" {
     const request = get("http://127.0.0.1:9/");
     var record: StreamRecord = .{};
     defer record.deinit();
-    _ = try scheduler.startStreaming(testing.allocator, &request, .{}, record.client());
+    _ = try scheduler.startStreaming(testing.allocator, &request, record.client());
 
     _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &record);
 
@@ -436,7 +436,7 @@ test "a streamed transfer cancelled from its own head callback hears nothing mor
     var url_buf: [256]u8 = undefined;
     const request = get(try urlFor(&url_buf, server, "/trickle/5"));
     var canceller: Canceller = .{ .scheduler = &scheduler };
-    canceller.job = try scheduler.startStreaming(testing.allocator, &request, .{}, .{
+    canceller.job = try scheduler.startStreaming(testing.allocator, &request, .{
         .context = &canceller,
         .head = Canceller.head,
         .data = Canceller.data,
