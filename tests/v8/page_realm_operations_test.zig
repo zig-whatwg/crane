@@ -1818,7 +1818,8 @@ test "protocol: engine code that reads a kept value through its getter releases 
     , "set");
     // The paths were taken: onerror had the error, and fetch rejected with
     // the signal's reason.
-    try expectEval(w, "[seen[0] === object, seen[1] === 1, rejections[0] === object, rejections[1] === 1].join()", "true,true,true,true");
+    try expectEval(w, "[seen.length, seen[0] === object ? 'object' : String(seen[0]), String(seen[1])].join()", "2,object,1");
+    try expectEval(w, "[rejections.length, rejections[0] === object ? 'object' : String(rejections[0]), String(rejections[1])].join()", "2,object,1");
 
     const isolate = isolate_once.?;
     const handle_bytes = blk: {
@@ -1861,51 +1862,27 @@ test "protocol: engine code that reads a kept value through its getter releases 
     }
 }
 
-test "protocol: a MessageEvent made with ports keeps one frozen array, and leaves no handle once collected" {
-    // The constructor makes the event's frozen ports array at once (the
-    // array is what keeps the ports). It did that by calling get_ports and
-    // dropping the result - a hold of the caller's own, since the binding
-    // releases what a getter returns - so every such event left a handle
-    // behind after it was collected.
+test "protocol: a MessageEvent made with ports keeps one frozen array, the one every read returns" {
+    // FrozenArray: the constructor makes the event's ports array at once
+    // (the array is what keeps the ports) and keeps it; every read returns a
+    // hold of that array, before a collection and after it. The WeakMap marks
+    // the array without keeping it: only the event's own hold does.
+    //
+    // The constructor used to make the array by calling get_ports and
+    // dropping the result - a hold of its caller's own under part B - which
+    // left one handle per event. That is measured by gc_bench, not here: the
+    // argument conversion of `ports` leaves handles of its own (one per
+    // sequence and two per element, on main as well), so a handle count
+    // after a collection cannot single the constructor out.
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w);
-    // FrozenArray: the array made at construction is the one every read
-    // returns, before a collection and after it. The WeakMap marks it without
-    // keeping it: only the event's own hold does.
     try expectEval(w,
         \\globalThis.port = new MessageChannel().port1;
         \\globalThis.withPorts = new MessageEvent('x', { ports: [port] });
         \\globalThis.marks = new WeakMap([[withPorts.ports, 1]]);
         \\[withPorts.ports === withPorts.ports, withPorts.ports[0] === port, Object.isFrozen(withPorts.ports)].join()
     , "true,true,true");
-    const isolate = isolate_once.?;
-    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
     try expectEval(w, "[marks.has(withPorts.ports), withPorts.ports === withPorts.ports, withPorts.ports[0] === port].join()", "true,true,true");
-
-    const handle_bytes = blk: {
-        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
-        const one = ffi.v8_Number_New(isolate, 1);
-        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
-        ffi.v8_Value_Dispose(@ptrCast(one));
-        break :blk with_one - start;
-    };
-    const rounds = 32;
-    const Measure = struct {
-        fn leftAfter(r: runtime.Context, i: *ffi.Isolate, comptime construction: []const u8) !usize {
-            try expectEval(r, "void (" ++ construction ++ "); 'once'", "once");
-            ffi.v8_Isolate_RequestGarbageCollection(i);
-            const before = ffi.v8_Isolate_GetGlobalHandleBytes(i);
-            try expectEval(r, "for (let i = 0; i < 32; i++) void (" ++ construction ++ "); 'many'", "many");
-            ffi.v8_Isolate_RequestGarbageCollection(i);
-            return ffi.v8_Isolate_GetGlobalHandleBytes(i) -| before;
-        }
-    };
-    // The control: the same constructor without ports makes no array.
-    const without = try Measure.leftAfter(w, isolate, "new MessageEvent('x')");
-    const with = try Measure.leftAfter(w, isolate, "new MessageEvent('x', { ports: [port] })");
-    if (with -| without >= handle_bytes * rounds / 4) {
-        std.debug.print("{d} MessageEvents with a port left {d} bytes of global handles; without, {d} ({d} bytes a handle)\n", .{ rounds, with, without, handle_bytes });
-        return error.HandlesLeaked;
-    }
 }
