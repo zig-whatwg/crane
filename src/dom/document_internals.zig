@@ -30,6 +30,8 @@ const impls = @import("impls");
 const DocumentImpl = impls.Document;
 pub const InternalState = DocumentImpl.InternalState;
 pub const DocType = DocumentImpl.DocType;
+/// The document mode (DOM): "no-quirks", "quirks" or "limited-quirks".
+pub const Mode = @FieldType(InternalState, "mode");
 pub const SpeculationEagerness = DocumentImpl.SpeculationEagerness;
 
 // =============================================================================
@@ -51,6 +53,19 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn setDocumentType(instance: *runtime.Instance, doc_type: DocType) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.doc_type = doc_type;
+}
+
+/// Set the document's mode (DOM "document mode"): the HTML parser's "initial"
+/// insertion mode sets it from the DOCTYPE, or to quirks without one.
+pub fn setMode(instance: *runtime.Instance, mode: Mode) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    internal.mode = mode;
+}
+
+/// The document's mode.
+pub fn getMode(instance: *runtime.Instance) ?Mode {
+    const internal = getInternal(instance) orelse return null;
+    return internal.mode;
 }
 
 /// Set the content type (e.g., "text/html", "application/xml")

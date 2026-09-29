@@ -11,7 +11,7 @@
 //! algorithm runs every installed set. The same shape as `mutation.zig`'s
 //! insertion-steps registry.
 //!
-//! lint-impls: hook for HTMLScriptElement
+//! lint-impls: hook for HTMLScriptElement, Document
 
 const std = @import("std");
 const runtime = @import("runtime");

@@ -72,6 +72,19 @@ pub const DocType = enum {
     xml,
 };
 
+/// A document's mode.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-document-mode
+/// "Each document has an associated ... mode ("no-quirks", "quirks", or
+///  "limited-quirks")." "Unless stated otherwise, a document's ... mode is
+///  "no-quirks"." Limited-quirks is recorded although nothing here reads it
+///  yet: a CSS or layout host does.
+pub const Mode = enum {
+    no_quirks,
+    quirks,
+    limited_quirks,
+};
+
 /// Speculation rule eagerness levels
 /// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rule-eagerness
 pub const SpeculationEagerness = enum {
@@ -103,6 +116,10 @@ pub const InternalState = struct {
 
     /// Document type: html or xml
     doc_type: DocType,
+
+    /// The document's mode (DOM): set by the HTML parser's "initial"
+    /// insertion mode, by document.open(), and by the Document's creator.
+    mode: Mode = .no_quirks,
 
     /// Document URL
     /// Stored as owned slice
@@ -624,8 +641,23 @@ pub fn init(
         .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
     });
     @import("dom").document_origin.install(.{ .domain = &originDomain });
+    // A clone of a Document keeps its mode. Installed here, before any
+    // Document exists to be cloned.
+    @import("dom").cloning_steps.install(&cloningSteps);
 
     return instance;
+}
+
+/// DOM "clone a single node" step 3.1, for a Document: "set copy's encoding,
+/// content type, URL, origin, type, and mode to those of node". This copies
+/// the mode; the rest are Node.zig's stated deviation. (Installed through
+/// dom.cloning_steps, as Node's clone algorithm may not reach Document's
+/// state; a no-op for any other node.)
+fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool) anyerror!void {
+    _ = subtree;
+    const source = getInternal(node) orelse return;
+    const target = getInternal(copy) orelse return;
+    target.mode = source.mode;
 }
 
 /// Get Document's internal state from the registry
@@ -808,10 +840,10 @@ pub fn get_documentURI(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// DOM §4.6 - Returns "BackCompat" if quirks mode, "CSS1Compat" otherwise
 /// For now, always return "CSS1Compat" (standards mode)
 pub fn get_compatMode(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    // TODO: Track quirks mode flag in InternalState
-    // Return interned string - no allocation needed
-    return runtime.DOMString.initInterned("CSS1Compat");
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // HTML: "1. If this is in quirks mode, then return "BackCompat".
+    // 2. Return "CSS1Compat"." (Limited-quirks is "CSS1Compat".)
+    return runtime.DOMString.initInterned(if (internal.mode == .quirks) "BackCompat" else "CSS1Compat");
 }
 
 /// Getter for characterSet
@@ -2466,6 +2498,9 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Step 13: "Set document's is initial about:blank to false."
     internal.is_initial_about_blank = false;
 
+    // Step 15: "Set document to no-quirks mode."
+    internal.mode = .no_quirks;
+
     // Step 16: Create new HTML parser (script-created)
     internal.is_script_created_parser = true;
 
@@ -3868,6 +3903,9 @@ fn lifecycleIsInitialAboutBlank(document: *runtime.Instance) bool {
 fn lifecycleMarkInitialAboutBlank(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     internal.is_initial_about_blank = true;
+    // "Create a new browsing context and document" step 15: the document's
+    // mode is "quirks".
+    internal.mode = .quirks;
     internal.completely_loaded = true;
     // "Current document readiness" is initially "complete" (HTML §3.1.1);
     // only "create and initialize a Document object" - navigation - makes

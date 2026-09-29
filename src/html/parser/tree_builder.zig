@@ -552,6 +552,15 @@ pub const TreeBuilder = struct {
     /// holds only the root. Null for a document parse.
     fragment_context: ?*TreeNode = null,
 
+    /// The document is an iframe srcdoc document - one whose URL matches
+    /// about:srcdoc - which the "initial" insertion mode never puts in quirks
+    /// or limited-quirks mode. Set by the parser's creator.
+    iframe_srcdoc: bool = false,
+
+    /// The parser set the document's mode (`quirks_mode`): the Document the
+    /// DOM adapter builds takes it. Called with `dom_adapter_context`.
+    dom_adapter_on_mode_set: ?*const fn (QuirksMode, ?*anyopaque) void = null,
+
     /// Input stream manager for document.write() support.
     ///
     /// HTML Standard §13.2.3: When document.write() is called during parsing,
@@ -656,6 +665,12 @@ pub const TreeBuilder = struct {
         self.dom_adapter_on_node_created = on_node_created;
         self.dom_adapter_on_child_appended = on_child_appended;
         self.dom_adapter_on_text_content_changed = on_text_content_changed;
+    }
+
+    /// Set the adapter's mode callback (see `dom_adapter_on_mode_set`); it
+    /// shares `dom_adapter_context`.
+    pub fn setDomAdapterModeCallback(self: *TreeBuilder, on_mode_set: ?*const fn (QuirksMode, ?*anyopaque) void) void {
+        self.dom_adapter_on_mode_set = on_mode_set;
     }
 
     /// Set the adapter's attribute-added callback (see
@@ -1395,76 +1410,34 @@ pub const TreeBuilder = struct {
             callback(self.document, doctype_node, self.dom_adapter_context);
         }
 
-        // Set quirks mode based on DOCTYPE
-        if (!self.parser_cannot_change_mode) {
-            if (doctype.force_quirks) {
-                self.quirks_mode = .quirks;
-            } else if (self.shouldSetQuirksMode(name, public_id, system_id)) {
-                self.quirks_mode = .quirks;
-            } else if (self.shouldSetLimitedQuirksMode(public_id, system_id)) {
-                self.quirks_mode = .limited_quirks;
-            }
+        // "Then, if the document is not an iframe srcdoc document, and the
+        // parser cannot change the mode flag is false, and the DOCTYPE token
+        // matches one of the conditions in the following list, then set the
+        // Document to quirks mode ... Otherwise, if ... limited-quirks mode".
+        // No-quirks is set too: it is the default, but a Document the parser
+        // is handed may not be fresh.
+        if (!self.iframe_srcdoc and !self.parser_cannot_change_mode) {
+            self.setDocumentMode(doctypeMode(name, public_id, system_id, doctype.force_quirks));
         }
 
         // Switch to "before html" mode
         self.insertion_mode = .before_html;
     }
 
-    fn shouldSetQuirksMode(self: *TreeBuilder, name: ?[]const u8, public_id: ?[]const u8, system_id: ?[]const u8) bool {
-        _ = self;
-        // Check name
-        if (name) |n| {
-            if (!std.ascii.eqlIgnoreCase(n, "html")) return true;
-        } else {
-            return true;
-        }
-
-        // Check system identifier
-        if (system_id) |sid| {
-            if (std.ascii.eqlIgnoreCase(sid, "http://www.ibm.com/data/dtd/v11/ibmxhtml1-transitional.dtd")) {
-                return true;
-            }
-        }
-
-        // Check public identifier (simplified - full list is very long)
-        if (public_id) |pid| {
-            const quirks_prefixes = [_][]const u8{
-                "-//W3O//DTD W3 HTML Strict 3.0//EN//",
-                "HTML",
-                "-//IETF//DTD HTML",
-                "-//W3C//DTD HTML 3",
-                "-//W3C//DTD HTML 4.0 Frameset//",
-                "-//W3C//DTD HTML 4.0 Transitional//",
-            };
-            for (quirks_prefixes) |prefix| {
-                if (std.ascii.startsWithIgnoreCase(pid, prefix)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    fn shouldSetLimitedQuirksMode(self: *TreeBuilder, public_id: ?[]const u8, system_id: ?[]const u8) bool {
-        _ = self;
-        _ = system_id;
-        if (public_id) |pid| {
-            if (std.ascii.startsWithIgnoreCase(pid, "-//W3C//DTD XHTML 1.0 Frameset//") or
-                std.ascii.startsWithIgnoreCase(pid, "-//W3C//DTD XHTML 1.0 Transitional//"))
-            {
-                return true;
-            }
-        }
-        return false;
+    /// Set the document's mode: the tree builder's copy, and the Document
+    /// the DOM adapter builds.
+    fn setDocumentMode(self: *TreeBuilder, mode: QuirksMode) void {
+        self.quirks_mode = mode;
+        if (self.dom_adapter_on_mode_set) |callback| callback(mode, self.dom_adapter_context);
     }
 
     fn handleInitialAnythingElse(self: *TreeBuilder, token: Token) void {
-        // Parse error if not iframe srcdoc
-        self.reportError(.missing_doctype_name);
-        // Set quirks mode
-        if (!self.parser_cannot_change_mode) {
-            self.quirks_mode = .quirks;
+        // "If the document is not an iframe srcdoc document, then this is a
+        // parse error; if the parser cannot change the mode flag is false, set
+        // the Document to quirks mode."
+        if (!self.iframe_srcdoc) {
+            self.reportError(.missing_doctype_name);
+            if (!self.parser_cannot_change_mode) self.setDocumentMode(.quirks);
         }
         // Switch to "before html" and reprocess
         self.insertion_mode = .before_html;
@@ -4315,6 +4288,112 @@ pub const TreeBuilder = struct {
 // =========================================================================
 
 /// Check if character is HTML whitespace.
+/// The document mode a DOCTYPE token sets in the "initial" insertion mode:
+/// quirks if it matches the first list, limited-quirks if it matches the
+/// second, no-quirks otherwise. Identifiers compare ASCII case-insensitively;
+/// "A system identifier whose value is the empty string is not considered
+/// missing." (The name is compared as the tokenizer left it, lowercased.)
+///
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
+pub fn doctypeMode(name: ?[]const u8, public_id: ?[]const u8, system_id: ?[]const u8, force_quirks: bool) QuirksMode {
+    if (force_quirks) return .quirks;
+    const n = name orelse return .quirks;
+    if (!std.mem.eql(u8, n, "html")) return .quirks;
+
+    if (public_id) |pid| {
+        for (quirks_public_ids) |exact| {
+            if (std.ascii.eqlIgnoreCase(pid, exact)) return .quirks;
+        }
+    }
+    if (system_id) |sid| {
+        if (std.ascii.eqlIgnoreCase(sid, "http://www.ibm.com/data/dtd/v11/ibmxhtml1-transitional.dtd")) return .quirks;
+    }
+    if (public_id) |pid| {
+        for (quirks_public_id_prefixes) |prefix| {
+            if (std.ascii.startsWithIgnoreCase(pid, prefix)) return .quirks;
+        }
+        const html401 = std.ascii.startsWithIgnoreCase(pid, "-//W3C//DTD HTML 4.01 Frameset//") or
+            std.ascii.startsWithIgnoreCase(pid, "-//W3C//DTD HTML 4.01 Transitional//");
+        // "The system identifier is missing and the public identifier starts
+        // with" either 4.01 prefix: quirks. With a system identifier:
+        // limited-quirks.
+        if (html401 and system_id == null) return .quirks;
+        if (std.ascii.startsWithIgnoreCase(pid, "-//W3C//DTD XHTML 1.0 Frameset//") or
+            std.ascii.startsWithIgnoreCase(pid, "-//W3C//DTD XHTML 1.0 Transitional//"))
+        {
+            return .limited_quirks;
+        }
+        if (html401) return .limited_quirks;
+    }
+    return .no_quirks;
+}
+
+/// "The public identifier is set to:" - equal, not a prefix.
+const quirks_public_ids = [_][]const u8{
+    "-//W3O//DTD W3 HTML Strict 3.0//EN//",
+    "-/W3C/DTD HTML 4.0 Transitional/EN",
+    "HTML",
+};
+
+/// "The public identifier starts with:"
+const quirks_public_id_prefixes = [_][]const u8{
+    "+//Silmaril//dtd html Pro v0r11 19970101//",
+    "-//AS//DTD HTML 3.0 asWedit + extensions//",
+    "-//AdvaSoft Ltd//DTD HTML 3.0 asWedit + extensions//",
+    "-//IETF//DTD HTML 2.0 Level 1//",
+    "-//IETF//DTD HTML 2.0 Level 2//",
+    "-//IETF//DTD HTML 2.0 Strict Level 1//",
+    "-//IETF//DTD HTML 2.0 Strict Level 2//",
+    "-//IETF//DTD HTML 2.0 Strict//",
+    "-//IETF//DTD HTML 2.0//",
+    "-//IETF//DTD HTML 2.1E//",
+    "-//IETF//DTD HTML 3.0//",
+    "-//IETF//DTD HTML 3.2 Final//",
+    "-//IETF//DTD HTML 3.2//",
+    "-//IETF//DTD HTML 3//",
+    "-//IETF//DTD HTML Level 0//",
+    "-//IETF//DTD HTML Level 1//",
+    "-//IETF//DTD HTML Level 2//",
+    "-//IETF//DTD HTML Level 3//",
+    "-//IETF//DTD HTML Strict Level 0//",
+    "-//IETF//DTD HTML Strict Level 1//",
+    "-//IETF//DTD HTML Strict Level 2//",
+    "-//IETF//DTD HTML Strict Level 3//",
+    "-//IETF//DTD HTML Strict//",
+    "-//IETF//DTD HTML//",
+    "-//Metrius//DTD Metrius Presentational//",
+    "-//Microsoft//DTD Internet Explorer 2.0 HTML Strict//",
+    "-//Microsoft//DTD Internet Explorer 2.0 HTML//",
+    "-//Microsoft//DTD Internet Explorer 2.0 Tables//",
+    "-//Microsoft//DTD Internet Explorer 3.0 HTML Strict//",
+    "-//Microsoft//DTD Internet Explorer 3.0 HTML//",
+    "-//Microsoft//DTD Internet Explorer 3.0 Tables//",
+    "-//Netscape Comm. Corp.//DTD HTML//",
+    "-//Netscape Comm. Corp.//DTD Strict HTML//",
+    "-//O'Reilly and Associates//DTD HTML 2.0//",
+    "-//O'Reilly and Associates//DTD HTML Extended 1.0//",
+    "-//O'Reilly and Associates//DTD HTML Extended Relaxed 1.0//",
+    "-//SQ//DTD HTML 2.0 HoTMetaL + extensions//",
+    "-//SoftQuad Software//DTD HoTMetaL PRO 6.0::19990601::extensions to HTML 4.0//",
+    "-//SoftQuad//DTD HoTMetaL PRO 4.0::19971010::extensions to HTML 4.0//",
+    "-//Spyglass//DTD HTML 2.0 Extended//",
+    "-//Sun Microsystems Corp.//DTD HotJava HTML//",
+    "-//Sun Microsystems Corp.//DTD HotJava Strict HTML//",
+    "-//W3C//DTD HTML 3 1995-03-24//",
+    "-//W3C//DTD HTML 3.2 Draft//",
+    "-//W3C//DTD HTML 3.2 Final//",
+    "-//W3C//DTD HTML 3.2//",
+    "-//W3C//DTD HTML 3.2S Draft//",
+    "-//W3C//DTD HTML 4.0 Frameset//",
+    "-//W3C//DTD HTML 4.0 Transitional//",
+    "-//W3C//DTD HTML Experimental 19960712//",
+    "-//W3C//DTD HTML Experimental 970421//",
+    "-//W3C//DTD W3 HTML//",
+    "-//W3O//DTD W3 HTML 3.0//",
+    "-//WebTechs//DTD Mozilla HTML 2.0//",
+    "-//WebTechs//DTD Mozilla HTML//",
+};
+
 fn isHtmlWhitespace(char: u21) bool {
     return char == 0x09 or char == 0x0A or char == 0x0C or char == 0x0D or char == 0x20;
 }

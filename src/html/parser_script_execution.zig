@@ -263,6 +263,22 @@ pub fn domAdapterOnAttributeAdded(tree_node: *TreeNode, attr: *const TreeNode.At
     appendParsedAttribute(element, attr.*);
 }
 
+/// Static callback wrapper for the document mode the parser set: the Document
+/// takes it. Passed to tree_builder.setDomAdapterModeCallback().
+pub fn domAdapterOnModeSet(mode: html_core.parser.QuirksMode, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    document_internals.setMode(adapter.document, documentMode(mode)) catch {};
+}
+
+/// The DOM document mode for the parser's.
+pub fn documentMode(mode: html_core.parser.QuirksMode) document_internals.Mode {
+    return switch (mode) {
+        .no_quirks => .no_quirks,
+        .quirks => .quirks,
+        .limited_quirks => .limited_quirks,
+    };
+}
+
 // =============================================================================
 // DomTreeAdapter Integration
 // =============================================================================

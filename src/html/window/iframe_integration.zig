@@ -972,7 +972,7 @@ pub const IFrameIntegration = struct {
         if (response.is_network_error) {
             if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(Origin.createOpaque());
             self.updateLocationUrl(url);
-            try self.commitHtmlDocument("");
+            _ = try self.commitHtmlDocument("");
             try self.recordCommit(url, "text/html");
             self.state = .ready;
             return;
@@ -1024,7 +1024,7 @@ pub const IFrameIntegration = struct {
         self.updateLocationUrl(final_url);
 
         switch (kind) {
-            .html => try self.commitHtmlDocument(body),
+            .html => _ = try self.commitHtmlDocument(body),
             .text => try self.commitTextDocument(body),
             .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed)),
             .xml => try self.commitXmlDocument(),
@@ -1072,7 +1072,7 @@ pub const IFrameIntegration = struct {
         self.state = .navigating;
         if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(origin);
         self.updateLocationUrl(url);
-        try self.commitHtmlDocument(html);
+        _ = try self.commitHtmlDocument(html);
         try self.recordCommit(url, "text/html");
         self.state = .ready;
     }
@@ -1102,14 +1102,14 @@ pub const IFrameIntegration = struct {
         return self.loaded_url;
     }
 
-    /// "Loading an HTML document": hand the bytes to the HTML parser.
-    fn commitHtmlDocument(self: *IFrameIntegration, content: []const u8) IFrameError!void {
+    /// "Loading an HTML document": hand the bytes to the HTML parser. The
+    /// document it made, when the parse callback returned one.
+    fn commitHtmlDocument(self: *IFrameIntegration, content: []const u8) IFrameError!?*anyopaque {
         // The parse callback runs the scripted parser against the iframe's own
         // realm, so scripts in the loaded document see its DOM.
         if (self.parse_html_callback) |parse_html| {
             if (self.browsing_context) |ctx| {
-                _ = parse_html(self.runtime_context, ctx, content);
-                return;
+                return parse_html(self.runtime_context, ctx, content);
             }
         }
 
@@ -1130,6 +1130,7 @@ pub const IFrameIntegration = struct {
         }
 
         self.executeScriptsInTree(tree_builder.document);
+        return null;
     }
 
     /// The markup `commitTextDocument` feeds the HTML parser.
@@ -1215,7 +1216,19 @@ pub const IFrameIntegration = struct {
             return IFrameError.OutOfMemory;
         };
         defer self.allocator.free(markup);
-        try self.commitHtmlDocument(markup);
+        // Steps 2-3: "Set document's parser cannot change the mode flag to
+        // true. Set document's mode to "no-quirks"." Here the mode is set
+        // after the parse instead: the synthesised markup has no DOCTYPE, so
+        // the parse picks quirks, but nothing in it runs script, so no one can
+        // observe the mode before this - the same as the parser cannot change
+        // the mode flag keeping no-quirks throughout.
+        const document = try self.commitHtmlDocument(markup);
+        if (document) |doc| setNoQuirks(doc);
+    }
+
+    /// Set the document the parse made to no-quirks mode.
+    fn setNoQuirks(document: *anyopaque) void {
+        @import("dom").document_internals.setMode(@ptrCast(@alignCast(document)), .no_quirks) catch {};
     }
 
     /// "Loading a media document" - HTML Standard §7.5.6.
@@ -1232,7 +1245,11 @@ pub const IFrameIntegration = struct {
             return IFrameError.OutOfMemory;
         };
         defer self.allocator.free(markup);
-        try self.commitHtmlDocument(markup);
+        // Step 2: "Set document's mode to "no-quirks"." Nothing in the
+        // synthesised markup runs script, so setting it after the parse, which
+        // (with no DOCTYPE) chose quirks, is the mode ever seen.
+        const document = try self.commitHtmlDocument(markup);
+        if (document) |doc| setNoQuirks(doc);
     }
 
     /// "Loading an XML document" - HTML Standard §7.5.3.
