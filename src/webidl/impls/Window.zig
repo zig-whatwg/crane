@@ -2087,29 +2087,62 @@ pub fn call_matchMedia(instance: *runtime.Instance, query: typedefs.CSSOMString)
     return error.NotImplemented;
 }
 
-/// Operation: scroll
-/// Per CSSOM View: Scrolls to a particular position.
+/// Operation: scroll(options)
+/// CSSOM View: "1. If invoked with one argument: ... Normalize non-finite
+/// values for left and top dictionary members of options, if present. Let x
+/// be the value of the left dictionary member of options, if present, or the
+/// viewport's current scroll position on the x axis otherwise. Let y be [the
+/// same for top]" - then scroll the viewport to (x, y) and return a promise
+/// that settles when the scroll completes.
+///
+/// Stated: layout is the host's, so no scrolling area bounds the position
+/// here beyond its origin, and every scroll is instant - the promise is
+/// already resolved.
 pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
+    const opts: dictionaries.ScrollToOptions = if (options.wasPassed()) options.getValue() else .{};
+    return scrollViewportTo(instance, opts.left, opts.top);
+}
+
+/// Operation: scroll(x, y)
+/// CSSOM View: "2. If invoked with two arguments: ... Let x and y be the
+/// arguments, respectively. Normalize non-finite values for x and y. Let the
+/// left dictionary member of options have the value x. Let the top
+/// dictionary member of options have the value y."
+pub fn call_scroll__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+    return scrollViewportTo(instance, x, y);
+}
+
+/// Operation: scrollTo(options) - "When the scrollTo() method is invoked,
+/// the user agent must act as if the scroll() method was invoked with the
+/// same arguments."
+pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
+    return call_scroll(instance, options);
+}
+
+/// Operation: scrollTo(x, y) - as scroll(x, y).
+pub fn call_scrollTo__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+    return call_scroll__1(instance, x, y);
+}
+
+/// CSSOM View "normalize non-finite values": NaN and the infinities become
+/// 0.
+fn normalizeNonFinite(value: f64) f64 {
+    return if (std.math.isFinite(value)) value else 0;
+}
+
+/// scroll()'s steps from x and y (null: the current position on that axis):
+/// the viewport's scroll position becomes (x, y), and the result is a
+/// promise resolved in the current realm.
+fn scrollViewportTo(instance: *runtime.Instance, left: ?f64, top: ?f64) !runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return error.NotImplemented;
+    // A window whose navigable has gone has no viewport: "If there is no
+    // viewport, return a resolved Promise and abort the remaining steps."
+    if (!internal.closed) {
+        if (left) |x| internal.scroll_x = @max(0, normalizeNonFinite(x));
+        if (top) |y| internal.scroll_y = @max(0, normalizeNonFinite(y));
     }
-
-    // Apply scroll options if provided
-    if (options.wasPassed()) {
-        const opts = options.getValue();
-        if (opts.left) |left| {
-            internal.scroll_x = left;
-        }
-        if (opts.top) |top| {
-            internal.scroll_y = top;
-        }
-        // TODO: Handle behavior (smooth vs instant) from opts.base.behavior
-    }
-
-    return error.NotImplemented;
+    const realm = engine.currentRealm() orelse instance.ctx;
+    return (try engine.createResolvedPromise(realm, runtime.JSValue.jsUndefined)).take();
 }
 
 /// Operation: resizeTo
@@ -2157,29 +2190,31 @@ pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(
     return error.NotImplemented;
 }
 
-/// Operation: scrollBy
-/// Per CSSOM View: Scrolls by a given amount.
+/// Operation: scrollBy(options)
+/// CSSOM View: "2. Normalize non-finite values for the left and top
+/// dictionary members of options. 3. Add the value of scrollX to the left
+/// dictionary member. 4. Add the value of scrollY to the top dictionary
+/// member. 5. Act as if the scroll() method was invoked with options as the
+/// only argument, and return the resulting promise." An absent member is 0
+/// by then: the WebIDL default of neither is given, and adding the current
+/// position to it scrolls nowhere on that axis.
 pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
+    const opts: dictionaries.ScrollToOptions = if (options.wasPassed()) options.getValue() else .{};
+    return scrollViewportBy(instance, opts.left orelse 0, opts.top orelse 0);
+}
+
+/// Operation: scrollBy(x, y)
+/// CSSOM View: "1. If invoked with two arguments: ... Let x and y be the
+/// arguments, respectively. Normalize non-finite values for x and y. Let the
+/// left dictionary member of options have the value x. Let the top
+/// dictionary member of options have the value y." Then as scrollBy(options).
+pub fn call_scrollBy__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+    return scrollViewportBy(instance, x, y);
+}
+
+fn scrollViewportBy(instance: *runtime.Instance, dx: f64, dy: f64) !runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return error.NotImplemented;
-    }
-
-    // Apply scroll delta if provided
-    if (options.wasPassed()) {
-        const opts = options.getValue();
-        if (opts.left) |left| {
-            internal.scroll_x += left;
-        }
-        if (opts.top) |top| {
-            internal.scroll_y += top;
-        }
-        // TODO: Handle behavior (smooth vs instant) from opts.base.behavior
-    }
-
-    return error.NotImplemented;
+    return scrollViewportTo(instance, internal.scroll_x + normalizeNonFinite(dx), internal.scroll_y + normalizeNonFinite(dy));
 }
 
 /// Operation: releaseEvents
@@ -2735,12 +2770,6 @@ pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
     internal.screen_y = y;
 
     // TODO: Notify platform to actually move the window
-}
-
-/// Operation: scrollTo
-/// Per CSSOM View: Same as scroll() - scrolls to a particular position.
-pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
-    return call_scroll(instance, options);
 }
 
 /// Operation: prompt
