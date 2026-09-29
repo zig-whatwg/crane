@@ -259,11 +259,11 @@ fn isWindowOwned(instance: *runtime.Instance) bool {
 /// An allowlist, and only of the classes built on the `impls/streams_*.zig`
 /// ownership rules: their teardown touches nothing but their own slots, so
 /// the realm's sweep can free them in any order. The list itself is
-/// streams_js.streams_graph_classes.
+/// runtime.streams_graph.streams_graph_classes.
 pub fn isStreamsGraphObject(name: []const u8) bool {
-    // One list, on the impls side: streams_js.Realm.wrap takes only these,
+    // One list, in the runtime tier: streams_js.Realm.wrap takes only these,
     // because only these are held here.
-    return @import("impls").Response.streams_js.isStreamsGraphObject(name);
+    return runtime.streams_graph.isStreamsGraphObject(name);
 }
 
 /// Which node wrappers V8 may collect. WebKit keeps a node's wrapper alive for

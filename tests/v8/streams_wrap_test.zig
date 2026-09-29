@@ -6,7 +6,7 @@
 //! AbortController and cloned the result a step later; a collection in
 //! between freed the AbortController (the worker variant of
 //! encoding/streams/decode-bad-chunks.any.js crashed). Now wrap refuses
-//! anything outside the one allowlist the wrapper cache also reads.
+//! anything outside runtime.streams_graph, the list the wrapper cache also reads.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -15,15 +15,8 @@ const interfaces = @import("interfaces");
 const js = @import("impls").Response.streams_js;
 const ffi = v8.ffi;
 
-test "the streams-graph allowlist: streams classes in, weak classes out" {
-    for (js.streams_graph_classes) |name| try std.testing.expect(js.isStreamsGraphObject(name));
-    for ([_][]const u8{ "AbortController", "AbortSignal", "TextDecoderStream", "TextEncoderStream", "Window", "Event", "" }) |name| {
-        try std.testing.expect(!js.isStreamsGraphObject(name));
-    }
-}
-
-test "the wrapper cache reads the same allowlist" {
-    for (js.streams_graph_classes) |name| try std.testing.expect(v8.wrapper_cache_mod.isStreamsGraphObject(name));
+test "the wrapper cache reads the runtime's streams graph" {
+    for (runtime.streams_graph.streams_graph_classes) |name| try std.testing.expect(v8.wrapper_cache_mod.isStreamsGraphObject(name));
     for ([_][]const u8{ "AbortController", "AbortSignal", "Node", "" }) |name| {
         try std.testing.expect(!v8.wrapper_cache_mod.isStreamsGraphObject(name));
     }
