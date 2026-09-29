@@ -30,6 +30,7 @@ pub const Implementation = struct {
     destroy: *const fn (document: *runtime.Instance) void,
     set_about_base_url: *const fn (document: *runtime.Instance, url: ?[]const u8) void,
     about_fallback_base_url: *const fn (document: *runtime.Instance) ?[]const u8,
+    declarative_refresh: *const fn (document: *runtime.Instance, input: []const u8, meta: ?*runtime.Instance) void,
 };
 
 /// The "steps to fire beforeunload" result that navigation reads: whether the
@@ -141,6 +142,16 @@ pub fn aboutFallbackBaseUrl(document: *runtime.Instance) ?[]const u8 {
     return impl.about_fallback_base_url(document);
 }
 
+/// HTML "shared declarative refresh steps" given `document`, `input` - a
+/// meta refresh's content value, or a `Refresh` header's - and, for the
+/// meta element's pragma, `meta`: once the refresh has come due,
+/// `document`'s node navigable is navigated. "Will declaratively refresh"
+/// is the document's, so only its first refresh counts.
+pub fn declarativeRefresh(document: *runtime.Instance, input: []const u8, meta: ?*runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.declarative_refresh(document, input, meta);
+}
+
 test "without an installed implementation nothing is asked of a document" {
     const std = @import("std");
     const saved = implementation;
@@ -155,6 +166,7 @@ test "without an installed implementation nothing is asked of a document" {
     unload(&document);
     destroy(&document);
     setAboutBaseUrl(&document, "http://x.test/");
+    declarativeRefresh(&document, "0; url=http://x.test/", null);
     // The answers that let a caller go on: a document nobody can ask about
     // is loaded, is no initial about:blank, is not unloading, and nobody
     // cancels leaving it.
