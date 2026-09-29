@@ -427,4 +427,13 @@ pub const JointHistory = struct {
         }
         return null;
     }
+
+    /// An entry of `navigable` whose navigation API key is `key`, if the
+    /// history still has one.
+    pub fn entryByKey(self: *JointHistory, navigable: u64, key: *const [36]u8) ?*Entry {
+        for (self.entries.items) |*entry| {
+            if (entry.navigable == navigable and std.mem.eql(u8, &entry.api_key, key)) return entry;
+        }
+        return null;
+    }
 };

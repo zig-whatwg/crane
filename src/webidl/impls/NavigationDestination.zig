@@ -1,18 +1,13 @@
 //! Implementation for NavigationDestination interface
 //!
-//! HTML Standard §7.2.6.5 - The NavigationDestination interface
-//! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigationdestination
+//! HTML Standard §7.2.6.10.3 - The NavigationDestination interface
+//! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-navigationdestination-interface
 //!
-//! NavigationDestination represents the target of a navigation in the
-//! NavigateEvent. It provides information about where the navigation
-//! is going before it happens.
-//!
-//! ## Key Differences from NavigationHistoryEntry
-//!
-//! NavigationDestination is similar to NavigationHistoryEntry but:
-//! - Only exists during the navigate event (not persistent)
-//! - key/id may be null for new entries (push navigation)
-//! - getState() returns the state that WILL be set, not current state
+//! Where a navigation the navigate event reports is going: a URL, the
+//! NavigationHistoryEntry it is for a traversal (null otherwise), a
+//! navigation API state and whether it stays in the same document. The
+//! navigation API makes one per navigate event (dom.navigation_objects,
+//! which this installs); nothing else can.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -22,7 +17,11 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
+const engine = @import("engine");
+const dom = @import("dom");
+const joint_history = @import("html_core").navigation.joint_history;
+const same_object = @import("same_object.zig");
+const navigation_entries = @import("navigation_entries.zig");
 const NavigationDestination = interfaces.NavigationDestination;
 
 pub const State = NavigationDestination.State;
@@ -32,61 +31,29 @@ pub const ImplError = error{
     InvalidStateError,
 };
 
-/// Static sentinel for representing "undefined" return values.
-/// Used instead of null to provide a valid pointer that represents
-/// undefined/empty results from operations that return *const anyopaque.
-var undefined_sentinel: u8 = 0;
-
-/// Internal state for NavigationDestination implementation
+/// HTML "a NavigationDestination has an associated URL, entry, state and is
+/// same document".
 pub const InternalState = struct {
-    /// Allocator for this destination's resources
     allocator: Allocator,
+    url: []u8 = &.{},
+    /// The NavigationHistoryEntry, kept alive with this.
+    entry: ?*runtime.Instance = null,
+    entry_pin: same_object.Pin = .{},
+    state: joint_history.SerializedState = .null,
+    is_same_document: bool = false,
 
-    /// The destination URL
-    url: []const u8 = "",
-
-    /// The key of the destination entry (null for new entries)
-    key: ?[]const u8 = null,
-
-    /// The id of the destination entry (null for new entries)
-    id: ?[]const u8 = null,
-
-    /// The index of the destination entry (-1 for new entries)
-    index: i64 = -1,
-
-    /// Whether this is a same-document navigation
-    same_document: bool = false,
-
-    /// The state that will be set on the destination entry
-    state: ?*const anyopaque = null,
-
-    pub fn init(allocator: Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        if (self.url.len > 0) {
-            self.allocator.free(self.url);
-        }
-        if (self.key) |k| {
-            self.allocator.free(k);
-        }
-        if (self.id) |i| {
-            self.allocator.free(i);
-        }
+    fn deinit(self: *InternalState) void {
+        self.allocator.free(self.url);
+        self.entry_pin.release();
+        self.state.deinit(self.allocator);
     }
 };
 
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
-/// Initialize NavigationDestination instance
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -95,146 +62,111 @@ pub fn init(
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
-
-    // Initialize internal state
-    const state = instance.getState(StateType);
-    const ArenaAllocator = @import("runtime").ArenaAllocator;
-    const internal = try ArenaAllocator.get().create(InternalState);
-    internal.* = InternalState.init(allocator);
-    state.own._internal = internal;
-
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(StateType).own._internal = internal;
+    dom.navigation_objects.installDestinations(.{
+        .create = &create,
+        .set_url = &setUrl,
+        .set_state = &setState,
+        .entry = &entryOf,
+    });
     return instance;
 }
 
-/// Deinitialize NavigationDestination instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
-
-        // Return the block itself, not just what it points to.
-        // `internal.deinit()` releases the strings and lists the state
-        // OWNS; without this the state struct stays allocated for the
-        // life of the process - measured at 208 bytes per discarded
-        // element across the impls still doing it this way.
-        const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
+        internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
 // ============================================================================
-// Factory Functions
+// dom.navigation_objects
 // ============================================================================
 
-/// Create a NavigationDestination for a new entry (push navigation)
-pub fn createForNewEntry(
-    allocator: Allocator,
-    ctx: runtime.Context,
-    url: []const u8,
-    state_ptr: ?*const anyopaque,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &NavigationDestination.vtable, ctx);
-    errdefer deinit(instance);
-
+/// "Let destination be a new NavigationDestination created in navigation's
+/// relevant realm", with its URL, entry, state and is same document.
+fn create(realm: runtime.Context, init_state: dom.navigation_objects.DestinationInit) anyerror!*runtime.Instance {
+    const instance = try interfaces.NavigationDestination.init(realm.allocator, realm);
+    errdefer runtime.Instance.deinit(instance);
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.url = try allocator.dupe(u8, url);
-    internal.state = state_ptr;
-    // key, id, and index are null/-1 for new entries
-    internal.index = -1;
-
+    internal.url = try internal.allocator.dupe(u8, init_state.url);
+    internal.state = try init_state.state.clone(internal.allocator);
+    internal.is_same_document = init_state.is_same_document;
+    if (init_state.entry) |entry| {
+        internal.entry = entry;
+        internal.entry_pin.hold(entry);
+    }
     return instance;
 }
 
-/// Create a NavigationDestination for an existing entry (traverse navigation)
-pub fn createForExistingEntry(
-    allocator: Allocator,
-    ctx: runtime.Context,
-    url: []const u8,
-    key: []const u8,
-    id: []const u8,
-    index: i64,
-    same_document: bool,
-    state_ptr: ?*const anyopaque,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &NavigationDestination.vtable, ctx);
-    errdefer deinit(instance);
-
+fn setUrl(instance: *runtime.Instance, url: []const u8) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    internal.url = try allocator.dupe(u8, url);
-    internal.key = try allocator.dupe(u8, key);
-    internal.id = try allocator.dupe(u8, id);
-    internal.index = index;
-    internal.same_document = same_document;
-    internal.state = state_ptr;
+    const copy = try internal.allocator.dupe(u8, url);
+    internal.allocator.free(internal.url);
+    internal.url = copy;
+}
 
-    return instance;
+fn setState(instance: *runtime.Instance, state: joint_history.SerializedState) anyerror!void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const copy = try state.clone(internal.allocator);
+    internal.state.deinit(internal.allocator);
+    internal.state = copy;
+}
+
+fn entryOf(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.entry;
 }
 
 // ============================================================================
-// Property Getters
+// Attributes
 // ============================================================================
 
-/// Getter for url
-/// HTML Standard §7.2.6.5: Returns the destination URL
+/// "The url getter steps are to return this's URL, serialized." A copy:
+/// the binding frees what a USVString getter returns.
 pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // USVString is just []const u8
-    return internal.url;
+    return instance.ctx.allocator.dupe(u8, internal.url);
 }
 
-/// Getter for key
-/// HTML Standard §7.2.6.5: Returns the key, or empty string for new entries
+/// "1. If this's entry is null, then return the empty string. 2. Return
+/// this's entry's key."
 pub fn get_key(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    if (internal.key) |k| {
-        return runtime.DOMString.initInterned(k);
-    }
-    // Return empty string for new entries
-    return runtime.DOMString.initInterned("");
+    const entry = internal.entry orelse return runtime.DOMString.initEmpty();
+    return interfaces.NavigationHistoryEntry.get_key(entry);
 }
 
-/// Getter for id
-/// HTML Standard §7.2.6.5: Returns the id, or empty string for new entries
+/// "1. If this's entry is null, then return the empty string. 2. Return
+/// this's entry's ID."
 pub fn get_id(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    if (internal.id) |i| {
-        return runtime.DOMString.initInterned(i);
-    }
-    // Return empty string for new entries
-    return runtime.DOMString.initInterned("");
+    const entry = internal.entry orelse return runtime.DOMString.initEmpty();
+    return interfaces.NavigationHistoryEntry.get_id(entry);
 }
 
-/// Getter for index
-/// HTML Standard §7.2.6.5: Returns the index, or -1 for new entries
+/// "1. If this's entry is null, then return −1. 2. Return this's entry's
+/// index."
 pub fn get_index(instance: *runtime.Instance) anyerror!i64 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.index;
+    const entry = internal.entry orelse return -1;
+    return interfaces.NavigationHistoryEntry.get_index(entry);
 }
 
-/// Getter for sameDocument
-/// HTML Standard §7.2.6.5: Returns true if this will be same-document navigation
+/// "The sameDocument getter steps are to return this's is same document."
 pub fn get_sameDocument(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.same_document;
+    return internal.is_same_document;
 }
 
-// ============================================================================
-// Operations
-// ============================================================================
-
-/// Operation: getState()
-/// HTML Standard §7.2.6.5: Returns the state that will be set on the entry
+/// "The getState() method steps are to return
+/// StructuredDeserialize(this's state)." A fresh value each call, made in
+/// the current realm.
 pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Return the state as JSValue, or undefined
-    // state is a stored V8 handle - use fromHandleNonOwning
-    if (internal.state) |state_ptr| {
-        return runtime.JSValue.fromHandleNonOwning(@constCast(state_ptr));
-    }
-    return runtime.JSValue.jsUndefined;
+    return (try navigation_entries.deserialize(engine.currentRealm() orelse instance.ctx, internal.state)).take();
 }

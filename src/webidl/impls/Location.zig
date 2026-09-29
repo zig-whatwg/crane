@@ -68,6 +68,8 @@ pub const ImplError = error{
 
 const html_core = @import("html_core");
 const navigate_steps = html_core.navigation.navigate_steps;
+const joint_history = html_core.navigation.joint_history;
+const dom = @import("dom");
 
 /// What "Location-object navigate" asks of the navigable's engine.
 pub const NavigateRequest = html_core.window.iframe_integration.NavigateRequest;
@@ -202,6 +204,9 @@ pub fn init(
         .allocator = allocator,
         .window = relevantWindow(ctx),
     };
+    // The hyperlinks and forms that choose the top-level page navigate it
+    // here.
+    @import("dom").top_level_navigation.install(.{ .navigate = &topLevelNavigateHook });
 
     // Initialize with default URL (about:blank)
     // Per spec, Location's URL should be the document's URL
@@ -662,33 +667,134 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     return locationObjectNavigate(internal, copy_url, .auto);
 }
 
-/// "Navigate" step 14 for the top-level page, whose Location has no
-/// navigable engine behind it: a URL that differs from the document's only
-/// in its fragment is a fragment navigation (HTML §7.4.2.3.3) - the
-/// document's URL changes now, and hashchange is queued if the fragment
-/// did. Anything else is not one, and false.
+/// HTML "navigate" for the top-level page, whose Location has no navigable
+/// engine behind it: `window`'s navigable, to `url` (serialized, absolute).
+/// This engine cannot replace the page's document, so what it runs is:
+/// history handling (steps 12-13), a fragment navigation (step 14, "navigate
+/// to a fragment"), and the navigate event before anything else (step 21) -
+/// a navigation it lets through that would make a new document ends there,
+/// error.NotImplemented.
 ///
-/// Not modelled, stated: the navigate event, the session history entry and
-/// scrolling.
-fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8, behavior: navigate_steps.HistoryBehavior) !bool {
-    const window = internal.window orelse return false;
-    const allocator = internal.allocator;
-    const document = interfaces.Window.get_document(window) catch return false;
-    const old_url = interfaces.Document.get_URL(document) catch return false;
-    defer document.ctx.allocator.free(old_url);
-    if (!navigate_steps.isFragmentNavigation(url, old_url, false)) return false;
+/// Not modelled, stated: source snapshot params and sandboxing (1-7), the
+/// ongoing navigation (19), javascript: URLs (20, NotImplemented).
+fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_level_navigation.Params) !void {
+    const document = interfaces.Window.get_document(window) catch return;
+    // Step 9: "If navigable's active document's unload counter is greater
+    // than 0 ... return."
+    if (dom.document_lifecycle.isUnloading(document)) return;
+    const allocator = window.ctx.allocator;
+    const document_url = interfaces.Document.get_URL(document) catch return;
+    defer document.ctx.allocator.free(document_url);
+    // Steps 12-13: history handling.
+    const handling = navigate_steps.resolveHistoryHandling(switch (params.history_behavior) {
+        .auto => .auto,
+        .push => .push,
+        .replace => .replace,
+    }, url, .{
+        .url = document_url,
+        .is_initial_about_blank = dom.document_lifecycle.isInitialAboutBlank(document),
+    }, sameOriginSource(params.source_document, document_url, allocator));
+
+    // Step 14: a fragment navigation.
+    if (navigate_steps.isFragmentNavigation(url, document_url, false)) {
+        return topLevelFragmentNavigation(window, url, document_url, handling, params);
+    }
+    // Step 20: javascript: URLs are not run here.
+    if (navigate_steps.isJavascript(url)) return error.NotImplemented;
+    // Step 21: the navigate event, for a navigation from a same-origin
+    // source to a fetch scheme, when the active document is not the initial
+    // about:blank.
+    if (sameOriginSource(params.source_document, document_url, allocator) and
+        !dom.document_lifecycle.isInitialAboutBlank(document) and
+        navigate_steps.isFetchScheme(url))
+    {
+        const continue_navigation = dom.navigation_api.firePushReplaceReload(window, .{
+            .navigation_type = if (handling == .push) .push else .replace,
+            .destination_url = url,
+            .is_same_document = false,
+            .user_involvement = params.user_involvement,
+            .source_element = params.source_element,
+            .navigation_api_state = params.navigation_api_state orelse .undefined,
+        });
+        // Canceled, or intercepted - which made it same-document.
+        if (!continue_navigation) return;
+    }
+    // A new document for the top-level page: not this engine's to make.
+    return error.NotImplemented;
+}
+
+/// dom.top_level_navigation: the page's hyperlinks and forms.
+fn topLevelNavigateHook(window: *runtime.Instance, url: []const u8, params: dom.top_level_navigation.Params) void {
+    topLevelNavigate(window, url, params) catch |err| {
+        log.debug("the top-level page cannot navigate to {s}: {s}", .{ url, @errorName(err) });
+    };
+}
+
+/// Whether `source` - navigate's sourceDocument - is same origin with the
+/// active document at `document_url` (step 12.1, step 21). By URL, as the
+/// navigable containers compare it; no source is the page itself.
+fn sameOriginSource(source: ?*runtime.Instance, document_url: []const u8, allocator: Allocator) bool {
+    const doc = source orelse return true;
+    const source_url = interfaces.Document.get_URL(doc) catch return true;
+    defer doc.ctx.allocator.free(source_url);
+    _ = allocator;
+    return std.mem.eql(u8, originPrefix(source_url), originPrefix(document_url));
+}
+
+/// "scheme://host[:port]" of a serialized URL, or the whole URL for one
+/// without an authority (whose origin is opaque or inherited: compared as is).
+fn originPrefix(url: []const u8) []const u8 {
+    const scheme = navigate_steps.schemeOf(url);
+    if (!std.mem.startsWith(u8, url[scheme.len..], "://")) return url;
+    const end = std.mem.indexOfAnyPos(u8, url, scheme.len + 3, "/?#") orelse url.len;
+    return url[0..end];
+}
+
+/// HTML "navigate to a fragment" (§7.4.2.3.3) for the top-level page: the
+/// navigate event first; then the document's URL changes now, the new entry
+/// is pushed or replaced, the navigation API's entries follow, and
+/// hashchange is queued if the fragment changed. Scrolling is not modelled
+/// (no layout), stated.
+fn topLevelFragmentNavigation(
+    window: *runtime.Instance,
+    url: []const u8,
+    old_url: []const u8,
+    handling: navigate_steps.HistoryHandling,
+    params: dom.top_level_navigation.Params,
+) !void {
+    const allocator = window.ctx.allocator;
+    const bc = html_core.window.BrowsingContext.ofWindow(@ptrCast(window));
+    // Steps 2-3: "Let destinationNavigationAPIState be navigable's active
+    // session history entry's navigation API state. If navigationAPIState is
+    // not null, then set destinationNavigationAPIState to navigationAPIState."
+    var destination_state: joint_history.SerializedState = .undefined;
+    defer destination_state.deinit(allocator);
+    if (params.navigation_api_state) |state| {
+        destination_state = try state.clone(allocator);
+    } else if (bc) |b| {
+        if (b.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
+            if (history.currentEntry(b.id)) |entry| destination_state = try entry.api_state.clone(allocator);
+        } else |_| {}
+    }
+    // Steps 4-5: "Let continue be the result of firing a push/replace/reload
+    // navigate event ... If continue is false, then return."
+    if (!dom.navigation_api.firePushReplaceReload(window, .{
+        .navigation_type = if (handling == .push) .push else .replace,
+        .destination_url = url,
+        .is_same_document = true,
+        .user_involvement = params.user_involvement,
+        .source_element = params.source_element,
+        .navigation_api_state = destination_state,
+    })) return;
 
     // Steps 6-13 and 17: the new entry on the same document, pushed or
-    // replacing the current one in the traversable's history ("navigate"
-    // steps 12-13 resolve "auto": a URL equal to the document's replaces).
-    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window))) |bc| {
-        const handling: html_core.navigation.joint_history.HistoryHandling = switch (behavior) {
-            .replace => .replace,
-            .push => .push,
-            .auto => if (std.mem.eql(u8, url, old_url)) .replace else .push,
-        };
-        if (bc.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
-            history.commitSameDocument(bc.id, url, .null, handling, null) catch {};
+    // replacing the current one in the traversable's history, with the
+    // destination's navigation API state and a null classic history API
+    // state.
+    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window))) |b| {
+        if (b.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
+            const api_state = destination_state.clone(allocator) catch null;
+            history.commitSameDocument(b.id, url, .null, if (handling == .push) .push else .replace, api_state) catch {};
         } else |_| {}
     }
 
@@ -696,23 +802,18 @@ fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8, behavio
     // with a window reads its URL from its realm's record.
     try window.ctx.setDocumentUrl(url);
 
-    // Step 13: "Update the navigation API entries for a same-document
-    // navigation given navigation, historyEntry, and historyHandling."
+    // Step 14, "update document for history step application" 6.4.1:
+    // "Update the navigation API entries for a same-document navigation
+    // given navigation, historyEntry, and historyHandling."
     if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) != null) {
-        const kind: @import("dom").navigation_api.Kind = switch (behavior) {
-            .replace => .replace,
-            .push => .push,
-            .auto => if (std.mem.eql(u8, url, old_url)) .replace else .push,
-        };
-        @import("dom").navigation_api.sameDocumentNavigation(window, kind);
+        dom.navigation_api.sameDocumentNavigation(window, if (handling == .push) .push else .replace);
     }
 
-    // Step 14's hashchange, if the fragment changed.
+    // 6.4.5: hashchange, if the fragment changed.
     const old_fragment = navigate_steps.fragmentOf(old_url);
     const new_fragment = navigate_steps.fragmentOf(url);
     const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
     if (!same) queueHashChange(allocator, window, old_url, url);
-    return true;
 }
 
 /// BrowsingContext.ensureHistoryEntries's `url_of`.
@@ -829,13 +930,20 @@ fn entryDocument() ?*runtime.Instance {
 /// engine's (the navigate callback); step 3 is too, since it reads the
 /// navigable's own record of its document.
 fn locationObjectNavigate(internal: *InternalState, url: []const u8, behavior: navigate_steps.HistoryBehavior) !void {
-    const callback = internal.navigate_callback orelse {
-        // The top-level page: this engine cannot replace its document, but
-        // a fragment navigation keeps the document, and that it can do.
-        if (try topLevelFragmentNavigation(internal, url, behavior)) return;
-        return error.NotImplemented;
-    };
     const source = entryDocument();
+    const callback = internal.navigate_callback orelse {
+        // The top-level page, "navigate"d as far as this engine can.
+        const window = internal.window orelse return;
+        const document = interfaces.Window.get_document(window) catch return;
+        // Step 3: "If this's relevant Document has not yet completely loaded,
+        // then set historyHandling to "replace"."
+        const handling: dom.top_level_navigation.HistoryBehavior = if (!dom.document_lifecycle.isCompletelyLoaded(document)) .replace else switch (behavior) {
+            .auto => .auto,
+            .push => .push,
+            .replace => .replace,
+        };
+        return topLevelNavigate(window, url, .{ .history_behavior = handling, .source_document = source });
+    };
     if (!callback(internal.navigate_context, url, .{ .history_behavior = behavior, .source_document = if (source) |d| @ptrCast(d) else null })) {
         return error.SecurityError;
     }

@@ -14,6 +14,8 @@
 //! lint-impls: hook for HTMLIFrameElement
 
 const runtime = @import("runtime");
+const joint_history = @import("html_core").navigation.joint_history;
+const navigation_api = @import("navigation_api.zig");
 
 /// `NavigationHistoryBehavior`.
 pub const HistoryBehavior = enum { auto, push, replace };
@@ -32,6 +34,11 @@ pub const Request = struct {
     /// seen the load finish. The navigation replaces if the form document
     /// is the chosen navigable's active document.
     source_not_completely_loaded: bool = false,
+    /// The element that navigates: a hyperlink, or a form's submitter.
+    source_element: ?*runtime.Instance = null,
+    user_involvement: navigation_api.UserInvolvement = .none,
+    /// navigate()'s navigation API state. BORROWED.
+    navigation_api_state: ?joint_history.SerializedState = null,
 };
 
 /// What the navigable container supplies.

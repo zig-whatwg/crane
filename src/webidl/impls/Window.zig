@@ -2334,8 +2334,12 @@ pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return; // No-op if window is closed
     }
 
-    // TODO: Implement stop - abort document loading
-    // This should abort any ongoing navigation
+    // HTML "stop loading" this's navigable, as far as this engine keeps one:
+    // step 2's "set the ongoing navigation for navigable to null" informs the
+    // navigation API about aborting navigation - which aborts its ongoing
+    // navigate event. Not modelled, stated: ending a frame's ongoing fetch
+    // and "abort a document" (step 3).
+    @import("dom").navigation_api.informAboutAbortingNavigation(instance);
 }
 
 /// Operation: resizeBy
