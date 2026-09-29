@@ -39,6 +39,7 @@ const url_serializer = @import("url_serializer");
 const host_serializer = @import("host_serializer");
 const origin = @import("origin");
 const basic_parser = @import("basic_parser");
+const ParserState = @import("parser_state").ParserState;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 /// Special schemes default ports
@@ -558,51 +559,127 @@ pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     return locationObjectNavigate(internal, url, .auto);
 }
 
+/// "Let copyURL be a copy of this's url": a record the URL-component setters
+/// change and navigate to; the caller deinits it. Null with no URL.
+fn copyOfURL(instance: *runtime.Instance, allocator: Allocator) !?url_record.URLRecord {
+    const url = getURL(instance) orelse return null;
+    const serialized = try url_serializer.serialize(allocator, url, false);
+    defer allocator.free(serialized);
+    return basic_parser.parse(allocator, serialized, null) catch null;
+}
+
+/// Basic URL parse `input` with `copy` as url and `state` as state override.
+/// A failure leaves `copy` as it was, which is all a setter asks of it,
+/// except the protocol setter, which throws (`error.SyntaxError`).
+fn parseInto(allocator: Allocator, copy: *url_record.URLRecord, input: []const u8, state: ParserState) !void {
+    if (basic_parser.parseWithStateOverride(allocator, input, null, state, copy)) |_| {} else |err| {
+        if (err == error.OutOfMemory) return error.OutOfMemory;
+        return error.SyntaxError;
+    }
+}
+
+/// The URL-component setters' last step: "Location-object navigate this to
+/// copyURL."
+fn navigateToCopy(internal: *InternalState, copy: *url_record.URLRecord) !void {
+    const serialized = try url_serializer.serialize(internal.allocator, copy, false);
+    defer internal.allocator.free(serialized);
+    return locationObjectNavigate(internal, serialized, .auto);
+}
+
 /// Setter for protocol
-/// Per spec §7.1.3: Update URL scheme if valid, then navigate.
+/// HTML §7.2.4: "1. If this's relevant Document is null, then return. ...
+/// 3. Let copyURL be a copy of this's url. 4. Let possibleFailure be the
+/// result of basic URL parsing the given value, followed by ":", with
+/// copyURL as url and scheme start state as state override. 5. If
+/// possibleFailure is failure, then throw a "SyntaxError" DOMException. 6. If
+/// copyURL's scheme is not an HTTP(S) scheme, then terminate these steps. 7.
+/// Location-object navigate this to copyURL." Deviation, stated: step 2's
+/// same-origin-domain check is not modelled.
 pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement protocol setter
-    // This requires parsing the value and updating the URL's scheme
-    // Then triggering navigation
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.window == null) return;
+    const allocator = internal.allocator;
+    var copy = (try copyOfURL(instance, allocator)) orelse return;
+    defer copy.deinit();
+    const input = try std.fmt.allocPrint(allocator, "{s}:", .{value});
+    defer allocator.free(input);
+    try parseInto(allocator, &copy, input, ParserState.scheme_start);
+    const scheme = copy.scheme();
+    if (!std.mem.eql(u8, scheme, "http") and !std.mem.eql(u8, scheme, "https")) return;
+    return navigateToCopy(internal, &copy);
 }
 
 /// Setter for host
-/// Per spec §7.1.3: Update URL host and port, then navigate.
+/// HTML §7.2.4: "3. Let copyURL be a copy of this's url. 4. If copyURL has an
+/// opaque path, then return. 5. Basic URL parse the given value, with copyURL
+/// as url and host state as state override. 6. Location-object navigate this
+/// to copyURL." Deviation, stated: step 2's same-origin-domain check is not
+/// modelled.
 pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement host setter
-    return error.NotImplemented;
+    return setComponent(instance, value, ParserState.host);
 }
 
-/// Setter for hostname
-/// Per spec §7.1.3: Update URL hostname, then navigate.
+/// Setter for hostname: as host, with the hostname state as state override.
 pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement hostname setter
-    return error.NotImplemented;
+    return setComponent(instance, value, ParserState.hostname);
+}
+
+/// The host and hostname setters' steps.
+fn setComponent(instance: *runtime.Instance, value: []const u8, state: ParserState) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.window == null) return;
+    const allocator = internal.allocator;
+    var copy = (try copyOfURL(instance, allocator)) orelse return;
+    defer copy.deinit();
+    if (copy.hasOpaquePath()) return;
+    parseInto(allocator, &copy, value, state) catch |err| if (err == error.OutOfMemory) return err;
+    return navigateToCopy(internal, &copy);
 }
 
 /// Setter for port
-/// Per spec §7.1.3: Update URL port, then navigate.
+/// HTML §7.2.4: "3. Let copyURL be a copy of this's url. 4. If copyURL cannot
+/// have a username/password/port, then return. 5. If the given value is the
+/// empty string, then set copyURL's port to null. 6. Otherwise, basic URL
+/// parse the given value, with copyURL as url and port state as state
+/// override. 7. Location-object navigate this to copyURL." Deviation,
+/// stated: step 2's same-origin-domain check is not modelled.
 pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement port setter
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.window == null) return;
+    const allocator = internal.allocator;
+    var copy = (try copyOfURL(instance, allocator)) orelse return;
+    defer copy.deinit();
+    if (copy.cannotHaveUsernamePasswordPort()) return;
+    if (value.len == 0) {
+        copy.port = null;
+    } else {
+        parseInto(allocator, &copy, value, ParserState.port) catch |err| if (err == error.OutOfMemory) return err;
+    }
+    return navigateToCopy(internal, &copy);
 }
 
 /// Setter for pathname
-/// Per spec §7.1.3: Update URL pathname, then navigate.
+/// HTML §7.2.4: "3. Let copyURL be a copy of this's url. 4. If copyURL has an
+/// opaque path, then return. 5. Set copyURL's path to the empty list. 6.
+/// Basic URL parse the given value, with copyURL as url and path start state
+/// as state override. 7. Location-object navigate this to copyURL."
+/// Deviation, stated: step 2's same-origin-domain check is not modelled.
 pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement pathname setter
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.window == null) return;
+    const allocator = internal.allocator;
+    var copy = (try copyOfURL(instance, allocator)) orelse return;
+    defer copy.deinit();
+    if (copy.hasOpaquePath()) return;
+    switch (copy.path) {
+        .segments => |*segments| {
+            for (segments.toSlice()) |segment| copy.allocator.free(segment);
+            segments.clear();
+        },
+        .opaque_path => {},
+    }
+    parseInto(allocator, &copy, value, ParserState.path_start) catch |err| if (err == error.OutOfMemory) return err;
+    return navigateToCopy(internal, &copy);
 }
 
 /// Setter for search
