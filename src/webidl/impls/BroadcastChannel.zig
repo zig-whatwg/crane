@@ -255,13 +255,10 @@ fn eligibleForMessaging(instance: *runtime.Instance) bool {
 }
 
 /// A WorkerGlobalScope's closing flag, which the worker host keeps (close()
-/// and "terminate a worker" set its phase).
-/// TODO(networking): `@import("html").worker_host.scopeClosing(global.ctx)
-/// orelse false` - networking is adding scopeClosing to worker_host.zig.
-/// Until it lands no worker reads as closing here.
+/// and "terminate a worker" set its phase). A global no worker host runs
+/// has no flag to read, and counts as not closing.
 fn workerClosing(global: *runtime.Instance) bool {
-    _ = global;
-    return false;
+    return @import("html").worker_host.scopeClosing(global.ctx) orelse false;
 }
 
 /// One destination's task: step 9's steps, in its realm.
