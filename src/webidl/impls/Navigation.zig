@@ -901,6 +901,7 @@ fn firePushReplaceReload(instance: *runtime.Instance, internal: *InternalState, 
         .user_involvement = args.user_involvement,
         .source_element = args.source_element,
         .classic_state = args.classic_history_api_state,
+        .form_data = args.form_data,
         .tracker = tracker,
     });
 }
@@ -969,6 +970,8 @@ const Firing = struct {
     user_involvement: dom.navigation_api.UserInvolvement = .none,
     source_element: ?*runtime.Instance = null,
     classic_state: ?joint_history.SerializedState = null,
+    /// "formDataEntryList", as a FormData holding it. BORROWED.
+    form_data: ?*runtime.Instance = null,
     tracker: ?*Tracker = null,
 };
 

@@ -2099,7 +2099,7 @@ pub fn call_matchMedia(instance: *runtime.Instance, query: typedefs.CSSOMString)
 /// here beyond its origin, and every scroll is instant - the promise is
 /// already resolved.
 pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
-    const opts: dictionaries.ScrollToOptions = if (options.wasPassed()) options.getValue() else .{};
+    const opts: dictionaries.ScrollToOptions = if (options.wasPassed()) options.getValue() else .{ .base = .{} };
     return scrollViewportTo(instance, opts.left, opts.top);
 }
 
@@ -2199,7 +2199,7 @@ pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(
 /// by then: the WebIDL default of neither is given, and adding the current
 /// position to it scrolls nowhere on that axis.
 pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ScrollToOptions)) anyerror!runtime.JSValue {
-    const opts: dictionaries.ScrollToOptions = if (options.wasPassed()) options.getValue() else .{};
+    const opts: dictionaries.ScrollToOptions = if (options.wasPassed()) options.getValue() else .{ .base = .{} };
     return scrollViewportBy(instance, opts.left orelse 0, opts.top orelse 0);
 }
 
