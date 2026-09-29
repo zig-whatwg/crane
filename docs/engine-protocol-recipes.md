@@ -51,7 +51,7 @@ imports the protocol as `const protocol = @import("engine");`
 | `realm: Context` parameter | BORROWED; outlives the call. |
 | `engine.Owned` result | The caller's. Exactly one of `.release()` (give it back) or `.take()` (hand it, and the duty to release, to something documented to take ownership - the binding, when an impl returns it). |
 | `Owned.borrow()` | A BORROWED view of a value its holder keeps, to pass to an operation. NEVER an impl's result. |
-| An impl's `JSValue` result | The binding's: it releases it once it is set (getters and operations alike). A value made for the return: `.take()`. A value the object keeps: `(try engine.retainValue(realm, kept.value)).take()` - a hold of the binding's own. |
+| An impl's `JSValue` result | The binding's: it releases it once it is set (getters and operations alike). A value made for the return: `.take()`. A value the object keeps: `(try engine.retainValue(realm, kept.value)).take()` - a hold of the binding's own. Engine code that calls such a getter or operation through `interfaces` is the caller the result belongs to: `const v: engine.Owned = .{ .value = try interfaces.X.get_y(o) }; defer v.release();` |
 | `engine.Completion` | `union { normal: Owned, throw: Owned }` - both arms OWNED; release the arm you get (`switch (c) { inline else => |v| v.release() }`). |
 | `engine.CallbackFunction` / `CallbackInterface` | OWNED (`.release()`), with the callback context (the incumbent realm at conversion) inside. The invoke operations take them BORROWED (`*const`). |
 | `PromiseCapability` | OWNED (`releasePromiseCapability`); `.promise` is a BORROWED view until then. |
