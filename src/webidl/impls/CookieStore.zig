@@ -525,6 +525,192 @@ pub fn call_delete(instance: *runtime.Instance, name: runtime.USVString) anyerro
 }
 
 // ============================================================================
+// The dictionary overloads: get(options), getAll(options), set(options),
+// delete(options)
+// ============================================================================
+
+/// Operation: get(options)
+/// https://cookiestore.spec.whatwg.org/#dom-cookiestore-get-options
+pub fn call_get__1(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CookieStoreGetOptions)) anyerror!runtime.JSValue {
+    const realm = cookie_values.operationRealm(instance);
+    const given = if (options.was_passed) options.value else dictionaries.CookieStoreGetOptions{};
+    // Step 5: If options is empty, then return a promise rejected with a
+    // TypeError.
+    if (given.name == null and given.url == null) return cookie_values.rejectedWithTypeError(realm, "get() needs a name or a url");
+    return queryWithOptions(instance, realm, given, .first);
+}
+
+/// Operation: getAll(options)
+/// https://cookiestore.spec.whatwg.org/#dom-cookiestore-getall-options
+pub fn call_getAll__1(instance: *runtime.Instance, options: webidl.Opt(dictionaries.CookieStoreGetOptions)) anyerror!runtime.JSValue {
+    const realm = cookie_values.operationRealm(instance);
+    const given = if (options.was_passed) options.value else dictionaries.CookieStoreGetOptions{};
+    return queryWithOptions(instance, realm, given, .all);
+}
+
+/// get(options) steps 1-4 and 6-9, and getAll(options)'s 1-8: the query of
+/// options["name"] at the creation URL, or at options["url"] when that
+/// names it (a Window) or a URL of its origin (a worker).
+fn queryWithOptions(instance: *runtime.Instance, realm: runtime.Context, options: dictionaries.CookieStoreGetOptions, answer: enum { first, all }) anyerror!runtime.JSValue {
+    const internal = getInternalState(instance) orelse
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    const allocator = internal.allocator;
+    // Steps 1-4: the relevant settings object; an opaque origin rejects with
+    // a SecurityError; the URL is its creation URL.
+    const client = clientOf(instance) orelse
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
+
+    // Step 6 (getAll: 5): options["url"], parsed against the API base URL.
+    var chosen: ?[]const u8 = null;
+    defer if (chosen) |u| allocator.free(u);
+    if (options.url) |url_option| {
+        chosen = switch (try urlForQuery(allocator, instance, client.url, url_option)) {
+            .url => |u| u,
+            .type_error => |message| return cookie_values.rejectedWithTypeError(realm, message),
+        };
+    }
+
+    // Step 8.1 (getAll: 7.1): query cookies with url and options["name"],
+    // default null. (Normalizing a name is the identity.)
+    var items = queryItems(allocator, client.jar, chosen orelse client.url, options.name) catch
+        return cookie_values.rejectedWithTypeError(realm, "Failed to read cookies");
+    defer freeItems(allocator, &items);
+
+    switch (answer) {
+        // 8.3-8.4: null for none, else the first item.
+        .first => {
+            if (items.items.len == 0) return cookie_values.resolvedWith(realm, runtime.JSValue.jsNull);
+            const item = try cookie_values.listItem(realm, items.items[0]);
+            defer item.release();
+            return cookie_values.resolvedWith(realm, item.value);
+        },
+        // 7.3: the list.
+        .all => {
+            const list = try cookie_values.list(realm, items.items, allocator);
+            defer list.release();
+            return cookie_values.resolvedWith(realm, list.value);
+        },
+    }
+}
+
+/// get(options) step 6: "Let parsed be the result of parsing options["url"]
+/// with settings's API base URL" - here the creation URL. A Window may only
+/// name its own URL (fragments aside); any global only a URL of its origin.
+/// The URL serialized (OWNED), or the TypeError's message.
+fn urlForQuery(allocator: std.mem.Allocator, instance: *runtime.Instance, creation_url: []const u8, input: []const u8) !union(enum) { url: []const u8, type_error: []const u8 } {
+    const basic_parser = @import("basic_parser");
+    const url_serializer = @import("url_serializer");
+    const origin = @import("origin");
+    var base = basic_parser.parse(allocator, creation_url, null) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return .{ .type_error = "The creation URL does not parse" },
+    };
+    defer base.deinit();
+    var parsed = basic_parser.parse(allocator, input, &base) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return .{ .type_error = "url does not parse" },
+    };
+    defer parsed.deinit();
+
+    // 6.2. A Window: parsed must equal url, fragments excluded.
+    const record = instance.ctx.getRealm();
+    const is_window = if (record) |r| if (r.global_object) |g| std.mem.eql(u8, @as(*runtime.Instance, @ptrCast(@alignCast(g))).vtable.name, "Window") else false else false;
+    if (is_window and !try @import("url").equivalence.equals(allocator, &parsed, &base, true)) {
+        return .{ .type_error = "A Window's cookieStore reads its own URL only" };
+    }
+    // 6.3. parsed's origin and url's origin must be the same origin.
+    var parsed_origin = try origin.getOrigin(allocator, &parsed);
+    defer parsed_origin.deinit(allocator);
+    var base_origin = try origin.getOrigin(allocator, &base);
+    defer base_origin.deinit(allocator);
+    if (!origin.isSameOrigin(parsed_origin, base_origin)) return .{ .type_error = "url is not of this origin" };
+
+    // 6.4. Set url to parsed.
+    return .{ .url = try url_serializer.serialize(allocator, &parsed, false) };
+}
+
+/// Operation: set(options)
+/// https://cookiestore.spec.whatwg.org/#dom-cookiestore-set-options
+pub fn call_set__1(instance: *runtime.Instance, options: dictionaries.CookieInit) anyerror!runtime.JSValue {
+    const realm = cookie_values.operationRealm(instance);
+    const internal = getInternalState(instance) orelse
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    if (!internal.is_secure_context) {
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore.set requires a secure context");
+    }
+    // Steps 1-4, as get().
+    const client = clientOf(instance) orelse
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
+    // As set(name, value): a URL with no host keeps no cookies.
+    var scratch = CookieJar.init(internal.allocator);
+    defer scratch.deinit();
+    const url = cookiestore.RequestUrl.of(client.url);
+    const jar = if (url != null) client.jar else &scratch;
+
+    // Step 6.1: set a cookie with url and the options - sameSite "strict",
+    // path "/" and partitioned false by default.
+    cookiestore.setCookie(internal.allocator, jar, if (url) |u| u.host else "", .{
+        .name = options.name,
+        .value = options.value,
+        // A DOMHighResTimeStamp: milliseconds since the epoch.
+        .expires = if (options.expires) |ms| timestampMillis(ms) else null,
+        .max_age = options.maxAge,
+        .domain = options.domain,
+        .path = options.path orelse "/",
+        .url_path = if (url) |u| u.path else "/",
+        .same_site = if (options.sameSite) |same_site| switch (same_site) {
+            ._strict_ => .strict,
+            ._lax_ => .lax,
+            ._none_ => .none,
+        } else .strict,
+        .partitioned = options.partitioned orelse false,
+    }) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        // Step 6.2: failure rejects with a TypeError.
+        else => cookie_values.rejectedWithTypeError(realm, "Invalid cookie"),
+    };
+    return cookie_values.resolvedWith(realm, runtime.JSValue.jsUndefined);
+}
+
+/// Operation: delete(options)
+/// https://cookiestore.spec.whatwg.org/#dom-cookiestore-delete-options
+pub fn call_delete__1(instance: *runtime.Instance, options: dictionaries.CookieStoreDeleteOptions) anyerror!runtime.JSValue {
+    const realm = cookie_values.operationRealm(instance);
+    const internal = getInternalState(instance) orelse
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    // Steps 1-4, as get().
+    const client = clientOf(instance) orelse
+        return cookie_values.rejectedWithTypeError(realm, "CookieStore has no cookie jar");
+    if (client.opaque_origin) return cookie_values.rejectedWithDOMException(realm, "SecurityError", "An opaque origin has no cookies");
+    var scratch = CookieJar.init(internal.allocator);
+    defer scratch.deinit();
+    const url = cookiestore.RequestUrl.of(client.url);
+    const jar = if (url != null) client.jar else &scratch;
+
+    // Step 6.1: delete a cookie with url, name, domain, path and
+    // partitioned - path "/" and partitioned false by default.
+    cookiestore.deleteCookie(internal.allocator, jar, if (url) |u| u.host else "", .{
+        .name = options.name,
+        .domain = options.domain,
+        .path = options.path orelse "/",
+        .partitioned = options.partitioned orelse false,
+    }) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => cookie_values.rejectedWithTypeError(realm, "Invalid cookie"),
+    };
+    return cookie_values.resolvedWith(realm, runtime.JSValue.jsUndefined);
+}
+
+/// A DOMHighResTimeStamp as whole milliseconds, saturating.
+fn timestampMillis(ms: f64) i64 {
+    if (std.math.isNan(ms)) return 0;
+    const limit: f64 = @floatFromInt(std.math.maxInt(i64));
+    return @intFromFloat(std.math.clamp(ms, -limit, limit));
+}
+
+// ============================================================================
 // Public API for integration
 // ============================================================================
 
