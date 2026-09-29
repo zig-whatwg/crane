@@ -1,10 +1,13 @@
 //! Implementation for SharedWorker interface
 //!
-//! Spec: HTML Standard § 10.2.4 Shared workers and the SharedWorker interface
-//! https://html.spec.whatwg.org/#shared-workers-and-the-sharedworker-interface
+//! Spec: HTML Standard § 10.2.6.4 Shared workers and the SharedWorker
+//! interface
+//! https://html.spec.whatwg.org/multipage/workers.html#shared-workers-and-the-sharedworker-interface
 //!
-//! This implementation bridges the WebIDL SharedWorker interface to the underlying
-//! SharedWorker implementation in src/html/workers/.
+//! The constructor's own steps are here: the options, the URL, the outside
+//! port. Step 11 - the shared worker manager's steps, which find a running
+//! SharedWorkerGlobalScope or run a new worker - belongs to the worker host
+//! (src/html/worker_host.zig), which runs every worker's agent.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -14,80 +17,51 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const engine = @import("engine");
 const SharedWorker = interfaces.SharedWorker;
 
-// Import workers infrastructure
-const html_core = @import("html_core");
-const workers = html_core.workers;
-const InternalSharedWorker = workers.SharedWorker;
-const SharedWorkerManager = workers.SharedWorkerManager;
-const WorkerOptions = workers.WorkerOptions;
+// A SharedWorker is an EventTarget, and reaches its state through its impl.
+const EventTargetImpl = @import("EventTarget.zig");
+
+// Keeping the port's wrapper alive for as long as this object.
+const same_object = @import("same_object.zig");
+
+// URL parsing and origins, for steps 3-5 and the constructor origin.
+const api_parser = @import("api_parser");
+const url_serializer = @import("url_serializer");
+const url_origin = @import("origin");
+
+// The channel ends a port pair is made of. The outside port is a new
+// MessagePort made on one (no IDL member makes a port on a given end); the
+// worker host makes the inside port on the other, through the
+// `message_ports` hook this installs.
+const streams_internal = @import("streams_internal");
+const MessagePortImpl = @import("MessagePort.zig");
+
+/// The worker host: "run a worker", and the shared worker manager.
+const worker_host = @import("html").worker_host;
+const workers = @import("html_core").workers;
 const WorkerType = workers.WorkerType;
 const RequestCredentials = workers.RequestCredentials;
-
-// Import MessagePort for communication
-const MessagePortImpl = @import("MessagePort.zig");
-const message_port_internal = @import("streams_internal");
-const InternalMessagePort = message_port_internal.MessagePort;
-const MessagePort = interfaces.MessagePort;
-
-// Import WorkerPortPair for proper entangled ports
-const WorkerPortPair = workers.WorkerPortPair;
-const SharedWorkerConnection = workers.SharedWorkerConnection;
 
 pub const State = SharedWorker.State;
 
 pub const ImplError = error{
     NotImplemented,
-    WorkerCreationFailed,
-    InvalidURL,
+    SyntaxError,
     OutOfMemory,
-    SecurityError,
 };
 
-/// Internal state for SharedWorker implementation
-///
-/// Contains a reference to the backing SharedWorker from src/html/workers/
-/// and the MessagePort for communication.
-///
-/// Note: The actual SharedWorker requires a TimerBackend from the platform.
-/// The WebIDL impl stores configuration until platform is available.
+/// The SharedWorker's own state.
 pub const InternalState = struct {
-    /// Reference to the internal shared worker (created when platform is set)
-    shared_worker: ?*InternalSharedWorker = null,
-
-    /// Connection to the shared worker (contains port pair)
-    connection: ?*SharedWorkerConnection = null,
-
-    /// The MessagePort WebIDL instance for this connection (exposed via .port)
-    /// This wraps the outside port from the WorkerPortPair
-    message_port: ?*runtime.Instance = null,
-
-    /// Worker configuration
-    script_url: []const u8,
-    name: []const u8,
-    origin: []const u8,
-
-    /// Whether we own the shared worker (first to create it)
-    owns_worker: bool = false,
-
-    /// Allocator used for this state
+    /// HTML: the SharedWorker's port - outsidePort, a new MessagePort in the
+    /// constructor's realm (steps 6-7). The worker's side of the channel is
+    /// the inside port the `connect` event carries.
+    port: *runtime.Instance,
+    /// Keeps `port`'s wrapper alive for as long as this object:
+    /// `worker.port.onmessage = f` leaves nothing in script holding the port.
+    port_pin: same_object.Pin = .{},
     allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *InternalState) void {
-        // Only deinit the shared worker if we own it
-        if (self.owns_worker) {
-            if (self.shared_worker) |worker| {
-                worker.deinit();
-            }
-        }
-        // Connection port pair is owned by SharedWorker, not us
-        self.allocator.free(self.script_url);
-        if (self.name.len > 0) {
-            self.allocator.free(self.name);
-        }
-        self.allocator.free(self.origin);
-    }
 };
 
 /// Initialize instance (creates the instance)
@@ -97,157 +71,224 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
+    return EventTargetImpl.init(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        internal.port_pin.release();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+    EventTargetImpl.deinit(instance);
 }
 
-/// Constructor implementation
+/// The SharedWorker(scriptURL, options) constructor steps.
 ///
-/// Spec: HTML Standard § 10.2.4.1 The SharedWorker() constructor
-/// https://html.spec.whatwg.org/#dom-sharedworker
-///
-/// This is called when the interface is constructed from JavaScript:
-/// new SharedWorker(scriptURL, options)
-///
-/// The constructor creates the SharedWorker instance but defers port pair
-/// creation until connectToWorker() is called. The entangled MessagePort pair:
-/// - outside_port: Returned via sharedWorker.port to the connecting context
-/// - inside_port: Passed in the connect event's ports array to the worker
+/// Spec: HTML Standard § 10.2.6.4
+/// https://html.spec.whatwg.org/multipage/workers.html#dom-sharedworker
 pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
-    // Create instance through init()
-    const instance = try init(ctx.allocator, State, &SharedWorker.vtable, ctx);
+    const allocator = ctx.allocator;
+    const instance = try init(allocator, State, &SharedWorker.vtable, ctx);
     errdefer deinit(instance);
 
-    // Parse options - for now, use defaults since options is opaque
-    _ = options; // Options parsing would require dictionary access
+    // 1. compliantScriptURL: Trusted Types' "get trusted type compliant
+    // string" - a TrustedScriptURL, or the string itself when no policy is
+    // enforced. Crane enforces none on workers (the Worker constructor does
+    // the same), so it is scriptURL.
+    const compliant_script_url = scriptURL.asSlice();
 
-    // Copy the script URL
-    const url_copy = try ctx.allocator.dupe(u8, scriptURL.asSlice());
-    errdefer ctx.allocator.free(url_copy);
+    // 2. If options is a DOMString, it is a WorkerOptions whose name is
+    // options; otherwise it is the dictionary.
+    var worker_options = try convertOptions(ctx, options);
+    defer worker_options.deinit(allocator);
 
-    // Get the origin from context (simplified - use script URL origin)
-    const origin = extractOrigin(scriptURL.asSlice());
-    const origin_copy = try ctx.allocator.dupe(u8, origin);
-    errdefer ctx.allocator.free(origin_copy);
-
-    // Create a placeholder MessagePort instance
-    // This will be replaced with the proper entangled port when connectToWorker() is called
-    const internal_port = try InternalMessagePort.init(ctx.allocator);
-    errdefer internal_port.deinit();
-
-    // Create WebIDL MessagePort instance
-    const port_instance = try MessagePortImpl.initWithInternal(
-        ctx.allocator,
-        MessagePort.State,
-        &MessagePort.vtable,
-        ctx,
-        internal_port,
-    );
-    errdefer runtime.Instance.deinit(port_instance);
-
-    // Create internal state
-    // Note: The actual SharedWorker connection will be established when
-    // connectToWorker() is called with the platform's internal SharedWorker
-    const internal_state = try ctx.allocator.create(InternalState);
-    errdefer ctx.allocator.destroy(internal_state);
-
-    internal_state.* = .{
-        .shared_worker = null, // Set when connected to actual worker
-        .connection = null, // Set when connected to actual worker
-        .message_port = port_instance,
-        .script_url = url_copy,
-        .name = "", // Default empty name
-        .origin = origin_copy,
-        .owns_worker = true, // First creator owns it
-        .allocator = ctx.allocator,
+    // 3-5. outsideSettings is this's relevant settings object; urlRecord is
+    // compliantScriptURL encoding-parsed relative to it; failure throws a
+    // "SyntaxError" DOMException.
+    const base_url = apiBaseURL(instance);
+    defer if (base_url) |b| allocator.free(b);
+    const url_record = resolveScriptURL(allocator, compliant_script_url, base_url) catch |err| switch (err) {
+        error.SyntaxError => return error.SyntaxError,
+        else => |e| return e,
     };
+    defer allocator.free(url_record);
 
-    // Store internal state
-    const state = instance.getState(State);
-    state.own._internal = internal_state;
+    // 6-7. outsidePort: a new MessagePort in outsideSettings' realm, this's
+    // port. Its channel's other end waits for the worker's realm, where it
+    // becomes the inside port (manager step 5.5, or "run a worker").
+    const ends = try streams_internal.createMessagePortPair(allocator);
+    var inside_end_owned = true;
+    errdefer if (inside_end_owned) ends[1].deinit();
+    const outside_port = MessagePortImpl.initWithInternal(
+        allocator,
+        interfaces.MessagePort.State,
+        &interfaces.MessagePort.vtable,
+        ctx,
+        ends[0],
+    ) catch |err| {
+        ends[0].deinit();
+        return err;
+    };
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .port = outside_port, .allocator = allocator };
+    instance.getState(State).own._internal = internal;
+    internal.port_pin.hold(outside_port);
 
-    // Note: The actual entangled port pair is created by InternalSharedWorker.connect()
-    // When connectToWorker() is called, the connection's port pair will be used
-    // for messaging between the connecting context and the worker.
+    // 9. outsideStorageKey: obtain a storage key for non-storage purposes,
+    // given outsideSettings - its origin, here, serialized (Crane has no
+    // storage partitioning, so the key is the origin).
+    const origin = try serializedOriginOf(allocator, base_url);
+    defer allocator.free(origin);
+
+    // 8, 10-11. Enqueue the manager's steps: they find a running
+    // SharedWorkerGlobalScope for (origin, urlRecord, name) or run a new
+    // worker, and fire `connect` - or `error` at this object.
+    inside_end_owned = false;
+    try worker_host.connectSharedWorker(.{
+        .worker = instance,
+        .owner_realm = ctx,
+        .url = url_record,
+        .origin = origin,
+        .name = worker_options.name,
+        .worker_type = worker_options.worker_type,
+        .credentials = worker_options.credentials,
+        .inside_end = @ptrCast(ends[1]),
+    });
 
     return instance;
 }
 
-/// Connect this SharedWorker instance to an internal SharedWorker
-///
-/// This is called when the platform is available and we have an actual
-/// SharedWorker to connect to. It:
-/// 1. Calls connect() on the internal SharedWorker to get a connection
-/// 2. Sets up message routing between ports
-///
-/// Spec: HTML Standard § 10.2.4.1 step 17
-/// "queue a global task on the DOM manipulation task source given
-/// workerGlobalScope to fire an event named connect..."
-pub fn connectToWorker(instance: *runtime.Instance, internal_worker: *InternalSharedWorker) !void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        // Connect to the internal shared worker
-        // This creates a WorkerPortPair inside the SharedWorker
-        const connection = try internal_worker.connect();
+/// WorkerOptions, as the constructor's step 2 leaves it. `name` OWNED.
+const Options = struct {
+    name: []const u8,
+    worker_type: WorkerType = .classic,
+    credentials: RequestCredentials = .same_origin,
 
-        // Store references
-        internal.shared_worker = internal_worker;
-        internal.connection = connection;
+    fn deinit(self: *Options, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
+    }
+};
 
-        // The outside port from the connection is what we expose via .port
-        // The inside port will be passed to the worker's connect event
+/// The (DOMString or WorkerOptions) argument, converted as WebIDL converts a
+/// union with a dictionary in it (3.2.24): undefined, null or an object is
+/// the dictionary; anything else is converted to a DOMString, which step 2
+/// makes the name. An omitted argument is the dictionary's defaults.
+fn convertOptions(ctx: runtime.Context, options: webidl.Opt(runtime.JSValue)) !Options {
+    const allocator = ctx.allocator;
+    if (!options.wasPassed()) return .{ .name = try allocator.dupe(u8, "") };
+    const value = options.getValue();
+    switch (engine.typeOf(ctx, value)) {
+        .undefined, .null => return .{ .name = try allocator.dupe(u8, "") },
+        .object => return convertWorkerOptions(ctx, value),
+        else => return .{ .name = try engine.convertToDOMString(ctx, value, allocator) },
     }
 }
 
-/// Getter for port
-///
-/// Spec: HTML Standard § 10.2.4.1
-/// "The port attribute must return the SharedWorker object's port."
-/// The port is a MessagePort used to communicate with the shared worker.
-pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        if (internal.message_port) |port| {
-            return port;
+/// WebIDL's dictionary conversion of `value`, an object, to WorkerOptions:
+/// its members in lexicographic order - credentials, name, type - each Get,
+/// then converted, or its default when undefined. An enumeration value that
+/// is not one of the enum's throws a TypeError.
+fn convertWorkerOptions(ctx: runtime.Context, value: runtime.JSValue) !Options {
+    const allocator = ctx.allocator;
+    var result: Options = .{ .name = try allocator.dupe(u8, "") };
+    errdefer result.deinit(allocator);
+
+    if (try memberString(ctx, value, "credentials")) |text| {
+        defer allocator.free(text);
+        result.credentials = RequestCredentials.fromString(text) orelse return error.TypeError;
+    }
+    if (try memberString(ctx, value, "name")) |text| {
+        allocator.free(result.name);
+        result.name = text;
+    }
+    if (try memberString(ctx, value, "type")) |text| {
+        defer allocator.free(text);
+        result.worker_type = WorkerType.fromString(text) orelse return error.TypeError;
+    }
+    return result;
+}
+
+/// Get(`object`, `member`) converted to a DOMString, or null when it is
+/// undefined (the member is not present). OWNED (`ctx.allocator`).
+fn memberString(ctx: runtime.Context, object: runtime.JSValue, member: []const u8) !?[]u8 {
+    const got = try engine.getProperty(ctx, object, member);
+    defer got.release();
+    if (engine.typeOf(ctx, got.value) == .undefined) return null;
+    return try engine.convertToDOMString(ctx, got.value, ctx.allocator);
+}
+
+/// `script_url` encoding-parsed relative to `api_base_url` and serialized.
+/// OWNED (`allocator`). SyntaxError when it does not parse.
+fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
+    var base_record: ?@import("url_record").URLRecord = null;
+    defer if (base_record) |*b| b.deinit();
+    if (api_base_url) |base| base_record = api_parser.parseURL(allocator, base, null) catch null;
+    var record = api_parser.parseURL(allocator, script_url, if (base_record) |*b| b else null) catch
+        return error.SyntaxError;
+    defer record.deinit();
+    return url_serializer.serialize(allocator, &record, false) catch error.OutOfMemory;
+}
+
+/// The outside settings' origin, serialized: the origin of `api_base_url`,
+/// or "null" (an opaque origin) without one. OWNED (`allocator`).
+fn serializedOriginOf(allocator: std.mem.Allocator, api_base_url: ?[]const u8) ![]u8 {
+    const base = api_base_url orelse return allocator.dupe(u8, "null");
+    var record = api_parser.parseURL(allocator, base, null) catch return allocator.dupe(u8, "null");
+    defer record.deinit();
+    const origin = try url_origin.getOrigin(allocator, &record);
+    defer origin.deinit(allocator);
+    return origin.serialize(allocator);
+}
+
+/// The relevant settings object's API base URL, for the instance a
+/// constructor just made in it: a window's document's base URL, read through
+/// the Document's `baseURI`; a worker's is its script URL, which its realm
+/// records as its document URL. OWNED by `instance.ctx.allocator`.
+fn apiBaseURL(instance: *runtime.Instance) ?[]u8 {
+    const ctx = instance.ctx;
+    if (relevantWindow(instance)) |window| {
+        const document = interfaces.Window.get_document(window) catch null;
+        if (document) |d| {
+            const base = interfaces.Node.get_baseURI(d) catch null;
+            if (base) |b| {
+                if (b.len > 0) return @constCast(b);
+                d.ctx.allocator.free(b);
+            }
         }
     }
-    return error.NotImplemented;
+    if (ctx.documentUrl()) |document_url| {
+        if (document_url.len > 0) return ctx.allocator.dupe(u8, document_url) catch null;
+    }
+    return null;
 }
 
+/// `instance`'s relevant global object, when it is a Window.
+fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
+    const record = instance.ctx.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (global.stateAs(interfaces.Window.State) == null) return null;
+    return global;
+}
+
+/// Getter for port: "The port getter steps are to return this's port."
+pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    return internal.port;
+}
+
+// The AbstractWorker mixin's event handler IDL attribute (HTML §8.1.8.1): its
+// value lives in EventTarget's event handler map, where the host's `error`
+// event finds it.
+
 /// Getter for onerror
-///
-/// Spec: HTML Standard § 10.2.4.1
-/// Event handler for error events on the shared worker.
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    return state.own.onerror;
+    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "error");
 }
 
 /// Setter for onerror
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    var state = instance.getState(State);
-    state.own.onerror = value;
-}
-
-/// Extract origin from a URL string (simplified)
-fn extractOrigin(url: []const u8) []const u8 {
-    // Find "://" and then the next "/" to get origin
-    if (std.mem.indexOf(u8, url, "://")) |proto_end| {
-        const after_proto = proto_end + 3;
-        if (std.mem.indexOfPos(u8, url, after_proto, "/")) |path_start| {
-            return url[0..path_start];
-        }
-        return url; // No path, entire URL is origin
-    }
-    return "null"; // Invalid URL
+    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "error", value);
 }

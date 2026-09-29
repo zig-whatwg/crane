@@ -23,6 +23,9 @@ pub const Steps = struct {
     /// The transfer-receiving steps: a new MessagePort of `realm` on `end`,
     /// which it takes.
     receive: *const fn (realm: runtime.Context, end: *anyopaque) anyerror!*runtime.Instance,
+    /// Free `end`, which no port will take: its queue goes, and its
+    /// entangled port is disentangled.
+    discard: *const fn (end: *anyopaque) void,
 };
 
 /// Per thread: a worker's ports live on its own thread's realms.
@@ -50,4 +53,12 @@ pub fn ship(instance: *runtime.Instance) ?*anyopaque {
 pub fn receive(realm: runtime.Context, end: *anyopaque) !*runtime.Instance {
     const installed = steps orelse return error.NotSupported;
     return installed.receive(realm, end);
+}
+
+/// Free the channel end `end`, which no MessagePort took - a shared worker's
+/// inside end when its worker never started. Nothing to do before MessagePort
+/// has installed its steps: no end exists yet.
+pub fn discard(end: *anyopaque) void {
+    const installed = steps orelse return;
+    installed.discard(end);
 }
