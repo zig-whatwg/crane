@@ -561,6 +561,12 @@ pub const TreeBuilder = struct {
     /// DOM adapter builds takes it. Called with `dom_adapter_context`.
     dom_adapter_on_mode_set: ?*const fn (QuirksMode, ?*anyopaque) void = null,
 
+    /// The "text" insertion mode popped an element other than a script off
+    /// the stack of open elements - a style element's end tag, or EOF - its
+    /// text already told to the adapter. HTML runs "update a style block"
+    /// then. Called with `dom_adapter_context`.
+    dom_adapter_on_element_popped: ?*const fn (*TreeNode, ?*anyopaque) void = null,
+
     /// Input stream manager for document.write() support.
     ///
     /// HTML Standard §13.2.3: When document.write() is called during parsing,
@@ -671,6 +677,12 @@ pub const TreeBuilder = struct {
     /// shares `dom_adapter_context`.
     pub fn setDomAdapterModeCallback(self: *TreeBuilder, on_mode_set: ?*const fn (QuirksMode, ?*anyopaque) void) void {
         self.dom_adapter_on_mode_set = on_mode_set;
+    }
+
+    /// Set the adapter's element-popped callback (see
+    /// `dom_adapter_on_element_popped`); it shares `dom_adapter_context`.
+    pub fn setDomAdapterPoppedCallback(self: *TreeBuilder, on_popped: ?*const fn (*TreeNode, ?*anyopaque) void) void {
+        self.dom_adapter_on_element_popped = on_popped;
     }
 
     /// Set the adapter's attribute-added callback (see
@@ -2185,8 +2197,10 @@ pub const TreeBuilder = struct {
             },
             .eof => {
                 self.reportError(.eof_in_tag);
+                const popped = self.open_elements.get(self.open_elements.len - 1);
                 _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
                 self.insertion_mode = self.original_insertion_mode;
+                if (popped) |element| self.textModePopped(element);
                 try self.processToken(token);
             },
             .end_tag => |tag| {
@@ -2225,12 +2239,23 @@ pub const TreeBuilder = struct {
                         }
                     }
                 } else {
+                    const popped = self.open_elements.get(self.open_elements.len - 1);
                     _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
                     self.insertion_mode = self.original_insertion_mode;
+                    if (popped) |element| self.textModePopped(element);
                 }
             },
             else => {},
         }
+    }
+
+    /// The "text" insertion mode popped `element` (not a script): its text
+    /// goes to the DOM adapter first, then the adapter hears of the pop - a
+    /// style element updates its style block with all of its text.
+    fn textModePopped(self: *TreeBuilder, element: *TreeNode) void {
+        self.flushPendingText();
+        const callback = self.dom_adapter_on_element_popped orelse return;
+        callback(element, self.dom_adapter_context);
     }
 
     /// Handle token in "in table" insertion mode.
