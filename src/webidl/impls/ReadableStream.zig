@@ -130,11 +130,11 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSVal
     const realm = try js.Realm.of(instance);
     // Step 1: A locked stream rejects with a TypeError.
     if (srd.isLocked(stream))
-        return sw.give(&stream.returned, try realm.promiseRejectedWithTypeError("Cannot cancel a stream that is locked to a reader"));
+        return sw.give(try realm.promiseRejectedWithTypeError("Cannot cancel a stream that is locked to a reader"));
     // Step 2: Return ! ReadableStreamCancel(this, reason).
     const r = try realm.fromOptional(reason);
     defer js.dispose(r);
-    return sw.give(&stream.returned, try srd.cancel(realm, instance, r));
+    return sw.give(try srd.cancel(realm, instance, r));
 }
 
 /// `getReader(options)` - § 4.2.4.
@@ -177,34 +177,34 @@ pub fn call_pipeTo(instance: *runtime.Instance, destination: *runtime.Instance, 
     const stream = srd.streamOf(instance) orelse return error.TypeError;
     const realm = try js.Realm.of(instance);
     const dest = sw.streamOf(destination) orelse
-        return sw.give(&stream.returned, try realm.promiseRejectedWithTypeError("pipeTo's destination is not a WritableStream"));
+        return sw.give(try realm.promiseRejectedWithTypeError("pipeTo's destination is not a WritableStream"));
     // Step 1: a locked source rejects with a TypeError.
     if (srd.isLocked(stream))
-        return sw.give(&stream.returned, try realm.promiseRejectedWithTypeError("Cannot pipe a locked stream"));
+        return sw.give(try realm.promiseRejectedWithTypeError("Cannot pipe a locked stream"));
     // Step 2: so does a locked destination.
     if (sw.isLocked(dest))
-        return sw.give(&stream.returned, try realm.promiseRejectedWithTypeError("Cannot pipe to a locked stream"));
+        return sw.give(try realm.promiseRejectedWithTypeError("Cannot pipe to a locked stream"));
     // Steps 3-4
     const opts = if (options.was_passed) options.value else dictionaries.StreamPipeOptions{};
-    return sw.give(&stream.returned, try srd.pipeTo(realm, instance, destination, opts.preventClose orelse false, opts.preventAbort orelse false, opts.preventCancel orelse false, opts.signal));
+    return sw.give(try srd.pipeTo(realm, instance, destination, opts.preventClose orelse false, opts.preventAbort orelse false, opts.preventCancel orelse false, opts.signal));
 }
 
 /// `tee()` - § 4.2.4: Return ? ReadableStreamTee(this, false).
 pub fn call_tee(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const stream = srd.streamOf(instance) orelse return error.TypeError;
+    _ = srd.streamOf(instance) orelse return error.TypeError;
     const realm = try js.Realm.of(instance);
     const branches = try srd.tee(realm, instance);
     const b1 = try realm.wrap(branches[0]);
     const b2 = try realm.wrap(branches[1]);
-    return sw.give(&stream.returned, try js.arrayFrom(realm, &.{ b1, b2 }));
+    return sw.give(try js.arrayFrom(realm, &.{ b1, b2 }));
 }
 
 /// `values(options)` - § 4.2.5 async iterator.
 pub fn call_values(instance: *runtime.Instance, options: webidl.Opt(dictionaries.ReadableStreamIteratorOptions)) anyerror!runtime.JSValue {
-    const stream = srd.streamOf(instance) orelse return error.TypeError;
+    _ = srd.streamOf(instance) orelse return error.TypeError;
     const realm = try js.Realm.of(instance);
     const opts = if (options.was_passed) options.value else dictionaries.ReadableStreamIteratorOptions{};
-    return sw.give(&stream.returned, try srd.values(realm, instance, opts.preventCancel orelse false));
+    return sw.give(try srd.values(realm, instance, opts.preventCancel orelse false));
 }
 
 /// `[Symbol.asyncIterator](options)` - the same iterator as values().

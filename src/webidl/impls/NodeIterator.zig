@@ -238,7 +238,7 @@ pub fn get_whatToShow(instance: *runtime.Instance) anyerror!u32 {
 /// The filter: the object createNodeIterator() was given, or null for none.
 pub fn get_filter(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     const internal = getInternal(instance);
-    return node_filter.fromStored(internal.filter);
+    return node_filter.fromStored(instance.ctx, internal.filter);
 }
 
 // ============================================================================

@@ -168,7 +168,7 @@ pub fn get_whatToShow(instance: *runtime.Instance) anyerror!u32 {
 /// The filter: the object createTreeWalker() was given, or null for none.
 pub fn get_filter(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     const internal = getInternal(instance);
-    return node_filter.fromStored(internal.filter);
+    return node_filter.fromStored(instance.ctx, internal.filter);
 }
 
 /// DOM §6.3 - TreeWalker.currentNode getter

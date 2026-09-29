@@ -28,7 +28,7 @@ fn contextOf(realm: runtime.Context) ?*ffi.Context {
 
 /// An OWNED handle for a `Global<Value>*` this file acquired and hands over.
 fn ownedHandle(value: *ffi.Value) JSValue {
-    return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
+    return .{ .handle = .{ .ptr = value } };
 }
 
 /// The V8 value a JSValue names, and whether it was made for the call (and so
@@ -157,7 +157,7 @@ fn reportThrown(context: *ffi.Context, exception: *ffi.Value, report: runtime.Re
         .lineno = 0,
         .colno = 0,
         // Borrowed: the caller's completion Global outlives the report.
-        .error_value = .{ .handle = .{ .ptr = exception, .needs_disposal = false } },
+        .error_value = .{ .handle = .{ .ptr = exception } },
     };
     if (info) |i| {
         if (i.getMessage()) |m| error_info.message = m;

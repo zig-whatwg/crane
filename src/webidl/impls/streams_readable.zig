@@ -44,11 +44,9 @@ pub const Stream = struct {
     /// A ReadableStreamDefaultController or ReadableByteStreamController instance.
     controller: ?*runtime.Instance = null,
     disturbed: bool = false,
-    returned: ?Value = null,
 
     pub fn deinit(self: *Stream) void {
         js.disposeOptional(&self.stored_error);
-        js.disposeOptional(&self.returned);
         self.allocator.destroy(self);
     }
 };
@@ -90,7 +88,6 @@ pub const Reader = struct {
     closed_promise: ?Deferred = null,
     read_requests: std.ArrayList(ReadRequest) = .empty,
     read_into_requests: std.ArrayList(ReadIntoRequest) = .empty,
-    returned: ?Value = null,
 
     pub fn deinit(self: *Reader) void {
         for (self.read_requests.items) |r| r.vtable.drop(r.ctx);
@@ -98,7 +95,6 @@ pub const Reader = struct {
         for (self.read_into_requests.items) |r| r.vtable.drop(r.ctx);
         self.read_into_requests.deinit(self.allocator);
         if (self.closed_promise) |d| d.deinit();
-        js.disposeOptional(&self.returned);
         self.allocator.destroy(self);
     }
 };

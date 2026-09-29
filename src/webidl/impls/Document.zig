@@ -1838,16 +1838,10 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Return cached instance if available ([SameObject] semantics)
+    // The document keeps its array ([SameObject]); the binding gets a hold
+    // of its own.
     if (internal.adopted_style_sheets) |sheets| {
-        // Return the cached V8 handle wrapped as JSValue
-        return runtime.JSValue{
-            .handle = .{
-                .ptr = sheets,
-                .needs_disposal = false, // Engine-owned: engine.createObservableArray
-                .handle_scope = .global,
-            },
-        };
+        return (try engine.retainValue(instance.ctx, runtime.JSValue.fromHandle(sheets))).take();
     }
 
     // Create new ObservableArray exotic object
@@ -1857,14 +1851,14 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSVa
         return runtime.JSValue.jsUndefined;
     };
 
-    // Cache the raw V8 object pointer for future access
-    // Extract the handle pointer from the JSValue union
+    // The document keeps the array's handle (engine.createObservableArray
+    // handed it over) for every later read; the binding gets a hold of its
+    // own.
     internal.adopted_style_sheets = switch (observable_array) {
         .handle => |h| h.ptr,
-        else => null,
+        else => return observable_array,
     };
-
-    return observable_array;
+    return (try engine.retainValue(instance.ctx, observable_array)).take();
 }
 
 /// Getter for activeElement

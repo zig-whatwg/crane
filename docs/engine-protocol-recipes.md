@@ -50,7 +50,8 @@ imports the protocol as `const protocol = @import("engine");`
 | `JSValue` parameter | BORROWED for the call. Never release it, never store it. |
 | `realm: Context` parameter | BORROWED; outlives the call. |
 | `engine.Owned` result | The caller's. Exactly one of `.release()` (give it back) or `.take()` (hand it, and the duty to release, to something documented to take ownership - the binding, when an impl returns it). |
-| `Owned.borrow()` | A BORROWED view of a value its holder keeps: what a getter returns for a stored value. The binding reads it and never releases it. |
+| `Owned.borrow()` | A BORROWED view of a value its holder keeps, to pass to an operation. NEVER an impl's result. |
+| An impl's `JSValue` result | The binding's: it releases it once it is set (getters and operations alike). A value made for the return: `.take()`. A value the object keeps: `(try engine.retainValue(realm, kept.value)).take()` - a hold of the binding's own. |
 | `engine.Completion` | `union { normal: Owned, throw: Owned }` - both arms OWNED; release the arm you get (`switch (c) { inline else => |v| v.release() }`). |
 | `engine.CallbackFunction` / `CallbackInterface` | OWNED (`.release()`), with the callback context (the incumbent realm at conversion) inside. The invoke operations take them BORROWED (`*const`). |
 | `PromiseCapability` | OWNED (`releasePromiseCapability`); `.promise` is a BORROWED view until then. |
@@ -62,13 +63,13 @@ numbers BY VALUE (no engine resource; no realm entered, so a realm without an
 engine will do); strings, objects and platform objects become a handle of the
 caller's own.
 
-### 0.4 A `.handle` from the binding is a Global, whatever its tag says
+### 0.4 A `.handle` from the binding is a Global, and borrowed
 
 The binding hands an impl object/function values (arguments, dictionary
-members) as `JSValue.handle` whose `handle_scope` is `.local` - but the
-pointer is ALWAYS a `Global<Value>*` the binding owns ("One handle kind per
-layer"; docs/lessons/architecture-a-local-tagged-handle-is-a-borrowed-global.md).
-`.local` means "borrowed for the call", nothing more. So:
+members) as `JSValue.handle` - the pointer is ALWAYS a `Global<Value>*` the
+binding owns ("One handle kind per layer";
+docs/lessons/architecture-a-local-tagged-handle-is-a-borrowed-global.md), and
+the impl borrows it for the call. So:
 - never read it as a Local slot (`v8_Value_ToGlobal`, `*_Local` FFI) - that is
   how `new ErrorEvent("x", {error: obj}).error` became a garbage number;
 - never dispose it;
@@ -223,7 +224,8 @@ CookieChangeEvent, ExtendableCookieChangeEvent, History, streams_js.
   `.instance => null` - stored as `?*v8.ffi.Value`, disposed with
   `v8_Global_Dispose`, returned with `fromHandleNonOwning`.
 - **Protocol**: `engine.retainValue(realm, value) Error!Owned` to hold;
-  `owned.borrow()` to return it from a getter; `owned.release()` in deinit.
+  `(try engine.retainValue(realm, owned.value)).take()` to return it from a
+  getter - a hold of the binding's own; `owned.release()` in deinit.
 - **Ownership**: the argument is BORROWED (the conversion's); the Owned is the
   object's.
 - **Pitfalls**:
@@ -233,11 +235,11 @@ CookieChangeEvent, ExtendableCookieChangeEvent, History, streams_js.
     value; a dictionary default (`CustomEventInit.detail = null`) is applied
     by the impl - the generated dictionary's Zig `null` means "not present"
     (and, today, also a member PRESENT as JS null: section 3, gap 2).
-  - Return `borrow()`, never `take()`, from a getter of a kept value - `take`
-    hands ownership to the binding, which then releases what you still hold.
+  - Never return a kept value itself - `borrow()` or `take()` of it: the
+    binding releases every value a getter returns, so it would release what
+    you still hold. Return a second hold, `retainValue(...).take()`.
   - A getter that makes a NEW value each read (a fresh array) returns
-    `.take()` instead; returning a fresh handle as non-owning is the
-    CookieChangeEvent leak.
+    `.take()` of it.
 - **Before/after**:
 
 ```zig
@@ -250,7 +252,7 @@ if (internal.promise) |v| v8.ffi.v8_Global_Dispose(v);
 // after
 promise: ?engine.Owned = null,
 internal.promise = try hold(ctx, init.promise);
-return internal.promise.?.borrow();
+return (try engine.retainValue(instance.ctx, internal.promise.?.value)).take();
 if (internal.promise) |v| v.release();
 
 /// The event's own hold on `value`, or null for undefined.
@@ -573,7 +575,9 @@ ExtendableCookieChangeEvent.
 
 - **Protocol**: `engine.createFrozenArray(realm, values: []const JSValue) Error!Owned`.
 - **Pitfalls**: a `[SameObject]` / cached FrozenArray attribute keeps its
-  Owned (R1) and returns `borrow()`; a per-read one returns `take()`. The old
+  Owned (R1) and returns a hold of it (`retainValue(...).take()`); a per-read
+  one returns `take()`. Codegen does not cache a `runtime.JSValue` getter:
+  the impl's slot is what keeps it the same object. The old
   IntersectionObserver.thresholds array was never frozen.
   The model for a [SameObject] one is CookieChangeEvent.changed: made on the
   first read in the object's relevant realm (`instance.ctx`), kept in an

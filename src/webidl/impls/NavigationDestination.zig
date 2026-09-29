@@ -17,6 +17,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -232,9 +233,10 @@ pub fn call_getState(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Return the state as JSValue, or undefined
-    // state is a stored V8 handle - use fromHandleNonOwning
+    // state is a handle the destination keeps: the result is a hold of the
+    // binding's own.
     if (internal.state) |state_ptr| {
-        return runtime.JSValue.fromHandleNonOwning(@constCast(state_ptr));
+        return (try engine.retainValue(instance.ctx, runtime.JSValue.fromHandle(@constCast(state_ptr)))).take();
     }
     return runtime.JSValue.jsUndefined;
 }

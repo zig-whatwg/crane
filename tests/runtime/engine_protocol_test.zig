@@ -61,17 +61,17 @@ test "undefined, null, a boolean or a number is retained by value, with no engin
     try std.testing.expectError(error.NotSupported, engine.retainValue(realm, runtime.JSValue.fromStringRef("s")));
 }
 
-test "borrow is a view of an Owned value that its holder keeps, and the binding leaves" {
+test "borrow is a view of an Owned value that its holder keeps" {
     var slot: u8 = 0;
     const handle: engine.Owned = .{ .value = runtime.JSValue.fromHandle(@ptrCast(&slot)) };
     const view = handle.borrow();
-    // The same engine value, never to be released by whoever receives it.
+    // The same engine value: a JSValue is borrowed, so whoever receives it
+    // never releases it.
     try std.testing.expectEqual(@as(*anyopaque, @ptrCast(&slot)), view.handle.ptr);
-    try std.testing.expect(!view.needsDisposal());
-    try std.testing.expect(handle.value.needsDisposal());
 
+    // A string's bytes stay the holder's.
     const text: engine.Owned = .{ .value = runtime.JSValue.fromStringOwned("kept") };
-    try std.testing.expect(!text.borrow().needsDisposal());
+    try std.testing.expect(!text.borrow().string.owned);
     try std.testing.expectEqualStrings("kept", text.borrow().string.data);
 
     const number: engine.Owned = .{ .value = runtime.JSValue.fromNumber(3) };

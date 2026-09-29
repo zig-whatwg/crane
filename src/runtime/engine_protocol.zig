@@ -114,17 +114,19 @@ pub const Owned = struct {
     }
 
     /// Hand the value, and the duty to release it, to something documented
-    /// to take ownership - the binding, for an operation's result.
+    /// to take ownership - the binding, for an impl's result: the binding
+    /// releases every value an impl returns once it is the call's result.
     pub fn take(self: Owned) JSValue {
         return self.value;
     }
 
-    /// The value BORROWED, while this Owned is held: what an attribute getter
-    /// returns for a value its object keeps (an event's `any` member). The
-    /// binding reads a borrowed value and never releases it.
+    /// The value BORROWED, while this Owned is held: to pass to an operation
+    /// or a function that takes a JSValue. Never an impl's result - the
+    /// binding releases what an impl returns, so a value the object keeps
+    /// goes back as a hold of the binding's own:
+    /// `(try retainValue(realm, kept.value)).take()`.
     pub fn borrow(self: Owned) JSValue {
         return switch (self.value) {
-            .handle => |h| .{ .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope } },
             .string => |text| .{ .string = .{ .data = text.data, .owned = false } },
             else => self.value,
         };

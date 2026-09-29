@@ -173,13 +173,8 @@ pub fn create(ctx: Context) !JSValue {
         weakCallback,
     );
 
-    return JSValue{
-        .handle = .{
-            .ptr = @ptrCast(proxy),
-            .needs_disposal = true,
-            .handle_scope = .global, // V8 Proxy from v8_Proxy_New is a Global handle
-        },
-    };
+    // The proxy's Global (v8_Proxy_New makes one), handed over.
+    return JSValue{ .handle = .{ .ptr = @ptrCast(proxy) } };
 }
 
 /// The Engine table's `createObservableArray` (WebIDL "create an observable
@@ -368,14 +363,8 @@ fn setTrap(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
     const value = info.get(2); // V - the value
     const receiver = info.get(3); // Receiver
 
-    // Create JSValue wrapper for the value
-    const js_value = JSValue{
-        .handle = .{
-            .ptr = @ptrCast(value),
-            .needs_disposal = false, // V8 manages the handle
-            .handle_scope = .local,
-        },
-    };
+    // The value, borrowed for the trap.
+    const js_value = JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
 
     if (v8.v8_Value_IsString(prop)) {
         const str_len = v8.v8_String_Utf8Length(@ptrCast(prop));

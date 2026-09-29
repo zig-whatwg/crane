@@ -3743,7 +3743,13 @@ pub fn writeDelegateFunctions(
         const get_prefix = getterPrefix(attr);
         const set_prefix = setterPrefix(attr);
 
-        const caches = has_same_object and !attr.static and options.same_object_cache;
+        // A [SameObject] value that is an engine value (runtime.JSValue) is
+        // not cached here: the binding releases what a getter returns, and
+        // generated code cannot take a hold of its own (it never calls the
+        // engine). Such an impl keeps its value and returns a hold of it
+        // (engine.retainValue(...).take()) - the same object every read.
+        const caches = has_same_object and !attr.static and options.same_object_cache and
+            !std.mem.eql(u8, return_type, "runtime.JSValue");
         if (inherited) |mixin| if (!caches) {
             try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ get_prefix, sanitized_name, mixin, get_prefix, sanitized_name });
             if (mixinModuleHasSetter(attr)) {

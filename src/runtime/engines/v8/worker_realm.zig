@@ -463,7 +463,7 @@ fn argumentValue(isolate: *ffi.Isolate, context: *ffi.Context, value: *ffi.Value
         _ = ffi.v8_String_WriteUtf8(str, buffer.ptr, len);
         return runtime.JSValue.fromStringOwned(buffer);
     }
-    return .{ .handle = .{ .ptr = @ptrCast(value), .needs_disposal = false, .handle_scope = .global } };
+    return .{ .handle = .{ .ptr = @ptrCast(value) } };
 }
 
 fn builtinCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
@@ -506,13 +506,10 @@ fn builtinCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     };
     const returned = conversions.toV8Value(runtime.JSValue, isolate, context, result) catch return;
     info.setReturnValue(returned);
-    // A value made for the return, or a handle the steps handed over, is
-    // released now that V8 holds its own reference.
-    switch (result) {
-        .handle => |h| if (h.needs_disposal) ffi.v8_Global_Dispose(returned),
-        .instance => {},
-        else => ffi.v8_Global_Dispose(returned),
-    }
+    // A value made for the return, or the handle the steps handed over (the
+    // result is the engine's - BuiltinSteps), is released now that V8 holds
+    // its own reference. An instance's wrapper is the wrapper cache's.
+    if (result != .instance) ffi.v8_Global_Dispose(returned);
 }
 
 /// Engine table `isCallable`: ECMAScript IsCallable(`value`).

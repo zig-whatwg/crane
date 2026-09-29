@@ -71,7 +71,7 @@ test "a TimerHandler-shaped union retains - the case that caused 10 crashes of 1
 
 test "JSValue does NOT retain the CONTEXT, though it carries a value handle" {
     // The distinction this predicate is about. `conv.fromV8Value`'s JSValue branch
-    // returns `.handle = .{ .ptr = value, .handle_scope = .local }` and uses
+    // returns `.handle = .{ .ptr = value }` and uses
     // `context` only transiently, so the context is free to release even though a
     // value handle survives. Conflating the two kept `createElement`, whose second
     // parameter is `webidl.Opt(JSValue)`, leaking on the DOM's hottest path.
@@ -216,7 +216,7 @@ test "argHandleIsCopied - JSValue is NOT, it keeps the pointer" {
     // The distinction that makes this a separate predicate from the one above.
     // JSValue does not retain the CONTEXT - `typeRetainsContext(JSValue)` is
     // false, asserted earlier in this file - but it absolutely retains the VALUE:
-    // `.handle = .{ .ptr = value, .handle_scope = .local }`. Releasing the
+    // `.handle = .{ .ptr = value }`. Releasing the
     // argument handle would free what it points at.
     try std.testing.expect(!copied(runtime.JSValue));
     try std.testing.expect(!copied(?runtime.JSValue));

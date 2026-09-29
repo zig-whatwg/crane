@@ -58,6 +58,11 @@ pub const InternalState = struct {
     /// Parsed threshold values (sorted)
     thresholds: std.ArrayListUnmanaged(f64),
 
+    /// The `thresholds` attribute's frozen array, made on the first read and
+    /// kept (OWNED), so every read returns the same array: the list never
+    /// changes after construction.
+    thresholds_array: ?engine.Owned = null,
+
     /// Root margin values [top, right, bottom, left] in pixels
     root_margin: [4]f64 = .{ 0, 0, 0, 0 },
 
@@ -103,6 +108,8 @@ pub const InternalState = struct {
 
         // Free thresholds
         self.thresholds.deinit(self.allocator);
+        if (self.thresholds_array) |array| array.release();
+        self.thresholds_array = null;
     }
 };
 
@@ -255,18 +262,20 @@ pub fn get_scrollMargin(instance: *runtime.Instance) anyerror!runtime.DOMString 
     return runtime.DOMString.initDupe(instance.ctx.allocator, result) catch return runtime.DOMString.initEmpty();
 }
 
-/// Getter for thresholds
-/// Returns the list of thresholds as a frozen array
+/// Getter for thresholds: "return this's internal [[thresholds]] slot" as a
+/// FrozenArray<double>. The slot never changes after construction, so the
+/// array is made once, in the observer's relevant realm, and every read
+/// returns it.
 pub fn get_thresholds(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
-    const values = try internal.allocator.alloc(runtime.JSValue, internal.thresholds.items.len);
-    defer internal.allocator.free(values);
-    for (internal.thresholds.items, values) |threshold, *value| value.* = runtime.JSValue.fromNumber(threshold);
-
-    // A FrozenArray<double>, made in the current realm. OWNED: the binding
-    // takes it.
-    const array = try engine.createFrozenArray(engine.currentRealm() orelse instance.ctx, values);
-    return array.take();
+    if (internal.thresholds_array == null) {
+        const values = try internal.allocator.alloc(runtime.JSValue, internal.thresholds.items.len);
+        defer internal.allocator.free(values);
+        for (internal.thresholds.items, values) |threshold, *value| value.* = runtime.JSValue.fromNumber(threshold);
+        internal.thresholds_array = try engine.createFrozenArray(instance.ctx, values);
+    }
+    // The observer keeps its array; the binding gets a hold of its own.
+    return (try engine.retainValue(instance.ctx, internal.thresholds_array.?.value)).take();
 }
 
 /// Getter for delay

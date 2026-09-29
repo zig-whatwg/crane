@@ -256,7 +256,7 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
 
     // HTML "create a new realm", the customization for the global object:
     // the host's new Window, bound to `global` (BORROWED by the host).
-    const window = options.create_global_object(realm, .{ .handle = .{ .ptr = global, .needs_disposal = false } }, options.host) orelse {
+    const window = options.create_global_object(realm, .{ .handle = .{ .ptr = global } }, options.host) orelse {
         ffi.v8_Object_Dispose(global);
         return error.OperationFailed;
     };

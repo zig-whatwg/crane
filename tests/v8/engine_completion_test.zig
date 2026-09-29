@@ -82,7 +82,7 @@ test "a throw completion hands back the thrown value itself, owned" {
     const ctx = try realm();
     const boom = try eval("globalThis.boom = new Error('toString'); ({ toString() { throw boom; } })");
     defer ffi.v8_Value_Dispose(boom);
-    var value: runtime.JSValue = .{ .handle = .{ .ptr = @ptrCast(boom), .needs_disposal = false } };
+    var value: runtime.JSValue = .{ .handle = .{ .ptr = @ptrCast(boom) } };
     const thrown = (try protocol.completionOf(ctx, convertSteps, &value)) orelse return error.NoCompletion;
     defer thrown.release();
     try setGlobal("caught", thrown.value.handle.ptr);
@@ -94,7 +94,7 @@ test "a throw completion hands back the thrown value itself, owned" {
 fn completesNormally(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const argument = info.get(0);
     defer ffi.v8_Global_Dispose(argument);
-    var value: runtime.JSValue = .{ .handle = .{ .ptr = @ptrCast(argument), .needs_disposal = false } };
+    var value: runtime.JSValue = .{ .handle = .{ .ptr = @ptrCast(argument) } };
     const thrown = protocol.completionOf(data_once.?, convertSteps, &value) catch return;
     const was_thrown = thrown != null;
     if (thrown) |t| t.release();

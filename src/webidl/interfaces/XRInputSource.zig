@@ -162,14 +162,7 @@ pub const XRInputSource = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_profiles(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_profiles) |cached| {
-            return cached;
-        }
-        const value = try XRInputSourceImpl.get_profiles(instance);
-        state.own.cached_profiles = value;
-        return value;
+        return try XRInputSourceImpl.get_profiles(instance);
     }
 
     pub fn get_skipRendering(instance: *runtime.Instance) anyerror!bool {

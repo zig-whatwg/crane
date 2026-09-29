@@ -23,6 +23,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -210,9 +211,11 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         internal.download_request = try ctx.allocator.dupe(u8, download.asSlice());
     }
 
-    // Convert JSValue to anyopaque if provided
+    // Kept as its engine handle - which `get_info` retains for each read -
+    // so only a `.handle`: `toAnyopaque` gave a platform object's Instance
+    // pointer, which the getter would read as a Global.
     if (eventInitDict.info) |info_value| {
-        internal.info = info_value.toAnyopaque();
+        internal.info = if (info_value == .handle) info_value.handle.ptr else null;
     } else {
         internal.info = null;
     }
@@ -292,9 +295,10 @@ pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 /// HTML Standard §7.2.6.5: Returns user-provided info from navigate()
 pub fn get_info(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // info is a stored V8 handle from navigation API - use fromHandleNonOwning
+    // info is a handle the event keeps: the result is a hold of the
+    // binding's own.
     if (internal.info) |info_ptr| {
-        return runtime.JSValue.fromHandleNonOwning(@constCast(info_ptr));
+        return (try engine.retainValue(instance.ctx, runtime.JSValue.fromHandle(@constCast(info_ptr)))).take();
     }
     return runtime.JSValue.jsUndefined;
 }

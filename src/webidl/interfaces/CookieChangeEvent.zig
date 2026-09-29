@@ -119,25 +119,11 @@ pub const CookieChangeEvent = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_changed(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_changed) |cached| {
-            return cached;
-        }
-        const value = try CookieChangeEventImpl.get_changed(instance);
-        state.own.cached_changed = value;
-        return value;
+        return try CookieChangeEventImpl.get_changed(instance);
     }
 
     /// Extended attributes: [SameObject]
     pub fn get_deleted(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_deleted) |cached| {
-            return cached;
-        }
-        const value = try CookieChangeEventImpl.get_deleted(instance);
-        state.own.cached_deleted = value;
-        return value;
+        return try CookieChangeEventImpl.get_deleted(instance);
     }
 };

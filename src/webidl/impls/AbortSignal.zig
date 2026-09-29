@@ -172,12 +172,12 @@ pub fn get_aborted(instance: *runtime.Instance) anyerror!bool {
 
 /// Getter for reason
 ///
-/// Spec: "return this's abort reason." Borrowed by the caller.
+/// Spec: "return this's abort reason."
 pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
     const reason = internal.reason orelse return runtime.JSValue.jsUndefined;
-    // The signal keeps its hold: the binding reads it and leaves it.
-    return reason.borrow();
+    // The signal keeps its hold; the binding gets one of its own.
+    return (try engine.retainValue(instance.ctx, reason.value)).take();
 }
 
 /// Getter for onabort

@@ -73,10 +73,12 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = state.own._internal orelse return error.InvalidState;
     const cursor_with_value = internal.cursor_with_value orelse return error.InvalidState;
 
-    // Get the value from the cursor - value.ptr is a stored V8 handle
-    if (cursor_with_value.getValue()) |value| {
-        return runtime.JSValue.fromHandleNonOwning(@ptrCast(@constCast(value.ptr)));
-    }
+    // The record's value is IndexedDB's serialized bytes
+    // (storage/indexeddb/serialization.zig), not an engine handle: handing
+    // their address to the binding as one read the bytes as a Global.
+    // TODO: StructuredDeserialize them with IndexedDB's deserializer into
+    // this's value, once per iteration.
+    if (cursor_with_value.getValue()) |_| return error.NotImplemented;
 
     return runtime.JSValue.jsUndefined;
 }

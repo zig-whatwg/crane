@@ -61,7 +61,7 @@ fn scriptValue(expression: []const u8) !*ffi.Value {
 }
 
 /// `value` as the binding hands an object to an impl: conversions.fromV8Value
-/// tags it `.local` - borrowed for the call - over the same Global.
+/// makes a `.handle` - borrowed for the call - over the same Global.
 fn borrowed(value: *ffi.Value) runtime.JSValue {
     return v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, value) catch unreachable;
 }
@@ -1723,4 +1723,64 @@ test "protocol: listeners added and removed in a loop leave no callback wrapper 
         \\dispatchEvent(new Event('z'));
         \\String(heard)
     , "1");
+}
+
+test "protocol: what a getter returns is the binding's - a kept value reads the same, and no read leaves a handle" {
+    // AGENTS.md "The engine boundary", rule 3: the binding releases every
+    // value an impl returns. A value the object keeps goes back as a hold of
+    // the binding's own (engine.retainValue(...).take()), so it reads the same
+    // every time and survives the binding's release; a value made for the
+    // read is released with it.
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    try expectEval(w,
+        \\const e = new ErrorEvent('x');
+        \\const c = new CustomEvent('x', { detail: { a: 1 } });
+        \\const s = AbortSignal.abort({ why: 1 });
+        \\const p = new PopStateEvent('x', { state: { b: 2 } });
+        \\const m = new MessageEvent('x', { data: { d: 4 } });
+        \\const k = new CookieChangeEvent('change', { changed: [{ name: 'a', value: 'b' }] });
+        \\const io = new IntersectionObserver(() => {}, { threshold: [0, 0.5] });
+        \\globalThis.reads = () => {
+        \\  void e.error; void c.detail; void s.reason; void p.state; void m.data;
+        \\  void k.changed; void k.deleted; void io.thresholds;
+        \\};
+        \\[
+        \\  e.error === undefined,
+        \\  c.detail === c.detail && c.detail.a === 1,
+        \\  s.reason === s.reason && s.reason.why === 1,
+        \\  p.state === p.state && p.state.b === 2,
+        \\  m.data === m.data && m.data.d === 4,
+        \\  k.changed === k.changed && k.changed[0].name === 'a',
+        \\  k.deleted === k.deleted && k.deleted.length === 0,
+        \\  io.thresholds === io.thresholds && io.thresholds[1] === 0.5,
+        \\].join()
+    , "true,true,true,true,true,true,true,true");
+
+    const isolate = isolate_once.?;
+    // What one handle costs in V8's count.
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    try std.testing.expect(handle_bytes > 0);
+
+    // Eight reads a round; a leak is at least one handle a round. The same
+    // loop without the reads is the control for what running script costs.
+    const rounds = 64;
+    try expectEval(w, "reads(); reads(); 'warm'", "warm");
+    var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, "for (let n = 0; n < 64; n++) {} 'control'", "control");
+    const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, "for (let n = 0; n < 64; n++) reads(); 'read'", "read");
+    const read = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    if (read -| control >= handle_bytes * rounds / 4) {
+        std.debug.print("{d} rounds of getter reads left {d} bytes of global handles; the control {d} ({d} bytes a handle)\n", .{ rounds, read, control, handle_bytes });
+        return error.HandlesLeaked;
+    }
 }

@@ -173,7 +173,7 @@ pub fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: [
     defer entered.leaveScope();
     const value = v8_conversions.newDOMExceptionFromContext(entered.isolate, entered.scope.context, name, message) orelse
         return EngineError.OperationFailed;
-    return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
+    return .{ .handle = .{ .ptr = value } };
 }
 
 pub fn v8StructuredSerializeForStorage(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) EngineError![]u8 {
@@ -204,7 +204,7 @@ pub fn v8StructuredDeserialize(realm: runtime.Context, bytes: []const u8) Engine
     var code: c_int = 0;
     const value = ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(bytes.ptr, bytes.len, &no_buffers, 0, &code) orelse
         return EngineError.DataCloneError;
-    return .{ .handle = .{ .ptr = value, .needs_disposal = true } };
+    return .{ .handle = .{ .ptr = value } };
 }
 
 pub fn v8RejectPromiseWithValue(promise_handle: *anyopaque, value: runtime.JSValue) EngineError!void {
@@ -223,11 +223,12 @@ pub fn v8RejectPromiseWithValue(promise_handle: *anyopaque, value: runtime.JSVal
     if (!ffi.v8_PromiseResolver_Reject(handle.resolver, handle.context, reason)) return EngineError.PromiseError;
 }
 
+/// Release an OWNED value (engine.Owned.release): its handle, if it has one.
+/// Only an Owned reaches here - a borrowed JSValue is never released - so a
+/// handle is disposed unconditionally.
 pub fn v8ReleaseValue(value: runtime.JSValue) void {
     switch (value) {
-        .handle => |h| if (h.needs_disposal and h.handle_scope == .global) {
-            ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr)));
-        },
+        .handle => |h| ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.ptr))),
         else => {},
     }
 }

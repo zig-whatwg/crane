@@ -92,13 +92,6 @@ pub const AuthenticatorResponse = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_clientDataJSON(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_clientDataJSON) |cached| {
-            return cached;
-        }
-        const value = try AuthenticatorResponseImpl.get_clientDataJSON(instance);
-        state.own.cached_clientDataJSON = value;
-        return value;
+        return try AuthenticatorResponseImpl.get_clientDataJSON(instance);
     }
 };

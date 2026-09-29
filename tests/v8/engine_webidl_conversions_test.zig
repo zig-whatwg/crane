@@ -60,7 +60,7 @@ fn setGlobal(name: []const u8, handle: *anyopaque) !void {
 }
 
 fn asValue(handle: *ffi.Value) runtime.JSValue {
-    return .{ .handle = .{ .ptr = @ptrCast(handle), .needs_disposal = false, .handle_scope = .global } };
+    return .{ .handle = .{ .ptr = @ptrCast(handle) } };
 }
 
 /// A value made by `code`, as a borrowed JSValue, and the Global to dispose.
@@ -121,7 +121,7 @@ fn stringLength(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     const argument = info.get(0);
     defer ffi.v8_Global_Dispose(argument);
     // As an impl gets it: the binding's form of the argument (an object is a
-    // `.handle` tagged `.local` whose pointer is the argument's Global).
+    // borrowed `.handle` whose pointer is the argument's Global).
     var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate_once.?, context_once.?, argument) catch return;
     defer value.deinit(allocator);
     const result: f64 = if (v8.webidl_conversions.convertToDOMString(data_once.?, value, allocator)) |text| blk: {
@@ -430,7 +430,7 @@ test "a sequence of values becomes an Array of the realm" {
     defer object.deinit();
     const array = try v8.webidl_conversions.createSequenceOfValues(ctx, &.{ .{ .number = 7 }, runtime.JSValue.fromStringRef("s"), object.value() });
     defer v8.engine.v8ReleaseValue(array);
-    try std.testing.expect(array.handle.needs_disposal);
+    try std.testing.expect(array == .handle);
     try setGlobal("arr", array.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt("Array.isArray(arr) && arr.length === 3 && arr[0] === 7 && arr[1] === 's' && arr[2] === o ? 1 : 0"));
 }
@@ -442,7 +442,7 @@ test "a sequence of values becomes an Array of the realm" {
 //
 // `@import("engine")` - under another name here only because this file already
 // calls the table `engine`. Arguments are made as the binding makes them
-// (conversions.fromV8Value): an object is a `.handle` tagged `.local`.
+// (conversions.fromV8Value): an object is a borrowed `.handle`.
 
 const protocol = @import("engine");
 

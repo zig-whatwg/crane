@@ -220,10 +220,10 @@ fn keepData(ctx: runtime.Context, instance: *runtime.Instance, data: runtime.JSV
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    // The event keeps what it holds: a handle goes out borrowed, and the
-    // binding reads it and leaves it.
+    // The event keeps what it holds: a handle goes to the binding as a hold
+    // of its own.
     return switch (state.own.data) {
-        .handle => |h| .{ .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope } },
+        .handle => (try engine.retainValue(instance.ctx, state.own.data)).take(),
         else => state.own.data,
     };
 }
@@ -285,9 +285,9 @@ pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
         internal.ports_hold = ports;
         state.own.ports = ports.value;
     }
-    // Borrowed: the event keeps its array.
+    // The event keeps its array; the binding gets a hold of its own.
     return switch (state.own.ports) {
-        .handle => |h| .{ .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope } },
+        .handle => (try engine.retainValue(instance.ctx, state.own.ports)).take(),
         else => state.own.ports,
     };
 }

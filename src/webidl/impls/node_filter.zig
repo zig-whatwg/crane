@@ -87,11 +87,12 @@ fn convertToUnsignedShort(x: f64) u16 {
 }
 
 /// The filter as script sees it - `nodeIterator.filter`, `treeWalker.filter`:
-/// the object createNodeIterator() or createTreeWalker() was given, BORROWED
-/// from the traverser. Null for none.
-pub fn fromStored(stored: ?*anyopaque) ?runtime.JSValue {
+/// the object createNodeIterator() or createTreeWalker() was given, as the
+/// getter's result - a hold of the binding's own, since the traverser keeps
+/// its filter. Null for none.
+pub fn fromStored(realm: runtime.Context, stored: ?*anyopaque) engine.Error!?runtime.JSValue {
     const filter: *Filter = @ptrCast(@alignCast(stored orelse return null));
-    return filter.callback.object.borrow();
+    return (try engine.retainValue(realm, filter.callback.object.value)).take();
 }
 
 /// Release a stored filter: its callback interface value, then the record.

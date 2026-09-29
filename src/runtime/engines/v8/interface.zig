@@ -271,9 +271,9 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
 
         // `JSValue` is inert FOR THE CONTEXT, which is what this predicate
         // governs. `conv.fromV8Value`'s JSValue branch returns
-        // `.handle = .{ .ptr = value, .handle_scope = .local }` - it keeps the
-        // VALUE pointer and uses `context` only transiently, for
-        // `v8_Value_NumberValue` and `v8_Value_ToString`. Retaining a value handle
+        // `.handle = .{ .ptr = value }` - it keeps the VALUE pointer and uses
+        // `context` only transiently, for `v8_Value_NumberValue` and
+        // `v8_Value_ToString`. Retaining a value handle
         // is a different question from retaining the context, and conflating them
         // kept `createElement` - whose second parameter is `webidl.Opt(JSValue)` -
         // leaking its context on the hottest path in the DOM.
@@ -2680,8 +2680,17 @@ pub fn V8Interface(comptime Interface: type) type {
                         // setReturnValue reads the handle into a Local. A value the
                         // conversion above made is ours: every number, boolean,
                         // string and enum read leaked a Global - 200,000
-                        // `v8_Number_New`s for 200,000 `list.length` reads.
-                        if (comptime getterValueIsOwned(PayloadType)) v8.v8_Global_Dispose(v8_value);
+                        // `v8_Number_New`s for 200,000 `list.length` reads. So is
+                        // every JSValue result but an instance's wrapper: a handle
+                        // the impl returns is the binding's (engine.Owned.take),
+                        // and the other arms are made here.
+                        if (comptime getterValueIsOwned(PayloadType)) {
+                            v8.v8_Global_Dispose(v8_value);
+                        } else if (comptime PayloadType == runtime.JSValue) {
+                            if (result != .instance) v8.v8_Global_Dispose(v8_value);
+                        } else if (comptime PayloadType == ?runtime.JSValue) {
+                            if (result == null or result.? != .instance) v8.v8_Global_Dispose(v8_value);
+                        }
                     }
                 }
             };
@@ -3743,11 +3752,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // `owned` answers whether the handle returned is the binding's to
             // release once the caller has set it as the call's result
-            // (setReturnValue copies). True only where this conversion made the
-            // handle, or the impl handed its own over (a JSValue that
-            // `needsDisposal`). A wrapper is the cache's, and a union's arm
-            // cannot be told apart here, so both stay false - a leak at worst,
-            // never a handle freed under its holder.
+            // (setReturnValue copies). True where this conversion made the
+            // handle, and for every handle a JSValue result carries - what an
+            // impl returns is the binding's. A wrapper is the cache's, and a
+            // union's or dictionary's parts are not told apart here, so they
+            // stay false - a leak at worst, never a handle freed under its
+            // holder.
             owned.* = false;
 
             const type_info = @typeInfo(ReturnType);
@@ -3831,14 +3841,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Handle runtime.JSValue - engine-agnostic value wrapper
             if (ReturnType == runtime.JSValue) {
-                // Every arm but a borrowed handle and an instance's wrapper
-                // makes a fresh handle; a global handle is the binding's when
-                // the impl handed it over.
-                owned.* = switch (result) {
-                    .handle => |h| h.handle_scope != .global or h.needs_disposal,
-                    .instance => false,
-                    else => true,
-                };
+                // What an impl returns is the binding's (engine.Owned.take): a
+                // handle - the impl's to hand over, a value it keeps going back
+                // as a hold of its own (retainValue) - and every value made
+                // here are released once set. Only an instance's wrapper is
+                // not: it is the wrapper cache's.
+                owned.* = result != .instance;
                 return switch (result) {
                     .undefined => v8.v8_Undefined(isolate),
                     .null => @ptrCast(v8.v8_Null(isolate)),
@@ -3850,16 +3858,8 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
                         break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return v8.v8_Undefined(isolate));
                     },
-                    .handle => |h| blk: {
-                        // Handle is a Global<Value>* - return it directly for setReturnValueGlobal
-                        if (h.handle_scope == .global) {
-                            break :blk @ptrCast(h.ptr);
-                        } else {
-                            // Local handle - need to persist to Global
-                            const global = v8.v8_Value_Persist(isolate, @ptrCast(h.ptr));
-                            break :blk if (global) |g| @ptrCast(g) else v8.v8_Undefined(isolate);
-                        }
-                    },
+                    // A Global<Value>*, set as the result as it is.
+                    .handle => |h| @ptrCast(h.ptr),
                     .instance => |i| blk: {
                         const inst: *runtime.Instance = @ptrCast(@alignCast(i));
                         const iface_name = template_registry.getInstanceInterfaceName(inst);
@@ -4503,6 +4503,9 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
                     info.setReturnValue(@ptrCast(v8_value));
+                    // The result is the binding's, as every impl result is;
+                    // only an instance's wrapper is the wrapper cache's.
+                    if (js_value != .instance) v8.v8_Global_Dispose(@ptrCast(v8_value));
                 } else {
                     info.setReturnValue(@ptrCast(v8.v8_Null(isolate)));
                 }
