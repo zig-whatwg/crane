@@ -52,6 +52,7 @@ const range_boundaries = @import("dom").range_boundaries;
 const names = @import("dom").names;
 const attr_nodes = @import("dom").attr_nodes;
 const traversal = @import("dom").traversal;
+const live_collections = @import("dom").live_collections;
 const StylesheetBlockingTracker = html_core.StylesheetBlockingTracker;
 const editing = html_core.editing;
 
@@ -3056,85 +3057,35 @@ pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue 
 }
 
 /// Operation: getElementsByClassName
-/// DOM §4.4 - Returns a live HTMLCollection of elements with matching class names
-/// Spec: https://dom.spec.whatwg.org/#dom-document-getelementsbyclassname
 ///
-/// Steps:
-/// 1. Return a collection of descendant elements that have all classes in classNames
-///    (classNames is a space-separated string of class names)
+/// Spec: https://dom.spec.whatwg.org/#dom-document-getelementsbyclassname
+/// "The getElementsByClassName(classNames) method steps are to return the
+///  list of elements with class names classNames for this."
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-getelementsbyclassname
+/// "1. Let classes be the result of running the ordered set parser on
+///  classNames. 2. If classes is the empty set, return an empty
+///  HTMLCollection. 3. Return an HTMLCollection rooted at root, whose filter
+///  matches descendant elements that have all their classes in classes."
+///
+/// Step 3's collection is LIVE, which HTMLCollection keeps
+/// (dom.live_collections): a snapshot missed every class that changed after
+/// the call (dom/nodes/getElementsByClassName-03, -05).
 pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const class_names = classNames.asSlice();
 
-    // Empty class string returns empty collection
-    if (class_names.len == 0) {
-        // Use interface instead of impl (per Golden Rule #13)
-        return try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
-    }
-
-    // Create an HTMLCollection to hold results
-    // Use interface instead of impl (per Golden Rule #13)
     const collection = try interfaces.HTMLCollection.init(internal.allocator, instance.ctx);
     errdefer interfaces.HTMLCollection.deinit(collection);
 
-    // Traverse tree and collect matching elements
-    try collectElementsByClassName(instance, class_names, collection);
+    // Steps 1-2: the ordered set parser's tokens are the pieces between ASCII
+    // whitespace; none means the empty set, and the empty collection.
+    var tokens = std.mem.tokenizeAny(u8, class_names, "\t\n\x0C\r ");
+    if (tokens.next() == null) return collection;
 
+    // Step 3.
+    try live_collections.elementsWithClassNames(collection, instance, class_names);
     return collection;
-}
-
-/// Helper: Recursively collect elements by class name
-fn collectElementsByClassName(
-    node: *runtime.Instance,
-    target_classes: []const u8,
-    collection: *runtime.Instance,
-) ImplError!void {
-    const HTMLCollectionImpl = @import("HTMLCollection.zig");
-    const ElementImpl = @import("Element.zig");
-
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        const node_type = NodeImpl.getNodeType(c) orelse 0;
-        if (node_type == NodeImpl.NodeType.ELEMENT_NODE) {
-            // Check if element has all the target classes
-            if (ElementImpl.getInternal(c)) |elem_internal| {
-                const elem_classes = elem_internal.class_name.asSlice();
-                if (hasAllClasses(elem_classes, target_classes)) {
-                    HTMLCollectionImpl.addElement(collection, c) catch return error.OutOfMemory;
-                }
-            }
-        }
-
-        // Recursively search descendants
-        try collectElementsByClassName(c, target_classes, collection);
-
-        child = NodeImpl.getNextSibling(c);
-    }
-}
-
-/// Helper: Check if element_classes contains all classes in target_classes
-/// Both are space-separated strings
-fn hasAllClasses(element_classes: []const u8, target_classes: []const u8) bool {
-    // Split target classes by spaces
-    var target_iter = std.mem.splitScalar(u8, target_classes, ' ');
-    while (target_iter.next()) |target_class| {
-        if (target_class.len == 0) continue; // Skip empty tokens
-
-        // Check if element has this class
-        var found = false;
-        var elem_iter = std.mem.splitScalar(u8, element_classes, ' ');
-        while (elem_iter.next()) |elem_class| {
-            if (elem_class.len == 0) continue;
-            if (std.mem.eql(u8, elem_class, target_class)) {
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) return false;
-    }
-
-    return true;
 }
 
 /// Operation: getElementsByTagName
