@@ -202,6 +202,74 @@ pub fn mediaHostElement(mime_essence: []const u8) MediaHostElement {
     return .img;
 }
 
+/// The markup `a text document` feeds the HTML parser.
+///
+/// Only U+0026 and U+003C are escaped. That is deliberate and it is the
+/// whole point: those two are the only bytes the tokenizer acts on inside
+/// RCDATA-like content, so escaping them and nothing else leaves every
+/// other byte - including U+003E and quotes - exactly as it appeared in the
+/// response, which is what PLAINTEXT would have done.
+///
+/// The LF immediately after `<pre>` is dropped by the parser's own
+/// "ignore a newline right after pre" rule, so it costs nothing and keeps
+/// the shape the spec describes.
+pub fn textDocumentMarkup(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer out.deinit(allocator);
+
+    try out.appendSlice(allocator, "<pre>\n");
+    for (text) |byte| {
+        switch (byte) {
+            '&' => try out.appendSlice(allocator, "&amp;"),
+            '<' => try out.appendSlice(allocator, "&lt;"),
+            else => try out.append(allocator, byte),
+        }
+    }
+    try out.appendSlice(allocator, "</pre>");
+
+    return out.toOwnedSlice(allocator);
+}
+
+/// The markup `a media document` feeds the HTML parser.
+///
+/// The address goes into an attribute, so U+0026 and U+0022 have to be
+/// escaped or a query string with `&` or a quote would end the attribute
+/// early and change which resource is requested.
+pub fn mediaDocumentMarkup(
+    allocator: std.mem.Allocator,
+    address: []const u8,
+    host_element: MediaHostElement,
+) ![]u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer out.deinit(allocator);
+
+    const tag = host_element.tagName();
+    try out.appendSlice(allocator, "<");
+    try out.appendSlice(allocator, tag);
+    try out.appendSlice(allocator, " src=\"");
+    for (address) |byte| {
+        switch (byte) {
+            '&' => try out.appendSlice(allocator, "&amp;"),
+            '"' => try out.appendSlice(allocator, "&quot;"),
+            else => try out.append(allocator, byte),
+        }
+    }
+    try out.appendSlice(allocator, "\"");
+
+    // img is void; video and audio need a close tag or the parser keeps the
+    // rest of the document inside them.
+    switch (host_element) {
+        .img => try out.appendSlice(allocator, ">"),
+        .video, .audio => {
+            try out.appendSlice(allocator, " controls></");
+            try out.appendSlice(allocator, tag);
+            try out.appendSlice(allocator, ">");
+        },
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
