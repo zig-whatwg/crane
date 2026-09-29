@@ -298,11 +298,11 @@ const StorageTask = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *StorageTask = @ptrCast(@alignCast(data orelse return));
         const window = self.target() orelse return;
-        // The event loop runs no task whose document is not fully active.
-        if (interfaces.Window.get_closed(window) catch true) return;
+        // The event loop runs no task whose document is not fully active:
+        // still the window's document, with a browsing context.
         const document = interfaces.Window.get_document(window) catch return;
-        const location = interfaces.Document.get_location(document) catch return;
-        if (location == null) return;
+        const view = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+        if (view != window) return;
         // remoteStorage: the window's Storage object of the type.
         const remote = switch (self.kind) {
             .local => interfaces.Window.get_localStorage(window),
