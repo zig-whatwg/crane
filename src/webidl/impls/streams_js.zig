@@ -45,7 +45,37 @@ pub const Error = error{
     /// The engine refused to create a value or run a call (termination, no
     /// realm behind the context, out of handles).
     V8Failure,
+    /// `Realm.wrap` of an object the wrapper cache does not hold strongly:
+    /// its wrapper would be made and let go with nothing holding it. Hold
+    /// such an object with `clone` instead.
+    NotAStreamsGraphObject,
 };
+
+/// The classes whose wrappers the wrapper cache holds strongly for the
+/// realm's life (streams objects reach each other through Zig pointers V8
+/// cannot trace), and so the only ones `Realm.wrap` may be given. The
+/// wrapper cache reads this list (wrapper_cache.isStreamsGraphObject).
+pub const streams_graph_classes = [_][]const u8{
+    "WritableStream",
+    "WritableStreamDefaultWriter",
+    "WritableStreamDefaultController",
+    "ReadableStream",
+    "ReadableStreamDefaultReader",
+    "ReadableStreamBYOBReader",
+    "ReadableStreamDefaultController",
+    "ReadableByteStreamController",
+    "ReadableStreamBYOBRequest",
+    "TransformStream",
+    "TransformStreamDefaultController",
+};
+
+/// Whether `name` (an instance's vtable name) is one of `streams_graph_classes`.
+pub fn isStreamsGraphObject(name: []const u8) bool {
+    for (streams_graph_classes) |n| {
+        if (std.mem.eql(u8, name, n)) return true;
+    }
+    return false;
+}
 
 /// An engine failure as this file's error: what is pending stays pending,
 /// anything else is a failure to act.
@@ -116,7 +146,14 @@ pub const Realm = struct {
     /// streams-graph object's wrapper, and the instance with it, for the
     /// realm's life - which is what a Zig pointer to it needs. Borrowed:
     /// disposing it does nothing.
+    ///
+    /// Only a streams-graph object (`streams_graph_classes`): any other
+    /// wrapper is weak, and made and let go here it can be collected before
+    /// the caller takes its own hold - setUpController did that with its
+    /// AbortController, and a collection in between freed it. So anything
+    /// else is refused (NotAStreamsGraphObject); hold it with `clone`.
     pub fn wrap(self: Realm, instance: *runtime.Instance) Error!Value {
+        if (!isStreamsGraphObject(instance.vtable.name)) return error.NotAStreamsGraphObject;
         const wrapper = engine.retainValue(instance.ctx, .{ .instance = instance }) catch |err| return fromEngineError(err);
         wrapper.release();
         return .{ .value = .{ .instance = instance }, .realm = self.ctx };
