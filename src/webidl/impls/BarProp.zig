@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const html_core = @import("html_core");
 const BarProp = interfaces.BarProp;
 
 pub const State = BarProp.State;
@@ -40,7 +41,13 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Getter for visible
+/// HTML §7.2.2.2: "1. Let browsingContext be this's relevant global object's
+/// browsing context. 2. If browsingContext is null, then return true. 3.
+/// Return the negation of browsingContext's top-level browsing context's is
+/// popup."
 pub fn get_visible(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const record = instance.ctx.getRealm() orelse return true;
+    const global = record.global_object orelse return true;
+    const browsing_context = html_core.BrowsingContext.ofWindow(@ptrCast(global)) orelse return true;
+    return !browsing_context.getTop().is_popup;
 }

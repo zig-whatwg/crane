@@ -164,6 +164,15 @@ pub const JointHistory = struct {
         return self.entryAt(navigable, self.current_step);
     }
 
+    /// Give `document` to every entry of `document_state` - a document the
+    /// engine committed to the history before its parser ran, whose
+    /// pushState and fragment entries made meanwhile share its state.
+    pub fn setDocumentOfState(self: *JointHistory, document_state: u64, document: ?*anyopaque) void {
+        for (self.entries.items) |*entry| {
+            if (entry.document_state == document_state) entry.document = document;
+        }
+    }
+
     /// The size of `navigable`'s session history entries - its own, not the
     /// steps its descendants add to the joint history.
     pub fn entryCount(self: *const JointHistory, navigable: u64) usize {

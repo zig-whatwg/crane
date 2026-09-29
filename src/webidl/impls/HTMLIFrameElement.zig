@@ -48,6 +48,8 @@ const clock = @import("clock");
 const scripted_parser = html_module.scripted_parser;
 const document_internals = dom_module.document_internals;
 const history_documents = @import("history_documents.zig");
+const basic_parser = @import("basic_parser");
+const url_origin = @import("url").origin;
 
 pub const State = HTMLIFrameElement.State;
 
@@ -959,7 +961,9 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // active document is not the initial about:blank. (A traversal's
     // navigation fired its event in the traversal.) Canceled, or
     // intercepted - which made it same-document - and it ends here.
-    if (options.traversal_entry == 0 and options.srcdoc == null and active != null and
+    // A srcdoc navigation is one too: its URL is about:srcdoc, and "about"
+    // is a fetch scheme (navigate-event/navigate-to-srcdoc).
+    if (options.traversal_entry == 0 and active != null and
         options.user_involvement != .browser_ui and
         initiatorSameOrigin(options.source_document, active_url, allocator) and
         !document_lifecycle.isInitialAboutBlank(active.?) and
@@ -1265,10 +1269,23 @@ fn runCommit(context: ?*anyopaque) void {
     // "Create and initialize a Document object" steps 5-7: the realm the new
     // document goes in - the active one, or a new Window's around the same
     // WindowProxy - decided with no realm entered.
-    integration.realmForDocument(integration.responseOrigin(record.url, response)) catch |err| {
+    const new_origin = integration.responseOrigin(record.url, response);
+    const old_origin: ?Origin = if (integration.window_proxy) |proxy| proxy.document_origin else null;
+    integration.realmForDocument(new_origin) catch |err| {
         log.warn("[navigation] no realm for {s}: {s}", .{ record.url, @errorName(err) });
         return endLoadDelay(integration);
     };
+    // "Finalize a cross-document navigation" step 4: a top-level
+    // traversable - not an auxiliary browsing context whose opener browsing
+    // context is non-null - navigated to a document of another origin loses
+    // its target name (window.name).
+    if (integration.iframe_element == null) {
+        if (integration.browsing_context) |bc| {
+            const has_opener = bc.opener != null and !bc.disowned;
+            const same_origin = if (old_origin) |old| new_origin.isSameOrigin(old) else false;
+            if (bc.parent == null and !has_opener and !same_origin) bc.setTargetName("") catch {};
+        }
+    }
     // The document state's about base URL, for an about:blank or
     // about:srcdoc document: the initiator's base URL snapshot.
     integration.setNextAboutBaseUrl(record.initiator_base_url);
@@ -1303,33 +1320,100 @@ fn commitNavigation(integration: *IFrameIntegration, record: *Navigation, respon
 }
 
 fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response: *navigation_fetch.NavigationFetchResult) void {
+    // The entry is in the traversable's history before the new document's
+    // parser runs, as "finalize a cross-document navigation" puts it there
+    // before any of the document's script: history.length counts it, and a
+    // location.reload() from an inline script reloads it, not the entry the
+    // navigation left.
+    const final_url = if (response.final_url.len > 0) response.final_url else record.url;
+    const origin = navigationParamsOrigin(integration, final_url, integration.allocator) catch null;
+    defer if (origin) |o| integration.allocator.free(o);
+    const document_state = recordInHistory(integration, record, final_url, origin orelse "null");
     integration.commitResponse(record.url, response) catch |err| {
         log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
         endLoadDelay(integration);
         return;
     };
-    recordInHistory(integration, record);
+    attachDocument(integration, document_state);
     loadEventStepsIfNothingWill(integration);
 }
 
 /// "Finalize a cross-document navigation" steps 5-10: the new document's
 /// entry, pushed or replacing the navigable's current one in the
-/// traversable's history - or, for a traversal, the entry it repopulates.
-fn recordInHistory(integration: *IFrameIntegration, record: *Navigation) void {
-    const bc = integration.browsing_context orelse return;
-    const document = bc.getActiveDocument();
-    const history = bc.jointHistory() catch return;
+/// traversable's history - or, for a traversal, the entry it repopulates -
+/// recorded as the document is about to be made. Its URL is `url` (the
+/// response's) and its document state's origin `origin` (serialized): the
+/// navigation params' origin, which exists before the document does. The
+/// navigable's active window is still the one the navigation leaves, so its
+/// origin is not the new document's. Returns the entry's document state,
+/// which `attachDocument` gives the document once it exists; null when
+/// nothing was recorded.
+fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []const u8, origin: []const u8) ?u64 {
+    const bc = integration.browsing_context orelse return null;
+    const history = bc.jointHistory() catch return null;
     if (record.traversal_entry != 0) {
-        if (history.entryById(record.traversal_entry)) |entry| entry.document = document;
-        return;
+        const entry = history.entryById(record.traversal_entry) orelse return null;
+        return entry.document_state;
     }
-    const url = integration.getLoadedUrl() orelse record.url;
-    const origin = if (document) |d| history_documents.originOf(@ptrCast(@alignCast(d)), integration.allocator) catch return else integration.allocator.dupe(u8, "null") catch return;
-    defer integration.allocator.free(origin);
-    history.commitDocument(bc.id, url, document, origin, jointHandling(record.history_handling)) catch return;
+    history.commitDocument(bc.id, url, null, origin, jointHandling(record.history_handling)) catch return null;
     // Navigate step 24.4: the document state's resource is documentResource
     // - a srcdoc document's markup, which a traversal back loads again.
     if (record.srcdoc) |markup| history.setCurrentResource(bc.id, markup) catch {};
+    const current = history.currentEntry(bc.id) orelse return null;
+    return current.document_state;
+}
+
+/// The recorded entry's document state takes the document the commit made:
+/// every entry of it, pushState's and fragment navigations' made by the
+/// document's scripts as it parsed among them.
+fn attachDocument(integration: *IFrameIntegration, document_state: ?u64) void {
+    const state = document_state orelse return;
+    const bc = integration.browsing_context orelse return;
+    const history = bc.jointHistory() catch return;
+    history.setDocumentOfState(state, bc.getActiveDocument());
+}
+
+/// HTML "determining the origin" for the document a navigation to `url`
+/// makes - the navigation params' origin - serialized and owned by
+/// `allocator`, computed from what exists before the document does:
+///
+/// 1. "If sandboxFlags has its sandboxed origin browsing context flag set,
+///    then return a new opaque origin": "null" for a navigable sandboxed
+///    without allow-same-origin.
+/// 2-3. A URL that matches about:blank, or about:srcdoc, inherits: its
+///    container document's origin (a popup's: the window it replaces). This
+///    is the origin the new Window reports (IFrameIntegration's
+///    parseOriginFromURL gives about: URLs the container origin), where the
+///    spec gives about:blank the initiator's.
+/// 4. Otherwise `url`'s origin, as the URL Standard serializes it.
+fn navigationParamsOrigin(integration: *IFrameIntegration, url: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    const bc = integration.browsing_context orelse return allocator.dupe(u8, "null");
+    if (bc.sandbox_flags) |flags| {
+        if (flags.sandboxesSameOrigin()) return allocator.dupe(u8, "null");
+    }
+    if (navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url)) {
+        const container_window: ?*runtime.Instance = blk: {
+            const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
+            const NodeImpl = @import("Node.zig");
+            const container = NodeImpl.getOwnerDocument(element) orelse break :blk null;
+            break :blk interfaces.Document.get_defaultView(container) catch null;
+        };
+        const active: ?*runtime.Instance = if (bc.getActiveWindow()) |w| @ptrCast(@alignCast(w)) else null;
+        return originOfWindow(container_window orelse active, allocator);
+    }
+    var record = basic_parser.parse(allocator, url, null) catch return allocator.dupe(u8, "null");
+    defer record.deinit();
+    const origin = try url_origin.getOrigin(allocator, &record);
+    defer origin.deinit(allocator);
+    return origin.serialize(allocator);
+}
+
+/// `window`'s origin, serialized ("null" without one). Owned.
+fn originOfWindow(window: ?*runtime.Instance, allocator: std.mem.Allocator) ![]u8 {
+    const w = window orelse return allocator.dupe(u8, "null");
+    const origin = interfaces.Window.get_origin(w) catch return allocator.dupe(u8, "null");
+    defer w.ctx.allocator.free(origin);
+    return allocator.dupe(u8, origin);
 }
 
 fn jointHandling(handling: navigate_steps.HistoryHandling) html_core.navigation.joint_history.HistoryHandling {
@@ -1612,9 +1696,15 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
 }
 
 fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, url: []const u8, html: []const u8) void {
+    // Step 13: finalized as a "replace" - in the history before the new
+    // document's scripts run, as for any other document.
+    // A javascript: URL's document is of the active document's origin.
+    const active: ?*runtime.Instance = if (integration.browsing_context) |bc| (if (bc.getActiveWindow()) |w| @as(*runtime.Instance, @ptrCast(@alignCast(w))) else null) else null;
+    const origin = originOfWindow(active, integration.allocator) catch return endLoadDelay(integration);
+    defer integration.allocator.free(origin);
+    const document_state = recordInHistory(integration, record, url, origin);
     integration.commitHtmlAt(url, html, integration.container_origin) catch return endLoadDelay(integration);
-    // Step 13: finalized as a "replace".
-    recordInHistory(integration, record);
+    attachDocument(integration, document_state);
 }
 
 /// `runJavascriptNavigation`'s work, inside the navigable's realm.
@@ -1945,10 +2035,14 @@ fn followHyperlink(subject: *runtime.Instance) void {
     const is_anchor = subject.stateAs(interfaces.HTMLAnchorElement.State) != null;
     if (!is_anchor and !(NodeImpl.get_isConnected(subject) catch false)) return;
 
-    // Steps 2-3: the element's target - its target attribute, else the
-    // document's first base element with one.
+    // Steps 2-3: "get an element's target" - its target attribute, else the
+    // document's first base element with one; "if target is not null, and
+    // contains an ASCII tab or newline and a U+003C (<), then set target to
+    // "_blank"" (dangling markup).
     const target_attr = ElementImpl.call_getAttribute(subject, runtime.DOMString.initInterned("target")) catch null;
-    const target: []const u8 = if (target_attr) |t| t.asSlice() else baseTarget(document);
+    const given_target: []const u8 = if (target_attr) |t| t.asSlice() else baseTarget(document);
+    const dangling = std.mem.indexOfAny(u8, given_target, "\t\n\r") != null and std.mem.indexOfScalar(u8, given_target, '<') != null;
+    const target: []const u8 = if (dangling) "_blank" else given_target;
 
     // Steps 4-5: the URL, encoding-parsed relative to the node document.
     const href = (ElementImpl.call_getAttribute(subject, runtime.DOMString.initInterned("href")) catch null) orelse return;
@@ -2150,14 +2244,58 @@ fn navigateIframeOrFrame(element: *runtime.Instance, url: []const u8, srcdoc: ?[
     if (activeDocumentOf(integration)) |document| {
         if (!document_lifecycle.isCompletelyLoaded(document)) behavior = .replace;
     }
-    // Step 4: navigate, using element's node document.
+    // Deviation, stated, matching Chrome and Safari (crbug.com/1248444;
+    // navigate-cross-origin-iframe-to-same-url-with-fragment-fire-load-event):
+    // a fragment navigation of a cross-origin frame through its element
+    // fires the element's load event, as a cross-document one would - its
+    // absence would tell the container that the frame is still on that URL.
     const NodeImpl = @import("Node.zig");
+    const container_document = NodeImpl.getOwnerDocument(element);
+    const load_for_fragment = crossOriginFragmentNavigation(integration, container_document, url, srcdoc != null);
+    // Step 4: navigate, using element's node document.
     navigate(integration, url, .{
-        .source_document = NodeImpl.getOwnerDocument(element),
+        .source_document = container_document,
         .history_behavior = behavior,
         .srcdoc = srcdoc,
         .initial_insertion = initial_insertion,
     });
+    if (load_for_fragment) queueIframeLoadEventSteps(element);
+}
+
+/// Whether navigating `integration`'s navigable to `url` from its container
+/// document is a fragment navigation of a document of another origin.
+fn crossOriginFragmentNavigation(integration: *IFrameIntegration, container_document: ?*runtime.Instance, url: []const u8, has_resource: bool) bool {
+    const active = activeDocumentOf(integration) orelse return false;
+    const container = container_document orelse return false;
+    const active_url = documentUrlOf(active, integration.allocator) catch return false;
+    defer integration.allocator.free(active_url);
+    if (!navigate_steps.isFragmentNavigation(url, active_url, has_resource)) return false;
+    const container_url = documentUrlOf(container, integration.allocator) catch return false;
+    defer integration.allocator.free(container_url);
+    // Only two tuple origins are compared: an about:blank or srcdoc
+    // document's is inherited, and counts as its container's.
+    const a = tupleOriginOf(active_url) orelse return false;
+    const b = tupleOriginOf(container_url) orelse return false;
+    return !std.mem.eql(u8, a, b);
+}
+
+/// The iframe load event steps for `element`, in a task.
+fn queueIframeLoadEventSteps(element: *runtime.Instance) void {
+    const timer = element.ctx.getOptionalTimer() orelse return;
+    const Task = struct {
+        element: *runtime.Instance,
+        generation: u64,
+        allocator: std.mem.Allocator,
+        fn run(data: ?*anyopaque) void {
+            const task: *@This() = @ptrCast(@alignCast(data orelse return));
+            defer task.allocator.destroy(task);
+            if (runtime.SlabAllocator.generationOf(task.element) != task.generation) return;
+            runIframeLoadEventSteps(task.element);
+        }
+    };
+    const task = element.ctx.allocator.create(Task) catch return;
+    task.* = .{ .element = element, .generation = runtime.SlabAllocator.generationOf(element), .allocator = element.ctx.allocator };
+    if (timer.setTimeout(0, Task.run, task) == 0) task.allocator.destroy(task);
 }
 
 /// Fire a load event on the iframe element.

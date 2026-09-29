@@ -672,9 +672,14 @@ fn submitForm(form: *runtime.Instance) !void {
     defer if (action_attribute) |a| allocator.free(a);
     const action: []const u8 = if (action_attribute) |a| (if (a.len > 0) a else document_url) else document_url;
 
-    // Steps 14-15: parse it relative to the document. (The document's
-    // encoding does not reach the URL parser; see encoding-parse.)
-    var base = basic_parser.parse(allocator, document_url, null) catch null;
+    // Steps 14-15: "encoding-parsing a URL given action, relative to
+    // submitter's node document" - its document base URL, which for an
+    // about:blank document is its creator's (an initial about:blank frame's
+    // form has no other). (The document's encoding does not reach the URL
+    // parser; see encoding-parse.)
+    const base_url = interfaces.Node.get_baseURI(document) catch null;
+    defer if (base_url) |b| document.ctx.allocator.free(b);
+    var base = basic_parser.parse(allocator, base_url orelse document_url, null) catch null;
     defer if (base) |*b| b.deinit();
     var parsed_action = basic_parser.parse(allocator, action, if (base) |*b| b else null) catch return;
     defer parsed_action.deinit();
@@ -682,7 +687,7 @@ fn submitForm(form: *runtime.Instance) !void {
     // Steps 18-23: the target. The navigable for it is chosen when the
     // planned navigation runs (dom.navigables), which opens a new one for
     // "_blank" or a name nothing has.
-    const target = (try attributeValue(allocator, form, "target")) orelse try allocator.dupe(u8, "");
+    const target = try elementTarget(allocator, form, document);
     errdefer allocator.free(target);
 
     // Step 26: the scheme and method pick the behaviour.
@@ -725,6 +730,23 @@ fn submitForm(form: *runtime.Instance) !void {
 
     const url = try url_serializer.serialize(allocator, &parsed_action, false);
     planNavigation(form, url, target);
+}
+
+/// HTML "get an element's target" for the form: its target attribute, else
+/// the target of the document's first base element that has one, else "";
+/// one with an ASCII tab or newline and a "<" in it is "_blank" (dangling
+/// markup). Owned.
+fn elementTarget(allocator: std.mem.Allocator, form: *runtime.Instance, document: *runtime.Instance) ![]u8 {
+    const given = (try attributeValue(allocator, form, "target")) orelse blk: {
+        const base = (interfaces.Document.call_querySelector(document, runtime.DOMString.initInterned("base[target]")) catch null) orelse
+            break :blk try allocator.dupe(u8, "");
+        break :blk (try attributeValue(allocator, base, "target")) orelse try allocator.dupe(u8, "");
+    };
+    if (std.mem.indexOfAny(u8, given, "\t\n\r") != null and std.mem.indexOfScalar(u8, given, '<') != null) {
+        allocator.free(given);
+        return allocator.dupe(u8, "_blank");
+    }
+    return given;
 }
 
 /// A POST resource (HTML "POST resource"): its request body and request
@@ -832,6 +854,13 @@ const PlannedNavigation = struct {
     /// Submit step 22's condition, taken when the form was submitted: the
     /// form document had not completely loaded.
     source_not_completely_loaded: bool,
+    /// The form document at submission, and its slab generation: "the rules
+    /// for choosing a navigable" (submit step 22) start from its node
+    /// navigable. The form may be in another document by the time the task
+    /// runs - the navigation still goes to the navigable chosen at
+    /// submission.
+    form_document: ?*runtime.Instance = null,
+    form_document_generation: u64 = 0,
     /// The POST resource of a submission "as entity body"; null for GET.
     post: ?PostResource = null,
     /// With it, the entry list as a FormData, kept alive until the planned
@@ -884,6 +913,8 @@ fn planNavigationWith(form: *runtime.Instance, url: []const u8, target: []const 
         .url = url,
         .target = target,
         .source_not_completely_loaded = not_loaded,
+        .form_document = document,
+        .form_document_generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0,
         .post = post,
         .form_data = form_data,
         .allocator = allocator,
@@ -928,7 +959,18 @@ fn navigateSteps(data: ?*anyopaque) void {
     // submit step 22 made "replace" when the form document is the target's
     // active document and has not completely loaded. The rules for choosing
     // a navigable and the navigation are the navigables' (dom.navigables).
+    //
+    // Submit step 22 chooses targetNavigable at submission, from the form
+    // document's node navigable; Crane chooses when the task runs, but from
+    // that same document, so a form moved to another document before its
+    // task still navigates the navigable it was submitted in
+    // (form-submission-0/reparent-form-during-planned-navigation-task; Chrome
+    // and Safari pass it). The navigation uses the form's node document now.
     const document = (interfaces.Node.get_ownerDocument(task.form) catch null) orelse return;
+    const form_document: ?*runtime.Instance = if (task.form_document) |d|
+        (if (runtime.SlabAllocator.generationOf(d) == task.form_document_generation) d else null)
+    else
+        null;
     const navigables = @import("dom").navigables;
     if (!navigables.isInstalled()) {
         const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
@@ -936,6 +978,7 @@ fn navigateSteps(data: ?*anyopaque) void {
     }
     navigables.navigateByTarget(document, .{
         .target = task.target,
+        .current_document = if (form_document != document) form_document else null,
         .url = task.url,
         .source_not_completely_loaded = task.source_not_completely_loaded,
         .source_element = task.form,
