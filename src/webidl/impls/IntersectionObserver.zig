@@ -141,11 +141,15 @@ pub fn init(
     const state = instance.getState(State);
     state.own._internal = internal;
 
+    // A node torn down stops being observed (dom.intersection_targets).
+    @import("dom").intersection_targets.install(.{ .target_destroyed = &targetDestroyed });
+
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    leaveObserving(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
@@ -398,16 +402,58 @@ pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
 fn holdWhileObserving(instance: *runtime.Instance, internal: *InternalState) void {
     if (internal.observations.items.len > 0) {
         engine.keepPlatformObjectAlive(instance);
+        joinObserving(instance);
     } else {
         engine.releasePlatformObject(instance);
+        leaveObserving(instance);
+    }
+}
+
+/// The observers on this thread that observe something - what
+/// dom.intersection_targets asks when a node is torn down.
+threadlocal var observing: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+
+fn joinObserving(instance: *runtime.Instance) void {
+    for (observing.items) |o| if (o == instance) return;
+    observing.append(std.heap.c_allocator, instance) catch {};
+}
+
+fn leaveObserving(instance: *runtime.Instance) void {
+    for (observing.items, 0..) |o, i| {
+        if (o == instance) {
+            _ = observing.swapRemove(i);
+            return;
+        }
+    }
+}
+
+/// dom.intersection_targets: `node` is being torn down - it is observed by
+/// nothing from now on, and an observer whose last target it was lets its
+/// hold go.
+fn targetDestroyed(node: *runtime.Instance) void {
+    var i: usize = 0;
+    while (i < observing.items.len) {
+        const observer = observing.items[i];
+        const internal = getInternal(observer);
+        var j: usize = 0;
+        var forgot = false;
+        while (j < internal.observations.items.len) {
+            if (internal.observations.items[j].target.instance == node) {
+                _ = internal.observations.orderedRemove(j);
+                forgot = true;
+            } else j += 1;
+        }
+        // holdWhileObserving may take the observer out of the list.
+        const before = observing.items.len;
+        if (forgot) holdWhileObserving(observer, internal);
+        if (observing.items.len == before) i += 1;
     }
 }
 
 /// Drop the observations of targets that have been collected: a collected
-/// element is observed by nothing. Deviation, stated: the observer notices
-/// only when it next looks at its targets (observe, unobserve, an update) -
-/// nothing tells it when an element goes - so an observer whose every target
-/// was collected keeps its hold until then.
+/// element is observed by nothing. A node torn down tells its observers
+/// itself (dom.intersection_targets); this also catches a slot already
+/// reissued when the observer next looks at its targets.
 fn forgetCollectedTargets(instance: *runtime.Instance, internal: *InternalState) void {
     var i: usize = 0;
     var forgot = false;

@@ -1075,23 +1075,51 @@ pub const Context = struct {
         var result = try navigation.fetchUrl(self.allocator, self.url, .{ .cookie_jar = self.cookie_jar });
         defer result.deinit();
 
-        // Step 2: Check if HTML content
-        const is_html = std.mem.indexOf(u8, result.content_type, "text/html") != null or
-            std.mem.indexOf(u8, result.content_type, "application/xhtml") != null;
+        // Step 2: HTML "load a document" - the response's type decides which
+        // document it makes, as a navigable container's navigation does
+        // (html_core.navigation.document_type).
+        const document_type = html_mod.navigation.document_type;
+        const computed = try document_type.essence(self.allocator, if (result.content_type.len > 0) result.content_type else "text/html");
+        defer self.allocator.free(computed);
+        const kind = document_type.classify(computed);
+        var synthesized: ?[]u8 = null;
+        defer if (synthesized) |markup| self.allocator.free(markup);
+        const markup: []const u8 = switch (kind) {
+            .html => result.body,
+            // "Loading an XML document". Deviation, stated: Crane has no XML
+            // parser. An XHTML page is parsed as HTML, as it always was here;
+            // any other XML document is left as it is, empty.
+            .xml => if (std.mem.eql(u8, computed, "application/xhtml+xml")) result.body else return,
+            // "Loading a text document": one pre holding the text.
+            .text => blk: {
+                synthesized = try document_type.textDocumentMarkup(self.allocator, result.body);
+                break :blk synthesized.?;
+            },
+            // "Loading a media document": an img, video or audio hosting the
+            // resource.
+            .media => blk: {
+                synthesized = try document_type.mediaDocumentMarkup(self.allocator, self.url, document_type.mediaHostElement(computed));
+                break :blk synthesized.?;
+            },
+            // Handed to external software: the page keeps its document.
+            .multipart, .external => return,
+        };
 
-        if (!is_html) {
-            // For non-HTML content, just return
-            // This is a simplified approach for now
-            return;
-        }
-
-        // Step 3-5: Parse HTML and execute scripts using loadHTML
-        // This uses the full HTML parser with proper script loading
-        try self.loadHTML(result.body, .{
+        // Steps 3-5: parse and execute scripts using loadHTML - the full
+        // HTML parser with script loading.
+        try self.loadHTML(markup, .{
             .base_url = self.url,
-            .scripting_enabled = true,
+            .scripting_enabled = kind == .html or kind == .xml,
             .script_loader = options.script_loader,
         });
+        // "Create and initialize a Document object" step 11: its content type
+        // is the response's computed type. An XHTML page parsed as HTML keeps
+        // the HTML document it was always given.
+        if (kind == .text or kind == .media) {
+            if (self.document_instance) |document| {
+                dom_mod.document_internals.setContentType(document, computed) catch {};
+            }
+        }
     }
 
     // ============================================================================

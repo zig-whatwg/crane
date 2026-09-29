@@ -107,6 +107,8 @@ pub fn init(
     @import("dom").history_traversal.install(.{
         .traverse_to_step = &traverseWindowToStep,
         .reload = &reloadWindow,
+        .url_and_history_update = &urlAndHistoryUpdateOfWindow,
+        .resume_traversal = &resumeTraversalOfWindow,
     });
 
     return instance;
@@ -239,7 +241,7 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
         reloadNavigable(window, bc);
         return;
     }
-    queueTraversal(internal, bc.getTop(), .{ .delta = delta_val });
+    queueTraversal(internal, bc.getTop(), .{ .delta = delta_val }, false);
 }
 
 /// HTML "reload" `bc`'s navigable: its current entry, repopulated - a
@@ -250,7 +252,26 @@ fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
     if (@import("dom").document_lifecycle.isUnloading(document)) return;
     const history = ensureEntries(bc) catch return;
     const entry = history.currentEntry(bc.id) orelse return;
-    @import("dom").navigables.traverseNavigable(@ptrCast(bc), entry.id, entry.url, entry.resource);
+    // "Reload" step 1: no navigation here is "browser UI", so: "Let continue
+    // be the result of firing a push/replace/reload navigate event at
+    // navigation with navigationType set to "reload", isSameDocument set to
+    // false, destinationURL set to navigable's active session history
+    // entry's URL, and navigationAPIState set to destinationNavigationAPIState
+    // ... If continue is false, then return." Copied: the event's handlers
+    // can change the history.
+    const url = bc.allocator.dupe(u8, entry.url) catch return;
+    defer bc.allocator.free(url);
+    const entry_id = entry.id;
+    var api_state = entry.api_state.clone(bc.allocator) catch return;
+    defer api_state.deinit(bc.allocator);
+    if (!@import("dom").navigation_api.firePushReplaceReload(window, .{
+        .navigation_type = .reload,
+        .destination_url = url,
+        .is_same_document = false,
+        .navigation_api_state = api_state,
+    })) return;
+    const current = history.entryById(entry_id) orelse return;
+    @import("dom").navigables.traverseNavigable(@ptrCast(bc), current.id, current.url, current.resource);
 }
 
 /// dom.history_traversal: reload `window`'s navigable.
@@ -265,7 +286,31 @@ fn traverseWindowToStep(window: *runtime.Instance, step: u32) void {
     const bc = BrowsingContext.ofWindow(@ptrCast(window)) orelse return;
     const history_instance = interfaces.Window.get_history(window) catch return;
     const internal = getInternal(history_instance) orelse return;
-    queueTraversal(internal, bc.getTop(), .{ .step = step });
+    queueTraversal(internal, bc.getTop(), .{ .step = step }, false);
+}
+
+/// dom.history_traversal: "resume applying the traverse history step" to
+/// `step` - an intercepted traverse navigate event's commit - without firing
+/// the navigate event again.
+fn resumeTraversalOfWindow(window: *runtime.Instance, step: u32) void {
+    const bc = BrowsingContext.ofWindow(@ptrCast(window)) orelse return;
+    const history_instance = interfaces.Window.get_history(window) catch return;
+    const internal = getInternal(history_instance) orelse return;
+    queueTraversal(internal, bc.getTop(), .{ .step = step }, true);
+}
+
+/// dom.history_traversal: the URL and history update steps for `window`'s
+/// document - committing an intercepted push or replace navigate event.
+/// `serialized` is BORROWED.
+fn urlAndHistoryUpdateOfWindow(window: *runtime.Instance, url: []const u8, serialized: ?joint_history.SerializedState, handling: joint_history.HistoryHandling) void {
+    const history_instance = interfaces.Window.get_history(window) catch return;
+    const internal = getInternal(history_instance) orelse return;
+    const bc = activeNavigable(internal) orelse return;
+    const given: joint_history.SerializedState = serialized orelse .null;
+    const data = given.clone(internal.allocator) catch return;
+    urlAndHistoryUpdate(internal, bc, window, url, data, handling) catch |err| {
+        log.debug("history: the URL and history update steps failed: {s}", .{@errorName(err)});
+    };
 }
 
 /// Operation: back - "go(-1)".
@@ -290,13 +335,27 @@ pub fn call_replaceState(instance: *runtime.Instance, data: runtime.JSValue, unu
     return sharedPushReplaceState(instance, data, url, .replace);
 }
 
-/// HTML "shared history push/replace state steps". Not modelled, stated: the
-/// navigate event (step 5) and rate limiting (step 2).
+/// How deeply pushState()/replaceState() calls are nested on this thread: a
+/// navigate event handler that calls them fires another navigate event.
+threadlocal var push_replace_depth: u32 = 0;
+
+/// Step 3's "optionally, throw a SecurityError", taken for calls nested this
+/// deep - a navigate handler that pushes or replaces from inside the event
+/// its own call fired recurses without end otherwise, as browsers' rate
+/// limits also stop (navigate-event/replaceState-inside-back-handler-infinite).
+const max_push_replace_depth = 16;
+
+/// HTML "shared history push/replace state steps". Not modelled, stated:
+/// rate limiting (step 3) beyond the nesting limit above.
 fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, url: webidl.Opt(?runtime.USVString), handling: joint_history.HistoryHandling) !void {
+    // Step 3: "Optionally, throw a SecurityError DOMException."
+    if (push_replace_depth >= max_push_replace_depth) return error.SecurityError;
+    push_replace_depth += 1;
+    defer push_replace_depth -= 1;
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Step 1: "Let document be history's associated Document. If document is
     // not fully active, then throw a SecurityError DOMException."
-    const bc = activeNavigable(internal) orelse return error.SecurityError;
+    _ = activeNavigable(internal) orelse return error.SecurityError;
     const window = internal.window orelse return error.SecurityError;
     const document = try interfaces.Window.get_document(window);
     const allocator = internal.allocator;
@@ -319,7 +378,7 @@ fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, ur
         if (url.getValue()) |given| {
             if (given.len > 0) {
                 const parsed = try parseRelativeTo(document, given, allocator);
-                if (!canHaveUrlRewritten(allocator, document_url, parsed)) {
+                if (!navigate_steps.canHaveUrlRewritten(document_url, parsed)) {
                     allocator.free(parsed);
                     return error.SecurityError;
                 }
@@ -329,10 +388,36 @@ fn sharedPushReplaceState(instance: *runtime.Instance, data: runtime.JSValue, ur
         }
     }
 
-    // Step 8: "Run the URL and history update steps given document and
+    // Steps 7-9: "Let continue be the result of firing a push/replace/reload
+    // navigate event at navigation with navigationType set to
+    // historyHandling, isSameDocument set to true, destinationURL set to
+    // newURL, and classicHistoryAPIState set to serializedData. If continue
+    // is false, then return." An intercepted event runs the URL and history
+    // update steps itself, when it commits.
+    const continue_navigation = @import("dom").navigation_api.firePushReplaceReload(window, .{
+        .navigation_type = switch (handling) {
+            .push => .push,
+            .replace => .replace,
+        },
+        .destination_url = new_url,
+        .is_same_document = true,
+        .classic_history_api_state = serialized,
+    });
+    if (!continue_navigation) {
+        serialized.deinit(allocator);
+        return;
+    }
+    // The event's handlers ran script: the History's document may no longer
+    // be fully active.
+    const still = activeNavigable(internal) orelse {
+        serialized.deinit(allocator);
+        return;
+    };
+
+    // Step 10: "Run the URL and history update steps given document and
     // newURL, with serializedData set to serializedData and historyHandling
     // set to historyHandling."
-    try urlAndHistoryUpdate(internal, bc, window, new_url, serialized, handling);
+    try urlAndHistoryUpdate(internal, still, window, new_url, serialized, handling);
 }
 
 /// `url` parsed relative to `document`'s base URL and serialized; owned.
@@ -344,45 +429,6 @@ fn parseRelativeTo(document: *runtime.Instance, url: []const u8, allocator: Allo
     var parsed = basic_parser.parse(allocator, url, if (base_record) |*b| b else null) catch return error.SecurityError;
     defer parsed.deinit();
     return @constCast(try url_serializer.serialize(allocator, &parsed, false));
-}
-
-/// HTML "can have its URL rewritten": the target differs from the document's
-/// URL only in path, query or fragment - and for a file: URL only in query or
-/// fragment; for anything else but HTTP(S), only in fragment.
-fn canHaveUrlRewritten(allocator: Allocator, document_url: []const u8, target_url: []const u8) bool {
-    var doc = basic_parser.parse(allocator, document_url, null) catch return false;
-    defer doc.deinit();
-    var target = basic_parser.parse(allocator, target_url, null) catch return false;
-    defer target.deinit();
-    // Step 2: scheme, username, password, host and port.
-    if (!std.mem.eql(u8, doc.scheme(), target.scheme())) return false;
-    const doc_origin = originPart(document_url);
-    const target_origin = originPart(target_url);
-    if (!std.mem.eql(u8, doc_origin, target_origin)) return false;
-    // Step 3: HTTP(S) may change path and query.
-    const scheme = target.scheme();
-    if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https")) return true;
-    // Step 4: file: may not change its path.
-    if (std.mem.eql(u8, scheme, "file")) {
-        return std.mem.eql(u8, pathPart(document_url), pathPart(target_url));
-    }
-    // Step 5: anything else may change only its fragment.
-    return std.mem.eql(u8, navigate_steps.withoutFragment(document_url), navigate_steps.withoutFragment(target_url));
-}
-
-/// The scheme and authority of a serialized URL: everything before the path.
-fn originPart(url: []const u8) []const u8 {
-    const colon = std.mem.indexOfScalar(u8, url, ':') orelse return url;
-    if (!std.mem.startsWith(u8, url[colon..], "://")) return url[0 .. colon + 1];
-    const path = std.mem.indexOfAnyPos(u8, url, colon + 3, "/?#") orelse url.len;
-    return url[0..path];
-}
-
-/// The path of a serialized URL: from the authority to the query or fragment.
-fn pathPart(url: []const u8) []const u8 {
-    const start = originPart(url).len;
-    const end = std.mem.indexOfAnyPos(u8, url, start, "?#") orelse url.len;
-    return url[start..end];
 }
 
 /// HTML "URL and history update steps" given the History's document and
@@ -439,14 +485,17 @@ const Traversal = struct {
     top_id: u64,
     target: Target,
     allocator: Allocator,
+    /// "Resume applying the traverse history step": the traversable's
+    /// navigate event was fired and intercepted; it is not fired again.
+    resumed: bool,
 };
 
 /// Append session history traversal steps - a task, here - that apply the
 /// step `target` names.
-fn queueTraversal(internal: *InternalState, top: *BrowsingContext, target: Target) void {
+fn queueTraversal(internal: *InternalState, top: *BrowsingContext, target: Target, resumed: bool) void {
     const window = internal.window orelse return;
     const task = internal.allocator.create(Traversal) catch return;
-    task.* = .{ .top_id = top.id, .target = target, .allocator = internal.allocator };
+    task.* = .{ .top_id = top.id, .target = target, .allocator = internal.allocator, .resumed = resumed };
     const loop = window.ctx.getOptionalEventLoop() orelse return runTraversal(task);
     loop.queueTask(.{ .callback = &runTraversal, .context = task, .drop = &dropTraversal });
 }
@@ -462,6 +511,8 @@ const Change = struct {
     old_url: []u8,
     target_entry: u64,
     same_document: bool,
+    /// The target entry's origin is the current entry's.
+    same_origin: bool,
 };
 
 /// "Apply the traverse history step" (HTML 7.4.6), without bfcache: every
@@ -469,8 +520,8 @@ const Change = struct {
 /// within its document when the entry shares the document state, else by a
 /// navigation to the entry's URL. A navigable under one that changes
 /// documents is not looked at: it goes with its parent's document.
-/// Not modelled, stated: beforeunload across the traversal and the navigate
-/// event (steps 3, 5, 12.7).
+/// Not modelled, stated: beforeunload across the traversal (step 5), and
+/// history-action activation for the traversable's navigate event.
 fn runTraversal(context: ?*anyopaque) void {
     const task: *Traversal = @ptrCast(@alignCast(context orelse return));
     const allocator = task.allocator;
@@ -489,6 +540,23 @@ fn runTraversal(context: ?*anyopaque) void {
         .delta => |delta| history.stepByDelta(delta) orelse return,
         .step => |step| step,
     };
+
+    // Step 5, "checking if unloading is canceled" step 4: the traversable's
+    // navigate event, when its entry changes within its origin. Canceled -
+    // or intercepted, whose commit resumes the traversal - and the
+    // traversal ends here.
+    if (!task.resumed) {
+        const current = history.currentEntry(top.id);
+        const target_entry = history.entryAt(top.id, target);
+        if (current != null and target_entry != null and current.? != target_entry.? and
+            std.mem.eql(u8, current.?.origin, target_entry.?.origin))
+        {
+            if (top.getActiveWindow()) |w| {
+                const window: *runtime.Instance = @ptrCast(@alignCast(w));
+                if (!@import("dom").navigation_api.fireTraverse(window, target_entry.?.id, .none)) return;
+            }
+        }
+    }
 
     // Step 6: the navigables that change, parents first.
     var changes: std.ArrayListUnmanaged(Change) = .empty;
@@ -516,6 +584,7 @@ fn runTraversal(context: ?*anyopaque) void {
             .old_url = old_url,
             .target_entry = target_entry.id,
             .same_document = same_document,
+            .same_origin = std.mem.eql(u8, current.origin, target_entry.origin),
         }) catch {
             allocator.free(old_url);
             return;
@@ -527,6 +596,14 @@ fn runTraversal(context: ?*anyopaque) void {
     history.current_step = target;
 
     for (changes.items) |change| {
+        // Step 12.7: a navigable other than the traversable whose entry
+        // changes within its origin fires a traverse navigate event (not
+        // cancelable).
+        if (change.navigable != top and change.same_origin) {
+            if (change.navigable.getActiveWindow()) |w| {
+                _ = @import("dom").navigation_api.fireTraverse(@ptrCast(@alignCast(w)), change.target_entry, .none);
+            }
+        }
         const entry = history.entryById(change.target_entry) orelse continue;
         if (change.same_document) {
             sameDocumentTraversal(change.navigable, change.old_url, entry);

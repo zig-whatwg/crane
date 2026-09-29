@@ -1,5 +1,5 @@
-//! A dedicated worker's agent and realm, as V8 makes them: the engine half of
-//! HTML "run a worker" (10.2.4), behind the Engine table (AGENTS.md, "The
+//! A worker's agent and realm, as V8 makes them: the engine half of HTML
+//! "run a worker" (10.2.4), behind the engine protocol (AGENTS.md, "The
 //! engine boundary").
 //!
 //! The HTML half - the WorkerGlobalScope's settings, the worker's event loop
@@ -8,9 +8,9 @@
 //! table. What is here is what only the engine can do:
 //!
 //! - an agent: a V8 isolate of the worker's own (createAgent, destroyAgent);
-//! - a realm in it whose global object is a DedicatedWorkerGlobalScope
-//!   platform object (createWorkerRealm), and the realm's end
-//!   (destroyWorkerRealm);
+//! - a realm in it whose global object is a DedicatedWorkerGlobalScope or a
+//!   SharedWorkerGlobalScope platform object (createWorkerRealm), and the
+//!   realm's end (destroyWorkerRealm);
 //! - the engine's own work for the agent - V8's posted platform tasks, such as
 //!   an asynchronous WebAssembly compile settling its promise
 //!   (hasPendingEngineWork, runEngineTasks);
@@ -22,6 +22,8 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+// [Exposed] scopes (GlobalScope), as installForScope takes them.
+const webidl_helpers = @import("webidl").helpers;
 const EngineError = runtime.EngineError;
 
 const ffi = @import("ffi.zig");
@@ -128,24 +130,51 @@ fn take(realm: runtime.Context) ?Record {
     return null;
 }
 
-/// The DedicatedWorkerGlobalScope interface template in `isolate`, which must
-/// be entered. Templates belong to one isolate, and the registry is where
-/// every later lookup - the interface object installForScope puts on the
-/// global, a subclass's Inherit() - finds this one, so the global object and
-/// `DedicatedWorkerGlobalScope.prototype` share a template.
-fn globalScopeTemplate(isolate: *ffi.Isolate) *ffi.FunctionTemplate {
-    const name = interfaces.DedicatedWorkerGlobalScope.Meta.name;
+/// What differs between the kinds of worker global scope
+/// (`WorkerRealmOptions.WorkerGlobal`): the interface the global object is a
+/// platform object of, the [Exposed] set installed in the realm, and the
+/// realm record's context type. Everything else about a worker realm is the
+/// same for every kind.
+fn GlobalKind(comptime global: runtime.WorkerRealmOptions.WorkerGlobal) type {
+    return switch (global) {
+        .dedicated => struct {
+            const Interface = interfaces.DedicatedWorkerGlobalScope;
+            const scope: webidl_helpers.GlobalScope = .DedicatedWorker;
+            const context_type: runtime.realm.ContextType = .dedicated_worker;
+        },
+        .shared => struct {
+            const Interface = interfaces.SharedWorkerGlobalScope;
+            const scope: webidl_helpers.GlobalScope = .SharedWorker;
+            const context_type: runtime.realm.ContextType = .shared_worker;
+        },
+    };
+}
+
+/// The global scope interface's template in `isolate`, which must be
+/// entered. Templates belong to one isolate, and the registry is where every
+/// later lookup - the interface object installForScope puts on the global, a
+/// subclass's Inherit() - finds this one, so the global object and
+/// `<Interface>.prototype` share a template.
+fn globalScopeTemplate(comptime Interface: type, isolate: *ffi.Isolate) *ffi.FunctionTemplate {
+    const name = Interface.Meta.name;
     if (template_registry.getTemplateForIsolate(name, isolate)) |template| return template;
-    const template = V8Interface(interfaces.DedicatedWorkerGlobalScope).createTemplate(isolate);
+    const template = V8Interface(Interface).createTemplate(isolate);
     template_registry.register(name, template, isolate);
     return template;
 }
 
-/// Engine table `createWorkerRealm`: HTML "run a worker" step 6 - a new realm
-/// in `agent` whose global object is a new DedicatedWorkerGlobalScope - with
-/// every interface [Exposed] to a dedicated worker installed on it. OWNED:
+/// The protocol's `createWorkerRealm`: HTML "run a worker" step 5 - a new
+/// realm in `agent` whose global object is a new DedicatedWorkerGlobalScope,
+/// or a new SharedWorkerGlobalScope when `options.global` is `.shared` - with
+/// every interface [Exposed] to that kind of worker installed on it. OWNED:
 /// `destroyWorkerRealm`.
 pub fn createWorkerRealm(agent: *runtime.Agent, options: runtime.WorkerRealmOptions) EngineError!runtime.WorkerRealm {
+    return switch (options.global) {
+        inline else => |global| createWorkerRealmOf(GlobalKind(global), agent, options),
+    };
+}
+
+fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runtime.WorkerRealmOptions) EngineError!runtime.WorkerRealm {
     const isolate = isolateOf(agent);
     ffi.v8_Isolate_Enter(isolate);
     defer ffi.v8_Isolate_Exit(isolate);
@@ -153,12 +182,12 @@ pub fn createWorkerRealm(agent: *runtime.Agent, options: runtime.WorkerRealmOpti
     const handle_scope = ffi.v8_HandleScope_New(isolate) orelse return EngineError.OperationFailed;
     defer ffi.v8_HandleScope_Dispose(handle_scope);
 
-    // The realm's global object is a DedicatedWorkerGlobalScope: the context
-    // is created from that interface's template, which makes the global
-    // object one of its platform objects, with its internal fields - Blink's
-    // WorkerOrWorkletScriptController::Initialize does the same with the
-    // interface template's InstanceTemplate().
-    const context = ffi.v8_Context_NewWithGlobalConstructor(isolate, globalScopeTemplate(isolate)) orelse
+    // The realm's global object is a platform object of the global scope
+    // interface: the context is created from that interface's template,
+    // which makes the global object one of its platform objects, with its
+    // internal fields - Blink's WorkerOrWorkletScriptController::Initialize
+    // does the same with the interface template's InstanceTemplate().
+    const context = ffi.v8_Context_NewWithGlobalConstructor(isolate, globalScopeTemplate(Kind.Interface, isolate)) orelse
         return EngineError.OperationFailed;
     ffi.v8_Context_Enter(context);
     defer ffi.v8_Context_Exit(context);
@@ -193,25 +222,25 @@ pub fn createWorkerRealm(agent: *runtime.Agent, options: runtime.WorkerRealmOpti
     // the global scope reads them as it is made.
     if (options.on_realm) |hook| hook(options.data, realm);
 
-    // Every interface exposed in a DedicatedWorker scope, per WebIDL's
-    // [Exposed].
-    interface_bindings.installForScope(isolate, context, .DedicatedWorker);
+    // Every interface exposed in the worker's scope, per WebIDL's [Exposed].
+    interface_bindings.installForScope(isolate, context, Kind.scope);
 
     // The platform object behind the global, its prototype chain and its own
     // members - after the interface objects, whose prototypes it links.
-    const global_scope = bindGlobalScope(isolate, context, realm) catch |err| {
+    const global_scope = bindGlobalScope(Kind.Interface, isolate, context, realm) catch |err| {
         destroyWorkerRealmIn(isolate, context, realm, options.allocator, null, null);
         return err;
     };
-    recordRealm(isolate, context, realm, global_scope) catch |err| {
+    recordRealm(isolate, context, realm, global_scope, Kind.context_type) catch |err| {
         destroyWorkerRealmIn(isolate, context, realm, options.allocator, null, null);
         return err;
     };
     return .{ .realm = realm, .global_scope = global_scope };
 }
 
-/// The realm record (runtime.Realm) of a worker realm: a dedicated worker's,
-/// whose global object is the DedicatedWorkerGlobalScope and whose intrinsics
+/// The realm record (runtime.Realm) of a worker realm: of `context_type` -
+/// a dedicated or a shared worker's - whose global object is the global
+/// scope and whose intrinsics
 /// are the context's - as a window realm's record has its Window and its
 /// intrinsics (context_manager.bindWindowToContext). The host reaches "the
 /// realm's global object" through it (report_exception: an exception a
@@ -219,11 +248,17 @@ pub fn createWorkerRealm(agent: *runtime.Agent, options: runtime.WorkerRealmOpti
 /// the realm (ContextData.realm) and to the context manager's entry, whose
 /// removal - destroyWorkerRealm's removeContext - releases the intrinsics and
 /// frees the record.
-pub fn recordRealm(isolate: *ffi.Isolate, context: *ffi.Context, realm: runtime.Context, global_scope: *runtime.Instance) EngineError!void {
+pub fn recordRealm(
+    isolate: *ffi.Isolate,
+    context: *ffi.Context,
+    realm: runtime.Context,
+    global_scope: *runtime.Instance,
+    context_type: runtime.realm.ContextType,
+) EngineError!void {
     const record = runtime.Realm.init(realm.allocator, .{
         .engine_realm = @ptrCast(context),
         .agent = @ptrCast(isolate),
-        .context_type = .dedicated_worker,
+        .context_type = context_type,
         .global_object = @ptrCast(global_scope),
     }) catch return EngineError.OutOfMemory;
     // %Promise%, %TypeError% and friends, read while the context is entered.
@@ -246,7 +281,7 @@ fn defineSelf(isolate: *ffi.Isolate, context: *ffi.Context) void {
 
 /// The interfaces a worker realm had before installForScope ran over it (the
 /// same set it always registered first). installForScope then installs every
-/// interface exposed to a dedicated worker.
+/// interface exposed to the worker's kind.
 ///
 /// Through registerGlobalFast, with the global taken once and released:
 /// registerGlobal takes the context's global for every call and never
@@ -273,7 +308,7 @@ fn registerWorkerInterfaces(isolate: *ffi.Isolate, context: *ffi.Context) void {
 /// global object, and what V8 does not set up for a global made from an
 /// interface template.
 ///
-/// - The DedicatedWorkerGlobalScope Instance, created through its interface
+/// - The global scope Instance (`Interface`'s), created through its interface
 ///   in the realm's own runtime context, goes in internal field 0 of the
 ///   global proxy - which the bindings read for every [Global] member and
 ///   every receiver check - and of the global object behind it (Blink's
@@ -281,12 +316,12 @@ fn registerWorkerInterfaces(isolate: *ffi.Isolate, context: *ffi.Context) void {
 /// - The realm's wrapper cache maps it to the global proxy, so handing the
 ///   scope to script (`self`, an event's currentTarget) returns the global
 ///   itself - as createWindowBoundToGlobal does for a Window.
-/// - The prototype chain: global -> DedicatedWorkerGlobalScope.prototype ->
+/// - The prototype chain: global -> `Interface`.prototype ->
 ///   WorkerGlobalScope.prototype -> EventTarget.prototype.
-/// - DedicatedWorkerGlobalScope's own members as own properties of the
-///   global: WebIDL puts a [Global] interface's members on the object.
-fn bindGlobalScope(isolate: *ffi.Isolate, context: *ffi.Context, realm: runtime.Context) EngineError!*runtime.Instance {
-    const instance = interfaces.DedicatedWorkerGlobalScope.init(realm.allocator, realm) catch
+/// - `Interface`'s own members as own properties of the global: WebIDL puts
+///   a [Global] interface's members on the object.
+fn bindGlobalScope(comptime Interface: type, isolate: *ffi.Isolate, context: *ffi.Context, realm: runtime.Context) EngineError!*runtime.Instance {
+    const instance = Interface.init(realm.allocator, realm) catch
         return EngineError.OperationFailed;
     bindGlobalFields(context, instance);
 
@@ -301,9 +336,9 @@ fn bindGlobalScope(isolate: *ffi.Isolate, context: *ffi.Context, realm: runtime.
 
     const global_obj = ffi.v8_Context_Global(context) orelse return EngineError.OperationFailed;
     defer ffi.v8_Object_Dispose(global_obj);
-    linkGlobalPrototype(isolate, context, global_obj);
+    linkGlobalPrototype(Interface, isolate, context, global_obj);
 
-    const Binding = V8Interface(interfaces.DedicatedWorkerGlobalScope);
+    const Binding = V8Interface(Interface);
     Binding.registerPropertiesAsOwnOnObject(isolate, context, global_obj);
     Binding.registerMethodsAsOwnOnObject(isolate, context, global_obj);
     return instance;
@@ -323,8 +358,8 @@ fn bindGlobalFields(context: *ffi.Context, instance: ?*runtime.Instance) void {
     ffi.v8_Object_SetAlignedPointerInInternalField(inner, 0, @ptrCast(instance));
 }
 
-/// Make DedicatedWorkerGlobalScope.prototype the global object's prototype,
-/// as script sees it.
+/// Make `Interface`.prototype - the global scope interface's - the global
+/// object's prototype, as script sees it.
 ///
 /// A [Global] object has an immutable prototype (WebIDL), so the global
 /// object's [[Prototype]] is fixed when the context is created - and V8 fixes
@@ -334,10 +369,11 @@ fn bindGlobalFields(context: *ffi.Context, instance: ?*runtime.Instance) void {
 /// placeholder is an ordinary object, so it is what gets linked, exactly as
 /// window_properties.zig does for a Window:
 ///   global -> placeholder -> DedicatedWorkerGlobalScope.prototype -> ...
+/// (or SharedWorkerGlobalScope.prototype, for a shared worker's realm).
 /// Its `constructor` goes, so `self.constructor` is the interface object.
 /// Only the V2 prototype calls: the V1 ones reach the hidden global object.
-fn linkGlobalPrototype(isolate: *ffi.Isolate, context: *ffi.Context, global: *ffi.Object) void {
-    const name = interfaces.DedicatedWorkerGlobalScope.Meta.name;
+fn linkGlobalPrototype(comptime Interface: type, isolate: *ffi.Isolate, context: *ffi.Context, global: *ffi.Object) void {
+    const name = Interface.Meta.name;
     const name_key = ffi.v8_String_NewFromUtf8(isolate, name.ptr, name.len) orelse return;
     defer ffi.v8_String_Dispose(name_key);
     const interface_val = ffi.v8_Object_Get(global, context, @ptrCast(name_key)) orelse return;

@@ -1,4 +1,13 @@
 //! Implementation for NavigationTransition interface
+//!
+//! HTML Standard §7.2.6.8 - Ongoing navigation tracking
+//! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigationtransition
+//!
+//! `navigation.transition`: an intercepted navigation that has not yet
+//! reached navigatesuccess or navigateerror - its navigation type, the entry
+//! it comes from, its destination, and its committed and finished promises.
+//! The navigation API makes one (dom.navigation_objects, which this
+//! installs) and settles the promises; this keeps them for its getters.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -7,21 +16,39 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const engine = @import("engine");
+const dom = @import("dom");
+const same_object = @import("same_object.zig");
 const NavigationTransition = interfaces.NavigationTransition;
 
 pub const State = NavigationTransition.State;
 
 pub const ImplError = error{
     NotImplemented,
+    InvalidStateError,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Its from entry and destination, kept alive with it, and its promises.
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    from_pin: same_object.Pin = .{},
+    to_pin: same_object.Pin = .{},
+    committed: ?engine.Owned = null,
+    finished: ?engine.Owned = null,
 
-/// Initialize instance (creates the instance)
+    fn deinit(self: *InternalState) void {
+        self.from_pin.release();
+        self.to_pin.release();
+        if (self.committed) |p| p.release();
+        if (self.finished) |p| p.release();
+    }
+};
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
+}
+
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -29,42 +56,71 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(StateType).own._internal = internal;
+    dom.navigation_objects.installTransitions(.{ .create = &create });
     return instance;
 }
 
-/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        internal.deinit();
+        internal.allocator.destroy(internal);
+        state.own._internal = null;
+    }
 }
 
-/// Getter for navigationType
+/// dom.navigation_objects: "a new NavigationTransition created in
+/// navigation's relevant realm" with its navigation type, from entry,
+/// destination and promises.
+fn create(realm: runtime.Context, init_state: dom.navigation_objects.TransitionInit) anyerror!*runtime.Instance {
+    const instance = try interfaces.NavigationTransition.init(realm.allocator, realm);
+    errdefer runtime.Instance.deinit(instance);
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return error.InvalidStateError;
+    state.own.navigationType = switch (init_state.navigation_type) {
+        .push => ._push_,
+        .replace => ._replace_,
+        .reload => ._reload_,
+        .traverse => ._traverse_,
+    };
+    state.own.from = init_state.from;
+    internal.from_pin.hold(init_state.from);
+    state.own.to = init_state.destination;
+    internal.to_pin.hold(init_state.destination);
+    internal.committed = try engine.retainValue(realm, init_state.committed);
+    internal.finished = try engine.retainValue(realm, init_state.finished);
+    state.own.committed = runtime.JSValue.jsUndefined;
+    state.own.finished = runtime.JSValue.jsUndefined;
+    return instance;
+}
+
+/// "The navigationType getter steps are to return this's navigation type."
 pub fn get_navigationType(instance: *runtime.Instance) anyerror!enums.NavigationType {
-    _ = instance;
-    return error.NotImplemented;
+    return instance.getState(State).own.navigationType;
 }
 
-/// Getter for from
+/// "The from getter steps are to return this's from entry."
 pub fn get_from(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return instance.getState(State).own.from;
 }
 
-/// Getter for committed
-pub fn get_committed(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for finished
-pub fn get_finished(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for to
+/// "The to getter steps are to return this's destination."
 pub fn get_to(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return instance.getState(State).own.to;
+}
+
+/// "The committed getter steps are to return this's committed promise."
+pub fn get_committed(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return (internal.committed orelse return error.InvalidStateError).borrow();
+}
+
+/// "The finished getter steps are to return this's finished promise."
+pub fn get_finished(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return (internal.finished orelse return error.InvalidStateError).borrow();
 }

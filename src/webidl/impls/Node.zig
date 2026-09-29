@@ -234,6 +234,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     // unmarked, its teardown would run deinit again (a double free).
     engine.platformObjectDestroyed(instance);
 
+    // No intersection observer observes it from here on; one whose last
+    // target it was lets go of its hold.
+    dom_module.intersection_targets.targetDestroyed(instance);
+
     // First, recursively deinit all child nodes.
     // We must do this BEFORE removing ourselves from the registry,
     // and we need to collect children first since deinit modifies the tree.

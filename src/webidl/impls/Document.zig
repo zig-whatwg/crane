@@ -2413,7 +2413,19 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
         return error.InvalidStateError;
     }
 
-    // Step 5-6: Check unload counter
+    // Step 5: "If document has an active parser whose script nesting level
+    // is greater than 0, then return document." - an inline script of the
+    // page being parsed calls document.open(), which is ignored. The parser
+    // sets the insertion point as it raises its script nesting level for a
+    // parser-inserted script, and restores it as it lowers it (the script
+    // end tag steps, and the pending parsing-blocking script's), so while
+    // the document's parser has an input stream, an insertion point in it
+    // is that nesting level above 0.
+    if (internal.input_stream_manager) |stream| {
+        if (stream.hasInsertionPoint()) return instance;
+    }
+
+    // Step 6: Check unload counter
     if (internal.unload_counter > 0) {
         return instance; // Return document unchanged
     }
@@ -2476,6 +2488,26 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
 
     // Return the document
     return instance;
+}
+
+/// open(url, name, features): "1. If this is not fully active, then throw an
+/// "InvalidAccessError" DOMException. 2. Return the result of running the
+/// window open steps with url, name, and features." - on this's relevant
+/// global object, whose open() runs them.
+pub fn call_open__1(instance: *runtime.Instance, url: runtime.USVString, name: runtime.DOMString, features: runtime.DOMString) anyerror!?typedefs.WindowProxy {
+    const internal = getInternal(instance) orelse return error.InvalidAccessError;
+    // Step 1: fully active - the active document of a browsing context that
+    // still has it.
+    if (internal.destroyed) return error.InvalidAccessError;
+    const window = internal.default_view orelse return error.InvalidAccessError;
+    if ((interfaces.Window.get_document(window) catch null) != instance) return error.InvalidAccessError;
+    // Step 2.
+    return interfaces.Window.call_open(
+        window,
+        webidl.Opt(runtime.USVString).passed(url),
+        webidl.Opt(runtime.DOMString).passed(name),
+        webidl.Opt(runtime.DOMString).passed(features),
+    );
 }
 
 /// document.open() step 9: "erase all event listeners and handlers" of
@@ -3819,6 +3851,16 @@ fn lifecycleMarkInitialAboutBlank(document: *runtime.Instance) void {
     // only "create and initialize a Document object" - navigation - makes
     // it "loading". This document never went through that.
     internal.ready_state = ._complete_;
+    // Deviation, stated, matching every browser: the initial about:blank
+    // document is showing. HTML sets "page showing" only where it fires
+    // pageshow ("the end", reactivation), which this document never
+    // reaches - so, as written, closing a never-navigated window.open()
+    // popup fires no pagehide. Every engine fires it (close-method,
+    // self-et-al and open-close/close_pagehide assume it), and the review of
+    // whatwg/html PR #6869 agreed the initial about:blank "should also fire
+    // pageshow" (Firefox does). Its unload event is not gated on this: that
+    // follows salvageable (unload step 12).
+    internal.page_showing = true;
 }
 
 fn lifecycleIsUnloading(document: *runtime.Instance) bool {

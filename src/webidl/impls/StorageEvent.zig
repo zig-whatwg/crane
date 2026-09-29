@@ -32,6 +32,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const EventImpl = @import("Event.zig");
+const same_object = @import("same_object.zig");
 const StorageEvent = interfaces.StorageEvent;
 
 pub const State = StorageEvent.State;
@@ -40,55 +42,35 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for StorageEvent
-/// Holds the actual event data for storage change notifications.
+/// "The key, oldValue, newValue, url, and storageArea attributes must return
+/// the values they were initialized to."
 pub const InternalState = struct {
-    /// The key being changed. Null if clear() was called.
-    key: ?[]const u8,
-    /// The old value of the key being changed. Null for new keys.
-    old_value: ?[]const u8,
-    /// The new value of the key being changed. Null for removed keys.
-    new_value: ?[]const u8,
-    /// The URL of the document whose storage changed.
-    url: []const u8,
-    /// The Storage object that was affected (localStorage or sessionStorage).
-    storage_area: ?*runtime.Instance,
-    /// Whether we own the allocated strings
-    owns_strings: bool,
-    /// Allocator for cleanup
     allocator: std.mem.Allocator,
+    /// Owned copies.
+    key: ?[]u8 = null,
+    old_value: ?[]u8 = null,
+    new_value: ?[]u8 = null,
+    url: []u8 = &.{},
+    /// The Storage object, kept alive with the event.
+    storage_area: ?*runtime.Instance = null,
+    storage_area_pin: same_object.Pin = .{},
 
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .key = null,
-            .old_value = null,
-            .new_value = null,
-            .url = "",
-            .storage_area = null,
-            .owns_strings = false,
-            .allocator = allocator,
-        };
+    fn clear(self: *InternalState) void {
+        if (self.key) |v| self.allocator.free(v);
+        if (self.old_value) |v| self.allocator.free(v);
+        if (self.new_value) |v| self.allocator.free(v);
+        self.allocator.free(self.url);
+        self.key = null;
+        self.old_value = null;
+        self.new_value = null;
+        self.url = &.{};
+        self.storage_area_pin.release();
+        self.storage_area = null;
     }
 
-    pub fn deinit(self: *InternalState) void {
-        if (self.owns_strings) {
-            if (self.key) |key| {
-                self.allocator.free(key);
-            }
-            if (self.old_value) |old| {
-                self.allocator.free(old);
-            }
-            if (self.new_value) |new| {
-                self.allocator.free(new);
-            }
-            if (self.url.len > 0) {
-                self.allocator.free(self.url);
-            }
-        }
-    }
-
-    /// Set values from dictionary, copying strings
-    pub fn setFromDict(
+    /// Set every attribute, copying the strings (BORROWED here). Nothing
+    /// changes unless every copy is made.
+    fn set(
         self: *InternalState,
         key: ?[]const u8,
         old_value: ?[]const u8,
@@ -96,20 +78,30 @@ pub const InternalState = struct {
         url: []const u8,
         storage_area: ?*runtime.Instance,
     ) !void {
-        // Clean up old values if we own them
-        if (self.owns_strings) {
-            self.deinit();
+        const allocator = self.allocator;
+        const key_copy = if (key) |v| try allocator.dupe(u8, v) else null;
+        errdefer if (key_copy) |v| allocator.free(v);
+        const old_copy = if (old_value) |v| try allocator.dupe(u8, v) else null;
+        errdefer if (old_copy) |v| allocator.free(v);
+        const new_copy = if (new_value) |v| try allocator.dupe(u8, v) else null;
+        errdefer if (new_copy) |v| allocator.free(v);
+        const url_copy = try allocator.dupe(u8, url);
+        self.clear();
+        self.key = key_copy;
+        self.old_value = old_copy;
+        self.new_value = new_copy;
+        self.url = url_copy;
+        if (storage_area) |area| {
+            self.storage_area = area;
+            self.storage_area_pin.hold(area);
         }
-
-        // Copy new values
-        self.key = if (key) |k| try self.allocator.dupe(u8, k) else null;
-        self.old_value = if (old_value) |o| try self.allocator.dupe(u8, o) else null;
-        self.new_value = if (new_value) |n| try self.allocator.dupe(u8, n) else null;
-        self.url = if (url.len > 0) try self.allocator.dupe(u8, url) else "";
-        self.storage_area = storage_area;
-        self.owns_strings = true;
     }
 };
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
+}
 
 /// Initialize instance
 pub fn init(
@@ -119,185 +111,96 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer instance.deinit();
-
-    // Create internal state
+    errdefer runtime.Instance.deinit(instance);
     const internal = try allocator.create(InternalState);
-    internal.* = InternalState.init(allocator);
-
-    // Store internal state
-    const state = instance.getState(State);
-    state.own._internal = internal;
-
+    internal.* = .{ .allocator = allocator };
+    instance.getState(StateType).own._internal = internal;
     return instance;
 }
 
-/// Deinitialize instance
+/// Deinitialize instance: its own state, then the Event part.
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        internal.clear();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
+    interfaces.Event.deinit(instance);
 }
 
-/// Helper to extract slice from DOMString
-fn domStringToSlice(str: runtime.DOMString) []const u8 {
-    return str.asSlice();
-}
-
-/// Helper to convert optional slice to optional DOMString
-fn sliceToDOMString(slice: ?[]const u8) ?runtime.DOMString {
-    if (slice) |s| {
-        return runtime.DOMString.initInterned(s);
-    }
-    return null;
-}
-
-/// Constructor implementation
-/// Spec: new StorageEvent(type, eventInitDict)
+/// Constructor: DOM "inner event creation steps" for the Event part, then
+/// each StorageEventInit member (key, oldValue and newValue default to null,
+/// url to "", storageArea to null).
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.StorageEventInit)) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &StorageEvent.vtable, ctx);
     errdefer deinit(instance);
-
-    const state = instance.getState(State);
-
-    // Set event type (handled by Event base)
-    _ = @"type";
-
-    // Apply dictionary values if provided
-    if (eventInitDict.was_passed) {
-        const dict = eventInitDict.value;
-        if (state.own._internal) |internal| {
-            // Extract values from dictionary - dict fields are already ?DOMString
-            const key = if (dict.key) |k| domStringToSlice(k) else null;
-            const old_val = if (dict.oldValue) |o| domStringToSlice(o) else null;
-            const new_val = if (dict.newValue) |n| domStringToSlice(n) else null;
-            const url_val = dict.url orelse "";
-            // storageArea arrives converted: a Storage Instance, or null.
-            const storage: ?*runtime.Instance = dict.storageArea;
-
-            try internal.setFromDict(key, old_val, new_val, url_val, storage);
-        }
-    }
-
+    const dict: dictionaries.StorageEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
+    try EventImpl.innerEventCreationSteps(instance, @"type", dict.base);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    try internal.set(
+        if (dict.key) |v| v.asSlice() else null,
+        if (dict.oldValue) |v| v.asSlice() else null,
+        if (dict.newValue) |v| v.asSlice() else null,
+        dict.url orelse "",
+        dict.storageArea,
+    );
     return instance;
 }
 
-/// Getter for key
-/// Returns the key being changed, or null if clear() was called.
+/// A copy: the binding frees what a string getter returns.
+fn copyOf(instance: *runtime.Instance, value: ?[]const u8) !?runtime.DOMString {
+    const v = value orelse return null;
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, v);
+}
+
 pub fn get_key(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return sliceToDOMString(internal.key);
-    }
-    return null;
+    const internal = getInternal(instance) orelse return null;
+    return copyOf(instance, internal.key);
 }
 
-/// Getter for oldValue
-/// Returns the old value of the key being changed, or null for new keys.
 pub fn get_oldValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return sliceToDOMString(internal.old_value);
-    }
-    return null;
+    const internal = getInternal(instance) orelse return null;
+    return copyOf(instance, internal.old_value);
 }
 
-/// Getter for newValue
-/// Returns the new value of the key being changed, or null for removed keys.
 pub fn get_newValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return sliceToDOMString(internal.new_value);
-    }
-    return null;
+    const internal = getInternal(instance) orelse return null;
+    return copyOf(instance, internal.new_value);
 }
 
-/// Getter for url
-/// Returns the URL of the document whose storage changed.
+/// A USVString getter's result is freed by the binding: a copy.
 pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return internal.url;
-    }
-    return "";
+    const internal = getInternal(instance) orelse return instance.ctx.allocator.dupe(u8, "");
+    return instance.ctx.allocator.dupe(u8, internal.url);
 }
 
-/// Getter for storageArea
-/// Returns the Storage object that was affected.
 pub fn get_storageArea(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        return internal.storage_area;
-    }
-    return null;
+    const internal = getInternal(instance) orelse return null;
+    return internal.storage_area;
 }
 
-/// Operation: initStorageEvent
-/// Legacy method to initialize the event after construction.
-/// Spec: initStorageEvent(type, bubbles, cancelable, key, oldValue, newValue, url, storageArea)
+/// Operation: initStorageEvent (legacy): "must initialize the event in a
+/// manner analogous to the similarly-named initEvent() method" - nothing
+/// while it is being dispatched; otherwise Event's initialize, then each
+/// argument (key, oldValue and newValue default to null, url to "",
+/// storageArea to null).
 pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), key: webidl.Opt(?runtime.DOMString), oldValue: webidl.Opt(?runtime.DOMString), newValue: webidl.Opt(?runtime.DOMString), url: webidl.Opt(runtime.USVString), storageArea: webidl.Opt(?*runtime.Instance)) anyerror!void {
-    // Set event type (handled by base Event)
-    _ = @"type";
-    _ = bubbles;
-    _ = cancelable;
-
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        // For Opt types, check was_passed then access value
-        const key_val = if (key.was_passed) blk: {
-            if (key.value) |k| {
-                break :blk domStringToSlice(k);
-            }
-            break :blk null;
-        } else null;
-
-        const old_val = if (oldValue.was_passed) blk: {
-            if (oldValue.value) |o| {
-                break :blk domStringToSlice(o);
-            }
-            break :blk null;
-        } else null;
-
-        const new_val = if (newValue.was_passed) blk: {
-            if (newValue.value) |n| {
-                break :blk domStringToSlice(n);
-            }
-            break :blk null;
-        } else null;
-
-        // url is Opt(USVString) where USVString = []const u8
-        const url_val = if (url.was_passed) url.value else "";
-
-        const storage = if (storageArea.was_passed) storageArea.value else null;
-
-        try internal.setFromDict(key_val, old_val, new_val, url_val, storage);
-    }
-}
-
-// ============================================================================
-// Helper function to create and dispatch storage events
-// ============================================================================
-
-/// Create a StorageEvent for a storage change.
-/// This is called by localStorage/sessionStorage when a change occurs.
-pub fn createStorageEvent(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    key: ?[]const u8,
-    old_value: ?[]const u8,
-    new_value: ?[]const u8,
-    url: []const u8,
-    storage_area: ?*runtime.Instance,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &StorageEvent.vtable, ctx);
-    errdefer deinit(instance);
-
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        try internal.setFromDict(key, old_value, new_value, url, storage_area);
-    }
-
-    return instance;
+    if (EventImpl.getDispatchFlag(instance)) return;
+    try EventImpl.call_initEvent(instance, @"type", bubbles, cancelable);
+    const internal = getInternal(instance) orelse return;
+    const optionalSlice = struct {
+        fn of(value: webidl.Opt(?runtime.DOMString)) ?[]const u8 {
+            if (!value.was_passed) return null;
+            const v = value.value orelse return null;
+            return v.asSlice();
+        }
+    }.of;
+    try internal.set(
+        optionalSlice(key),
+        optionalSlice(oldValue),
+        optionalSlice(newValue),
+        if (url.was_passed) url.value else "",
+        if (storageArea.was_passed) storageArea.value else null,
+    );
 }

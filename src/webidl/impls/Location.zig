@@ -39,6 +39,7 @@ const url_serializer = @import("url_serializer");
 const host_serializer = @import("host_serializer");
 const origin = @import("origin");
 const basic_parser = @import("basic_parser");
+const ParserState = @import("parser_state").ParserState;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 
 /// Special schemes default ports
@@ -68,6 +69,8 @@ pub const ImplError = error{
 
 const html_core = @import("html_core");
 const navigate_steps = html_core.navigation.navigate_steps;
+const joint_history = html_core.navigation.joint_history;
+const dom = @import("dom");
 
 /// What "Location-object navigate" asks of the navigable's engine.
 pub const NavigateRequest = html_core.window.iframe_integration.NavigateRequest;
@@ -202,6 +205,9 @@ pub fn init(
         .allocator = allocator,
         .window = relevantWindow(ctx),
     };
+    // The hyperlinks and forms that choose the top-level page navigate it
+    // here.
+    @import("dom").top_level_navigation.install(.{ .navigate = &topLevelNavigateHook });
 
     // Initialize with default URL (about:blank)
     // Per spec, Location's URL should be the document's URL
@@ -553,51 +559,127 @@ pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     return locationObjectNavigate(internal, url, .auto);
 }
 
+/// "Let copyURL be a copy of this's url": a record the URL-component setters
+/// change and navigate to; the caller deinits it. Null with no URL.
+fn copyOfURL(instance: *runtime.Instance, allocator: Allocator) !?url_record.URLRecord {
+    const url = getURL(instance) orelse return null;
+    const serialized = try url_serializer.serialize(allocator, url, false);
+    defer allocator.free(serialized);
+    return basic_parser.parse(allocator, serialized, null) catch null;
+}
+
+/// Basic URL parse `input` with `copy` as url and `state` as state override.
+/// A failure leaves `copy` as it was, which is all a setter asks of it,
+/// except the protocol setter, which throws (`error.SyntaxError`).
+fn parseInto(allocator: Allocator, copy: *url_record.URLRecord, input: []const u8, state: ParserState) !void {
+    if (basic_parser.parseWithStateOverride(allocator, input, null, state, copy)) |_| {} else |err| {
+        if (err == error.OutOfMemory) return error.OutOfMemory;
+        return error.SyntaxError;
+    }
+}
+
+/// The URL-component setters' last step: "Location-object navigate this to
+/// copyURL."
+fn navigateToCopy(internal: *InternalState, copy: *url_record.URLRecord) !void {
+    const serialized = try url_serializer.serialize(internal.allocator, copy, false);
+    defer internal.allocator.free(serialized);
+    return locationObjectNavigate(internal, serialized, .auto);
+}
+
 /// Setter for protocol
-/// Per spec §7.1.3: Update URL scheme if valid, then navigate.
+/// HTML §7.2.4: "1. If this's relevant Document is null, then return. ...
+/// 3. Let copyURL be a copy of this's url. 4. Let possibleFailure be the
+/// result of basic URL parsing the given value, followed by ":", with
+/// copyURL as url and scheme start state as state override. 5. If
+/// possibleFailure is failure, then throw a "SyntaxError" DOMException. 6. If
+/// copyURL's scheme is not an HTTP(S) scheme, then terminate these steps. 7.
+/// Location-object navigate this to copyURL." Deviation, stated: step 2's
+/// same-origin-domain check is not modelled.
 pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement protocol setter
-    // This requires parsing the value and updating the URL's scheme
-    // Then triggering navigation
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.window == null) return;
+    const allocator = internal.allocator;
+    var copy = (try copyOfURL(instance, allocator)) orelse return;
+    defer copy.deinit();
+    const input = try std.fmt.allocPrint(allocator, "{s}:", .{value});
+    defer allocator.free(input);
+    try parseInto(allocator, &copy, input, ParserState.scheme_start);
+    const scheme = copy.scheme();
+    if (!std.mem.eql(u8, scheme, "http") and !std.mem.eql(u8, scheme, "https")) return;
+    return navigateToCopy(internal, &copy);
 }
 
 /// Setter for host
-/// Per spec §7.1.3: Update URL host and port, then navigate.
+/// HTML §7.2.4: "3. Let copyURL be a copy of this's url. 4. If copyURL has an
+/// opaque path, then return. 5. Basic URL parse the given value, with copyURL
+/// as url and host state as state override. 6. Location-object navigate this
+/// to copyURL." Deviation, stated: step 2's same-origin-domain check is not
+/// modelled.
 pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement host setter
-    return error.NotImplemented;
+    return setComponent(instance, value, ParserState.host);
 }
 
-/// Setter for hostname
-/// Per spec §7.1.3: Update URL hostname, then navigate.
+/// Setter for hostname: as host, with the hostname state as state override.
 pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement hostname setter
-    return error.NotImplemented;
+    return setComponent(instance, value, ParserState.hostname);
+}
+
+/// The host and hostname setters' steps.
+fn setComponent(instance: *runtime.Instance, value: []const u8, state: ParserState) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.window == null) return;
+    const allocator = internal.allocator;
+    var copy = (try copyOfURL(instance, allocator)) orelse return;
+    defer copy.deinit();
+    if (copy.hasOpaquePath()) return;
+    parseInto(allocator, &copy, value, state) catch |err| if (err == error.OutOfMemory) return err;
+    return navigateToCopy(internal, &copy);
 }
 
 /// Setter for port
-/// Per spec §7.1.3: Update URL port, then navigate.
+/// HTML §7.2.4: "3. Let copyURL be a copy of this's url. 4. If copyURL cannot
+/// have a username/password/port, then return. 5. If the given value is the
+/// empty string, then set copyURL's port to null. 6. Otherwise, basic URL
+/// parse the given value, with copyURL as url and port state as state
+/// override. 7. Location-object navigate this to copyURL." Deviation,
+/// stated: step 2's same-origin-domain check is not modelled.
 pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement port setter
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.window == null) return;
+    const allocator = internal.allocator;
+    var copy = (try copyOfURL(instance, allocator)) orelse return;
+    defer copy.deinit();
+    if (copy.cannotHaveUsernamePasswordPort()) return;
+    if (value.len == 0) {
+        copy.port = null;
+    } else {
+        parseInto(allocator, &copy, value, ParserState.port) catch |err| if (err == error.OutOfMemory) return err;
+    }
+    return navigateToCopy(internal, &copy);
 }
 
 /// Setter for pathname
-/// Per spec §7.1.3: Update URL pathname, then navigate.
+/// HTML §7.2.4: "3. Let copyURL be a copy of this's url. 4. If copyURL has an
+/// opaque path, then return. 5. Set copyURL's path to the empty list. 6.
+/// Basic URL parse the given value, with copyURL as url and path start state
+/// as state override. 7. Location-object navigate this to copyURL."
+/// Deviation, stated: step 2's same-origin-domain check is not modelled.
 pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    _ = instance;
-    _ = value;
-    // TODO: Implement pathname setter
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.window == null) return;
+    const allocator = internal.allocator;
+    var copy = (try copyOfURL(instance, allocator)) orelse return;
+    defer copy.deinit();
+    if (copy.hasOpaquePath()) return;
+    switch (copy.path) {
+        .segments => |*segments| {
+            for (segments.toSlice()) |segment| copy.allocator.free(segment);
+            segments.clear();
+        },
+        .opaque_path => {},
+    }
+    parseInto(allocator, &copy, value, ParserState.path_start) catch |err| if (err == error.OutOfMemory) return err;
+    return navigateToCopy(internal, &copy);
 }
 
 /// Setter for search
@@ -662,33 +744,137 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
     return locationObjectNavigate(internal, copy_url, .auto);
 }
 
-/// "Navigate" step 14 for the top-level page, whose Location has no
-/// navigable engine behind it: a URL that differs from the document's only
-/// in its fragment is a fragment navigation (HTML §7.4.2.3.3) - the
-/// document's URL changes now, and hashchange is queued if the fragment
-/// did. Anything else is not one, and false.
+/// HTML "navigate" for the top-level page, whose Location has no navigable
+/// engine behind it: `window`'s navigable, to `url` (serialized, absolute).
+/// This engine cannot replace the page's document, so what it runs is:
+/// history handling (steps 12-13), a fragment navigation (step 14, "navigate
+/// to a fragment"), and the navigate event before anything else (step 21) -
+/// a navigation it lets through that would make a new document ends there,
+/// error.NotImplemented.
 ///
-/// Not modelled, stated: the navigate event, the session history entry and
-/// scrolling.
-fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8, behavior: navigate_steps.HistoryBehavior) !bool {
-    const window = internal.window orelse return false;
-    const allocator = internal.allocator;
-    const document = interfaces.Window.get_document(window) catch return false;
-    const old_url = interfaces.Document.get_URL(document) catch return false;
-    defer document.ctx.allocator.free(old_url);
-    if (!navigate_steps.isFragmentNavigation(url, old_url, false)) return false;
+/// Not modelled, stated: source snapshot params and sandboxing (1-7), the
+/// ongoing navigation (19), javascript: URLs (20, NotImplemented).
+fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_level_navigation.Params) !void {
+    const document = interfaces.Window.get_document(window) catch return;
+    // Step 9: "If navigable's active document's unload counter is greater
+    // than 0 ... return."
+    if (dom.document_lifecycle.isUnloading(document)) return;
+    const allocator = window.ctx.allocator;
+    const document_url = interfaces.Document.get_URL(document) catch return;
+    defer document.ctx.allocator.free(document_url);
+    // Steps 12-13: history handling.
+    const handling = navigate_steps.resolveHistoryHandling(switch (params.history_behavior) {
+        .auto => .auto,
+        .push => .push,
+        .replace => .replace,
+    }, url, .{
+        .url = document_url,
+        .is_initial_about_blank = dom.document_lifecycle.isInitialAboutBlank(document),
+    }, sameOriginSource(params.source_document, document_url, allocator));
+
+    // Step 14: a fragment navigation - never one with a document resource,
+    // a form's POST resource.
+    if (navigate_steps.isFragmentNavigation(url, document_url, params.form_data != null)) {
+        return topLevelFragmentNavigation(window, url, document_url, handling, params);
+    }
+    // Step 20: javascript: URLs are not run here.
+    if (navigate_steps.isJavascript(url)) return error.NotImplemented;
+    // Step 21: the navigate event, for a navigation from a same-origin
+    // source to a fetch scheme, when the active document is not the initial
+    // about:blank.
+    if (sameOriginSource(params.source_document, document_url, allocator) and
+        !dom.document_lifecycle.isInitialAboutBlank(document) and
+        navigate_steps.isFetchScheme(url))
+    {
+        const continue_navigation = dom.navigation_api.firePushReplaceReload(window, .{
+            .navigation_type = if (handling == .push) .push else .replace,
+            .destination_url = url,
+            .is_same_document = false,
+            .user_involvement = params.user_involvement,
+            .source_element = params.source_element,
+            .navigation_api_state = params.navigation_api_state orelse .undefined,
+            // Step 20's entryListForFiring.
+            .form_data = params.form_data,
+        });
+        // Canceled, or intercepted - which made it same-document.
+        if (!continue_navigation) return;
+    }
+    // A new document for the top-level page: not this engine's to make.
+    return error.NotImplemented;
+}
+
+/// dom.top_level_navigation: the page's hyperlinks and forms.
+fn topLevelNavigateHook(window: *runtime.Instance, url: []const u8, params: dom.top_level_navigation.Params) void {
+    topLevelNavigate(window, url, params) catch |err| {
+        log.debug("the top-level page cannot navigate to {s}: {s}", .{ url, @errorName(err) });
+    };
+}
+
+/// Whether `source` - navigate's sourceDocument - is same origin with the
+/// active document at `document_url` (step 12.1, step 21). By URL, as the
+/// navigable containers compare it; no source is the page itself.
+fn sameOriginSource(source: ?*runtime.Instance, document_url: []const u8, allocator: Allocator) bool {
+    const doc = source orelse return true;
+    const source_url = interfaces.Document.get_URL(doc) catch return true;
+    defer doc.ctx.allocator.free(source_url);
+    _ = allocator;
+    return std.mem.eql(u8, originPrefix(source_url), originPrefix(document_url));
+}
+
+/// "scheme://host[:port]" of a serialized URL, or the whole URL for one
+/// without an authority (whose origin is opaque or inherited: compared as is).
+fn originPrefix(url: []const u8) []const u8 {
+    const scheme = navigate_steps.schemeOf(url);
+    if (!std.mem.startsWith(u8, url[scheme.len..], "://")) return url;
+    const end = std.mem.indexOfAnyPos(u8, url, scheme.len + 3, "/?#") orelse url.len;
+    return url[0..end];
+}
+
+/// HTML "navigate to a fragment" (§7.4.2.3.3) for the top-level page: the
+/// navigate event first; then the document's URL changes now, the new entry
+/// is pushed or replaced, the navigation API's entries follow, and
+/// hashchange is queued if the fragment changed. Scrolling is not modelled
+/// (no layout), stated.
+fn topLevelFragmentNavigation(
+    window: *runtime.Instance,
+    url: []const u8,
+    old_url: []const u8,
+    handling: navigate_steps.HistoryHandling,
+    params: dom.top_level_navigation.Params,
+) !void {
+    const allocator = window.ctx.allocator;
+    const bc = html_core.window.BrowsingContext.ofWindow(@ptrCast(window));
+    // Steps 2-3: "Let destinationNavigationAPIState be navigable's active
+    // session history entry's navigation API state. If navigationAPIState is
+    // not null, then set destinationNavigationAPIState to navigationAPIState."
+    var destination_state: joint_history.SerializedState = .undefined;
+    defer destination_state.deinit(allocator);
+    if (params.navigation_api_state) |state| {
+        destination_state = try state.clone(allocator);
+    } else if (bc) |b| {
+        if (b.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
+            if (history.currentEntry(b.id)) |entry| destination_state = try entry.api_state.clone(allocator);
+        } else |_| {}
+    }
+    // Steps 4-5: "Let continue be the result of firing a push/replace/reload
+    // navigate event ... If continue is false, then return."
+    if (!dom.navigation_api.firePushReplaceReload(window, .{
+        .navigation_type = if (handling == .push) .push else .replace,
+        .destination_url = url,
+        .is_same_document = true,
+        .user_involvement = params.user_involvement,
+        .source_element = params.source_element,
+        .navigation_api_state = destination_state,
+    })) return;
 
     // Steps 6-13 and 17: the new entry on the same document, pushed or
-    // replacing the current one in the traversable's history ("navigate"
-    // steps 12-13 resolve "auto": a URL equal to the document's replaces).
-    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window))) |bc| {
-        const handling: html_core.navigation.joint_history.HistoryHandling = switch (behavior) {
-            .replace => .replace,
-            .push => .push,
-            .auto => if (std.mem.eql(u8, url, old_url)) .replace else .push,
-        };
-        if (bc.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
-            history.commitSameDocument(bc.id, url, .null, handling, null) catch {};
+    // replacing the current one in the traversable's history, with the
+    // destination's navigation API state and a null classic history API
+    // state.
+    if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window))) |b| {
+        if (b.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
+            const api_state = destination_state.clone(allocator) catch null;
+            history.commitSameDocument(b.id, url, .null, if (handling == .push) .push else .replace, api_state) catch {};
         } else |_| {}
     }
 
@@ -696,23 +882,18 @@ fn topLevelFragmentNavigation(internal: *InternalState, url: []const u8, behavio
     // with a window reads its URL from its realm's record.
     try window.ctx.setDocumentUrl(url);
 
-    // Step 13: "Update the navigation API entries for a same-document
-    // navigation given navigation, historyEntry, and historyHandling."
+    // Step 14, "update document for history step application" 6.4.1:
+    // "Update the navigation API entries for a same-document navigation
+    // given navigation, historyEntry, and historyHandling."
     if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) != null) {
-        const kind: @import("dom").navigation_api.Kind = switch (behavior) {
-            .replace => .replace,
-            .push => .push,
-            .auto => if (std.mem.eql(u8, url, old_url)) .replace else .push,
-        };
-        @import("dom").navigation_api.sameDocumentNavigation(window, kind);
+        dom.navigation_api.sameDocumentNavigation(window, if (handling == .push) .push else .replace);
     }
 
-    // Step 14's hashchange, if the fragment changed.
+    // 6.4.5: hashchange, if the fragment changed.
     const old_fragment = navigate_steps.fragmentOf(old_url);
     const new_fragment = navigate_steps.fragmentOf(url);
     const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
     if (!same) queueHashChange(allocator, window, old_url, url);
-    return true;
 }
 
 /// BrowsingContext.ensureHistoryEntries's `url_of`.
@@ -829,13 +1010,20 @@ fn entryDocument() ?*runtime.Instance {
 /// engine's (the navigate callback); step 3 is too, since it reads the
 /// navigable's own record of its document.
 fn locationObjectNavigate(internal: *InternalState, url: []const u8, behavior: navigate_steps.HistoryBehavior) !void {
-    const callback = internal.navigate_callback orelse {
-        // The top-level page: this engine cannot replace its document, but
-        // a fragment navigation keeps the document, and that it can do.
-        if (try topLevelFragmentNavigation(internal, url, behavior)) return;
-        return error.NotImplemented;
-    };
     const source = entryDocument();
+    const callback = internal.navigate_callback orelse {
+        // The top-level page, "navigate"d as far as this engine can.
+        const window = internal.window orelse return;
+        const document = interfaces.Window.get_document(window) catch return;
+        // Step 3: "If this's relevant Document has not yet completely loaded,
+        // then set historyHandling to "replace"."
+        const handling: dom.top_level_navigation.HistoryBehavior = if (!dom.document_lifecycle.isCompletelyLoaded(document)) .replace else switch (behavior) {
+            .auto => .auto,
+            .push => .push,
+            .replace => .replace,
+        };
+        return topLevelNavigate(window, url, .{ .history_behavior = handling, .source_document = source });
+    };
     if (!callback(internal.navigate_context, url, .{ .history_behavior = behavior, .source_document = if (source) |d| @ptrCast(d) else null })) {
         return error.SecurityError;
     }
@@ -872,11 +1060,18 @@ pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerro
 }
 
 /// Operation: reload
-/// Per spec §7.1.3: Reload the document.
+/// HTML §7.2.4: "1. Let document be this's relevant Document. 2. If
+/// document is null, then return. 3. If document's origin is not same
+/// origin-domain with the entry settings object's origin, then throw a
+/// "SecurityError" DOMException. 4. Reload document's node navigable."
+/// Deviation, stated: as for assign(), step 3 is not modelled.
 pub fn call_reload(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-
-    // TODO: Implement reload
-    // This triggers a reload of the current document
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Steps 1-2.
+    const window = internal.window orelse return;
+    // Step 4: "reload" - the reload navigate event, then the reload history
+    // step, both History's (dom.history_traversal). A window that has not
+    // made its History yet makes it, which installs the hook.
+    if (!dom.history_traversal.isInstalled()) _ = interfaces.Window.get_history(window) catch {};
+    dom.history_traversal.reload(window);
 }

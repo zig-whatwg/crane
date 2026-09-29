@@ -48,6 +48,9 @@ pub const InternalState = struct {
     /// array `ports` returns is made from them on first read. Owned slice
     /// (ctx.allocator); the ports themselves are not.
     ports: []*runtime.Instance = &.{},
+    /// The event's hold on `source`'s wrapper, when the constructor was
+    /// given one: the event may be all that refers to it. Released on deinit.
+    source_hold: ?engine.Owned = null,
 };
 
 /// Let go of the event's hold on `data`, if it has one: `data` is undefined
@@ -94,6 +97,11 @@ pub fn deinit(instance: *runtime.Instance) void {
         }
         if (internal.ports.len > 0) instance.ctx.allocator.free(internal.ports);
         internal.ports = &.{};
+        if (internal.source_hold) |held| {
+            held.release();
+            internal.source_hold = null;
+            state.own.source = null;
+        }
     }
 
     // Clean up the cloned JSValue data (if it's an owned string)
@@ -147,10 +155,11 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         state.base.own.composed = init_dict.base.composed orelse false;
 
         // MessageEvent-specific properties (in state.own)
-        // Use JSValue.jsUndefined for undefined data
+        // "data": the dictionary's, whose default is null (`any data =
+        // null`) - an absent or undefined member is null, not undefined.
         // IMPORTANT: Clone the JSValue to take ownership. The argument cleanup code
         // will free the original string buffer after the constructor returns.
-        state.own.data = if (init_dict.data) |data| try keepData(ctx, instance, data) else runtime.JSValue.jsUndefined;
+        state.own.data = if (init_dict.data) |data| (if (data == .undefined) runtime.JSValue.jsNull else try keepData(ctx, instance, data)) else runtime.JSValue.jsNull;
         // The dictionary's string is freed when the constructor returns.
         if (init_dict.origin) |origin| {
             if (origin.len > 0) {
@@ -163,13 +172,33 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             state.own.origin = "";
         }
         state.own.lastEventId = if (init_dict.lastEventId) |id| id else runtime.DOMString.initEmpty();
-        // source requires more complex handling
-        state.own.source = null;
-        // "ports": a frozen array of the init dictionary's ports, made from
-        // these on first read (`get_ports`).
+        // "source": the dictionary's - a WindowProxy, MessagePort or
+        // ServiceWorker, or null - as initMessageEvent sets it. The event
+        // holds its wrapper: nothing else may. `new MessageEvent(t, {source:
+        // new MessageChannel().port1})` leaves the event the port's only
+        // holder, and a port nobody started has no pending activity of its
+        // own, so a collection would free it under the event.
+        state.own.source = init_dict.source;
+        if (init_dict.source) |source| {
+            const source_instance: *runtime.Instance = switch (source) {
+                inline else => |object| object,
+            };
+            // With no engine to wrap in (a unit test's realm) there is no
+            // collector either, and nothing to hold.
+            if (state.own._internal) |internal| internal.source_hold = engine.retainValue(ctx, .{ .instance = source_instance }) catch null;
+        }
+        // "ports": a frozen array of the init dictionary's ports, made now
+        // rather than on first read, because the array is what holds them:
+        // a port handed to the constructor and dropped, or received with a
+        // message nobody has read yet, has nothing else - its own pending
+        // activity starts only once its queue does. `get_ports` returns it.
         if (init_dict.ports) |ports| {
             if (ports.len > 0) {
-                if (state.own._internal) |internal| internal.ports = try ctx.allocator.dupe(*runtime.Instance, ports);
+                if (state.own._internal) |internal| {
+                    internal.ports = try ctx.allocator.dupe(*runtime.Instance, ports);
+                    // Where no array can be made now, the first read makes it.
+                    _ = get_ports(instance) catch {};
+                }
             }
         }
     } else {
@@ -177,7 +206,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         state.base.own.bubbles = false;
         state.base.own.cancelable = false;
         state.base.own.composed = false;
-        state.own.data = runtime.JSValue.jsUndefined; // Use jsUndefined for undefined
+        state.own.data = runtime.JSValue.jsNull; // MessageEventInit's data defaults to null
         state.own.origin = "";
         state.own.lastEventId = runtime.DOMString.initEmpty();
         state.own.source = null;

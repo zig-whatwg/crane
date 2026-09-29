@@ -139,3 +139,46 @@ pub fn isFragmentNavigation(url: []const u8, active_entry_url: []const u8, has_d
     if (fragmentOf(url) == null) return false;
     return equalsExcludingFragments(url, active_entry_url);
 }
+
+/// HTML "can have its URL rewritten" (7.2.5): whether a document whose URL
+/// is `document_url` can have it changed to `target_url` without a new
+/// document.
+/// Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#can-have-its-url-rewritten
+pub fn canHaveUrlRewritten(document_url: []const u8, target_url: []const u8) bool {
+    // Step 2: "If targetURL and documentURL differ in their scheme, username,
+    // password, host, or port components, then return false."
+    if (!std.mem.eql(u8, schemeOf(document_url), schemeOf(target_url))) return false;
+    if (!std.mem.eql(u8, authorityOf(document_url), authorityOf(target_url))) return false;
+    const scheme = schemeOf(target_url);
+    // Step 3: "If targetURL's scheme is an HTTP(S) scheme, then return true."
+    if (std.ascii.eqlIgnoreCase(scheme, "http") or std.ascii.eqlIgnoreCase(scheme, "https")) return true;
+    // Step 4: "If targetURL's scheme is "file", then: if targetURL and
+    // documentURL differ in their path component, then return false."
+    if (std.ascii.eqlIgnoreCase(scheme, "file")) {
+        return std.mem.eql(u8, pathOf(document_url), pathOf(target_url));
+    }
+    // Step 5: "If targetURL and documentURL differ in any component besides
+    // fragment, then return false."
+    return equalsExcludingFragments(document_url, target_url);
+}
+
+/// The userinfo, host and port of a serialized URL - what follows "scheme://"
+/// up to the path - or "" for a URL without an authority.
+fn authorityOf(url: []const u8) []const u8 {
+    const scheme = schemeOf(url);
+    if (!std.mem.startsWith(u8, url[scheme.len..], "://")) return "";
+    const start = scheme.len + 3;
+    const end = std.mem.indexOfAnyPos(u8, url, start, "/?#") orelse url.len;
+    return url[start..end];
+}
+
+/// The path of a serialized URL: after its scheme and authority, up to the
+/// query or fragment.
+fn pathOf(url: []const u8) []const u8 {
+    const scheme = schemeOf(url);
+    var start = scheme.len + 1;
+    if (std.mem.startsWith(u8, url[scheme.len..], "://")) start = scheme.len + 3 + authorityOf(url).len;
+    if (start > url.len) return "";
+    const end = std.mem.indexOfAnyPos(u8, url, start, "?#") orelse url.len;
+    return url[start..end];
+}

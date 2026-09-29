@@ -27,6 +27,9 @@ pub const Created = struct {
 /// What HTMLIFrameElement supplies.
 pub const Implementation = struct {
     create: *const fn (allocator: std.mem.Allocator, opener_browsing_context: *anyopaque, opener_origin: []const u8, is_popup: bool) ?Created,
+    /// HTML "definitely close" the top-level traversable whose active window
+    /// is `window`: false when `window` is not a top-level traversable's.
+    definitely_close: *const fn (window: *runtime.Instance) bool,
 };
 
 threadlocal var implementation: ?Implementation = null;
@@ -51,7 +54,18 @@ pub fn create(allocator: std.mem.Allocator, opener_browsing_context: *anyopaque,
     return impl.create(allocator, opener_browsing_context, opener_origin, is_popup);
 }
 
-test "without an installed implementation no navigable is made" {
+/// HTML "definitely close" the top-level traversable whose active window is
+/// `window`: its documents are asked about unloading and unloaded; one that
+/// window.open() or a link's or form's target made is then destroyed and its
+/// browsing context closed, while the host's own page is left to the host.
+/// False when `window` is not a top-level traversable's or nothing is
+/// installed.
+pub fn definitelyClose(window: *runtime.Instance) bool {
+    const impl = implementation orelse return false;
+    return impl.definitely_close(window);
+}
+
+test "without an installed implementation no navigable is made or closed" {
     const saved = implementation;
     defer implementation = saved;
     implementation = null;
@@ -59,4 +73,7 @@ test "without an installed implementation no navigable is made" {
     // Never dereferenced: with no implementation nothing reads it.
     var opener: u8 = 0;
     try std.testing.expect(create(std.testing.allocator, &opener, "https://example.com", false) == null);
+    // Never dereferenced either.
+    var window: runtime.Instance = undefined;
+    try std.testing.expect(!definitelyClose(&window));
 }
