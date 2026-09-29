@@ -62,7 +62,6 @@ pub const ConsoleValue = @import("console_value.zig").ConsoleValue;
 // Engine-agnostic callback wrapper for callback interfaces
 // (EventListener, NodeFilter, XPathNSResolver)
 pub const CallbackWrapper = @import("callback_wrapper.zig").CallbackWrapper;
-pub const CallbackOperations = @import("callback_wrapper.zig").CallbackOperations;
 
 // Engine-agnostic JavaScript value type
 // Use this in impl files instead of v8.JSValue

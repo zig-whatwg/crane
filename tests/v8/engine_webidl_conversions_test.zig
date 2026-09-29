@@ -1212,17 +1212,15 @@ test "protocol: a taken callback function or interface records the incumbent rea
     try std.testing.expectEqual(@as(i32, 3), int32Of(called.normal));
 
     // A callback interface value as the binding converts it (a
-    // runtime.CallbackWrapper), taken; the wrapper stays its holder's.
+    // runtime.CallbackWrapper), taken; the wrapper is the call's, released
+    // as the binding releases it.
     const listener = try Made.of("({ handleEvent(x) { return x * 3; } })");
     defer listener.deinit();
     // The conversion takes the Global it is given (the binding's argument
     // handle): hand it one of its own.
     const argument = ffi.v8_Global_Clone(listener.handle) orelse return error.CloneFailed;
     const wrapper = try v8.conversions.fromV8Value(*runtime.CallbackWrapper, allocator, isolate_once.?, context_once.?, argument);
-    defer {
-        wrapper.deinit();
-        wrapper.allocator.destroy(wrapper);
-    }
+    defer v8.conversions.releaseCallbackWrapper(wrapper);
     const interface = protocol.takeCallbackInterface(wrapper);
     defer interface.release();
     try std.testing.expectEqual(@as(?runtime.Context, here), interface.context);

@@ -218,13 +218,15 @@ from the integrator, who owns engine_protocol.zig. It lands in one change:
   `ctx.getEngine()`) is gone. The types it shared with the protocol are
   src/runtime/engine_types.zig's, and the runtime module imports the protocol
   itself (build.zig binds `engine` into runtime; a test tier gets a runtime of
-  its own, bound to its adapter). What is left of it is
-  `runtime.CallbackOperations`: the one operation a `runtime.CallbackWrapper`
-  needs, which the binding's callback interface conversion names by the old
-  `v8_engine_interface` name until it moves onto `takeCallbackInterface`.
+  its own, bound to its adapter). Nothing of it is left: the last piece,
+  `runtime.CallbackOperations`, went when callback interface arguments became
+  borrowed for the call.
 - **`takeCallbackFunction` / `takeCallbackInterface`** untag the binding's
   callback values until codegen types callback parameters as
-  `CallbackFunction` / `CallbackInterface`.
+  `CallbackFunction` / `CallbackInterface`. A `*runtime.CallbackWrapper` is
+  an opaque, BORROWED argument: the binding releases it when the call
+  returns, and an impl that keeps the callback takes its own
+  CallbackInterface.
 - **Ownership flags**: `runtime.JSValue`'s handle arm still carries
   `needs_disposal` and a `.local` / `.global` tag. A `.handle` is always a
   Global the engine made, whatever the tag; the protocol's types, not the

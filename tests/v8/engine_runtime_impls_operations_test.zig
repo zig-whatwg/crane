@@ -285,46 +285,42 @@ const Call = struct {
 };
 
 /// A callback interface value made of script's `expression`, as the binding
-/// converts one. The wrapper takes the value's handle: its deinit releases it.
-fn callbackOf(expression: []const u8) !runtime.CallbackWrapper {
+/// converts one. The wrapper takes the value's handle: releasing the wrapper
+/// (`conversions.releaseCallbackWrapper`) releases it.
+fn callbackOf(expression: []const u8) !*runtime.CallbackWrapper {
     const value = try evalHandle(expression);
     const made = (v8.createCallbackFromV8Value(std.testing.allocator, isolate_once.?, context_once.?, value, "acceptNode") catch return error.OutOfMemory) orelse {
         ffi.v8_Value_Dispose(value);
         return error.NotCallable;
     };
-    return .{
-        .engine_handle = made,
-        .engine = &v8.engine.v8_engine_interface,
-        .engine_ctx = context_once.?,
-        .allocator = std.testing.allocator,
-    };
+    return @ptrCast(made);
 }
 
 test "a callback interface value is called as a function, or through its operation, and what it throws stays in flight" {
     const ctx = try realm();
 
     // A function: called with undefined as this and the arguments given.
-    var function = try callbackOf("(function (n) { 'use strict'; return this === undefined ? n + 1 : -1; })");
-    defer function.deinit();
-    var call: Call = .{ .callback = &function };
+    const function = try callbackOf("(function (n) { 'use strict'; return this === undefined ? n + 1 : -1; })");
+    defer v8.conversions.releaseCallbackWrapper(function);
+    var call: Call = .{ .callback = function };
     try std.testing.expect(try catching(Call.run, &call) == null);
     const result = try call.result;
     defer v8.engine.v8ReleaseValue(result);
     try std.testing.expectEqual(@as(f64, 6), try v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, result));
 
     // An object: its operation looked up at the call, with it as this.
-    var object = try callbackOf("({ base: 10, acceptNode(n) { return this.base + n; } })");
-    defer object.deinit();
-    call = .{ .callback = &object };
+    const object = try callbackOf("({ base: 10, acceptNode(n) { return this.base + n; } })");
+    defer v8.conversions.releaseCallbackWrapper(object);
+    call = .{ .callback = object };
     try std.testing.expect(try catching(Call.run, &call) == null);
     const from_object = try call.result;
     defer v8.engine.v8ReleaseValue(from_object);
     try std.testing.expectEqual(@as(f64, 15), try v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, from_object));
 
     // "rethrow": the call's exception is the caller's, in flight.
-    var throwing = try callbackOf("(function () { throw new RangeError('filtered'); })");
-    defer throwing.deinit();
-    call = .{ .callback = &throwing };
+    const throwing = try callbackOf("(function () { throw new RangeError('filtered'); })");
+    defer v8.conversions.releaseCallbackWrapper(throwing);
+    call = .{ .callback = throwing };
     const thrown = (try catching(Call.run, &call)) orelse return error.NothingThrown;
     defer ffi.v8_Global_Dispose(thrown);
     try std.testing.expectError(error.ExceptionPending, call.result);
@@ -333,9 +329,9 @@ test "a callback interface value is called as a function, or through its operati
 
     // WebIDL § 3.12 step 10.2: Get(O, opName) is rethrown - a getter that
     // throws is the call's exception.
-    var throwing_getter = try callbackOf("({ get acceptNode() { throw new SyntaxError('getter'); } })");
-    defer throwing_getter.deinit();
-    call = .{ .callback = &throwing_getter };
+    const throwing_getter = try callbackOf("({ get acceptNode() { throw new SyntaxError('getter'); } })");
+    defer v8.conversions.releaseCallbackWrapper(throwing_getter);
+    call = .{ .callback = throwing_getter };
     const from_getter = (try catching(Call.run, &call)) orelse return error.NothingThrown;
     defer ffi.v8_Global_Dispose(from_getter);
     try std.testing.expectError(error.ExceptionPending, call.result);
@@ -343,9 +339,9 @@ test "a callback interface value is called as a function, or through its operati
     try std.testing.expectEqual(@as(i32, 1), try eval("fromGetter instanceof SyntaxError && fromGetter.message === 'getter' ? 1 : 0"));
 
     // Step 10.3: no such property - undefined is not callable - is a TypeError.
-    var no_operation = try callbackOf("({})");
-    defer no_operation.deinit();
-    call = .{ .callback = &no_operation };
+    const no_operation = try callbackOf("({})");
+    defer v8.conversions.releaseCallbackWrapper(no_operation);
+    call = .{ .callback = no_operation };
     const missing = (try catching(Call.run, &call)) orelse return error.NothingThrown;
     defer ffi.v8_Global_Dispose(missing);
     try std.testing.expectError(error.ExceptionPending, call.result);
@@ -353,9 +349,9 @@ test "a callback interface value is called as a function, or through its operati
     try std.testing.expectEqual(@as(i32, 1), try eval("missing instanceof TypeError ? 1 : 0"));
 
     // Step 10.3 again: a property that is not callable is a TypeError too.
-    var not_callable = try callbackOf("({ acceptNode: 3 })");
-    defer not_callable.deinit();
-    call = .{ .callback = &not_callable };
+    const not_callable = try callbackOf("({ acceptNode: 3 })");
+    defer v8.conversions.releaseCallbackWrapper(not_callable);
+    call = .{ .callback = not_callable };
     const type_error = (try catching(Call.run, &call)) orelse return error.NothingThrown;
     defer ffi.v8_Global_Dispose(type_error);
     try std.testing.expectError(error.ExceptionPending, call.result);

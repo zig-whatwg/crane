@@ -302,9 +302,13 @@ Seen in: EventTarget, node_filter.zig.
 - **Intent**: WebIDL callback interface value (object + callback context).
 - **V8 pattern**: `runtime.CallbackWrapper` / `v8.CallbackWrapper`,
   `getGlobalValuePtr`, `destroyCallbackWrapper`.
-- **Protocol**: `engine.takeCallbackInterface(&wrapper) CallbackInterface`.
-- **Ownership**: the wrapper stays its holder's; the CallbackInterface is a
-  second, OWNED handle to the object - release it separately.
+- **Protocol**: `engine.takeCallbackInterface(wrapper) CallbackInterface`.
+- **Ownership**: the wrapper (`*runtime.CallbackWrapper`, opaque) is BORROWED
+  for the call, like every argument: the binding releases it when the call
+  returns, so never free or keep it. The CallbackInterface is the impl's own,
+  OWNED handle to the object - release it when done. An attribute that gives
+  the callback back (NodeIterator.filter) returns its object (codegen types a
+  callback interface attribute as `runtime.JSValue`).
 - **Pitfalls**: listener identity (DOM "event listener whose callback is
   callback") is `engine.sameValue(realm, a.object.value, b.object.value)`, not
   pointer equality of wrappers.

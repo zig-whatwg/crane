@@ -192,10 +192,10 @@ fn setUp(
     internal.pointer_before_reference = true;
     // Step 4: Set iterator's whatToShow to whatToShow.
     internal.what_to_show = what_to_show;
-    // Step 5: Set iterator's filter to filter - owned from here on.
+    // Step 5: Set iterator's filter to filter.
     node_filter.release(internal.filter);
     internal.filter = null;
-    internal.filter = try node_filter.store(filter);
+    internal.filter = try node_filter.store(internal.allocator, filter);
     internal.active_flag = false;
     // Recorded so the iterator can leave the document's list when freed.
     internal.document = document;
@@ -235,12 +235,10 @@ pub fn get_whatToShow(instance: *runtime.Instance) anyerror!u32 {
 }
 
 /// DOM §6.2 - NodeIterator.filter
-/// Returns the filter callback (may be null)
-/// Note: WebIDL says nullable NodeFilter, returns null if no filter
-pub fn get_filter(instance: *runtime.Instance) anyerror!??*runtime.CallbackWrapper {
+/// The filter: the object createNodeIterator() was given, or null for none.
+pub fn get_filter(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     const internal = getInternal(instance);
-    if (node_filter.fromStored(internal.filter)) |filter| return filter;
-    return null;
+    return node_filter.fromStored(internal.filter);
 }
 
 // ============================================================================

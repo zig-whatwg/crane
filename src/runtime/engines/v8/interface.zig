@@ -2596,17 +2596,6 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // For now, return undefined to prevent crashes.
                                 // TODO: Implement proper Promise creation for [NewObject] methods
                                 break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
-                            } else if (PayloadType == ?*runtime.CallbackWrapper) {
-                                // EventHandler (callback wrapper) - extract V8 function from wrapper
-                                if (result) |wrapper| {
-                                    const cb_wrapper = @import("callback_wrapper.zig");
-                                    const v8_wrapper: *cb_wrapper.CallbackWrapper = @ptrCast(@alignCast(wrapper));
-                                    if (v8_wrapper.callback_function) |func| {
-                                        break :comptime_convert @ptrCast(func);
-                                    }
-                                }
-                                // No callback or no function stored - return null
-                                break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
                             } else if (PayloadType == runtime.JSValue) {
                                 // JSValue - use conv.toV8Value to convert to V8 Value
                                 // This handles all JSValue variants: undefined, null, boolean, number, string, handle, instance
@@ -3164,7 +3153,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Check if a converted argument type needs to be freed after use.
         /// String types ([]const u8 and DOMString) need cleanup as they're allocated by fromV8String.
         /// JSValue types may contain owned strings that need cleanup.
-        /// CallbackWrapper types need cleanup for transient callbacks (those not stored by the callee).
+        /// CallbackWrapper types are the call's: released once it returns.
         /// Struct types (dictionaries) may contain string fields that need cleanup.
         fn needsArgCleanup(comptime T: type) bool {
             @setEvalBranchQuota(10000);
@@ -3183,9 +3172,8 @@ pub fn V8Interface(comptime Interface: type) type {
             if (T == runtime.DOMString) return true;
             // JSValue may contain owned strings
             if (T == runtime.JSValue) return true;
-            // CallbackWrapper - transient callbacks need cleanup after method call
-            // Note: If a method stores the callback (e.g., addEventListener), it must
-            // clone/reference it before returning, as we free it here.
+            // CallbackWrapper - the call's; a method that keeps the callback
+            // (addEventListener) takes its own CallbackInterface first.
             if (T == *runtime.CallbackWrapper) return true;
             // Generic slice types (sequences) - allocated by fromV8Sequence
             // This handles []const JSValue, []const DOMString, etc.
@@ -3294,13 +3282,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     else => {}, // Other variants don't need cleanup here
                 }
             } else if (T == *runtime.CallbackWrapper) {
-                // Callbacks are OWNED by the method that receives them.
-                // Methods like addEventListener store callbacks and are responsible
-                // for cleanup when the callback is removed or the target is destroyed.
-                // We do NOT free callbacks here - the receiver takes ownership.
-                //
-                // This follows the DOM spec where event listeners persist until
-                // explicitly removed or the EventTarget is garbage collected.
+                // A callback interface argument is the call's, like every
+                // argument: the impl borrowed it, and one that keeps the
+                // callback (addEventListener) took a CallbackInterface of its
+                // own. Its wrapper goes now.
+                conv.releaseCallbackWrapper(arg);
             } else if (@typeInfo(T) == .optional) {
                 // Handle all optional types by recursively freeing the inner value
                 if (arg) |val| {

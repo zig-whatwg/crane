@@ -15,7 +15,6 @@ const EngineError = runtime.EngineError;
 const ffi = @import("ffi.zig");
 const js_scope = @import("js_scope.zig");
 const v8_conversions = @import("conversions.zig");
-const callback_wrapper_mod = @import("callback_wrapper.zig");
 const pointer_tag = @import("pointer_tag.zig");
 const TaggedPointer = pointer_tag.TaggedPointer;
 const DebugAssertions = pointer_tag.DebugAssertions;
@@ -255,26 +254,6 @@ pub fn v8CreateArrayBuffer(
     }
 
     return @ptrCast(array_buffer);
-}
-
-// ============================================================================
-// Callback interfaces as the binding converts them (runtime.CallbackWrapper)
-// ============================================================================
-
-/// What a runtime.CallbackWrapper the binding makes needs from the adapter:
-/// the operation that ends it. The binding's callback interface conversion
-/// (conversions.zig) names it by this old name - it was the runtime Engine
-/// table, which is gone. TRANSITIONAL: goes with runtime.CallbackWrapper.
-pub const v8_engine_interface: runtime.CallbackOperations = .{
-    .destroyCallbackWrapper = v8DestroyCallbackWrapper,
-};
-
-/// Destroy a V8 callback wrapper
-fn v8DestroyCallbackWrapper(
-    callback_wrapper: *anyopaque,
-) void {
-    const wrapper: *callback_wrapper_mod.CallbackWrapper = @ptrCast(@alignCast(callback_wrapper));
-    wrapper.deinit();
 }
 
 // ============================================================================

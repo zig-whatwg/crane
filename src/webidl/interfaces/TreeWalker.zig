@@ -81,7 +81,7 @@ pub const TreeWalker = struct {
         struct {
             root: *runtime.Instance = undefined,
             whatToShow: u32 = undefined,
-            filter: ??*runtime.CallbackWrapper = null,
+            filter: ?runtime.JSValue = null,
             currentNode: *runtime.Instance = undefined,
             cached_root: ?*runtime.Instance = null,
             _internal: ?*TreeWalkerImpl.InternalState = null,
@@ -145,7 +145,7 @@ pub const TreeWalker = struct {
         return try TreeWalkerImpl.get_whatToShow(instance);
     }
 
-    pub fn get_filter(instance: *runtime.Instance) anyerror!??*runtime.CallbackWrapper {
+    pub fn get_filter(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try TreeWalkerImpl.get_filter(instance);
     }
 

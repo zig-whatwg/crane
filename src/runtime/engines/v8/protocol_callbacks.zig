@@ -400,11 +400,12 @@ pub fn takeCallbackFunction(argument: *const anyopaque) engine.CallbackFunction 
 }
 
 /// A callback-interface argument as the binding hands it over (the
-/// runtime.CallbackWrapper it converted): its object as a Global of the
-/// caller's own, with its callback context as for takeCallbackFunction. The
-/// wrapper stays its holder's.
+/// runtime.CallbackWrapper it converted - this adapter's CallbackWrapper):
+/// its object as a Global of the caller's own, with its callback context as
+/// for takeCallbackFunction. The wrapper is the call's; the binding releases
+/// it.
 pub fn takeCallbackInterface(argument: *const engine.CallbackWrapper) engine.CallbackInterface {
-    const wrapper: *const V8CallbackWrapper = @ptrCast(@alignCast(argument.engine_handle));
+    const wrapper: *const V8CallbackWrapper = @ptrCast(@alignCast(argument));
     const held = wrapper.callback_object_global orelse wrapper.callback_function_global;
     const object: JSValue = if (held) |global|
         (if (ffi.v8_Global_Clone(global.ptr)) |clone| realm_entry.owned(clone) else JSValue.jsUndefined)

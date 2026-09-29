@@ -3488,8 +3488,7 @@ pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString)
 /// 6. Return walker
 pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // The binding hands a callback argument over: the walker owns it from
-    // here and releases it in its deinit.
+    // The filter argument, borrowed for the call: the walker takes its own.
     const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
 
     // Step 1: Create TreeWalker
@@ -4201,8 +4200,7 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 /// 7. Return iterator
 pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // The binding hands a callback argument over: the iterator owns it from
-    // here and releases it in its deinit.
+    // The filter argument, borrowed for the call: the iterator takes its own.
     const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
 
     // Step 1: Create NodeIterator

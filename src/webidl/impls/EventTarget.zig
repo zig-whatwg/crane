@@ -795,22 +795,17 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     }
 
     // https://dom.spec.whatwg.org/#concept-flatten-more
-    const flat = flattenOptions(instance.ctx, options, true) catch |err| {
-        // The binding handed the callback's wrapper over to be stored.
-        if (callback) |cb_opt| if (cb_opt) |cb| cb.deinit();
-        return err;
-    };
+    const flat = try flattenOptions(instance.ctx, options, true);
     const capture = flat.capture;
     const passive = flat.passive;
     const once = flat.once;
     const signal = flat.signal;
 
     // The callback interface value, with the incumbent realm now - the
-    // conversion's - as its callback context. The binding's wrapper is ours
-    // to free once it is taken.
+    // conversion's - as its callback context. The binding's wrapper is the
+    // call's; the listener keeps a value of its own.
     const callback_value: ?engine.CallbackInterface = if (callback) |cb_opt| blk: {
         const wrapper = cb_opt orelse break :blk null;
-        defer wrapper.deinit();
         break :blk engine.takeCallbackInterface(wrapper);
     } else null;
 
@@ -839,13 +834,8 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
 /// Operation: removeEventListener
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
 pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
-    // Get the raw callback wrapper for later cleanup (before any unwrapping)
+    // The binding's wrapper, borrowed for the call.
     const raw_callback_wrapper: ?*runtime.CallbackWrapper = if (callback) |cb_opt| cb_opt else null;
-
-    // Ensure we always dispose the comparison callback wrapper when done
-    defer if (raw_callback_wrapper) |wrapper| {
-        wrapper.deinit();
-    };
 
     const internal = getInternalFromRegistry(instance) orelse return;
 

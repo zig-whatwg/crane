@@ -837,8 +837,9 @@ pub inline fn takeCallbackFunction(argument: *const anyopaque) CallbackFunction 
 
 /// A callback-interface argument as the binding hands it over (the
 /// runtime.CallbackWrapper it converted), as a CallbackInterface of its own
-/// (OWNED) whose context is the incumbent realm now. The wrapper stays its
-/// holder's to release. TRANSITIONAL, as takeCallbackFunction.
+/// (OWNED) whose context is the incumbent realm now. The wrapper is BORROWED,
+/// as every argument is: the binding releases it when the call returns.
+/// TRANSITIONAL, as takeCallbackFunction.
 pub inline fn takeCallbackInterface(argument: *const CallbackWrapper) CallbackInterface {
     return impl.takeCallbackInterface(argument);
 }

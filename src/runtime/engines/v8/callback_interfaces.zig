@@ -3,11 +3,11 @@
 //! boundary").
 //!
 //! A callback interface value (a NodeFilter, an XPathNSResolver) reaches an
-//! impl as a runtime.CallbackWrapper; its engine handle is this adapter's
-//! CallbackWrapper, which already performs WebIDL's "call a user object's
-//! operation" lookup (callOperationCatching). This file turns that into the
-//! operation's contract: arguments as runtime.JSValues, exception behaviour
-//! "rethrow", and the return value as an OWNED handle.
+//! impl as a runtime.CallbackWrapper - this adapter's CallbackWrapper, which
+//! already performs WebIDL's "call a user object's operation" lookup
+//! (callOperationCatching). This file turns that into the operation's
+//! contract: arguments as runtime.JSValues, exception behaviour "rethrow",
+//! and the return value as an OWNED handle.
 
 const runtime = @import("runtime");
 const EngineError = runtime.EngineError;
@@ -48,7 +48,7 @@ pub fn callUserObjectOperation(
         locals[i] = @ptrCast(@alignCast(local));
     }
 
-    const wrapper: *V8CallbackWrapper = @ptrCast(@alignCast(callback.engine_handle));
+    const wrapper: *V8CallbackWrapper = @ptrCast(@alignCast(callback));
     switch (wrapper.callOperationCatching(context, operation_name, null, locals[0..args.len])) {
         // "rethrow": the exception is script's again, in flight.
         .thrown => |exception| {

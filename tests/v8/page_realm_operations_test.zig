@@ -1696,3 +1696,31 @@ test "constructing a DOMException leaves no handle behind, as constructing an Ev
     const reports = try run("if (typeof new DOMException('m').stack !== 'string') throw new Error('no stack');");
     try std.testing.expectEqual(@as(usize, 0), reports.count);
 }
+
+test "protocol: listeners added and removed in a loop leave no callback wrapper behind" {
+    // WebIDL: a callback interface argument (EventListener) is the call's; a
+    // listener the target keeps is its own callback interface value. Every
+    // wrapper the binding makes for the argument must be gone once the call
+    // returns - std.testing.allocator fails the test on any that outlives it.
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    const saved = v8.conversions.callback_allocator;
+    v8.conversions.callback_allocator = std.testing.allocator;
+    defer v8.conversions.callback_allocator = saved;
+    try expectEval(w,
+        \\const f = () => {};
+        \\const o = { handleEvent() {} };
+        \\let heard = 0;
+        \\const g = () => { heard++; };
+        \\for (let i = 0; i < 10; i++) {
+        \\  addEventListener('x', f); removeEventListener('x', f);
+        \\  addEventListener('y', o, true); removeEventListener('y', o, true);
+        \\}
+        \\addEventListener('z', g);
+        \\dispatchEvent(new Event('z'));
+        \\removeEventListener('z', g);
+        \\dispatchEvent(new Event('z'));
+        \\String(heard)
+    , "1");
+}
