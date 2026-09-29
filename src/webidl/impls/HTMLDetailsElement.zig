@@ -77,10 +77,6 @@ pub fn init(
     }
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer HTMLElementImpl.deinit(instance);
-    // The node's name, which the insertion steps below find the element by
-    // (as the script and iframe elements' do): an element's node name is
-    // otherwise empty at the NodeBase level.
-    try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("details"));
     // From the arena that holds the element's state, as every element's
     // internal state is: an element in a tree is freed with its tree, and
     // teardown does not always run `deinit` - a block from the context
@@ -158,9 +154,12 @@ fn attributeChangeSteps(
 /// for every node inserted; acts on details elements only.
 fn insertionStepsCallback(node: *NodeBase) void {
     if (node.node_type != 1) return;
-    if (!std.ascii.eqlIgnoreCase(node.node_name, "details")) return;
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
+    // A details element is one whose state chain has this interface's (the
+    // brand check). `node.node_name` cannot say: it is "" for every element
+    // whose impl does not set it, and setting it (NodeImpl.setLocalName)
+    // allocates a name some teardown paths never free.
     if (getInternal(instance) == null) return;
     ensureExclusivityClosingGiven(instance);
 }
