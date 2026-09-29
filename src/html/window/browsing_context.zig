@@ -575,6 +575,13 @@ pub const BrowsingContext = struct {
     }
 
     /// The live browsing context with this id, if any.
+    /// Every live browsing context on this thread - a page's top-level
+    /// ones, its frames' and its popups' - including orphaned ones, which
+    /// the caller skips. BORROWED until a context is made or freed.
+    pub fn liveContexts() []const *BrowsingContext {
+        return live.items;
+    }
+
     pub fn byId(id: u64) ?*BrowsingContext {
         for (live.items) |ctx| {
             if (ctx.id == id) return ctx;
