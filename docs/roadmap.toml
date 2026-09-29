@@ -119,6 +119,7 @@ progress = [
   "f03633d6a - frame and popup navigation runs as the spec's tasks (beforeunload, fetch via AsyncFetch, commit); frames delay their container's load event; unload/pagehide fire; markup <iframe src> navigates (navigation lane, increment 1)",
   "8f9eb9371, 88f09482e, 05a30200a, 4797fefa0, dd792cb0f (merged 505cfb9e3) - the about base URL, document.open() erases listeners, sessionStorage per traversable, document.domain sets the origin domain, a destroyed document's defaultView is null, and the Window keeps its Storage and CustomElementRegistry alive (navigation lane, increment 3)",
   "3c46ac8da (merged bd798db40) - the navigation API's hangs, window.close() with its definitely-close task, the Location setters, the window scroll methods, the storage event broadcast, POST form submission, BroadcastChannel, ImageData; named access returns the iframe element (navigation lane, batches 1-2)",
+  "eb2162471 - meta refresh (the Refresh pragma and the shared declarative refresh steps), the srcdoc navigate event, dispose across navigables, BroadcastChannel in closing workers, planned form navigation after reparenting, batch 3's BarProp and initial about:blank fixes (navigation lane, final batch)",
 ]
 
   [[infra.items]]

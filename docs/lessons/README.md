@@ -124,6 +124,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Wait for all settles a microtask after its last promise](architecture-wait-for-all-settles-a-microtask-after-its-last-promise.md) - When a spec's promise combinator has an observable order, check what the browsers build it from: Promise.all(...).then(...) is one tick later than "run the steps when the last one settles".
 - [What a method returns must outlive the script it runs](architecture-what-a-method-returns-must-outlive-the-script-it-runs.md) - Anything a method creates, hands to code that can run script, and reads afterwards must be held by the method for that whole span.
 - [An element's NodeBase name is empty unless its impl sets it](architecture-an-element-s-nodebase-name-is-empty-unless-its-impl-sets-it.md) - Before filtering NodeBase nodes by `node_name`, check that the element's impl sets it; a brand check on the owner instance needs no name at all.
+- [A 0 ms timer armed in a task overtakes the tasks that task queued](architecture-a-zero-ms-timer-armed-in-a-task-overtakes-the-tasks-it-queued.md) - "Queue a task, then arm a 0 ms timer" runs the timer first; if a timer must follow a task you queued, arm it from a task queued behind that one.
+- [A NodeBase's node_name is set only by the elements that set it](architecture-a-nodebase-name-is-set-only-by-elements-that-set-it.md) - In a mutation callback, identify the element by its instance's state (stateAs), never by node.node_name.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
