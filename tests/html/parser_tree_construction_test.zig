@@ -485,3 +485,99 @@ test "in frameset, whitespace in a run of text is inserted and the rest ignored"
         \\
     );
 }
+
+/// The document mode the "initial" insertion mode leaves for `input`, and
+/// the modes the DOM adapter was told of.
+const ModeRecorder = struct {
+    var last: ?parser.QuirksMode = null;
+    var count: usize = 0;
+    fn callback(mode: parser.QuirksMode, context: ?*anyopaque) void {
+        _ = context;
+        last = mode;
+        count += 1;
+    }
+};
+
+fn expectMode(input: []const u8, srcdoc: bool, expected: parser.QuirksMode) !void {
+    const allocator = testing.allocator;
+    var tokenizer = Tokenizer.init(allocator, input);
+    defer tokenizer.deinit();
+    var builder = try TreeBuilder.init(allocator, &tokenizer);
+    defer builder.deinit();
+    builder.iframe_srcdoc = srcdoc;
+    ModeRecorder.last = null;
+    ModeRecorder.count = 0;
+    builder.setDomAdapterModeCallback(&ModeRecorder.callback);
+    try builder.parse();
+    testing.expectEqual(expected, builder.quirks_mode) catch |err| {
+        std.debug.print("input: {s}\n", .{input});
+        return err;
+    };
+    // The DOM adapter hears the mode whenever the parser sets it - which it
+    // does for every document but an iframe srcdoc one.
+    if (srcdoc) {
+        try testing.expectEqual(@as(usize, 0), ModeRecorder.count);
+    } else {
+        try testing.expectEqual(@as(?parser.QuirksMode, expected), ModeRecorder.last);
+    }
+}
+
+test "the initial insertion mode sets the document's mode from the DOCTYPE, by the spec's lists" {
+    // No-quirks.
+    try expectMode("<!DOCTYPE html>", false, .no_quirks);
+    try expectMode("<!DOCTYPE html SYSTEM \"about:legacy-compat\">", false, .no_quirks);
+    try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\">", false, .no_quirks);
+    // "The public identifier is set to: HTML" is an equality, not a prefix.
+    try expectMode("<!DOCTYPE html PUBLIC \"HTML 4\">", false, .no_quirks);
+    // Empty identifiers are not missing, and match nothing
+    // (html/syntax/parsing/empty-doctype-ids.html).
+    try expectMode("<!doctype html PUBLIC \"\" \"\">", false, .no_quirks);
+    // Quirks.
+    try expectMode("<p>no doctype", false, .quirks);
+    try expectMode("<!DOCTYPE>", false, .quirks);
+    try expectMode("<!DOCTYPE svg>", false, .quirks);
+    try expectMode("<!DOCTYPE html PUBLIC \"HTML\">", false, .quirks);
+    try expectMode("<!DOCTYPE html PUBLIC \"-/W3C/DTD HTML 4.0 Transitional/EN\">", false, .quirks);
+    try expectMode("<!DOCTYPE html PUBLIC \"-//Netscape Comm. Corp.//DTD HTML//EN\">", false, .quirks);
+    try expectMode("<!DOCTYPE html PUBLIC \"-//w3c//dtd html 3.2 final//en\">", false, .quirks);
+    try expectMode("<!DOCTYPE html SYSTEM \"http://www.ibm.com/data/dtd/v11/ibmxhtml1-transitional.dtd\">", false, .quirks);
+    try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\">", false, .quirks);
+    try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\">", false, .quirks);
+    // Limited-quirks.
+    try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">", false, .limited_quirks);
+    try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Frameset//EN\">", false, .limited_quirks);
+    // A line break between the identifiers (document-compatmode-02.html).
+    try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"\n\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">", false, .limited_quirks);
+    try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">", false, .limited_quirks);
+    // "A system identifier whose value is the empty string is not considered
+    // missing."
+    try expectMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\" \"\">", false, .limited_quirks);
+}
+
+test "an iframe srcdoc document is never put in quirks mode by the parser" {
+    try expectMode("<p>no doctype", true, .no_quirks);
+    try expectMode("<!DOCTYPE svg>", true, .no_quirks);
+}
+
+test "a DOCTYPE's PUBLIC and SYSTEM keywords are matched from the current input character" {
+    // "After DOCTYPE name state": "If the six characters starting from the
+    // current input character are an ASCII case-insensitive match for the word
+    // "PUBLIC"" (or "SYSTEM"), the identifiers follow; otherwise the DOCTYPE
+    // is bogus, with its force-quirks flag on.
+    const Case = struct { input: []const u8, public_id: ?[]const u8, system_id: ?[]const u8 };
+    const cases = [_]Case{
+        .{ .input = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" \"http://www.w3.org/TR/html4/strict.dtd\">", .public_id = "-//W3C//DTD HTML 4.01//EN", .system_id = "http://www.w3.org/TR/html4/strict.dtd" },
+        .{ .input = "<!DOCTYPE html system \"about:legacy-compat\">", .public_id = null, .system_id = "about:legacy-compat" },
+        .{ .input = "<!DOCTYPE html PuBlIc \"\" \"\">", .public_id = "", .system_id = "" },
+    };
+    for (cases) |case| {
+        var tokenizer = Tokenizer.init(testing.allocator, case.input);
+        defer tokenizer.deinit();
+        var token = (try tokenizer.nextToken()).?;
+        defer token.deinit();
+        const doctype = token.doctype;
+        try testing.expect(!doctype.force_quirks);
+        if (case.public_id) |p| try testing.expectEqualStrings(p, doctype.getPublicIdentifier().?) else try testing.expect(doctype.getPublicIdentifier() == null);
+        if (case.system_id) |s| try testing.expectEqualStrings(s, doctype.getSystemIdentifier().?) else try testing.expect(doctype.getSystemIdentifier() == null);
+    }
+}

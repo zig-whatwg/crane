@@ -17,6 +17,9 @@ const runtime = @import("runtime");
 pub const Implementation = struct {
     /// Make `collection` live over `root`'s element children, in tree order.
     element_children: *const fn (collection: *runtime.Instance, root: *runtime.Instance) void,
+    /// Make `collection` DOM's "list of elements with class names
+    /// `class_names`" for `root` (a non-empty set of classes).
+    class_names: *const fn (collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) error{OutOfMemory}!void,
 };
 
 /// Per thread, like the collections themselves.
@@ -34,6 +37,16 @@ pub fn elementChildren(collection: *runtime.Instance, root: *runtime.Instance) !
     impl.element_children(collection, root);
 }
 
+/// Make `collection` - just created, empty - DOM's "list of elements with
+/// class names `class_names`" for `root`: live, over `root`'s descendant
+/// elements that have every class in the set `class_names` names.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-getelementsbyclassname
+pub fn elementsWithClassNames(collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) !void {
+    const impl = implementation orelse return error.NotSupported;
+    try impl.class_names(collection, root, class_names);
+}
+
 test "elementChildren without an installed implementation reports NotSupported" {
     const std = @import("std");
     const saved = implementation;
@@ -42,4 +55,5 @@ test "elementChildren without an installed implementation reports NotSupported" 
     // Never dereferenced: with no implementation the call does not reach it.
     var object: runtime.Instance = undefined;
     try std.testing.expectError(error.NotSupported, elementChildren(&object, &object));
+    try std.testing.expectError(error.NotSupported, elementsWithClassNames(&object, &object, "a"));
 }
