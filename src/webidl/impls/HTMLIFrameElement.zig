@@ -3064,6 +3064,28 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
 
     // Get the iframe's internal state and call onRemovedFromDocument
     const internal = getInternal(instance) orelse return;
+    // Deviation, stated: before "destroy a child navigable" runs, the
+    // frame's document and its descendants are unloaded - pagehide and
+    // unload fire at each, children first - as Chrome, Firefox and Safari
+    // all do when an iframe is removed. HTML's "destroy a child navigable"
+    // does not unload, and WPT's
+    // dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe
+    // removal subtests, which assert it, fail in all three browsers; pages
+    // rely on the browsers' order (fetch/api/cors/cors-keepalive's
+    // "in unload" posts to its parent from the frame's unload handler).
+    if (internal.integration.state != .discarded) {
+        if (activeDocumentOf(internal.integration)) |active| {
+            var documents = collectInclusiveDescendantDocuments(active, internal.integration.allocator);
+            defer documents.deinit(internal.integration.allocator);
+            var i = documents.items.len;
+            while (i > 0) {
+                i -= 1;
+                const entry = documents.items[i];
+                if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+                dom_module.document_lifecycle.unload(entry.document);
+            }
+        }
+    }
     // "Destroy a child navigable" step 4: "Inform the navigation API about
     // child navigable destruction given navigable."
     if (internal.integration.state != .discarded) {
