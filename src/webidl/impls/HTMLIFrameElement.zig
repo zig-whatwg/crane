@@ -1316,33 +1316,63 @@ fn commitNavigation(integration: *IFrameIntegration, record: *Navigation, respon
 }
 
 fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response: *navigation_fetch.NavigationFetchResult) void {
+    // The entry is in the traversable's history before the new document's
+    // parser runs, as "finalize a cross-document navigation" puts it there
+    // before any of the document's script: history.length counts it, and a
+    // location.reload() from an inline script reloads it, not the entry the
+    // navigation left.
+    const document_state = recordInHistory(integration, record, if (response.final_url.len > 0) response.final_url else record.url);
     integration.commitResponse(record.url, response) catch |err| {
         log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
         endLoadDelay(integration);
         return;
     };
-    recordInHistory(integration, record);
+    attachDocument(integration, document_state);
     loadEventStepsIfNothingWill(integration);
 }
 
 /// "Finalize a cross-document navigation" steps 5-10: the new document's
 /// entry, pushed or replacing the navigable's current one in the
-/// traversable's history - or, for a traversal, the entry it repopulates.
-fn recordInHistory(integration: *IFrameIntegration, record: *Navigation) void {
-    const bc = integration.browsing_context orelse return;
-    const document = bc.getActiveDocument();
-    const history = bc.jointHistory() catch return;
+/// traversable's history - or, for a traversal, the entry it repopulates -
+/// recorded as the document is about to be made. Its URL is `url` (the
+/// response's), its origin the new document's window's (made, with the response's
+/// origin, before this runs). Returns the entry's document state, which
+/// `attachDocument` gives the document once it exists; null when nothing
+/// was recorded.
+fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []const u8) ?u64 {
+    const bc = integration.browsing_context orelse return null;
+    const history = bc.jointHistory() catch return null;
     if (record.traversal_entry != 0) {
-        if (history.entryById(record.traversal_entry)) |entry| entry.document = document;
-        return;
+        const entry = history.entryById(record.traversal_entry) orelse return null;
+        return entry.document_state;
     }
-    const url = integration.getLoadedUrl() orelse record.url;
-    const origin = if (document) |d| history_documents.originOf(@ptrCast(@alignCast(d)), integration.allocator) catch return else integration.allocator.dupe(u8, "null") catch return;
+    const window: ?*runtime.Instance = if (bc.getActiveWindow()) |w| @ptrCast(@alignCast(w)) else null;
+    const origin = originOfWindow(window, integration.allocator) catch return null;
     defer integration.allocator.free(origin);
-    history.commitDocument(bc.id, url, document, origin, jointHandling(record.history_handling)) catch return;
+    history.commitDocument(bc.id, url, null, origin, jointHandling(record.history_handling)) catch return null;
     // Navigate step 24.4: the document state's resource is documentResource
     // - a srcdoc document's markup, which a traversal back loads again.
     if (record.srcdoc) |markup| history.setCurrentResource(bc.id, markup) catch {};
+    const current = history.currentEntry(bc.id) orelse return null;
+    return current.document_state;
+}
+
+/// The recorded entry's document state takes the document the commit made:
+/// every entry of it, pushState's and fragment navigations' made by the
+/// document's scripts as it parsed among them.
+fn attachDocument(integration: *IFrameIntegration, document_state: ?u64) void {
+    const state = document_state orelse return;
+    const bc = integration.browsing_context orelse return;
+    const history = bc.jointHistory() catch return;
+    history.setDocumentOfState(state, bc.getActiveDocument());
+}
+
+/// `window`'s origin, serialized ("null" without one). Owned.
+fn originOfWindow(window: ?*runtime.Instance, allocator: std.mem.Allocator) ![]u8 {
+    const w = window orelse return allocator.dupe(u8, "null");
+    const origin = interfaces.Window.get_origin(w) catch return allocator.dupe(u8, "null");
+    defer w.ctx.allocator.free(origin);
+    return allocator.dupe(u8, origin);
 }
 
 fn jointHandling(handling: navigate_steps.HistoryHandling) html_core.navigation.joint_history.HistoryHandling {
@@ -1625,9 +1655,11 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
 }
 
 fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, url: []const u8, html: []const u8) void {
+    // Step 13: finalized as a "replace" - in the history before the new
+    // document's scripts run, as for any other document.
+    const document_state = recordInHistory(integration, record, url);
     integration.commitHtmlAt(url, html, integration.container_origin) catch return endLoadDelay(integration);
-    // Step 13: finalized as a "replace".
-    recordInHistory(integration, record);
+    attachDocument(integration, document_state);
 }
 
 /// `runJavascriptNavigation`'s work, inside the navigable's realm.

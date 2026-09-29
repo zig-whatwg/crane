@@ -208,3 +208,20 @@ test "a navigable's own session history entries are counted apart from its child
     try h.commitDocument(top, "http://x.test/u", null, "http://x.test", .push);
     try testing.expectEqual(@as(usize, 2), h.entryCount(top));
 }
+
+test "a document committed before its parser ran reaches every entry of its document state" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try h.addInitialEntry(top, "http://x.test/a", null, "http://x.test");
+    // The entry goes in before the document exists; a pushState during the
+    // parse shares its document state.
+    try h.commitDocument(top, "http://x.test/b", null, "http://x.test", .push);
+    const state = h.currentEntry(top).?.document_state;
+    try h.commitSameDocument(top, "http://x.test/b#1", .null, .push, null);
+    var document: u8 = 0;
+    h.setDocumentOfState(state, &document);
+    try testing.expectEqual(@as(?*anyopaque, &document), h.currentEntry(top).?.document);
+    try testing.expectEqual(@as(?*anyopaque, &document), h.entryAt(top, h.currentEntry(top).?.step - 1).?.document);
+    // The first entry, another document state, is untouched.
+    try testing.expect(h.entryAt(top, 0).?.document == null);
+}
