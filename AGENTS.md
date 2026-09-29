@@ -331,6 +331,15 @@ zig build codegen -- specs/supplementary/ --dest-root src/webidl/
 
 Passing both sources to one invocation fails with `error.UnknownArgument`.
 
+**The supplementary run is destructive today.** It builds its model from its
+own four files, so it rewrites every `*/root.zig` with only their entries
+(interfaces/root.zig loses ~1,260 lines) and writes `typedefs/WindowProxy.zig`
+as `runtime.JSValue`. Two lanes have hit it. Run it only when a supplementary
+definition changed; afterwards `git checkout` the seven roots and
+WindowProxy.zig, then diff every generated directory. The fix - one model over
+both sources, checked by regenerating from scratch against the committed tree -
+is queued.
+
 When codegen behaviour is in question, **delete the generated directories and
 regenerate from scratch.** Partial regeneration hides systemic issues — that is
 how a parent-vs-child signature bug stayed hidden behind 12 "unrelated" type
