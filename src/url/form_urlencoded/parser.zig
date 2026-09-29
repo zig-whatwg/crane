@@ -86,11 +86,12 @@ pub fn parse(allocator: std.mem.Allocator, input: []const u8) ![]Tuple {
         const value_decoded_bytes = try percentDecode(allocator, value_with_spaces);
         defer allocator.free(value_decoded_bytes);
 
-        // UTF-8 decode (validate it's valid UTF-8)
-        const name_string = try validateUtf8AndDupe(allocator, name_decoded_bytes);
+        // Step 3.5 (cont.): "UTF-8 decode without BOM" each - lossy: bytes
+        // that are not UTF-8 become U+FFFD, and the parse never fails.
+        const name_string = try utf8DecodeWithoutBom(allocator, name_decoded_bytes);
         errdefer allocator.free(name_string);
 
-        const value_string = try validateUtf8AndDupe(allocator, value_decoded_bytes);
+        const value_string = try utf8DecodeWithoutBom(allocator, value_decoded_bytes);
         errdefer allocator.free(value_string);
 
         // Step 3.6: Append tuple
@@ -116,14 +117,84 @@ fn replacePlus(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return result;
 }
 
-/// Validate UTF-8 and duplicate string
-fn validateUtf8AndDupe(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
-    // Validate it's valid UTF-8
-    if (!std.unicode.utf8ValidateSlice(bytes)) {
-        return error.InvalidUtf8;
-    }
+/// Encoding Standard "UTF-8 decode without BOM": the UTF-8 decoder run over
+/// `bytes` in replacement mode, with no BOM sniffed or stripped. Returns the
+/// scalar values as UTF-8, owned by `allocator`.
+///
+/// The decoder's error handling is "replacement": each maximal subpart of an
+/// ill-formed sequence is one U+FFFD, and the byte that ended it is decoded
+/// again as the start of what follows. So it never fails - a strict
+/// validation here made `new URL("http://h/?a=%ff")` throw.
+///
+/// Spec: https://encoding.spec.whatwg.org/#utf-8-decode-without-bom
+///       https://encoding.spec.whatwg.org/#utf-8-decoder
+fn utf8DecodeWithoutBom(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
+    // Valid UTF-8 - the common case - decodes to itself.
+    if (std.unicode.utf8ValidateSlice(bytes)) return allocator.dupe(u8, bytes);
 
-    return try allocator.dupe(u8, bytes);
+    const replacement = "\u{FFFD}";
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    // UTF-8 code point, bytes seen, bytes needed, lower and upper boundary.
+    var code_point: u21 = 0;
+    var bytes_seen: u3 = 0;
+    var bytes_needed: u3 = 0;
+    var lower: u8 = 0x80;
+    var upper: u8 = 0xBF;
+    var i: usize = 0;
+    while (i < bytes.len) {
+        const byte = bytes[i];
+        if (bytes_needed == 0) {
+            i += 1;
+            switch (byte) {
+                0x00...0x7F => try out.append(allocator, byte),
+                0xC2...0xDF => {
+                    bytes_needed = 1;
+                    code_point = byte & 0x1F;
+                },
+                0xE0...0xEF => {
+                    if (byte == 0xE0) lower = 0xA0;
+                    if (byte == 0xED) upper = 0x9F;
+                    bytes_needed = 2;
+                    code_point = byte & 0xF;
+                },
+                0xF0...0xF4 => {
+                    if (byte == 0xF0) lower = 0x90;
+                    if (byte == 0xF4) upper = 0x8F;
+                    bytes_needed = 3;
+                    code_point = byte & 0x7;
+                },
+                else => try out.appendSlice(allocator, replacement),
+            }
+            continue;
+        }
+        if (byte < lower or byte > upper) {
+            // Not a continuation here: the sequence so far is one U+FFFD,
+            // and the byte is decoded again ("restore byte to ioQueue").
+            code_point = 0;
+            bytes_needed = 0;
+            bytes_seen = 0;
+            lower = 0x80;
+            upper = 0xBF;
+            try out.appendSlice(allocator, replacement);
+            continue;
+        }
+        i += 1;
+        lower = 0x80;
+        upper = 0xBF;
+        code_point = (code_point << 6) | (byte & 0x3F);
+        bytes_seen += 1;
+        if (bytes_seen != bytes_needed) continue;
+        var buffer: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(code_point, &buffer) catch unreachable;
+        try out.appendSlice(allocator, buffer[0..len]);
+        code_point = 0;
+        bytes_needed = 0;
+        bytes_seen = 0;
+    }
+    // End of queue with a sequence unfinished: one U+FFFD.
+    if (bytes_needed != 0) try out.appendSlice(allocator, replacement);
+    return out.toOwnedSlice(allocator);
 }
 
 /// application/x-www-form-urlencoded string parser (spec line 1729)

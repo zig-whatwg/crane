@@ -10,7 +10,7 @@
 //!
 //! Spec: https://dom.spec.whatwg.org/#concept-element-attributes-change-ext
 //!
-//! lint-impls: hook for HTMLIFrameElement, HTMLScriptElement
+//! lint-impls: hook for HTMLIFrameElement, HTMLScriptElement, HTMLDetailsElement
 
 const std = @import("std");
 const runtime = @import("runtime");

@@ -1,0 +1,12 @@
+# Architecture: An element's NodeBase name is empty unless its impl sets it
+
+**Date**: 2026-09-29
+**Lesson**: `NodeBase.node_name` - what DOM-level code such as the insertion-steps callbacks reads to recognise an element - is "" for every element whose impl does not call `NodeImpl.setLocalName` in its `init`. `Element.setLocalName`, which `createElement` and the parsers call, sets only Element's own local name.
+
+**Why**: Node's `setLocalName` writes the upper-cased name into the NodeBase, and Element's `setLocalName` does not touch the NodeBase. Only HTMLScriptElement, SVGScriptElement and HTMLIFrameElement call Node's in their `init`, so every other element reaches `mutation.zig` with an empty name. A callback that filters on `eqlIgnoreCase(node.node_name, "x")` then returns before doing anything. Nothing fails and nothing is logged.
+
+**What Happened**: The details element's insertion steps ("ensure details exclusivity by closing the given element if needed") were registered and called for every inserted node, and they never acted. An open `<details name=g>` appended beside an open member stayed open. The attribute change steps, which the element's own impl runs, worked, so exclusivity looked finished. A warn log placed after the name check never printed, and reading the two `setLocalName`s showed why. The same filter is in `HTMLIFrameElement.findBaseWithTarget`, which looks for `<base target>` by `child.node_name == "base"`. HTMLBaseElement never sets its name, so that lookup has never found a base element.
+
+**Fix**: The details callback recognises its element by a brand check instead: `instance_bridge.getInstance(node)` (a field read) and then `instance.stateAs(HTMLDetailsElement.State)`, which walks the vtable's ancestry. The first fix copied script and iframe and called `NodeImpl.setLocalName(instance, "details")` in `init`. That allocates the upper-cased name, and only Node's `deinit` frees it. `CRANE_LEAK_TRACES=1` on `name-attribute.html` showed 8 leaks at `Node.setLocalName`, one for each details element whose `deinit` never ran (main: 0). Script and iframe elements pay the same cost today. The durable fix is for element creation to set the NodeBase name for every element, from a block its teardown frees.
+
+**Takeaway**: **Before filtering NodeBase nodes by `node_name`, check that the element's impl sets it; an empty name is a filter that silently matches nothing. A brand check on the owner instance needs no name at all.**

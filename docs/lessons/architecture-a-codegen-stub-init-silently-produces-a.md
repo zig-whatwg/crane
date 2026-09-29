@@ -39,6 +39,22 @@ Then check the constructor, not just `init`: if `X.call_constructor` creates
 `_internal` and `X.init` does not, every engine-side caller of `init` gets a
 stateless object.
 
+**Also (2026-09-29, lane/networking)**: an Event subclass whose
+`call_constructor` is still the stub (`_ = eventInitDict; // TODO: Implement
+constructor logic`) never runs DOM's inner event creation steps, so its
+initialized flag is never set and dispatch rejects it with
+`InvalidStateError` - for script's `new X(...)` and for the engine's own
+fire sites alike. ToggleEvent was one: the details toggle task built a
+ToggleEvent, the dispatch threw, and a `catch {}` hid it, so `toggle` never
+fired (bddafe28e). 93 Event impls still had the stub constructor then:
+
+```bash
+cd src/webidl/impls && for f in *Event.zig; do grep -q "TODO: Implement constructor logic" $f && ! grep -q "innerEventCreationSteps\|initEventBase\|initialized_flag" $f && echo $f; done
+```
+
+A new one is fixed with `EventImpl.innerEventCreationSteps` followed by its
+own members, as StorageEvent and ToggleEvent do.
+
 **Takeaway**: **A stub `init` fails as `InvalidStateError` from somewhere else
 entirely, long after construction. When a whole directory ERRORs with zero
 subtests, suspect one throwing call in a shared `setup()` before suspecting the
