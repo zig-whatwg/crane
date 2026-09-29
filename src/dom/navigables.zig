@@ -13,6 +13,7 @@
 //!
 //! lint-impls: hook for HTMLIFrameElement
 
+const std = @import("std");
 const runtime = @import("runtime");
 const joint_history = @import("html_core").navigation.joint_history;
 const navigation_api = @import("navigation_api.zig");
@@ -58,6 +59,7 @@ pub const Implementation = struct {
     navigate_by_target: *const fn (source_document: *runtime.Instance, request: Request) void,
     follow_hyperlink: *const fn (subject: *runtime.Instance) void,
     traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8) void,
+    find_by_name: *const fn (source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance,
 };
 
 threadlocal var implementation: ?Implementation = null;
@@ -98,6 +100,15 @@ pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []con
     impl.traverse_navigable(browsing_context, entry_id, url, resource);
 }
 
+/// HTML "find a navigable by target name" among the frames of
+/// `source_document`'s page: the active window of the first whose target
+/// name is `name`, or null. (The page's popups are the window open steps'
+/// own to find.)
+pub fn findByName(source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
+    const impl = implementation orelse return null;
+    return impl.find_by_name(source_document, name);
+}
+
 test "without an installed implementation nothing navigates" {
     const saved = implementation;
     defer implementation = saved;
@@ -107,4 +118,5 @@ test "without an installed implementation nothing navigates" {
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
     followHyperlink(&element);
     traverseNavigable(@ptrCast(&element), 1, "about:blank", null);
+    try std.testing.expect(findByName(&element, "name") == null);
 }

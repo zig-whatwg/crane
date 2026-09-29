@@ -2503,6 +2503,19 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // that name is chosen only when noopener is false - with noopener, every
     // open() makes a new one.
     if (!noopener and !std.ascii.eqlIgnoreCase(target_str, "_blank")) {
+        // A frame of the source's page carrying the name, first - "find a
+        // navigable by target name" looks through every navigable the
+        // source is familiar with, and its page's frames are.
+        const navigables = @import("dom").navigables;
+        if (!navigables.isInstalled()) {
+            const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
+            installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+        }
+        if (navigables.findByName(source_document, target_str)) |frame_window| {
+            // Step 16.1: navigate it, then (step 18) return its WindowProxy.
+            if (url_record) |u| navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u });
+            return frame_window;
+        }
         var root = instance;
         var hops: usize = 0;
         while (hops < 16) : (hops += 1) {

@@ -171,6 +171,7 @@ pub fn init(
         .navigate_by_target = &navigateByTarget,
         .follow_hyperlink = &followHyperlink,
         .traverse_navigable = &traverseNavigable,
+        .find_by_name = &frameWindowByName,
     });
 
     // Chain to parent class (HTMLElement)
@@ -1843,6 +1844,14 @@ fn findNavigableByName(document: *runtime.Instance, name: []const u8) ?*IFrameIn
         if (std.mem.eql(u8, browsing_context.target_name, name)) return integration;
     }
     return null;
+}
+
+/// dom.navigables: "find a navigable by target name" among the frames of
+/// `source_document`'s page - the active window of the first found, or null.
+fn frameWindowByName(source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
+    const integration = findNavigableByName(source_document, name) orelse return null;
+    const browsing_context = integration.browsing_context orelse return null;
+    return @ptrCast(@alignCast(browsing_context.getActiveWindow() orelse return null));
 }
 
 /// dom.navigables: HTML "the rules for choosing a navigable" given
