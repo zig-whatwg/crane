@@ -81,7 +81,11 @@ pub fn init(
     // (as the script and iframe elements' do): an element's node name is
     // otherwise empty at the NodeBase level.
     try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("details"));
-    const internal = try allocator.create(InternalState);
+    // From the arena that holds the element's state, as every element's
+    // internal state is: an element in a tree is freed with its tree, and
+    // teardown does not always run `deinit` - a block from the context
+    // allocator leaked once per parsed details element.
+    const internal = try runtime.ArenaAllocator.get().create(InternalState);
     internal.* = .{ .allocator = allocator };
     instance.getState(StateType).own._internal = internal;
     return instance;
@@ -93,7 +97,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.toggle_task) |task| task.cancelled = true;
-        internal.allocator.destroy(internal);
+        if (runtime.ArenaAllocator.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
         state.own._internal = null;
     }
     HTMLElementImpl.deinit(instance);
