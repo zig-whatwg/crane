@@ -304,13 +304,3 @@ pub fn v8GetWrapperForInstance(
     }
     return null;
 }
-
-// ============================================================================
-// Dynamic Import Support
-// ============================================================================
-
-/// Did clear the per-isolate legacy import() handler, which is gone: every
-/// agent's import() is the engine protocol's (HostHooks.loadImportedModule,
-/// installed by createAgent). A no-op until template_registry.clear stops
-/// calling it. TODO(protocol): delete with that call.
-pub fn clearDynamicImportHandler() void {}
