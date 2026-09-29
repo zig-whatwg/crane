@@ -48,6 +48,10 @@ pub const PushReplaceReload = struct {
     /// The classic history API state (pushState's and replaceState's data),
     /// or null. BORROWED.
     classic_history_api_state: ?joint_history.SerializedState = null,
+    /// "formDataEntryList": a form's entry list, when the navigation's
+    /// document resource is its POST resource, as a FormData holding it (in
+    /// any realm). BORROWED.
+    form_data: ?*runtime.Instance = null,
 };
 
 /// What intercept() was given.

@@ -39,6 +39,18 @@ pub const Request = struct {
     user_involvement: navigation_api.UserInvolvement = .none,
     /// navigate()'s navigation API state. BORROWED.
     navigation_api_state: ?joint_history.SerializedState = null,
+    /// A form's submission "as entity body": the navigation's document
+    /// resource. BORROWED for the call.
+    post_resource: ?PostResource = null,
+    /// With it, the form's entry list as a FormData, for the navigate event.
+    /// BORROWED for the call.
+    form_data: ?*runtime.Instance = null,
+};
+
+/// HTML "POST resource": a request body and its request content-type.
+pub const PostResource = struct {
+    body: []const u8,
+    content_type: []const u8,
 };
 
 /// What the navigable container supplies.

@@ -33,9 +33,10 @@
 //!   traversal's tracker is notified of its committed-to entry when the
 //!   resumed traversal applies, which is later than step 15, and a tracker
 //!   cleaned up by then is never notified.
-//! - The event's formData is always null; the focus reset runs the focusing
-//!   steps on the body (or document element) without an autofocus delegate;
-//!   scroll behavior records only that scrolling happened (no layout).
+//! - The event's formData carries a form's string entries only; the focus
+//!   reset runs the focusing steps on the body (or document element)
+//!   without an autofocus delegate; scroll behavior records only that
+//!   scrolling happened (no layout).
 //! - Activation is not modelled.
 
 const std = @import("std");
@@ -1045,6 +1046,13 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     const hash_change = firing.classic_state == null and firing.is_same_document and
         navigate_steps.equalsExcludingFragments(firing.destination_url, document_url) and
         !optionalEql(navigate_steps.fragmentOf(firing.destination_url), navigate_steps.fragmentOf(document_url));
+    // Step 16: "If formDataEntryList is not null, then initialize event's
+    // formData to a new FormData created in navigation's relevant realm,
+    // associated to formDataEntryList." A FormData of this realm with the
+    // same entries.
+    const form_data: ?*runtime.Instance = if (firing.form_data) |source| formDataIn(realm, source) catch null else null;
+    const form_data_generation = if (form_data) |fd| runtime.SlabAllocator.generationOf(fd) else 0;
+    defer if (form_data) |fd| fd.releaseIfUnwrapped(form_data_generation);
     // Steps 1, 12-24: the event.
     const event = interfaces.NavigateEvent.call_constructor(realm, runtime.DOMString.initInterned("navigate"), .{
         .base = .{ .cancelable = cancelable },
@@ -1054,7 +1062,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
         .userInitiated = firing.user_involvement != .none,
         .hashChange = hash_change,
         .signal = signal,
-        .formData = null,
+        .formData = form_data,
         .downloadRequest = null,
         .info = if (api_tracker.info) |info| info.borrow() else null,
         .hasUAVisualTransition = false,
@@ -1143,6 +1151,19 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
 fn optionalEql(a: ?[]const u8, b: ?[]const u8) bool {
     if (a) |x| return if (b) |y| std.mem.eql(u8, x, y) else false;
     return b == null;
+}
+
+/// A new FormData in `realm` whose entry list is `source`'s: the entries a
+/// form submission's navigate event reports. Only string entries are carried
+/// over (FormData's append(name, blob) is not implemented).
+fn formDataIn(realm: runtime.Context, source: *runtime.Instance) !*runtime.Instance {
+    const form_data = try interfaces.FormData.call_constructor(realm, webidl.Opt(*runtime.Instance).notPassed(), webidl.Opt(?*runtime.Instance).notPassed());
+    errdefer form_data.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(form_data));
+    for (interfaces.FormData.getEntriesForIterable(source) orelse &.{}) |entry| switch (entry.value) {
+        .usvstring => |value| try interfaces.FormData.call_append(form_data, entry.name, value),
+        .file => {},
+    };
+    return form_data;
 }
 
 fn navigationTypeOf(kind: Kind) enums.NavigationType {

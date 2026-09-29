@@ -772,8 +772,9 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
         .is_initial_about_blank = dom.document_lifecycle.isInitialAboutBlank(document),
     }, sameOriginSource(params.source_document, document_url, allocator));
 
-    // Step 14: a fragment navigation.
-    if (navigate_steps.isFragmentNavigation(url, document_url, false)) {
+    // Step 14: a fragment navigation - never one with a document resource,
+    // a form's POST resource.
+    if (navigate_steps.isFragmentNavigation(url, document_url, params.form_data != null)) {
         return topLevelFragmentNavigation(window, url, document_url, handling, params);
     }
     // Step 20: javascript: URLs are not run here.
@@ -792,6 +793,8 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
             .user_involvement = params.user_involvement,
             .source_element = params.source_element,
             .navigation_api_state = params.navigation_api_state orelse .undefined,
+            // Step 20's entryListForFiring.
+            .form_data = params.form_data,
         });
         // Canceled, or intercepted - which made it same-document.
         if (!continue_navigation) return;

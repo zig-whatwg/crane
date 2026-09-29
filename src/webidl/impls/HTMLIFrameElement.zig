@@ -669,6 +669,11 @@ pub const NavigateOptions = struct {
     user_involvement: dom_module.navigation_api.UserInvolvement = .none,
     /// "navigationAPIState": navigate()'s state. BORROWED.
     navigation_api_state: ?html_core.navigation.joint_history.SerializedState = null,
+    /// "documentResource" as a POST resource: a form submitted as an entity
+    /// body. BORROWED.
+    post_resource: ?dom_module.navigables.PostResource = null,
+    /// With it, "formDataEntryList" as a FormData holding it. BORROWED.
+    form_data: ?*runtime.Instance = null,
 };
 
 /// One navigation, from "navigate" step 19 until its document commits or it
@@ -685,6 +690,10 @@ const Navigation = struct {
     /// The user navigated from the browser's UI (userInvolvement "browser
     /// UI"), which no self-referential URL bound applies to.
     browser_initiated: bool = false,
+    /// A POST resource's request body and content-type, fetched with POST.
+    /// Owned; the fetch borrows the body until it ends.
+    post_body: ?[]u8 = null,
+    post_content_type: ?[]u8 = null,
     /// A javascript: URL's String result and the URL its document takes,
     /// between evaluating it and committing it. Owned.
     javascript_result: ?[]u8 = null,
@@ -706,6 +715,8 @@ const Navigation = struct {
         if (self.javascript_result) |r| self.allocator.free(r);
         if (self.javascript_url) |u| self.allocator.free(u);
         if (self.initiator_base_url) |u| self.allocator.free(u);
+        if (self.post_body) |b| self.allocator.free(b);
+        if (self.post_content_type) |t| self.allocator.free(t);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
@@ -877,7 +888,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
 
     // Step 14: a fragment navigation commits now, in the same document. (A
     // traversal's navigation repopulates a document, and is never one.)
-    if (options.traversal_entry == 0 and navigate_steps.isFragmentNavigation(url, active_url, options.srcdoc != null)) {
+    if (options.traversal_entry == 0 and navigate_steps.isFragmentNavigation(url, active_url, options.srcdoc != null or options.post_resource != null)) {
         navigateToFragment(integration, url, active_url, history_handling, options);
         return;
     }
@@ -912,6 +923,16 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     };
     if (options.srcdoc) |html| {
         record.srcdoc = allocator.dupe(u8, html) catch {
+            record.destroy();
+            return;
+        };
+    }
+    if (options.post_resource) |post| {
+        record.post_body = allocator.dupe(u8, post.body) catch {
+            record.destroy();
+            return;
+        };
+        record.post_content_type = allocator.dupe(u8, post.content_type) catch {
             record.destroy();
             return;
         };
@@ -951,6 +972,9 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
                 .user_involvement = options.user_involvement,
                 .source_element = options.source_element,
                 .navigation_api_state = options.navigation_api_state orelse .undefined,
+                // Step 20: "Let entryListForFiring be formDataEntryList if
+                // documentResource is a POST resource; otherwise, null."
+                .form_data = if (options.post_resource != null) options.form_data else null,
             });
             if (!continue_navigation) {
                 // "If continue is false, then return." The navigation ends
@@ -1068,6 +1092,9 @@ fn startFetch(record: *Navigation) void {
             .destination = if (record.integration.iframe_element != null) .iframe else .document,
             .mode = .navigate,
             .redirect = .follow,
+            // "Create navigation params by fetching" step 3: a POST
+            // resource's request is a POST.
+            .method = if (record.post_body != null) "POST" else "GET",
             // The navigable's cookie jar: a frame's top's, a popup's own
             // (its opener's).
             .cookie_jar = if (record.integration.browsing_context) |bc| bc.cookieJar() else null,
@@ -1075,6 +1102,19 @@ fn startFetch(record: *Navigation) void {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
+        // Step 3's POST resource: "set request's body to documentResource's
+        // request body" and "Content-Type" to its request content-type. The
+        // body is the record's, borrowed for as long as the fetch runs.
+        if (record.post_body) |body| {
+            request.body = .{ .bytes = body };
+            if (record.post_content_type) |content_type| {
+                request.header_list.set("Content-Type", content_type) catch {
+                    request.deinit();
+                    record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+                    return queueNavigationTask(record.integration, record.id, &runCommit);
+                };
+            }
+        }
         const client: fetch_mod.algorithms.AsyncFetch.Client = .{
             .context = @ptrFromInt(record.id),
             .done = &fetchDone,
@@ -1841,6 +1881,8 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
                 .source_element = request.source_element,
                 .user_involvement = request.user_involvement,
                 .navigation_api_state = request.navigation_api_state,
+                .post_resource = request.post_resource,
+                .form_data = request.form_data,
             });
         },
         .page => |page| {
@@ -1859,6 +1901,7 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
                 .source_element = request.source_element,
                 .user_involvement = request.user_involvement,
                 .navigation_api_state = request.navigation_api_state,
+                .form_data = if (request.post_resource != null) request.form_data else null,
             });
         },
         // Step 8: a new top-level traversable - the window open steps.

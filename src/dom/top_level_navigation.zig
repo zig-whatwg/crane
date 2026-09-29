@@ -24,6 +24,10 @@ pub const Params = struct {
     user_involvement: navigation_api.UserInvolvement = .none,
     /// BORROWED.
     navigation_api_state: ?joint_history.SerializedState = null,
+    /// A form submitted "as entity body": its entry list as a FormData - the
+    /// navigation has a POST resource, and the navigate event its formData.
+    /// BORROWED.
+    form_data: ?*runtime.Instance = null,
 };
 
 pub const Implementation = struct {
