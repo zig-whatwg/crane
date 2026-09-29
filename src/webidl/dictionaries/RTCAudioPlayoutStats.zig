@@ -16,4 +16,8 @@ pub const RTCAudioPlayoutStats = struct {
     totalSamplesDuration: ?f64 = null,
     totalPlayoutDelay: ?f64 = null,
     totalSamplesCount: ?u64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "synthesizedSamplesDuration", "totalSamplesDuration", "totalPlayoutDelay" };
 };

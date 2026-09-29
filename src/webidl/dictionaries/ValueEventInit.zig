@@ -10,4 +10,8 @@ pub const ValueEventInit = struct {
     base: EventInit,
 
     value: ?runtime.JSValue = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"value"};
 };

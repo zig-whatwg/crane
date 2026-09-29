@@ -9,4 +9,8 @@ pub const XRRayDirectionInit = struct {
     y: ?f64 = null,
     z: ?f64 = null,
     w: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "x", "y", "z", "w" };
 };

@@ -152,6 +152,8 @@ pub const initInternalStateRegistry = internal_state.initRegistry;
 
 // JS Engine abstraction
 pub const jsengine = @import("jsengine.zig");
+/// The classes every adapter's wrapper cache holds strongly (a wrapper-lifetime policy).
+pub const streams_graph = @import("streams_graph.zig");
 pub const EngineError = @import("engine_types.zig").EngineError;
 pub const MainThreadCallback = @import("engine_types.zig").MainThreadCallback;
 pub const PromiseFulfillCallback = @import("engine_types.zig").PromiseFulfillCallback;

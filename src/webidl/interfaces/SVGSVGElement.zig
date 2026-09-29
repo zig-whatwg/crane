@@ -719,4 +719,12 @@ pub const SVGSVGElement = struct {
     pub fn call_checkIntersection(instance: *runtime.Instance, element: *runtime.Instance, rect: *runtime.Instance) anyerror!bool {
         return try SVGSVGElementImpl.call_checkIntersection(instance, element, rect);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_currentScale", 0b1 },
+        .{ "call_setCurrentTime", 0b1 },
+    };
 };

@@ -7,4 +7,8 @@ const runtime = @import("runtime");
 pub const IntrinsicSizesResultOptions = struct {
     maxContentSize: ?f64 = null,
     minContentSize: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "maxContentSize", "minContentSize" };
 };

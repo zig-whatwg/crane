@@ -371,8 +371,17 @@ pub const HTMLElement = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "title", "get_title", "set_title" },
+            .{ "lang", "get_lang", "set_lang" },
+            .{ "translate", "get_translate", "set_translate" },
+            .{ "dir", "get_dir", "set_dir" },
+            .{ "hidden", "get_hidden", "set_hidden" },
+            .{ "inert", "get_inert", "set_inert" },
+            .{ "accessKey", "get_accessKey", "set_accessKey" },
             .{ "accessKeyLabel", "get_accessKeyLabel", null },
+            .{ "draggable", "get_draggable", "set_draggable" },
+            .{ "spellcheck", "get_spellcheck", "set_spellcheck" },
             .{ "writingSuggestions", "get_writingSuggestions", "set_writingSuggestions" },
+            .{ "autocapitalize", "get_autocapitalize", "set_autocapitalize" },
             .{ "autocorrect", "get_autocorrect", "set_autocorrect" },
             .{ "innerText", "get_innerText", "set_innerText" },
             .{ "outerText", "get_outerText", "set_outerText" },
@@ -381,6 +390,11 @@ pub const HTMLElement = struct {
             .{ "headingReset", "get_headingReset", "set_headingReset" },
             .{ "editContext", "get_editContext", "set_editContext" },
             .{ "scrollParent", "get_scrollParent", null },
+            .{ "offsetParent", "get_offsetParent", null },
+            .{ "offsetTop", "get_offsetTop", null },
+            .{ "offsetLeft", "get_offsetLeft", null },
+            .{ "offsetWidth", "get_offsetWidth", null },
+            .{ "offsetHeight", "get_offsetHeight", null },
             .{ "style", "get_style", "set_style" },
             .{ "attributeStyleMap", "get_attributeStyleMap", null },
             .{ "onabort", "get_onabort", "set_onabort" },
@@ -488,34 +502,19 @@ pub const HTMLElement = struct {
             .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
             .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
             .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
+            .{ "contentEditable", "get_contentEditable", "set_contentEditable" },
             .{ "enterKeyHint", "get_enterKeyHint", "set_enterKeyHint" },
+            .{ "isContentEditable", "get_isContentEditable", null },
             .{ "inputMode", "get_inputMode", "set_inputMode" },
             .{ "virtualKeyboardPolicy", "get_virtualKeyboardPolicy", "set_virtualKeyboardPolicy" },
+            .{ "dataset", "get_dataset", null },
             .{ "nonce", "get_nonce", "set_nonce" },
             .{ "autofocus", "get_autofocus", "set_autofocus" },
+            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "lang", "get_lang", "set_lang" },
-            .{ "translate", "get_translate", "set_translate" },
-            .{ "dir", "get_dir", "set_dir" },
-            .{ "hidden", "get_hidden", "set_hidden" },
-            .{ "inert", "get_inert", "set_inert" },
-            .{ "accessKey", "get_accessKey", "set_accessKey" },
-            .{ "draggable", "get_draggable", "set_draggable" },
-            .{ "spellcheck", "get_spellcheck", "set_spellcheck" },
-            .{ "autocapitalize", "get_autocapitalize", "set_autocapitalize" },
-            .{ "offsetParent", "get_offsetParent", null },
-            .{ "offsetTop", "get_offsetTop", null },
-            .{ "offsetLeft", "get_offsetLeft", null },
-            .{ "offsetWidth", "get_offsetWidth", null },
-            .{ "offsetHeight", "get_offsetHeight", null },
-            .{ "contentEditable", "get_contentEditable", "set_contentEditable" },
-            .{ "isContentEditable", "get_isContentEditable", null },
-            .{ "dataset", "get_dataset", null },
-            .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = true;
     };

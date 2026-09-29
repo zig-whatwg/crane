@@ -14,4 +14,8 @@ pub const OscillatorOptions = struct {
     frequency: ?f32 = null,
     detune: ?f32 = null,
     periodicWave: ?*runtime.Instance = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "frequency", "detune" };
 };

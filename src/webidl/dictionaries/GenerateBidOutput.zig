@@ -18,4 +18,12 @@ pub const GenerateBidOutput = struct {
     allowComponentAuction: ?bool = null,
     targetNumAdComponents: ?u32 = null,
     numMandatoryAdComponents: ?u32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "bid", "adCost" };
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"ad"};
 };

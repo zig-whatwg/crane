@@ -12,4 +12,8 @@ pub const AudioProcessingEventInit = struct {
     playbackTime: f64,
     inputBuffer: *runtime.Instance,
     outputBuffer: *runtime.Instance,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"playbackTime"};
 };

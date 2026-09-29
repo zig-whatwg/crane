@@ -18,4 +18,8 @@ pub const GPUDepthStencilState = struct {
     depthBias: ?typedefs.GPUDepthBias = null,
     depthBiasSlopeScale: ?f32 = null,
     depthBiasClamp: ?f32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "depthBiasSlopeScale", "depthBiasClamp" };
 };

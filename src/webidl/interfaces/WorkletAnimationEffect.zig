@@ -116,4 +116,11 @@ pub const WorkletAnimationEffect = struct {
     pub fn call_getComputedTiming(instance: *runtime.Instance) anyerror!ComputedEffectTiming {
         return try WorkletAnimationEffectImpl.call_getComputedTiming(instance);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_localTime", 0b1 },
+    };
 };

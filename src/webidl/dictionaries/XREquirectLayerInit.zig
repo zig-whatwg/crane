@@ -14,4 +14,8 @@ pub const XREquirectLayerInit = struct {
     centralHorizontalAngle: ?f32 = null,
     upperVerticalAngle: ?f32 = null,
     lowerVerticalAngle: ?f32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "radius", "centralHorizontalAngle", "upperVerticalAngle", "lowerVerticalAngle" };
 };

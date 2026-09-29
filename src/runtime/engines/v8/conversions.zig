@@ -35,6 +35,7 @@ const js_value_mod = @import("js_value.zig");
 const pointer_tag = @import("pointer_tag.zig");
 const DebugAssertions = pointer_tag.DebugAssertions;
 const global_handles = @import("global_handles.zig");
+const value_operations = @import("value_operations.zig");
 
 /// Type-safe JavaScript value representation
 pub const JSValue = js_value_mod.JSValue;
@@ -238,6 +239,50 @@ pub fn fromV8Double(
     value: *v8.Value,
 ) ConversionError!runtime.Double {
     return toNumber(context, value);
+}
+
+/// WebIDL 3.2.7 `float` and 3.2.9 `double` - the restricted types - after the
+/// conversion `fromV8Float`/`fromV8Double` share with their `unrestricted`
+/// forms: "If x is NaN, +Infinity, or -Infinity, then throw a TypeError", and
+/// for `float` also a value that rounds to +/-2^128 (float step 5), which is
+/// what an f32 that came out infinite from a finite number is. `value` is the
+/// converted value: an f64 or f32, its nullable form, an optional argument
+/// (`webidl.Opt`), or a sequence of them. The binding calls this where codegen
+/// marked a value restricted (`restricted_floats`, `restricted_members`).
+pub fn requireFinite(comptime T: type, value: T) ConversionError!void {
+    switch (@typeInfo(T)) {
+        .float => if (!std.math.isFinite(value)) return ConversionError.TypeError,
+        .optional => |o| if (value) |v| try requireFinite(o.child, v),
+        .pointer => |ptr| if (comptime ptr.size == .slice) {
+            for (value) |v| try requireFinite(ptr.child, v);
+        },
+        .@"struct" => if (comptime @hasField(T, "was_passed") and @hasField(T, "value")) {
+            if (value.was_passed) try requireFinite(@FieldType(T, "value"), value.value);
+        },
+        else => {},
+    }
+}
+
+/// Whether dictionary `T` lists member `name` in `any_members`.
+fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        if (!@hasDecl(T, "any_members")) return false;
+        for (T.any_members) |member| {
+            if (std.mem.eql(u8, member, name)) return true;
+        }
+        return false;
+    }
+}
+
+/// Whether dictionary `T` lists member `name` in `restricted_members`.
+fn isRestrictedMember(comptime T: type, comptime name: []const u8) bool {
+    comptime {
+        if (!@hasDecl(T, "restricted_members")) return false;
+        for (T.restricted_members) |member| {
+            if (std.mem.eql(u8, member, name)) return true;
+        }
+        return false;
+    }
 }
 
 /// Convert V8 Value to Zig f32 (float)
@@ -1571,14 +1616,30 @@ pub fn fromV8Value(
                 // binding applies to arguments. Kept, an object member (a
                 // Headers, a signal) pinned its page.
                 defer if (comptime interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
-                // Convert field value
-                @field(result, field.name) = try fromV8Value(
-                    field.type,
-                    allocator,
-                    isolate,
-                    context,
-                    field_v8,
-                );
+                // WebIDL 3.2.18: a member is present unless it is undefined.
+                // An `any` member present as null is the value null
+                // (`any_members`); converted as an optional, it would read as
+                // not present.
+                const is_any_member = comptime isAnyMember(T, field.name);
+                if (is_any_member and v8.v8_Value_IsNull(field_v8)) {
+                    // Nothing keeps the handle Get made (the defer above
+                    // releases it only for a copying conversion).
+                    if (comptime !interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
+                    @field(result, field.name) = runtime.JSValue.jsNull;
+                } else {
+                    // Convert field value
+                    @field(result, field.name) = try fromV8Value(
+                        field.type,
+                        allocator,
+                        isolate,
+                        context,
+                        field_v8,
+                    );
+                }
+                // A restricted `double` or `float` member: NaN and the
+                // infinities are a TypeError, as part of this member's
+                // conversion - before the next member is read.
+                if (comptime isRestrictedMember(T, field.name)) try requireFinite(field.type, @field(result, field.name));
             } else {
                 // Get returns an empty handle only when it THREW (an absent
                 // member reads as undefined, handled above): WebIDL § 3.2.18
@@ -1842,7 +1903,22 @@ pub fn fromV8Value(
 // Zig to JavaScript (Runtime → V8)
 // ============================================================================
 
-/// Convert Zig DOMString to V8 String
+/// A new V8 string of the code units `bytes` encodes. A Zig string from
+/// script is WTF-8: fromV8Value writes a JavaScript string with WriteUtf8
+/// and no REPLACE_INVALID_UTF8, so an unpaired surrogate arrives as its
+/// three-byte form (ED A0..BF xx), and a DOMString keeps it. V8's UTF-8
+/// decoder would make each of those bytes a U+FFFD, so a string holding a
+/// surrogate code point is made from its UTF-16 instead - the decode
+/// value_operations.ownHandle does for the protocol's own copies. Every other
+/// string (ASCII, well-formed UTF-8) keeps String::NewFromUtf8. A new Global
+/// the caller owns; null when V8 refuses it (longer than String::kMaxLength).
+pub fn newStringFromWtf8(isolate: *v8.Isolate, bytes: []const u8) ?*v8.Value {
+    if (bytes.len == 0) return @ptrCast(v8.v8_String_Empty(isolate));
+    if (value_operations.hasSurrogateCodePoint(bytes)) return value_operations.stringFromWtf8(isolate, bytes) catch null;
+    return @ptrCast(v8.v8_String_NewFromUtf8(isolate, bytes.ptr, @intCast(bytes.len)));
+}
+
+/// Convert Zig DOMString to V8 String (its code units kept: newStringFromWtf8).
 pub fn toV8String(
     isolate: *v8.Isolate,
     value: runtime.DOMString,
@@ -1854,21 +1930,11 @@ pub fn toV8String(
         .owned => |s| s,
     };
 
-    if (slice.len == 0) {
-        return v8.v8_String_Empty(isolate) orelse {
-            // Fallback if Empty fails
-            return v8.v8_String_NewFromUtf8(isolate, "".ptr, 0).?;
-        };
-    }
-
-    return v8.v8_String_NewFromUtf8(
-        isolate,
-        slice.ptr,
-        @intCast(slice.len),
-    ) orelse {
+    const string = newStringFromWtf8(isolate, slice) orelse {
         // Fallback to empty string if creation fails
         return v8.v8_String_Empty(isolate).?;
     };
+    return @ptrCast(string);
 }
 
 /// Convert Zig boolean to V8 Boolean
@@ -2067,12 +2133,8 @@ pub fn toV8Value(
             .null => toV8Null(isolate),
             .boolean => |b| @ptrCast(toV8Boolean(isolate, b)),
             .number => |n| @ptrCast(v8.v8_Number_New(isolate, n)),
-            .string => |s| blk: {
-                if (s.data.len == 0) {
-                    break :blk @ptrCast(v8.v8_String_Empty(isolate) orelse return ConversionError.StringError);
-                }
-                break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return ConversionError.StringError);
-            },
+            // WTF-8: its lone surrogates kept (newStringFromWtf8).
+            .string => |s| newStringFromWtf8(isolate, s.data) orelse return ConversionError.StringError,
             .handle => |h| blk: {
                 // SAFETY CHECK: V8 Global handles must be 8-byte aligned.
                 // If the pointer is not aligned, it's likely a Zig pointer that was
@@ -2154,17 +2216,8 @@ pub fn toV8Value(
         const ElemType = type_info.pointer.child;
         // Special case: []const u8 and []u8 are strings, not arrays
         if (ElemType == u8) {
-            // Handle empty strings specially - empty slice may have undefined ptr
-            if (value.len == 0) {
-                const str = v8.v8_String_Empty(isolate) orelse {
-                    return ConversionError.StringError;
-                };
-                return @ptrCast(str);
-            }
-            const str = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)) orelse {
-                return ConversionError.StringError;
-            };
-            return @ptrCast(str);
+            // WTF-8: its lone surrogates kept (newStringFromWtf8).
+            return newStringFromWtf8(isolate, value) orelse ConversionError.StringError;
         }
 
         // Special case: Slice of structs with "key" and "value" fields => WebIDL record type
@@ -2187,11 +2240,7 @@ pub fn toV8Value(
                         if (ValueType == *const anyopaque or ValueType == *anyopaque) {
                             // The value is a pointer to a string slice
                             const str_ptr: *const []const u8 = @ptrCast(@alignCast(entry.value));
-                            const str = str_ptr.*;
-                            if (str.len == 0) {
-                                break :blk @as(*v8.Value, @ptrCast(v8.v8_String_Empty(isolate) orelse return ConversionError.StringError));
-                            }
-                            break :blk @as(*v8.Value, @ptrCast(v8.v8_String_NewFromUtf8(isolate, str.ptr, @intCast(str.len)) orelse return ConversionError.StringError));
+                            break :blk newStringFromWtf8(isolate, str_ptr.*) orelse return ConversionError.StringError;
                         } else {
                             break :blk try toV8Value(ValueType, isolate, context, entry.value);
                         }
@@ -3214,22 +3263,25 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
         }
     }
 
-    // Use the CURRENT context for wrapper lookup to ensure identity works
-    // when the same instance is accessed from the same context multiple times.
-    // This is critical for MutationObserver callbacks where addedNodes items
-    // must be === to the original element reference held by JavaScript.
+    // A platform object has one wrapper, made in its relevant realm - the
+    // realm it was created in, `instance.ctx` - whichever realm is current
+    // (engine-protocol.md, "Realms"; the protocol's own operations do the
+    // same through protocol_support.relevantWrapper). Wrapping in the current
+    // realm made a second wrapper, in another realm's wrapper cache, for a
+    // node a frame's script had already seen: `frame.contentDocument.body`
+    // read from the parent was not the frame's own `document.body`.
     //
-    // Note: For cross-realm support (iframe contentWindow, etc.), we use
-    // special handling in Window and Document cases above.
-    const context: *v8.Context = v8.v8_Isolate_GetCurrentContext(isolate) orelse blk: {
-        // Fall back to instance's context if no current context
-        if (instance.ctx.getEngineContext()) |engine_ctx| {
-            break :blk @ptrCast(@alignCast(engine_ctx));
-        } else {
-            return v8.v8_Undefined(isolate) orelse unreachable;
-        }
-    };
-    defer v8.v8_Context_Dispose(context);
+    // The realm's context is BORROWED from its record: the wrapper cache is
+    // looked up, and the object made, in it (V8 enters it for the call). The
+    // current context stands in only when the relevant realm has no engine
+    // realm of this agent behind it - it ended, or it is another agent's -
+    // and that handle, from v8_Isolate_GetCurrentContext, is this call's.
+    // (It used to be released on the other branch too, which disposed the
+    // realm's own context handle.)
+    const relevant = relevantContext(isolate, instance);
+    const current: ?*v8.Context = if (relevant == null) v8.v8_Isolate_GetCurrentContext(isolate) else null;
+    defer if (current) |c| v8.v8_Context_Dispose(c);
+    const context: *v8.Context = relevant orelse current orelse return v8.v8_Undefined(isolate) orelse unreachable;
 
     // Wrap with correct prototype using template registry
     const v8_obj = template_registry.wrapInstanceAsV8Object(
@@ -3243,6 +3295,17 @@ pub fn instanceToV8(isolate: *v8.Isolate, instance: *runtime.Instance) *v8.Value
     };
 
     return @ptrCast(v8_obj);
+}
+
+/// `instance`'s relevant realm's context, BORROWED from the realm record -
+/// or null when that realm has no engine realm of `isolate` behind it (it
+/// ended: context_manager nulls a retired realm's engine_ctx; or it belongs
+/// to another agent).
+fn relevantContext(isolate: *v8.Isolate, instance: *runtime.Instance) ?*v8.Context {
+    const realm = instance.ctx;
+    const engine_ctx = realm.engine_ctx orelse return null;
+    if (@import("realm_entry.zig").agentOf(realm) != isolate) return null;
+    return @ptrCast(@alignCast(engine_ctx));
 }
 
 /// Chunk type tag for type-safe chunk conversion
@@ -3295,14 +3358,7 @@ pub fn chunkToV8ValueSafe(
             break :blk @ptrCast(obj);
         },
 
-        .string => |str| blk: {
-            const v8_str = v8.v8_String_NewFromUtf8(
-                isolate,
-                str.ptr,
-                @intCast(str.len),
-            ) orelse return ConversionError.OutOfMemory;
-            break :blk @ptrCast(v8_str);
-        },
+        .string => |str| newStringFromWtf8(isolate, str) orelse return ConversionError.OutOfMemory,
 
         .number_f64 => |num| blk: {
             const v8_num = v8.v8_Number_New(isolate, num);
@@ -3406,12 +3462,8 @@ pub fn toV8(
         },
         .pointer => |ptr_info| {
             if (ptr_info.size == .slice and ptr_info.child == u8) {
-                // []const u8 - convert to string
-                return @ptrCast(v8.v8_String_NewFromUtf8(
-                    isolate,
-                    value.ptr,
-                    @intCast(value.len),
-                ) orelse return ConversionError.OutOfMemory);
+                // []const u8 - convert to string, its lone surrogates kept
+                return newStringFromWtf8(isolate, value) orelse ConversionError.OutOfMemory;
             } else if (ptr_info.child == anyopaque) {
                 // *anyopaque - assume it's already a V8 value pointer
                 return @ptrCast(value);
@@ -3567,9 +3619,7 @@ pub fn createV8Number(isolate: *v8.Isolate, value: f64) ConversionError!*v8.Valu
 
 /// Create V8 string value from slice
 pub fn createV8String(isolate: *v8.Isolate, value: []const u8) ConversionError!*v8.Value {
-    const str = v8.v8_String_NewFromUtf8(isolate, value.ptr, @intCast(value.len)) orelse
-        return ConversionError.OutOfMemory;
-    return @ptrCast(str);
+    return newStringFromWtf8(isolate, value) orelse ConversionError.OutOfMemory;
 }
 
 // ============================================================================

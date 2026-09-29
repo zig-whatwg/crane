@@ -18,4 +18,8 @@ pub const MouseEventInit = struct {
     screenY: ?f64 = null,
     clientX: ?f64 = null,
     clientY: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "movementX", "movementY", "screenX", "screenY", "clientX", "clientY" };
 };

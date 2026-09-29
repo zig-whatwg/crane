@@ -15,4 +15,8 @@ pub const BiquadFilterOptions = struct {
     detune: ?f32 = null,
     frequency: ?f32 = null,
     gain: ?f32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "Q", "detune", "frequency", "gain" };
 };

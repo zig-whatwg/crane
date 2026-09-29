@@ -15,4 +15,8 @@ pub const AuctionAd = struct {
     allowedReportingOrigins: ?[]const runtime.USVString = null,
     adRenderId: ?runtime.DOMString = null,
     creativeScanningMetadata: ?runtime.USVString = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"metadata"};
 };

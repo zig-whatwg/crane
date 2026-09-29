@@ -853,6 +853,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A step deferred to a loop dies with the loop](docs/lessons/architecture-a-step-deferred-to-a-loop-dies-with-the-loop.md) - Every step deferred to a timer needs an answer for the loop ending first: whoever ends the loop runs what is still armed on it, under the same conditions the timer would have had.
 - [An agent's role is recorded when it is made](docs/lessons/architecture-an-agent-s-role-is-recorded-when-it-is-made.md) - Record a role when it is taken; a predicate over teardown-time state is answered by whoever happens to be tearing down.
 - [State set around a call is seen by everything the call runs](docs/lessons/architecture-state-set-around-a-call-is-seen-by-everything-it-runs.md) - A value set around a call is visible to every callee, including ones working on other objects; key it to the object it is for, not to the time it is set.
+- [A wrapper made and released before you take your hold can be collected in between](docs/lessons/architecture-a-wrapper-made-and-released-before-you-take-your-hold-can-be-collected-in-between.md) - A wrapper nobody holds can be collected at the next allocation; make the wrapper and take the hold in one step, and make any "make and release" helper refuse the objects it cannot hold.
 
 ### Spec Compliance
 
@@ -880,6 +881,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A state that consumes nothing cannot be dispatched like one that does](docs/lessons/spec-compliance-a-state-that-consumes-nothing-cannot-be-dispatched-like-one-that-does.md) - Check each state's first step: one that does not consume must not be reached through a loop that consumes for it.
 - [A referrer is a record, not a resource name](docs/lessons/spec-compliance-a-referrer-is-a-record-not-a-resource-name.md) - Carry the spec's record across the engine boundary; reconstructing a referrer from the string the engine holds works only until the string and the record disagree, and for inline scripts they always did.
 - [A batched token must not hide what the spec reads per character](docs/lessons/spec-compliance-a-batched-token-must-not-hide-what-the-spec-reads-per-character.md) - When a fast path batches what the spec processes one unit at a time, write down the property every consumer relies on, and make the producer guarantee it.
+- [A special operation with an identifier is also a regular operation](docs/lessons/spec-compliance-a-special-operation-with-an-identifier-is-also-a-regular-operation.md) - Filter operations by whether they have an identifier, never by the special keyword; a keyword list is wrong by default for the keyword nobody needed yet.
 
 ### Codegen
 
@@ -891,6 +893,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [WebIDL identifiers drop a leading underscore](docs/lessons/codegen-webidl-identifiers-drop-a-leading-underscore.md) - Grep the generated tables for names starting with `_` after any parser change.
 - [Deduplicating operations by name deleted every overload](docs/lessons/codegen-deduplicating-operations-by-name-deleted-every.md) - Dedupe by signature, not by name, and read a hand-unrolled arity switch's `else` branch - it is an undocumented limit.
 - [Generated behaviour is only as complete as the IDL](docs/lessons/codegen-generated-behaviour-is-only-as-complete-as-the-idl.md) - Before trusting generated behaviour, read the prose the IDL summarises.
+- [Regenerating specs/supplementary alone rewrites a typedef of an IDL interface](docs/lessons/codegen-regenerating-supplementary-alone-rewrites-a-typedef-of-an-idl-interface.md) - After a regeneration, diff every generated directory, typedefs included; a one-source run resolves types against that source alone.
 
 ### Testing
 
@@ -924,6 +927,8 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [Fewer crashes mean longer processes, and an old leak comes back as an OOM](docs/lessons/testing-fewer-crashes-mean-longer-processes-and-an-old-leak-comes-back-as-oom.md) - A drop in crashes can raise the peak heap. Compare retention per file, not crashes, before calling an OOM a regression.
 - [A handle-leak test needs V8's live count, not the debug counter](docs/lessons/testing-a-handle-leak-test-needs-v8-s-live-count.md) - Read a red run's numbers before believing it: a failing assertion is red for a reason, and the reason has to be the bug.
 - [A lane's A/B baseline is main, not its own last gate](docs/lessons/testing-a-lane-s-a-b-baseline-is-main-not-its-last-gate.md) - Compare a batch with the main it merges into; a chain of gate-to-gate A/Bs can be all green while the batch as a whole moved dozens of files to blocking.
+- [A counter that drifts per call hides a leak per call](docs/lessons/testing-a-counter-that-drifts-per-call-hides-a-leak-per-call.md) - Read a leak counter against a control statement run the same way, and cross-check it with V8's global handle bytes; a hand-kept counter is only as good as its least-counted creation site.
+- [Compare two runners only with each runner's own snapshot](docs/lessons/testing-compare-two-runners-only-with-each-runner-s-own-snapshot.md) - A runner and its snapshot are one artifact: freeze them together, and put the right snapshot in place before every run.
 
 ### Debugging
 

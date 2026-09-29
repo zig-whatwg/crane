@@ -66,4 +66,8 @@ pub const RTCInboundRtpStreamStats = struct {
     totalCorruptionProbability: ?f64 = null,
     totalSquaredCorruptionProbability: ?f64 = null,
     corruptionMeasurements: ?u64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "framesPerSecond", "totalDecodeTime", "totalInterFrameDelay", "totalSquaredInterFrameDelay", "totalPausesDuration", "totalFreezesDuration", "lastPacketReceivedTimestamp", "totalProcessingDelay", "estimatedPlayoutTimestamp", "jitterBufferDelay", "jitterBufferTargetDelay", "jitterBufferMinimumDelay", "audioLevel", "totalAudioEnergy", "totalSamplesDuration", "totalAssemblyTime", "totalCorruptionProbability", "totalSquaredCorruptionProbability" };
 };

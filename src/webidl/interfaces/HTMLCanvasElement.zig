@@ -330,4 +330,11 @@ pub const HTMLCanvasElement = struct {
     pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!runtime.USVString {
         return try HTMLCanvasElementImpl.call_toDataURL(instance, @"type", quality);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_captureStream", 0b1 },
+    };
 };

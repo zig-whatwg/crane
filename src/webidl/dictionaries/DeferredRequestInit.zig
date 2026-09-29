@@ -11,4 +11,8 @@ pub const DeferredRequestInit = struct {
     base: RequestInit,
 
     activateAfter: ?typedefs.DOMHighResTimeStamp = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"activateAfter"};
 };

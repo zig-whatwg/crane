@@ -2563,6 +2563,15 @@ extern "C" int64_t v8_Debug_LiveContextGlobals() {
     return g_live_context_globals.load(std::memory_order_relaxed);
 }
 
+// Every function that returns a new Global<Context> counts it, because
+// v8_Context_Dispose uncounts whichever it is handed. Uncounted creations -
+// v8_FunctionCallbackInfo_GetFunctionCreationContext, taken by every binding
+// getter and method call, among them - made live_context_globals fall by one
+// per call, and by one per worker realm (NewWithGlobalConstructor).
+static inline void countContextGlobal() {
+    g_live_context_globals.fetch_add(1, std::memory_order_relaxed);
+}
+
 Global<Context>* v8_Isolate_GetCurrentContext(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Context> ctx = isolate->GetCurrentContext();
@@ -2679,6 +2688,7 @@ void* v8_Isolate_GetData(Isolate* isolate, int slot) {
 Global<Context>* v8_Context_New(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<Context> context = Context::New(isolate);
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -2686,6 +2696,7 @@ Global<Context>* v8_Context_NewWithGlobalTemplate(Isolate* isolate, Global<Objec
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_template = global_template->Get(isolate);
     Local<Context> context = Context::New(isolate, nullptr, local_template);
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -2709,6 +2720,7 @@ Global<Context>* v8_Context_NewWithGlobalConstructor(Isolate* isolate, Global<Fu
     Local<FunctionTemplate> local_template = global_constructor->Get(isolate);
     Local<ObjectTemplate> instance_template = local_template->InstanceTemplate();
     Local<Context> context = Context::New(isolate, nullptr, instance_template);
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -5336,6 +5348,7 @@ Global<Context>* v8_Object_GetCreationContext(Global<Object>* obj) {
     }
     
     Local<Context> ctx = maybe_ctx.ToLocalChecked();
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, ctx));
 }
 
@@ -5514,6 +5527,7 @@ Global<Context>* v8_Object_GetPrototypeCreationContext(Global<Object>* obj) {
     }
     
     Local<Context> ctx = maybe_ctx.ToLocalChecked();
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, ctx));
 }
 
@@ -6355,6 +6369,7 @@ Global<Context>* v8_FunctionCallbackInfo_GetFunctionCreationContext(const Functi
     
     if (target_value.IsEmpty() || !target_value->IsFunction()) {
         // Fallback: return current context
+        countContextGlobal();
         return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
     }
     
@@ -6364,9 +6379,11 @@ Global<Context>* v8_FunctionCallbackInfo_GetFunctionCreationContext(const Functi
     // This is the context where the function was instantiated (e.g., iframe context)
     MaybeLocal<Context> maybe_ctx = target_func->GetCreationContext();
     if (maybe_ctx.IsEmpty()) {
+        countContextGlobal();
         return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
     }
     
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, maybe_ctx.ToLocalChecked()));
 }
 
@@ -6500,6 +6517,7 @@ Global<Context>* v8_Function_GetCreationContext(Global<Function>* func) {
         return nullptr;
     }
     
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, maybe_ctx.ToLocalChecked()));
 }
 
@@ -9608,6 +9626,7 @@ return nullptr;
     int internal_field_count = global->InternalFieldCount();
     (void)internal_field_count; // Suppress unused variable warning
     
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -9694,6 +9713,7 @@ Global<Context>* v8_Context_NewFromSnapshotAt(Isolate* isolate, size_t context_i
         return nullptr;
     }
     
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -9758,6 +9778,7 @@ Global<Context>* v8_Context_NewFromSnapshotAtWithMicrotaskQueue(
         return nullptr;
     }
 
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -9794,6 +9815,7 @@ Global<Context>* v8_Context_NewWithMicrotaskQueue(
         if (context.IsEmpty()) {
             return nullptr;
         }
+        countContextGlobal();
         return trackHandle(new Global<Context>(isolate, context));
     }
 
@@ -9831,6 +9853,7 @@ Global<Context>* v8_Context_NewWithMicrotaskQueue(
         return nullptr;
     }
 
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -9904,6 +9927,7 @@ Global<Context>* v8_Context_NewFromSnapshotDefault(Isolate* isolate) {
     }
     
     fprintf(stderr, "[v8_Context_NewFromSnapshotDefault] SUCCESS: New context created\n");
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, context));
 }
 
@@ -10856,12 +10880,47 @@ void ForwardToReflect(const FunctionCallbackInfo<Value>& info, const char* metho
     }
 }
 
+// Whether `key` is an array index (ES 6.1.7: a canonical numeric string for an
+// integer in [0, 2^32 - 2]).
+bool IsArrayIndexKey(Isolate* isolate, Local<Value> key) {
+    if (key->IsNumber()) return true;
+    if (!key->IsString()) return false;
+    String::Utf8Value utf8(isolate, key);
+    if (utf8.length() == 0 || utf8.length() > 10) return false;
+    const char* s = *utf8;
+    if (utf8.length() > 1 && s[0] == '0') return false;
+    uint64_t n = 0;
+    for (int i = 0; i < utf8.length(); i++) {
+        if (s[i] < '0' || s[i] > '9') return false;
+        n = n * 10 + static_cast<uint64_t>(s[i] - '0');
+    }
+    return n < 0xFFFFFFFFull;
+}
+
+// Whether the platform object `target` implements an interface with a named
+// property setter. Of the interfaces template_registry.zig wraps in this proxy
+// (legacy_platform_objects), only Storage declares one in its IDL
+// (DOMStringMap has one too, but is not proxied).
+bool HasNamedPropertySetter(Isolate* isolate, Local<Object> target) {
+    String::Utf8Value name(isolate, target->GetConstructorName());
+    return name.length() > 0 && std::strcmp(*name, "Storage") == 0;
+}
+
+// The Proxy "set" trap: WebIDL 3.9.3 legacy platform object [[Set]](P, V,
+// Receiver). The trap receives (target, P, V, Receiver); O is the target, and
+// "O and Receiver are the same object" means Receiver is this proxy.
+//
+// It used to define an own data property on the target unconditionally, so
+// no prototype setter ever ran on a legacy platform object: `tbody.vAlign =`,
+// `classList.value =` (and so every [PutForwards=value] assignment:
+// `el.relList = "a b"`), `options.length =`, `style.cssText =` all stored an
+// own data property and changed nothing.
 void TrapSet(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Context> context = isolate->GetCurrentContext();
 
-    if (info.Length() < 3) {
+    if (info.Length() < 3 || !info[0]->IsObject()) {
         info.GetReturnValue().Set(false);
         return;
     }
@@ -10869,28 +10928,120 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
     Local<Object> target = info[0].As<Object>();
     Local<Value> property = info[1];
     Local<Value> value = info[2];
-    
-    // Use Object.defineProperty to bypass named property interceptor.
-    // Reflect.set goes through the interceptor which may not create
-    // actual own properties on objects with named property handlers.
+    Local<Value> receiver = info.Length() > 3 ? info[3] : info[0];
+    const bool receiver_is_o = receiver->IsProxy() &&
+        receiver.As<Proxy>()->GetTarget()->StrictEquals(target);
+    const bool is_index = IsArrayIndexKey(isolate, property);
+
+    // Step 1: "If O and Receiver are the same object, then: if O implements
+    // an interface with an indexed property setter and P is an array index,
+    // invoke the indexed property setter with P and V; otherwise, if O
+    // implements an interface with a named property setter and P is a String,
+    // invoke the named property setter with P and V. Return true." The
+    // target's own interceptors are those setters; defining the property on
+    // the target runs them (a definer or setter interceptor, holder ==
+    // receiver). An array index takes this path whether or not there is an
+    // indexed setter: without one, the indexed interceptors answer as
+    // [[DefineOwnProperty]] requires (WebIDL 3.9.3 [[DefineOwnProperty]] step
+    // 1), which is what steps 2-3 would reach for a supported index.
+    const bool via_own_setters = receiver_is_o &&
+        (is_index || (property->IsString() && HasNamedPropertySetter(isolate, target)));
+
+    if (!via_own_setters && property->IsName()) {
+        // Step 2: "Let ownDesc be LegacyPlatformObjectGetOwnProperty(O, P,
+        // true)" - own properties, supported indices, never named properties.
+        // A real own property (an expando) keeps today's path below.
+        const bool own = property->IsString()
+            ? target->HasRealNamedProperty(context, property.As<String>()).FromMaybe(false)
+            : target->HasOwnProperty(context, property.As<Name>()).FromMaybe(false);
+        if (!own) {
+            // Step 3: "Perform ? OrdinarySetWithOwnDescriptor(O, P, V,
+            // Receiver, ownDesc)" with ownDesc undefined: ES 10.1.9.2 step 1
+            // walks the prototype chain for P.
+            Local<Value> proto = target->GetPrototypeV2();
+            while (proto->IsObject()) {
+                Local<Object> holder = proto.As<Object>();
+                Local<Value> desc_value;
+                if (!holder->GetOwnPropertyDescriptor(context, property.As<Name>()).ToLocal(&desc_value)) {
+                    return;  // an exception is pending
+                }
+                if (desc_value->IsUndefined()) {
+                    proto = holder->GetPrototypeV2();
+                    continue;
+                }
+                Local<Object> desc = desc_value.As<Object>();
+                Local<Value> getter, setter;
+                const bool has_get = desc->Has(context, String::NewFromUtf8Literal(isolate, "get")).FromMaybe(false);
+                const bool has_set = desc->Has(context, String::NewFromUtf8Literal(isolate, "set")).FromMaybe(false);
+                if (has_get || has_set) {
+                    // ES 10.1.9.2 step 4: an accessor descriptor. "Let setter
+                    // be ownDesc.[[Set]]. If setter is undefined, return
+                    // false. Perform ? Call(setter, Receiver, « V »). Return
+                    // true." - false is a TypeError in strict code.
+                    if (!desc->Get(context, String::NewFromUtf8Literal(isolate, "set")).ToLocal(&setter)) return;
+                    if (!setter->IsFunction()) {
+                        info.GetReturnValue().Set(false);
+                        return;
+                    }
+                    Local<Value> args[] = { value };
+                    if (setter.As<Function>()->Call(context, receiver, 1, args).IsEmpty()) return;
+                    info.GetReturnValue().Set(true);
+                    return;
+                }
+                // ES 10.1.9.2 step 2.a: "If ownDesc.[[Writable]] is false,
+                // return false."
+                Local<Value> writable;
+                if (!desc->Get(context, String::NewFromUtf8Literal(isolate, "writable")).ToLocal(&writable)) return;
+                if (!writable->BooleanValue(isolate)) {
+                    info.GetReturnValue().Set(false);
+                    return;
+                }
+                // A writable data property further up: the value lands on
+                // Receiver, below.
+                break;
+            }
+        }
+        if (!receiver_is_o) {
+            // Receiver is another object that has this proxy on its prototype
+            // chain: the data property is Receiver's own (ES 10.1.9.2 step
+            // 2.c-e), which ordinary [[Set]] with that receiver does.
+            Local<Object> reflect = context->Global()
+                ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
+                .ToLocalChecked().As<Object>();
+            Local<Function> reflect_set = reflect
+                ->Get(context, String::NewFromUtf8Literal(isolate, "set"))
+                .ToLocalChecked().As<Function>();
+            Local<Value> args[] = { target, property, value, receiver };
+            Local<Value> result;
+            if (!reflect_set->Call(context, reflect, 4, args).ToLocal(&result)) return;
+            info.GetReturnValue().Set(result);
+            return;
+        }
+    }
+
+    // Step 1's setters, and step 3's "create or update an own data property
+    // on Receiver" with Receiver the proxy (ES 10.1.9.2 steps 2.c-e): define
+    // it on the target through Object.defineProperty, which runs the target's
+    // definer and setter interceptors rather than bypassing them the way a
+    // plain store to an object with a named property handler would.
     Local<Object> object_ctor = context->Global()
         ->Get(context, String::NewFromUtf8Literal(isolate, "Object"))
         .ToLocalChecked().As<Object>();
-    
+
     Local<Function> define_prop = object_ctor
         ->Get(context, String::NewFromUtf8Literal(isolate, "defineProperty"))
         .ToLocalChecked().As<Function>();
-    
+
     // Create property descriptor: { value, writable: true, enumerable: true, configurable: true }
     Local<Object> descriptor = Object::New(isolate);
     descriptor->Set(context, String::NewFromUtf8Literal(isolate, "value"), value).Check();
     descriptor->Set(context, String::NewFromUtf8Literal(isolate, "writable"), Boolean::New(isolate, true)).Check();
     descriptor->Set(context, String::NewFromUtf8Literal(isolate, "enumerable"), Boolean::New(isolate, true)).Check();
     descriptor->Set(context, String::NewFromUtf8Literal(isolate, "configurable"), Boolean::New(isolate, true)).Check();
-    
+
     Local<Value> args[] = { target, property, descriptor };
     MaybeLocal<Value> result = define_prop->Call(context, object_ctor, 3, args);
-    
+
     info.GetReturnValue().Set(!result.IsEmpty());
 }
 void TrapHas(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "has"); }
@@ -10994,6 +11145,7 @@ extern "C" Global<Context>* v8_Context_GlobalHandle_New(Isolate* isolate, Global
     HandleScope handle_scope(isolate);
     Local<Context> local = context_global->Get(isolate);
     if (local.IsEmpty()) return nullptr;
+    countContextGlobal();
     return trackHandle(new Global<Context>(isolate, local));
 }
 

@@ -12,4 +12,8 @@ pub const AudioContextOptions = struct {
     sampleRate: ?f32 = null,
     sinkId: ?runtime.JSValue = null,
     renderSizeHint: ?runtime.JSValue = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"sampleRate"};
 };

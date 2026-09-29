@@ -195,4 +195,14 @@ pub const XREquirectLayer = struct {
     pub fn set_onredraw(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try XREquirectLayerImpl.set_onredraw(instance, value);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_radius", 0b1 },
+        .{ "set_centralHorizontalAngle", 0b1 },
+        .{ "set_upperVerticalAngle", 0b1 },
+        .{ "set_lowerVerticalAngle", 0b1 },
+    };
 };

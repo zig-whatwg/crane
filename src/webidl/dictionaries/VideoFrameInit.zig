@@ -17,4 +17,8 @@ pub const VideoFrameInit = struct {
     displayWidth: ?u32 = null,
     displayHeight: ?u32 = null,
     metadata: ?VideoFrameMetadata = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"rotation"};
 };

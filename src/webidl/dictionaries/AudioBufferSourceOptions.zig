@@ -11,4 +11,8 @@ pub const AudioBufferSourceOptions = struct {
     loopEnd: ?f64 = null,
     loopStart: ?f64 = null,
     playbackRate: ?f32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "detune", "loopEnd", "loopStart", "playbackRate" };
 };

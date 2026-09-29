@@ -125,6 +125,7 @@ pub const ElementInternals = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "shadowRoot", "get_shadowRoot", null },
             .{ "form", "get_form", null },
             .{ "willValidate", "get_willValidate", null },
             .{ "validity", "get_validity", null },
@@ -186,9 +187,7 @@ pub const ElementInternals = struct {
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "shadowRoot", "get_shadowRoot", null },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = false;
     };

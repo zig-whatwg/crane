@@ -24,4 +24,8 @@ pub const VideoEncoderConfig = struct {
     contentHint: ?runtime.DOMString = null,
     hevc: ?HevcEncoderConfig = null,
     avc: ?AvcEncoderConfig = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"framerate"};
 };

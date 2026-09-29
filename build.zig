@@ -3593,6 +3593,16 @@ pub fn build(b: *std.Build) void {
     const gc_bench_step = b.step("gc-bench", "Measure RSS across createElement+discard cycles (Phase 6)");
     gc_bench_step.dependOn(&run_gc_bench.step);
 
+    // Part of `zig build test`: gc_bench's command line (the per-cycle script,
+    // --body / --control), tested on its own - gc_bench.zig links the engine,
+    // gc_bench_options.zig only std.
+    const gc_bench_options_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tools/gc_bench_options.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    }) });
+    test_step.dependOn(&b.addRunArtifact(gc_bench_options_tests).step);
+
     // ========================================================================
     // WPT (Web Platform Tests) RUNNER
     // ========================================================================

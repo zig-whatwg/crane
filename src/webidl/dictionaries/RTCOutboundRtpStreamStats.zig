@@ -45,4 +45,8 @@ pub const RTCOutboundRtpStreamStats = struct {
     active: ?bool = null,
     scalabilityMode: ?runtime.DOMString = null,
     packetsSentWithEct1: ?u64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "targetBitrate", "framesPerSecond", "totalEncodeTime", "totalPacketSendDelay" };
 };

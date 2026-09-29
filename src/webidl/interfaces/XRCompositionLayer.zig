@@ -186,4 +186,11 @@ pub const XRCompositionLayer = struct {
     pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
         return try XRCompositionLayerImpl.call_destroy(instance);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_opacity", 0b1 },
+    };
 };

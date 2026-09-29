@@ -886,9 +886,18 @@ pub fn setUpController(realm: Realm, stream_instance: *runtime.Instance, control
     // Step 6: Set controller.[[abortController]] to a new AbortController.
     controller.abort_controller = interfaces.AbortController.call_constructor(controller_instance.ctx) catch null;
     if (controller.abort_controller) |ac| {
-        if (realm.wrap(ac)) |w| controller.abort_keepalive[0] = js.clone(w) catch null else |_| {}
+        // Each wrapper is held in the step that makes it. `realm.wrap` makes
+        // a wrapper and lets it go, which holds a streams-graph object (the
+        // wrapper cache keeps those strongly) but not these two: an
+        // AbortController's and an AbortSignal's wrappers are weak, so
+        // between `wrap` and the clone nothing held them, and a collection
+        // there - the clone's own cache-hit path allocates - freed the
+        // controller's AbortController under it (the worker variant of
+        // encoding/streams/decode-bad-chunks.any.js crashed on the next
+        // stream's setup).
+        controller.abort_keepalive[0] = js.clone(.{ .value = .{ .instance = ac }, .realm = realm.ctx }) catch null;
         if (interfaces.AbortController.get_signal(ac)) |signal| {
-            if (realm.wrap(signal)) |w| controller.abort_keepalive[1] = js.clone(w) catch null else |_| {}
+            controller.abort_keepalive[1] = js.clone(.{ .value = .{ .instance = signal }, .realm = realm.ctx }) catch null;
         } else |_| {}
     }
     // Step 7: Set controller.[[started]] to false.

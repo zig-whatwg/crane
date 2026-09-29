@@ -10,4 +10,8 @@ pub const StereoPannerOptions = struct {
     base: AudioNodeOptions,
 
     pan: ?f32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"pan"};
 };

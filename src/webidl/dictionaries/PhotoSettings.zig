@@ -10,4 +10,8 @@ pub const PhotoSettings = struct {
     imageHeight: ?f64 = null,
     imageWidth: ?f64 = null,
     redEyeReduction: ?bool = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "imageHeight", "imageWidth" };
 };

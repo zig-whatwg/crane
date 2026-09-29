@@ -94,4 +94,11 @@ pub const CanvasGradient = struct {
     pub fn call_addColorStop(instance: *runtime.Instance, offset: f64, color: DOMString) anyerror!void {
         return try CanvasGradientImpl.call_addColorStop(instance, offset, color);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_addColorStop", 0b1 },
+    };
 };

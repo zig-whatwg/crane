@@ -44,6 +44,12 @@ pub const InternalState = struct {
     /// Supported tokens (for supports() method)
     supported_tokens: ?[]const []const u8 = null,
 
+    /// The associated attribute's value the token set was last parsed from
+    /// (null: the attribute was absent), owned. Meaningful only while
+    /// `synced` is true - see `followAttribute`.
+    synced_value: ?[]u8 = null,
+    synced: bool = false,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -61,6 +67,7 @@ pub const InternalState = struct {
         if (self.attr_name) |*attr| {
             attr.deinit(self.allocator);
         }
+        if (self.synced_value) |v| self.allocator.free(v);
     }
 };
 
@@ -100,19 +107,13 @@ pub fn init(
 
 /// `dom.token_lists`' association: make `list` - just created, empty -
 /// `element`'s token list for its `local_name` attribute (null namespace), as
-/// a reflected DOMTokenList attribute's getter returns it (HTML 2.6.1). The
-/// token set is the attribute's current value parsed; from then on the list
-/// updates the attribute.
+/// a reflected DOMTokenList attribute's getter returns it (HTML 2.6.1). DOM's
+/// "when a DOMTokenList object is created" steps - run the attribute change
+/// steps with the attribute's current value - happen on the list's first
+/// read (`followAttribute`); from then on the list updates the attribute.
 fn associateWithAttribute(list: *runtime.Instance, element: *runtime.Instance, local_name: []const u8) anyerror!void {
     const internal = getInternal(list) orelse return error.InvalidState;
-    var name = try runtime.DOMString.initDupe(internal.allocator, local_name);
-    errdefer name.deinit(internal.allocator);
-    // The token set first, while there is no element to write it back to.
-    if (try interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned(local_name))) |found| {
-        var value = found;
-        defer value.deinit(element.ctx.allocator);
-        try set_value(list, value);
-    }
+    const name = try runtime.DOMString.initDupe(internal.allocator, local_name);
     setElement(list, element, name);
 }
 
@@ -138,238 +139,152 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-length
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
+    try followAttribute(internal);
     return @intCast(internal.tokens.size());
 }
 
-/// Getter for value
+/// Getter for value: the serialize steps, "get an attribute value given the
+/// element and the attribute name" - the attribute verbatim, "" when absent,
+/// not the token set re-serialized (`class="a  b"` reads back "a  b").
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-value
-/// Returns the serialized value (space-separated tokens)
 pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
-
-    // Serialize tokens to space-separated string
-    const tokens = internal.tokens.toSlice();
-    if (tokens.len == 0) {
+    const allocator = instance.ctx.allocator;
+    const element = internal.element orelse {
+        // Not associated (never, once created through an element): the set
+        // itself is all there is.
+        const text = try serialize(internal, allocator);
+        return if (text.len == 0) runtime.DOMString.initEmpty() else runtime.DOMString.initOwned(text);
+    };
+    var value = try interfaces.Element.call_getAttributeNS(element, null, internal.attr_name.?) orelse
         return runtime.DOMString.initEmpty();
-    }
-
-    // Calculate total length
-    var total_len: usize = 0;
-    for (tokens, 0..) |token, i| {
-        total_len += token.len();
-        if (i < tokens.len - 1) total_len += 1; // space
-    }
-
-    // Build the string
-    const buf = try internal.allocator.alloc(u8, total_len);
-    var pos: usize = 0;
-    for (tokens, 0..) |token, i| {
-        const slice = token.asSlice();
-        @memcpy(buf[pos..][0..slice.len], slice);
-        pos += slice.len;
-        if (i < tokens.len - 1) {
-            buf[pos] = ' ';
-            pos += 1;
-        }
-    }
-
-    return runtime.DOMString.initOwned(buf);
+    defer value.deinit(element.ctx.allocator);
+    return runtime.DOMString.initDupe(allocator, value.asSlice());
 }
 
-/// Setter for value
+/// Setter for value: "set an attribute value for the associated element
+/// using associated attribute's local name and the given value" - verbatim;
+/// the token set follows through the attribute change steps.
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-value
-/// Parses the value and replaces all tokens
+///
+/// A list not associated yet (Element's classList and part set their initial
+/// value this way before `setElement`) takes the value as its token set.
 pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
-
-    // Clear existing tokens
-    const slice = internal.tokens.toSliceMut();
-    for (slice) |*token| {
-        token.deinit(internal.allocator);
-    }
-    internal.tokens.clear();
-
-    // Parse new tokens (split by whitespace)
-    const val_slice = value.asSlice();
-    var iter = std.mem.tokenizeAny(u8, val_slice, " \t\n\r\x0c");
-    while (iter.next()) |token| {
-        const owned = try runtime.DOMString.initDupe(internal.allocator, token);
-        try internal.tokens.append(owned);
-    }
-
-    // Update length
-    const state = instance.getState(State);
-    state.own.length = @intCast(internal.tokens.size());
-
-    // Update the backing attribute on the element
-    updateBackingAttribute(instance);
+    const element = internal.element orelse return parseInto(internal, value.asSlice());
+    try interfaces.Element.call_setAttributeNS(element, null, internal.attr_name.?, value);
 }
 
 /// Operation: item(index)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-item
-/// Returns the token at the given index, or null if out of bounds.
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return null;
-    // Return null for out of bounds per spec
-    return internal.tokens.get(index);
+    try followAttribute(internal);
+    // Step 1: "If index is equal to or greater than this's token set's size,
+    // then return null."
+    if (index >= internal.tokens.size()) return null;
+    // Step 2: "Return this's token set[index]" - a copy: the caller frees
+    // what it is handed, and the token stays the set's.
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.tokens.toSlice()[index].asSlice());
 }
 
 /// Operation: contains(token)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-contains
 pub fn call_contains(instance: *runtime.Instance, token: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
-    const token_slice = token.asSlice();
-
-    const tokens = internal.tokens.toSlice();
-    for (tokens) |t| {
-        if (std.mem.eql(u8, t.asSlice(), token_slice)) {
-            return true;
-        }
-    }
-    return false;
+    try followAttribute(internal);
+    return indexOf(internal, token.asSlice()) != null;
 }
 
 /// Operation: add(tokens...)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-add
 pub fn call_add(instance: *runtime.Instance, tokens: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
-
-    // Process each token in the variadic list
-    for (tokens) |token| {
-        const token_slice = token.asSlice();
-
-        // Validate token
-        if (token_slice.len == 0) return error.SyntaxError;
-        if (std.mem.indexOfAny(u8, token_slice, " \t\n\r\x0c")) |_| {
-            return error.InvalidCharacterError;
-        }
-
-        // Check if already present
-        var already_present = false;
-        const existing = internal.tokens.toSlice();
-        for (existing) |t| {
-            if (std.mem.eql(u8, t.asSlice(), token_slice)) {
-                already_present = true;
-                break;
-            }
-        }
-
-        if (!already_present) {
-            // Add the token
-            const owned = try runtime.DOMString.initDupe(internal.allocator, token_slice);
-            try internal.tokens.append(owned);
-        }
-    }
-
-    // Update length
-    const state = instance.getState(State);
-    state.own.length = @intCast(internal.tokens.size());
-
-    // Update the backing attribute on the element
-    updateBackingAttribute(instance);
+    try followAttribute(internal);
+    // Step 1: every token is validated before any is added.
+    for (tokens) |token| try validateToken(token.asSlice());
+    // Step 2: append each to the set.
+    for (tokens) |token| try appendToken(internal, token.asSlice());
+    // Step 3.
+    try runUpdateSteps(internal);
 }
 
 /// Operation: remove(tokens...)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-remove
 pub fn call_remove(instance: *runtime.Instance, tokens: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
-
-    // Process each token in the variadic list
-    for (tokens) |token_to_remove| {
-        const token_slice = token_to_remove.asSlice();
-
-        // Validate token
-        if (token_slice.len == 0) return error.SyntaxError;
-        if (std.mem.indexOfAny(u8, token_slice, " \t\n\r\x0c")) |_| {
-            return error.InvalidCharacterError;
-        }
-
-        // Find and remove
-        const slice = internal.tokens.toSliceMut();
-        var i: usize = 0;
-        while (i < internal.tokens.len) {
-            if (std.mem.eql(u8, slice[i].asSlice(), token_slice)) {
-                var removed_token = internal.tokens.remove(i) catch continue;
-                removed_token.deinit(internal.allocator);
-            } else {
-                i += 1;
-            }
-        }
-    }
-
-    // Update length
-    const state = instance.getState(State);
-    state.own.length = @intCast(internal.tokens.size());
-
-    // Update the backing attribute on the element
-    updateBackingAttribute(instance);
+    try followAttribute(internal);
+    // Step 1: every token is validated before any is removed.
+    for (tokens) |token| try validateToken(token.asSlice());
+    // Step 2: remove each from the set.
+    for (tokens) |token| removeToken(internal, token.asSlice());
+    // Step 3.
+    try runUpdateSteps(internal);
 }
 
 /// Operation: toggle(token, force?)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-toggle
 pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
-    const contains = try call_contains(instance, token);
-
-    // If force was passed, use it to decide action
-    if (force.was_passed) {
-        if (force.value) {
-            // force=true: add if not present
-            if (!contains) {
-                const tokens = [_]runtime.DOMString{token};
-                try call_add(instance, &tokens);
-            }
-            return true;
-        } else {
-            // force=false: remove if present
-            if (contains) {
-                const tokens = [_]runtime.DOMString{token};
-                try call_remove(instance, &tokens);
-            }
+    const internal = getInternal(instance) orelse return false;
+    try followAttribute(internal);
+    // Steps 1-2, whatever the set holds.
+    try validateToken(token.asSlice());
+    // Step 3.
+    if (indexOf(internal, token.asSlice()) != null) {
+        // 3.1: "If force is either not given or is false, then remove token,
+        // run the update steps and return false."
+        if (!force.was_passed or !force.value) {
+            removeToken(internal, token.asSlice());
+            try runUpdateSteps(internal);
             return false;
         }
-    }
-
-    // No force: toggle based on current state
-    if (contains) {
-        const tokens = [_]runtime.DOMString{token};
-        try call_remove(instance, &tokens);
-        return false;
-    } else {
-        const tokens = [_]runtime.DOMString{token};
-        try call_add(instance, &tokens);
+        // 3.2 - with no update steps, for web compatibility.
         return true;
     }
+    // Step 4.
+    if (!force.was_passed or force.value) {
+        try appendToken(internal, token.asSlice());
+        try runUpdateSteps(internal);
+        return true;
+    }
+    // Step 5.
+    return false;
 }
 
 /// Operation: replace(token, newToken)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-replace
 pub fn call_replace(instance: *runtime.Instance, token: runtime.DOMString, newToken: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
-    const token_slice = token.asSlice();
-    const new_slice = newToken.asSlice();
-
-    // Validate tokens
-    if (token_slice.len == 0 or new_slice.len == 0) return error.SyntaxError;
-    if (std.mem.indexOfAny(u8, token_slice, " \t\n\r\x0c")) |_| {
-        return error.InvalidCharacterError;
-    }
-    if (std.mem.indexOfAny(u8, new_slice, " \t\n\r\x0c")) |_| {
-        return error.InvalidCharacterError;
-    }
-
-    // Find and replace
+    try followAttribute(internal);
+    const old = token.asSlice();
+    const new = newToken.asSlice();
+    // Steps 1-2.
+    if (old.len == 0 or new.len == 0) return error.SyntaxError;
+    try validateToken(old);
+    try validateToken(new);
+    // Step 3.
+    if (indexOf(internal, old) == null) return false;
+    // Step 4: Infra "replace" in an ordered set - the first of token and
+    // newToken becomes newToken, and every other instance of either goes.
+    const first = @min(indexOf(internal, old) orelse std.math.maxInt(usize), indexOf(internal, new) orelse std.math.maxInt(usize));
     const slice = internal.tokens.toSliceMut();
-    for (slice) |*t| {
-        if (std.mem.eql(u8, t.asSlice(), token_slice)) {
-            t.deinit(internal.allocator);
-            t.* = try runtime.DOMString.initDupe(internal.allocator, new_slice);
-            // Update the backing attribute on the element
-            updateBackingAttribute(instance);
-            return true;
-        }
+    if (!std.mem.eql(u8, slice[first].asSlice(), new)) {
+        const replacement = try runtime.DOMString.initDupe(internal.allocator, new);
+        slice[first].deinit(internal.allocator);
+        slice[first] = replacement;
     }
-
-    return false;
+    var i: usize = first + 1;
+    while (i < internal.tokens.size()) {
+        const t = internal.tokens.toSlice()[i].asSlice();
+        if (std.mem.eql(u8, t, old) or std.mem.eql(u8, t, new)) {
+            var removed = try internal.tokens.remove(i);
+            removed.deinit(internal.allocator);
+        } else i += 1;
+    }
+    // Step 5.
+    try runUpdateSteps(internal);
+    // Step 6.
+    return true;
 }
 
 /// Operation: supports(token)
@@ -409,25 +324,121 @@ pub fn call_forEach(instance: *runtime.Instance, callback: runtime.JSValue) anye
 // Internal helper functions
 // ============================================================================
 
-/// Update the backing attribute on the associated element
-/// Spec: https://dom.spec.whatwg.org/#concept-dtl-update
-/// "To update a DOMTokenList object's associated attribute, run the steps to
-/// set an attribute value with context object's associated element,
-/// context object's associated attribute's local name, and context object's
-/// serialize steps output."
-fn updateBackingAttribute(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-
-    // If not associated with an element, nothing to update
+/// The token set follows the associated attribute: DOM's attribute change
+/// steps for a DOMTokenList - "If localName is set's attribute name,
+/// namespace is null, and value is null, then empty token set. Otherwise, if
+/// localName is set's attribute name and namespace is null, then set set's
+/// token set to value, parsed" - run LAZILY, when the set is next read,
+/// rather than on every attribute change.
+///
+/// Observably the same: the token set is visible only through this list, and
+/// it always equals the parse of the value it was last synced to, because
+/// every change the list makes to the set runs the update steps, which write
+/// the attribute (and record that value here). So comparing the attribute's
+/// current value with the last one parsed says exactly whether the change
+/// steps would have run. Eager steps would need the list registered against
+/// its element - any element in any namespace, for classList and part - and
+/// a list routinely outlives its element (script keeps `el.classList` and
+/// drops `el`), which is the recycled-address hazard of a registry keyed on
+/// the element (docs/lessons/architecture-a-stale-weak-callback-s-registry-remove-evicts.md).
+fn followAttribute(internal: *InternalState) !void {
     const element = internal.element orelse return;
-    const attr_name = internal.attr_name orelse return;
+    const name = internal.attr_name orelse return;
+    var current = try interfaces.Element.call_getAttributeNS(element, null, name);
+    defer if (current) |*c| c.deinit(element.ctx.allocator);
+    const value: ?[]const u8 = if (current) |c| c.asSlice() else null;
+    if (internal.synced and optionalEql(internal.synced_value, value)) return;
+    // Step 1 (null empties the set) and step 2 (a value is parsed).
+    try parseInto(internal, value orelse "");
+    try recordSynced(internal, value);
+}
 
-    // Serialize tokens to space-separated string
-    var value = get_value(instance) catch return;
-    defer value.deinit(internal.allocator);
+fn optionalEql(a: ?[]const u8, b: ?[]const u8) bool {
+    if (a == null or b == null) return a == null and b == null;
+    return std.mem.eql(u8, a.?, b.?);
+}
 
-    // Set the attribute on the element
-    interfaces.Element.call_setAttribute(element, attr_name, value) catch {};
+fn recordSynced(internal: *InternalState, value: ?[]const u8) !void {
+    const copy: ?[]u8 = if (value) |v| try internal.allocator.dupe(u8, v) else null;
+    if (internal.synced_value) |old| internal.allocator.free(old);
+    internal.synced_value = copy;
+    internal.synced = true;
+}
+
+/// The token set becomes `value`, run through Infra's ordered set parser:
+/// split on ASCII whitespace, each token once, in first-seen order.
+fn parseInto(internal: *InternalState, value: []const u8) !void {
+    for (internal.tokens.toSliceMut()) |*token| token.deinit(internal.allocator);
+    internal.tokens.clear();
+    var it = std.mem.tokenizeAny(u8, value, ascii_whitespace);
+    while (it.next()) |token| try appendToken(internal, token);
+}
+
+/// Infra's ASCII whitespace.
+const ascii_whitespace = " \t\n\r\x0c";
+
+/// Steps 1-2 of add, remove, toggle and replace for one token.
+fn validateToken(token: []const u8) !void {
+    if (token.len == 0) return error.SyntaxError;
+    if (std.mem.indexOfAny(u8, token, ascii_whitespace) != null) return error.InvalidCharacterError;
+}
+
+fn indexOf(internal: *InternalState, token: []const u8) ?usize {
+    for (internal.tokens.toSlice(), 0..) |t, i| {
+        if (std.mem.eql(u8, t.asSlice(), token)) return i;
+    }
+    return null;
+}
+
+/// Infra "append" to an ordered set: nothing if it is already there.
+fn appendToken(internal: *InternalState, token: []const u8) !void {
+    if (indexOf(internal, token) != null) return;
+    const owned = try runtime.DOMString.initDupe(internal.allocator, token);
+    errdefer {
+        var o = owned;
+        o.deinit(internal.allocator);
+    }
+    try internal.tokens.append(owned);
+}
+
+fn removeToken(internal: *InternalState, token: []const u8) void {
+    const i = indexOf(internal, token) orelse return;
+    var removed = internal.tokens.remove(i) catch return;
+    removed.deinit(internal.allocator);
+}
+
+/// The ordered set serializer: the tokens joined by single spaces.
+fn serialize(internal: *InternalState, allocator: std.mem.Allocator) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    for (internal.tokens.toSlice(), 0..) |token, i| {
+        if (i > 0) try out.append(allocator, ' ');
+        try out.appendSlice(allocator, token.asSlice());
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+/// The update steps.
+/// Spec: https://dom.spec.whatwg.org/#concept-dtl-update
+fn runUpdateSteps(internal: *InternalState) !void {
+    const element = internal.element orelse return;
+    const name = internal.attr_name orelse return;
+    // Step 1: "If get an attribute by namespace and local name given null,
+    // set's attribute name, and set's element returns null and set's token
+    // set is empty, then return." - remove() on an element with no class
+    // attribute does not create one.
+    if (internal.tokens.size() == 0) {
+        if (!try interfaces.Element.call_hasAttributeNS(element, null, name)) return;
+    }
+    // Step 2: "Set an attribute value given set's element, set's attribute
+    // name, and the result of running the ordered set serializer for set's
+    // token set."
+    const text = try serialize(internal, internal.allocator);
+    defer internal.allocator.free(text);
+    try interfaces.Element.call_setAttributeNS(element, null, name, runtime.DOMString.initInterned(text));
+    // The change steps parse that value back into this same set; record it
+    // rather than re-parse it on the next read.
+    try recordSynced(internal, text);
 }
 
 /// Set supported tokens for supports() method
@@ -441,4 +452,6 @@ pub fn setElement(instance: *runtime.Instance, element: ?*runtime.Instance, attr
     const internal = getInternal(instance) orelse return;
     internal.element = element;
     internal.attr_name = attr_name;
+    // The set follows this element's attribute from its next read on.
+    internal.synced = false;
 }

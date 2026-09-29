@@ -97,6 +97,7 @@ pub const SpeechRecognition = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "grammars", "get_grammars", "set_grammars" },
+            .{ "lang", "get_lang", "set_lang" },
             .{ "continuous", "get_continuous", "set_continuous" },
             .{ "interimResults", "get_interimResults", "set_interimResults" },
             .{ "maxAlternatives", "get_maxAlternatives", "set_maxAlternatives" },
@@ -116,9 +117,7 @@ pub const SpeechRecognition = struct {
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "lang", "get_lang", "set_lang" },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = true;
     };

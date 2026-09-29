@@ -97,4 +97,11 @@ pub const SVGNumber = struct {
     pub fn set_value(instance: *runtime.Instance, value: f32) anyerror!void {
         try SVGNumberImpl.set_value(instance, value);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_value", 0b1 },
+    };
 };

@@ -11,4 +11,8 @@ pub const ScoreAdOutput = struct {
     bidCurrency: ?runtime.DOMString = null,
     incomingBidInSellerCurrency: ?f64 = null,
     allowComponentAuction: ?bool = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "desirability", "bid", "incomingBidInSellerCurrency" };
 };

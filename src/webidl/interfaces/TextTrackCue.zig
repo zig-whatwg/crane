@@ -186,4 +186,11 @@ pub const TextTrackCue = struct {
     pub fn set_onexit(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try TextTrackCueImpl.set_onexit(instance, value);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_startTime", 0b1 },
+    };
 };

@@ -394,4 +394,14 @@ pub const Animation = struct {
     pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
         return try AnimationImpl.call_cancel(instance);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_startTime", 0b1 },
+        .{ "set_currentTime", 0b1 },
+        .{ "set_playbackRate", 0b1 },
+        .{ "call_updatePlaybackRate", 0b1 },
+    };
 };

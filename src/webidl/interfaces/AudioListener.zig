@@ -173,4 +173,12 @@ pub const AudioListener = struct {
     pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
         return try AudioListenerImpl.call_setPosition(instance, x, y, z);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_setOrientation", 0b111111 },
+        .{ "call_setPosition", 0b111 },
+    };
 };

@@ -10,4 +10,8 @@ pub const RTCRtpContributingSource = struct {
     source: u32,
     audioLevel: ?f64 = null,
     rtpTimestamp: u32,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "timestamp", "audioLevel" };
 };

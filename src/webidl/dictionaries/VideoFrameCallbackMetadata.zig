@@ -16,4 +16,8 @@ pub const VideoFrameCallbackMetadata = struct {
     captureTime: ?typedefs.DOMHighResTimeStamp = null,
     receiveTime: ?typedefs.DOMHighResTimeStamp = null,
     rtpTimestamp: ?u32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "presentationTime", "expectedDisplayTime", "mediaTime", "processingDuration", "captureTime", "receiveTime" };
 };

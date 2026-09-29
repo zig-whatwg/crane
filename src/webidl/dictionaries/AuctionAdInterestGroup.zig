@@ -16,4 +16,8 @@ pub const AuctionAdInterestGroup = struct {
     lifetimeMs: f64,
     additionalBidKey: ?runtime.DOMString = null,
     privateAggregationConfig: ?ProtectedAudiencePrivateAggregationConfig = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "priority", "lifetimeMs" };
 };

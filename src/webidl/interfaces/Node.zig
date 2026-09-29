@@ -130,6 +130,9 @@ pub const Node = struct {
         pub const eager_properties = .{
             .{ "nodeType", "get_nodeType", null },
             .{ "nodeName", "get_nodeName", null },
+            .{ "baseURI", "get_baseURI", null },
+            .{ "isConnected", "get_isConnected", null },
+            .{ "ownerDocument", "get_ownerDocument", null },
             .{ "parentNode", "get_parentNode", null },
             .{ "parentElement", "get_parentElement", null },
             .{ "childNodes", "get_childNodes", null },
@@ -142,11 +145,7 @@ pub const Node = struct {
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
-        pub const lazy_properties = .{
-            .{ "baseURI", "get_baseURI", null },
-            .{ "isConnected", "get_isConnected", null },
-            .{ "ownerDocument", "get_ownerDocument", null },
-        };
+        pub const lazy_properties = .{};
 
         pub const has_constructor = false;
     };

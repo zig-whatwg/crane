@@ -21,4 +21,8 @@ pub const WebTransportConnectionStats = struct {
     datagrams: WebTransportDatagramStats,
     estimatedSendRate: ?u64 = null,
     atSendCapacity: ?bool = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "smoothedRtt", "rttVariation", "minRtt" };
 };

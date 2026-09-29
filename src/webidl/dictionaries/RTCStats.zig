@@ -10,4 +10,8 @@ pub const RTCStats = struct {
     timestamp: typedefs.DOMHighResTimeStamp,
     type: enums.RTCStatsType,
     id: runtime.DOMString,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"timestamp"};
 };

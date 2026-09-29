@@ -20,4 +20,8 @@ pub const RTCRtpEncodingParameters = struct {
     priority: ?enums.RTCPriorityType = null,
     networkPriority: ?enums.RTCPriorityType = null,
     scalabilityMode: ?runtime.DOMString = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "maxFramerate", "scaleResolutionDownBy" };
 };

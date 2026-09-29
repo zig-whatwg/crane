@@ -14,4 +14,8 @@ pub const ReportResultBrowserSignals = struct {
     topLevelSellerSignals: ?runtime.DOMString = null,
     modifiedBid: ?f64 = null,
     dataVersion: ?u32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "desirability", "modifiedBid" };
 };

@@ -13,4 +13,8 @@ pub const DeviceOrientationEventInit = struct {
     beta: ?f64 = null,
     gamma: ?f64 = null,
     absolute: ?bool = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "alpha", "beta", "gamma" };
 };

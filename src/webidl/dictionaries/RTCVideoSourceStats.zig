@@ -13,4 +13,8 @@ pub const RTCVideoSourceStats = struct {
     height: ?u32 = null,
     frames: ?u32 = null,
     framesPerSecond: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"framesPerSecond"};
 };

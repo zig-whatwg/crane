@@ -13,4 +13,8 @@ pub const WheelEventInit = struct {
     deltaY: ?f64 = null,
     deltaZ: ?f64 = null,
     deltaMode: ?u32 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "deltaX", "deltaY", "deltaZ" };
 };

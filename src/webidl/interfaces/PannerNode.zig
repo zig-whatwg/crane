@@ -291,4 +291,18 @@ pub const PannerNode = struct {
     pub fn call_setPosition(instance: *runtime.Instance, x: f32, y: f32, z: f32) anyerror!void {
         return try PannerNodeImpl.call_setPosition(instance, x, y, z);
     }
+
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "set_refDistance", 0b1 },
+        .{ "set_maxDistance", 0b1 },
+        .{ "set_rolloffFactor", 0b1 },
+        .{ "set_coneInnerAngle", 0b1 },
+        .{ "set_coneOuterAngle", 0b1 },
+        .{ "set_coneOuterGain", 0b1 },
+        .{ "call_setOrientation", 0b111 },
+        .{ "call_setPosition", 0b111 },
+    };
 };

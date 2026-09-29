@@ -19,4 +19,8 @@ pub const VideoDecoderConfig = struct {
     optimizeForLatency: ?bool = null,
     rotation: ?f64 = null,
     flip: ?bool = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"rotation"};
 };

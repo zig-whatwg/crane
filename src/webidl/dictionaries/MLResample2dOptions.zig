@@ -14,4 +14,8 @@ pub const MLResample2dOptions = struct {
     scales: ?[]const f32 = null,
     sizes: ?[]const runtime.JSValue = null,
     axes: ?[]const runtime.JSValue = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"scales"};
 };

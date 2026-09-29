@@ -14,4 +14,8 @@ pub const RTCAudioSourceStats = struct {
     totalSamplesDuration: ?f64 = null,
     echoReturnLoss: ?f64 = null,
     echoReturnLossEnhancement: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{ "audioLevel", "totalAudioEnergy", "totalSamplesDuration", "echoReturnLoss", "echoReturnLossEnhancement" };
 };

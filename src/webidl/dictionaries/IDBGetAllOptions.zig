@@ -9,4 +9,8 @@ pub const IDBGetAllOptions = struct {
     query: ?runtime.JSValue = null,
     count: ?u32 = null,
     direction: ?enums.IDBCursorDirection = null,
+
+    /// `any` members: one present with the value null converts to `.null`,
+    /// not to "not present".
+    pub const any_members = .{"query"};
 };

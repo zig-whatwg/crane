@@ -357,6 +357,15 @@ pub fn setterPrefix(attr: types.Attribute) []const u8 {
     return if (attr.static) "set_static_" else "set_";
 }
 
+/// Whether `op` is a regular operation - a method of the interface prototype.
+/// WebIDL 2.5.3: "If an operation has an identifier, then it is a regular
+/// operation" - a special one (getter, setter, deleter, stringifier) declared
+/// with an identifier is both. Storage's `deleter undefined
+/// removeItem(DOMString key)` is `Storage.prototype.removeItem`.
+fn isRegularOperation(op: types.Operation) bool {
+    return op.name != null;
+}
+
 pub fn writeMetadata(
     writer: anytype,
     interface_name: []const u8,
@@ -603,13 +612,9 @@ pub fn writeMetadata(
             // Skip static methods - they go in static_methods
             if (op.static) continue;
 
-            // Include regular operations AND named special operations (like getter item())
-            // Named special operations should be exposed as methods per WebIDL spec
-            const should_include = op.special == null or
-                op.special.? == .getter or
-                op.special.? == .setter;
-
-            if (should_include) {
+            // Every named operation is a regular one, special or not
+            // (isRegularOperation): getter item(), deleter removeItem().
+            if (isRegularOperation(op)) {
                 // WebIDL's `length`: the fewest required arguments of any
                 // overload - "the length of the shortest argument list in the
                 // effective overload set". For a single operation that is its
@@ -746,12 +751,8 @@ pub fn writeMetadata(
     try writer.writeAll("        pub const own_methods = .{\n");
     for (own_operations) |op| {
         if (op.name) |name| {
-            // Include regular operations AND named special operations
-            const should_include = op.special == null or
-                op.special.? == .getter or
-                op.special.? == .setter;
-
-            if (should_include) {
+            // Every named operation is a regular one (isRegularOperation).
+            if (isRegularOperation(op)) {
                 try writer.print("            \"{s}\",\n", .{name});
             }
         }
@@ -790,11 +791,7 @@ pub fn writeMetadata(
     // Inherited methods = all_operations - own_operations
     for (all_operations) |all_op| {
         if (all_op.name) |all_name| {
-            const should_include = all_op.special == null or
-                all_op.special.? == .getter or
-                all_op.special.? == .setter;
-
-            if (should_include) {
+            if (isRegularOperation(all_op)) {
                 // Check if this method is NOT in own_operations
                 var is_own = false;
                 for (own_operations) |own_op| {
@@ -3078,6 +3075,167 @@ fn writeLegacyNullToEmpty(
     try writer.writeAll("    };\n\n");
 }
 
+/// WebIDL 3.2.7 `float` and 3.2.9 `double`, not their `unrestricted` forms:
+/// "Let x be ? ToNumber(V). If x is NaN, +Infinity, or -Infinity, then throw a
+/// TypeError." Codegen maps all four to f32/f64, so the binding learns which
+/// values are restricted from this table - keyed like `legacy_null_to_empty`,
+/// bit i for argument i and bit 0 for an attribute setter's value - and checks
+/// each one at its own conversion step:
+///
+///     pub const restricted_floats = .{ .{ "set_max", 0b1 }, .{ "call_seek", 0b101 } };
+fn writeRestrictedFloats(
+    writer: anytype,
+    own_attributes: []const types.Attribute,
+    overload_ops: []const types.Operation,
+    model: ?*const ir.IR,
+) !void {
+    const allocator = std.heap.page_allocator;
+
+    var any = false;
+    for (own_attributes) |attr| {
+        if (restrictedSetter(attr, model)) any = true;
+    }
+    for (overload_ops) |op| {
+        if (restrictedFloatMask(op, model) != 0) any = true;
+    }
+    if (!any) return;
+
+    try writer.writeAll("    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and\n");
+    try writer.writeAll("    /// the infinities throw a TypeError for (bit i = argument i; an attribute\n");
+    try writer.writeAll("    /// setter's value is bit 0).\n");
+    try writer.writeAll("    pub const restricted_floats = .{\n");
+    for (own_attributes) |attr| {
+        if (!restrictedSetter(attr, model)) continue;
+        const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
+        defer if (!std.mem.eql(u8, sanitized_name, attr.name)) allocator.free(sanitized_name);
+        try writer.print("        .{{ \"set_{s}\", 0b1 }},\n", .{sanitized_name});
+    }
+    const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+    for (overload_sets) |set| {
+        // An unresolvable overload set binds one function taking a union of
+        // argument lists; nothing there converts argument by argument.
+        if (set.isOverloaded() and !isResolvableOverloadSet(set)) continue;
+        for (set.operations, 0..) |op, k| {
+            const mask = restrictedFloatMask(op, model);
+            if (mask == 0) continue;
+            const name = op.name orelse continue;
+            const prefix = if (op.static) "call_static_" else "call_";
+            if (k == 0) {
+                try writer.print("        .{{ \"{s}{s}\", 0b{b} }},\n", .{ prefix, name, mask });
+            } else {
+                try writer.print("        .{{ \"{s}{s}__{d}\", 0b{b} }},\n", .{ prefix, name, k, mask });
+            }
+        }
+    }
+    try writer.writeAll("    };\n\n");
+}
+
+/// A writable, non-static attribute whose setter converts a restricted float.
+/// (A static setter binds through a path that reads no table, as for
+/// `legacy_null_to_empty`.)
+fn restrictedSetter(attr: types.Attribute, model: ?*const ir.IR) bool {
+    return !attr.readonly and !attr.static and isRestrictedFloat(attr.idlType, model);
+}
+
+fn restrictedFloatMask(op: types.Operation, model: ?*const ir.IR) u32 {
+    var mask: u32 = 0;
+    for (op.arguments, 0..) |arg, i| {
+        if (i >= 32) break;
+        if (isRestrictedFloat(arg.idlType, model)) mask |= @as(u32, 1) << @intCast(i);
+    }
+    return mask;
+}
+
+/// Whether converting to `idl_type` is a restricted `double` or `float`
+/// conversion: the type itself, a typedef of one (DOMHighResTimeStamp), its
+/// nullable form, or a sequence or FrozenArray of one (each element is such a
+/// conversion). Not a union: a union's conversion picks the member type
+/// itself, and not a record.
+pub fn isRestrictedFloat(idl_type: types.IDLType, model: ?*const ir.IR) bool {
+    if (idl_type.unionTypes != null or idl_type.record != null) return false;
+    if (std.mem.eql(u8, idl_type.type, "sequence") or std.mem.eql(u8, idl_type.type, "FrozenArray")) {
+        const inner = idl_type.generic orelse return false;
+        return isRestrictedFloatName(std.mem.trimEnd(u8, std.mem.trim(u8, inner, " \t"), "?"), model);
+    }
+    if (idl_type.generic != null or idl_type.sequence != null) return false;
+    return isRestrictedFloatName(idl_type.type, model);
+}
+
+fn isRestrictedFloatName(type_name: []const u8, model: ?*const ir.IR) bool {
+    var name = type_name;
+    // A typedef of a typedef, a few deep at most.
+    var depth: usize = 0;
+    while (depth < 8) : (depth += 1) {
+        if (std.mem.eql(u8, name, "double") or std.mem.eql(u8, name, "float")) return true;
+        const m = model orelse return false;
+        const typedef = m.typedefs.get(name) orelse return false;
+        const target = typedef.idlType;
+        if (target.unionTypes != null or target.generic != null) return false;
+        name = target.type;
+    }
+    return false;
+}
+
+/// A dictionary's restricted float members, for the dictionary converter:
+///
+///     pub const restricted_members = .{ "deltaX", "startTime" };
+///
+/// Written inside the dictionary's struct; nothing when it has none.
+pub fn writeRestrictedMembers(writer: anytype, members: []const types.DictionaryMember, model: ?*const ir.IR) !void {
+    var any = false;
+    for (members) |member| {
+        if (isRestrictedFloat(member.idlType, model)) any = true;
+    }
+    if (!any) return;
+    try writer.writeAll("\n    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the\n");
+    try writer.writeAll("    /// infinities throw a TypeError when the dictionary is converted.\n");
+    try writer.writeAll("    pub const restricted_members = .{");
+    var first = true;
+    for (members) |member| {
+        if (!isRestrictedFloat(member.idlType, model)) continue;
+        try writer.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+        first = false;
+    }
+    try writer.writeAll(" };\n");
+}
+
+/// A dictionary's `any` members, for the dictionary converter:
+///
+///     pub const any_members = .{ "detail" };
+///
+/// WebIDL 3.2.18: a member is present unless its value is undefined, so a
+/// member whose value is null is present, with the value null. A member the
+/// IDL types as `any` is a `?runtime.JSValue` whose Zig null means "not
+/// present"; the converter gives a present null `.null` instead - only for
+/// `any`, whose null is a JavaScript value to keep. (`object?` and nullable
+/// unions keep reading a present null as Zig null, which their impls expect.)
+/// Written inside the dictionary's struct; nothing when it has none.
+pub fn writeAnyMembers(writer: anytype, members: []const types.DictionaryMember) !void {
+    var has_any = false;
+    for (members) |member| {
+        if (isAnyMember(member)) has_any = true;
+    }
+    if (!has_any) return;
+    try writer.writeAll("\n    /// `any` members: one present with the value null converts to `.null`,\n");
+    try writer.writeAll("    /// not to \"not present\".\n");
+    try writer.writeAll("    pub const any_members = .{");
+    var first = true;
+    for (members) |member| {
+        if (!isAnyMember(member)) continue;
+        try writer.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+        first = false;
+    }
+    try writer.writeAll(" };\n");
+}
+
+/// Whether a dictionary member's type is `any` (not required: a required
+/// member is never absent).
+fn isAnyMember(member: types.DictionaryMember) bool {
+    const t = member.idlType;
+    return !member.required and t.unionTypes == null and t.generic == null and t.sequence == null and t.record == null and std.mem.eql(u8, t.type, "any");
+}
+
 /// WebIDL (3.7.6, "create an operation function"): an operation whose return
 /// type is a promise runs its steps - the brand check, argument conversion and
 /// the operation - with an exception handler, and an exception becomes a
@@ -3481,6 +3639,10 @@ pub const DelegateOptions = struct {
     /// anything else, ElementInternals included: its reflected target is its
     /// element's internal content attribute map, not the element's attributes.
     reflect_on_element: bool = false,
+    /// The IR the file is generated from, to see through typedefs
+    /// (`restricted_floats`: DOMHighResTimeStamp is a restricted double).
+    /// Null only in tests that need no typedef.
+    model: ?*const ir.IR = null,
 };
 
 /// Whether a delegate file has a setter for `attr`: the conditions
@@ -3785,6 +3947,9 @@ pub fn writeDelegateFunctions(
 
     // Which string arguments and attribute values null converts to "" for.
     try writeLegacyNullToEmpty(writer, own_attributes, overload_ops);
+    // Which float arguments and attribute values NaN and the infinities throw
+    // for.
+    try writeRestrictedFloats(writer, own_attributes, overload_ops, options.model);
     try writePromiseReturning(writer, overload_ops);
 
     // Write serialize delegate for stringifier interfaces

@@ -13,4 +13,8 @@ pub const MLLayerNormalizationOptions = struct {
     bias: ?*runtime.Instance = null,
     axes: ?[]const runtime.JSValue = null,
     epsilon: ?f64 = null,
+
+    /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
+    /// infinities throw a TypeError when the dictionary is converted.
+    pub const restricted_members = .{"epsilon"};
 };

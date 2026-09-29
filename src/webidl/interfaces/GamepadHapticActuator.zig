@@ -128,6 +128,13 @@ pub const GamepadHapticActuator = struct {
         return try GamepadHapticActuatorImpl.call_pulse(instance, value, duration);
     }
 
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_pulse", 0b11 },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
