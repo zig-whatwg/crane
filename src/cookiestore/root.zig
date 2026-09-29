@@ -84,7 +84,7 @@ pub const normalizeDomain = domain_matching.normalizeDomain;
 pub const jar = @import("jar.zig");
 pub const CookieJar = jar.CookieJar;
 pub const RetrieveOptions = jar.RetrieveOptions;
-pub const SameSiteContext = jar.SameSiteContext;
+pub const SameSiteMode = jar.SameSiteMode;
 pub const MAX_COOKIES_PER_DOMAIN = jar.MAX_COOKIES_PER_DOMAIN;
 pub const MAX_TOTAL_COOKIES = jar.MAX_TOTAL_COOKIES;
 
@@ -123,9 +123,15 @@ pub const Subscription = event_dispatch.Subscription;
 // HTTP integration (for Fetch API)
 pub const http_integration = @import("http_integration.zig");
 pub const generateCookieHeader = http_integration.generateCookieHeader;
-pub const parseSetCookieHeader = http_integration.parseSetCookieHeader;
+pub const parseCookie = http_integration.parseCookie;
+pub const storeCookie = http_integration.storeCookie;
+pub const parseAndStoreCookie = http_integration.parseAndStoreCookie;
+pub const serializeCookies = http_integration.serializeCookies;
+pub const parseDate = http_integration.parseDate;
+pub const StoreOptions = http_integration.StoreOptions;
+pub const StoreResult = http_integration.StoreResult;
+pub const RequestUrl = http_integration.RequestUrl;
 pub const processSetCookieHeaders = http_integration.processSetCookieHeaders;
-pub const ParseError = http_integration.ParseError;
 
 test {
     _ = cookie;

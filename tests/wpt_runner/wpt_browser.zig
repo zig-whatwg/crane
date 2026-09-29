@@ -181,9 +181,8 @@ pub const WptBrowser = struct {
 
     /// Cleanup
     pub fn deinit(self: *WptBrowser) void {
-        // Clear the blob resolver and document origin registrations
+        // Clear the blob resolver registration
         workers.clearBlobResolver();
-        file.clearDocumentOrigin();
 
         if (self.ca_bundle_path) |ca| {
             // Drop the borrowed path before freeing it.
@@ -252,18 +251,17 @@ pub const WptBrowser = struct {
         const test_url = try self.buildTestUrl(test_path);
         defer self.allocator.free(test_url);
 
+        // Each test file starts with an empty cookie jar, as with a fresh
+        // profile: a run shares one Browser across every file in a shard, and
+        // a file's result must not depend on the cookies the files before it
+        // left behind.
+        self.browser.cookie_jar.clear();
+
         // Navigate to create fresh context
         try self.browser.navigate(test_url, ctx_type);
 
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
-
-        // Set the document origin for blob URL operations.
-        // Both URL.createObjectURL (to store blobs with the correct origin)
-        // and Workers (to resolve blob URLs with same-origin validation)
-        // need to know the current document origin.
-        const origin = originOfUrl(test_url) orelse WPT_ORIGIN;
-        file.setDocumentOrigin(origin);
 
         // Load testharness.js
         try self.loadTestHarness(ctx, timeout.explicitTimeout());
@@ -318,6 +316,9 @@ pub const WptBrowser = struct {
         // optional is now explicit rather than incidental.
         var phase: ?clock.Timer = clock.Timer.start();
 
+        // Each test file starts with an empty cookie jar, as runTest's do.
+        self.browser.cookie_jar.clear();
+
         // Navigate to test URL with skip_load so we can inject testharness first
         try self.browser.navigateWithOptions(test_url, context_type, .{
             .skip_load = true,
@@ -325,12 +326,6 @@ pub const WptBrowser = struct {
 
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
-
-        // Set the document origin for blob URL operations.
-        // Both URL.createObjectURL (to store blobs with the correct origin)
-        // and Workers (to resolve blob URLs with same-origin validation)
-        // need to know the current document origin.
-        file.setDocumentOrigin(origin);
 
         // Load testharness.js BEFORE loading the page
         // This ensures testharness globals are available when scripts in HTML execute

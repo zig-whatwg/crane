@@ -28,6 +28,9 @@ const fetch_params = @import("../internal/fetch_params.zig");
 const FetchParams = fetch_params.FetchParams;
 const scheme_fetch = @import("scheme_fetch.zig");
 const validation = @import("../internal/validation.zig");
+const referrer_policy = @import("referrer_policy");
+const mime_blocking = @import("mime_blocking.zig");
+const origins = @import("../internal/origins.zig");
 const clock = @import("clock");
 
 /// Bad ports that should be blocked per Fetch spec.
@@ -196,8 +199,21 @@ pub fn mainFetchStart(
         request.referrer_policy = .strict_origin_when_cross_origin;
     }
 
-    // Step 9: Determine referrer
-    // TODO: Implement full referrer determination using referrer_policy module
+    // Step 9: If request's referrer is not "no-referrer", set request's
+    // referrer to the result of invoking determine request's referrer.
+    // ("client" was resolved to its URL where the client is known - fetch()
+    // and XMLHttpRequest's send() - and a request still carrying "client"
+    // was made by the user agent itself, with no document to name.)
+    switch (request.referrer) {
+        .no_referrer, .client => {},
+        .url => |source| {
+            const determined = determineRequestReferrer(allocator, request.referrer_policy, source, request.currentUrl()) catch return MainFetchError.OutOfMemory;
+            if (determined) |url| {
+                defer allocator.free(url);
+                request.setReferrerUrl(url) catch return MainFetchError.OutOfMemory;
+            } else request.setReferrer(.no_referrer);
+        },
+    }
 
     // Step 10: Upgrade URL scheme if needed
     // TODO: Implement HTTPS upgrading
@@ -226,7 +242,7 @@ pub fn mainFetchStart(
         // 1. Set request's response tainting to "basic".
         request.response_tainting = .basic;
         // 2. Return the result of running scheme fetch.
-        return schemeFetch(allocator, scheme, url_str);
+        return schemeFetch(allocator, request, scheme);
     }
 
     // request's mode is "same-origin": a network error.
@@ -240,7 +256,7 @@ pub fn mainFetchStart(
         // 2. Set request's response tainting to "opaque".
         request.response_tainting = .@"opaque";
         // 3. Return the result of running scheme fetch.
-        return schemeFetch(allocator, scheme, url_str);
+        return schemeFetch(allocator, request, scheme);
     }
 
     // request's current URL's scheme is not an HTTP(S) scheme: a network
@@ -280,12 +296,67 @@ pub fn isCorsSafelistedMethod(method: []const u8) bool {
     return std.mem.eql(u8, method, "GET") or std.mem.eql(u8, method, "HEAD") or std.mem.eql(u8, method, "POST");
 }
 
+/// Referrer Policy "determine request's referrer" for a request whose
+/// referrer is the URL `source`, going to `current_url`, under `policy`:
+/// the owned referrer to set, or null for "no referrer". Step 4 strips the
+/// source (`stripUrlForReferrer`); `referrer_policy.determineReferrer` does
+/// steps 5-8 over the origins of the stripped URL and the current URL.
+fn determineRequestReferrer(
+    allocator: Allocator,
+    policy: internal_request.ReferrerPolicy,
+    source: []const u8,
+    current_url: []const u8,
+) !?[]const u8 {
+    // 4. Let referrerURL be the result of stripping referrerSource for use
+    //    as a referrer.
+    const referrer_url = (try referrer_policy.stripUrlForReferrer(allocator, source)) orelse return null;
+    defer allocator.free(referrer_url);
+    const source_origin = try origins.serializedOriginOf(allocator, referrer_url);
+    defer allocator.free(source_origin);
+    // An opaque origin has no origin-only form to send.
+    const source_parts = splitSerializedOrigin(source_origin) orelse return null;
+    const target_origin = try origins.serializedOriginOf(allocator, current_url);
+    defer allocator.free(target_origin);
+    const target_parts = splitSerializedOrigin(target_origin) orelse OriginParts{ .scheme = "", .host = "", .port = null };
+
+    const determined = try referrer_policy.determineReferrer(
+        allocator,
+        std.meta.stringToEnum(referrer_policy.ReferrerPolicy, @tagName(policy)) orelse .empty,
+        .{ .scheme = source_parts.scheme, .host = source_parts.host, .port = source_parts.port, .full_url = referrer_url },
+        .{ .scheme = target_parts.scheme, .host = target_parts.host, .port = target_parts.port },
+        try origins.sameOrigin(allocator, referrer_url, current_url),
+    );
+    return switch (determined) {
+        .no_referrer => null,
+        .url => |url| url,
+    };
+}
+
+const OriginParts = struct { scheme: []const u8, host: []const u8, port: ?u16 };
+
+/// A serialized tuple origin's scheme, host and port ("scheme://host[:port]"
+/// - the port only when it is not the scheme's default). Null for "null".
+fn splitSerializedOrigin(origin: []const u8) ?OriginParts {
+    const sep = std.mem.indexOf(u8, origin, "://") orelse return null;
+    const authority = origin[sep + 3 ..];
+    // An IPv6 host keeps its brackets; a port follows the last ':' after it.
+    const host_end = if (authority.len > 0 and authority[0] == '[')
+        (std.mem.indexOfScalar(u8, authority, ']') orelse return null) + 1
+    else
+        std.mem.indexOfScalar(u8, authority, ':') orelse authority.len;
+    const port: ?u16 = if (host_end < authority.len and authority[host_end] == ':')
+        std.fmt.parseInt(u16, authority[host_end + 1 ..], 10) catch return null
+    else
+        null;
+    return .{ .scheme = origin[0..sep], .host = authority[0..host_end], .port = port };
+}
+
 /// Main fetch step 12's "run scheme fetch": HTTP fetch for an HTTP(S) URL
 /// (scheme fetch's "HTTP(S) scheme" branch), the scheme's own steps
 /// otherwise.
-fn schemeFetch(allocator: Allocator, scheme: []const u8, url_str: []const u8) MainFetchError!MainFetchStart {
+fn schemeFetch(allocator: Allocator, request: *const InternalRequest, scheme: []const u8) MainFetchError!MainFetchStart {
     if (scheme_fetch.isHttpScheme(scheme)) return .http_fetch;
-    const scheme_result = scheme_fetch.schemeFetch(allocator, scheme, url_str) catch |err| {
+    const scheme_result = scheme_fetch.schemeFetchRequest(allocator, request) catch |err| {
         switch (err) {
             error.OutOfMemory => return MainFetchError.OutOfMemory,
         }
@@ -303,14 +374,21 @@ fn schemeFetch(allocator: Allocator, scheme: []const u8, url_str: []const u8) Ma
 pub fn mainFetchFinish(
     params: *FetchParams,
     recursive: bool,
-    response: *InternalResponse,
+    fetched: *InternalResponse,
 ) *InternalResponse {
     const request = params.request;
 
-    // Step 14: If recursive, return early
+    // Step 13: If recursive is true, then return response.
     if (recursive) {
-        return response;
+        return fetched;
     }
+
+    // Step 19 (ahead of 14: it only ever makes response a network error,
+    // which step 14 leaves alone): if response is not a network error and
+    // it should be blocked - as mixed content or by CSP (neither exists
+    // here yet), due to its MIME type, or due to nosniff - then response is
+    // a network error.
+    const response = blockedByMime(request, fetched);
 
     // Step 20: a response to HEAD or CONNECT, or with a null body status, has
     // a null body, "and disregard any enqueuing toward it" - a body still
@@ -359,6 +437,21 @@ pub fn mainFetchFinish(
     // Step 17-18: Process callbacks (handled by caller)
 
     return response;
+}
+
+/// Main fetch step 19's MIME checks for `response` to `request`: the
+/// response itself, or - when "should response to request be blocked due to
+/// its MIME type" or "... due to nosniff" says blocked - a network error in
+/// its place (`response` let go).
+fn blockedByMime(request: *const InternalRequest, response: *InternalResponse) *InternalResponse {
+    if (isNetworkError(response)) return response;
+    const allocator = response.allocator;
+    const blocked = (mime_blocking.blockedDueToMimeType(allocator, request.destination, &response.header_list) catch false) or
+        (mime_blocking.blockedDueToNosniff(allocator, request.destination, &response.header_list) catch false);
+    if (!blocked) return response;
+    const network_error = internal_response.networkError(allocator) catch return response;
+    response.deinit();
+    return network_error;
 }
 
 /// Main fetch step 14.1, 2-3, for `response`, a response to `request`
@@ -774,4 +867,91 @@ test "main fetch step 12: an unsafe cross-origin request needs a CORS-preflight"
     request.unsafe_request = false;
     request.use_cors_preflight = true;
     try std.testing.expectEqual(.http_fetch_with_cors_preflight, try mainFetchStart(allocator, params, false));
+}
+
+test "main fetch step 9: a URL referrer is replaced by the referrer its policy allows" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    try request.setReferrerUrl("http://user:pw@a.test/page?q#frag");
+    request.mode = .no_cors;
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    // The default policy, strict-origin-when-cross-origin, to another
+    // origin: the referrer's origin.
+    _ = try mainFetchStart(allocator, params, false);
+    try std.testing.expectEqualStrings("http://a.test/", request.referrer.url);
+
+    // "no-referrer": none at all.
+    request.referrer_policy = .no_referrer;
+    _ = try mainFetchStart(allocator, params, true);
+    try std.testing.expect(request.referrer == .no_referrer);
+}
+
+test "splitSerializedOrigin: scheme, host and a non-default port" {
+    const a = splitSerializedOrigin("http://a.test:8000").?;
+    try std.testing.expectEqualStrings("http", a.scheme);
+    try std.testing.expectEqualStrings("a.test", a.host);
+    try std.testing.expectEqual(@as(?u16, 8000), a.port);
+    const b = splitSerializedOrigin("https://[::1]").?;
+    try std.testing.expectEqualStrings("[::1]", b.host);
+    try std.testing.expectEqual(@as(?u16, null), b.port);
+    try std.testing.expect(splitSerializedOrigin("null") == null);
+}
+
+test "main fetch step 19: a script with an image type, or a nosniff one without a JavaScript type, is a network error" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+
+    const request = try InternalRequest.init(allocator, "http://a.test/s.js");
+    defer request.deinit();
+    request.destination = .script;
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    const image = try InternalResponse.init(allocator);
+    image.status = 200;
+    try image.header_list.append("Content-Type", "image/png");
+    const blocked = mainFetchFinish(params, false, image);
+    defer blocked.deinit();
+    try std.testing.expect(isNetworkError(blocked));
+
+    const plain = try InternalResponse.init(allocator);
+    plain.status = 200;
+    try plain.header_list.append("Content-Type", "text/plain");
+    try plain.header_list.append("X-Content-Type-Options", "nosniff");
+    const nosniffed = mainFetchFinish(params, false, plain);
+    defer nosniffed.deinit();
+    try std.testing.expect(isNetworkError(nosniffed));
+
+    const js = try InternalResponse.init(allocator);
+    js.status = 200;
+    try js.header_list.append("Content-Type", "text/javascript");
+    try js.header_list.append("X-Content-Type-Options", "nosniff");
+    const allowed = mainFetchFinish(params, false, js);
+    defer allowed.deinit();
+    try std.testing.expect(allowed == js);
+
+    // A request with no destination is not checked at all.
+    request.destination = .empty;
+    const csv = try InternalResponse.init(allocator);
+    csv.status = 200;
+    try csv.header_list.append("Content-Type", "text/csv");
+    const kept = mainFetchFinish(params, false, csv);
+    defer kept.deinit();
+    try std.testing.expect(kept == csv);
 }

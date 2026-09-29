@@ -18,6 +18,9 @@ pub const SameSite = enum {
     lax,
     /// Cookie is sent in all contexts (requires Secure attribute)
     none,
+    /// No SameSite attribute ("unset", layered cookies): sent in every
+    /// same-site mode but "none".
+    unset,
 
     /// Convert to string representation
     pub fn toString(self: SameSite) []const u8 {
@@ -25,6 +28,7 @@ pub const SameSite = enum {
             .strict => "strict",
             .lax => "lax",
             .none => "none",
+            .unset => "unset",
         };
     }
 
@@ -33,6 +37,7 @@ pub const SameSite = enum {
         if (std.ascii.eqlIgnoreCase(s, "strict")) return .strict;
         if (std.ascii.eqlIgnoreCase(s, "lax")) return .lax;
         if (std.ascii.eqlIgnoreCase(s, "none")) return .none;
+        if (std.ascii.eqlIgnoreCase(s, "unset")) return .unset;
         return null;
     }
 };
@@ -124,6 +129,10 @@ pub const Cookie = struct {
     /// Whether this is a host-only cookie (no Domain attribute was specified)
     host_only: bool = true,
 
+    /// Whether a Path attribute set the path (layered cookies "has-path
+    /// attribute"): a __Host- cookie needs one.
+    has_path: bool = false,
+
     /// Partition key for CHIPS (null if not partitioned)
     partition_key: ?PartitionKey = null,
 
@@ -181,6 +190,7 @@ pub const Cookie = struct {
             .http_only = self.http_only,
             .same_site = self.same_site,
             .host_only = self.host_only,
+            .has_path = self.has_path,
             .partition_key = if (self.partition_key) |pk| try pk.clone(allocator) else null,
             .allocator = allocator,
         };
@@ -256,12 +266,17 @@ pub const Cookie = struct {
         // Name must match
         if (!std.mem.eql(u8, self.name, other.name)) return false;
 
-        // Domain must match (considering null)
+        // Domain must match - host-equal (considering null)
         const domain_match = if (self.domain) |d1|
-            if (other.domain) |d2| std.mem.eql(u8, d1, d2) else false
+            if (other.domain) |d2| std.ascii.eqlIgnoreCase(d1, d2) else false
         else
             other.domain == null;
         if (!domain_match) return false;
+
+        // So must the host-only flag: a host-only cookie and a Domain cookie
+        // for the same name, domain and path are two cookies (RFC 6265bis
+        // §5.7, storage model step 23).
+        if (self.host_only != other.host_only) return false;
 
         // Path must match
         if (!std.mem.eql(u8, self.path, other.path)) return false;
@@ -289,6 +304,11 @@ pub const CookieListItem = struct {
 
     /// Cookie value (USVString)
     value: []const u8,
+
+    /// Whether the dictionary has a `value` member. A deleted cookie's item
+    /// has none (Cookie Store "prepare lists from changes": its value is
+    /// undefined); `value` is then empty and not converted.
+    has_value: bool = true,
 
     /// Allocator used for owned memory
     allocator: ?std.mem.Allocator = null,
@@ -336,6 +356,7 @@ pub const CookieListItem = struct {
         return Self{
             .name = try allocator.dupe(u8, self.name),
             .value = try allocator.dupe(u8, self.value),
+            .has_value = self.has_value,
             .allocator = allocator,
         };
     }

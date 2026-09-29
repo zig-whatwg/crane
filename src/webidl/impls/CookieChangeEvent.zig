@@ -165,6 +165,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
                 const item = CookieListItem{
                     .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
                     .value = try ctx.allocator.dupe(u8, dict_item.value orelse ""),
+                    // An absent member stays absent when the list is read.
+                    .has_value = dict_item.value != null,
                     .allocator = ctx.allocator,
                 };
                 try internal.addChanged(item);
@@ -177,6 +179,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
                 const item = CookieListItem{
                     .name = try ctx.allocator.dupe(u8, dict_item.name orelse ""),
                     .value = try ctx.allocator.dupe(u8, dict_item.value orelse ""),
+                    // An absent member stays absent when the list is read.
+                    .has_value = dict_item.value != null,
                     .allocator = ctx.allocator,
                 };
                 try internal.addDeleted(item);

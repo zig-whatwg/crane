@@ -625,19 +625,16 @@ fn openSteps(
     if (!was_opened) fireReadyStateChangeEvent(instance);
 }
 
-/// Record this XHR's relevant settings object's origin, serialized, in
-/// `state`: its realm's global object's settings. A realm with no such
-/// global leaves the request's origin "client".
-fn setClientOrigin(instance: *runtime.Instance, state: *XMLHttpRequestState) !void {
+/// Record this XHR's relevant settings object - its realm's global
+/// object's - in `state` as send()'s request's client. A realm with no such
+/// global leaves the request's origin and referrer "client".
+fn setClient(instance: *runtime.Instance, state: *XMLHttpRequestState) !void {
     const record = instance.ctx.getRealm() orelse return;
     const raw = record.global_object orelse return;
     const global: *runtime.Instance = @ptrCast(@alignCast(raw));
-    const settings = global_settings.of(global) orelse return;
-    const origin = settings.origin(global) catch return;
-    defer global.ctx.allocator.free(origin);
-    // An origin the global does not know yet stays "client".
-    if (origin.len == 0) return;
-    try state.setClientOrigin(origin);
+    var client = try global_settings.requestClient(global);
+    defer client.deinit();
+    try state.setClient(client.request);
 }
 
 /// "Parse JSON from bytes", as a completion: the response getter returns
@@ -883,8 +880,11 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
 
     installEventSink(instance);
     // The request's client is this's relevant settings object: its origin
-    // is the request's (Fetch "fetch" step 13).
-    setClientOrigin(instance, xhr_state) catch return error.OutOfMemory;
+    // is the request's (Fetch "fetch" step 13), and its cookie jar the one
+    // the request's cookies come from and go to.
+    setClient(instance, xhr_state) catch return error.OutOfMemory;
+    // Scheme fetch "blob" reads the blob URL store through this.
+    fetch_body.installBlobURLResolver();
 
     // Steps 1-3, and 7-10, inline and synchronously observable. Step 3 (GET
     // and HEAD) gives back null.

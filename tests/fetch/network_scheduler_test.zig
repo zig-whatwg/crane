@@ -83,7 +83,7 @@ test "a transfer completes through pump, and no pump waits for the response" {
     const request = get(try urlFor(&url_buf, server, "/delay/1"));
     var outcome: Outcome = .{};
     const started_at = clock.monotonicMillis();
-    _ = try scheduler.start(testing.allocator, &request, .{}, Outcome.record, &outcome);
+    _ = try scheduler.start(testing.allocator, &request, Outcome.record, &outcome);
     try testing.expectEqual(@as(usize, 1), scheduler.inFlight());
 
     const longest = pumpUntil(&scheduler, 5_000, outcomeDone, &outcome);
@@ -111,7 +111,7 @@ test "a transfer is under way from start, not from the first pump" {
     const request = get(try urlFor(&url_buf, server, "/delay/1"));
     var outcome: Outcome = .{};
     const started_at = clock.monotonicMillis();
-    _ = try scheduler.start(testing.allocator, &request, .{}, Outcome.record, &outcome);
+    _ = try scheduler.start(testing.allocator, &request, Outcome.record, &outcome);
 
     // Script runs for longer than the server takes, and nothing pumps: the
     // request must already have gone out, as it would from a browser's
@@ -142,8 +142,8 @@ test "transfers to two servers are in flight at once" {
     const request_b = get(try urlFor(&url_b, b, "/delay/1"));
     var outcomes = [2]Outcome{ .{}, .{} };
     const started_at = clock.monotonicMillis();
-    _ = try scheduler.start(testing.allocator, &request_a, .{}, Outcome.record, &outcomes[0]);
-    _ = try scheduler.start(testing.allocator, &request_b, .{}, Outcome.record, &outcomes[1]);
+    _ = try scheduler.start(testing.allocator, &request_a, Outcome.record, &outcomes[0]);
+    _ = try scheduler.start(testing.allocator, &request_b, Outcome.record, &outcomes[1]);
 
     const Both = struct {
         fn done(ctx: *anyopaque) bool {
@@ -172,7 +172,7 @@ test "a cancelled transfer never completes, and leaves nothing behind" {
     var url_buf: [256]u8 = undefined;
     const request = get(try urlFor(&url_buf, server, "/delay/1"));
     var outcome: Outcome = .{};
-    const job = try scheduler.start(testing.allocator, &request, .{}, Outcome.record, &outcome);
+    const job = try scheduler.start(testing.allocator, &request, Outcome.record, &outcome);
     // Let it reach the server first.
     _ = scheduler.pump();
     scheduler.cancel(job);
@@ -198,7 +198,7 @@ test "a refused connection is reported once its retries are spent, without a pum
     const request = get("http://127.0.0.1:9/");
     var outcome: Outcome = .{};
     const started_at = clock.monotonicMillis();
-    _ = try scheduler.start(testing.allocator, &request, .{}, Outcome.record, &outcome);
+    _ = try scheduler.start(testing.allocator, &request, Outcome.record, &outcome);
 
     const longest = pumpUntil(&scheduler, 5_000, outcomeDone, &outcome);
 
@@ -231,7 +231,7 @@ test "a completion callback may start the next transfer" {
             const self: *@This() = @ptrCast(@alignCast(context.?));
             Outcome.record(&self.first, result);
             const next = get(self.second_url);
-            _ = self.scheduler.start(testing.allocator, &next, .{}, Outcome.record, &self.second) catch {};
+            _ = self.scheduler.start(testing.allocator, &next, Outcome.record, &self.second) catch {};
         }
 
         fn done(ctx: *anyopaque) bool {
@@ -244,7 +244,7 @@ test "a completion callback may start the next transfer" {
     var second_buf: [256]u8 = undefined;
     var chain: Chain = .{ .scheduler = &scheduler, .second_url = try urlFor(&second_buf, server, "/get") };
     const first = get(try urlFor(&first_buf, server, "/status/204"));
-    _ = try scheduler.start(testing.allocator, &first, .{}, Chain.firstDone, &chain);
+    _ = try scheduler.start(testing.allocator, &first, Chain.firstDone, &chain);
 
     _ = pumpUntil(&scheduler, 5_000, Chain.done, &chain);
 
@@ -264,7 +264,7 @@ test "deinit cancels what is still in flight" {
     {
         var scheduler = NetworkScheduler.init(testing.allocator);
         defer scheduler.deinit();
-        _ = try scheduler.start(testing.allocator, &request, .{}, Outcome.record, &outcome);
+        _ = try scheduler.start(testing.allocator, &request, Outcome.record, &outcome);
         _ = scheduler.pump();
     }
     // std.testing.allocator fails the test if the transfer outlived deinit.
@@ -341,7 +341,7 @@ test "a streamed transfer hands on its headers before its body, and its body as 
     const request = get(try urlFor(&url_buf, server, "/trickle/10"));
     var record: StreamRecord = .{};
     defer record.deinit();
-    _ = try scheduler.startStreaming(testing.allocator, &request, .{}, record.client());
+    _ = try scheduler.startStreaming(testing.allocator, &request, record.client());
 
     const longest = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &record);
 
@@ -371,7 +371,7 @@ test "a streamed transfer that fails after its headers ends in error" {
     const request = get(try urlFor(&url_buf, server, "/bad-chunk"));
     var record: StreamRecord = .{};
     defer record.deinit();
-    _ = try scheduler.startStreaming(testing.allocator, &request, .{}, record.client());
+    _ = try scheduler.startStreaming(testing.allocator, &request, record.client());
 
     _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &record);
 
@@ -390,7 +390,7 @@ test "a streamed transfer that never connects ends with no headers" {
     const request = get("http://127.0.0.1:9/");
     var record: StreamRecord = .{};
     defer record.deinit();
-    _ = try scheduler.startStreaming(testing.allocator, &request, .{}, record.client());
+    _ = try scheduler.startStreaming(testing.allocator, &request, record.client());
 
     _ = pumpUntil(&scheduler, 5_000, StreamRecord.isEnded, &record);
 
@@ -436,7 +436,7 @@ test "a streamed transfer cancelled from its own head callback hears nothing mor
     var url_buf: [256]u8 = undefined;
     const request = get(try urlFor(&url_buf, server, "/trickle/5"));
     var canceller: Canceller = .{ .scheduler = &scheduler };
-    canceller.job = try scheduler.startStreaming(testing.allocator, &request, .{}, .{
+    canceller.job = try scheduler.startStreaming(testing.allocator, &request, .{
         .context = &canceller,
         .head = Canceller.head,
         .data = Canceller.data,

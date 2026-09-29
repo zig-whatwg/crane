@@ -1219,6 +1219,8 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("clock", clock_mod);
     dom_mod.addImport("host", host_mod);
     dom_mod.addImport("infra", infra_mod);
+    // The user agent's cookie jar, which a settings object hands out.
+    dom_mod.addImport("cookiestore", cookiestore_mod);
     dom_mod.addImport("webidl", webidl_mod);
     dom_mod.addImport("runtime", runtime_mod);
     dom_mod.addImport("interfaces", interfaces_mod);
@@ -1840,6 +1842,10 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("url_serializer", url_serializer_mod);
     // Main fetch step 12 and the CORS check compare origins (URL "origin").
     fetch_mod.addImport("origin", url_origin_mod_internal);
+    // Main fetch step 19: a JavaScript MIME type essence match (MIME Sniffing).
+    fetch_mod.addImport("mimesniff", mimesniff_mod);
+    // HTTP-network-or-cache fetch sends and stores cookies in the jar.
+    fetch_mod.addImport("cookiestore", cookiestore_mod);
     // The network layer asks the vendored TLS library what ALPN chose, and
     // tests that HTTP/2 is live when the build asked for it. Its own options
     // module: one options file imported as a module by two others in the same
@@ -1943,6 +1949,8 @@ pub fn build(b: *std.Build) void {
     });
     // WebSocket needs fetch for curl backend
     websocket_mod.addImport("fetch", fetch_mod);
+    // The opening handshake's cookies come from and go to the jar.
+    websocket_mod.addImport("cookiestore", cookiestore_mod);
 
     // Add websocket to impls for WebSocket interface implementation
     impls_mod.addImport("websocket", websocket_mod);
@@ -1978,6 +1986,11 @@ pub fn build(b: *std.Build) void {
     html_core_mod.addImport("fetch", fetch_mod);
     html_core_mod.addImport("storage", storage_mod); // For web_storage.zig Storage backend
     html_core_mod.addImport("encoding", encoding_mod); // For iframe document loading encoding detection
+    // WorkerLocation's origin is the URL Standard's origin of the worker's URL.
+    html_core_mod.addImport("origin", url_origin_mod_internal);
+    html_core_mod.addImport("basic_parser", url_basic_parser_mod);
+    // A browsing context reaches the user agent's cookie jar.
+    html_core_mod.addImport("cookiestore", cookiestore_mod);
 
     // HTML module (full WHATWG HTML Standard) - Includes interface-dependent code
     // Uses full.zig as root which re-exports html_core plus adds interface access.
@@ -2028,6 +2041,9 @@ pub fn build(b: *std.Build) void {
     // Add html_core and csp to dom for document_internals
     dom_mod.addImport("html_core", html_core_mod);
     dom_mod.addImport("csp", csp_mod);
+    // A settings object is a request's client: global_settings.requestClient
+    // hands fetch what "populate request from client" reads.
+    dom_mod.addImport("fetch", fetch_mod);
 
     // Add html to impls for script execution algorithms
     // Note: This creates html ↔ impls mutual dependency. Zig handles this because
@@ -2057,6 +2073,8 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("interfaces", interfaces_mod);
     browser_mod.addImport("namespaces", namespaces_mod);
     browser_mod.addImport("fetch", fetch_mod);
+    // The Browser owns the user agent's cookie jar.
+    browser_mod.addImport("cookiestore", cookiestore_mod);
     browser_mod.addImport("impls", impls_mod);
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
@@ -2468,6 +2486,11 @@ pub fn build(b: *std.Build) void {
         const fetch_tests = b.addTest(.{ .root_module = fetch_mod });
         const run_fetch_tests = b.addRunArtifact(fetch_tests);
         test_step.dependOn(&run_fetch_tests.step);
+
+        // Referrer Policy is a module of its own, so the fetch test binary,
+        // though it imports it, never runs its test blocks.
+        const referrer_policy_tests = b.addTest(.{ .root_module = referrer_policy_mod });
+        test_step.dependOn(&b.addRunArtifact(referrer_policy_tests).step);
 
         // Add dedicated test files from tests/fetch/ when they exist
         const fetch_imports = [_]std.Build.Module.Import{

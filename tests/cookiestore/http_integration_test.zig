@@ -1,7 +1,7 @@
 //! Set-Cookie header parsing and storage
 //!
-//! RFC 6265bis §5.4 "The Set-Cookie Header Field":
-//! https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.4
+//! Layered cookies "Parse a Cookie" and "Store a Cookie":
+//! https://httpwg.org/http-extensions/draft-ietf-httpbis-layered-cookies.html
 //!
 //! Two defects these pin down:
 //!
@@ -18,21 +18,19 @@ const clock = @import("clock");
 const cookiestore = @import("cookiestore");
 
 const CookieJar = cookiestore.CookieJar;
-const parseSetCookieHeader = cookiestore.parseSetCookieHeader;
+const parseCookie = cookiestore.parseCookie;
 const processSetCookieHeaders = cookiestore.processSetCookieHeaders;
 
-test "parseSetCookieHeader - Max-Age yields a live expiry in milliseconds" {
+/// A response's Set-Cookie from https://example.com/.
+const from_https: cookiestore.StoreOptions = .{ .is_secure = true, .host = "example.com", .http_only_allowed = true };
+
+test "parseCookie - Max-Age yields a live expiry in milliseconds" {
     const allocator = std.testing.allocator;
 
     const before = clock.wallMillis();
-    var cookie = try parseSetCookieHeader(
-        allocator,
-        "id=abc; Max-Age=3600",
-        "example.com",
-        "/",
-        true,
-    );
-    defer cookie.deinit();
+    var parsed = (try parseCookie(allocator, "id=abc; Max-Age=3600", "/")).?;
+    defer parsed.deinit();
+    const cookie = parsed.cookie;
 
     const expiry = cookie.expiry_time orelse return error.SessionCookieNotExpected;
 
@@ -42,19 +40,13 @@ test "parseSetCookieHeader - Max-Age yields a live expiry in milliseconds" {
     try std.testing.expect(expiry <= clock.wallMillis() + 3601 * 1000);
 }
 
-test "parseSetCookieHeader - a non-positive Max-Age expires the cookie" {
+test "parseCookie - a non-positive Max-Age expires the cookie" {
     const allocator = std.testing.allocator;
 
-    var cookie = try parseSetCookieHeader(
-        allocator,
-        "id=abc; Max-Age=0",
-        "example.com",
-        "/",
-        true,
-    );
-    defer cookie.deinit();
+    var parsed = (try parseCookie(allocator, "id=abc; Max-Age=0", "/")).?;
+    defer parsed.deinit();
 
-    try std.testing.expect(cookie.isExpired());
+    try std.testing.expect(parsed.cookie.isExpired());
 }
 
 test "processSetCookieHeaders - a Max-Age cookie survives into the jar" {
@@ -67,7 +59,7 @@ test "processSetCookieHeaders - a Max-Age cookie survives into the jar" {
         "session=abc123; Max-Age=3600",
         "theme=dark",
     };
-    try processSetCookieHeaders(allocator, &jar, &headers, "example.com", "/", true);
+    try processSetCookieHeaders(allocator, &jar, &headers, "/", from_https);
 
     try std.testing.expectEqual(@as(usize, 2), jar.count());
 }
@@ -86,9 +78,13 @@ test "processSetCookieHeaders - parsed cookies are not leaked" {
         "c=3; Max-Age=60",
         "not-a-cookie",
         "=nothing",
+        "=",
+        "bad=\x01",
     };
-    try processSetCookieHeaders(allocator, &jar, &headers, "example.com", "/", true);
+    try processSetCookieHeaders(allocator, &jar, &headers, "/", from_https);
 
-    // The three well-formed headers land; the two malformed ones are skipped.
-    try std.testing.expectEqual(@as(usize, 3), jar.count());
+    // The three named cookies land; "not-a-cookie" and "=nothing" are one
+    // nameless cookie (the second replaces the first); an empty pair and a
+    // control byte are failures.
+    try std.testing.expectEqual(@as(usize, 4), jar.count());
 }

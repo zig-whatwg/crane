@@ -34,7 +34,8 @@
 const std = @import("std");
 const fetch = @import("fetch");
 const curl = fetch.network.curl_ffi;
-const CurlCookieManager = fetch.network.CurlCookieManager;
+const cookiestore = @import("cookiestore");
+const log = std.log.scoped(.websocket);
 
 /// Which subprotocol a handshake response selects, or whether it fails the
 /// connection.
@@ -130,8 +131,10 @@ pub const CurlWebSocket = struct {
     /// Negotiated protocol from server.
     negotiated_protocol: ?[]const u8 = null,
 
-    /// Cookie manager for handshake cookies (shared with Fetch API)
-    cookie_manager: ?*CurlCookieManager,
+    /// The user agent's cookie jar (BORROWED): the handshake is a request
+    /// whose credentials mode is "include", so it sends the jar's cookies
+    /// for the URL and stores its response's `Set-Cookie`. Null: none.
+    cookie_jar: ?*cookiestore.CookieJar,
 
     /// TLS trust for a wss:// handshake.
     ///
@@ -151,8 +154,8 @@ pub const CurlWebSocket = struct {
         /// Subprotocols to request
         protocols: ?[]const []const u8 = null,
 
-        /// Cookie manager for handshake (shared with Fetch API)
-        cookie_manager: ?*CurlCookieManager = null,
+        /// The user agent's cookie jar, borrowed for the connection's life.
+        cookie_jar: ?*cookiestore.CookieJar = null,
 
         /// TLS trust; null means fetch's defaults.
         cert_options: ?fetch.network.CertVerifyOptions = null,
@@ -205,7 +208,7 @@ pub const CurlWebSocket = struct {
             .allocator = allocator,
             .url = url_copy,
             .protocols = protocols_copy,
-            .cookie_manager = options.cookie_manager,
+            .cookie_jar = options.cookie_jar,
             .cert_options = options.cert_options orelse fetch.network.defaultCertOptions(),
             .origin = origin_copy,
         };
@@ -302,11 +305,6 @@ pub const CurlWebSocket = struct {
         // TLS trust, as fetch applies it (network/curl_backend.zig).
         try self.applyCertOptions(handle);
 
-        // Attach cookie manager for handshake cookies
-        if (self.cookie_manager) |cm| {
-            cm.attachToHandle(handle);
-        }
-
         // Request headers: the ones WebSockets § 2.2 adds that libcurl does
         // not. Upgrade, Connection, Sec-WebSocket-Key and
         // Sec-WebSocket-Version are libcurl's own.
@@ -323,6 +321,15 @@ pub const CurlWebSocket = struct {
             const combined = try std.mem.replaceOwned(u8, self.allocator, protos, ",", ", ");
             defer self.allocator.free(combined);
             headers = try appendHeader(self.allocator, headers, "Sec-WebSocket-Protocol: {s}", combined);
+        }
+
+        // The request's credentials mode is "include" (step 5), so
+        // HTTP-network-or-cache fetch step 8.21.1 appends a request `Cookie`
+        // header: the jar's cookies for the URL - made now, as the handshake
+        // is sent, not when the WebSocket was constructed.
+        if (try self.requestCookieHeader()) |value| {
+            defer self.allocator.free(value);
+            headers = try appendHeader(self.allocator, headers, "Cookie: {s}", value);
         }
 
         if (headers) |h| {
@@ -359,6 +366,9 @@ pub const CurlWebSocket = struct {
         var queued: c_int = 0;
         while (curl.multi_info_read(multi, &queued)) |msg| {
             if (msg.msg != curl.CURLMSG_DONE) continue;
+            // HTTP-network fetch step 16: the response's `Set-Cookie`, stored
+            // whether or not it upgrades the connection.
+            self.storeResponseCookies(handle);
             if (msg.data.result != curl.CURLE_OK) return error.HandshakeFailed;
             try self.finishHandshake(handle);
             return true;
@@ -385,6 +395,51 @@ pub const CurlWebSocket = struct {
         if (selected) |p| self.negotiated_protocol = try self.allocator.dupe(u8, p);
 
         self.connected = true;
+    }
+
+    /// Fetch "append a request `Cookie` header" for the handshake: the
+    /// value, or null when there is none to send. OWNED.
+    fn requestCookieHeader(self: *Self) !?[]u8 {
+        const jar = self.cookie_jar orelse return null;
+        const url = cookiestore.RequestUrl.of(self.url) orelse return null;
+        const value = try cookiestore.http_integration.generateCookieHeader(self.allocator, jar, .{
+            .host = url.host,
+            .path = url.path,
+            .is_http = true,
+            .is_secure = url.secure,
+            // TODO: Fetch "determine the same-site mode", as fetch's
+            //       cookies.zig does - "strict-or-less" until then.
+            .same_site = .strict_or_less,
+        });
+        if (value.len == 0) {
+            self.allocator.free(value);
+            return null;
+        }
+        return value;
+    }
+
+    /// Fetch "parse and store response `Set-Cookie` headers" for the
+    /// handshake's response - every `Set-Cookie` on the last response on
+    /// the handle, a 101's included (libcurl files those under CURLH_1XX).
+    fn storeResponseCookies(self: *Self, handle: *curl.CURL) void {
+        const jar = self.cookie_jar orelse return;
+        const url = cookiestore.RequestUrl.of(self.url) orelse return;
+        const origin: c_uint = curl.c.CURLH_HEADER | curl.c.CURLH_1XX;
+        var header: ?*curl.c.struct_curl_header = null;
+        if (curl.c.curl_easy_header(handle, "Set-Cookie", 0, origin, -1, &header) != curl.c.CURLHE_OK) return;
+        const amount = (header orelse return).amount;
+        var index: usize = 0;
+        while (index < amount) : (index += 1) {
+            if (index > 0 and curl.c.curl_easy_header(handle, "Set-Cookie", index, origin, -1, &header) != curl.c.CURLHE_OK) return;
+            const value = std.mem.span((header orelse return).value);
+            _ = cookiestore.http_integration.parseAndStoreCookie(self.allocator, jar, value, url.path, .{
+                .is_secure = url.secure,
+                .host = url.host,
+                .http_only_allowed = true,
+            }) catch |err| {
+                log.warn("handshake Set-Cookie not stored: {s}", .{@errorName(err)});
+            };
+        }
     }
 
     fn appendHeader(

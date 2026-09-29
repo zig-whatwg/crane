@@ -99,10 +99,11 @@ pub const FetchJob = struct {
         done,
     };
 
+    /// Cookies are not the network's business: HTTP-network-or-cache fetch
+    /// has put them in `request` already, and HTTP-network fetch stores the
+    /// answer's (algorithms/cookies.zig).
     pub const NetworkStep = struct {
         request: *const NetworkRequest,
-        /// See `http_fetch.httpNetworkFetchUsesCookies`.
-        cookies: bool,
     };
 
     /// A job fetching `request`. With `owns_request`, the job frees it.
@@ -160,8 +161,6 @@ pub const FetchJob = struct {
     /// 13. If response is null, main fetch
     /// 14. Return response
     pub fn start(self: *FetchJob) FetchError!Step {
-        const allocator = self.allocator;
-
         // Record start time
         self.timing_info.start_time = http_fetch.getCurrentTimeMs();
 
@@ -171,26 +170,13 @@ pub const FetchJob = struct {
             self.params.process_response = callback;
         }
 
-        // Step 13: Dispatch based on URL scheme
-        const url_str = self.request.currentUrl();
-        const url_scheme = extractScheme(url_str);
-
-        if (scheme_fetch.isLocalScheme(url_scheme)) {
-            // Handle local schemes (about, blob, data) directly
-            const result = scheme_fetch.schemeFetch(allocator, url_scheme, url_str) catch {
-                return FetchError.OutOfMemory;
-            };
-            return self.finish(switch (result) {
-                .response => |r| r,
-                .network_error => try networkError(allocator),
-            });
-        }
-        if (scheme_fetch.isHttpScheme(url_scheme)) {
-            // HTTP(S) requests go through main fetch -> HTTP fetch
-            return self.mainFetch();
-        }
-        // Unsupported scheme
-        return self.finish(try networkError(allocator));
+        // Step 13: main fetch - for every scheme. Its step 12 decides
+        // between scheme fetch (data:, about:, blob:, with the tainting and
+        // filtering that come with it) and HTTP fetch, and turns any other
+        // scheme into a network error; step 20 gives HEAD a null body. A
+        // local scheme used to skip it, so a data: response came back
+        // unfiltered - type "default", not "basic".
+        return self.mainFetch();
     }
 
     /// Carry on from the network's answer to the request the last `.network`
@@ -276,7 +262,7 @@ pub const FetchJob = struct {
         self.network_start_time = http_fetch.getCurrentTimeMs();
         // A CORS-preflight request never carries credentials: its
         // credentials mode is "same-origin" and its tainting "cors".
-        return .{ .network = .{ .request = &self.network_request.?, .cookies = false } };
+        return .{ .network = .{ .request = &self.network_request.? } };
     }
 
     /// CORS-preflight fetch steps 7-8, once the network answered the
@@ -302,16 +288,17 @@ pub const FetchJob = struct {
             .network => |request| {
                 self.network_request = request;
                 self.network_start_time = http_fetch.getCurrentTimeMs();
-                return .{ .network = .{
-                    .request = &self.network_request.?,
-                    .cookies = http_fetch.httpNetworkFetchUsesCookies(self.request),
-                } };
+                return .{ .network = .{ .request = &self.network_request.? } };
             },
         }
     }
 
     /// HTTP fetch, once HTTP-network-or-cache fetch has returned `response`.
-    fn httpNetworkOrCacheFetchReturned(self: *FetchJob, response: *InternalResponse) FetchError!Step {
+    fn httpNetworkOrCacheFetchReturned(self: *FetchJob, network_response: *InternalResponse) FetchError!Step {
+        // The rest of HTTP-network-or-cache fetch (step 14, a 401).
+        const response = http_fetch.httpNetworkOrCacheFetchFinish(self.allocator, self.request, network_response) catch |err| {
+            return self.httpFetchFailed(err);
+        };
         const next = http_fetch.httpFetchFinish(self.allocator, self.params, .{}, response) catch |err| {
             return self.httpFetchFailed(err);
         };

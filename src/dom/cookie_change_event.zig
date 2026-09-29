@@ -9,7 +9,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 /// CookieListItem represents a cookie in change events
-/// Mirrors the structure from cookie_store.zig
+/// Mirrors the fetch module's old CookieStore API types (deleted); the
+/// cookies themselves are src/cookiestore's.
 pub const CookieListItem = struct {
     name: []const u8,
     value: []const u8,

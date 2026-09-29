@@ -205,9 +205,11 @@ pub const XMLHttpRequestState = struct {
     /// at. See `event_support.EventSink`.
     event_sink: ?EventSink,
 
-    /// This XHR's relevant settings object's origin, serialized, once
-    /// send() has asked for it: the request's origin. Owned.
-    client_origin: ?[]const u8,
+    /// This XHR's relevant settings object as send()'s request's client,
+    /// recorded when send() runs: what "populate request from client"
+    /// applies once the request exists. Its origin and referrer source are
+    /// owned copies; its traversable and cookie jar are borrowed.
+    client: fetch.internal.RequestClient,
 
     /// Initialize state
     ///
@@ -246,21 +248,34 @@ pub const XMLHttpRequestState = struct {
             .allocator = allocator,
             .base_url = null,
             .event_sink = null,
-            .client_origin = null,
+            .client = .{},
         };
     }
 
-    /// Set the origin of this XHR's relevant settings object - what send()'s
-    /// request takes as its origin (Fetch "fetch" step 13) - copied.
-    pub fn setClientOrigin(self: *XMLHttpRequestState, origin: []const u8) !void {
-        const copy = try self.allocator.dupe(u8, origin);
-        if (self.client_origin) |old| self.allocator.free(old);
-        self.client_origin = copy;
+    /// Record `client` (see `client`), copying its origin and referrer
+    /// source.
+    pub fn setClient(self: *XMLHttpRequestState, client: fetch.internal.RequestClient) !void {
+        const origin: ?[]const u8 = if (client.origin) |o| try self.allocator.dupe(u8, o) else null;
+        errdefer if (origin) |o| self.allocator.free(o);
+        const referrer_source: ?[]const u8 = if (client.referrer_source) |r| try self.allocator.dupe(u8, r) else null;
+        self.freeClient();
+        self.client = .{
+            .origin = origin,
+            .referrer_source = referrer_source,
+            .traversable = client.traversable,
+            .cookie_jar = client.cookie_jar,
+        };
+    }
+
+    fn freeClient(self: *XMLHttpRequestState) void {
+        if (self.client.origin) |o| self.allocator.free(o);
+        if (self.client.referrer_source) |r| self.allocator.free(r);
+        self.client = .{};
     }
 
     /// Clean up state
     pub fn deinit(self: *XMLHttpRequestState) void {
-        if (self.client_origin) |o| self.allocator.free(o);
+        self.freeClient();
         // Free request state
         if (self.request_method) |m| self.allocator.free(m);
         if (self.request_url) |u| self.allocator.free(u);

@@ -418,6 +418,7 @@ fn pump(instance: *runtime.Instance) bool {
         connection.startConnect(.{
             .protocols = internal.requested_protocols,
             .origin = origin,
+            .cookie_jar = clientCookieJar(instance),
         }) catch |err| {
             log.debug("handshake to {s} failed to start: {s}", .{ internal.url_string, @errorName(err) });
         };
@@ -543,6 +544,13 @@ fn clientOrigin(instance: *runtime.Instance) ?[]const u8 {
     const origin = @import("mixins").WindowOrWorkerGlobalScope.get_origin(global_instance) catch return null;
     // "null" is an opaque origin, and a header saying so is still the one to send.
     return origin;
+}
+
+/// The user agent's cookie jar, as this's relevant settings object reaches
+/// it: the handshake's request is its client's, credentials included.
+fn clientCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").CookieJar {
+    const global_instance = relevantGlobal(instance) orelse return null;
+    return @import("dom").global_settings.cookieJarOf(global_instance);
 }
 
 // =============================================================================
@@ -1287,16 +1295,16 @@ fn payloadOf(
     // A platform object implementing Blob (or File, which is one).
     if (engine.convertToPlatformObject(ctx, data)) |object| {
         if (isBlob(object)) {
-            // TODO(websockets): send(Blob). The bytes live in `impls/Blob.zig`'s
-            // BlobData, and `interfaces.Blob` exposes no synchronous accessor for
-            // them - only `arrayBuffer()`, `text()` and `bytes()`, which all return
-            // promises. Reading them directly would be a new impls-boundary call;
-            // doing it properly needs a hook Blob installs (src/dom/, the shape of
-            // fetch_objects.zig) plus the spec's asynchronous read, holding back
-            // every later frame until the Blob's bytes are in the queue. Until then
-            // a Blob sends an empty binary frame, so `Send-binary-blob.any.js`
-            // reports a failure rather than hiding one.
-            return .{ .bytes = "", .is_text = false };
+            // "If data is a Blob: let data be the raw data represented by
+            // data" - a binary frame. A Blob's bytes never change, and the
+            // hook Blob installs (dom.blob_bytes) hands them over in place,
+            // so they are read now: this frame queues behind the frames sent
+            // before it and ahead of those sent after, which is the order
+            // the spec's read preserves. Copied - the queue outlives the
+            // call.
+            const bytes = try allocator.dupe(u8, @import("dom").blob_bytes.bytesOf(object) orelse "");
+            scratch.* = bytes;
+            return .{ .bytes = bytes, .is_text = false };
         }
     }
 

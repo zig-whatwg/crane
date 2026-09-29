@@ -56,6 +56,7 @@ const namespaces = @import("namespaces");
 const context_mod = @import("Context.zig");
 const Context = context_mod.Context;
 const storage_mod = @import("storage/Storage.zig");
+const cookiestore = @import("cookiestore");
 const clock = @import("clock");
 const host = @import("host");
 const Storage = storage_mod.Storage;
@@ -177,6 +178,18 @@ pub const Browser = struct {
     /// The snapshot the engine made the agent from (EngineStart.snapshot):
     /// freed after the agent is destroyed and the engine has forgotten it.
     snapshot_bytes: ?[]u8 = null,
+    /// The user agent's cookie jar: one for every window, frame and worker
+    /// this Browser runs. Fetch sends and stores through it, and
+    /// document.cookie and cookieStore read and write it; a realm reaches it
+    /// through its settings object (dom.global_settings.cookieJarOf).
+    ///
+    /// SINGLE-THREADED, and unlocked: every realm that reaches it runs on
+    /// this Browser's thread - a worker's tasks run as timers on the page's
+    /// loop (html/worker_host.zig), and fetch reads and writes the jar from
+    /// its algorithms, never from the network layer's callbacks. Whoever
+    /// moves a worker, or any fetch step, onto another thread must lock
+    /// this jar first.
+    cookie_jar: cookiestore.CookieJar,
 
     /// Initialize a new Browser instance
     ///
@@ -187,6 +200,11 @@ pub const Browser = struct {
     /// Note: The snapshot contains V8 builtins only. WebIDL interfaces are registered
     /// at runtime on each context creation.
     pub fn init(allocator: std.mem.Allocator, config: BrowserConfig) !*Browser {
+        // The network's process-wide state - curl, and the connection pool
+        // every fetch shares - held for this Browser's life (`deinit`).
+        try @import("fetch").network.globalInit();
+        errdefer @import("fetch").network.globalCleanup();
+
         // Initialize WebIDL runtime (SlabAllocator, ArenaAllocator)
         runtime.initializeRuntime(allocator);
         errdefer runtime.deinitializeRuntime();
@@ -255,6 +273,7 @@ pub const Browser = struct {
             .event_loop = event_loop,
             .used_snapshot = used_snapshot,
             .snapshot_bytes = snapshot_bytes,
+            .cookie_jar = cookiestore.CookieJar.init(allocator),
         };
 
         // Always create initial about:blank context - a real browser always has a window/document
@@ -301,6 +320,8 @@ pub const Browser = struct {
         // The page's fetches still in flight release what they hold - a
         // promise, and through it the realm - while the isolate lives.
         _ = @import("fetch").algorithms.async_fetch.sweep();
+        // Nothing that could reach the jar is left.
+        self.cookie_jar.deinit();
 
         // Flush and cleanup storage
         self.storage.flush() catch {};
@@ -341,6 +362,15 @@ pub const Browser = struct {
 
         // Cleanup WebIDL runtime
         runtime.deinitializeRuntime();
+
+        // The network ends with the last Browser, once nothing that could
+        // hold a transfer is left: the thread's scheduler closes, and so does
+        // the connection pool, where curl shuts each connection down - an
+        // HTTP/2 one with a GOAWAY. A connection only closed by the process
+        // exiting ends with a bare FIN, and WPT's h2 server (:9000) spins a
+        // thread forever on each of those.
+        @import("fetch").network.scheduler.endIdleThreadScheduler();
+        @import("fetch").network.globalCleanup();
 
         self.initialized = false;
         self.allocator.destroy(self);
@@ -416,6 +446,7 @@ pub const Browser = struct {
             self.allocator,
             agent,
             self.storage,
+            &self.cookie_jar,
             serialized orelse url,
             self.event_loop,
             context_type,

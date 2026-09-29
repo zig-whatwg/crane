@@ -26,6 +26,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+const cookiestore = @import("cookiestore");
 
 // Import Origin type from window module
 const Origin = @import("window_proxy.zig").Origin;
@@ -322,6 +323,12 @@ pub const BrowsingContext = struct {
     /// Child browsing contexts (iframes, frames)
     children: std.ArrayListUnmanaged(*BrowsingContext),
 
+    /// The user agent's cookie jar - the Browser's, one for every window,
+    /// frame and worker it runs. Set on each top-level context as the
+    /// Browser makes it (auxiliary ones too, from their opener); a child
+    /// reads its top's (`cookieJar`).
+    cookie_jar: ?*cookiestore.CookieJar = null,
+
     /// Initial URL for this browsing context
     initial_url: ?[]const u8,
 
@@ -409,6 +416,17 @@ pub const BrowsingContext = struct {
         ctx.virtual_group_id = parent_ctx.virtual_group_id;
         try parent_ctx.children.append(parent_ctx.allocator, ctx);
         return ctx;
+    }
+
+    /// The user agent's cookie jar, as this context reaches it: its own, or
+    /// its nearest ancestor's - a frame's is its top-level context's. Null
+    /// for a context no Browser made (a test's, a detached document's).
+    pub fn cookieJar(self: *const BrowsingContext) ?*cookiestore.CookieJar {
+        var context: ?*const BrowsingContext = self;
+        while (context) |c| : (context = c.parent) {
+            if (c.cookie_jar) |jar| return jar;
+        }
+        return null;
     }
 
     /// Create a new auxiliary browsing context (via window.open())
