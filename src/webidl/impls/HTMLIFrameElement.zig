@@ -1877,8 +1877,9 @@ fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) 
 
 /// HTML "shared attribute processing steps for iframe and frame elements":
 /// the src URL (owned by the element's context allocator), about:blank when
-/// src is absent, empty or does not parse, or null when an inclusive
-/// ancestor navigable already shows it (step 3: no infinite nesting).
+/// src is absent, empty or does not parse, or null when two inclusive
+/// ancestor navigables already show it (step 3: no infinite nesting - see
+/// ancestorShows for the one level engines allow).
 /// Step 4 (URL and history update steps for about:blank?query) is not
 /// modelled.
 fn sharedAttributeProcessingSteps(element: *runtime.Instance) ?[]const u8 {
@@ -1893,18 +1894,32 @@ fn sharedAttributeProcessingSteps(element: *runtime.Instance) ?[]const u8 {
     return url;
 }
 
-/// Step 3: whether a navigable among `element`'s node navigable and its
-/// ancestors shows a document whose URL equals `url` without fragments.
+/// Step 3: whether `url` would nest a document inside itself too deeply -
+/// whether TWO navigables among `element`'s node navigable and its
+/// ancestors show a document whose URL equals `url` without fragments.
+///
+/// Deviation, on purpose: the spec refuses the first match (any inclusive
+/// ancestor showing `url` returns null). Every engine allows one level of
+/// self-reference and refuses the second: WebKit's
+/// HTMLFrameOwnerElement::isProhibitedSelfReference ("We allow one level of
+/// self-reference because some websites depend on that, but we don't allow
+/// more than one"), and Blink and Gecko alike. WPT relies on it - the
+/// feature-policy helpers embed the test page in itself
+/// (xhr/xmlhttprequest-sync-default-feature-policy.sub.html hung on it).
 fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
     if (navigate_steps.matchesAboutBlank(url)) return false;
     const NodeImpl = @import("Node.zig");
     var document = NodeImpl.getOwnerDocument(element);
     var depth: usize = 0;
+    var found_one_self_reference = false;
     while (document) |doc| : (depth += 1) {
         if (depth > 32) return false;
         const doc_url = documentUrlOf(doc, element.ctx.allocator) catch return false;
         defer element.ctx.allocator.free(doc_url);
-        if (navigate_steps.equalsExcludingFragments(doc_url, url)) return true;
+        if (navigate_steps.equalsExcludingFragments(doc_url, url)) {
+            if (found_one_self_reference) return true;
+            found_one_self_reference = true;
+        }
         const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return false;
         const container = dom_module.navigable_container.of(window) orelse return false;
         document = NodeImpl.getOwnerDocument(container);
