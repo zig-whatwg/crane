@@ -347,6 +347,15 @@ pub fn closeScope(ctx: runtime.Context) void {
     wctx.closeFromScript();
 }
 
+/// The closing flag of the worker global scope whose realm is `ctx`: true
+/// once close() or "terminate a worker" has set it (the host's phase leaves
+/// `running`). Null when no worker this host runs has that realm. The flag
+/// lives here, not in WorkerGlobalScope's own state, which neither path sets.
+pub fn scopeClosing(ctx: runtime.Context) ?bool {
+    const wctx = forScope(ctx) orelse return null;
+    return !wctx.runsTasks();
+}
+
 /// DedicatedWorkerGlobalScope postMessage(message, transfer) for the global
 /// scope whose realm is `ctx`: the message port post message steps for the
 /// worker's implicit port, whose entangled port is its Worker object's. The
