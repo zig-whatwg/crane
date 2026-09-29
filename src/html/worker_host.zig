@@ -38,6 +38,10 @@ const engine = @import("engine");
 // A worker's module scripts: its module map, and import()'s graph.
 const module_script = @import("module_script.zig");
 
+// Unhandled promise rejections: HostPromiseRejectionTracker and "notify about
+// rejected promises", for the worker's global as for a window's.
+const rejected_promises = @import("rejected_promises.zig");
+
 // Firing an event at a target from outside EventTarget's hierarchy, and the
 // MessagePort transfer steps.
 const fire_event = @import("dom").fire_event;
@@ -960,6 +964,9 @@ pub const WorkerHost = struct {
         // The module map goes with the settings object: its records are
         // engine handles of this agent.
         self.disposeModules();
+        // So do the rejected promises tracked for its global, and the
+        // notifications queued for it: Globals of this agent.
+        if (self.global_scope) |global_scope| rejected_promises.forgetGlobal(global_scope);
         self.realm = null;
         // The realm's per-context data - the callbacks its script registered,
         // its wrapper cache and every Instance in it, the global scope first -
@@ -2127,6 +2134,12 @@ const ConnectTask = struct {
 const worker_hooks: engine.HostHooks = .{
     .loadImportedModule = if (module_script.supported) loadImportedModule else null,
     .importMetaUrl = if (module_script.supported) module_script.importMetaUrl else null,
+    // HTML 8.1.6.4 HostPromiseRejectionTracker, and "perform a microtask
+    // checkpoint" step 5 - the unhandledrejection and rejectionhandled events
+    // at the worker's global scope. A worker agent had neither, so no worker
+    // ever heard one.
+    .promiseRejectionTracker = rejected_promises.hooks.promiseRejectionTracker,
+    .afterMicrotaskCheckpoint = rejected_promises.hooks.afterMicrotaskCheckpoint,
 };
 
 /// FinishLoadingImportedModule for an import(): ends the host's hold on
