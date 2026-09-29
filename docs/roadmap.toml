@@ -118,6 +118,7 @@ areas = ["html/browsers/browsing-the-web/", "html/browsers/history/", "html/sema
 progress = [
   "f03633d6a - frame and popup navigation runs as the spec's tasks (beforeunload, fetch via AsyncFetch, commit); frames delay their container's load event; unload/pagehide fire; markup <iframe src> navigates (navigation lane, increment 1)",
   "8f9eb9371, 88f09482e, 05a30200a, 4797fefa0, dd792cb0f (merged 505cfb9e3) - the about base URL, document.open() erases listeners, sessionStorage per traversable, document.domain sets the origin domain, a destroyed document's defaultView is null, and the Window keeps its Storage and CustomElementRegistry alive (navigation lane, increment 3)",
+  "3c46ac8da (merged bd798db40) - the navigation API's hangs, window.close() with its definitely-close task, the Location setters, the window scroll methods, the storage event broadcast, POST form submission, BroadcastChannel, ImageData; named access returns the iframe element (navigation lane, batches 1-2)",
 ]
 
   [[infra.items]]
@@ -377,6 +378,7 @@ done_when = "Idle workers run V8's posted tasks and task sources are spec-shaped
 progress = [
   "5dbae790e - V8's platform tasks pumped each turn",
   "9ec30ea8f - the worker global is a DedicatedWorkerGlobalScope; a terminated worker removes its context and disposes its isolate; an idle worker pumps V8's tasks (workers lane)",
+  "0b991e733 (merged a9241f56a) - SharedWorker, nested workers with their own timers, worker promise rejection tracking, WorkerLocation from the URL record, MessageEvent source; a timer-map leak fixed (networking lane)",
 ]
 
   [[infra.items]]
