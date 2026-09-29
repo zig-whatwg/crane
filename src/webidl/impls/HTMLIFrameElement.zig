@@ -1847,9 +1847,9 @@ fn findNavigableByName(document: *runtime.Instance, name: []const u8) ?*IFrameIn
 }
 
 /// dom.navigables: "find a navigable by target name" among the frames of
-/// `source_document`'s page - the active window of the first found, or null.
-fn frameWindowByName(source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
-    const integration = findNavigableByName(source_document, name) orelse return null;
+/// `current_document`'s page - the active window of the first found, or null.
+fn frameWindowByName(current_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
+    const integration = findNavigableByName(current_document, name) orelse return null;
     const browsing_context = integration.browsing_context orelse return null;
     return @ptrCast(@alignCast(browsing_context.getActiveWindow() orelse return null));
 }
@@ -1864,15 +1864,18 @@ fn frameWindowByName(source_document: *runtime.Instance, name: []const u8) ?*run
 /// what its Location can (a fragment navigation).
 fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navigables.Request) void {
     const name = request.target;
+    // "The rules for choosing a navigable" start from currentNavigable: the
+    // source document's, unless the caller names another.
+    const current = request.current_document orelse source_document;
     // Steps 4-7.
     const chosen: Chosen = blk: {
-        if (name.len == 0 or std.ascii.eqlIgnoreCase(name, "_self")) break :blk chosenOf(source_document);
+        if (name.len == 0 or std.ascii.eqlIgnoreCase(name, "_self")) break :blk chosenOf(current);
         if (std.ascii.eqlIgnoreCase(name, "_parent")) {
-            break :blk chosenOf(parentDocumentOf(source_document) orelse source_document);
+            break :blk chosenOf(parentDocumentOf(current) orelse current);
         }
-        if (std.ascii.eqlIgnoreCase(name, "_top")) break :blk chosenOf(topDocumentOf(source_document));
+        if (std.ascii.eqlIgnoreCase(name, "_top")) break :blk chosenOf(topDocumentOf(current));
         if (!std.ascii.eqlIgnoreCase(name, "_blank") and !request.noopener) {
-            if (findNavigableByName(source_document, name)) |integration| break :blk .{ .navigable = integration };
+            if (findNavigableByName(current, name)) |integration| break :blk .{ .navigable = integration };
         }
         break :blk .none;
     };
@@ -1915,7 +1918,7 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
         },
         // Step 8: a new top-level traversable - the window open steps.
         .none => {
-            const window = (interfaces.Document.get_defaultView(source_document) catch null) orelse return;
+            const window = (interfaces.Document.get_defaultView(current) catch null) orelse return;
             _ = interfaces.Window.call_open(
                 window,
                 webidl.Opt(runtime.USVString).passed(request.url),

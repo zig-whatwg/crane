@@ -2489,7 +2489,9 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
                 const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
                 installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
             }
-            navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .noopener = noopener });
+            // The rules start from this's navigable; sourceDocument navigates.
+            const this_document = interfaces.Window.get_document(instance) catch source_document;
+            navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .noopener = noopener, .current_document = this_document });
         }
         return if (noopener) null else getWindowProxy(instance);
     }
@@ -2511,9 +2513,10 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
             const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
             installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
         }
-        if (navigables.findByName(source_document, target_str)) |frame_window| {
+        const this_document = interfaces.Window.get_document(instance) catch source_document;
+        if (navigables.findByName(this_document, target_str)) |frame_window| {
             // Step 16.1: navigate it, then (step 18) return its WindowProxy.
-            if (url_record) |u| navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u });
+            if (url_record) |u| navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .current_document = this_document });
             return frame_window;
         }
         var root = instance;

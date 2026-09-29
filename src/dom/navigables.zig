@@ -25,6 +25,12 @@ pub const HistoryBehavior = enum { auto, push, replace };
 pub const Request = struct {
     /// The target: "", "_self", "_parent", "_top", "_blank", or a name.
     target: []const u8,
+    /// The document whose node navigable "the rules for choosing a
+    /// navigable" start from, when it is not the source document's: the
+    /// window open steps choose from `this`'s navigable while the entry
+    /// global's document navigates (`frame.contentWindow.open(url, "_self")`
+    /// called by the page navigates the frame).
+    current_document: ?*runtime.Instance = null,
     /// The URL, parsed and serialized.
     url: []const u8,
     noopener: bool = false,
@@ -101,12 +107,12 @@ pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []con
 }
 
 /// HTML "find a navigable by target name" among the frames of
-/// `source_document`'s page: the active window of the first whose target
+/// `current_document`'s page: the active window of the first whose target
 /// name is `name`, or null. (The page's popups are the window open steps'
 /// own to find.)
-pub fn findByName(source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
+pub fn findByName(current_document: *runtime.Instance, name: []const u8) ?*runtime.Instance {
     const impl = implementation orelse return null;
-    return impl.find_by_name(source_document, name);
+    return impl.find_by_name(current_document, name);
 }
 
 test "without an installed implementation nothing navigates" {
