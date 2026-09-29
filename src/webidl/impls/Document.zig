@@ -3858,6 +3858,16 @@ fn lifecycleMarkInitialAboutBlank(document: *runtime.Instance) void {
     // only "create and initialize a Document object" - navigation - makes
     // it "loading". This document never went through that.
     internal.ready_state = ._complete_;
+    // Deviation, stated, matching every browser: the initial about:blank
+    // document is showing. HTML sets "page showing" only where it fires
+    // pageshow ("the end", reactivation), which this document never
+    // reaches - so, as written, closing a never-navigated window.open()
+    // popup fires no pagehide. Every engine fires it (close-method,
+    // self-et-al and open-close/close_pagehide assume it), and the review of
+    // whatwg/html PR #6869 agreed the initial about:blank "should also fire
+    // pageshow" (Firefox does). Its unload event is not gated on this: that
+    // follows salvageable (unload step 12).
+    internal.page_showing = true;
 }
 
 fn lifecycleIsUnloading(document: *runtime.Instance) bool {
