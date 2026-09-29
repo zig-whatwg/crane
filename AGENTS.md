@@ -929,6 +929,7 @@ area; grep `docs/lessons/` for a symptom before theorising.
 - [A lane's A/B baseline is main, not its own last gate](docs/lessons/testing-a-lane-s-a-b-baseline-is-main-not-its-last-gate.md) - Compare a batch with the main it merges into; a chain of gate-to-gate A/Bs can be all green while the batch as a whole moved dozens of files to blocking.
 - [A counter that drifts per call hides a leak per call](docs/lessons/testing-a-counter-that-drifts-per-call-hides-a-leak-per-call.md) - Read a leak counter against a control statement run the same way, and cross-check it with V8's global handle bytes; a hand-kept counter is only as good as its least-counted creation site.
 - [Compare two runners only with each runner's own snapshot](docs/lessons/testing-compare-two-runners-only-with-each-runner-s-own-snapshot.md) - A runner and its snapshot are one artifact: freeze them together, and put the right snapshot in place before every run.
+- [A correction for a bug becomes the bug when the bug is fixed](docs/lessons/testing-a-correction-for-a-bug-becomes-the-bug-when-it-is-fixed.md) - A correction must name the bug it corrects, so fixing the bug retires it; evidence printed live that stops supporting a model is a refutation, not a caveat.
 
 ### Debugging
 

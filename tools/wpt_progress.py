@@ -47,6 +47,20 @@ HISTORY_SAMPLE = 15   # paths kept per movement bucket, so the file stays small
 # which is the safe direction: a status we do not know about is not a pass.
 GATING = {'TIMEOUT', 'CRASH', 'ERROR', 'EXTERNAL-TIMEOUT', 'PRECONDITION_FAILED'}
 
+# When a variant's query started reaching the page: 71ffd213a (2026-09-22
+# 11:42 -0400) put the navigated URL into location.*. Before it
+# location.search was "" in every top-level test document, so each variant run
+# of a file registered the file's WHOLE set whatever its query said - a journal
+# line older than this counts a variant file's subtests once per variant (the
+# archived 2026-09-19 sweep has euckr-encode-href-errors-han.html at 554,328,
+# 24 x its 23,097). Such a line says nothing about how many subtests that file
+# has, so `subtest_model` does not use it for one.
+QUERY_REACHES_PAGE = 1790091762
+# Bump to rebuild every file's high-water marks from the journals present, when
+# the rule for which runs may raise them changes. 2: pre-fix runs are kept
+# apart (`_sub_hw_pre`) and divided by the fan-out they ran, never mixed in.
+HW_MODEL = 2
+
 # The static shape of each source: how many times the runner fans it out, and -
 # for a file that has never reported a subtest - how many subtests it looks like
 # it declares. Cached because building it opens 4,323 sources plus the scripts
@@ -69,8 +83,12 @@ TEST_CALL = re.compile(
 # whose real count is known, a loopy file's static count has a median ratio of
 # 1.5 and a p90 of 24 - useless as an estimate, sound as a lower bound.
 LOOPY = re.compile(r'\b(?:for|while)\s*\(|\.(?:forEach|map)\s*\(|\bgenerate_tests\s*\(')
-VARIANT_META = re.compile(r'name=["\']variant["\']')
-VARIANT_JS = re.compile(r'^//\s*META:\s*variant=', re.M)
+# A variant's query, from `<meta name="variant" content="...">` (either
+# attribute order, quoted or not - `<meta name=variant content="?wss">` is
+# common) or `// META: variant=...`.
+META_TAG = re.compile(r'<meta\b([^>]*)>', re.I)
+TAG_ATTR = re.compile(r'([\w-]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))')
+VARIANT_JS_CONTENT = re.compile(r'^//\s*META:\s*variant=(\S*)', re.M)
 GLOBAL_JS = re.compile(r'^//\s*META:\s*global=(.*)$', re.M)
 SCRIPT_META = re.compile(r'^//\s*META:\s*script=(\S+)', re.M)
 SCRIPT_SRC = re.compile(r'<script[^>]*\ssrc=["\']([^"\']+)["\']')
@@ -116,18 +134,40 @@ def load_worklist():
 def subtotal(rec):
     """Subtests the run REPORTED for this file: pass + fail + timeout + notrun.
 
-    This is a count of subtest RESULTS, not of distinct subtests. The runner
-    executes a file once per implemented global times once per declared
-    `<meta name="variant">` and sums every run into one journal line
-    (`FileTally.add` in tests/wpt_runner/main.zig), and the variant never
-    reaches `location.search`, so each of a file's variant runs registers the
-    file's WHOLE set of subtests instead of the slice the variant names.
-    `subtest_model` divides that back out.
+    The runner executes a file once per implemented global times once per
+    declared `<meta name="variant">` and sums every run into one journal line
+    (`FileTally.add` in tests/wpt_runner/main.zig). Each run is one WPT test -
+    MANIFEST.json lists `foo.html?1-1000` and `foo.html?1001-last`, like
+    `foo.any.html` and `foo.any.worker.html`, as separate URLs - and each
+    variant's query reaches `location.search`, so this is WPT's own count: a
+    slice variant (`?1-1000`, read by /common/subset-tests.js) reports its
+    slice, a filtering one (`?load fires normally`) the tests it names, a
+    rerunning one (`?encoding=windows-1252`) the set under its condition.
+    Only a line from before `QUERY_REACHES_PAGE` overcounts, for files that
+    declare variants.
     """
     if not rec:
         return 0
     return (rec.get('passed', 0) + rec.get('failed', 0) +
             rec.get('timed_out', 0) + rec.get('notrun', 0))
+
+
+def query_reached_page(rec):
+    """Whether `rec`'s run gave each variant its query (`QUERY_REACHES_PAGE`)."""
+    return rec.get('_mtime', 0) >= QUERY_REACHES_PAGE
+
+
+def high_water(rec):
+    """(after, before): the most subtests `rec`'s file has reported in runs from
+    after and from before `QUERY_REACHES_PAGE`, `rec`'s own run included."""
+    if not rec:
+        return 0, 0
+    after, before = rec.get('_sub_hw', 0), rec.get('_sub_hw_pre', 0)
+    if query_reached_page(rec):
+        after = max(after, subtotal(rec))
+    else:
+        before = max(before, subtotal(rec))
+    return after, before
 
 
 def load_results():
@@ -140,7 +180,8 @@ def load_results():
     Also carries `_sub_hw`, the most subtests any run of that file has EVER
     reported. A file that reported 40 subtests last week and crashes today still
     HAS 40, and the journal that saw them is about to be overwritten, so the
-    high-water mark is kept in the state file where it survives.
+    high-water mark is kept in the state file where it survives. Runs from
+    before `QUERY_REACHES_PAGE` raise `_sub_hw_pre` instead (`high_water`).
     """
     records = {}
 
@@ -150,6 +191,13 @@ def load_results():
             records = json.load(f)
     except (OSError, json.JSONDecodeError):
         records = {}
+    # High-water marks kept under an older rule are rebuilt from the journals
+    # present, and from the record itself (`high_water` counts it).
+    for rec in records.values():
+        if rec.get('_hw_model') != HW_MODEL:
+            rec.pop('_sub_hw', None)
+            rec.pop('_sub_hw_pre', None)
+            rec['_hw_model'] = HW_MODEL
 
     # Subdirectories too, so archived journals can be dropped in without
     # colliding with the filenames the runner reuses.
@@ -169,15 +217,15 @@ def load_results():
                 rec['_journal'] = os.path.basename(fn)
                 rec['_mtime'] = os.path.getmtime(fn)
                 prev = records.get(rec['path'])
-                # The high-water mark rises on ANY journal line, superseding or
+                # The high-water marks rise on ANY journal line, superseding or
                 # not: what a file once declared, it still declares.
-                hw = max(subtotal(rec),
-                         (prev or {}).get('_sub_hw', 0), subtotal(prev))
+                hw, hw_pre = (max(a, b) for a, b in zip(high_water(rec), high_water(prev)))
                 # Only supersede with something at least as recent, so replaying
                 # an old journal cannot roll the picture backwards.
                 if prev is None or rec['_mtime'] >= prev.get('_mtime', 0):
                     records[rec['path']] = rec
-                records[rec['path']]['_sub_hw'] = hw
+                records[rec['path']].update(_sub_hw=hw, _sub_hw_pre=hw_pre,
+                                            _hw_model=HW_MODEL)
 
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     tmp_path = STATE + '.tmp'
@@ -218,7 +266,7 @@ def _scan_source(path):
     except OSError:
         pass
 
-    variants = max(len(VARIANT_META.findall(txt)) + len(VARIANT_JS.findall(txt)), 1)
+    variants = len(declared_variants(txt))
 
     declared = GLOBAL_JS.findall(txt)
     if declared:
@@ -257,8 +305,39 @@ def _scan_source(path):
         if hits and LOOPY.search(body):
             loopy = True
 
-    return {'v': variants, 'g': globals_, 'calls': calls * globals_,
+    return {'v': variants, 'vq': True, 'g': globals_, 'calls': calls * globals_,
             'loopy': loopy, 'stamp': stamp}
+
+
+def declared_variants(txt):
+    """The queries a source declares as variants, in order.
+
+    Only whether there are any matters to the model (see `QUERY_REACHES_PAGE`):
+    every variant run is its own WPT test and reports its own subtests, so
+    nothing is divided by how many there are.
+    """
+    queries = VARIANT_JS_CONTENT.findall(txt)
+    for attrs in META_TAG.findall(txt):
+        found = {m.group(1).lower(): next(g for g in m.groups()[1:] if g is not None)
+                 for m in TAG_ATTR.finditer(attrs)}
+        if found.get('name', '').lower() == 'variant' and 'content' in found:
+            queries.append(found['content'])
+    return queries
+
+
+def _check_declared_variants():
+    """The reading above, pinned. Run with `python3 tools/wpt_progress.py --self-test`."""
+    assert declared_variants('<meta name="variant" content="?1-1000">\n'
+                             '<meta name="variant" content="?1001-last">') == ['?1-1000', '?1001-last']
+    assert declared_variants('<meta name=variant content="?load fires normally">') == \
+        ['?load fires normally'], 'unquoted name, as the xhr timeout files write it'
+    assert declared_variants("<meta content='?wpt_flags=h2' name='variant'>") == \
+        ['?wpt_flags=h2'], 'either attribute order, single quotes'
+    assert declared_variants('<meta name=variant content=?encoding=windows-1252>') == \
+        ['?encoding=windows-1252'], 'unquoted content'
+    assert declared_variants('<meta name="viewport" content="width=device-width">') == []
+    assert declared_variants('// META: variant=?1-5\n// META: variant=?6-last\n') == ['?1-5', '?6-last']
+    assert declared_variants('no variants here') == []
 
 
 def _stamp_ok(entry):
@@ -286,7 +365,9 @@ def load_shape(worklist):
     shape, rescanned = {}, 0
     for path in worklist:
         entry = cache.get(path)
-        if entry is None or not _stamp_ok(entry):
+        # `vq` marks an entry whose `v` counts variants by `declared_variants`,
+        # which reads unquoted attributes; one scanned before it is rescanned.
+        if entry is None or not entry.get('vq') or not _stamp_ok(entry):
             entry = _scan_source(path)
             rescanned += 1
         shape[path] = entry
@@ -303,22 +384,21 @@ def load_shape(worklist):
 def subtest_model(worklist, records, shape):
     """How many subtests each source TARGETS, and how many of them pass.
 
-    The unit is WPT's own: one count per (source, implemented global), with a
-    file's `<meta name="variant">` slices folded back together. Variants
-    PARTITION a file's subtests - `?1-1000` plus `?1001-2000` is the same set of
-    assertions split in two - so they must not multiply the total. Globals do
-    multiply it: `foo.any.html` and `foo.any.worker.html` are separate URLs in
-    MANIFEST.json with separate results, and worker support is a real axis.
+    The unit is WPT's own: one count per test URL - per (source, implemented
+    global, declared variant) - which is what MANIFEST.json lists and what the
+    runner's journal line sums (`subtotal`). `foo.any.html` and
+    `foo.any.worker.html` are separate tests, and so are `foo.html?1-1000` and
+    `foo.html?1001-last`. Nothing is divided out: a slice variant reports its
+    slice (euckr-encode-href-errors-han.html's 24 slices report its 23,097
+    subtests once between them), a filtering variant the tests it names, a
+    rerunning variant (`?encoding=windows-1252`) its set under its condition.
 
-    That distinction is what makes this number differ from the raw sum by 12x.
-    The runner sums every (global, variant) run of a file into one journal line,
-    and the variant never reaches `location.search`, so `/common/subset-tests.js`
-    sees no range and each variant run re-registers the file's WHOLE set:
-    euckr-encode-href-errors-han.html declares 23,097 subtests and reports
-    554,328, exactly 24x for its 24 variants. Dividing the reported total by the
-    variant count comes out EXACT for 250 of the 251 multi-variant files that
-    have reported anything, which is the evidence for the model; the one
-    exception is noted on the page.
+    Except for a run from before `QUERY_REACHES_PAGE`: then every variant run
+    registered the file's whole set with no query, so its count is divided by
+    the file's variant count - which is exactly the no-query set. (From
+    2026-09-22 to 2026-09-29 EVERY run was divided that way, so the slice files
+    were undercounted by their slice count - 24x for the euc-kr sweeps - and the
+    xhr timeout files, whose unquoted `name=variant` went unseen, were not.)
 
     Five tiers, best evidence first:
 
@@ -340,26 +420,23 @@ def subtest_model(worklist, records, shape):
     model = {}
     for path in worklist:
         sh = shape[path]
-        variants = sh['v']
+        # What a run from before QUERY_REACHES_PAGE reported per variant.
+        pre_fanout = max(sh['v'], 1)
         rec = records.get(path)
-        observed = max(subtotal(rec), (rec or {}).get('_sub_hw', 0))
+        after, before = high_water(rec)
+        observed = max(after, before / pre_fanout)
         if observed:
+            passed = (rec or {}).get('passed', 0)
             model[path] = {
                 'tier': 'exact' if (rec or {}).get('status') == 'OK' else 'partial',
-                'targeted': observed / variants,
-                'passing': (rec or {}).get('passed', 0) / variants,
-                # Whether the fan-out divided cleanly. It does everywhere but one
-                # file, and where it does not the run fan-out did not complete
-                # uniformly, so that file's share is approximate.
-                'even': variants == 1 or observed % variants == 0,
+                'targeted': observed,
+                'passing': passed if rec and query_reached_page(rec) else passed / pre_fanout,
             }
         elif sh['calls'] == 0:
-            model[path] = {'tier': 'unknown', 'targeted': 0.0,
-                           'passing': 0.0, 'even': True}
+            model[path] = {'tier': 'unknown', 'targeted': 0.0, 'passing': 0.0}
         else:
             model[path] = {'tier': 'floor' if sh['loopy'] else 'est',
-                           'targeted': float(sh['calls']), 'passing': 0.0,
-                           'even': True}
+                           'targeted': float(sh['calls']), 'passing': 0.0}
     return model
 
 
@@ -373,15 +450,13 @@ def build(worklist, records, shape=None):
         areas[a]['total'] += 1
         m = model.get(path)
         if m:
-            # Floats on purpose: a file's share of a fan-out is not always a
-            # whole number, and rounding per FILE would bias the total. Rounding
-            # happens once, at the point of display.
+            # Floats on purpose: a pre-fix run's share of its fan-out is not
+            # always a whole number, and rounding per FILE would bias the total.
+            # Rounding happens once, at the point of display.
             areas[a]['sub_targeted'] += m['targeted']
             areas[a]['sub_passing'] += m['passing']
             areas[a]['tier_' + m['tier']] += 1
             areas[a]['sub_t_' + m['tier']] += m['targeted']
-            if not m['even']:
-                areas[a]['sub_uneven'] += 1
         rec = records.get(path)
         if rec is None:
             areas[a]['unrun'] += 1
@@ -954,17 +1029,18 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     for c in areas.values():
         tot.update(c)
 
-    # The number the page argues against: every subtest result the runner
-    # reported, variant fan-out and all.
-    raw_reported = sum(subtotal(records.get(p)) for p in worklist)
-    raw_ratio = raw_reported / tot['sub_targeted'] if tot['sub_targeted'] else 0
-    even_multi = all_multi = 0
+    # Files that declare variants, and how many of them still take a count
+    # from a run older than QUERY_REACHES_PAGE (divided by the fan-out then).
+    variant_files = pre_fix_files = 0
     if shape:
         for p in worklist:
-            if shape[p]['v'] > 1 and subtotal(records.get(p)):
-                all_multi += 1
-                if subtotal(records.get(p)) % shape[p]['v'] == 0:
-                    even_multi += 1
+            rec = records.get(p)
+            if not shape[p]['v'] or not rec:
+                continue
+            variant_files += 1
+            after, before = high_water(rec)
+            if not query_reached_page(rec) or before / shape[p]['v'] > after:
+                pre_fix_files += 1
 
     total = len(worklist)
     run = tot['run']
@@ -1004,18 +1080,14 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
                         f'{peak["run"]:,} of {peak["total"]:,} sources had run and just '
                         f'{peak["sub_targeted"]:,} subtests were known to exist.')
 
-    uneven = tot['sub_uneven']
-    uneven_note = (f' {uneven:,} file{"s" if uneven != 1 else ""} did not divide evenly, '
-                   f'so that share is approximate.' if uneven else '')
     subtest_html = f"""
 <div class="panel">
   <h2 class="panelh">Subtests targeted</h2>
   <div class="headline">{sub_passing:,}<span class="dim"> of </span>{sub_targeted:,}
     <span class="pct">{sub_pct:.2f}%</span></div>
   <div class="dim sub2">Subtests passing, of the subtests the 0.1 worklist targets.
-    Counted once per source per implemented global, with a file's
-    <code>&lt;meta name="variant"&gt;</code> slices folded back together &mdash; variants
-    <em>partition</em> a file's subtests, they do not multiply them.
+    Counted once per test URL &mdash; per source, implemented global and declared
+    <code>&lt;meta name="variant"&gt;</code> &mdash; the unit MANIFEST.json and wpt.fyi use.
     The other sense of &ldquo;progressed&rdquo; is whole files:
     <b>{clean:,} of {total:,}</b> ran clean, <b class="pct2">{clean_pct:.2f}%</b>.
     <br><b>This percentage falls when coverage grows.</b> A subtest only exists once its
@@ -1023,16 +1095,14 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     before it adds anything to the numerator.{cov_note}
     Read it against the generation table, never alone.</div>
   <table class="comp"><tbody>{''.join(comp_rows)}</tbody></table>
-  <p class="dim note">The denominator is <b>not</b> the raw sum of reported subtest
-    results, which is {raw_reported:,} &mdash; about {raw_ratio:.0f}&times; larger. The runner
-    executes a file once per implemented global times once per declared variant and sums
-    every run into one journal line, and the variant never reaches
-    <code>location.search</code>, so <code>/common/subset-tests.js</code> sees no range and
-    each variant run re-registers the file's <em>whole</em> set:
-    <code>euckr-encode-href-errors-han.html</code> declares 23,097 subtests and reports
-    554,328, exactly 24&times; for its 24 variants. Dividing back out by the variant count
-    comes out <b>exact</b> for {even_multi:,} of the {all_multi:,} multi-variant files that have
-    reported anything, which is the evidence for the model.{uneven_note}
+  <p class="dim note">{variant_files:,} files that have reported declare variants. Each
+    variant's query reaches <code>location.search</code>, so a slice variant
+    (<code>?1-1000</code>, read by <code>/common/subset-tests.js</code>) reports only its
+    slice and nothing is divided out: <code>euckr-encode-href-errors-han.html</code>'s 24
+    slices report its 23,097 subtests once between them. Runs from before 71ffd213a
+    (2026-09-22) are the exception: <code>location.search</code> was empty, every variant
+    run registered the whole set, and such a run is divided by the file's variant count
+    ({pre_fix_files:,} file{"s" if pre_fix_files != 1 else ""} still counted that way).
     A file's target uses the most subtests any run has <em>ever</em> reported for it;
     its passes use only the current run.</p>
 </div>"""
@@ -1312,4 +1382,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    if sys.argv[1:] == ['--self-test']:
+        _check_declared_variants()
+        print('wpt_progress self-test: ok')
+    else:
+        main()

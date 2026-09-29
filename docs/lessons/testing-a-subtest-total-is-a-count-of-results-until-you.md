@@ -1,6 +1,10 @@
 # Testing: A subtest total is a count of RESULTS until you divide the fan-out out
 
 **Date**: 2026-09-22
+**Status** (2026-09-29): superseded. 71ffd213a gave each variant its query the
+same day, so the division below undercounted every slice file from then on; the
+tool no longer divides. See
+[A correction for a bug becomes the bug when the bug is fixed](testing-a-correction-for-a-bug-becomes-the-bug-when-it-is-fixed.md).
 **Lesson**: Summing `passed+failed+timed_out+notrun` over the journal counts each
 variant-partitioned file's subtests once PER VARIANT, not once.
 
