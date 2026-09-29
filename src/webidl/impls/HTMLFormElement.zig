@@ -854,6 +854,13 @@ const PlannedNavigation = struct {
     /// Submit step 22's condition, taken when the form was submitted: the
     /// form document had not completely loaded.
     source_not_completely_loaded: bool,
+    /// The form document at submission, and its slab generation: "the rules
+    /// for choosing a navigable" (submit step 22) start from its node
+    /// navigable. The form may be in another document by the time the task
+    /// runs - the navigation still goes to the navigable chosen at
+    /// submission.
+    form_document: ?*runtime.Instance = null,
+    form_document_generation: u64 = 0,
     /// The POST resource of a submission "as entity body"; null for GET.
     post: ?PostResource = null,
     /// With it, the entry list as a FormData, kept alive until the planned
@@ -906,6 +913,8 @@ fn planNavigationWith(form: *runtime.Instance, url: []const u8, target: []const 
         .url = url,
         .target = target,
         .source_not_completely_loaded = not_loaded,
+        .form_document = document,
+        .form_document_generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0,
         .post = post,
         .form_data = form_data,
         .allocator = allocator,
@@ -950,7 +959,18 @@ fn navigateSteps(data: ?*anyopaque) void {
     // submit step 22 made "replace" when the form document is the target's
     // active document and has not completely loaded. The rules for choosing
     // a navigable and the navigation are the navigables' (dom.navigables).
+    //
+    // Submit step 22 chooses targetNavigable at submission, from the form
+    // document's node navigable; Crane chooses when the task runs, but from
+    // that same document, so a form moved to another document before its
+    // task still navigates the navigable it was submitted in
+    // (form-submission-0/reparent-form-during-planned-navigation-task; Chrome
+    // and Safari pass it). The navigation uses the form's node document now.
     const document = (interfaces.Node.get_ownerDocument(task.form) catch null) orelse return;
+    const form_document: ?*runtime.Instance = if (task.form_document) |d|
+        (if (runtime.SlabAllocator.generationOf(d) == task.form_document_generation) d else null)
+    else
+        null;
     const navigables = @import("dom").navigables;
     if (!navigables.isInstalled()) {
         const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
@@ -958,6 +978,7 @@ fn navigateSteps(data: ?*anyopaque) void {
     }
     navigables.navigateByTarget(document, .{
         .target = task.target,
+        .current_document = if (form_document != document) form_document else null,
         .url = task.url,
         .source_not_completely_loaded = task.source_not_completely_loaded,
         .source_element = task.form,
