@@ -370,8 +370,9 @@ fn hasActivationBehavior(target: *runtime.Instance) bool {
 
 /// dom.activation: the a element's activation behaviour (HTML 4.6.4): "if
 /// element has no href attribute, then return"; otherwise follow the
-/// hyperlink (dom.navigables). Downloading (the download attribute) and the
-/// image map coordinates of an ismap image are not modelled.
+/// hyperlink (dom.navigables), auditing it (hyperlink_auditing: the ping
+/// attribute). Downloading (the download attribute) and the image map
+/// coordinates of an ismap image are not modelled.
 fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) void {
     _ = event;
     const elem_internal = ElementImpl.getInternal(target) orelse return;
@@ -384,5 +385,8 @@ fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) vo
         const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
         installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
     }
+    // HTML 4.6.6: following it sends the element's pings, before the
+    // navigation starts.
+    @import("hyperlink_auditing.zig").audit(target);
     navigables.followHyperlink(target);
 }
