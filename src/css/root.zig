@@ -1,7 +1,7 @@
 //! CSS Property Value Parser
 //!
-//! Implements CSS Syntax Module Level 3 tokenization and value parsing
-//! for CSS property values. Supports quirks mode for hashless hex colors
+//! Implements CSS Syntax Module Level 3 tokenization, value parsing for CSS
+//! property values, and finding a style sheet's @import rules. Supports quirks mode for hashless hex colors
 //! and unitless lengths.
 //!
 //! ## WHATWG/W3C Specifications
@@ -13,15 +13,17 @@
 //!
 //! ## Scope
 //!
-//! This module provides ONLY property value parsing:
-//! - CSS tokenizer for property values
+//! This module provides property value parsing, and a style sheet's @import
+//! rules:
+//! - CSS tokenizer (CSS Syntax 4.3, every token type)
 //! - Color value parser (hex, rgb, named colors)
 //! - Length value parser (px, em, %, etc.)
 //! - Property parser framework for routing
+//! - The @import rules a style sheet starts with (import_rules)
 //!
 //! This module does NOT include:
 //! - Selector parsing (see src/selector/)
-//! - At-rules parsing
+//! - At-rules other than @import
 //! - Cascade/inheritance
 //! - CSSOM
 //!
@@ -81,6 +83,9 @@ pub const PropertyValue = property_parser.PropertyValue;
 pub const PropertyType = property_parser.PropertyType;
 pub const PropertyParseError = property_parser.PropertyParseError;
 pub const Keyword = property_parser.Keyword;
+
+/// The @import rules a style sheet starts with: its critical subresources.
+pub const import_rules = @import("import_rules.zig");
 
 // ============================================================================
 // Tests

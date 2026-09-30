@@ -298,6 +298,7 @@ pub fn parseHTMLWithScripting(
     // Document as it parses the DOCTYPE, where script can already read it -
     // except in an iframe srcdoc document, whose URL matches about:srcdoc.
     tree_builder.setDomAdapterModeCallback(&parser_scripts.domAdapterOnModeSet);
+    tree_builder.setDomAdapterPoppedCallback(&parser_scripts.domAdapterOnElementPopped);
     if (document_internals.getURL(document)) |url| tree_builder.iframe_srcdoc = matchesAboutSrcdoc(url);
 
     // Step 5: the script end-tag steps.

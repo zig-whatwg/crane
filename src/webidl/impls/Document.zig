@@ -3826,7 +3826,7 @@ fn lifecycleFinishLoading(document: *runtime.Instance) void {
 /// synchronous.
 fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
-    if (@import("dom").content_navigables.delaysLoadEvent(document)) {
+    if (@import("dom").content_navigables.delaysLoadEvent(document) or @import("dom").style_sheet_owners.delaysLoadEvent(document)) {
         internal.load_waiting_on_delay = true;
         return;
     }

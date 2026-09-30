@@ -161,6 +161,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [HTML bounds frame nesting only for src; browsers bound script navigations too](spec-compliance-html-bounds-frame-nesting-only-for-src.md) - A file whose subtests all pass while it times out is waiting for a load event; when the spec has no bound on a recursion, take a shipping engine's and say so.
 - ["UTF-8 decode" never fails](spec-compliance-utf-8-decode-never-fails.md) - Where the spec decodes, decode; validation is a different algorithm with a different name.
 - [A replacement loop must restart the decoder its encoding makes](spec-compliance-a-replacement-loop-must-restart-the-decoder-its-encoding-makes.md) - A decoder's "initial state" belongs to its encoding: reset through `newDecoder()`, and test an error loop with a single-byte encoding that has unmapped bytes, not with UTF-8.
+- [A parsed element is inserted before its text](spec-compliance-a-parsed-element-is-inserted-before-its-text.md) - An element whose processing reads its children must hear from the parser when they are all there: for a parsed element, insertion and children-changed run before its content has arrived.
+- [An opaque response's status is 0](spec-compliance-an-opaque-response-s-status-is-0.md) - Before checking a response's status or headers, ask whether it can be no-cors cross-origin: an opaque response says 0 and nothing, and the check has to read the internal response.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
@@ -207,6 +209,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A counter that drifts per call hides a leak per call](testing-a-counter-that-drifts-per-call-hides-a-leak-per-call.md) - Read a leak counter against a control statement run the same way, and cross-check it with V8's global handle bytes; a hand-kept counter is only as good as its least-counted creation site.
 - [Compare two runners only with each runner's own snapshot](testing-compare-two-runners-only-with-each-runner-s-own-snapshot.md) - A runner and its snapshot are one artifact: freeze them together, and put the right snapshot in place before every run.
 - [A correction for a bug becomes the bug when the bug is fixed](testing-a-correction-for-a-bug-becomes-the-bug-when-it-is-fixed.md) - A correction must name the bug it corrects, so fixing the bug retires it; evidence printed live that stops supporting a model is a refutation, not a caveat.
+- [A stash poll hangs on a request nothing sends](testing-a-stash-poll-hangs-on-a-request-nothing-sends.md) - When a file polls the server for a stashed value, find what should send the request that fills the stash - a ping, a beacon, a report - before looking at what reads it.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.

@@ -146,6 +146,7 @@ pub const DomTreeAdapter = struct {
         );
         tree_builder.setDomAdapterAttributeCallback(onAttributeAddedCallback);
         tree_builder.setDomAdapterModeCallback(onModeSetCallback);
+        tree_builder.setDomAdapterPoppedCallback(onElementPoppedCallback);
     }
 
     /// The document mode the parser set: the Document takes it.
@@ -158,6 +159,15 @@ pub const DomTreeAdapter = struct {
         const self: *DomTreeAdapter = @ptrCast(@alignCast(context));
         const element = self.node_map.get(tree_node) orelse return;
         parser_script_execution.appendParsedAttribute(element, attr.*);
+    }
+
+    /// The "text" insertion mode popped an element: a style element's style
+    /// block updates now.
+    fn onElementPoppedCallback(tree_node: *TreeNode, context: ?*anyopaque) void {
+        const self: *DomTreeAdapter = @ptrCast(@alignCast(context));
+        if (!tree_node.hasTagName("style")) return;
+        const element = self.node_map.get(tree_node) orelse return;
+        dom.style_sheet_owners.poppedByParser(element);
     }
 
     // Static callback wrappers that the tree builder calls
@@ -385,6 +395,9 @@ pub const DomTreeAdapter = struct {
 
         // A script element - HTML's, or an SVG script - is parser-inserted.
         if (std.mem.eql(u8, local_name, "script")) dom.script_elements.markParserInserted(element, self.document);
+        // A style element updates its style block when the parser pops it
+        // (`onElementPoppedCallback`), not as it is inserted and filled.
+        if (std.mem.eql(u8, local_name, "style")) dom.style_sheet_owners.createdByParser(element);
 
         // "Append each attribute in the given token to element."
         for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);

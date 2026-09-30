@@ -74,13 +74,7 @@ pub fn determineNosniff(allocator: Allocator, headers: *const HeaderList) !bool 
     return values.len > 0 and std.ascii.eqlIgnoreCase(values[0], "nosniff");
 }
 
-/// The essence of the MIME type Fetch's "extract a MIME type" gives, as
-/// lowercase bytes (OWNED), or null for failure.
-fn extractMimeEssence(allocator: Allocator, headers: *const HeaderList) !?[]u8 {
-    var extracted = (try mime.extractMimeType(allocator, headers)) orelse return null;
-    defer extracted.deinit();
-    return try mime.essenceBytes(allocator, extracted);
-}
+const extractMimeEssence = mime.extractMimeEssence;
 
 fn listOf(allocator: Allocator, pairs: []const [2][]const u8) !HeaderList {
     var list = HeaderList.init(allocator);
