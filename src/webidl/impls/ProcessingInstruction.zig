@@ -96,6 +96,10 @@ pub fn deinit(instance: *runtime.Instance) void {
         if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
         state.own._internal = null;
     }
+    // And CharacterData's and Node's teardown: its data, its NodeBase and its
+    // registry entries. Stopping here left them behind for every PI torn down,
+    // with its tree or when its wrapper was collected.
+    interfaces.CharacterData.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 

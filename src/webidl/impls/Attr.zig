@@ -166,6 +166,9 @@ pub fn deinit(instance: *runtime.Instance) void {
         if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
         state.own._internal = null;
     }
+    // And Node's teardown: its NodeBase and its registry entry. Stopping here
+    // left them behind for every Attr node freed.
+    interfaces.Node.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
