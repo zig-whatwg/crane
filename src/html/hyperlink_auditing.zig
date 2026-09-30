@@ -2,7 +2,7 @@
 //! `area` element with a `ping` attribute creates sends a POST to each URL
 //! the attribute lists, independent of the navigation it accompanies.
 //!
-//! Shared by HTMLAnchorElement and HTMLAreaElement: their activation
+//! Called by HTMLAnchorElement and HTMLAreaElement: their activation
 //! behaviour calls `audit` as it follows the hyperlink, before the
 //! navigation starts, as Blink does (HTMLAnchorElement::NavigateToHyperlink
 //! sends the pings, then navigates). The pings are fetched on the event loop

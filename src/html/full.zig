@@ -191,6 +191,14 @@ pub const ExternalScriptType = external_script_loader.ScriptType;
 pub const ScriptExecutor = external_script_loader.ScriptExecutor;
 pub const ScriptLoaderFn = external_script_loader.ScriptLoaderFn;
 
+/// HTML "hyperlink auditing": the pings an a or area element's hyperlink
+/// sends when it is followed.
+pub const hyperlink_auditing = @import("hyperlink_auditing.zig");
+
+/// A link or style element's style sheet load, with its critical
+/// subresources, and a link's preload.
+pub const style_sheet_loading = @import("style_sheet_loading.zig");
+
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing
 pub const scripted_parser = @import("scripted_parser.zig");

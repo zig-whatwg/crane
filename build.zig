@@ -1277,7 +1277,6 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("mixins", mixins_mod);
     // Add selector to impls (for ParentNode querySelector/querySelectorAll)
     impls_mod.addImport("selector", selector_mod);
-    impls_mod.addImport("css", css_mod); // A style sheet's @import rules (link and style elements)
 
     // Add mixins to interfaces (for ParentNode.NodeOrString and other mixin types)
     interfaces_mod.addImport("mixins", mixins_mod);
@@ -2031,6 +2030,8 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("dictionaries", dictionaries_mod);
     // DOM module for document_internals access in parser_script_execution.zig
     html_mod.addImport("dom", dom_mod);
+    // A style sheet's @import rules, for style_sheet_loading.zig.
+    html_mod.addImport("css", css_mod);
 
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls

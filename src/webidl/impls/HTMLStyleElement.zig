@@ -28,13 +28,10 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLStyleElement = interfaces.HTMLStyleElement;
 
-// Ancestors: a style element IS an HTMLElement, an Element and a Node, and
-// reaches their state through their impls.
-const HTMLElementImpl = @import("HTMLElement.zig");
-const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
-
-const style_sheet_loading = @import("style_sheet_loading.zig");
+// Everything the element reads of its HTMLElement, Element and Node state,
+// it reads through the generated interfaces: no impl is named here. The
+// load of its style sheet is HTML's (src/html/style_sheet_loading.zig).
+const style_sheet_loading = @import("html").style_sheet_loading;
 
 // The hooks the element installs its steps into: the insertion, removing
 // and children changed steps (DOM 4.2.3), and dom.style_sheet_owners - the
@@ -92,8 +89,8 @@ pub fn init(
         };
         steps_registered = true;
     }
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer HTMLElementImpl.deinit(instance);
+    const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
+    errdefer interfaces.HTMLElement.deinit(instance);
     // From the arena that holds the element's state, as every element's
     // internal state is: teardown does not always run `deinit`.
     const internal = try runtime.ArenaAllocator.get().create(InternalState);
@@ -110,7 +107,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         if (runtime.ArenaAllocator.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
         state.own._internal = null;
     }
-    HTMLElementImpl.deinit(instance);
+    interfaces.HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
@@ -137,11 +134,11 @@ fn updateStyleBlock(element: *runtime.Instance) void {
         internal.load = 0;
     }
     // 3. If element is not connected, then return.
-    if (!(NodeImpl.get_isConnected(element) catch false)) return;
+    if (!(interfaces.Node.get_isConnected(element) catch false)) return;
     // 4. If element's type attribute is present and its value is neither the
     // empty string nor an ASCII case-insensitive match for "text/css", then
     // return. ("text/css; charset=utf-8" returns here too.)
-    if (ElementImpl.call_getAttributeNS(element, null, runtime.DOMString.initInterned("type")) catch null) |type_attr| {
+    if (interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("type")) catch null) |type_attr| {
         const value = type_attr.asSlice();
         if (value.len != 0 and !std.ascii.eqlIgnoreCase(value, "text/css")) return;
     }
@@ -163,10 +160,10 @@ fn childTextContent(element: *runtime.Instance) ![]u8 {
     const allocator = element.ctx.allocator;
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(allocator);
-    var child = NodeImpl.getFirstChild(element);
-    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
-        const node_type = NodeImpl.getNodeType(c) orelse continue;
-        if (node_type != NodeImpl.NodeType.TEXT_NODE and node_type != NodeImpl.NodeType.CDATA_SECTION_NODE) continue;
+    var child = try interfaces.Node.get_firstChild(element);
+    while (child) |c| : (child = try interfaces.Node.get_nextSibling(c)) {
+        const node_type = try interfaces.Node.get_nodeType(c);
+        if (node_type != interfaces.Node.get_TEXT_NODE() and node_type != interfaces.Node.get_CDATA_SECTION_NODE()) continue;
         var data = try interfaces.CharacterData.get_data(c);
         defer data.deinit(c.ctx.allocator);
         try out.appendSlice(allocator, data.asSlice());

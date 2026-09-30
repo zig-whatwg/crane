@@ -387,6 +387,6 @@ fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) vo
     }
     // HTML 4.6.6: following it sends the element's pings, before the
     // navigation starts.
-    @import("hyperlink_auditing.zig").audit(target);
+    @import("html").hyperlink_auditing.audit(target);
     navigables.followHyperlink(target);
 }

@@ -28,13 +28,10 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const HTMLLinkElement = interfaces.HTMLLinkElement;
 
-// Ancestors: a link element IS an HTMLElement, an Element and a Node, and
-// reaches their state through their impls.
-const HTMLElementImpl = @import("HTMLElement.zig");
-const ElementImpl = @import("Element.zig");
-const NodeImpl = @import("Node.zig");
-
-const style_sheet_loading = @import("style_sheet_loading.zig");
+// Everything the element reads of its HTMLElement, Element and Node state,
+// it reads through the generated interfaces: no impl is named here. The
+// load of its style sheet is HTML's (src/html/style_sheet_loading.zig).
+const style_sheet_loading = @import("html").style_sheet_loading;
 
 // The hooks the element installs its steps into: the attribute change steps
 // (DOM 4.9), the insertion and removing steps (DOM 4.2.3), and the load
@@ -87,8 +84,8 @@ pub fn init(
         };
         steps_registered = true;
     }
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
-    errdefer HTMLElementImpl.deinit(instance);
+    const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
+    errdefer interfaces.HTMLElement.deinit(instance);
     // From the arena that holds the element's state, as every element's
     // internal state is: teardown does not always run `deinit`.
     const internal = try runtime.ArenaAllocator.get().create(InternalState);
@@ -137,8 +134,8 @@ fn fetchAndProcess(element: *runtime.Instance) void {
     }
     // "Browsing-context connected": connected, and its document has a
     // browsing context.
-    if (!(NodeImpl.get_isConnected(element) catch false)) return;
-    const document = NodeImpl.getOwnerDocument(element) orelse return;
+    if (!(interfaces.Node.get_isConnected(element) catch false)) return;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
     if ((interfaces.Document.get_defaultView(document) catch null) == null) return;
     // "Create link options from element": href, crossorigin and
     // referrerpolicy. A link with no href, or an empty one, defines no link.
@@ -278,7 +275,7 @@ const referrer_policies = [_][]const u8{
 /// `element`'s attribute `name` in no namespace, or null. BORROWED: the
 /// attribute's value, until the attribute changes.
 fn attribute(element: *runtime.Instance, comptime name: []const u8) ?[]const u8 {
-    const value = (ElementImpl.call_getAttributeNS(element, null, runtime.DOMString.initInterned(name)) catch null) orelse return null;
+    const value = (interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned(name)) catch null) orelse return null;
     return value.asSlice();
 }
 
@@ -319,7 +316,7 @@ fn attributeChangeSteps(
     else
         false;
     if (!refetch) return;
-    if (!(NodeImpl.get_isConnected(element) catch false)) return;
+    if (!(interfaces.Node.get_isConnected(element) catch false)) return;
     fetchAndProcess(element);
 }
 
@@ -413,25 +410,25 @@ pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// value sets it.
 pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     if (value) |v| {
-        try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("crossorigin"), v);
+        try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("crossorigin"), v);
     } else {
-        try ElementImpl.call_removeAttribute(instance, runtime.DOMString.initInterned("crossorigin"));
+        try interfaces.Element.call_removeAttribute(instance, runtime.DOMString.initInterned("crossorigin"));
     }
 }
 
 /// Setter for as: sets the content attribute.
 pub fn set_as(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("as"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("as"), value);
 }
 
 /// Setter for referrerPolicy: sets the content attribute.
 pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("referrerpolicy"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("referrerpolicy"), value);
 }
 
 /// Setter for fetchPriority: sets the content attribute.
 pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("fetchpriority"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("fetchpriority"), value);
 }
 
 /// Fetch's potential destinations: "fetch" and the destinations.
