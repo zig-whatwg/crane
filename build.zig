@@ -3821,8 +3821,40 @@ pub fn build(b: *std.Build) void {
     wpt_step.dependOn(&progress_report.step);
 
     // Same thing on its own, for refreshing the page without running tests.
-    const progress_step = b.step("wpt-progress", "Regenerate wpt-results/progress.html from existing journals");
-    progress_step.dependOn(&b.addSystemCommand(&.{ "python3", "tools/wpt_progress.py" }).step);
+    const progress_step = b.step("wpt-progress", "Regenerate wpt-results/progress.html (and the public results site) from existing journals");
+    const progress_only = b.addSystemCommand(&.{ "python3", "tools/wpt_progress.py" });
+
+    // ========================================================================
+    // WPT: the public results site (tools/wpt_site/)
+    // ========================================================================
+    // tools/wpt_site/generate.zig writes Crane's static WPT results site -
+    // the hand-written assets plus deterministic JSON shards - from the state
+    // and history the progress report keeps, the worklist, and the runner's
+    // per-file result streams, into wpt-results/site/. `wpt-progress` runs it
+    // after every regeneration of the report; when wpt-results/site is a
+    // worktree of the gh-pages branch it commits there, and it never pushes.
+    // `zig build test` runs its tests.
+    const wpt_site_module = b.createModule(.{
+        .root_source_file = b.path("tools/wpt_site/generate.zig"),
+        // A tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+    });
+    const wpt_site_exe = b.addExecutable(.{ .name = "wpt_site", .root_module = wpt_site_module });
+    const wpt_site_run = b.addRunArtifact(wpt_site_exe);
+    wpt_site_run.has_side_effects = true;
+    wpt_site_run.setCwd(b.path("."));
+    if (b.args) |args| wpt_site_run.addArgs(args);
+    const wpt_site_step = b.step("wpt-site", "Regenerate the public WPT results site in wpt-results/site/ (-- --out=<dir> --no-commit ...)");
+    wpt_site_step.dependOn(&wpt_site_run.step);
+    // The same, after the report: every regeneration of the report regenerates the site.
+    const wpt_site_after_progress = b.addRunArtifact(wpt_site_exe);
+    wpt_site_after_progress.has_side_effects = true;
+    wpt_site_after_progress.setCwd(b.path("."));
+    wpt_site_after_progress.step.dependOn(&progress_only.step);
+    progress_step.dependOn(&wpt_site_after_progress.step);
+    const wpt_site_tests = b.addTest(.{ .root_module = wpt_site_module });
+    test_step.dependOn(&b.addRunArtifact(wpt_site_tests).step);
 
     // ========================================================================
     // HTTP MOCK SERVER (for V8 fetch integration tests)

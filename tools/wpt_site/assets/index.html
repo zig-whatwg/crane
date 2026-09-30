@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crane WPT Results</title>
+<meta name="description" content="Crane's own web-platform-tests results: a headless web platform engine written in Zig, measured by its own runner. Testharness tests only; rendering and layout are out of scope by design.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15171a" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="fonts/source-serif-4-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/public-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="data/meta.json" as="fetch" crossorigin>
+<link rel="preload" href="data/suites.json" as="fetch" crossorigin>
+<link rel="stylesheet" href="site.css">
+<link rel="icon" href="data:,">
+<script src="site.js" defer></script>
+</head>
+<body>
+<!--
+THESIS: Crane's WPT results read as a living standard - a numbered section per suite with conformance and tests boxes - refusing the CI dashboard's stat cards and headline percentage.
+OWN-WORLD: spec-paper white, near-black ink, link blue, conformance green, issue red for blocking only, pale amber notes; book serif prose, workhorse sans data, monospace paths; hairline rules, numbered margins.
+STORY: An evaluator reads "Status of this document" (testharness only, headless), scans the numbered contents, opens a suite, reads its conformance box, and follows a file to its subtests.
+FIRST VIEWPORT: numbered contents rail with file counts at left; spec header with commit, WPT revision and history sparkline; the status section; section 1's conformance box beside its tests box.
+FORM: Living Standard, #1 on my list; seed a0daf20c.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<a class="skip" href="#status">Skip to the document</a>
+
+<div class="frame">
+  <nav class="toc" id="toc" aria-labelledby="toc-title">
+    <details class="toc-fold" id="toc-fold" open>
+      <summary><span id="toc-title" class="toc-title">Contents</span><span class="toc-where" id="toc-where" aria-hidden="true"></span></summary>
+      <ol class="toc-list" id="toc-list">
+        <li class="toc-front"><a href="#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
+      </ol>
+    </details>
+  </nav>
+
+  <main class="doc" id="main">
+    <header class="head">
+      <h1>Crane <span class="h1-rest">Web Platform Tests Results</span></h1>
+      <p class="subtitle">Conformance record, regenerated with every run &mdash; <span data-fill="updated">last updated &hellip;</span></p>
+      <dl class="head-meta">
+        <div><dt>This version</dt><dd data-fill="version">&hellip;</dd></div>
+        <div><dt>Runs</dt><dd data-fill="runs">&hellip;</dd></div>
+        <div><dt>WPT revision</dt><dd data-fill="wpt">&hellip;</dd></div>
+        <div class="head-history"><dt>History</dt><dd><a class="spark-link" href="#history" data-fill="spark" aria-label="Revision history">&hellip;</a></dd></div>
+      </dl>
+    </header>
+
+    <section class="front" id="status" aria-labelledby="status-h">
+      <h2 id="status-h">Status of this document</h2>
+      <div class="front-prose">
+        <p>Crane is a web platform engine written in Zig: the browser, minus the pixels. This is its record of its own results on the <a href="https://web-platform-tests.org/">web-platform-tests</a> (WPT), measured by its own runner and regenerated with every run. <strong>Scope:</strong> the <span data-fill="n-files">&hellip;</span> testharness files of the 0.1 worklist, in <span data-fill="n-suites">&hellip;</span> suites. Reftests and tests that need rendering or layout (<code>html/rendering/</code>, <code>canvas</code>, scrolling, focus traversal) are out of scope by design, and every total describes this scope and nothing wider.</p>
+        <p><strong>No headline percentage.</strong> This is not a browser comparison, and a single rate would mostly measure <code>encoding/</code>, which holds <span data-fill="enc-share">&hellip;</span> of all reported subtests (<span data-fill="enc-subs">&hellip;</span>) in <span data-fill="enc-files">&hellip;</span> files. A file <strong>blocks</strong> the 0.1 gate when it times out, errors, crashes or finishes with no subtest passing (<span class="st st-issue">TIMEOUT</span>, <span class="st st-issue">ERROR</span>, <span class="st st-issue">CRASH</span>, <span class="st st-issue">NONE-PASSED</span>): <span data-fill="n-blocking">&hellip;</span> block today. Subtest detail comes from the runner&rsquo;s result streams: <span data-fill="n-detail">&hellip;</span>.</p>
+      </div>
+      <div class="note" role="note">
+        <p class="note-label">How to read a section</p>
+        <p>Each suite is a numbered section. Its <em>Conformance</em> box counts files by standing and subtests by result; its <em>Tests</em> box opens in place into directories, files and each file&rsquo;s subtests. Everything has a permanent link, <span class="self-demo" aria-hidden="true">&para;</span>.</p>
+        <dl class="legend" aria-label="File standings">
+          <div><dt><span class="key key-clean"></span>Passing every subtest</dt></div>
+          <div><dt><span class="key key-partial"></span>Some subtests failing</dt></div>
+          <div><dt><span class="key key-blocking"></span>Blocking</dt><dd>NONE-PASSED, TIMEOUT, ERROR, CRASH</dd></div>
+          <div><dt><span class="key key-empty"></span>No subtests reported</dt></div>
+          <div><dt><span class="key key-unrun"></span>Not run yet</dt></div>
+        </dl>
+      </div>
+    </section>
+
+    <div id="suites" class="suites">
+      <p class="loading" id="loading">Loading the results&hellip;</p>
+      <noscript><p class="loading">The sections of this record are drawn from its data files by script. With script off, the data is still readable: <a href="data/suites.json">data/suites.json</a>, <a href="data/meta.json">data/meta.json</a>, and one file per directory under <code>data/dirs/</code>.</p></noscript>
+    </div>
+
+    <section class="back" id="history" aria-labelledby="history-h">
+      <h2 id="history-h"><span class="secno" data-fill="history-no"></span>Revision history</h2>
+      <p>One generation is recorded each time the progress report is regenerated and at least one file changes standing. The chart shows every generation&rsquo;s files by standing, oldest at the left.</p>
+      <figure class="chart" id="chart">
+        <p class="readout" id="readout" aria-live="polite">&nbsp;</p>
+        <div class="chart-plot" id="chart-plot"></div>
+        <figcaption class="chart-key">
+          <span><span class="key key-clean"></span>Passing every subtest</span>
+          <span><span class="key key-partial"></span>Some subtests failing</span>
+          <span><span class="key key-blocking"></span>Blocking</span>
+          <span><span class="key key-unrun"></span>Not run</span>
+        </figcaption>
+      </figure>
+      <div class="note" role="note">
+        <p class="note-label">Two changes of rule sit inside this history</p>
+        <p><span data-fill="recon">Early generations</span> were reconstructed afterwards from the journals that survived, so they show less coverage than was measured at the time. From generation <span data-fill="rule2">82</span> the gate counts NONE-PASSED files as blocking; before it they sat among the files with some subtests failing, which is why blocking rises there. In this history, as in the progress report it comes from, a file that reports no subtests counts as passing every subtest.</p>
+        <p>Subtest totals are not charted: the way subtests were counted changed twice in this period, so a line would show changes of method, not of Crane.</p>
+      </div>
+      <details class="gens" id="gens">
+        <summary>Every generation, newest first</summary>
+        <div class="table-wrap" id="gens-table"></div>
+      </details>
+    </section>
+
+    <footer class="foot">
+      <p>Generated by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams. Data: <a href="data/meta.json">meta.json</a> &middot; <a href="data/suites.json">suites.json</a>. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License.</p>
+    </footer>
+  </main>
+</div>
+</body>
+</html>
