@@ -144,6 +144,8 @@ pub const xpath = struct {
     pub const evaluator = @import("xpath/evaluator.zig");
 };
 
+pub const boundary_points = @import("boundary_points.zig");
+
 test {
     std.testing.refAllDecls(@This());
 }
