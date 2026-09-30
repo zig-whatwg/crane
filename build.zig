@@ -2841,6 +2841,19 @@ pub fn build(b: *std.Build) void {
         addTestFilesFromDir(b, bench_step, "tests/benchmarks", target, &benchmark_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add benchmark test files: {}\n", .{err});
         };
+
+        // Intl's wall-clock benchmarks (avg-ns thresholds) belong here for the same
+        // reason: in `zig build test` they went red under build load, not on a defect
+        // (2026-09-30: three DateTimeFormat/NumberFormat thresholds failed a lane's gate
+        // while three test builds shared the machine).
+        const intl_bench_imports = [_]std.Build.Module.Import{
+            .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "intl", .module = intl_mod },
+        };
+        addTestFilesFromDir(b, bench_step, "tests/intl_bench", target, &intl_bench_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add intl benchmark test files: {}\n", .{err});
+        };
     }
 
     // ========================================================================
@@ -3821,8 +3834,47 @@ pub fn build(b: *std.Build) void {
     wpt_step.dependOn(&progress_report.step);
 
     // Same thing on its own, for refreshing the page without running tests.
-    const progress_step = b.step("wpt-progress", "Regenerate wpt-results/progress.html from existing journals");
-    progress_step.dependOn(&b.addSystemCommand(&.{ "python3", "tools/wpt_progress.py" }).step);
+    const progress_step = b.step("wpt-progress", "Regenerate wpt-results/progress.html (and the public results site) from existing journals");
+    const progress_only = b.addSystemCommand(&.{ "python3", "tools/wpt_progress.py" });
+
+    // ========================================================================
+    // WPT: the public results site (tools/wpt_site/)
+    // ========================================================================
+    // tools/wpt_site/generate.zig writes Crane's static WPT results site -
+    // the hand-written assets plus deterministic JSON shards - from the state
+    // and history the progress report keeps, the worklist, and the runner's
+    // per-file result streams, into wpt-results/site/. `wpt-progress` runs it
+    // after every regeneration of the report; when wpt-results/site is a
+    // worktree of the gh-pages branch it commits there, and it never pushes.
+    // `zig build test` runs its tests.
+    const wpt_site_module = b.createModule(.{
+        .root_source_file = b.path("tools/wpt_site/generate.zig"),
+        // A tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+    });
+    const wpt_site_exe = b.addExecutable(.{ .name = "wpt_site", .root_module = wpt_site_module });
+    const wpt_site_run = b.addRunArtifact(wpt_site_exe);
+    wpt_site_run.has_side_effects = true;
+    wpt_site_run.setCwd(b.path("."));
+    if (b.args) |args| wpt_site_run.addArgs(args);
+    const wpt_site_step = b.step("wpt-site", "Regenerate the public WPT results site in wpt-results/site/ (-- --out=<dir> --no-commit ...)");
+    wpt_site_step.dependOn(&wpt_site_run.step);
+    // The same, after the report: every regeneration of the report regenerates the site.
+    const wpt_site_after_progress = b.addRunArtifact(wpt_site_exe);
+    wpt_site_after_progress.has_side_effects = true;
+    wpt_site_after_progress.setCwd(b.path("."));
+    wpt_site_after_progress.step.dependOn(&progress_only.step);
+    progress_step.dependOn(&wpt_site_after_progress.step);
+    // And after the report `wpt` refreshes, so every regeneration of the report - both
+    // steps that write it - regenerates the site (the user's requirement, 2026-09-30).
+    const wpt_site_after_wpt = b.addRunArtifact(wpt_site_exe);
+    wpt_site_after_wpt.has_side_effects = true;
+    wpt_site_after_wpt.setCwd(b.path("."));
+    wpt_site_after_wpt.step.dependOn(&progress_report.step);
+    wpt_step.dependOn(&wpt_site_after_wpt.step);
+    const wpt_site_tests = b.addTest(.{ .root_module = wpt_site_module });
+    test_step.dependOn(&b.addRunArtifact(wpt_site_tests).step);
 
     // ========================================================================
     // HTTP MOCK SERVER (for V8 fetch integration tests)
@@ -4114,6 +4166,32 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&lint_engine_check.step);
     const lint_engine_tests = b.addTest(.{ .root_module = lint_engine_module });
     test_step.dependOn(&b.addRunArtifact(lint_engine_tests).step);
+
+    // ========================================================================
+    // WPT: the wpt.fyi upload package
+    // ========================================================================
+    // tools/wpt_upload_package.zig turns a supervised sweep's reports, result
+    // streams and journals into gzipped wptreport chunks for wpt.fyi, and
+    // `check` dry-runs wpt.fyi's shape checks over a package. It uploads
+    // nothing. `zig build test` runs its tests.
+    const wpt_upload_package_module = b.createModule(.{
+        .root_source_file = b.path("tools/wpt_upload_package.zig"),
+        // A tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const wpt_upload_package_exe = b.addExecutable(.{
+        .name = "wpt_upload_package",
+        .root_module = wpt_upload_package_module,
+    });
+    const wpt_upload_package_step = b.step("wpt-upload-package", "Package a WPT sweep for wpt.fyi (-- build --input=... --manifest=... --out=...), or check a package (-- check <chunk.json.gz>...)");
+    const wpt_upload_package_run = b.addRunArtifact(wpt_upload_package_exe);
+    wpt_upload_package_run.has_side_effects = true;
+    wpt_upload_package_run.setCwd(b.path("."));
+    if (b.args) |args| wpt_upload_package_run.addArgs(args);
+    wpt_upload_package_step.dependOn(&wpt_upload_package_run.step);
+    const wpt_upload_package_tests = b.addTest(.{ .root_module = wpt_upload_package_module });
+    test_step.dependOn(&b.addRunArtifact(wpt_upload_package_tests).step);
 
     // ========================================================================
     // HELP: Available JavaScript Engines

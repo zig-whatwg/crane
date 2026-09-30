@@ -52,6 +52,18 @@ fn matchesAnyDir(url: []const u8, dirs: []const []const u8) bool {
     return false;
 }
 
+/// Which part of the manifest a selection draws from.
+pub const Scope = enum {
+    /// The runner's own scope: `config.isInScope`, the area allowlist and
+    /// the exclusion patterns.
+    in_scope,
+    /// Every testharness source in MANIFEST.json - what wpt.fyi reports for a
+    /// browser. Neither the allowlist nor the exclusion patterns apply: both
+    /// encode what Crane targets, and a full-corpus run exists to report
+    /// everything else too. Only `dir_filters` narrow it.
+    full_corpus,
+};
+
 /// Select every in-scope testharness source in `manifest`.
 ///
 /// `dir_filters` optionally narrows the selection to URLs under those
@@ -64,6 +76,26 @@ pub fn selectInScope(
     allocator: Allocator,
     manifest: *const wpt_manifest.Manifest,
     dir_filters: []const []const u8,
+) !Selection {
+    return select(allocator, manifest, dir_filters, .in_scope);
+}
+
+/// Select every testharness source in `manifest`, in scope or not
+/// (`--full-corpus`). `dir_filters` narrow it as they do `selectInScope`.
+pub fn selectAll(
+    allocator: Allocator,
+    manifest: *const wpt_manifest.Manifest,
+    dir_filters: []const []const u8,
+) !Selection {
+    return select(allocator, manifest, dir_filters, .full_corpus);
+}
+
+/// The selection `scope` asks for, narrowed to `dir_filters`.
+pub fn select(
+    allocator: Allocator,
+    manifest: *const wpt_manifest.Manifest,
+    dir_filters: []const []const u8,
+    scope: Scope,
 ) !Selection {
     var seen: std.StringHashMap(void) = std.StringHashMap(void).init(allocator);
     defer {
@@ -78,7 +110,10 @@ pub fn selectInScope(
     while (iter.next()) |entry| {
         const url = entry.key_ptr.*;
         if (!matchesAnyDir(url, dir_filters)) continue;
-        if (!config.isInScope(url)) continue;
+        switch (scope) {
+            .in_scope => if (!config.isInScope(url)) continue,
+            .full_corpus => {},
+        }
 
         url_count += 1;
 
@@ -379,6 +414,62 @@ test "selectInScope over the real manifest reports a plausible denominator" {
     for (sel.sources) |s| {
         try std.testing.expect(!config.isExcluded(s));
     }
+}
+
+test "selectAll keeps every testharness source, out-of-scope and excluded ones too" {
+    const allocator = std.testing.allocator;
+
+    var manifest = try wpt_manifest.parseManifestBytes(allocator, test_manifest_json);
+    defer manifest.deinit();
+
+    var sel = try selectAll(allocator, &manifest, &.{});
+    defer sel.deinit();
+
+    // css/ is off the allowlist, html/rendering/ is an exclusion pattern and
+    // domparsing/ only shares a prefix with dom/: the full corpus has all three.
+    try std.testing.expectEqual(@as(usize, 6), sel.sources.len);
+    try std.testing.expectEqual(@as(usize, 7), sel.url_count);
+    try std.testing.expect(indexOfSource(sel, "css/selectors/focus-visible.html") != null);
+    try std.testing.expect(indexOfSource(sel, "html/rendering/replaced-elements.html") != null);
+    try std.testing.expect(indexOfSource(sel, "domparsing/xmlserializer.html") != null);
+    try std.testing.expectEqualStrings("css/selectors/focus-visible.html", sel.sources[0]);
+}
+
+test "selectAll honours directory filters and still ignores the allowlist" {
+    const allocator = std.testing.allocator;
+
+    var manifest = try wpt_manifest.parseManifestBytes(allocator, test_manifest_json);
+    defer manifest.deinit();
+
+    // A directory the in-scope selection answers with nothing.
+    var in_scope = try selectInScope(allocator, &manifest, &.{"css"});
+    defer in_scope.deinit();
+    try std.testing.expectEqual(@as(usize, 0), in_scope.sources.len);
+
+    var all = try selectAll(allocator, &manifest, &.{"css"});
+    defer all.deinit();
+    try std.testing.expectEqual(@as(usize, 1), all.sources.len);
+    try std.testing.expectEqualStrings("css/selectors/focus-visible.html", all.sources[0]);
+}
+
+test "selectAll over the real manifest is the whole testharness corpus" {
+    const allocator = std.testing.allocator;
+
+    std.Io.Dir.cwd().access(std.testing.io, "tests/wpt/MANIFEST.json", .{}) catch return error.SkipZigTest;
+
+    var manifest = try wpt_manifest.loadManifest(allocator, "tests/wpt");
+    defer manifest.deinit();
+
+    var all = try selectAll(allocator, &manifest, &.{});
+    defer all.deinit();
+    var in_scope = try selectInScope(allocator, &manifest, &.{});
+    defer in_scope.deinit();
+
+    // Every URL, and strictly more than the in-scope run: if these ever
+    // converge, one of the two selections has stopped doing its job.
+    try std.testing.expectEqual(manifest.urlCount(), all.url_count);
+    try std.testing.expect(all.sources.len > in_scope.sources.len);
+    try std.testing.expect(all.sources.len > 25_000);
 }
 
 test "a worklist survives a write/read round trip" {

@@ -633,6 +633,12 @@ pub const WptReport = struct {
         try writer.writeAll("}\n");
     }
 
+    /// The results added since the report held `first` of them: one file's
+    /// results, when `first` is the count taken as the file started.
+    pub fn resultsSince(self: *const WptReport, first: usize) []const TestResultJson {
+        return self.results.items[@min(first, self.results.items.len)..];
+    }
+
     /// Get summary statistics
     pub fn getSummary(self: WptReport) Summary {
         var summary = Summary{};
@@ -677,6 +683,53 @@ pub const WptReport = struct {
     }
 };
 
+/// Append-only JSON-lines stream of results, one line per test URL, written
+/// as each file finishes (`Options.resultsStreamPath`).
+///
+/// The report proper is written when the process finishes, so a child that
+/// crashes, or that the stall watchdog kills, takes every result it held with
+/// it; the journal keeps only counts. The stream keeps the results: a file's
+/// lines are formatted in memory and reach the file descriptor in one write,
+/// so a crash leaves at most a truncated last line, which a reader drops.
+pub const ResultStream = struct {
+    allocator: std.mem.Allocator,
+    file: std.Io.File,
+    buf: std.Io.Writer.Allocating,
+
+    /// Start a fresh stream, discarding any previous run at this path.
+    pub fn create(allocator: std.mem.Allocator, path: []const u8) !ResultStream {
+        const file = try host.cwd().createFile(host.io(), path, .{ .truncate = true });
+        return .{ .allocator = allocator, .file = file, .buf = .init(allocator) };
+    }
+
+    /// Continue an existing stream (a restarted child), or start one.
+    pub fn append(allocator: std.mem.Allocator, path: []const u8) !ResultStream {
+        const io = host.io();
+        const file = host.cwd().openFile(io, path, .{ .mode = .write_only }) catch |err| switch (err) {
+            error.FileNotFound => return create(allocator, path),
+            else => return err,
+        };
+        // As journal.Journal.append: 0.16 seeks through a File.Writer, and the
+        // shared fd offset is what later writeStreamingAll calls append from.
+        var seeker = file.writerStreaming(io, &.{});
+        try seeker.seekToUnbuffered(try file.length(io));
+        return .{ .allocator = allocator, .file = file, .buf = .init(allocator) };
+    }
+
+    pub fn deinit(self: *ResultStream) void {
+        self.buf.deinit();
+        self.file.close(host.io());
+    }
+
+    /// Append `results` - one finished file's - in a single write.
+    pub fn writeResults(self: *ResultStream, results: []const TestResultJson) !void {
+        if (results.len == 0) return;
+        self.buf.clearRetainingCapacity();
+        for (results) |r| try r.writeJsonLine(&self.buf.writer, self.allocator);
+        try self.file.writeStreamingAll(host.io(), self.buf.written());
+    }
+};
+
 /// Test result in JSON format
 pub const TestResultJson = struct {
     /// Test path (e.g., "/url/url-constructor.any.js")
@@ -700,6 +753,27 @@ pub const TestResultJson = struct {
             sub.deinit(allocator);
         }
         self.subtests.deinit(allocator);
+    }
+
+    /// This result as one line of compact JSON, newline-terminated - the form
+    /// a `ResultStream` appends. Same fields as `writeJson`.
+    pub fn writeJsonLine(self: TestResultJson, writer: anytype, allocator: std.mem.Allocator) !void {
+        try writer.writeAll("{\"test\": ");
+        try writeJsonString(writer, self.test_path);
+        try writer.writeAll(", \"status\": ");
+        try writeJsonString(writer, self.status);
+        try writer.writeAll(", \"message\": ");
+        if (self.message) |msg| try writeJsonString(writer, msg) else try writer.writeAll("null");
+        if (self.expected) |exp| {
+            try writer.writeAll(", \"expected\": ");
+            try writeJsonString(writer, exp);
+        }
+        try writer.print(", \"duration\": {d}, \"subtests\": [", .{self.duration});
+        for (self.subtests.items, 0..) |sub, i| {
+            if (i > 0) try writer.writeAll(", ");
+            try sub.writeJsonObject(writer, allocator);
+        }
+        try writer.writeAll("]}\n");
     }
 
     pub fn writeJson(self: TestResultJson, writer: anytype, indent: []const u8, allocator: std.mem.Allocator) !void {
@@ -760,7 +834,13 @@ pub const SubtestResultJson = struct {
     }
 
     pub fn writeJson(self: SubtestResultJson, writer: anytype, indent: []const u8, allocator: std.mem.Allocator) !void {
-        try writer.print("{s}    {{\"name\": ", .{indent});
+        try writer.print("{s}    ", .{indent});
+        try self.writeJsonObject(writer, allocator);
+    }
+
+    /// The subtest's JSON object, with no indentation or line break.
+    pub fn writeJsonObject(self: SubtestResultJson, writer: anytype, allocator: std.mem.Allocator) !void {
+        try writer.writeAll("{\"name\": ");
 
         // Sanitize name for lone surrogates
         const sanitized_name = try sanitizeLoneSurrogates(allocator, self.name);
@@ -1205,4 +1285,92 @@ test "WptReport addResultWithExpected" {
     try testing.expect(sub.expected != null);
     try testing.expectEqualStrings("FAIL", sub.expected.?);
     try testing.expect(sub.isExpectedFailure());
+}
+
+// =============================================================================
+// Result stream tests
+// =============================================================================
+
+/// A report holding one finished file: two subtests, a message with a newline
+/// and a quote, as a failing assertion produces.
+fn reportWithOneFile(allocator: std.mem.Allocator) !WptReport {
+    var report = WptReport.init(allocator);
+    errdefer report.deinit();
+
+    var harness_result = try test_harness.TestResult.init(allocator, "url/test.any.js");
+    defer harness_result.deinit(allocator);
+    harness_result.status = .ok;
+    harness_result.duration_ms = 100;
+    try harness_result.addSubtest(.{ .name = try allocator.dupe(u8, "first"), .status = .pass, .duration_ms = 1 });
+    try harness_result.addSubtest(.{
+        .name = try allocator.dupe(u8, "second"),
+        .status = .fail,
+        .message = try allocator.dupe(u8, "assert_equals: expected \"a\"\nbut got b"),
+        .duration_ms = 1,
+    });
+    try report.addResult(harness_result);
+    return report;
+}
+
+test "a result's JSON line is one line that parses back to the same result" {
+    const allocator = std.testing.allocator;
+    var report = try reportWithOneFile(allocator);
+    defer report.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    try report.results.items[0].writeJsonLine(&out.writer, allocator);
+    const line = out.written();
+
+    // Exactly one newline, and it is the last byte: a reader splits on '\n'.
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, line, "\n"));
+    try std.testing.expect(line[line.len - 1] == '\n');
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, line, .{});
+    defer parsed.deinit();
+    const obj = parsed.value.object;
+    try std.testing.expectEqualStrings("OK", obj.get("status").?.string);
+    try std.testing.expect(std.mem.startsWith(u8, obj.get("test").?.string, "/url/test.any"));
+    const subtests = obj.get("subtests").?.array.items;
+    try std.testing.expectEqual(@as(usize, 2), subtests.len);
+    try std.testing.expectEqualStrings("second", subtests[1].object.get("name").?.string);
+    try std.testing.expectEqualStrings("FAIL", subtests[1].object.get("status").?.string);
+    try std.testing.expectEqualStrings("assert_equals: expected \"a\"\nbut got b", subtests[1].object.get("message").?.string);
+}
+
+test "a result stream appends across processes, one line per result" {
+    const allocator = std.testing.allocator;
+    var report = try reportWithOneFile(allocator);
+    defer report.deinit();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(dir_path);
+    const path = try std.fs.path.join(allocator, &.{ dir_path, "journal.shard0.wptreport.jsonl" });
+    defer allocator.free(path);
+
+    // The first child creates the stream; a restarted child appends to it,
+    // as the journal does.
+    {
+        var stream = try ResultStream.create(allocator, path);
+        defer stream.deinit();
+        try stream.writeResults(report.resultsSince(0));
+    }
+    {
+        var stream = try ResultStream.append(allocator, path);
+        defer stream.deinit();
+        try stream.writeResults(report.resultsSince(0));
+        // Nothing new since the last file: no line.
+        try stream.writeResults(report.resultsSince(report.results.items.len));
+    }
+
+    const bytes = try tmp.dir.readFileAlloc(std.testing.io, "journal.shard0.wptreport.jsonl", allocator, .limited(1 << 20));
+    defer allocator.free(bytes);
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, bytes, "\n"));
+    var lines = std.mem.splitScalar(u8, std.mem.trimEnd(u8, bytes, "\n"), '\n');
+    while (lines.next()) |line| {
+        const parsed = try std.json.parseFromSlice(std.json.Value, allocator, line, .{});
+        parsed.deinit();
+    }
 }
