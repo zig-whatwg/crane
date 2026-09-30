@@ -903,7 +903,7 @@ test "protocol: a Window realm made afresh has the host's Window as its global o
 test "protocol: a Window's indexed property enumerator leaves no handle behind" {
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
     const isolate = isolate_once.?;
 
     // The control: the same enumeration of an ordinary object, no interceptor.
@@ -1156,6 +1156,29 @@ test "protocol: a destroyed navigable's realm keeps its global attached, severed
         std.debug.print("native contexts: {d} before the frame, {d} after its realm ended and its WindowProxy was dropped\n", .{ baseline, after });
         return error.RealmKeptAlive;
     }
+}
+
+test "protocol: a wrapper another realm still holds is severed when its realm ends" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    {
+        const held = try evalOwned(frame, "new Headers([['a', '1']])");
+        defer held.release();
+        try setGlobal(parent, "heldHeaders", held.value);
+    }
+    try expectEval(parent, "heldHeaders.get('a')", "1");
+
+    // The frame's realm ends: its wrapper cache frees the Headers, and the
+    // parent still holds the wrapper. Reading through it is a TypeError - the
+    // wrapper names no instance any more - never a read of the freed one
+    // (Headers.call_get unwraps its `_internal` unchecked: a panic, or worse
+    // once the slot is reissued).
+    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    try expectEval(parent, "(() => { try { return String(heldHeaders.get('a')); } catch (e) { return e.name; } })()", "TypeError");
+    try expectEval(parent, "delete globalThis.heldHeaders", "true");
 }
 
 test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whichever realm queued them" {
