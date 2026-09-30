@@ -172,6 +172,7 @@ pub const xpath = struct {
 pub const boundary_points = @import("boundary_points.zig");
 pub const target_element = @import("target_element.zig");
 pub const fragment_scroll = @import("fragment_scroll.zig");
+pub const shadow_hosts = @import("shadow_hosts.zig");
 
 test {
     std.testing.refAllDecls(@This());

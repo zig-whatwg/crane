@@ -113,6 +113,11 @@ pub const InternalState = struct {
 
     /// Shadow root attached to this element (null if not a shadow host)
     shadow_root: ?*runtime.Instance = null,
+    /// `shadow_root` and its wrapper, for as long as this element lives - "an
+    /// element has an associated shadow root", and a shadow root has no
+    /// parent, so nothing else keeps it (see `same_object.KeptChild`).
+    /// Released, and the shadow root severed, in `deinit`.
+    shadow_root_kept: same_object.KeptChild = .{},
 
     /// Custom element state per HTML spec
     custom_element_state: CustomElementState = .undefined,
@@ -561,11 +566,32 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
+        // The host lets its shadow root go: the shadow root forgets its host
+        // (dom.shadow_hosts), and its wrapper is released, so the wrapper
+        // cache frees it - and its subtree - once script drops it too. Here
+        // and not in InternalState.deinit, which cleanupAllRemainingInternal's
+        // exit sweep also runs, after the engine is gone.
+        //
+        // Not torn down: a shadow root routinely outlives script's hold on
+        // its host (`document.createElement("div").attachShadow(...)` keeps
+        // nothing of the host), and it must go on working. Stated deviation,
+        // until wrappers are traced: it does not keep its host alive, so its
+        // `host` answers InvalidStateError once the host has been collected,
+        // where the spec keeps the host (Blink and WebKit trace it).
+        if (internal.shadow_root) |shadow| {
+            internal.shadow_root_kept.release(shadow, forgetHost);
+            internal.shadow_root = null;
+        }
         internal.deinit();
     }
     Registry.remove(instance);
     // Node cleanup happens via inheritance chain
     NodeImpl.deinit(instance);
+}
+
+/// `shadow`, still the shadow root this element made, loses its host.
+fn forgetHost(shadow: *runtime.Instance) void {
+    dom.shadow_hosts.hostDestroyed(shadow);
 }
 
 /// Clean up ALL remaining Element internal states.
@@ -3210,34 +3236,54 @@ pub fn call_getAttributeNames(instance: *runtime.Instance) anyerror!runtime.JSVa
 }
 
 /// Operation: attachShadow
-/// DOM §4.10.2 - Attaches a shadow root to this element
+/// DOM §4.9 - Attaches a shadow root to this element
 /// Spec: https://dom.spec.whatwg.org/#dom-element-attachshadow
 ///
-/// Creates a shadow root for this element and returns it.
-/// Throws NotSupportedError if:
-/// - Element already has a shadow root
-/// - Element is not a valid shadow host (must be custom element or certain HTML elements)
+/// attachShadow steps 1-3 choose the shadow root's custom element registry
+/// (init["customElementRegistry"]); scoped registries are not implemented, so
+/// they are not run and the shadow root has none (TODO: scoped custom element
+/// registries). Step 4 runs "attach a shadow root" below; step 5 returns it.
 pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.ShadowRootInit) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Check if element already has a shadow root
-    if (internal.shadow_root != null) {
-        // Per spec: throw NotSupportedError if element already has a shadow root
-        return error.InvalidStateError;
-    }
+    // "attach a shadow root", given element, mode, clonable, serializable,
+    // delegatesFocus and slotAssignment:
 
-    // TODO: Validate that this element can be a shadow host
-    // Valid elements are: article, aside, blockquote, body, div, footer, h1-h6,
-    // header, main, nav, p, section, span, or any custom element
-    // For now, we allow any element
+    // Step 1: "If element's namespace is not the HTML namespace, then throw a
+    // NotSupportedError DOMException."
+    const namespace = if (internal.namespace_uri) |ns| ns.asSlice() else "";
+    if (!std.mem.eql(u8, namespace, "http://www.w3.org/1999/xhtml")) return error.NotSupportedError;
 
-    // Use the mode directly from the dictionary (it's already an enum type)
+    // Step 2: "If element's local name is not a valid shadow host name, then
+    // throw a NotSupportedError DOMException." Only these hosts are ever
+    // given a shadow root - and every one of them tears down through
+    // Element.deinit, which is what releases it.
+    const local_name = internal.local_name.asSlice();
+    if (!isValidShadowHostName(local_name)) return error.NotSupportedError;
+
+    // Step 3: "If element's local name is a valid custom element name, or
+    // element's is value is non-null": if its definition's disable shadow is
+    // true, throw a NotSupportedError DOMException.
+    // TODO: look the definition up (it lives behind CustomElementRegistry's
+    // interface; there is no hook for "look up a custom element definition"
+    // yet), so a definition with disabledFeatures ["shadow"] is not refused.
+
+    // Step 4: "If element is a shadow host": its shadow root is declarative
+    // only when the parser attached it, which Crane's parser does not do yet
+    // (no declarative shadow DOM), so step 4.2's "currentShadowRoot's
+    // declarative is false" always holds: "throw a NotSupportedError
+    // DOMException". (Step 4.3, reusing a declarative root: TODO with
+    // declarative shadow roots.)
+    if (internal.shadow_root != null) return error.NotSupportedError;
+
     const mode = init_data.mode;
-
-    // Use slotAssignment directly from the dictionary (it's already an enum type)
     const slot_assignment = init_data.slotAssignment orelse enums.SlotAssignmentMode._named_;
 
-    // Create the ShadowRoot using the factory function which properly initializes all state
+    // Steps 5, 6 and 8-11: a new shadow root whose host is element, with
+    // mode, delegatesFocus, slotAssignment, declarative false, clonable and
+    // serializable. (Step 7, "available to element internals" for a
+    // precustomized or custom element, and step 12, its custom element
+    // registry: TODO, not set yet.)
     const ShadowRootImpl = @import("ShadowRoot.zig");
     const shadow_root = ShadowRootImpl.create(
         internal.allocator,
@@ -3250,10 +3296,28 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
         init_data.serializable orelse false,
     ) catch return error.OutOfMemory;
 
-    // Store reference in element's internal state
+    // Step 13: "Set element's shadow root to shadow." The element keeps it,
+    // and its wrapper, for its whole life: nothing else does.
     internal.shadow_root = shadow_root;
+    internal.shadow_root_kept.made(shadow_root);
+    internal.shadow_root_kept.handOut(shadow_root);
 
     return shadow_root;
+}
+
+/// DOM: "A valid shadow host name is: a valid custom element name; "article",
+/// "aside", "blockquote", "body", "div", "footer", "h1", "h2", "h3", "h4",
+/// "h5", "h6", "header", "main", "nav", "p", "section", or "span"."
+fn isValidShadowHostName(local_name: []const u8) bool {
+    if (dom.names.isValidCustomElementName(local_name)) return true;
+    const names = [_][]const u8{
+        "article", "aside", "blockquote", "body",   "div",  "footer", "h1", "h2",      "h3",
+        "h4",      "h5",    "h6",         "header", "main", "nav",    "p",  "section", "span",
+    };
+    for (names) |name| {
+        if (std.mem.eql(u8, local_name, name)) return true;
+    }
+    return false;
 }
 
 /// Operation: requestPointerLock
