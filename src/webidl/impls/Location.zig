@@ -753,7 +753,8 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 /// error.NotImplemented.
 ///
 /// Not modelled, stated: source snapshot params and sandboxing (1-7), the
-/// ongoing navigation (19), javascript: URLs (20, NotImplemented).
+/// ongoing navigation (19). A javascript: URL (20) runs in a task, and its
+/// String result - a new document - is dropped.
 fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_level_navigation.Params) !void {
     const document = interfaces.Window.get_document(window) catch return;
     // Step 9: "If navigable's active document's unload counter is greater
@@ -777,8 +778,10 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
     if (navigate_steps.isFragmentNavigation(url, document_url, params.form_data != null)) {
         return topLevelFragmentNavigation(window, url, document_url, handling, params);
     }
-    // Step 20: javascript: URLs are not run here.
-    if (navigate_steps.isJavascript(url)) return error.NotImplemented;
+    // Step 20: "If url's scheme is "javascript", then queue a global task on
+    // the navigation and traversal task source given navigable's active
+    // window to navigate to a javascript: URL", and return.
+    if (navigate_steps.isJavascript(url)) return queueJavascriptNavigation(window, url, params.source_document);
     // Step 21: the navigate event, for a navigation from a same-origin
     // source to a fetch scheme, when the active document is not the initial
     // about:blank.
@@ -799,8 +802,130 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
         // Canceled, or intercepted - which made it same-document.
         if (!continue_navigation) return;
     }
+    // A document that is not itself a file: document navigating to a file:
+    // URL goes nowhere - all three browsers refuse to load local resources
+    // for web content, and the navigation API sees the navigation aborted
+    // (navigation-methods/return-value/navigate-file-url.html). Fetch leaves
+    // file: URLs to the user agent.
+    if (std.mem.eql(u8, navigate_steps.schemeOf(url), "file") and !std.mem.eql(u8, navigate_steps.schemeOf(document_url), "file")) {
+        dom.navigation_api.informAboutAbortingNavigation(window);
+        return;
+    }
     // A new document for the top-level page: not this engine's to make.
     return error.NotImplemented;
+}
+
+/// HTML "navigate to a javascript: URL" for the top-level page, queued by
+/// "navigate" step 20: what it needs when it runs - the URL, and the
+/// initiator origin snapshot (the source document's origin, serialized).
+const JavascriptNavigation = struct {
+    allocator: Allocator,
+    window: *runtime.Instance,
+    generation: u64,
+    url: []u8,
+    initiator_origin: ?[]u8,
+
+    fn destroy(self: *JavascriptNavigation) void {
+        self.allocator.free(self.url);
+        if (self.initiator_origin) |o| self.allocator.free(o);
+        self.allocator.destroy(self);
+    }
+
+    fn run(context: ?*anyopaque) void {
+        const self: *JavascriptNavigation = @ptrCast(@alignCast(context.?));
+        defer self.destroy();
+        if (runtime.SlabAllocator.generationOf(self.window) != self.generation) return;
+        if (!self.window.ctx.hasEngine()) return;
+        engine.runTaskInRealm(self.window.ctx, steps, self) catch |err| log.debug("javascript: URL not run: {s}", .{@errorName(err)});
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *JavascriptNavigation = @ptrCast(@alignCast(context.?));
+        self.destroy();
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *JavascriptNavigation = @ptrCast(@alignCast(data.?));
+        navigateToJavascriptUrl(self);
+    }
+};
+
+fn queueJavascriptNavigation(window: *runtime.Instance, url: []const u8, source: ?*runtime.Instance) !void {
+    const allocator = window.ctx.allocator;
+    const task = try allocator.create(JavascriptNavigation);
+    errdefer allocator.destroy(task);
+    const owned_url = try allocator.dupe(u8, url);
+    errdefer allocator.free(owned_url);
+    // Navigate step 4's initiatorOriginSnapshot: the source document's
+    // origin, the page's own when there is none.
+    const source_window: ?*runtime.Instance = if (source) |doc| (interfaces.Document.get_defaultView(doc) catch null) else window;
+    const initiator: ?[]u8 = if (source_window) |w| blk: {
+        const serialized = interfaces.Window.get_origin(w) catch break :blk null;
+        defer w.ctx.allocator.free(serialized);
+        break :blk try allocator.dupe(u8, serialized);
+    } else null;
+    task.* = .{
+        .allocator = allocator,
+        .window = window,
+        .generation = runtime.SlabAllocator.generationOf(window),
+        .url = owned_url,
+        .initiator_origin = initiator,
+    };
+    const loop = window.ctx.getOptionalEventLoop() orelse return JavascriptNavigation.run(task);
+    loop.queueTask(.{ .callback = JavascriptNavigation.run, .context = task, .drop = JavascriptNavigation.drop });
+}
+
+/// "Navigate to a javascript: URL", in the page's realm. Not modelled,
+/// stated: step 2 (the page's navigable keeps no ongoing navigation), step 5
+/// (the CSP navigation check), and steps 8-17 - a String result would be the
+/// page's new document, which this engine cannot make for the top-level
+/// page: the result is dropped.
+fn navigateToJavascriptUrl(task: *JavascriptNavigation) void {
+    const window = task.window;
+    // Step 3: "If initiatorOrigin is not same origin-domain with
+    // targetNavigable's active document's origin, then return."
+    const initiator = task.initiator_origin orelse return;
+    const target = interfaces.Window.get_origin(window) catch return;
+    defer window.ctx.allocator.free(target);
+    if (std.mem.eql(u8, initiator, "null") or !std.mem.eql(u8, initiator, target)) return;
+    // Step 6: "Let newDocument be the result of evaluating a javascript: URL".
+    const result = evaluateJavascriptUrl(window, task.url, task.allocator) orelse return;
+    task.allocator.free(result);
+    log.debug("a javascript: URL's String result would replace the top-level page; it cannot be", .{});
+}
+
+/// HTML "evaluate a javascript: URL" in `window`'s realm: the script's
+/// String completion value (owned by `allocator`), or null - for any other
+/// value, and for a script that throws, which is reported.
+fn evaluateJavascriptUrl(window: *runtime.Instance, url: []const u8, allocator: Allocator) ?[]u8 {
+    const realm = window.ctx;
+    // Steps 1-3: "Let encodedScriptSource be the result of removing the
+    // leading "javascript:" from urlString"; "let scriptSource be the UTF-8
+    // decoding of the percent-decoding of encodedScriptSource".
+    const source = @import("percent_encoding").percentDecode(allocator, url["javascript:".len..]) catch return null;
+    defer allocator.free(source);
+    // Steps 4-8: create a classic script and run it.
+    const completion = engine.evaluateClassicScript(realm, .{ .utf8 = source }, "", null, .{ .report = reportJavascriptUrlException, .host = realm }) catch return null;
+    defer completion.release();
+    // Step 9: only a String is a result.
+    if (engine.typeOf(realm, completion.value) != .string) return null;
+    return engine.convertToDOMString(realm, completion.value, allocator) catch null;
+}
+
+/// What a javascript: URL's script throws is reported at its window.
+fn reportJavascriptUrlException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+    const fallback: runtime.Context = @ptrCast(@alignCast(host orelse return));
+    const realm = info.realm orelse fallback;
+    const record = realm.getRealm() orelse return;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }
 
 /// dom.top_level_navigation: the page's hyperlinks and forms.
