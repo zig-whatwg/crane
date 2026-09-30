@@ -89,6 +89,7 @@ pub const documentClose = core.documentClose;
 /// cannot share a helper through impls/ because impls are private to
 /// one another.
 pub const autofill = @import("autofill.zig");
+pub const form_associated = @import("form_associated.zig");
 pub const custom_elements = @import("custom_elements.zig");
 pub const upgrade = @import("upgrade.zig");
 

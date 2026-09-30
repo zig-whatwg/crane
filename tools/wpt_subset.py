@@ -158,6 +158,19 @@ EXCLUDE = [
     ('.svg',    'no XML parser'),
     ('.xml',    'no XML parser'),
 
+    # Tests no engine can pass as written: they time out in Chrome, Firefox and
+    # Safari (wpt.fyi 2026-09-30) because of the test, not a missing feature.
+    # Each has an upstream issue; re-include when it is fixed and the WPT
+    # snapshot has the fix.
+    ('html/browsers/history/the-history-interface/traverse_the_history_1.html',
+     'never completes: start_test_wait() has no caller in the automated test - wpt#63098'),
+    ('html/browsers/history/the-history-interface/traverse_the_history_write_after_load_1.html',
+     'never completes (start_test_wait), and expects document.open() to add a history entry, removed by whatwg/html#3946 - wpt#63098'),
+    ('html/browsers/history/the-history-interface/joint_session_history/002.html',
+     'expects document.open() to add a history entry and fire pageshow, removed by whatwg/html#3946 - wpt#63099'),
+    ('html/browsers/history/the-location-interface/location_replace_session_history.html',
+     'only completes if an iframe document is restored from session history without reloading (optional bfcache; times out in Servo too) - wpt#63100'),
+
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
     ('/resources/',                    'harness resources'),

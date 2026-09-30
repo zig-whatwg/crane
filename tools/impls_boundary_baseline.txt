@@ -69,7 +69,7 @@ src/html/script_execution.zig Document.addImportMapping 1
 src/html/script_execution.zig Document.addPrefetchHint 2
 src/html/script_execution.zig Document.addScopedImportMapping 1
 src/html/script_execution.zig Document.addScriptToExecuteAsap 1
-src/html/script_execution.zig Document.addScriptToExecuteInOrderAsap 2
+src/html/script_execution.zig Document.addScriptToExecuteInOrderAsap 1
 src/html/script_execution.zig Document.addScriptToExecuteWhenParsingFinished 1
 src/html/script_execution.zig Document.clearScriptsToExecuteWhenParsingFinished 1
 src/html/script_execution.zig Document.decrementIgnoreDestructiveWritesCounter 1
@@ -334,8 +334,6 @@ src/webidl/impls/HTMLBaseElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLBaseElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLBodyElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLBodyElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLButtonElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLButtonElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLCanvasElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLCanvasElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLDListElement.zig HTMLElement.deinit 2
@@ -431,13 +429,8 @@ src/webidl/impls/HTMLIFrameElement.zig Window.setOrigin 1
 src/webidl/impls/HTMLImageElement.zig EventTarget.dispatchTrusted 1
 src/webidl/impls/HTMLImageElement.zig HTMLElement.deinit 1
 src/webidl/impls/HTMLImageElement.zig HTMLElement.init 1
-src/webidl/impls/HTMLInputElement.zig Element.getInternal 4
-src/webidl/impls/HTMLInputElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLInputElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLLIElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLLIElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLLabelElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLLabelElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLLegendElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLLegendElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLMapElement.zig HTMLElement.deinit 2

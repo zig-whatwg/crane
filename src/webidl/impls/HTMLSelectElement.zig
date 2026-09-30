@@ -21,6 +21,7 @@ const HTMLCollectionImpl = @import("HTMLCollection.zig");
 // One-way, by design: the option impl owns selectedness and never imports this
 // file back. See the header comment in HTMLOptionElement.zig.
 const OptionImpl = @import("HTMLOptionElement.zig");
+const form_associated = @import("html").form_associated;
 
 pub const State = HTMLSelectElement.State;
 
@@ -150,12 +151,9 @@ pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString 
     return runtime.DOMString.initEmpty();
 }
 
-/// Getter for form
+/// Getter for form: the element's form owner.
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    // TODO: form association is not implemented; HTMLInputElement returns null
-    // here for the same reason.
-    _ = instance;
-    return null;
+    return form_associated.formOwner(instance);
 }
 
 /// Getter for type
@@ -267,8 +265,7 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 
 /// Getter for labels
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return form_associated.labelsNodeList(instance);
 }
 
 /// Setter for length

@@ -56,16 +56,15 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     return instance;
 }
 
-/// Getter for form
+/// Getter for form: the element's form owner.
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    return @import("html").form_associated.formOwner(instance);
 }
 
-/// Getter for type
+/// Getter for type: "must return the string "fieldset"".
 pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned("fieldset");
 }
 
 /// Getter for elements

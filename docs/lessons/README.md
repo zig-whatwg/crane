@@ -134,6 +134,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [An object made on first use cannot compute what the spec fixed at an earlier moment](architecture-an-object-made-on-first-use-cannot-compute-what-the-spec-fixed-earlier.md) - Record at that moment, where the object will look, and build from the record; never recompute from current state.
 - [A queue that re-appends the head it cannot serve reorders it](architecture-a-queue-that-re-appends-its-head-reorders.md) - A drain that cannot serve its head must leave the head where it was; code that only ever saw every item ready at once has never exercised that path.
 - [Capture what a late callback reads, not the object it came from](architecture-capture-what-a-callback-reads-not-what-it-read-it-from.md) - Before capturing an object for a callback that may run after it, list what the callback's steps read; capture those values, and there is nothing left to keep alive or to find dangling.
+- [An element alive at teardown is swept, not deinit'd](architecture-an-element-alive-at-teardown-is-swept-not-deinitd.md) - Heap memory an element owns has two exits - its deinit and the teardown sweep - and a new side table must take both.
+- [A workaround outlives its premise](architecture-a-workaround-outlives-its-premise.md) - When a workaround answers from side data instead of the ordinary mechanism, re-measure its premise against the path that never had it.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
