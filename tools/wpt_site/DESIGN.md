@@ -15,8 +15,11 @@ colors:
   select: "#cfe0f5"
   pass: "#2e7d32"
   pass-2: "#a9cfab"
-  issue: "#b3261e"
-  issue-wash: "#fbeceb"
+  fail: "#b3261e"
+  fail-wash: "#fbeceb"
+  block: "#5b6168"
+  block-wash: "#e7e9ec"
+  block-seg: "#7c828a"
   empty: "#c9cdd2"
   unrun: "#eceef0"
   note: "#f4ecd2"
@@ -127,8 +130,8 @@ components:
     typography: "{typography.status-mark}"
     padding: "0.2rem 0.35rem"
   gate-blocking:
-    backgroundColor: "{colors.issue-wash}"
-    textColor: "{colors.issue}"
+    backgroundColor: "{colors.block-wash}"
+    textColor: "{colors.block}"
     typography: "{typography.status-mark}"
     rounded: "{rounded.sm}"
     padding: "0.2rem 0.35rem"
@@ -136,7 +139,7 @@ components:
     textColor: "{colors.pass}"
     typography: "{typography.status-mark}"
   mark-fail:
-    textColor: "{colors.ink}"
+    textColor: "{colors.fail}"
     typography: "{typography.status-mark}"
   mark-other:
     textColor: "{colors.ink-2}"
@@ -176,16 +179,16 @@ components:
 
 **Creative North Star: "The Living Standard"**
 
-The site reads as a specification document of the WHATWG and W3C kind, not a CI dashboard. It has a numbered contents rail, a header block that says which version this is, a "Status of this document" section that states scope before any number appears, one numbered section per suite, and a closing "Revision history" section. Spec-paper white, near-black ink, link blue and hairline rules carry the page. Colour is kept for meaning: conformance green, issue red and a pale amber for notes, each held to one job.
+The site reads as a specification document of the WHATWG and W3C kind, not a CI dashboard. It has a numbered contents rail, a header block that says which version this is, a "Status of this document" section that states scope before any number appears, one numbered section per suite, and a closing "Revision history" section. Spec-paper white, near-black ink, link blue and hairline rules carry the page. Colour is kept for meaning: conformance green for passing, red for failure, grey for blocking and a pale amber for notes, each held to one job.
 
 Density follows a working reference document: long-form serif prose at a comfortable measure, then compact tabular data in bordered boxes. The page opens with its numbers: the WPT subtests passing out of those reported, in large type, with failed, timed out, not run, test files and blocking files beneath it (the user's requirement, 2026-09-30). Every suite, directory and test file then opens with its own subtest numbers. There are no stat cards and no pass percentage. Drill-down is a set of pages that mirror the WPT tree: a page per directory and a page per test file, each with a stable URL, and on a test file's page each failed subtest opens in place to its message.
 
-Every page is finished HTML written by the generator (tools/wpt_site/pages.zig): no page needs script for any of its content, and the site carries no script at all. Built code-led from the direction contract (THESIS / OWN-WORLD / STORY / FIRST VIEWPORT / FORM: "Living Standard"), with no approved comp; the static rewrite (2026-09-30) kept the world and replaced the client-rendered mechanics. Where the contract and the build differ, this file records the build.
+Every page is finished HTML written by the generator (tools/wpt_site/pages.zig): no page needs script for any of its content, and one deferred script, `site.js`, enhances every page (the interactive subtest history chart, sorting, filtering, search). Built code-led from the direction contract (THESIS / OWN-WORLD / STORY / FIRST VIEWPORT / FORM: "Living Standard"), with no approved comp; the static rewrite (2026-09-30) kept the world and replaced the client-rendered mechanics. Where the contract and the build differ, this file records the build.
 
 **Key Characteristics:**
 - Spec-document grammar: front matter, numbered sections, back matter, numbered margins, ¶ self-links.
 - Three faces, three jobs: book serif for prose, a workhorse sans with tabular figures for data, monospace for paths and messages.
-- Colour is semantic and rationed. Green means passing, red means blocking and amber means a note.
+- Colour is semantic and rationed. Green means passing, red means failure, grey means blocking and amber means a note.
 - Flat paper with hairline borders; depth comes from rules and a faint grey tint, never from shadows.
 - One authored motion: a failed subtest's chevron turns as its message opens in place (native `<details>`).
 - Light and dark renditions from the same token names.
@@ -205,8 +208,9 @@ The palette is restrained: neutral paper and ink with a single blue for navigati
 - **Partial Sage** (`pass-2`): files with some subtests failing, only as a meter or chart band and its key swatch. It is never used as text colour.
 
 ### Tertiary
-- **Issue Red** (`issue`): blocking only (TIMEOUT, ERROR, CRASH and NONE-PASSED). This covers the blocking meter segment, chart band and key, blocking counts in the rail, rows and conformance box, the gate words for blocking files, the inline status words in prose, and the blocking column of the generations table.
-- **Issue Wash** (`issue-wash`): the tinted ground behind a blocking gate word, so a blocking row can be found by scanning.
+- **Failure Red** (`fail`): failure. Failed subtest counts, FAIL marks, the history chart's "not passing" band and key, and the not-passing column of the generations table.
+- **Blocking Grey** (`block`, with `block-seg` for the meter segment): blocking (TIMEOUT, ERROR, CRASH and NONE-PASSED). Blocking counts in rows and the conformance box, the gate words for blocking files, the inline status words in prose, and the blocking column of the generations table.
+- **Blocking Wash** (`block-wash`): the tinted ground behind a blocking gate word, so a blocking row can be found by scanning.
 - **Note Amber** (`note`, with `note-rule` for its border and `note-ink` for its label): note boxes that explain method, and nothing else.
 
 ### Neutral
@@ -217,10 +221,10 @@ The palette is restrained: neutral paper and ink with a single blue for navigati
 - **Hairline** (`rule`) and **Strong Hairline** (`rule-strong`): borders, section rules, the tree's indent guide, chart axes and the scrollbar thumb.
 - **No-Subtests Grey** (`empty`) and **Not-Run Grey** (`unrun`): meter and chart segments for files that reported no subtests and files that have not run. `unrun` is also the empty track of every meter.
 
-**Dark rendition.** The same token names are redefined under `@media (prefers-color-scheme: dark)` on `:root:not([data-theme="light"])`, and again on `:root[data-theme="dark"]`: paper #15171a, paper-2 #1c1f23, ink #e6e7e9, ink-2 #a9adb3, rule #33373c, rule-strong #4a4f55, link and focus #8fb8f0, link-visited #b9a3e8, pass #79c07d, pass-2 #3d6b40, issue #f08a80, issue-wash #3a2220, note #2d2818, note-ink #e6d7a4, note-rule #4c4326, empty #5b6067, unrun #2a2d31, here #1f2a38, select #2b4263. In dark, `pass-2` is darker than `pass`, so "some failing" recedes behind "passing" on either ground. Text contrast on paper is 14.5:1 for ink and 8.0:1 for ink-2. `theme-color` follows paper in each scheme.
+**Dark rendition.** The same token names are redefined under `@media (prefers-color-scheme: dark)` on `:root:not([data-theme="light"])`, and again on `:root[data-theme="dark"]`: paper #15171a, paper-2 #1c1f23, ink #e6e7e9, ink-2 #a9adb3, rule #33373c, rule-strong #4a4f55, link and focus #8fb8f0, link-visited #b9a3e8, pass #79c07d, pass-2 #3d6b40, fail #f08a80, fail-wash #3a2220, block #b8bdc3, block-wash #2c3035, block-seg #9aa0a7, note #2d2818, note-ink #e6d7a4, note-rule #4c4326, empty #5b6067, unrun #2a2d31, here #1f2a38, select #2b4263. In dark, `pass-2` is darker than `pass`, so "some failing" recedes behind "passing" on either ground. Text contrast on paper is 14.5:1 for ink and 8.0:1 for ink-2. `theme-color` follows paper in each scheme.
 
 ### Named Rules
-**The Issue Red Rule.** Issue red marks blocking and nothing else: the four blocking standings, their counts, their band and their gate words. A failed subtest is ink and a partial file is secondary ink. If a red element on the page does not name a blocking file, it is wrong. (The script-rendered build's red "Could not load" message went with the script.)
+**The Red Is Failure Rule.** (The user, 2026-09-30: "red is fail. gray is blocking." It replaced the Issue Red Rule, which had made red mean blocking.) Red (`fail`, #b3261e) marks failure: failed subtest counts, FAIL marks, the "not passing" band of the history chart and the not-passing column of its table. Grey (`block`, #5b6168, and `block-seg` #7c828a in meters, darker than "no subtests") marks blocking: the four blocking standings, their counts, their meter segment and their gate words. A decline in subtests passing is red too.
 
 **The Earned Green Rule.** Conformance green appears only for passing: a Clean file, or a subtest that passed. "Some failing" gets the sage band in meters and charts, and its word stays grey.
 
@@ -277,7 +281,7 @@ The palette is restrained: neutral paper and ink with a single blue for navigati
 
 **The Numbers First Rule.** (It replaced the first build's No Big Number Rule, at the user's insistence, 2026-09-30.) The index opens with the WPT subtests passing out of those reported, in large type, and beneath it failed, timed out, not run, test files and blocking files. Every suite, directory and test file opens with its own subtest numbers. File categories are plain labels (Clean, With failures, Blocking, No subtests, Not run), never "passing every subtest". There is no pass percentage unless the user asks for one; the `encoding/` share of all reported subtests is stated beside the totals, because it dominates them.
 
-**The Static Rule.** No page needs script for any content, and the site ships none. Crawlers and readers with script off get the same page. `pages.needsScript` is run over every page the generator's tests emit.
+**The Content Is HTML Rule.** (It replaced the Static Rule, at the user's direction, 2026-09-30: "use javascript when it makes sense to enhance the html. But content should be in html.") Every number, name and message is in the markup the generator writes; crawlers and readers with script off get every figure. Each page loads one deferred script, `site.js`, which only adds what script does better: the interactive history chart, sorting and filtering the tables, the search, the subtest filters, the rail following the reader, and landing the first site's hash links. It reads everything it shows from the markup (the chart from the generations table's rows) or, for the search, `paths.json`. `pages.needsScript` is run over every page the generator's tests emit and fails any other script, placeholder or slot.
 
 **The Quiet Rail Rule.** The rail is on every page, so it carries nothing that changes with results (suite names, numbers and file counts only). Were it to carry a blocking count, every regeneration would rewrite all five thousand pages on gh-pages.
 
@@ -298,7 +302,7 @@ The corners are nearly square, as in a printed document. There are three radii: 
 Headline serif, with the section number in the margin and a ¶ self-link after the text. The ¶ is secondary sans at 0.95rem, hidden at rest and faded in over 120ms when the heading is hovered or the link is focused. On devices without hover it sits at 55% opacity. Suite headings are the suite path in mono (`xhr/`), linking to the suite's page. Reserved ids (status, contents, history, main, toc, gens, chart) get a `suite-` prefix when a suite would collide with them.
 
 ### Figures
-The headline (index) and a section's figures share one grammar: passed at weight 600, " / reported" at 400 in secondary ink, the caption WPT SUBTESTS PASSING, then a row of definition pairs with the number above its label (Failed, Timed out, Not run, Test files, Blocking files). A non-zero blocking count is issue red. A test file's figures omit the file counts.
+The headline (index) and a section's figures share one grammar: passed at weight 600, " / reported" at 400 in secondary ink, the caption WPT SUBTESTS PASSING, then a row of definition pairs with the number above its label (Failed, Timed out, Not run, Test files, Blocking files). A non-zero failed count is red and a non-zero blocking count grey. A test file's figures omit the file counts.
 
 ### Contents rail
 - **Style:** `paper-2` ground, a right hairline, and a CONTENTS label. Entries: Subtest totals (the top of the index), Status of this document, each suite (a right-aligned number, the name in mono, a tabular file count) and Revision history. Every entry links into the index.
@@ -324,9 +328,9 @@ A numbered list under "Contents", a hairline between rows: number, suite path (a
 A breadcrumb (Crane WPT results › each directory › the file), the file name as the heading, its figures, then Standing (the word, and the runner's own status), Run (the run id, its date and Crane commit link) and Test source (the file at the pinned WPT revision). The harness message, if any, sits in a mono `paper-2` well. Under "Subtests", each test URL of the file (each global and variant) has a head with its URL, status and passed / total when there is more than one, or when its status is not OK. Subtests are a list in the harness's order with hairlines: a chevron column, the mark (4.6rem), and the serif name, then a ¶. A subtest with a message is a native `<details>`: its summary is the row, and it opens in place to the message in a mono `paper-2` well (max 18rem, scrolls). Past 500 subtests, only those that did not pass are listed, and the page says how many passing ones it counts. A file without per-subtest data says so, with its counts.
 
 ### Status words
-- **File standing:** Clean in green; With failures, No subtests and Not run in secondary ink; NONE-PASSED, TIMEOUT, ERROR and CRASH in issue red on the issue wash with a 2px radius. A test URL's non-OK status uses the blocking treatment.
+- **File standing:** Clean in green; With failures, No subtests and Not run in secondary ink; NONE-PASSED, TIMEOUT, ERROR and CRASH in blocking grey on the blocking wash with a 2px radius. A test URL's non-OK status uses the blocking treatment.
 - **Subtest marks:** PASS in green, FAIL in ink, TIMEOUT, NOT RUN and PRECOND. in secondary ink.
-- **Inline:** in prose, the blocking words are set as 0.72rem uppercase sans status words in issue red.
+- **Inline:** in prose, the blocking words are set as 0.72rem uppercase sans status words in blocking grey.
 
 ### Note box
 An amber ground, amber hairline and 3px radius, with 1rem 1.25rem padding and a 52rem maximum width. Its text is held to the measure. A sans 600 label in note ink (a sentence, not an eyebrow: "How to read a section", "Two changes of rule sit inside this history") opens serif prose. The front-matter note carries the standing legend as a definition list of key swatches.
@@ -338,23 +342,32 @@ The one authored motion: a failed subtest's chevron (a rotated 1.4px border in s
 - `/crane/`: the index; `#status`, `#contents`, `#history`, `#<suite>` (`#suite-<name>` for reserved names), and `#<path>` for the directory and file rows of a suite's table.
 - `/crane/<dir>/`: a directory page.
 - `/crane/<dir>/<file>/`: a test file page; `#s-<hash>` a subtest on it (a hash of its test URL and name, suffixed when a name repeats).
-The first build's hash permalinks into the index (`#<dir>/<file>`) resolve only for rows a suite's table shows on the index.
+The first build's hash permalinks into the index (`#<dir>/<file>`, `#<dir>/<file>?sub=<name>`) are sent to their pages by site.js.
 
 ### History chart
 - **Sparkline:** 168 x 30 in the header's History row, the same stacked drawing without axes. It links to #history with "N generations since <date>".
-- **Chart:** inline SVG drawn by the generator (chart.zig): stacked area bands of files by standing, one x step per generation, oldest at the left; bottom up, clean (green), with failures (sage), blocking (red) and not run (unrun grey). Two drawings, 960 x 300 and 480 x 260, one shown per width. Count ticks at the left and day ticks along the bottom, 11px secondary sans; rule changes are dotted vertical lines labelled at the top ("live history begins", "NONE-PASSED blocks"). Each generation's column carries a native tooltip (`<title>`) with its numbers and a faint wash on hover. The drawing carries no colour: bands take the page's tokens by class, so the dark rendition follows.
-- **Around it:** a key, an amber note explaining the two changes of rule and why subtests are not charted, and a disclosure ("Every generation, newest first") holding the full table: sticky `paper-2` head, tabular right-aligned counts, the blocking column in red, and reconstructed generations in secondary ink.
+- **It charts WPT subtests, never files** (the user, 2026-09-30). Passing (green) from the axis, not passing (red) from passing up to the total, and the total as an ink line; one x step per generation, oldest at the left. Changes of measurement (generation 19, variant URLs reach the page; 75, each variant counted as a test; 85, the new WPT snapshot; `chart.events`) and where the live history begins are dotted vertical lines, labelled in rows above the plot so no label overlaps another; reconstructed generations sit on a faint wash.
+- **The interactive chart (site.js):** drawn from the generations table's rows (`data-pass`, `data-total`, `data-fail`, ... per generation), fluid to the column (330px high, 260px under 560px, with compact ticks there). A readout above it shows the generation under the pointer, finger or keyboard (the plot is a slider: arrows, Home, End): passed / total in the display serif, then the generation, its date and commit, then the change since the previous generation, failed / timed out / not run where recorded, blocking files, and a measurement change or an estimated total when there is one. Ranges: All generations, Last 7 days, Last 24 hours; a short range fits the axis to its values, so the day's progress is visible. The range is kept in the URL.
+- **Without script:** the same drawing by the generator (chart.zig), 960 x 320 and 480 x 280, one shown per width, with a native tooltip per generation. The drawing carries no colour: bands take the page's tokens by class, so the dark rendition follows.
+- **Around it:** a key, an amber note on how the history was measured (reconstructed generations, the changes of measurement, and that a total before the first exactly recorded generation is the progress report's estimate), and a disclosure ("Every generation, newest first") holding the full table: generation, date, commit, subtests passing, total, not passing (red), blocking files (grey); estimated totals in italic, reconstructed generations in secondary ink.
+
+### What site.js adds elsewhere
+- **Sortable columns** on every tests table: each head is a button; names sort A to Z first, the share passing lowest first, other counts highest first, so failures surface first; `aria-sort` and an arrow mark the column.
+- **A directory page's filter:** a name filter and standing chips for its test files (All, Blocking, With failures, Clean, No subtests, Not run, each with its count), "Showing N of M directories, n of m test files", and the view kept in the URL (`?q=`, `?show=`, `?sort=`).
+- **The search:** "Find a test" at the top of the rail (at the top of the page where the rail follows the document), `/` to focus; it loads `paths.json` on first use and lists up to twelve directories and test files, file name first and its directory beneath, arrows and Enter to go.
+- **A test file's subtests:** result chips (Failed, Timed out, Not run, Other, Passed), a name filter, "Open all messages" and "Close all"; a link to a subtest (`#s-<hash>`, or the first site's `?sub=<name>`) opens its message.
+- **The rail** marks the suite section being read on the index.
 
 ### Social card
-`card.png`, 1200 x 630, named by og:image and twitter:image (summary_large_image) with a `?v=` of its hash. On paper white: the title in the display serif, the passed count at 132px, " / reported" at 60px in secondary ink, the WPT SUBTESTS PASSING caption, a hairline, the five counts under their labels (blocking in issue red when non-zero), a hairline, and the site's address with the scope line. The numbers are composited by card.zig from a glyph atlas of Source Serif 4 drawn once by headless Chrome (card/README.md).
+`card.png`, 1200 x 630, named by og:image and twitter:image (summary_large_image) with a `?v=` of its hash. On paper white: the title in the display serif, the passed count at 132px, " / reported" at 60px in secondary ink, the WPT SUBTESTS PASSING caption, a hairline, the five counts under their labels (failed in red and blocking in grey when non-zero), a hairline, and the site's address with the scope line. The numbers are composited by card.zig from a glyph atlas of Source Serif 4 drawn once by headless Chrome (card/README.md).
 
 ## Do's and Don'ts
 
 ### Do:
 - **Do** open every page with its own WPT subtest numbers, passed / reported first, and state the scope (testharness only, rendering and layout excluded, the `encoding/` share) beside the totals.
-- **Do** write every number, name and message into the markup; the generator's tests fail a page that needs script.
+- **Do** write every number, name and message into the markup, and use `site.js` for what script does better - interaction, sorting, filtering, search - reading what it shows from that markup.
 - **Do** give every new section a number in the margin and an entry in the rail and the contents list, and every page a stable URL that mirrors the WPT path.
-- **Do** use issue red (#b3261e) only for TIMEOUT, ERROR, CRASH and NONE-PASSED, and conformance green (#2e7d32) only for passing.
+- **Do** use red (#b3261e) for failure, grey for blocking (TIMEOUT, ERROR, CRASH, NONE-PASSED), and conformance green (#2e7d32) only for passing.
 - **Do** set subtest names and explanations in Source Serif 4, counts and labels in Public Sans with tabular figures, and paths and messages in Source Code Pro.
 - **Do** contain data in 1px-hairline boxes with a 3px radius on paper, titled with an uppercase sans label.
 - **Do** keep results out of anything every page carries (the rail, the head, the footer), so an unchanged file writes an unchanged page.
@@ -362,8 +375,9 @@ The first build's hash permalinks into the index (`#<dir>/<file>`) resolve only 
 
 ### Don't:
 - **Don't** add a pass percentage, or the phrase "passing every subtest"; file categories are the plain labels.
-- **Don't** render content from script, add a loading state, or ship JSON for a page to fetch.
-- **Don't** colour a FAIL mark or a With failures file red to make it stand out: red means the file blocks.
+- **Don't** render content from script or add a loading state: script may only enhance what the markup already says (the search's `paths.json` is the one data file, and it names pages that exist without it).
+- **Don't** colour blocking red: red is failure, grey is blocking.
+- **Don't** chart files over time: the history charts WPT subtests.
 - **Don't** use the note amber for anything but explanatory notes.
 - **Don't** add drop shadows, gradients or elevated cards; use a hairline or the `paper-2` tint.
 - **Don't** put an uppercase label above a heading as a kicker. The uppercase label is only the title of its own box or the rail, or the caption beneath a figure.

@@ -1,5 +1,9 @@
 //! The site's pages, written as finished HTML: every number, name and message
-//! is in the markup, and no page needs script for any of its content.
+//! is in the markup, and no page needs script for any of its content. Each
+//! page loads one deferred script, site.js, which enhances what is already
+//! there - the interactive history chart, sorting and filtering the tables,
+//! the search, the subtest filters - and reads everything it shows from the
+//! markup (and the search from paths.json).
 //!
 //!     index.html                     the record: headline numbers, scope,
 //!                                    contents, one section per suite,
@@ -206,10 +210,10 @@ fn sourceUrl(w: W, site: *const Site, p: []const u8) Error!void {
 pub const direction_contract =
     \\<!--
     \\THESIS: Crane's WPT results read as a living standard - the WPT subtest numbers first, then a numbered section per suite with its own numbers, conformance box and tests table - refusing the CI dashboard's stat cards and headline percentage.
-    \\OWN-WORLD: spec-paper white, near-black ink, link blue, conformance green, issue red for blocking only, pale amber notes; book serif prose, workhorse sans data, monospace paths; hairline rules, numbered margins.
+    \\OWN-WORLD: spec-paper white, near-black ink, link blue, conformance green, red for failure, grey for blocking, pale amber notes; book serif prose, workhorse sans data, monospace paths; hairline rules, numbered margins.
     \\STORY: An evaluator reads the subtest totals, then "Status of this document" (testharness only, headless), scans the numbered contents, opens a suite, a directory, a file, and reads its subtests.
     \\FIRST VIEWPORT: the title and the WPT subtest numbers in large type, the run's identity beneath them, the numbered contents rail at left.
-    \\FORM: Living Standard, #1 on my list; seed a0daf20c. Written as finished HTML by the generator: no page needs script.
+    \\FORM: Living Standard, #1 on my list; seed a0daf20c. Written as finished HTML by the generator: every page's content is in its markup; site.js enhances it.
     \\FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     \\-->
     \\
@@ -244,12 +248,13 @@ fn writeHead(w: W, h: Head) Error!void {
     try w.print("<link rel=\"preload\" href=\"{s}fonts/source-serif-4-latin.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n", .{h.root});
     try w.print("<link rel=\"preload\" href=\"{s}fonts/public-sans-latin.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n", .{h.root});
     try w.print("<link rel=\"stylesheet\" href=\"{s}site.css\">\n<link rel=\"icon\" href=\"data:,\">\n", .{h.root});
+    try w.print("<script src=\"{s}site.js\" defer></script>\n", .{h.root});
 }
 
 fn writeFooter(w: W) Error!void {
     try w.writeAll(
         \\<footer class="foot">
-        \\<p>Written as static HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="
+        \\<p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="
     ++ links.crane ++
         \\">Crane on GitHub</a>.</p>
         \\</footer>
@@ -348,16 +353,17 @@ const Figures = struct {
 
 fn writeCounts(w: W, cls: []const u8, f: Figures) Error!void {
     try w.print("<dl class=\"{s}\">", .{cls});
-    const rows = [_]struct { []const u8, ?u64, bool }{
-        .{ "Failed", f.failed, false },
-        .{ "Timed out", f.timed_out, false },
-        .{ "Not run", f.notrun, false },
-        .{ "Test files", f.files, false },
-        .{ "Blocking files", f.blocking, true },
+    // Red is failure, grey is blocking (the user, 2026-09-30).
+    const rows = [_]struct { []const u8, ?u64, []const u8 }{
+        .{ "Failed", f.failed, " class=\"fail\"" },
+        .{ "Timed out", f.timed_out, "" },
+        .{ "Not run", f.notrun, "" },
+        .{ "Test files", f.files, "" },
+        .{ "Blocking files", f.blocking, " class=\"blk\"" },
     };
     for (rows) |r| {
         const v = r[1] orelse continue;
-        try w.print("<div{s}><dt>{s}</dt><dd>", .{ if (r[2] and v > 0) " class=\"blk\"" else "", r[0] });
+        try w.print("<div{s}><dt>{s}</dt><dd>", .{ if (v > 0) r[2] else "", r[0] });
         try html.num(w, v);
         try w.writeAll("</dd></div>");
     }
@@ -504,11 +510,11 @@ fn writeDirTable(w: W, site: *const Site, base: []const u8, dirs: []const []cons
         if (number_under) |n| try w.print("<span class=\"dir-no\">{d}.{d}</span>", .{ n, i });
         const name_start = if (std.mem.lastIndexOfScalar(u8, d[0 .. d.len - 1], '/')) |k| k + 1 else 0;
         try html.path(w, d[name_start..]);
-        try w.writeAll("</a></th><td class=\"n\">");
+        try w.print("</a></th><td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ t.sub_pass, t.subReported() });
         try writePassOf(w, t.sub_pass, t.subReported());
-        try w.writeAll("</td><td class=\"n\">");
+        try w.print("</td><td class=\"n\" data-v=\"{d}\">", .{t.files});
         try html.num(w, t.files);
-        try w.writeAll("</td><td><span class=\"tally\">");
+        try w.print("</td><td data-v=\"{d}\"><span class=\"tally\">", .{t.blocking()});
         if (t.blocking() > 0) {
             try w.writeAll("<span class=\"blk\">");
             try html.num(w, t.blocking());
@@ -527,7 +533,7 @@ fn writeFileTable(w: W, site: *const Site, base: []const u8, files: []const usiz
     try w.writeAll("<table class=\"listing listing-files\">\n<thead><tr><th scope=\"col\">Test file</th><th scope=\"col\" class=\"n\">Subtests passing</th><th scope=\"col\" class=\"n\">Failed</th><th scope=\"col\">Standing</th></tr></thead>\n<tbody>\n");
     for (files) |fi| {
         const f = site.files[fi];
-        try w.writeAll("<tr");
+        try w.print("<tr data-gate=\"{s}\"", .{f.gate.word()});
         if (row_ids) {
             try w.writeAll(" id=\"");
             try html.text(w, f.path);
@@ -537,15 +543,19 @@ fn writeFileTable(w: W, site: *const Site, base: []const u8, files: []const usiz
         try html.href(w, f.path);
         try w.writeAll("/\">");
         try html.path(w, baseName(f.path));
-        try w.writeAll("</a></th><td class=\"n\">");
+        try w.print("</a></th><td class=\"n\" data-v=\"{d}\" data-of=\"{d}\">", .{ f.counts.passed, f.counts.reported() });
         if (f.status == null) {
             try w.writeAll("<span class=\"quiet\">&mdash;</span>");
         } else {
             try writePassOf(w, f.counts.passed, f.counts.reported());
         }
-        try w.writeAll("</td><td class=\"n\">");
-        if (f.counts.failed > 0) try html.num(w, f.counts.failed) else try w.writeAll("<span class=\"quiet\">0</span>");
-        try w.writeAll("</td><td>");
+        try w.print("</td><td class=\"n\" data-v=\"{d}\">", .{f.counts.failed});
+        if (f.counts.failed > 0) {
+            try w.writeAll("<span class=\"fail\">");
+            try html.num(w, f.counts.failed);
+            try w.writeAll("</span>");
+        } else try w.writeAll("<span class=\"quiet\">0</span>");
+        try w.print("</td><td data-v=\"{d}\">", .{@intFromEnum(f.gate)});
         try gateSpan(w, f.gate);
         try w.writeAll("</td></tr>\n");
     }
@@ -820,65 +830,104 @@ fn writeSuite(w: W, site: *const Site, s: []const u8, no: usize) Error!void {
 fn writeHistory(w: W, site: *const Site, tot: model.Totals) Error!void {
     const gens = site.history;
     try w.print("<section class=\"back\" id=\"history\" aria-labelledby=\"history-h\">\n<h2 id=\"history-h\"><span class=\"secno\">{d}</span>Revision history<a class=\"self\" href=\"#history\" aria-label=\"Link to the revision history\">&para;</a></h2>\n", .{site.suites.len + 1});
-    try w.writeAll("<p>One generation is recorded each time the progress report is regenerated and at least one file changes standing. The chart shows every generation&rsquo;s files by standing, oldest at the left; hover a generation for its numbers, or read them all in the table below it.</p>\n<figure class=\"chart\">\n");
-    try chart.draw(w, gens, .{ .width = 960, .height = 300, .class = "chart-svg chart-wide" });
-    try chart.draw(w, gens, .{ .width = 480, .height = 260, .class = "chart-svg chart-narrow" });
-    try w.writeAll("\n<figcaption class=\"chart-key\"><span><span class=\"key key-clean\"></span>Clean</span><span><span class=\"key key-partial\"></span>With failures</span><span><span class=\"key key-blocking\"></span>Blocking</span><span><span class=\"key key-unrun\"></span>Not run</span></figcaption>\n</figure>\n");
+    try w.writeAll("<p>One generation is recorded each time the progress report is regenerated and its results have moved. The chart shows WPT subtests passing in every generation, and those not passing up to the total, oldest at the left; the table below it holds every generation&rsquo;s numbers.</p>\n<figure class=\"chart\" id=\"chart\">\n");
+    try chart.draw(w, gens, .{ .width = 960, .height = 320, .class = "chart-svg chart-wide" });
+    try chart.draw(w, gens, .{ .width = 480, .height = 280, .class = "chart-svg chart-narrow" });
+    try w.writeAll("\n<figcaption class=\"chart-key\"><span><span class=\"key key-pass\"></span>Subtests passing</span><span><span class=\"key key-fail\"></span>Not passing</span><span><span class=\"key key-total\"></span>Total subtests</span></figcaption>\n</figure>\n");
 
-    // The note on the two changes of rule, with its generation numbers.
+    // The note on how the history was measured, with its generation numbers.
     var first_live: ?usize = null;
-    var rule2: ?Generation = null;
+    var first_exact: ?Generation = null;
     for (gens, 0..) |g, i| {
         if (first_live == null and !g.reconstructed) first_live = i;
-        if (rule2 == null and g.gate_rule != null and g.gate_rule.? == 2) rule2 = g;
+        if (first_exact == null and !g.estimated()) first_exact = g;
     }
-    try w.writeAll("<div class=\"note\" role=\"note\">\n<p class=\"note-label\">Two changes of rule sit inside this history</p>\n<p>");
+    try w.writeAll("<div class=\"note\" role=\"note\">\n<p class=\"note-label\">How this history was measured</p>\n<p>");
     if (first_live) |fl| {
-        if (fl > 0) try w.print("Generations 1 to {d} were reconstructed afterwards from the journals that survived, so they show less coverage than was measured at the time. ", .{gens[fl - 1].n});
+        if (fl > 0) try w.print("Generations 1 to {d} were reconstructed afterwards from the journals that survived, so they show less than was measured at the time. ", .{gens[fl - 1].n});
     }
-    if (rule2) |r| try w.print("From generation {d} the gate counts NONE-PASSED files as blocking; before it they sat among the files with failures, which is why blocking rises there. ", .{r.n});
-    try w.writeAll("In this history, as in the progress report it comes from, a file that reports no subtests counts as clean.");
+    var marked = false;
+    for (gens) |g| {
+        const label = chart.eventAt(&chart.events, g.n) orelse continue;
+        if (!marked) try w.writeAll("The dashed lines mark changes of measurement: ");
+        if (marked) try w.writeAll("; ");
+        marked = true;
+        try w.print("generation {d}, {s}", .{ g.n, label });
+    }
+    if (marked) try w.writeAll(". A jump at one of them is a change in what was counted as much as in Crane. ");
+    if (first_exact) |g| {
+        if (g.n > 1) try w.print("Before generation {d}, a generation&rsquo;s total is the progress report&rsquo;s count of subtests known to exist, which estimates the files that reported none; from it on, the total is the sum of every file&rsquo;s reported subtests, as the headline counts them.", .{g.n});
+    } else if (gens.len > 0) {
+        try w.writeAll("Each total is the progress report&rsquo;s count of subtests known to exist, which estimates the files that reported none.");
+    }
     const last = site.latest();
-    if (gens.len > 0 and (last.total != tot.files or last.blocking != tot.blocking())) {
-        try w.print(" The latest generation, {d}, was recorded against ", .{last.n});
-        try html.plural(w, last.total, "worklist file", "worklist files");
-        try w.writeAll(" with ");
-        try html.num(w, last.blocking);
-        try w.writeAll(" blocking; the sections above read the current worklist of ");
-        try html.plural(w, tot.files, "file", "files");
-        try w.writeAll(" (");
-        try html.num(w, tot.files - tot.unrun);
-        try w.writeAll(" run, ");
-        try html.num(w, tot.blocking());
-        try w.writeAll(" blocking), and the two agree again when the progress report next records a generation.");
+    if (gens.len > 0 and (last.passing() != tot.sub_pass or last.subTotal() != tot.subReported())) {
+        try w.print(" The latest generation, {d}, recorded ", .{last.n});
+        try html.num(w, last.passing());
+        try w.writeAll(" of ");
+        try html.num(w, last.subTotal());
+        try w.writeAll(" subtests passing; the headline reads the current results, ");
+        try html.num(w, tot.sub_pass);
+        try w.writeAll(" of ");
+        try html.num(w, tot.subReported());
+        try w.writeAll(", and the two agree again when the progress report next records a generation.");
     }
-    try w.writeAll("</p>\n<p>Subtest totals are not charted: the way subtests were counted changed twice in this period, so a line would show changes of method, not of Crane.</p>\n</div>\n");
+    try w.writeAll("</p>\n</div>\n");
 
     try w.writeAll("<details class=\"gens\" id=\"gens\">\n<summary><svg class=\"twisty\" viewBox=\"0 0 16 16\" aria-hidden=\"true\"><path d=\"M6 3.5 10.5 8 6 12.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>Every generation, newest first</summary>\n<div class=\"table-wrap\">\n<table>\n<thead><tr>");
-    for ([_][]const u8{ "Gen.", "Date", "Crane", "Clean", "With failures", "Blocking", "NONE-PASSED", "TIMEOUT", "ERROR", "CRASH", "Not run" }) |h| {
+    for ([_][]const u8{ "Gen.", "Date", "Crane", "Subtests passing", "Total subtests", "Not passing", "Blocking files" }) |h| {
         try w.print("<th scope=\"col\">{s}</th>", .{h});
     }
     try w.writeAll("</tr></thead>\n<tbody>\n");
     var i = gens.len;
     while (i > 0) {
         i -= 1;
-        const g = gens[i];
-        try w.print("<tr{s}><td>{d}</td><td>", .{ if (g.reconstructed) " class=\"recon\"" else "", g.n });
-        try html.shortDateY(w, g.at);
-        try w.writeAll("</td><td>");
-        if (g.head.len > 0 and !std.mem.eql(u8, g.head, "?")) {
-            try w.writeAll("<code>");
-            try html.text(w, g.head);
-            try w.writeAll("</code>");
-        } else try w.writeAll("reconstructed");
-        const cells = [_]?u64{ g.clean, g.partial, g.blocking, g.none_passed, g.timeout, g.@"error", g.crash, g.unrun };
-        for (cells, 0..) |c, k| {
-            try w.writeAll(if (k == 2) "</td><td class=\"blk\">" else "</td><td>");
-            if (c) |v| try html.num(w, v) else try w.writeAll("&mdash;");
-        }
-        try w.writeAll("</td></tr>\n");
+        try writeGenRow(w, gens[i]);
     }
     try w.writeAll("</tbody>\n</table>\n</div>\n</details>\n</section>\n");
+}
+
+/// One generation's row. Its data attributes are what site.js charts: the
+/// cells say the same in words.
+fn writeGenRow(w: W, g: Generation) Error!void {
+    const known_head = g.head.len > 0 and !std.mem.eql(u8, g.head, "?");
+    try w.print("<tr{s} data-n=\"{d}\" data-at=\"", .{ if (g.reconstructed) " class=\"recon\"" else "", g.n });
+    try html.text(w, g.at);
+    try w.writeAll("\"");
+    if (known_head) {
+        try w.writeAll(" data-head=\"");
+        try html.text(w, g.head);
+        try w.writeAll("\"");
+    }
+    try w.print(" data-pass=\"{d}\" data-total=\"{d}\"", .{ g.passing(), g.subTotal() });
+    if (g.subs) |sb| {
+        try w.print(" data-fail=\"{d}\" data-timeout=\"{d}\" data-notrun=\"{d}\"", .{ sb.failed, sb.timed_out, sb.notrun });
+    } else try w.writeAll(" data-est=\"1\"");
+    try w.print(" data-blocking=\"{d}\" data-files=\"{d}\"", .{ g.blocking, g.total });
+    if (g.reconstructed) try w.writeAll(" data-recon=\"1\"");
+    if (chart.eventAt(&chart.events, g.n)) |label| {
+        try w.writeAll(" data-event=\"");
+        try html.text(w, label);
+        try w.writeAll("\"");
+    }
+    try w.print("><td>{d}</td><td>", .{g.n});
+    try html.shortDateY(w, g.at);
+    try w.writeAll("</td><td>");
+    if (known_head) {
+        try w.writeAll("<code>");
+        try html.text(w, g.head);
+        try w.writeAll("</code>");
+    } else try w.writeAll("reconstructed");
+    const est = g.estimated();
+    try w.writeAll("</td><td>");
+    try html.num(w, g.passing());
+    try w.writeAll(if (est) "</td><td class=\"est\">" else "</td><td>");
+    try html.num(w, g.subTotal());
+    try w.writeAll(if (est) "</td><td class=\"est fail\">" else "</td><td class=\"fail\">");
+    try html.num(w, g.subTotal() - g.passing());
+    try w.writeAll("</td><td class=\"blk\">");
+    try html.num(w, g.blocking);
+    try w.writeAll("</td></tr>\n");
 }
 
 // ============================================================================
@@ -1084,10 +1133,23 @@ fn writeRun(w: W, r: SubtestRun, multi: bool, ids: *IdSet) Error!void {
 // ============================================================================
 
 /// Why `page` would need script to show its content, or null when it does
-/// not. The generator's tests run this over every page they emit.
+/// not. A page may load the enhancement script - one `<script src="…site.js"
+/// defer>`, which runs after the page has rendered and only adds to it - and
+/// nothing else of the kind. The generator's tests run this over every page.
 pub fn needsScript(page: []const u8) ?[]const u8 {
+    var scripts: usize = 0;
+    var at: usize = 0;
+    while (std.mem.indexOfPos(u8, page, at, "<script")) |i| : (at = i + 1) {
+        scripts += 1;
+        const end = std.mem.indexOfPos(u8, page, i, "</script>") orelse return "an unclosed script";
+        const tag = page[i .. end + "</script>".len];
+        const ok = std.mem.startsWith(u8, tag, "<script src=\"") and
+            std.mem.endsWith(u8, tag, "site.js\" defer></script>") and
+            std.mem.indexOfScalar(u8, tag["<script src=\"".len .. tag.len - "\" defer></script>".len], '"') == null;
+        if (!ok) return "a script other than the deferred enhancement script";
+    }
+    if (scripts > 1) return "more than one script";
     const markers = [_]struct { []const u8, []const u8 }{
-        .{ "<script", "a script element" },
         .{ "<noscript", "a noscript fallback" },
         .{ "data-fill", "a slot for script to fill" },
         .{ "Loading", "a loading placeholder" },
@@ -1101,9 +1163,12 @@ pub fn needsScript(page: []const u8) ?[]const u8 {
     return null;
 }
 
-test "needsScript: flags what a script-rendered page carries" {
+test "needsScript: the enhancement script is allowed; anything content would wait on is not" {
     try std.testing.expect(needsScript("<p>1,234</p>") == null);
-    try std.testing.expectEqualStrings("a script element", needsScript("<script src=\"site.js\"></script>").?);
+    try std.testing.expect(needsScript("<script src=\"../site.js\" defer></script><p>1,234</p>") == null);
+    try std.testing.expectEqualStrings("a script other than the deferred enhancement script", needsScript("<script>document.write(1)</script>").?);
+    try std.testing.expectEqualStrings("a script other than the deferred enhancement script", needsScript("<script src=\"site.js\"></script>").?);
+    try std.testing.expectEqualStrings("more than one script", needsScript("<script src=\"site.js\" defer></script><script src=\"site.js\" defer></script>").?);
     try std.testing.expectEqualStrings("a slot for script to fill", needsScript("<dd data-fill=\"hl-pass\"></dd>").?);
     try std.testing.expectEqualStrings("a loading placeholder", needsScript("<p>Loading the results</p>").?);
 }

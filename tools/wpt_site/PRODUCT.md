@@ -8,10 +8,12 @@ web
 
 ## Stack
 
-Static HTML and CSS, written as finished pages by a Zig tool in tools/ (the repository's rule: new
-tools are Zig), with no script and no Node build step: every number, name and message is in the markup
-(the user, 2026-09-30: "write HTML"). Published by GitHub Pages from the repository's `gh-pages`
-branch. Chosen by the user, 2026-09-30.
+HTML and CSS written as finished pages by a Zig tool in tools/ (the repository's rule: new tools are Zig),
+with no Node build step: every number, name and message is in the markup (the user, 2026-09-30: "write
+HTML"). One hand-written script, `site.js`, enhances each page where script does better - the interactive
+history chart, sorting and filtering, search, subtest filters (the user, 2026-09-30: "use javascript when
+it makes sense to enhance the html. But content should be in html"). Published by GitHub Pages from the
+repository's `gh-pages` branch. Chosen by the user, 2026-09-30.
 
 ## Users
 
@@ -26,8 +28,8 @@ Crane's own public rendering of its web-platform-tests (WPT) results, with an in
 wpt.fyi's, for Crane only:
 - a browsable directory tree of test suites with per-directory pass counts;
 - a page per test file listing each subtest's status and failure message;
-- a historical graph of Crane's pass/fail over time, one point per regeneration (83 generations since
-  2026-09-19).
+- a historical graph of Crane's WPT subtests over time - passing, not passing, and the total - one point
+  per generation (the user, 2026-09-30: the graphs show subtests, not files).
 Success: an evaluator can see what Crane passes, what it does not, and how that is moving, without being
 misled about scope.
 
@@ -64,7 +66,8 @@ browser comparison.
   encoding/'s share beside it, since encoding/ holds most subtests; per-suite and per-file figures carry
   their scope too. (The "no total, no percentage" instruction was for the wpt.fyi registration issue's text,
   not for this site; a percentage on the site is the user's call.)
-- Static hosting only: no server, no database, no script. Per-subtest data (about 1.3 million subtests) is
+- Colour: red is failure, grey is blocking (the user, 2026-09-30).
+- Static hosting only: no server, no database; script enhances pages but no content depends on it. Per-subtest data (about 1.3 million subtests) is
   written into each test file's own page; GitHub Pages limits (1 GB site, 100 MB per file) apply.
 - The `gh-pages` branch is never force-pushed, so its history accumulates: generated files must be
   deterministic, so an unchanged test file produces an unchanged data file.
