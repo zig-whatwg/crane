@@ -25,8 +25,10 @@
 //! .unsupported`, JavaScriptCore's public API) no graph is ever made: a
 //! <script type=module> has a null result, so it fires `error`.
 //!
-//! What is NOT here yet: CSS module scripts (they need a constructable
-//! CSSStyleSheet as a synthetic export), and import.meta.resolve.
+//! CSS module scripts export a constructed CSSStyleSheet (the CSSOM's model
+//! is src/dom/cssom.zig) through the engine's
+//! CreateDefaultExportSyntheticModule; import.meta.resolve is the engine's
+//! builtin over `resolve` (the hosts' HostHooks.importMetaResolve).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -35,6 +37,9 @@ const webidl = @import("webidl");
 const fetch = @import("fetch");
 const script_request = @import("script_request.zig");
 const engine = @import("engine");
+const dictionaries = @import("dictionaries");
+// "UTF-8 decode" of a CSS module's body.
+const css_rules = @import("css").rules;
 
 const log = std.log.scoped(.module_script);
 
@@ -202,6 +207,15 @@ pub const Environment = struct {
     /// of its own and parses URLs against its principal realm's settings
     /// (`context_instance`). A ShadowRealm has no platform object to name it.
     realm_override: ?runtime.Context = null,
+    /// HTML "module type allowed" for "css": only where the CSSStyleSheet
+    /// interface is exposed in the settings object's realm - a Window's, not
+    /// a worker's.
+    css_allowed: bool = true,
+
+    /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-type-allowed
+    pub fn moduleTypeAllowed(self: *const Environment, module_type: ModuleType) bool {
+        return module_type != .css or self.css_allowed;
+    }
 
     /// The settings object's realm: every record and value is made in it.
     pub fn realm(self: *const Environment) runtime.Context {
@@ -313,6 +327,43 @@ fn createJsonModuleScript(env: *const Environment, source: []const u8, url: []co
     return script;
 }
 
+/// Create a CSS module script.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#creating-a-css-module-script
+/// "5. Let sheet be the result of running the steps to create a constructed
+///  CSSStyleSheet with an empty dictionary as the argument. 6. Run the steps
+///  to synchronously replace the rules of a CSSStyleSheet on sheet given
+///  source. 7. If this throws an exception, catch it, and set script's parse
+///  error to that exception, and return script. 8. Set script's record to
+///  the result of CreateDefaultExportSyntheticModule(sheet)." The sheet is
+/// made in the settings object's realm, through its interface.
+///
+/// Its base URL is null in the spec; Crane keeps the response URL, which
+/// nothing reads for a CSS module (it has no import.meta and no imports).
+fn createCssModuleScript(env: *const Environment, source: []const u8, url: []const u8) !*ModuleScript {
+    if (!supported) return error.NotSupported;
+    const script = try ModuleScript.create(env.allocator, url);
+    errdefer script.destroy();
+    const realm = env.realm();
+
+    // Step 5.
+    const sheet = try interfaces.CSSStyleSheet.call_constructor(realm, webidl.Opt(dictionaries.CSSStyleSheetInit).notPassed());
+    // Until the record holds it, the sheet has no wrapper to be collected
+    // with.
+    var sheet_held = false;
+    defer if (!sheet_held) runtime.Instance.deinit(sheet);
+
+    // Steps 6-7. replaceSync throws only for a sheet that is not
+    // constructed or not modifiable, which a new one never is: a failure
+    // here is Crane's own (out of memory), and the script fails to load.
+    try interfaces.CSSStyleSheet.call_replaceSync(sheet, source);
+
+    // Step 8.
+    script.record = try engine.createDefaultExportSyntheticModule(realm, .{ .instance = sheet }, url, script);
+    sheet_held = true;
+    return script;
+}
+
 /// A second hold (OWNED) on a value a script keeps, in its realm.
 fn copyOf(env: *const Environment, value: engine.Owned) ?engine.Owned {
     return engine.retainValue(env.realm(), value.value) catch null;
@@ -385,7 +436,7 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
         .css => .style,
     };
     request.initiator_type = .script;
-    script_request.populateRequestFromClient(request, env.context_instance.ctx);
+    script_request.populateRequestFromClient(request, env.context_instance.ctx) catch return null;
 
     // Step 13: fetch. A failure - transport, CORS, or main fetch step 19's MIME
     // type / nosniff block, which keys on the destination - comes back
@@ -418,10 +469,16 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
             if (!isJsonMimeTypeEssence(essence)) return null;
             return createJsonModuleScript(env, body, base_url) catch null;
         },
-        // Step 13.7.3 needs a constructable CSSStyleSheet as the synthetic
-        // export. Until that exists a CSS module fetch yields no script, which
-        // the graph reports as a load failure rather than running without it.
-        .css => return null,
+        // Step 13.7.3: "If the MIME type essence of mimeType is "text/css"
+        // and moduleType is "css"": a CSS module script of the body UTF-8
+        // decoded - whatever charset the response or the document names, and
+        // a BOM other than UTF-8's is text.
+        .css => {
+            if (!std.mem.eql(u8, essence, "text/css")) return null;
+            const text = css_rules.decodeUtf8(env.allocator, body) catch return null;
+            defer env.allocator.free(text);
+            return createCssModuleScript(env, text, base_url) catch null;
+        },
     }
 }
 
@@ -507,6 +564,12 @@ fn isHttpTokenString(s: []const u8) bool {
         if (std.mem.indexOfScalar(u8, "!#$%&'*+-.^_`|~", c) == null) return false;
     }
     return true;
+}
+
+/// Whether the MIME type Fetch's "extract a MIME type" finds in a
+/// Content-Type value is a JavaScript MIME type.
+pub fn isJavaScriptMimeType(content_type: []const u8) bool {
+    return isJavaScriptMimeTypeEssence(mimeEssence(content_type));
 }
 
 /// Spec: https://mimesniff.spec.whatwg.org/#javascript-mime-type
@@ -596,6 +659,36 @@ pub fn fetchExternalModuleScriptGraph(env: *const Environment, url: []const u8) 
     const result = fetchSingleModuleScript(env, url, .javascript) orelse return null;
     // Step 1.2: fetch the descendants of and link result.
     return fetchDescendantsAndLink(env, result);
+}
+
+/// Fetch a module worker script graph, with the root's response in hand.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-module-worker-script-tree
+/// "Fetch a worklet/module worker script graph": fetch a single module script
+/// given url - moduleMap[(url, "javascript-or-wasm")], else the response,
+/// which becomes a JavaScript module script whose base URL is the response's
+/// URL (step 13.7.2) - then fetch the descendants of and link it. The
+/// worker's constructor fetched the root already (a blob: URL may be revoked
+/// as soon as it returns), so `source` and `response_url` are that fetch's
+/// body and URL, its MIME type already checked; the module map, the
+/// descendants and linking are the worker's settings object's.
+/// Returns the graph's root for onComplete, or null for "null".
+pub fn moduleWorkerScriptGraph(env: *const Environment, url: []const u8, response_url: []const u8, source: []const u8) ?*ModuleScript {
+    if (!supported) return null;
+    const key = std.mem.concat(env.allocator, u8, &.{ ModuleType.javascript.keyPrefix(), url }) catch return null;
+    defer env.allocator.free(key);
+    const script: *ModuleScript = if (env.map.get(key)) |entry| blk: {
+        if (entry == fetch_failed) return null;
+        break :blk @ptrCast(@alignCast(entry));
+    } else blk: {
+        const created = createJavaScriptModuleScript(env, source, response_url) catch return null;
+        if (!env.map.put(key, @ptrCast(created))) {
+            created.destroy();
+            return null;
+        }
+        break :blk created;
+    };
+    return fetchDescendantsAndLink(env, script);
 }
 
 /// The module type an import's "type" attribute asks for, or null for a type
@@ -723,6 +816,10 @@ fn loadRequestedModules(env: *const Environment, script: *ModuleScript) ?LoadFai
             env.context_instance.ctx.allocator.free(url);
             return failWith(env, .type_error, "Unsupported module type");
         };
+        if (!env.moduleTypeAllowed(module_type)) {
+            env.context_instance.ctx.allocator.free(url);
+            return failWith(env, .type_error, "Unsupported module type");
+        }
 
         requests.appendAssumeCapacity(.{ .specifier = request.specifier, .url = url, .module_type = module_type });
     }

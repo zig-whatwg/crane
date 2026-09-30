@@ -1,6 +1,6 @@
 //! The request HTML's script fetches build: "create a potential-CORS
-//! request", and Fetch's "populate request from client" for a script whose
-//! settings object is a Window's.
+//! request", and Fetch's "populate request from client" for a script's
+//! settings object.
 //!
 //! "fetch a classic script" (script_execution.zig) and "fetch a single module
 //! script" (module_script.zig) both make their requests here, so both carry
@@ -10,7 +10,6 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const interfaces = @import("interfaces");
 const fetch = @import("fetch");
 const global_settings = @import("dom").global_settings;
 
@@ -51,41 +50,23 @@ pub fn createPotentialCorsRequest(request: *InternalRequest, destination: fetch.
 }
 
 /// Fetch "populate request from client" for a request whose client is the
-/// settings object of `realm`'s Window - what Fetch reads from the client:
-/// the traversable for user prompts, the origin, and the referrer. A realm
-/// whose global is not a Window leaves them "client".
+/// settings object of `realm`'s global. `dom.global_settings.requestClient`
+/// reads the client out of the global - its origin, its document's URL as the
+/// referrer source, a Window's traversable, the cookie jar - and
+/// `fetch.internal.populateRequestFromClient` applies it: the same pair
+/// `fetch()`, XMLHttpRequest and WebSocket use, so a script's request means
+/// the same thing by "the client" as theirs.
 ///
 /// Spec: https://fetch.spec.whatwg.org/#populate-request-from-client
-/// "If request's traversable for user prompts is "client": ... set request's
-///  traversable for user prompts to global's navigable's traversable
-///  navigable"; main fetch sets an origin of "client" to the client's
-///  origin, and "determine request's referrer" makes a referrer of "client"
-///  the document's URL - or no referrer for an opaque origin.
-///
-/// TODO: networking's fetch.internal.populateRequestFromClient, with
-/// dom.global_settings.requestClient (which also carries the cookie jar), is
-/// coming with the user-agent cookie jar; call it when it lands.
-pub fn populateRequestFromClient(request: *InternalRequest, realm: runtime.Context) void {
-    const window = windowOfRealm(realm) orelse return;
-    request.traversable_for_user_prompts = .{ .traversable = window };
-    const settings = global_settings.of(window) orelse return;
-    const origin = settings.origin(window) catch return;
-    defer window.ctx.allocator.free(origin);
-    // An origin the Window does not know yet leaves the request's "client".
-    if (origin.len == 0) return;
-    request.setOrigin(origin) catch return;
-    if (std.mem.eql(u8, origin, "null")) {
-        request.setReferrer(.no_referrer);
-    } else if (window.ctx.documentUrl()) |document_url| {
-        request.setReferrerUrl(document_url) catch {};
-    }
+pub fn populateRequestFromClient(request: *InternalRequest, realm: runtime.Context) !void {
+    const global = globalOfRealm(realm) orelse return;
+    var client = try global_settings.requestClient(global);
+    defer client.deinit();
+    try fetch.internal.populateRequestFromClient(request, client.request);
 }
 
-/// The Window whose realm `realm` is, or null for a realm whose global is not
-/// a Window.
-fn windowOfRealm(realm: runtime.Context) ?*runtime.Instance {
+/// The global object of `realm`, or null for a realm that has none.
+fn globalOfRealm(realm: runtime.Context) ?*runtime.Instance {
     const record = realm.getRealm() orelse return null;
-    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
-    if (global.stateAs(interfaces.Window.State) == null) return null;
-    return global;
+    return @ptrCast(@alignCast(record.global_object orelse return null));
 }

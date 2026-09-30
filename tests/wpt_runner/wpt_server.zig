@@ -382,6 +382,9 @@ pub const WptServer = struct {
                 .worker => ".any.worker.html",
                 .sharedworker => ".any.sharedworker.html",
                 .serviceworker => ".any.serviceworker.html",
+                .worker_module => ".any.worker-module.html",
+                .sharedworker_module => ".any.sharedworker-module.html",
+                .serviceworker_module => ".any.serviceworker-module.html",
                 else => ".any.html", // window and other contexts
             };
         } else if (std.mem.endsWith(u8, test_path, ".window.js")) {

@@ -55,6 +55,12 @@ pub const GlobalType = enum {
     sharedworker,
     /// Service worker context
     serviceworker,
+    /// Module dedicated worker context (`new Worker(url, {type: "module"})`)
+    worker_module,
+    /// Module shared worker context
+    sharedworker_module,
+    /// Module service worker context
+    serviceworker_module,
     // ShadowRealm variants (TC39 Stage 2.7)
     /// Base ShadowRealm context
     shadowrealm,
@@ -78,6 +84,9 @@ pub const GlobalType = enum {
         if (std.mem.eql(u8, str, "dedicatedworker")) return .worker;
         if (std.mem.eql(u8, str, "sharedworker")) return .sharedworker;
         if (std.mem.eql(u8, str, "serviceworker")) return .serviceworker;
+        if (std.mem.eql(u8, str, "dedicatedworker-module")) return .worker_module;
+        if (std.mem.eql(u8, str, "sharedworker-module")) return .sharedworker_module;
+        if (std.mem.eql(u8, str, "serviceworker-module")) return .serviceworker_module;
         // ShadowRealm variants (WPT uses hyphens, we use underscores in enum)
         if (std.mem.eql(u8, str, "shadowrealm")) return .shadowrealm;
         if (std.mem.eql(u8, str, "shadowrealm-in-window")) return .shadowrealm_in_window;
@@ -96,6 +105,9 @@ pub const GlobalType = enum {
             .worker => "worker",
             .sharedworker => "sharedworker",
             .serviceworker => "serviceworker",
+            .worker_module => "dedicatedworker-module",
+            .sharedworker_module => "sharedworker-module",
+            .serviceworker_module => "serviceworker-module",
             .shadowrealm => "shadowrealm",
             .shadowrealm_in_window => "shadowrealm-in-window",
             .shadowrealm_in_dedicatedworker => "shadowrealm-in-dedicatedworker",
@@ -129,6 +141,15 @@ pub const GlobalType = enum {
             // would report timeouts rather than results.
             .sharedworker => false,
             .serviceworker => false,
+            // The module workers: `wpt serve` generates the
+            // `.any.worker-module.html` / `.any.sharedworker-module.html`
+            // wrappers, whose worker imports testharness.js and the test as
+            // modules; a module Worker and a module SharedWorker run the
+            // graph (crane/script-module-workers.html). A module service
+            // worker needs the registration a classic one lacks too.
+            .worker_module => true,
+            .sharedworker_module => true,
+            .serviceworker_module => false,
             // All ShadowRealm variants not implemented
             .shadowrealm,
             .shadowrealm_in_window,
@@ -1168,6 +1189,33 @@ test "GlobalType.fromString" {
     try std.testing.expectEqual(GlobalType.sharedworker, GlobalType.fromString("sharedworker").?);
     try std.testing.expectEqual(GlobalType.serviceworker, GlobalType.fromString("serviceworker").?);
     try std.testing.expectEqual(@as(?GlobalType, null), GlobalType.fromString("invalid"));
+}
+
+test "GlobalType.fromString: the module worker globals" {
+    try std.testing.expectEqual(GlobalType.worker_module, GlobalType.fromString("dedicatedworker-module").?);
+    try std.testing.expectEqual(GlobalType.sharedworker_module, GlobalType.fromString("sharedworker-module").?);
+    try std.testing.expectEqual(GlobalType.serviceworker_module, GlobalType.fromString("serviceworker-module").?);
+    try std.testing.expectEqualStrings("dedicatedworker-module", GlobalType.worker_module.toString());
+    try std.testing.expectEqualStrings("sharedworker-module", GlobalType.sharedworker_module.toString());
+    try std.testing.expectEqualStrings("serviceworker-module", GlobalType.serviceworker_module.toString());
+    // Run where the plumbing exists: a module Worker and a module
+    // SharedWorker; a service worker has no registration yet.
+    try std.testing.expect(GlobalType.worker_module.isImplemented());
+    try std.testing.expect(GlobalType.sharedworker_module.isImplemented());
+    try std.testing.expect(!GlobalType.serviceworker_module.isImplemented());
+}
+
+test "parseAnyJs: a file of module worker globals gets those globals, not the defaults" {
+    const content =
+        \\// META: global=dedicatedworker-module,sharedworker-module,serviceworker-module
+        \\import "./x.js";
+    ;
+    var parsed = try parseAnyJs(std.testing.allocator, "a/b.any.js", content);
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 3), parsed.metadata.globals.items.len);
+    try std.testing.expectEqual(GlobalType.worker_module, parsed.metadata.globals.items[0]);
+    try std.testing.expectEqual(GlobalType.sharedworker_module, parsed.metadata.globals.items[1]);
+    try std.testing.expectEqual(GlobalType.serviceworker_module, parsed.metadata.globals.items[2]);
 }
 
 test "GlobalType.toString" {

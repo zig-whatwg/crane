@@ -286,23 +286,23 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     // releases it once the worker has ended (`releaseOwnerWhenIdle`).
     keepPendingActivity(instance);
 
-    // Parse options - use defaults for type/credentials since dictionary has opaque enum pointers
-    const worker_type = WorkerType.classic;
-    const credentials = RequestCredentials.same_origin;
+    // The WorkerOptions dictionary: type ("classic" or "module"),
+    // credentials (for a module worker's fetches) and name.
+    var worker_type = WorkerType.classic;
+    var credentials = RequestCredentials.same_origin;
     var name: []const u8 = "";
 
     if (options.wasPassed()) {
         const opts = options.getValue();
-        // Note: opts.type and opts.credentials are ?*const anyopaque (opaque enum pointers)
-        // The dictionary codegen doesn't provide typed enum access yet.
-        // For now, we use default values (classic, same_origin).
-        // TODO: When dictionary codegen supports typed enums, parse these:
-        // - type: "classic" | "module" -> WorkerType
-        // - credentials: "omit" | "same-origin" | "include" -> RequestCredentials
-        _ = opts.type; // Acknowledge but skip (uses default: classic)
-        _ = opts.credentials; // Acknowledge but skip (uses default: same_origin)
-
-        // Parse name if present (this is a DOMString, not an enum)
+        if (opts.type) |t| worker_type = switch (t) {
+            ._classic_ => .classic,
+            ._module_ => .module,
+        };
+        if (opts.credentials) |c| credentials = switch (c) {
+            ._omit_ => .omit,
+            ._same_origin_ => .same_origin,
+            ._include_ => .include,
+        };
         if (opts.name) |n| {
             name = n.asSlice();
         }
@@ -946,7 +946,11 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
         return false;
     };
     const script = internal.pending_script orelse {
+        // "Run a worker" onComplete step 1: the script is null - its fetch
+        // failed (a network error, a status that is not ok, a MIME type that
+        // is no JavaScript MIME type) - so `error` is fired at the worker.
         std.log.debug("[executeWorkerScriptSync] No pending_script, returning", .{});
+        queueErrorEvent(internal);
         return false;
     };
     std.log.debug("[executeWorkerScriptSync] Script len={d}, preview: {s}", .{ script.len, script[0..@min(script.len, 80)] });
@@ -955,9 +959,14 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
     // dispatched in. dedicated_worker.executeScript() runs through the older
     // WorkerContext, whose realm is not the one onmessage is looked up in.
     if (internal.host) |host| {
-        host.executeScript(script) catch |err| {
-            std.log.err("[executeWorkerScriptSync] Failed to execute: {}", .{err});
-        };
+        switch (internal.worker_type) {
+            .classic => host.executeScript(script) catch |err| {
+                std.log.err("[executeWorkerScriptSync] Failed to execute: {}", .{err});
+            },
+            // A module worker's graph, from the fetched root: one that is
+            // null, or that carries an error to rethrow, fails the worker.
+            .module => if (!host.executeModuleScript(internal.script_url, script)) queueErrorEvent(internal),
+        }
         log.debug("[executeWorkerScriptSync] executeScript returned", .{});
     } else {
         std.log.err("[executeWorkerScriptSync] No WorkerHost!", .{});
@@ -983,6 +992,37 @@ fn executeWorkerScriptSync(internal: *InternalState) bool {
     // a queued task, both of which have clean HandleScope state.
 
     return queue_len > 0;
+}
+
+/// "Run a worker" onComplete, step 1.1: "Queue a global task on the DOM
+/// manipulation task source given worker's relevant global object to fire
+/// an event named error at worker" - a plain Event, not cancelable.
+fn queueErrorEvent(internal: *InternalState) void {
+    const instance = internal.worker_instance orelse return;
+    const ctx = internal.ctx orelse return;
+    if (ctx.getOptionalEventLoop()) |event_loop| {
+        WorkerTask.queue(event_loop, instance, &fireErrorEvent);
+    } else if (ctx.timer) |timer| {
+        WorkerTask.arm(timer, 0, instance, &fireErrorEvent);
+    }
+}
+
+fn fireErrorEvent(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    const ctx = internal.ctx orelse return;
+    engine.runTaskInRealm(ctx, fireErrorEventSteps, instance) catch {};
+}
+
+fn fireErrorEventSteps(data: ?*anyopaque) void {
+    const worker: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
+    const event = interfaces.Event.call_constructor(
+        worker.ctx,
+        runtime.DOMString.initInterned("error"),
+        webidl.Opt(dictionaries.EventInit).notPassed(),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = @import("dom").fire_event.dispatchTrusted(worker, event) catch {};
+    event.releaseIfUnwrapped(generation);
 }
 
 /// Callback for messages received from the worker via the outside port

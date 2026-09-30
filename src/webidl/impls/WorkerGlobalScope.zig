@@ -11,6 +11,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
+const webidl = @import("webidl");
 const WorkerGlobalScope = interfaces.WorkerGlobalScope;
 const WorkerLocation = interfaces.WorkerLocation;
 const WorkerNavigator = interfaces.WorkerNavigator;
@@ -32,9 +33,6 @@ const same_object = @import("same_object.zig");
 // Import event loop for timer support
 const event_loop_mod = html_core.event_loop;
 const EventLoop = event_loop_mod.EventLoop;
-
-// Import script fetching for importScripts
-const script_fetch = html_core.workers.script_fetch;
 
 pub const State = WorkerGlobalScope.State;
 
@@ -457,66 +455,54 @@ pub fn set_onunhandledrejection(instance: *runtime.Instance, value: typedefs.Eve
     try setHandler(typedefs.EventHandler, instance, "unhandledrejection", value);
 }
 
-/// Operation: importScripts
+/// Operation: importScripts - "import scripts into worker global scope"
+/// given this and urls.
 ///
-/// Spec: HTML Standard § 10.1.5 importScripts(urls...)
-/// https://html.spec.whatwg.org/#dom-workerglobalscope-importscripts
-///
-/// "The importScripts(urls) method, when invoked, must run these steps:
-/// 1. If this is a module script, throw a TypeError exception.
-/// 2. Let settings object be this's relevant settings object.
+/// Spec: https://html.spec.whatwg.org/multipage/workers.html#import-scripts-into-worker-global-scope
+/// 1. If worker global scope's type is "module", throw a TypeError.
+/// 2. Let settings object be the current settings object.
 /// 3. If urls is empty, return.
-/// 4. Parse each value in urls, relative to settings object...
-/// 5. For each url in the resulting URL records, fetch the script..."
+/// 4-5. Encoding-parse each url relative to settings object; a failure
+///      throws a "SyntaxError" DOMException - before anything is fetched.
+/// 6. For each urlRecord: fetch a classic worker-imported script (which
+///    throws its "NetworkError"), and run it with rethrow errors true: what
+///    it throws aborts these steps and reaches the calling script.
 pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOMString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.NotImplemented;
+    const worker_host = @import("html").worker_host;
 
-    // Step 1: Check if module worker
-    // Spec: "throw a TypeError exception" for module workers
-    if (internal.worker_type == .module) {
-        return error.TypeError;
+    // Step 1.
+    if (internal.worker_type == .module) return error.TypeError;
+
+    // Step 3.
+    if (urls.len == 0) return;
+
+    // Steps 2 and 4: relative to the settings object's API base URL - a
+    // worker global scope's URL.
+    const allocator = instance.ctx.allocator;
+    const base_url: []const u8 = if (internal.internal_location) |loc| loc.getHref() else internal.url;
+    var records: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer {
+        for (records.items) |record| allocator.free(record);
+        records.deinit(allocator);
     }
-
-    // Step 3: If urls is empty, return
-    if (urls.len == 0) {
-        return;
-    }
-
-    // Steps 4-5: Parse and fetch each script in order
-    // Per spec, scripts are fetched and executed synchronously in order
-
-    // Get the worker's script URL for resolving relative URLs
-    // Per HTML spec, relative URLs in importScripts() resolve against worker's location
-    const base_url: ?[]const u8 = if (internal.internal_location) |loc| loc.getHref() else null;
-
+    try records.ensureTotalCapacity(allocator, urls.len);
     for (urls) |url| {
-        const url_str = url.asSlice();
-        if (url_str.len == 0) {
-            continue;
-        }
+        const base_arg = if (base_url.len > 0)
+            webidl.Opt(runtime.USVString).passed(base_url)
+        else
+            webidl.Opt(runtime.USVString).notPassed();
+        const parsed = (try interfaces.URL.call_static_parse(instance, url.asSlice(), base_arg)) orelse
+            return error.SyntaxError;
+        defer runtime.Instance.deinit(parsed);
+        records.appendAssumeCapacity(try interfaces.URL.get_href(parsed));
+    }
 
-        // Fetch the script using the script_fetch module
-        // Pass base_url (worker's script URL) for relative URL resolution
-        var fetched = script_fetch.fetchWorkerScript(internal.allocator, url_str, .{
-            .worker_type = .classic,
-            .origin = base_url orelse internal.origin,
-            .requesting_origin = internal.origin,
-            .credentials = .same_origin,
-            .is_import_scripts = true,
-        }) catch |err| {
-            return switch (err) {
-                script_fetch.WorkerScriptError.NetworkError => error.NetworkError,
-                script_fetch.WorkerScriptError.InvalidUrl => error.TypeError,
-                script_fetch.WorkerScriptError.ModuleNotAllowed => error.TypeError,
-                script_fetch.WorkerScriptError.OutOfMemory => error.OutOfMemory,
-                else => error.NetworkError,
-            };
-        };
-        defer fetched.deinit();
-
-        // Run the fetched script in this worker, as its own scripts run -
-        // through the worker host, which owns the realm's agent.
-        try @import("html").worker_host.runImportedScript(instance.ctx, fetched.source, fetched.final_url);
+    // Step 6.
+    for (records.items) |record| {
+        var script = try worker_host.fetchClassicWorkerImportedScript(instance.ctx, record);
+        defer script.deinit();
+        try worker_host.runImportedScript(instance.ctx, &script);
     }
 }
