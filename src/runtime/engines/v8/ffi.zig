@@ -1527,6 +1527,9 @@ pub extern fn v8_Module_CreateJsonModule(
     name_len: c_int,
     out_error: *?*V8ErrorInfo,
 ) ?*Module;
+/// ECMA-262 CreateDefaultExportSyntheticModule: a synthetic module whose only
+/// export, "default", is `value` once evaluated. Dispose with v8_Module_Dispose.
+pub extern fn v8_Module_CreateDefaultExportSyntheticModule(context: *Context, value: *Value, name: [*]const u8, name_len: c_int) ?*Module;
 
 /// Get the module's current status
 ///
@@ -3354,7 +3357,8 @@ pub const ProtocolImportMetaUrlDispatch = *const fn (isolate: *Isolate, module: 
 
 /// Install the protocol's import() and import.meta hooks on `isolate`, each
 /// only when given.
-pub extern fn v8_Isolate_SetProtocolModuleHooks(isolate: *Isolate, dynamic_import: ?ProtocolDynamicImportDispatch, import_meta_url: ?ProtocolImportMetaUrlDispatch) void;
+pub const ProtocolImportMetaResolveDispatch = *const fn (isolate: *Isolate, context: *Context, base_url: [*]const u8, base_url_len: usize, specifier: [*]const u8, specifier_len: usize, len: *usize) callconv(.c) ?[*]u8;
+pub extern fn v8_Isolate_SetProtocolModuleHooks(isolate: *Isolate, dynamic_import: ?ProtocolDynamicImportDispatch, import_meta_url: ?ProtocolImportMetaUrlDispatch, import_meta_resolve: ?ProtocolImportMetaResolveDispatch) void;
 
 // ---- end lane: page-realm ----
 // ---- lane: runtime-impls ----

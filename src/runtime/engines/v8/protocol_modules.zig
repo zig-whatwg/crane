@@ -166,6 +166,26 @@ pub fn parseJSONModule(realm: Context, source: []const u8, url: []const u8, host
     } };
 }
 
+/// ECMA-262 CreateDefaultExportSyntheticModule(defaultExport): a synthetic
+/// module whose "default" export is `value`, set by its evaluation steps
+/// (the same machinery a JSON module's value takes).
+pub fn createDefaultExportSyntheticModule(realm: Context, value: JSValue, url: []const u8, host_defined: ?*anyopaque) Error!*engine.ModuleRecord {
+    const entered = try support.enter(realm);
+    defer entered.leave();
+    const default_export = realm_entry.EngineValue.of(entered.isolate, entered.context(), value) catch return error.OperationFailed;
+    defer default_export.release();
+    const module = ffi.v8_Module_CreateDefaultExportSyntheticModule(
+        entered.context(),
+        default_export.ptr,
+        url.ptr,
+        @intCast(url.len),
+    ) orelse return error.OperationFailed;
+    return newRecord(module, realm, host_defined) catch |err| {
+        ffi.v8_Module_Dispose(module);
+        return err;
+    };
+}
+
 /// A Module Record's [[RequestedModules]], in source order: the slice and
 /// every string in it allocated with `allocator` - the caller frees each
 /// specifier and type attribute, then the slice.
@@ -368,7 +388,7 @@ pub fn finishDynamicImport(request: *engine.ImportRequest, outcome: engine.Dynam
 
 /// HostGetImportMetaProperties(moduleRecord), step 1-3: import.meta.url is
 /// the host's module script's base URL. (Steps 4-6, import.meta.resolve, are
-/// not provided: the hook names only the URL.)
+/// `onImportMetaResolve`.)
 pub fn onImportMetaUrl(isolate: *ffi.Isolate, module: *ffi.Module, identity_hash: c_int, len: *usize) callconv(.c) ?[*]const u8 {
     const agent = protocol_agents.recordOf(isolate) orelse return null;
     const url_of = agent.hooks.importMetaUrl orelse return null;
@@ -377,4 +397,32 @@ pub fn onImportMetaUrl(isolate: *ffi.Isolate, module: *ffi.Module, identity_hash
     const url = url_of(agent.host, host_defined);
     len.* = url.len;
     return url.ptr;
+}
+
+/// HostGetImportMetaProperties(moduleRecord), steps 4-6: the steps of the
+/// builtin import.meta.resolve, after its ToString - "resolving a module
+/// specifier given moduleScript and specifier", which the host's
+/// `importMetaResolve` does from the module's settings object (the realm the
+/// function was made in, `context`) and its base URL (import.meta.url,
+/// `base_url`). The serialized URL, allocated with malloc - the wrapper
+/// copies it into a string and frees it - or null for failure, which the
+/// wrapper throws as a TypeError.
+pub fn onImportMetaResolve(
+    isolate: *ffi.Isolate,
+    context: *ffi.Context,
+    base_url: [*]const u8,
+    base_url_len: usize,
+    specifier: [*]const u8,
+    specifier_len: usize,
+    len: *usize,
+) callconv(.c) ?[*]u8 {
+    const agent = protocol_agents.recordOf(isolate) orelse return null;
+    const resolve = agent.hooks.importMetaResolve orelse return null;
+    const realm = context_manager.get(context) orelse return null;
+    const url = resolve(agent.host, realm, base_url[0..base_url_len], specifier[0..specifier_len], std.heap.c_allocator) orelse return null;
+    defer std.heap.c_allocator.free(url);
+    const out: [*]u8 = @ptrCast(std.c.malloc(@max(url.len, 1)) orelse return null);
+    @memcpy(out[0..url.len], url);
+    len.* = url.len;
+    return out;
 }

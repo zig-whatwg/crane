@@ -1487,6 +1487,29 @@ test "protocol: a module graph is parsed, its requests read, linked and evaluate
     try std.testing.expect(evaluation == .completed);
     try std.testing.expectEqual(@as(?i32, 43), globalInt(base, "fromModule"));
     try expectEval(base, "delete globalThis.fromModule", "true");
+
+    // CreateDefaultExportSyntheticModule (HTML "create a CSS module script"
+    // step 6): a record whose "default" export is the value given, as a CSS
+    // module import reads it.
+    const sheet = try evalOwned(base, "({ rules: 'the sheet' })");
+    defer sheet.release();
+    const synthetic = try protocol.createDefaultExportSyntheticModule(base, sheet.value, "https://example.test/s.css", null);
+    defer protocol.releaseModuleRecord(synthetic);
+    const importer = try parsed(try protocol.parseModule(
+        base,
+        "import sheet from './s.css' with { type: 'css' };\nglobalThis.fromSynthetic = sheet.rules;",
+        "https://example.test/importer.js",
+        null,
+    ));
+    defer protocol.releaseModuleRecord(importer);
+    var css_graph: Graph = .{ .specifiers = &.{"./s.css"}, .records = &.{synthetic} };
+    try std.testing.expect(try protocol.linkModule(base, importer, Graph.resolve, &css_graph) == null);
+    const css_scope = try protocol.prepareToRunScript(base);
+    const css_evaluation = try protocol.evaluateModule(base, importer);
+    protocol.cleanUpAfterRunningScript(css_scope);
+    try std.testing.expect(css_evaluation == .completed);
+    try expectEval(base, "globalThis.fromSynthetic", "the sheet");
+    try expectEval(base, "delete globalThis.fromSynthetic", "true");
 }
 
 test "protocol: what a module graph gets wrong comes back as its parse, link or evaluation error" {
@@ -1647,6 +1670,69 @@ test "protocol: import() reaches the agent's host with its referrer, and finishe
     protocol.finishDynamicImport(try host.takeRequest(), .{ .failure = .{ .number = 2 } });
     try protocol.performMicrotaskCheckpoint(r.agent.?);
     try std.testing.expectEqual(@as(usize, 0), reports.count);
+}
+
+/// The test's host for import.meta.resolve: what it was asked, and its
+/// answer - the specifier appended to the base URL, or failure for "bad".
+const ResolveHost = struct {
+    calls: usize = 0,
+    realm: ?runtime.Context = null,
+    base_buffer: [64]u8 = undefined,
+    base_len: usize = 0,
+
+    fn resolve(host: ?*anyopaque, r: runtime.Context, base_url: []const u8, specifier: []const u8, allocator: std.mem.Allocator) ?[]u8 {
+        const self: *ResolveHost = @ptrCast(@alignCast(host.?));
+        self.calls += 1;
+        self.realm = r;
+        self.base_len = @min(base_url.len, self.base_buffer.len);
+        @memcpy(self.base_buffer[0..self.base_len], base_url[0..self.base_len]);
+        if (std.mem.eql(u8, specifier, "bad")) return null;
+        return std.fmt.allocPrint(allocator, "{s}?{s}", .{ base_url, specifier }) catch null;
+    }
+};
+
+test "protocol: import.meta.resolve is a builtin that asks the host with the module's realm and base URL" {
+    _ = try realm();
+    var host: ResolveHost = .{};
+    const hooks: protocol.HostHooks = .{ .importMetaUrl = ImportHost.metaUrl, .importMetaResolve = ResolveHost.resolve };
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &hooks, .host = &host });
+    defer protocol.destroyAgent(agent);
+    const in_agent = try AgentRealm.make(agent);
+    defer in_agent.end();
+    const r = in_agent.realm;
+
+    // A module whose import.meta the engine initializes on first use; its
+    // resolve is kept on the global, to be called from a classic script.
+    var module_script: TestModuleScript = .{ .url = "https://example.test/m.js" };
+    const m = try parsed(try protocol.parseModule(r, "globalThis.resolve = import.meta.resolve; globalThis.meta = import.meta;", module_script.url, &module_script));
+    defer protocol.releaseModuleRecord(m);
+    try std.testing.expect(try protocol.linkModule(r, m, Graph.none, null) == null);
+    const scope = try protocol.prepareToRunScript(r);
+    const evaluation = try protocol.evaluateModule(r, m);
+    protocol.cleanUpAfterRunningScript(scope);
+    try std.testing.expect(evaluation == .completed);
+
+    // CreateBuiltinFunction(steps, 1, "resolve", « »): not a constructor, a
+    // writable, enumerable, configurable data property beside url.
+    try expectEval(r, "typeof resolve + ' ' + resolve.name + ' ' + resolve.length", "function resolve 1");
+    try expectEval(r, "Object.getPrototypeOf(resolve) === Function.prototype", "true");
+    try expectEval(r, "try { new resolve('x'); 'constructed' } catch (e) { e.constructor.name }", "TypeError");
+    try expectEval(r, "Object.keys(meta).join()", "url,resolve");
+    try expectEval(r, "(() => { const d = Object.getOwnPropertyDescriptor(meta, 'resolve'); return d.writable && d.enumerable && d.configurable; })()", "true");
+
+    // Its steps: ToString the argument, then the host's answer, given the
+    // module's realm and its base URL (import.meta.url).
+    try expectEval(r, "resolve({ toString() { return './x'; } })", "https://example.test/m.js?./x");
+    try std.testing.expectEqual(r, host.realm.?);
+    try std.testing.expectEqualStrings("https://example.test/m.js", host.base_buffer[0..host.base_len]);
+    try expectEval(r, "resolve()", "https://example.test/m.js?undefined");
+    // ToString throws for a Symbol, before the host is asked.
+    const calls = host.calls;
+    try expectEval(r, "try { resolve(Symbol('s')); 'resolved' } catch (e) { e.constructor.name }", "TypeError");
+    try std.testing.expectEqual(calls, host.calls);
+    // The host's failure is a TypeError.
+    try expectEval(r, "try { resolve('bad'); 'resolved' } catch (e) { e.constructor.name }", "TypeError");
+    try expectEval(r, "delete globalThis.resolve && delete globalThis.meta", "true");
 }
 
 test "constructing a DOMException leaves no handle behind, as constructing an Event does" {

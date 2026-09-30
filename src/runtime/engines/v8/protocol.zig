@@ -270,6 +270,7 @@ pub fn extractErrorInformation(realm: Context, value: JSValue, allocator: Alloca
 
 pub const parseModule = protocol_modules.parseModule;
 pub const parseJSONModule = protocol_modules.parseJSONModule;
+pub const createDefaultExportSyntheticModule = protocol_modules.createDefaultExportSyntheticModule;
 pub const moduleRequests = protocol_modules.moduleRequests;
 pub const linkModule = protocol_modules.linkModule;
 pub const evaluateModule = protocol_modules.evaluateModule;

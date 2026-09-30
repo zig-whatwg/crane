@@ -131,6 +131,9 @@ pub fn parseModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Err
 pub fn parseJSONModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
     return error.NotSupported;
 }
+pub fn createDefaultExportSyntheticModule(_: Context, _: JSValue, _: []const u8, _: ?*anyopaque) Error!*engine.ModuleRecord {
+    return error.NotSupported;
+}
 pub fn moduleRequests(_: *engine.ModuleRecord, _: Allocator) Error![]engine.ModuleRequest {
     return error.NotSupported;
 }
