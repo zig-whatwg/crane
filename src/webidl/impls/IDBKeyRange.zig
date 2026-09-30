@@ -146,10 +146,10 @@ pub fn call_static_only(instance: *runtime.Instance, value: runtime.JSValue) any
         return error.OutOfMemory;
     };
 
-    // Set the range to only(key)
+    // Set the range to only(key) - with keys of its own (`keptRange`).
     const new_state = new_instance.getState(State);
     if (new_state.own._internal) |new_internal| {
-        new_internal.range = BackendKeyRange.only(key);
+        new_internal.range = try keptRange(new_internal.allocator, BackendKeyRange.only(key));
     }
 
     return new_instance;
@@ -195,10 +195,10 @@ pub fn call_static_bound(instance: *runtime.Instance, lower: runtime.JSValue, up
         return error.OutOfMemory;
     };
 
-    // Set the range
+    // Set the range - with keys of its own (`keptRange`).
     const new_state = new_instance.getState(State);
     if (new_state.own._internal) |new_internal| {
-        new_internal.range = range;
+        new_internal.range = try keptRange(new_internal.allocator, range);
     }
 
     return new_instance;
@@ -225,7 +225,7 @@ pub fn call_static_upperBound(instance: *runtime.Instance, upper: runtime.JSValu
     const open_val = if (open.wasPassed()) open.value else false;
     const new_state = new_instance.getState(State);
     if (new_state.own._internal) |new_internal| {
-        new_internal.range = BackendKeyRange.upperBound(upper_key, open_val);
+        new_internal.range = try keptRange(new_internal.allocator, BackendKeyRange.upperBound(upper_key, open_val));
     }
 
     return new_instance;
@@ -252,10 +252,29 @@ pub fn call_static_lowerBound(instance: *runtime.Instance, lower: runtime.JSValu
     const open_val = if (open.wasPassed()) open.value else false;
     const new_state = new_instance.getState(State);
     if (new_state.own._internal) |new_internal| {
-        new_internal.range = BackendKeyRange.lowerBound(lower_key, open_val);
+        new_internal.range = try keptRange(new_internal.allocator, BackendKeyRange.lowerBound(lower_key, open_val));
     }
 
     return new_instance;
+}
+
+/// The range `range` as this range keeps it: its own copy of every key.
+///
+/// A key made from an argument (`convertFromJSValue`) borrows that argument's
+/// bytes, and the binding frees them when the call returns: stored as they
+/// were, `IDBKeyRange.only("a").lower` read freed memory. Each bound gets a
+/// copy of its own - `only` stores one key as both bounds, so each bound a
+/// separate copy - and the range's deinit frees them (it frees bound keys
+/// once the range has an allocator).
+fn keptRange(allocator: std.mem.Allocator, range: BackendKeyRange) !BackendKeyRange {
+    var kept = range;
+    kept.lower = null;
+    kept.upper = null;
+    kept.allocator = allocator;
+    errdefer kept.deinit();
+    if (range.lower) |lower| kept.lower = try lower.clone(allocator);
+    if (range.upper) |upper| kept.upper = try upper.clone(allocator);
+    return kept;
 }
 
 /// Convert IDBKey to JSValue
@@ -310,8 +329,8 @@ fn convertFromJSValue(jsvalue: runtime.JSValue) !BackendKey {
             return BackendKey.number(num);
         },
         .string => |str| {
-            // Convert string to BackendKey
-            // Note: BackendKey may need to copy the string if it outlives jsvalue
+            // Borrows the argument's bytes: a key kept past the call is
+            // copied first (`keptRange`).
             return BackendKey.string(str.data);
         },
         // An object: a Date, a buffer source or an Array key. Reading one (a

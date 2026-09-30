@@ -485,7 +485,12 @@ pub fn prepareScriptElement(
                 }
 
                 // Step 2: Parse the import map JSON
-                const import_map_result = parseImportMap(allocator, source_text, base_url);
+                var import_map_result = parseImportMap(allocator, source_text, base_url);
+                // The parse result is this step's: registering it copies
+                // every specifier, scope and URL into the document's map
+                // (Document's add(Scoped)ImportMapping dupe each one). Left,
+                // its maps, keys and resolved URLs leaked per import map.
+                defer import_map_result.deinit(allocator);
                 defer {
                     if (import_map_result.allocator) |alloc| {
                         if (import_map_result.error_message) |msg| {

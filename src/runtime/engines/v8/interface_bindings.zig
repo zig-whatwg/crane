@@ -204,6 +204,11 @@ pub const EventTarget = V8Interface(interfaces.EventTarget);
 /// Event V8 binding
 pub const Event = V8Interface(interfaces.Event);
 
+/// CustomEvent V8 binding: an operation (`initCustomEvent`) and a dictionary
+/// member (`CustomEventInit.detail`) of type `any`, for the tests that count
+/// what argument conversion leaves behind.
+pub const CustomEvent = V8Interface(interfaces.CustomEvent);
+
 /// Node V8 binding
 pub const Node = V8Interface(interfaces.Node);
 
