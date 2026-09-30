@@ -247,6 +247,162 @@ pub const Pointer = struct {
     }
 };
 
+// ============================================================================
+// Hit testing without layout
+// ============================================================================
+
+/// The element at the in-view centre point of `element` offset by
+/// (`x`, `y`) CSS pixels - which, with no layout, is `element` itself,
+/// except over an image with an image map: there the point is inside the
+/// image's box, and the first area of the map whose shape contains it is
+/// what the pointer is over (HTML 4.8.14 "image maps" processing model).
+///
+/// Stated deviation, for the box's size without layout: the image's
+/// declared size (getBoundingClientRect, which reads the inline style), else
+/// its width and height attributes, else the extent of its map's areas.
+pub fn hitTest(element: *Instance, x: f64, y: f64) *Instance {
+    if (!form_associated.isElementNamed(element, "img")) return element;
+    const map = imageMapOf(element) orelse return element;
+    const size = imageSize(element, map);
+    const point = [2]f64{ size[0] / 2 + x, size[1] / 2 + y };
+    var node = form_associated.nextInTree(map, map, false);
+    while (node) |n| : (node = form_associated.nextInTree(n, map, false)) {
+        if (!form_associated.isElementNamed(n, "area")) continue;
+        if (areaContains(n, point, size[0], size[1])) return n;
+    }
+    return element;
+}
+
+/// The size of `img`'s box, without layout (see `hitTest`).
+fn imageSize(img: *Instance, map: *Instance) [2]f64 {
+    if (interfaces.Element.call_getBoundingClientRect(img)) |rect| {
+        const generation = runtime.SlabAllocator.generationOf(rect);
+        defer rect.releaseIfUnwrapped(generation);
+        const width = interfaces.DOMRect.get_width(rect) catch 0;
+        const height = interfaces.DOMRect.get_height(rect) catch 0;
+        if (width > 0 and height > 0) return .{ width, height };
+    } else |_| {}
+    const allocator = img.ctx.allocator;
+    const width_attribute = form_associated.attributeValue(allocator, img, "width") catch null;
+    defer if (width_attribute) |v| allocator.free(v);
+    const height_attribute = form_associated.attributeValue(allocator, img, "height") catch null;
+    defer if (height_attribute) |v| allocator.free(v);
+    if (width_attribute != null and height_attribute != null) {
+        const width = std.fmt.parseFloat(f64, std.mem.trim(u8, width_attribute.?, " ")) catch 0;
+        const height = std.fmt.parseFloat(f64, std.mem.trim(u8, height_attribute.?, " ")) catch 0;
+        if (width > 0 and height > 0) return .{ width, height };
+    }
+    // The extent of the map's areas.
+    var extent = [2]f64{ 0, 0 };
+    var node = form_associated.nextInTree(map, map, false);
+    while (node) |n| : (node = form_associated.nextInTree(n, map, false)) {
+        if (!form_associated.isElementNamed(n, "area")) continue;
+        const text = (form_associated.attributeValue(allocator, n, "coords") catch null) orelse continue;
+        defer allocator.free(text);
+        var coords: [256]f64 = undefined;
+        const count = parseCoords(text, &coords);
+        const shape = form_associated.attributeValue(allocator, n, "shape") catch null;
+        defer if (shape) |v| allocator.free(v);
+        const is_circle = if (shape) |v| std.ascii.eqlIgnoreCase(v, "circle") or std.ascii.eqlIgnoreCase(v, "circ") else false;
+        if (is_circle) {
+            if (count >= 3) {
+                extent[0] = @max(extent[0], coords[0] + coords[2]);
+                extent[1] = @max(extent[1], coords[1] + coords[2]);
+            }
+            continue;
+        }
+        var i: usize = 0;
+        while (i + 1 < count) : (i += 2) {
+            extent[0] = @max(extent[0], coords[i]);
+            extent[1] = @max(extent[1], coords[i + 1]);
+        }
+    }
+    return extent;
+}
+
+/// The image map `img`'s usemap attribute names: HTML "rules for parsing a
+/// hash-name reference" - the first map element in tree order whose id or
+/// name is the part after the "#".
+fn imageMapOf(img: *Instance) ?*Instance {
+    const allocator = img.ctx.allocator;
+    const usemap = (form_associated.attributeValue(allocator, img, "usemap") catch null) orelse return null;
+    defer allocator.free(usemap);
+    const hash = std.mem.indexOfScalar(u8, usemap, '#') orelse return null;
+    const name = usemap[hash + 1 ..];
+    if (name.len == 0) return null;
+    const root = form_associated.rootOf(img);
+    var node: ?*Instance = root;
+    while (node) |n| : (node = form_associated.nextInTree(n, root, false)) {
+        if (!form_associated.isElementNamed(n, "map")) continue;
+        if (form_associated.attributeValue(allocator, n, "id") catch null) |id| {
+            defer allocator.free(id);
+            if (std.mem.eql(u8, id, name)) return n;
+        }
+        if (form_associated.attributeValue(allocator, n, "name") catch null) |map_name| {
+            defer allocator.free(map_name);
+            if (std.mem.eql(u8, map_name, name)) return n;
+        }
+    }
+    return null;
+}
+
+/// HTML "rules for parsing a list of floating-point numbers", as far as an
+/// area's coords need: numbers separated by commas, spaces or semicolons.
+fn parseCoords(text: []const u8, out: []f64) usize {
+    var count: usize = 0;
+    var it = std.mem.tokenizeAny(u8, text, ", ;\t\n\r");
+    while (it.next()) |token| {
+        if (count == out.len) break;
+        out[count] = std.fmt.parseFloat(f64, token) catch 0;
+        count += 1;
+    }
+    return count;
+}
+
+/// Whether `area`'s shape, in an image `width` by `height`, contains `point`.
+fn areaContains(area: *Instance, point: [2]f64, width: f64, height: f64) bool {
+    const allocator = area.ctx.allocator;
+    const shape = (form_associated.attributeValue(allocator, area, "shape") catch null);
+    defer if (shape) |v| allocator.free(v);
+    const kind = shape orelse "rect";
+    var coords: [256]f64 = undefined;
+    const coords_text = (form_associated.attributeValue(allocator, area, "coords") catch null);
+    defer if (coords_text) |v| allocator.free(v);
+    const n = if (coords_text) |t| parseCoords(t, &coords) else 0;
+    const px = point[0];
+    const py = point[1];
+    if (std.ascii.eqlIgnoreCase(kind, "default")) return px >= 0 and py >= 0 and px < width and py < height;
+    if (std.ascii.eqlIgnoreCase(kind, "circle") or std.ascii.eqlIgnoreCase(kind, "circ")) {
+        if (n < 3 or coords[2] <= 0) return false;
+        const dx = px - coords[0];
+        const dy = py - coords[1];
+        return dx * dx + dy * dy <= coords[2] * coords[2];
+    }
+    if (std.ascii.eqlIgnoreCase(kind, "poly") or std.ascii.eqlIgnoreCase(kind, "polygon")) {
+        const points = n / 2;
+        if (points < 3) return false;
+        // Even-odd rule.
+        var inside = false;
+        var j = points - 1;
+        for (0..points) |i| {
+            const xi = coords[2 * i];
+            const yi = coords[2 * i + 1];
+            const xj = coords[2 * j];
+            const yj = coords[2 * j + 1];
+            if ((yi > py) != (yj > py) and px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside;
+            j = i;
+        }
+        return inside;
+    }
+    // The rectangle state (the attribute's missing and invalid value default).
+    if (n < 4) return false;
+    const left = @min(coords[0], coords[2]);
+    const right = @max(coords[0], coords[2]);
+    const top = @min(coords[1], coords[3]);
+    const bottom = @max(coords[1], coords[3]);
+    return px >= left and px < right and py >= top and py < bottom;
+}
+
 /// The button number's bit in `buttons` (UI Events: primary 1, auxiliary
 /// 4, secondary 2, back 8, forward 16).
 fn buttonBit(button: u3) u16 {
@@ -341,6 +497,7 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     if (pointer.pointer_type == .mouse) {
         if (nodeDocument(target)) |document| user_activation.notifyActivation(document);
     }
+    if (nodeDocument(target)) |document| focus.noteInputModality(document, true);
     if (!first) {
         // A chorded button press is a pointermove (Pointer Events 4.1.3).
         _ = firePointerEvent(target, "pointermove", pointer, modifiers, @intCast(button), 0, null);
@@ -515,6 +672,7 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
     if (!isKey(key, "Escape")) {
         if (nodeDocument(target)) |d| user_activation.notifyActivation(d);
     }
+    if (nodeDocument(target)) |d| focus.noteInputModality(d, false);
     if (!fireKeyboardEvent(target, "keydown", key, modifiers, key.key_code, 0)) {
         // A cancelled keydown has no default action, and disarms Space.
         keyboard.space_armed = null;
@@ -586,6 +744,11 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
         }
         return;
     }
+    // A radio button: the arrow keys move the checkedness through its group.
+    if (isRadio(target) and !form_associated.isDisabled(target)) {
+        if (isKey(key, "ArrowDown") or isKey(key, "ArrowRight")) return moveInRadioGroup(target, .forward, modifiers);
+        if (isKey(key, "ArrowUp") or isKey(key, "ArrowLeft")) return moveInRadioGroup(target, .backward, modifiers);
+    }
     // Buttons, checkboxes and radio buttons: Space arms keyboard activation
     // for its keyup; Enter activates a button now.
     if (isKeyboardActivatable(target)) {
@@ -612,6 +775,59 @@ fn isCheckable(element: *Instance) bool {
     var buffer: [16]u8 = undefined;
     const input_type = form_associated.inputType(element, &buffer);
     return std.mem.eql(u8, input_type, "checkbox") or std.mem.eql(u8, input_type, "radio");
+}
+
+fn isRadio(element: *Instance) bool {
+    if (!form_associated.isInput(element)) return false;
+    var buffer: [16]u8 = undefined;
+    return std.mem.eql(u8, form_associated.inputType(element, &buffer), "radio");
+}
+
+/// The value of `element`'s name attribute, owned by `allocator`, or null.
+fn nameOf(allocator: std.mem.Allocator, element: *Instance) ?[]u8 {
+    return form_associated.attributeValue(allocator, element, "name") catch null;
+}
+
+/// The arrow keys on a radio button (Blink's RadioInputType and Gecko's
+/// HTMLInputElement keyboard handling; HTML 4.10.5.1.15's radio button
+/// group): the focus moves to the next (previous) enabled radio button of
+/// its group in tree order, wrapping, and that button is activated as a
+/// key press activates it - which checks it and fires input and change.
+fn moveInRadioGroup(radio: *Instance, direction: focus.Direction, modifiers: Modifiers) void {
+    const allocator = radio.ctx.allocator;
+    const name = nameOf(allocator, radio) orelse return;
+    defer allocator.free(name);
+    if (name.len == 0) return;
+    const owner = form_associated.formOwner(radio);
+    const root = form_associated.rootOf(radio);
+    // The group, in tree order: radio buttons with the same name and form
+    // owner, in the same tree.
+    var group: [256]*Instance = undefined;
+    var count: usize = 0;
+    var position: ?usize = null;
+    var node: ?*Instance = root;
+    while (node) |n| : (node = form_associated.nextInTree(n, root, false)) {
+        if (count == group.len) break;
+        if (!isRadio(n) or form_associated.formOwner(n) != owner) continue;
+        const other = nameOf(allocator, n) orelse continue;
+        defer allocator.free(other);
+        if (!std.mem.eql(u8, other, name)) continue;
+        if (n == radio) position = count;
+        group[count] = n;
+        count += 1;
+    }
+    const start = position orelse return;
+    var index = start;
+    var steps: usize = 0;
+    while (steps < count) : (steps += 1) {
+        index = if (direction == .forward) (index + 1) % count else (index + count - 1) % count;
+        if (index == start) return;
+        const candidate = group[index];
+        if (form_associated.isDisabled(candidate)) continue;
+        focus.focusingSteps(candidate, null, .keyboard);
+        fireSyntheticClick(candidate, modifiers);
+        return;
+    }
 }
 
 fn isKeyboardActivatable(element: *Instance) bool {
@@ -804,6 +1020,13 @@ fn moveSelection(select: *Instance, direction: focus.Direction) void {
     interfaces.HTMLSelectElement.set_selectedIndex(select, @intCast(index)) catch return;
     form_associated.fireSimpleEvent(select, "input", .{ .bubbles = true, .composed = true }) catch {};
     form_associated.fireSimpleEvent(select, "change", .{ .bubbles = true }) catch {};
+}
+
+test "an area's coords parse as a list of numbers" {
+    var coords: [8]f64 = undefined;
+    try std.testing.expectEqual(@as(usize, 4), parseCoords("0,0, 50 ;50", &coords));
+    try std.testing.expectEqual(@as(f64, 50), coords[3]);
+    try std.testing.expectEqual(@as(usize, 0), parseCoords("", &coords));
 }
 
 test "button bits follow UI Events' buttons" {

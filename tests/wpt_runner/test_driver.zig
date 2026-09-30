@@ -556,7 +556,11 @@ const Command = struct {
                     .element => |weak| {
                         // "Get a WebElement origin": a stale one is an error.
                         const element = knownElement(weak) orelse return staleElement();
-                        user_input.pointerMove(&driver.mouse, element, driver.globalModifiers());
+                        // The element at the origin's in-view centre plus
+                        // the offset: the origin itself, or an image map's
+                        // area.
+                        const target = user_input.hitTest(element, action.x, action.y);
+                        user_input.pointerMove(&driver.mouse, target, driver.globalModifiers());
                     },
                     .pointer => {
                         if (action.x != 0 or action.y != 0) return unsupportedMove();
