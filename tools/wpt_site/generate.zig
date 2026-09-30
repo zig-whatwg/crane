@@ -772,7 +772,11 @@ fn commitSite(arena: Allocator, io: Io, out: []const u8, summary: Summary) !void
         std.debug.print("wpt-site: {s} is on branch '{s}', not gh-pages; nothing committed\n", .{ out, branch });
         return;
     }
-    _ = capture(arena, io, out, &.{ "git", "add", "-A", "." }) orelse return error.GitFailed;
+    // --force: the output holds only what this generator wrote, so no ignore rule may
+    // decide what ships. The repository's shared .git/info/exclude applies to every
+    // worktree, and its `/data` line (for agent worktrees' data link) silently kept the
+    // whole data/ directory out of the first published site (2026-09-30).
+    _ = capture(arena, io, out, &.{ "git", "add", "-A", "--force", "." }) orelse return error.GitFailed;
     // `diff --cached --quiet` exits 0 when nothing is staged.
     if (capture(arena, io, out, &.{ "git", "diff", "--cached", "--quiet" }) != null) {
         std.debug.print("wpt-site: gh-pages already current; nothing committed\n", .{});
