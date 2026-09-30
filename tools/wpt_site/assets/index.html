@@ -42,6 +42,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <h1>Crane <span class="h1-rest">Web Platform Tests Results</span></h1>
       <p class="subtitle">Conformance record, regenerated with every run &mdash; <span data-fill="updated">last updated &hellip;</span></p>
       <dl class="head-meta">
+        <div class="head-subtests"><dt>Subtests</dt><dd data-fill="subtests">&hellip;</dd></div>
         <div><dt>This version</dt><dd data-fill="version">&hellip;</dd></div>
         <div><dt>Runs</dt><dd data-fill="runs">&hellip;</dd></div>
         <div><dt>WPT revision</dt><dd data-fill="wpt">&hellip;</dd></div>
@@ -53,7 +54,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <h2 id="status-h">Status of this document</h2>
       <div class="front-prose">
         <p>Crane is a web platform engine written in Zig: the browser, minus the pixels. This is its record of its own results on the <a href="https://web-platform-tests.org/">web-platform-tests</a> (WPT), measured by its own runner and regenerated with every run. <strong>Scope:</strong> the <span data-fill="n-files">&hellip;</span> testharness files of the 0.1 worklist, in <span data-fill="n-suites">&hellip;</span> suites. Reftests and tests that need rendering or layout (<code>html/rendering/</code>, <code>canvas</code>, scrolling, focus traversal) are out of scope by design, and every total describes this scope and nothing wider.</p>
-        <p><strong>No headline percentage.</strong> This is not a browser comparison, and a single rate would mostly measure <code>encoding/</code>, which holds <span data-fill="enc-share">&hellip;</span> of all reported subtests (<span data-fill="enc-subs">&hellip;</span>) in <span data-fill="enc-files">&hellip;</span> files. A file <strong>blocks</strong> the 0.1 gate when it times out, errors, crashes or finishes with no subtest passing (<span class="st st-issue">TIMEOUT</span>, <span class="st st-issue">ERROR</span>, <span class="st st-issue">CRASH</span>, <span class="st st-issue">NONE-PASSED</span>): <span data-fill="n-blocking">&hellip;</span> block today. Subtest detail comes from the runner&rsquo;s result streams: <span data-fill="n-detail">&hellip;</span>.</p>
+        <p><strong>About the totals.</strong> Crane passes <span data-fill="sub-pass">&hellip;</span> of the <span data-fill="sub-reported">&hellip;</span> subtests its runs reported. This is not a browser comparison, and the subtest total mostly measures <code>encoding/</code>, which holds <span data-fill="enc-share">&hellip;</span> of all reported subtests (<span data-fill="enc-subs">&hellip;</span>) in <span data-fill="enc-files">&hellip;</span> files. A file <strong>blocks</strong> the 0.1 gate when it times out, errors, crashes or finishes with no subtest passing (<span class="st st-issue">TIMEOUT</span>, <span class="st st-issue">ERROR</span>, <span class="st st-issue">CRASH</span>, <span class="st st-issue">NONE-PASSED</span>): <span data-fill="n-blocking">&hellip;</span> block today. Subtest detail comes from the runner&rsquo;s result streams: <span data-fill="n-detail">&hellip;</span>.</p>
       </div>
       <div class="note" role="note">
         <p class="note-label">How to read a section</p>

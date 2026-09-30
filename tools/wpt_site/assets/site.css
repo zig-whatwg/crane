@@ -149,6 +149,10 @@ html { scrollbar-color: var(--rule-strong) transparent; }
 .head-meta > div { display: contents; }
 .head-meta dt { color: var(--ink-2); font-weight: 500; }
 .head-meta dd { margin: 0; font-variant-numeric: tabular-nums; }
+/* The total subtest count leads the metadata on a row of its own. */
+.head-subtests dt { grid-column: 1; align-self: baseline; }
+.head-subtests dd { grid-column: 2 / -1; align-self: baseline; }
+.subs-total { font: 600 1.35rem/1.2 var(--serif); letter-spacing: -0.01em; margin-right: 0.3em; }
 .head-meta dd code { font-size: 0.86rem; }
 .runs-more { color: var(--ink-2); }
 .spark-link { display: inline-flex; align-items: center; gap: 0.75rem; text-decoration: none; color: var(--ink); }
@@ -354,6 +358,7 @@ ul[data-capped="1"] > .row.capped { display: none; }
   h2 .secno { position: static; display: inline; width: auto; margin-right: 0.5rem; font-size: 1.05rem; }
   .head-meta { grid-template-columns: minmax(0, 1fr); row-gap: 0; }
   .head-meta dt { margin-top: 0.55rem; }
+  .head-subtests dt, .head-subtests dd { grid-column: 1; }
   .row-line { grid-template-columns: minmax(0, 1fr) auto; }
   .row-line .self { grid-column: 2; grid-row: 1; }
   .row-line .tally, .row-line .fstat { grid-column: 1 / -1; padding-left: 1.45rem; justify-content: flex-start; }

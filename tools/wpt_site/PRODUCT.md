@@ -54,9 +54,11 @@ browser comparison.
 - Testharness tests only: Crane has no rendering or layout, so reftests are not run and tests that need
   rendering or layout (html/rendering/, canvas, scrolling, focus traversal) are excluded from the worklist
   by design. The site must say so plainly wherever totals appear.
-- No single headline pass percentage that invites comparison with full browsers (the user's instruction
-  for the wpt.fyi registration issue, 2026-09-30); per-suite and per-file figures carry their scope.
-  encoding/ holds most subtests, so subtest totals are always shown with that context.
+- The total count of passing subtests (passing of reported) leads the page header - the user's explicit
+  requirement (2026-09-30), after the first published version buried it. Show it with its scope and with
+  encoding/'s share beside it, since encoding/ holds most subtests; per-suite and per-file figures carry
+  their scope too. (The "no total, no percentage" instruction was for the wpt.fyi registration issue's text,
+  not for this site; a percentage on the site is the user's call.)
 - Static hosting only: no server, no database. Per-subtest data (about 1.3 million subtests) is sharded
   per test file and loaded on demand; GitHub Pages limits (1 GB site, 100 MB per file) apply.
 - The `gh-pages` branch is never force-pushed, so its history accumulates: generated files must be
