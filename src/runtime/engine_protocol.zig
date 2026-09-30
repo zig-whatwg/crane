@@ -405,6 +405,19 @@ pub const HostHooks = struct {
     /// HostGetImportMetaProperties [module_scripts]: `import.meta.url` of the
     /// module the host defined as `module_host_defined`.
     importMetaUrl: ?*const fn (host: ?*anyopaque, module_host_defined: *anyopaque) []const u8 = null,
+    /// HTML HostGetImportMetaProperties(moduleRecord) steps 4-6
+    /// [module_scripts]: import.meta.resolve. The engine makes the builtin
+    /// function "resolve" (length 1, not a constructor) beside `url`, and
+    /// its steps, given specifier, are "1. Set specifier to ?
+    /// ToString(specifier). 2. Let url be the result of resolving a module
+    /// specifier given moduleScript and specifier. 3. Return the
+    /// serialization of url." Resolving reads only moduleScript's settings
+    /// object - `realm`'s - and its base URL, which import.meta.url
+    /// serializes: the engine passes those. The result is OWNED
+    /// (`allocator`); null is the failure "resolve a module specifier"
+    /// throws, which the engine throws as a TypeError. An engine that does
+    /// not call this makes no `resolve` on import.meta.
+    importMetaResolve: ?*const fn (host: ?*anyopaque, realm: Context, base_url: []const u8, specifier: []const u8, allocator: std.mem.Allocator) ?[]u8 = null,
     /// HostPromiseRejectionTracker [promise_rejection_tracking]. `promise`
     /// OWNED. `reason` OWNED: on "reject" the rejection value - the promise's
     /// [[PromiseResult]] from then on, which the host keeps beside the promise
@@ -771,6 +784,17 @@ pub inline fn parseModule(realm: Context, source: []const u8, url: []const u8, h
 pub inline fn parseJSONModule(realm: Context, source: []const u8, url: []const u8, host_defined: ?*anyopaque) Error!ParseResult {
     comptime gate(.module_scripts, "parseJSONModule");
     return impl.parseJSONModule(realm, source, url, host_defined);
+}
+
+/// ECMA-262 CreateDefaultExportSyntheticModule(defaultExport): a Synthetic
+/// Module Record whose only export, "default", is `value` (BORROWED) once
+/// it is evaluated - what HTML "create a CSS module script" step 6 makes of
+/// the constructed CSSStyleSheet. `url` names the module (its resource
+/// name); `host_defined` is the host's, as for parseModule. The record is
+/// OWNED (releaseModuleRecord).
+pub inline fn createDefaultExportSyntheticModule(realm: Context, value: JSValue, url: []const u8, host_defined: ?*anyopaque) Error!*ModuleRecord {
+    comptime gate(.module_scripts, "createDefaultExportSyntheticModule");
+    return impl.createDefaultExportSyntheticModule(realm, value, url, host_defined);
 }
 
 /// A Module Record's [[RequestedModules]], allocated with `allocator`.

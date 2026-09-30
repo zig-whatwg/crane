@@ -444,9 +444,11 @@ zig build lint-impls -j2 --cache-dir /tmp/crane-z16-cache -- --update    # after
 ```
 
 `tools/lint_impls_boundary.zig` counts references into impls per file AND per
-`Impl.member` against `tools/impls_boundary_baseline.txt`, and enforces strictly
-that a hook is not used from inside the hierarchy that owns it. A count that
+`Impl.member` against `tools/impls_boundary_baseline.txt`. A count that
 rises fails; so does a pair the baseline lacks - which catches a swap. The
+`//! lint-impls: hook for <Owner>` line is documentation - it names who installs
+the hook; the tool does not parse it (its in-hierarchy hook check went with the
+ancestor exception, 1a94e0043). The
 generated layers (interfaces, mixins, namespaces, codegen) are skipped:
 delegating to impls is their job. `--rebase-for-rule-change` exists for one purpose: re-recording the
 baseline when the RULE changes (it was used once, when ancestors started to count); a code change

@@ -5021,6 +5021,45 @@ Global<Module>* v8_Module_CreateJsonModule(
     return trackHandle(new Global<Module>(isolate, module));
 }
 
+/// ECMA-262 CreateDefaultExportSyntheticModule(defaultExport): a synthetic
+/// module whose evaluation steps set its only export, "default", to `value` -
+/// the JSON module's machinery (SyntheticJsonExport), with the value given.
+/// HTML "create a CSS module script" step 6 makes one of its CSSStyleSheet.
+///
+/// Returns the module (Global<Module>*, caller owns - v8_Module_Dispose).
+Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
+    Global<Context>* context,
+    Global<Value>* value,
+    const char* name,
+    int name_len
+) {
+    if (!context || !value) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+
+    Local<String> module_name;
+    if (!String::NewFromUtf8(isolate, name, NewStringType::kNormal, name_len).ToLocal(&module_name)) {
+        module_name = String::Empty(isolate);
+    }
+    Local<String> default_name = String::NewFromUtf8Literal(isolate, "default", NewStringType::kInternalized);
+    Local<Module> module = Module::CreateSyntheticModule(
+        isolate,
+        module_name,
+        MemorySpan<const Local<String>>(&default_name, 1),
+        JsonModuleEvaluationSteps
+    );
+
+    if (!g_synthetic_json_exports) g_synthetic_json_exports = new std::vector<SyntheticJsonExport*>();
+    SyntheticJsonExport* entry = new SyntheticJsonExport();
+    entry->module.Reset(isolate, module);
+    entry->value.Reset(isolate, value->Get(isolate));
+    g_synthetic_json_exports->push_back(entry);
+
+    return trackHandle(new Global<Module>(isolate, module));
+}
+
 // ============================================================================
 // Dynamic Import (import() expression) Support
 // ============================================================================
@@ -5997,121 +6036,6 @@ void v8_PatchWindowInstanceOf(Isolate* isolate, Global<Context>* context, Global
     );
 
     (void)result; // Success check omitted - if it fails, instanceof will use default behavior
-}
-
-// Custom [Symbol.hasInstance] callback for Event that checks internal type info
-// instead of relying on prototype chain identity (which V8 snapshots don't preserve).
-// This is needed for event objects created and dispatched within the runtime.
-static void EventHasInstanceCallback(const FunctionCallbackInfo<Value>& info) {
-    Isolate* isolate = info.GetIsolate();
-    HandleScope handle_scope(isolate);
-
-    if (info.Length() < 1) {
-        fprintf(stderr, "[EventHasInstanceCallback] No argument provided\n");
-        info.GetReturnValue().Set(false);
-        return;
-    }
-
-    Local<Value> arg = info[0];
-    if (!arg->IsObject()) {
-        fprintf(stderr, "[EventHasInstanceCallback] Argument is not an object\n");
-        info.GetReturnValue().Set(false);
-        return;
-    }
-
-    Local<Object> obj = arg.As<Object>();
-
-    // Check if this object has the Event type info in internal field 1
-    int field_count = obj->InternalFieldCount();
-    if (field_count < 2) {
-        fprintf(stderr, "[EventHasInstanceCallback] Object has %d internal fields (need 2)\n", field_count);
-        info.GetReturnValue().Set(false);
-        return;
-    }
-
-    void* type_info = obj->GetAlignedPointerFromInternalField(1);
-    if (type_info == nullptr) {
-        fprintf(stderr, "[EventHasInstanceCallback] type_info is null\n");
-        info.GetReturnValue().Set(false);
-        return;
-    }
-
-    // Check if the type info indicates this is an Event (or Event subclass)
-    struct WrapperTypeInfo {
-        const char* interface_name;
-    };
-    const WrapperTypeInfo* wrapper_info = static_cast<const WrapperTypeInfo*>(type_info);
-    fprintf(stderr, "[EventHasInstanceCallback] type_info interface_name: %s\n", wrapper_info->interface_name);
-
-    // Event and all Event subclasses should pass instanceof Event
-    // Common Event subclasses: CustomEvent, MessageEvent, ErrorEvent, CloseEvent, etc.
-    const char* name = wrapper_info->interface_name;
-    bool is_event = (strcmp(name, "Event") == 0) ||
-                    (strcmp(name, "CustomEvent") == 0) ||
-                    (strcmp(name, "MessageEvent") == 0) ||
-                    (strcmp(name, "ErrorEvent") == 0) ||
-                    (strcmp(name, "CloseEvent") == 0) ||
-                    (strcmp(name, "UIEvent") == 0) ||
-                    (strcmp(name, "MouseEvent") == 0) ||
-                    (strcmp(name, "KeyboardEvent") == 0) ||
-                    (strcmp(name, "FocusEvent") == 0) ||
-                    (strcmp(name, "InputEvent") == 0) ||
-                    (strcmp(name, "WheelEvent") == 0) ||
-                    (strcmp(name, "TouchEvent") == 0) ||
-                    (strcmp(name, "PointerEvent") == 0) ||
-                    (strcmp(name, "DragEvent") == 0) ||
-                    (strcmp(name, "AnimationEvent") == 0) ||
-                    (strcmp(name, "TransitionEvent") == 0) ||
-                    (strcmp(name, "ProgressEvent") == 0) ||
-                    (strcmp(name, "StorageEvent") == 0) ||
-                    (strcmp(name, "HashChangeEvent") == 0) ||
-                    (strcmp(name, "PopStateEvent") == 0) ||
-                    (strcmp(name, "PageTransitionEvent") == 0) ||
-                    (strcmp(name, "BeforeUnloadEvent") == 0) ||
-                    (strcmp(name, "PromiseRejectionEvent") == 0) ||
-                    (strcmp(name, "SecurityPolicyViolationEvent") == 0);
-
-    info.GetReturnValue().Set(is_event);
-}
-
-// Patch Event[Symbol.hasInstance] to use custom type checking instead of prototype chain.
-// This is needed because V8 snapshots don't preserve the identity between Function.prototype
-// and objects in the prototype chain.
-void v8_PatchEventInstanceOf(Isolate* isolate, Global<Context>* context, Global<Object>* global) {
-    HandleScope handle_scope(isolate);
-
-    Local<Context> ctx = context->Get(isolate);
-    Context::Scope context_scope(ctx);
-    Local<Object> global_obj = global->Get(isolate);
-
-    // Get the Event constructor
-    Local<String> event_key = String::NewFromUtf8Literal(isolate, "Event");
-    MaybeLocal<Value> maybe_event = global_obj->Get(ctx, event_key);
-    if (maybe_event.IsEmpty()) {
-        return;
-    }
-
-    Local<Value> event_val = maybe_event.ToLocalChecked();
-    if (!event_val->IsFunction()) {
-        return;
-    }
-
-    Local<Function> event_ctor = event_val.As<Function>();
-
-    // Get Symbol.hasInstance
-    Local<Symbol> has_instance_symbol = Symbol::GetHasInstance(isolate);
-
-    // Create our custom hasInstance function
-    Local<FunctionTemplate> has_instance_tmpl = FunctionTemplate::New(isolate, EventHasInstanceCallback);
-    Local<Function> has_instance_fn = has_instance_tmpl->GetFunction(ctx).ToLocalChecked();
-
-    // Define Event[Symbol.hasInstance] = our custom function
-    event_ctor->DefineOwnProperty(
-        ctx,
-        has_instance_symbol,
-        has_instance_fn,
-        static_cast<PropertyAttribute>(v8::ReadOnly | v8::DontEnum | v8::DontDelete)
-    );
 }
 
 void v8_FunctionTemplate_RemovePrototype(Global<FunctionTemplate>* tpl) {
@@ -12264,9 +12188,13 @@ typedef void (*ProtocolDynamicImportDispatch)(
     Global<Promise::Resolver>* resolver
 );
 typedef const char* (*ProtocolImportMetaUrlDispatch)(Isolate* isolate, Global<Module>* module, int identity_hash, size_t* len);
+/// import.meta.resolve's steps after ToString: the serialized URL (malloc'd,
+/// the caller frees it) or null for failure.
+typedef char* (*ProtocolImportMetaResolveDispatch)(Isolate* isolate, Global<Context>* context, const char* base_url, size_t base_url_len, const char* specifier, size_t specifier_len, size_t* len);
 
 static ProtocolDynamicImportDispatch g_protocol_dynamic_import = nullptr;
 static ProtocolImportMetaUrlDispatch g_protocol_import_meta_url = nullptr;
+static ProtocolImportMetaResolveDispatch g_protocol_import_meta_resolve = nullptr;
 
 /// HostLoadImportedModule for an import(): the referrer from the host-defined
 /// options the protocol compiled the script or module with, the realm from
@@ -12311,8 +12239,42 @@ static MaybeLocal<Promise> ProtocolHostImportModuleDynamically(
     return handle_scope.Escape(resolver->GetPromise());
 }
 
+/// HostGetImportMetaProperties steps 4-6: the builtin import.meta.resolve.
+/// Its data is import.meta.url - the module script's base URL, serialized -
+/// and the realm it runs in is the one it was made in: the module script's
+/// settings object's.
+static void ProtocolImportMetaResolve(const FunctionCallbackInfo<Value>& info) {
+    Isolate* isolate = info.GetIsolate();
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    // Step 4.1: Set specifier to ? ToString(specifier) - undefined when no
+    // argument is given; a Symbol throws.
+    Local<Value> argument = info.Length() > 0 ? info[0] : Local<Value>(Undefined(isolate));
+    Local<String> specifier;
+    if (!argument->ToString(context).ToLocal(&specifier)) return;
+    // Step 4.2: resolve a module specifier given moduleScript and specifier.
+    auto dispatch = g_protocol_import_meta_resolve;
+    String::Utf8Value base_utf8(isolate, info.Data());
+    String::Utf8Value specifier_utf8(isolate, specifier);
+    Global<Context> realm(isolate, context);
+    size_t len = 0;
+    char* url = dispatch
+        ? dispatch(isolate, &realm, *base_utf8 ? *base_utf8 : "", base_utf8.length(), *specifier_utf8 ? *specifier_utf8 : "", specifier_utf8.length(), &len)
+        : nullptr;
+    if (!url) {
+        isolate->ThrowException(Exception::TypeError(String::NewFromUtf8Literal(isolate, "Failed to resolve module specifier")));
+        return;
+    }
+    // Step 4.3: return the serialization of url.
+    Local<String> result;
+    bool made = String::NewFromUtf8(isolate, url, NewStringType::kNormal, static_cast<int>(len)).ToLocal(&result);
+    free(url);
+    if (made) info.GetReturnValue().Set(result);
+}
+
 /// HostGetImportMetaProperties: import.meta.url, from the host's module
-/// script (found by its record on the Zig side).
+/// script (found by its record on the Zig side), and - step 5 -
+/// CreateBuiltinFunction(steps, 1, "resolve", « »), when the host resolves.
 static void ProtocolInitializeImportMeta(Local<Context> context, Local<Module> module, Local<Object> meta) {
     auto dispatch = g_protocol_import_meta_url;
     if (!dispatch) return;
@@ -12324,17 +12286,23 @@ static void ProtocolInitializeImportMeta(Local<Context> context, Local<Module> m
     Local<String> value;
     if (!String::NewFromUtf8(isolate, url, NewStringType::kNormal, static_cast<int>(len)).ToLocal(&value)) return;
     (void)meta->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "url"), value).FromMaybe(false);
+    if (!g_protocol_import_meta_resolve) return;
+    Local<Function> resolve;
+    if (!Function::New(context, ProtocolImportMetaResolve, value, 1, ConstructorBehavior::kThrow).ToLocal(&resolve)) return;
+    resolve->SetName(String::NewFromUtf8Literal(isolate, "resolve"));
+    (void)meta->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "resolve"), resolve).FromMaybe(false);
 }
 
 /// Install the protocol's import() and import.meta hooks on `isolate`, each
 /// only when given.
-void v8_Isolate_SetProtocolModuleHooks(Isolate* isolate, ProtocolDynamicImportDispatch dynamic_import, ProtocolImportMetaUrlDispatch import_meta_url) {
+void v8_Isolate_SetProtocolModuleHooks(Isolate* isolate, ProtocolDynamicImportDispatch dynamic_import, ProtocolImportMetaUrlDispatch import_meta_url, ProtocolImportMetaResolveDispatch import_meta_resolve) {
     if (dynamic_import) {
         g_protocol_dynamic_import = dynamic_import;
         isolate->SetHostImportModuleDynamicallyCallback(ProtocolHostImportModuleDynamically);
     }
     if (import_meta_url) {
         g_protocol_import_meta_url = import_meta_url;
+        if (import_meta_resolve) g_protocol_import_meta_resolve = import_meta_resolve;
         isolate->SetHostInitializeImportMetaObjectCallback(ProtocolInitializeImportMeta);
     }
 }

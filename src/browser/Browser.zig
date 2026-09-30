@@ -98,6 +98,7 @@ const window_agent_hooks: engine.HostHooks = blk: {
     var hooks = html.rejected_promises.hooks;
     hooks.loadImportedModule = html.script_execution.module_hooks.loadImportedModule;
     hooks.importMetaUrl = html.script_execution.module_hooks.importMetaUrl;
+    hooks.importMetaResolve = html.script_execution.module_hooks.importMetaResolve;
     break :blk hooks;
 };
 

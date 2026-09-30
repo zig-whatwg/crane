@@ -153,7 +153,7 @@ adapter will use Crane's own walker (src/html/structured_clone).
 | Engine and agents | `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks`), `destroyAgent`, `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `requestGarbageCollection` (testing only) |
 | Realms | `createWindowRealm`, `destroyWindowRealm`, `createWorkerRealm` (HTML "run a worker" step 5: `WorkerRealmOptions.global` picks the global object, a DedicatedWorkerGlobalScope or, for a shared worker, a SharedWorkerGlobalScope), `destroyWorkerRealm`, `currentRealm`, `entryRealm`, `incumbentRealm`, `functionRealm`, `installWindowOperations`, `defineBuiltinFunction` |
 | Running script (HTML 8.1.4) | `runClassicScript`, `evaluateClassicScript`, `evaluateClassicScriptToString`, `compileEventHandler`, `prepareToRunScript` / `cleanUpAfterRunningScript`, `runInRealm`, `runTaskInRealm`, `performMicrotaskCheckpoint` and `queueMicrotask` (the agent's - an event loop's), `extractErrorInformation` |
-| Modules [module_scripts] | `parseModule`, `parseJSONModule`, `moduleRequests`, `linkModule`, `evaluateModule`, `finishDynamicImport`, `releaseModuleRecord` |
+| Modules [module_scripts] | `parseModule`, `parseJSONModule`, `createDefaultExportSyntheticModule` (ECMA-262 CreateDefaultExportSyntheticModule, for HTML "create a CSS module script"), `moduleRequests`, `linkModule`, `evaluateModule`, `finishDynamicImport`, `releaseModuleRecord` |
 | Callbacks (WebIDL) | `invokeCallbackFunction`, `callUserObjectOperation`, `isCallable`, `takeCallbackFunction` / `takeCallbackInterface` (transitional) |
 | ECMAScript values | `getProperty`, `setProperty`, `defineOwnProperty`, `hasProperty`, `typeOf`, `sameValue`, `toBoolean`, `retainValue`, `releaseValue`, `throwValue`, `completionOf`, `parseJsonToValue`, `serializeJsonToBytes` |
 | WebIDL: ES to IDL | `convertToDOMString`, `convertToUSVString`, `convertToUnrestrictedDouble`, `convertToPlatformObject`, `convertToSequence*`, `convertToRecordOfStrings`, `getCopyOfBufferSourceBytes`, `iterate`, `getIterator`, `iteratorNext`, `iteratorReturn`, `iteratorResult`, `releaseIteratorRecord` |
@@ -170,12 +170,18 @@ adapter will use Crane's own walker (src/html/structured_clone).
 The host's side of the ECMAScript host hooks is a `HostHooks` value, installed
 per agent by `createAgent` and nowhere else: `loadImportedModule`
 (HostLoadImportedModule for `import()`, finished with `finishDynamicImport`),
-`importMetaUrl` (HostGetImportMetaProperties), `promiseRejectionTracker`
-(HostPromiseRejectionTracker, with the rejection reason) and
-`afterMicrotaskCheckpoint` (HTML "notify about rejected promises"). The
-Window host's hooks are `html/rejected_promises.zig`'s `hooks` and
-`html/script_execution.zig`'s `module_hooks`. A hook whose capability the
-engine lacks is never called.
+`importMetaUrl` (HostGetImportMetaProperties steps 1-3, import.meta.url),
+`importMetaResolve` (its steps 4-6: the engine makes the builtin
+`import.meta.resolve` beside `url`, does its ToString, and asks the host to
+resolve a module specifier given the module's realm and base URL - null is
+the TypeError), `promiseRejectionTracker` (HostPromiseRejectionTracker, with
+the rejection reason) and `afterMicrotaskCheckpoint` (HTML "notify about
+rejected promises"). The Window host's hooks are `html/rejected_promises.zig`'s
+`hooks` and `html/script_execution.zig`'s `module_hooks`; a worker's are
+`html/worker_host.zig`'s `worker_hooks`. A hook whose capability the engine
+lacks is never called. Every hook defaults to null; an adapter that does not
+wire `importMetaResolve` (JavaScriptCore and QuickJS today, which have no
+module hooks) leaves import.meta without `resolve`.
 
 ## 6. Adding an operation
 

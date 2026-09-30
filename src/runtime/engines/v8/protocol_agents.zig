@@ -166,11 +166,15 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // [module_scripts]: import() and import.meta.
     const load = options.hooks.loadImportedModule != null;
     const meta = options.hooks.importMetaUrl != null;
+    const resolve = options.hooks.importMetaResolve != null;
     if (load or meta) {
         ffi.v8_Isolate_SetProtocolModuleHooks(
             isolate,
             if (load) protocol_modules.onDynamicImport else null,
             if (meta) protocol_modules.onImportMetaUrl else null,
+            // import.meta.resolve is made beside import.meta.url, so only
+            // with it.
+            if (meta and resolve) protocol_modules.onImportMetaResolve else null,
         );
     }
 

@@ -240,9 +240,9 @@ pub const WptBrowser = struct {
         // Map GlobalType to Context.ContextType
         const ctx_type: Context.ContextType = switch (context_type) {
             .window => .window,
-            .worker => .worker,
-            .sharedworker => .shared_worker,
-            .serviceworker => .service_worker,
+            .worker, .worker_module => .worker,
+            .sharedworker, .sharedworker_module => .shared_worker,
+            .serviceworker, .serviceworker_module => .service_worker,
             // ShadowRealm variants map to window for now
             else => .window,
         };

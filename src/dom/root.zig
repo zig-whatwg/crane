@@ -69,6 +69,11 @@ pub const style_sheet_owners = @import("style_sheet_owners.zig");
 pub const attribute_change_steps = @import("attribute_change_steps.zig");
 pub const script_elements = @import("script_elements.zig");
 pub const activation = @import("activation.zig");
+pub const form_controls = @import("form_controls.zig");
+pub const form_submission = @import("form_submission.zig");
+pub const node_lists = @import("node_lists.zig");
+pub const teardown_sweeps = @import("teardown_sweeps.zig");
+pub const event_construction = @import("event_construction.zig");
 pub const navigables = @import("navigables.zig");
 pub const navigation_api = @import("navigation_api.zig");
 pub const navigation_objects = @import("navigation_objects.zig");
@@ -101,6 +106,9 @@ pub const range_mutations = @import("range_mutations.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
 pub const document_internals = @import("document_internals.zig");
+/// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule
+/// objects wrap.
+pub const cssom = @import("cssom.zig");
 
 // Re-export slot_helpers functions
 pub const isElement = slot_helpers.isElement;

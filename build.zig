@@ -1234,6 +1234,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     css_mod.addImport("quirks", quirks_mod);
+    // The CSSOM's model (src/dom/cssom.zig) holds a sheet's parsed rules.
+    dom_mod.addImport("css", css_mod);
 
     // Selector module (CSS Selectors Level 4 implementation)
     const selector_mod = b.addModule("selector", .{
@@ -2031,6 +2033,8 @@ pub fn build(b: *std.Build) void {
     // engine-neutral code calls `engine.op`.
     html_mod.addImport("engine", engine_mod);
     html_mod.addImport("dictionaries", dictionaries_mod);
+    // The Unicode bidi classes, for HTML's directionality (form_associated.zig).
+    html_mod.addImport("url", url_mod);
     // DOM module for document_internals access in parser_script_execution.zig
     html_mod.addImport("dom", dom_mod);
     // HTML "encoding-parse a URL" (html.encoding_parse) runs the URL parser

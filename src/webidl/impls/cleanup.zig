@@ -39,6 +39,9 @@ pub fn cleanupAllDomRegistries() void {
     HTMLScriptElementImpl.cleanupAllRemainingInternal();
     HTMLElementImpl.cleanupAllRemainingInternal();
     ElementImpl.cleanupAllRemainingInternal();
+    // Types with side tables of their own (an input's dirty value) installed
+    // their sweeps (dom.teardown_sweeps).
+    @import("dom").teardown_sweeps.runAll();
 
     // Clean up other node types
     TextImpl.cleanupAllRemainingInternal();
