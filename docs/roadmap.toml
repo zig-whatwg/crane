@@ -234,6 +234,7 @@ progress = [
   "bc392d1c2..eaff8f879 (merged 6f94e66a5) - scripting lane: the runtime Engine table deleted (the runtime tier calls the protocol); Realm.v8_context/isolate renamed; worker realms end with their Browser; an agent records its host role when made",
   "da2d7ee90, 00f329ef5, 07bf59d55 (merged f40664c23) - reflection lane: Element.zig on the protocol, so the engine-boundary baseline reaches 0 references in 0 files; the lazy getter path and its per-read Context Global leak gone; Realm.wrap refuses what the wrapper cache does not hold strongly",
   "3b710e930, 1248c3fa5, 0deed5ad3, e014e7fc0, 639478ab1, d75fcb45a, 53188e412 (merged 505cfb9e3) - navigation lane: Browser, Node, Document, Window, Location, EventTarget, HTMLIFrameElement and the navigation API on the protocol; frames' realms come from createWindowRealm and context_manager's child contexts are deleted; the microtask checkpoint and queueMicrotask are the agent's; a realm's wrapper cache leaves a node in a tree to its tree",
+  "a7388ca5c, 9427d2684, 5f17b92c9 (merged with part B) - the binding owns every value an impl returns (needs_disposal and the .local/.global tag gone, [SameObject] getters keep their own slot), callback interface arguments are borrowed for the call, and no module outside the V8 adapter imports \"v8\" (scripting lane, part B)",
 ]
 
   [[infra.items]]
@@ -266,7 +267,7 @@ progress = [
 
   [[infra.items]]
   name = "Typed ownership through runtime: JSValue's handle arm loses needs_disposal and the .local/.global tag for the protocol's types, and runtime types carry no V8 names (Realm.isolate -> agent, Realm.v8_context -> engine_realm) - after the paused lanes merge, since held files read them"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Codegen types callback parameters as the protocol's CallbackFunction and CallbackInterface, retiring the transitional takeCallbackFunction and takeCallbackInterface operations"
@@ -274,7 +275,7 @@ progress = [
 
   [[infra.items]]
   name = "\"v8\" removed from the non-adapter modules' imports in build.zig, once the baseline reaches zero"
-  status = "todo"
+  status = "done"
 
 [[infra]]
 id = "bindings"

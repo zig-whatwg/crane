@@ -43,7 +43,6 @@ pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
 
 /// Import webidl for Opt type checking
 const webidl = @import("webidl");
-const host = @import("host");
 
 /// Number of internal fields required for wrapped objects
 /// Slot 0: Zig instance pointer
@@ -271,9 +270,9 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
 
         // `JSValue` is inert FOR THE CONTEXT, which is what this predicate
         // governs. `conv.fromV8Value`'s JSValue branch returns
-        // `.handle = .{ .ptr = value, .handle_scope = .local }` - it keeps the
-        // VALUE pointer and uses `context` only transiently, for
-        // `v8_Value_NumberValue` and `v8_Value_ToString`. Retaining a value handle
+        // `.handle = .{ .ptr = value }` - it keeps the VALUE pointer and uses
+        // `context` only transiently, for `v8_Value_NumberValue` and
+        // `v8_Value_ToString`. Retaining a value handle
         // is a different question from retaining the context, and conflating them
         // kept `createElement` - whose second parameter is `webidl.Opt(JSValue)` -
         // leaking its context on the hottest path in the DOM.
@@ -2596,17 +2595,6 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // For now, return undefined to prevent crashes.
                                 // TODO: Implement proper Promise creation for [NewObject] methods
                                 break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
-                            } else if (PayloadType == ?*runtime.CallbackWrapper) {
-                                // EventHandler (callback wrapper) - extract V8 function from wrapper
-                                if (result) |wrapper| {
-                                    const cb_wrapper = @import("callback_wrapper.zig");
-                                    const v8_wrapper: *cb_wrapper.CallbackWrapper = @ptrCast(@alignCast(wrapper));
-                                    if (v8_wrapper.callback_function) |func| {
-                                        break :comptime_convert @ptrCast(func);
-                                    }
-                                }
-                                // No callback or no function stored - return null
-                                break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
                             } else if (PayloadType == runtime.JSValue) {
                                 // JSValue - use conv.toV8Value to convert to V8 Value
                                 // This handles all JSValue variants: undefined, null, boolean, number, string, handle, instance
@@ -2691,8 +2679,17 @@ pub fn V8Interface(comptime Interface: type) type {
                         // setReturnValue reads the handle into a Local. A value the
                         // conversion above made is ours: every number, boolean,
                         // string and enum read leaked a Global - 200,000
-                        // `v8_Number_New`s for 200,000 `list.length` reads.
-                        if (comptime getterValueIsOwned(PayloadType)) v8.v8_Global_Dispose(v8_value);
+                        // `v8_Number_New`s for 200,000 `list.length` reads. So is
+                        // every JSValue result but an instance's wrapper: a handle
+                        // the impl returns is the binding's (engine.Owned.take),
+                        // and the other arms are made here.
+                        if (comptime getterValueIsOwned(PayloadType)) {
+                            v8.v8_Global_Dispose(v8_value);
+                        } else if (comptime PayloadType == runtime.JSValue) {
+                            if (result != .instance) v8.v8_Global_Dispose(v8_value);
+                        } else if (comptime PayloadType == ?runtime.JSValue) {
+                            if (result == null or result.? != .instance) v8.v8_Global_Dispose(v8_value);
+                        }
                     }
                 }
             };
@@ -3164,7 +3161,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Check if a converted argument type needs to be freed after use.
         /// String types ([]const u8 and DOMString) need cleanup as they're allocated by fromV8String.
         /// JSValue types may contain owned strings that need cleanup.
-        /// CallbackWrapper types need cleanup for transient callbacks (those not stored by the callee).
+        /// CallbackWrapper types are the call's: released once it returns.
         /// Struct types (dictionaries) may contain string fields that need cleanup.
         fn needsArgCleanup(comptime T: type) bool {
             @setEvalBranchQuota(10000);
@@ -3183,9 +3180,8 @@ pub fn V8Interface(comptime Interface: type) type {
             if (T == runtime.DOMString) return true;
             // JSValue may contain owned strings
             if (T == runtime.JSValue) return true;
-            // CallbackWrapper - transient callbacks need cleanup after method call
-            // Note: If a method stores the callback (e.g., addEventListener), it must
-            // clone/reference it before returning, as we free it here.
+            // CallbackWrapper - the call's; a method that keeps the callback
+            // (addEventListener) takes its own CallbackInterface first.
             if (T == *runtime.CallbackWrapper) return true;
             // Generic slice types (sequences) - allocated by fromV8Sequence
             // This handles []const JSValue, []const DOMString, etc.
@@ -3294,13 +3290,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     else => {}, // Other variants don't need cleanup here
                 }
             } else if (T == *runtime.CallbackWrapper) {
-                // Callbacks are OWNED by the method that receives them.
-                // Methods like addEventListener store callbacks and are responsible
-                // for cleanup when the callback is removed or the target is destroyed.
-                // We do NOT free callbacks here - the receiver takes ownership.
-                //
-                // This follows the DOM spec where event listeners persist until
-                // explicitly removed or the EventTarget is garbage collected.
+                // A callback interface argument is the call's, like every
+                // argument: the impl borrowed it, and one that keeps the
+                // callback (addEventListener) took a CallbackInterface of its
+                // own. Its wrapper goes now.
+                conv.releaseCallbackWrapper(arg);
             } else if (@typeInfo(T) == .optional) {
                 // Handle all optional types by recursively freeing the inner value
                 if (arg) |val| {
@@ -3757,11 +3751,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // `owned` answers whether the handle returned is the binding's to
             // release once the caller has set it as the call's result
-            // (setReturnValue copies). True only where this conversion made the
-            // handle, or the impl handed its own over (a JSValue that
-            // `needsDisposal`). A wrapper is the cache's, and a union's arm
-            // cannot be told apart here, so both stay false - a leak at worst,
-            // never a handle freed under its holder.
+            // (setReturnValue copies). True where this conversion made the
+            // handle, and for every handle a JSValue result carries - what an
+            // impl returns is the binding's. A wrapper is the cache's, and a
+            // union's or dictionary's parts are not told apart here, so they
+            // stay false - a leak at worst, never a handle freed under its
+            // holder.
             owned.* = false;
 
             const type_info = @typeInfo(ReturnType);
@@ -3845,14 +3840,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Handle runtime.JSValue - engine-agnostic value wrapper
             if (ReturnType == runtime.JSValue) {
-                // Every arm but a borrowed handle and an instance's wrapper
-                // makes a fresh handle; a global handle is the binding's when
-                // the impl handed it over.
-                owned.* = switch (result) {
-                    .handle => |h| h.handle_scope != .global or h.needs_disposal,
-                    .instance => false,
-                    else => true,
-                };
+                // What an impl returns is the binding's (engine.Owned.take): a
+                // handle - the impl's to hand over, a value it keeps going back
+                // as a hold of its own (retainValue) - and every value made
+                // here are released once set. Only an instance's wrapper is
+                // not: it is the wrapper cache's.
+                owned.* = result != .instance;
                 return switch (result) {
                     .undefined => v8.v8_Undefined(isolate),
                     .null => @ptrCast(v8.v8_Null(isolate)),
@@ -3864,16 +3857,8 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
                         break :blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.data.ptr, @intCast(s.data.len)) orelse return v8.v8_Undefined(isolate));
                     },
-                    .handle => |h| blk: {
-                        // Handle is a Global<Value>* - return it directly for setReturnValueGlobal
-                        if (h.handle_scope == .global) {
-                            break :blk @ptrCast(h.ptr);
-                        } else {
-                            // Local handle - need to persist to Global
-                            const global = v8.v8_Value_Persist(isolate, @ptrCast(h.ptr));
-                            break :blk if (global) |g| @ptrCast(g) else v8.v8_Undefined(isolate);
-                        }
-                    },
+                    // A Global<Value>*, set as the result as it is.
+                    .handle => |h| @ptrCast(h.ptr),
                     .instance => |i| blk: {
                         const inst: *runtime.Instance = @ptrCast(@alignCast(i));
                         const iface_name = template_registry.getInstanceInterfaceName(inst);
@@ -4292,12 +4277,6 @@ pub fn V8Interface(comptime Interface: type) type {
                 };
                 defer freeConvertedArg(Param2Type, allocator, arg2);
 
-                // Debug for Worker
-                if (comptime std.mem.eql(u8, interface_name, "Worker")) {
-                    const stderr = std.Io.File.stderr();
-                    stderr.writeStreamingAll(host.io(), "[CTOR_CALLBACK] Worker args converted, calling Interface.call_constructor\n") catch {};
-                }
-
                 return try Interface.call_constructor(ctx, arg1, arg2);
             } else if (webidl_param_count == 3) {
                 // Three arguments constructor (all may be optional)
@@ -4517,6 +4496,9 @@ pub fn V8Interface(comptime Interface: type) type {
                         return;
                     };
                     info.setReturnValue(@ptrCast(v8_value));
+                    // The result is the binding's, as every impl result is;
+                    // only an instance's wrapper is the wrapper cache's.
+                    if (js_value != .instance) v8.v8_Global_Dispose(@ptrCast(v8_value));
                 } else {
                     info.setReturnValue(@ptrCast(v8.v8_Null(isolate)));
                 }

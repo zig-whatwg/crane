@@ -95,7 +95,7 @@ test "a DOMException is created as an owned value and released" {
     const made = try v8.engine.v8CreateDOMException(ctx, "AbortError", "aborted");
     defer v8.engine.v8ReleaseValue(made);
     try std.testing.expect(made == .handle);
-    try std.testing.expect(made.handle.needs_disposal);
+    try std.testing.expect(made == .handle);
 
     // Put it where script can look at it.
     const context = context_once.?;
@@ -124,7 +124,7 @@ test "an object survives StructuredSerializeForStorage and StructuredDeserialize
     const state = ffi.v8_Object_Get(global, context, @ptrCast(key)) orelse return error.GetFailed;
     defer ffi.v8_Value_Dispose(state);
 
-    const bytes = try v8.engine.v8StructuredSerializeForStorage(ctx, .{ .handle = .{ .ptr = state, .needs_disposal = false } }, std.testing.allocator);
+    const bytes = try v8.engine.v8StructuredSerializeForStorage(ctx, .{ .handle = .{ .ptr = state } }, std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(bytes.len > 0);
 
@@ -156,7 +156,7 @@ test "an empty sequence is a new empty array" {
     const ctx = try realm();
     const array = try v8.webidl_conversions.createSequenceOfValues(ctx, &.{});
     defer v8.engine.v8ReleaseValue(array);
-    try std.testing.expect(array.handle.needs_disposal);
+    try std.testing.expect(array == .handle);
     try std.testing.expectEqual(@as(u32, 0), ffi.v8_Array_Length(@ptrCast(@alignCast(array.handle.ptr))));
 }
 

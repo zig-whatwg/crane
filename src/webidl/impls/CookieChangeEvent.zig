@@ -204,8 +204,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// The array `slot` holds, made from `items` on the first call.
 fn frozenAttribute(instance: *runtime.Instance, internal: *InternalState, slot: *?engine.Owned, items: []const CookieListItem) !runtime.JSValue {
     if (slot.* == null) slot.* = try cookie_values.frozenList(instance.ctx, items, internal.allocator);
-    // BORROWED: the event keeps it.
-    return slot.*.?.borrow();
+    // The event keeps its array ([SameObject]); the binding gets a hold of
+    // its own.
+    return (try engine.retainValue(instance.ctx, slot.*.?.value)).take();
 }
 
 /// Getter for changed

@@ -1,3 +1,0 @@
-- leveldb
-- v8
-- libuv

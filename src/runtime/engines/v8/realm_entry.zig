@@ -81,5 +81,5 @@ pub const EngineValue = struct {
 
 /// A persistent handle the caller owns, as a JSValue.
 pub fn owned(ptr: *anyopaque) JSValue {
-    return .{ .handle = .{ .ptr = ptr, .needs_disposal = true, .handle_scope = .global } };
+    return .{ .handle = .{ .ptr = ptr } };
 }

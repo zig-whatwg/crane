@@ -1,6 +1,7 @@
 # Architecture: Inside a hierarchy, go through the impl - a hook there is a detour
 
 **Date**: 2026-09-23
+**Status**: SUPERSEDED 2026-09-29 by the user's rule: an impl is referenced only by its own generated interface - not by its descendants either. Inside a hierarchy, a step with an IDL member goes through the interface and one without goes through a hook the owner installs. The advice below is kept as history; do not follow it.
 **Lesson**: Moving every `NodeImpl.setOwnerDocument` call onto the `node_document` hook was wrong for the callers that ARE Nodes. Text, Attr, Document and the ParentNode mixin reach node-document state through the Node impl directly: it is their ancestor, so it is their own state.
 
 **Why**: A hook is the owner's step made available to code OUTSIDE its hierarchy - DOMImplementation, the HTML parsers, the context manager - which may not import the owner's impl. A subtype routing through it instead of calling its ancestor's impl reaches the state by a side door, which is exactly what the impls boundary exists to stop.

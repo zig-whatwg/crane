@@ -127,14 +127,7 @@ pub const WindowClient = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_ancestorOrigins) |cached| {
-            return cached;
-        }
-        const value = try WindowClientImpl.get_ancestorOrigins(instance);
-        state.own.cached_ancestorOrigins = value;
-        return value;
+        return try WindowClientImpl.get_ancestorOrigins(instance);
     }
 
     /// Extended attributes: [NewObject]

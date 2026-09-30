@@ -111,14 +111,7 @@ pub const AuthenticatorAttestationResponse = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_attestationObject(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_attestationObject) |cached| {
-            return cached;
-        }
-        const value = try AuthenticatorAttestationResponseImpl.get_attestationObject(instance);
-        state.own.cached_attestationObject = value;
-        return value;
+        return try AuthenticatorAttestationResponseImpl.get_attestationObject(instance);
     }
 
     pub fn call_getTransports(instance: *runtime.Instance) anyerror!runtime.JSValue {

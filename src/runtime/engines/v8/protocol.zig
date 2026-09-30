@@ -473,7 +473,7 @@ pub fn createPromise(realm: Context) Error!engine.PromiseCapability {
     const state = v8_engine.v8CreatePromise(@ptrCast(entered.context()), promise_allocator) catch |err| return protocolError(err);
     return .{
         // The capability owns the promise's Global; this is its view.
-        .promise = .{ .handle = .{ .ptr = v8_engine.v8GetPromiseObject(state), .needs_disposal = false } },
+        .promise = .{ .handle = .{ .ptr = v8_engine.v8GetPromiseObject(state) } },
         .state = state,
     };
 }

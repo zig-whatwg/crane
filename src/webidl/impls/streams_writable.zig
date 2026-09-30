@@ -49,9 +49,6 @@ pub const Stream = struct {
     pending_abort_request: ?PendingAbortRequest = null,
     write_requests: std.ArrayList(Deferred) = .empty,
     backpressure: bool = false,
-    /// The last promise handed to script that nothing else keeps; see `give`.
-    returned: ?Value = null,
-
     pub fn deinit(self: *Stream) void {
         js.disposeOptional(&self.stored_error);
         if (self.in_flight_write_request) |d| d.deinit();
@@ -63,7 +60,6 @@ pub const Stream = struct {
         }
         for (self.write_requests.items) |d| d.deinit();
         self.write_requests.deinit(self.allocator);
-        js.disposeOptional(&self.returned);
         self.allocator.destroy(self);
     }
 };
@@ -74,12 +70,10 @@ pub const Writer = struct {
     stream: ?*runtime.Instance = null,
     closed_promise: ?Deferred = null,
     ready_promise: ?Deferred = null,
-    returned: ?Value = null,
 
     pub fn deinit(self: *Writer) void {
         if (self.closed_promise) |d| d.deinit();
         if (self.ready_promise) |d| d.deinit();
-        js.disposeOptional(&self.returned);
         self.allocator.destroy(self);
     }
 };
@@ -172,13 +166,10 @@ fn controllerSlots(instance: *runtime.Instance) *Controller {
     return controllerOf(instance).?;
 }
 
-/// Hand `value` (owned) to script as a return value. The binding reads the
-/// handle synchronously and never disposes it, so the slot keeps it until the
-/// next return replaces it or the object is torn down.
-pub fn give(slot: *?Value, value: Value) runtime.JSValue {
-    js.disposeOptional(slot);
-    slot.* = value;
-    return js.toReturn(value);
+/// Hand `value` (owned, kept nowhere else) to script as the call's result:
+/// the binding releases it once it has set it.
+pub fn give(value: Value) runtime.JSValue {
+    return js.toReturnOwned(value);
 }
 
 // ============================================================================

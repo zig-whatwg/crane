@@ -245,16 +245,15 @@ pub fn get_error(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // Return undefined
         return runtime.JSValue.jsUndefined;
     };
-    // BORROWED: the event keeps it.
-    if (internal.@"error") |err| return err.borrow();
+    // The event keeps it; the binding gets a hold of its own.
+    if (internal.@"error") |err| return (try engine.retainValue(instance.ctx, err.value)).take();
     return runtime.JSValue.jsUndefined;
 }
 
 /// This event's own hold on `value` (borrowed), or null for undefined - the
-/// attribute's initial value. A handle is retained whatever its
-/// `handle_scope` tag says: a runtime.JSValue handle is always an engine
-/// value the conversion owns (AGENTS.md "One handle kind per layer"), so the
-/// event holds its own. A platform object is held as its wrapper in its
+/// attribute's initial value. A handle is always retained: a JSValue handle
+/// is borrowed (AGENTS.md "One handle kind per layer"), so the event holds
+/// its own. A platform object is held as its wrapper in its
 /// relevant realm; `realm` is the event's.
 fn hold(realm: runtime.Context, value: runtime.JSValue) !?engine.Owned {
     if (value == .undefined) return null;

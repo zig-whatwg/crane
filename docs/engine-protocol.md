@@ -60,9 +60,9 @@ engine pointer or a flag saying who frees it.
 |---|---|
 | `Context` | A realm's identity (`runtime.Context`). BORROWED wherever it is a parameter; stable until the realm is torn down. A retired realm has no engine realm behind it. |
 | `Agent` | An ECMAScript agent: a V8 isolate, a JSC context group. Opaque. |
-| `JSValue` | The IDL-level value (`runtime.JSValue`). As a parameter, always BORROWED for the call. |
+| `JSValue` | The IDL-level value (`runtime.JSValue`). As a parameter, always BORROWED for the call. As an impl's RESULT, the binding's: it releases it once set. Its handle carries no ownership flag - the holder's type says who releases it. |
 | `Instance` | A platform object: the host's side of a wrapper. |
-| `Owned` | A value the caller owns. Exactly one of `release()` (give it back) or `take()` (hand it, and the duty to release it, to something documented to take ownership - the binding, for an operation's result). `borrow()` lends it, BORROWED, while it is held. |
+| `Owned` | A value the caller owns. Exactly one of `release()` (give it back) or `take()` (hand it, and the duty to release it, to something documented to take ownership - the binding, for an impl's result). `borrow()` lends it, BORROWED, while it is held - to an operation, never as an impl's result: a kept value is returned as `(try retainValue(realm, kept.value)).take()`. |
 | `Completion` | ECMAScript's Completion Record from an operation that runs script: `normal` or `throw`, OWNED either way. |
 | `CallbackFunction`, `CallbackInterface` | WebIDL's callback values: the function or object (OWNED) and the callback context (the incumbent realm when the value was converted). The invoke operations take them BORROWED. |
 | `PromiseCapability` | WebIDL "a new promise": OWNED until `releasePromiseCapability`; its `promise` is a BORROWED view. |
@@ -218,14 +218,17 @@ from the integrator, who owns engine_protocol.zig. It lands in one change:
   `ctx.getEngine()`) is gone. The types it shared with the protocol are
   src/runtime/engine_types.zig's, and the runtime module imports the protocol
   itself (build.zig binds `engine` into runtime; a test tier gets a runtime of
-  its own, bound to its adapter). What is left of it is
-  `runtime.CallbackOperations`: the one operation a `runtime.CallbackWrapper`
-  needs, which the binding's callback interface conversion names by the old
-  `v8_engine_interface` name until it moves onto `takeCallbackInterface`.
+  its own, bound to its adapter). Nothing of it is left: the last piece,
+  `runtime.CallbackOperations`, went when callback interface arguments became
+  borrowed for the call.
 - **`takeCallbackFunction` / `takeCallbackInterface`** untag the binding's
   callback values until codegen types callback parameters as
-  `CallbackFunction` / `CallbackInterface`.
-- **Ownership flags**: `runtime.JSValue`'s handle arm still carries
-  `needs_disposal` and a `.local` / `.global` tag. A `.handle` is always a
-  Global the engine made, whatever the tag; the protocol's types, not the
-  flags, say who releases it.
+  `CallbackFunction` / `CallbackInterface`. A `*runtime.CallbackWrapper` is
+  an opaque, BORROWED argument: the binding releases it when the call
+  returns, and an impl that keeps the callback takes its own
+  CallbackInterface.
+- **Ownership flags** are gone: `runtime.JSValue`'s handle arm is only the
+  engine's pointer (it carried `needs_disposal` and a `.local` / `.global`
+  tag). The binding releases every value an impl returns; the generated
+  [SameObject] cache is not emitted for a `runtime.JSValue` getter, whose
+  impl keeps its value and returns a hold of it.

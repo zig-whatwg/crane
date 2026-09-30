@@ -1,6 +1,7 @@
 # Architecture: A `.local`-tagged JSValue handle is a borrowed Global, not a V8 Local
 
 **Date**: 2026-09-26
+**Status** (2026-09-29): the tag and `needs_disposal` are gone. A JSValue handle is only the engine's pointer - always a Global, BORROWED wherever it is passed - and the binding releases every value an impl returns (a kept value goes back as `engine.retainValue(...).take()`). The planned rename below was not needed.
 **Lesson**: The binding hands an impl an object argument as `.handle = .{ .ptr, .handle_scope = .local }`, but `ptr` is the argument's `Global<Value>*` (`v8_FunctionCallbackInfo_GetArgument` makes a Global); `.local` only means "borrowed for the call".
 
 **Why**: `JSValue.EngineHandle.handle_scope` names a V8 concept (Local vs Global handles) while carrying a lifetime fact (borrowed for the call vs owned until released). Code that believes the name reads the pointer as a Local slot.

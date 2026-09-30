@@ -132,14 +132,7 @@ pub const DigitalCredential = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_data) |cached| {
-            return cached;
-        }
-        const value = try DigitalCredentialImpl.get_data(instance);
-        state.own.cached_data = value;
-        return value;
+        return try DigitalCredentialImpl.get_data(instance);
     }
 
     pub fn call_static_userAgentAllowsProtocol(instance: *runtime.Instance, protocol: DOMString) anyerror!bool {

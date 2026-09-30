@@ -46,7 +46,7 @@ pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance) !*runti
 /// `closed` - § 5.3.3: Return this.[[closedPromise]].
 pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const writer = sw.writerOf(instance) orelse return error.TypeError;
-    return js.toReturn(writer.closed_promise.?.promise);
+    return js.toReturnKept(writer.closed_promise.?.promise);
 }
 
 /// `desiredSize` - § 5.3.3.
@@ -61,7 +61,7 @@ pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
 /// `ready` - § 5.3.3: Return this.[[readyPromise]].
 pub fn get_ready(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const writer = sw.writerOf(instance) orelse return error.TypeError;
-    return js.toReturn(writer.ready_promise.?.promise);
+    return js.toReturnKept(writer.ready_promise.?.promise);
 }
 
 /// `abort(reason)` - § 5.3.3.
@@ -70,11 +70,11 @@ pub fn call_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValu
     const realm = try js.Realm.of(instance);
     // Step 1: A released writer rejects with a TypeError.
     if (writer.stream == null)
-        return sw.give(&writer.returned, try realm.promiseRejectedWithTypeError("The writer has been released"));
+        return sw.give(try realm.promiseRejectedWithTypeError("The writer has been released"));
     // Step 2: Return ! WritableStreamDefaultWriterAbort(this, reason).
     const r = try realm.fromOptional(reason);
     defer js.dispose(r);
-    return sw.give(&writer.returned, try sw.writerAbort(realm, writer, r));
+    return sw.give(try sw.writerAbort(realm, writer, r));
 }
 
 /// `close()` - § 5.3.3.
@@ -83,12 +83,12 @@ pub fn call_close(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const realm = try js.Realm.of(instance);
     // Steps 1-2: A released writer rejects with a TypeError.
     const stream_instance = writer.stream orelse
-        return sw.give(&writer.returned, try realm.promiseRejectedWithTypeError("The writer has been released"));
+        return sw.give(try realm.promiseRejectedWithTypeError("The writer has been released"));
     // Step 3: So does a stream already closing.
     if (sw.closeQueuedOrInFlight(sw.streamOf(stream_instance).?))
-        return sw.give(&writer.returned, try realm.promiseRejectedWithTypeError("The stream is already closing"));
+        return sw.give(try realm.promiseRejectedWithTypeError("The stream is already closing"));
     // Step 4: Return ! WritableStreamDefaultWriterClose(this).
-    return sw.give(&writer.returned, try sw.writerClose(realm, writer));
+    return sw.give(try sw.writerClose(realm, writer));
 }
 
 /// `releaseLock()` - § 5.3.3.
@@ -106,9 +106,9 @@ pub fn call_write(instance: *runtime.Instance, chunk: webidl.Opt(runtime.JSValue
     const realm = try js.Realm.of(instance);
     // Step 1: A released writer rejects with a TypeError.
     if (writer.stream == null)
-        return sw.give(&writer.returned, try realm.promiseRejectedWithTypeError("The writer has been released"));
+        return sw.give(try realm.promiseRejectedWithTypeError("The writer has been released"));
     // Step 2: Return ! WritableStreamDefaultWriterWrite(this, chunk).
     const c = try realm.fromOptional(chunk);
     defer js.dispose(c);
-    return sw.give(&writer.returned, try sw.writerWrite(realm, writer, c));
+    return sw.give(try sw.writerWrite(realm, writer, c));
 }

@@ -46,7 +46,7 @@ pub fn call_constructor(ctx: runtime.Context, stream: *runtime.Instance) !*runti
 /// `closed` - § 4.3.3: Return this.[[closedPromise]].
 pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const reader = srd.readerOf(instance) orelse return error.TypeError;
-    return js.toReturn(reader.closed_promise.?.promise);
+    return js.toReturnKept(reader.closed_promise.?.promise);
 }
 
 /// `cancel(reason)` - § 4.3.3.
@@ -55,11 +55,11 @@ pub fn call_cancel(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSVal
     const realm = try js.Realm.of(instance);
     // Step 1: a released reader rejects with a TypeError.
     if (reader.stream == null)
-        return sw.give(&reader.returned, try realm.promiseRejectedWithTypeError("The reader has been released"));
+        return sw.give(try realm.promiseRejectedWithTypeError("The reader has been released"));
     // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
     const r = try realm.fromOptional(reason);
     defer js.dispose(r);
-    return sw.give(&reader.returned, try srd.readerGenericCancel(realm, reader, r));
+    return sw.give(try srd.readerGenericCancel(realm, reader, r));
 }
 
 /// `read()` - § 4.4.3.
@@ -68,14 +68,14 @@ pub fn call_read(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const realm = try js.Realm.of(instance);
     // Step 1: a released reader rejects with a TypeError.
     if (reader.stream == null)
-        return sw.give(&reader.returned, try realm.promiseRejectedWithTypeError("The reader has been released"));
+        return sw.give(try realm.promiseRejectedWithTypeError("The reader has been released"));
     // Steps 2-3: a promise, and a read request that settles it.
     const request = try srd.PromiseReadRequest.create(realm, reader.allocator);
     const promise = try js.clone(request.deferred.promise);
     // Step 4: Perform ! ReadableStreamDefaultReaderRead(this, readRequest).
     srd.defaultReaderRead(realm, reader, request.asReadRequest());
     // Step 5: Return promise.
-    return sw.give(&reader.returned, promise);
+    return sw.give(promise);
 }
 
 /// `releaseLock()` - § 4.4.3.

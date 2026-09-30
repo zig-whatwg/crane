@@ -44,7 +44,7 @@ fn evalInt(code: []const u8) !i32 {
 }
 
 fn asValue(handle: *ffi.Value) runtime.JSValue {
-    return .{ .handle = .{ .ptr = @ptrCast(handle), .needs_disposal = false, .handle_scope = .global } };
+    return .{ .handle = .{ .ptr = @ptrCast(handle) } };
 }
 
 /// What a built-in saw of its arguments.
@@ -117,8 +117,8 @@ test "isCallable" {
 
 test "isCallable of an argument as the binding hands it over" {
     _ = try realm();
-    // conversions.fromV8Value's runtime.JSValue branch: a `.handle` tagged
-    // `.local` whose pointer is the argument's Global<Value>.
+    // conversions.fromV8Value's runtime.JSValue branch: a borrowed `.handle`
+    // whose pointer is the argument's Global<Value>.
     const function = try eval("(function () {})");
     defer ffi.v8_Value_Dispose(function);
     const argument = try v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, function);

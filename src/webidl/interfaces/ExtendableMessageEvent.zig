@@ -150,14 +150,7 @@ pub const ExtendableMessageEvent = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_source(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_source) |cached| {
-            return cached;
-        }
-        const value = try ExtendableMessageEventImpl.get_source(instance);
-        state.own.cached_source = value;
-        return value;
+        return try ExtendableMessageEventImpl.get_source(instance);
     }
 
     pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {

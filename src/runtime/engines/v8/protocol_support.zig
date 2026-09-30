@@ -158,7 +158,7 @@ pub fn owned(global: *ffi.Value) engine.Owned {
 
 /// A JSValue BORROWING a Global for a call.
 pub fn borrowed(global: *ffi.Value) engine.JSValue {
-    return .{ .handle = .{ .ptr = global, .needs_disposal = false } };
+    return .{ .handle = .{ .ptr = global } };
 }
 
 /// A new V8 string of `text`. An empty slice may have no usable `.ptr`, so

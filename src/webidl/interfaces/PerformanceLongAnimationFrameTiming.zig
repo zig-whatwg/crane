@@ -199,14 +199,7 @@ pub const PerformanceLongAnimationFrameTiming = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_scripts(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_scripts) |cached| {
-            return cached;
-        }
-        const value = try PerformanceLongAnimationFrameTimingImpl.get_scripts(instance);
-        state.own.cached_scripts = value;
-        return value;
+        return try PerformanceLongAnimationFrameTimingImpl.get_scripts(instance);
     }
 
     pub fn get_paintTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {

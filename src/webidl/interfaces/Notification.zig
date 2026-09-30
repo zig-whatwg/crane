@@ -301,14 +301,7 @@ pub const Notification = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_vibrate(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_vibrate) |cached| {
-            return cached;
-        }
-        const value = try NotificationImpl.get_vibrate(instance);
-        state.own.cached_vibrate = value;
-        return value;
+        return try NotificationImpl.get_vibrate(instance);
     }
 
     pub fn get_timestamp(instance: *runtime.Instance) anyerror!EpochTimeStamp {
@@ -329,26 +322,12 @@ pub const Notification = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_data) |cached| {
-            return cached;
-        }
-        const value = try NotificationImpl.get_data(instance);
-        state.own.cached_data = value;
-        return value;
+        return try NotificationImpl.get_data(instance);
     }
 
     /// Extended attributes: [SameObject]
     pub fn get_actions(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_actions) |cached| {
-            return cached;
-        }
-        const value = try NotificationImpl.get_actions(instance);
-        state.own.cached_actions = value;
-        return value;
+        return try NotificationImpl.get_actions(instance);
     }
 
     /// Extended attributes: [Exposed=Window]

@@ -117,13 +117,6 @@ pub const FontFaceSetLoadEvent = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_fontfaces(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_fontfaces) |cached| {
-            return cached;
-        }
-        const value = try FontFaceSetLoadEventImpl.get_fontfaces(instance);
-        state.own.cached_fontfaces = value;
-        return value;
+        return try FontFaceSetLoadEventImpl.get_fontfaces(instance);
     }
 };

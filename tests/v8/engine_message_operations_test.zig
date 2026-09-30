@@ -64,7 +64,7 @@ fn setGlobal(which: usize, name: []const u8, handle: *anyopaque) !void {
 }
 
 fn asValue(handle: *ffi.Value) runtime.JSValue {
-    return .{ .handle = .{ .ptr = @ptrCast(handle), .needs_disposal = false, .handle_scope = .global } };
+    return .{ .handle = .{ .ptr = @ptrCast(handle) } };
 }
 
 // Platform objects: objects with internal fields whose field 0 is a mock
@@ -126,7 +126,7 @@ test "a sequence of objects is each item's own handle, in order" {
     const list = try List.of("globalThis.o1 = {}; globalThis.o2 = []; [o1, o2]");
     defer list.deinit();
     try std.testing.expectEqual(@as(usize, 2), list.items.len);
-    try std.testing.expect(list.items[0].handle.needs_disposal);
+    try std.testing.expect(list.items[0] == .handle);
     try setGlobal(0, "first", list.items[0].handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt(0, "first === o1 ? 1 : 0"));
 }
@@ -150,7 +150,7 @@ test "a frozen array holds each platform object's wrapper, and is frozen" {
     // what is pinned here, and the empty list MessageEvent.ports uses most.
     const empty = try v8.value_operations.createFrozenArrayOfPlatformObjects(realms[1], &.{});
     defer v8.engine.v8ReleaseValue(empty);
-    try std.testing.expect(empty.handle.needs_disposal);
+    try std.testing.expect(empty == .handle);
     try setGlobal(1, "ports", empty.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt(1, "Array.isArray(ports) && ports.length === 0 && Object.isFrozen(ports) ? 1 : 0"));
     // Made in the realm it was asked for.
@@ -178,7 +178,7 @@ test "a value round-trips into a second realm, and its transferred buffer moves"
 
     const clone = try v8.structured_serialization.structuredDeserializeWithTransfer(realms[1], result.serialized, result.array_buffers);
     defer v8.engine.v8ReleaseValue(clone);
-    try std.testing.expect(clone.handle.needs_disposal);
+    try std.testing.expect(clone == .handle);
     try setGlobal(1, "v", clone.handle.ptr);
     try std.testing.expectEqual(@as(i32, 1), try evalInt(1,
         \\v.a === 1 && v.s === 'x' && v.buf.byteLength === 3 && new Uint8Array(v.buf)[2] === 3 &&
@@ -247,7 +247,7 @@ fn serializeArgument(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
     defer ffi.v8_Global_Dispose(argument);
     const empty: []const runtime.JSValue = &.{};
     // As an impl gets it: the binding's form of the argument (an object is a
-    // `.handle` tagged `.local` whose pointer is the argument's Global).
+    // borrowed `.handle` whose pointer is the argument's Global).
     var value = v8.conversions.fromV8Value(runtime.JSValue, allocator, isolate_once.?, contexts[0], argument) catch return;
     defer value.deinit(allocator);
     const result: f64 = if (v8.structured_serialization.structuredSerializeWithTransfer(realms[0], value, empty, checkPorts, null, allocator)) |r| blk: {

@@ -116,11 +116,16 @@ pub fn get_to(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// "The committed getter steps are to return this's committed promise."
 pub fn get_committed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return (internal.committed orelse return error.InvalidStateError).borrow();
+    const committed = internal.committed orelse return error.InvalidStateError;
+    // The transition keeps its promise; the binding releases what a getter
+    // returns, so it gets a hold of its own.
+    return (try engine.retainValue(instance.ctx, committed.value)).take();
 }
 
 /// "The finished getter steps are to return this's finished promise."
 pub fn get_finished(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return (internal.finished orelse return error.InvalidStateError).borrow();
+    const finished = internal.finished orelse return error.InvalidStateError;
+    // The transition keeps its promise; the binding gets a hold of its own.
+    return (try engine.retainValue(instance.ctx, finished.value)).take();
 }

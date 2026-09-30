@@ -11,26 +11,22 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 
-/// A traverser's filter: the value the binding converted - what the `filter`
-/// attribute returns - and the callback interface value the calls are made
+/// A traverser's filter: the callback interface value the calls are made
 /// through, taken at the conversion, so that its callback context is the
-/// incumbent realm of createNodeIterator() or createTreeWalker().
+/// incumbent realm of createNodeIterator() or createTreeWalker(). Its object
+/// is what the `filter` attribute returns - the object that was passed.
 const Filter = struct {
-    wrapper: *runtime.CallbackWrapper,
     callback: engine.CallbackInterface,
+    allocator: std.mem.Allocator,
 };
 
-/// Keep `wrapper`, the filter argument the binding converted, as a
-/// traverser's filter: null for none. The result is the traverser's, freed by
-/// `release`; `wrapper` is the result's from here on, and is released here
-/// if keeping it fails.
-pub fn store(wrapper: ?*runtime.CallbackWrapper) error{OutOfMemory}!?*anyopaque {
+/// Keep the filter argument the binding converted (`wrapper`, borrowed for
+/// the call) as a traverser's filter: null for none. The result is the
+/// traverser's, freed by `release`.
+pub fn store(allocator: std.mem.Allocator, wrapper: ?*runtime.CallbackWrapper) error{OutOfMemory}!?*anyopaque {
     const converted = wrapper orelse return null;
-    const filter = converted.allocator.create(Filter) catch |err| {
-        releaseWrapper(converted);
-        return err;
-    };
-    filter.* = .{ .wrapper = converted, .callback = engine.takeCallbackInterface(converted) };
+    const filter = try allocator.create(Filter);
+    filter.* = .{ .callback = engine.takeCallbackInterface(converted), .allocator = allocator };
     return filter;
 }
 
@@ -90,27 +86,20 @@ fn convertToUnsignedShort(x: f64) u16 {
     return @intFromFloat(wrapped);
 }
 
-/// The filter as script sees it: `nodeIterator.filter`, `treeWalker.filter`.
-pub fn fromStored(stored: ?*anyopaque) ?*runtime.CallbackWrapper {
+/// The filter as script sees it - `nodeIterator.filter`, `treeWalker.filter`:
+/// the object createNodeIterator() or createTreeWalker() was given, as the
+/// getter's result - a hold of the binding's own, since the traverser keeps
+/// its filter. Null for none.
+pub fn fromStored(realm: runtime.Context, stored: ?*anyopaque) engine.Error!?runtime.JSValue {
     const filter: *Filter = @ptrCast(@alignCast(stored orelse return null));
-    return filter.wrapper;
+    return (try engine.retainValue(realm, filter.callback.object.value)).take();
 }
 
-/// Release a stored filter: the callback interface value, then the binding's
-/// wrapper.
+/// Release a stored filter: its callback interface value, then the record.
 pub fn release(stored: ?*anyopaque) void {
     const filter: *Filter = @ptrCast(@alignCast(stored orelse return));
-    const wrapper = filter.wrapper;
     filter.callback.release();
-    wrapper.allocator.destroy(filter);
-    releaseWrapper(wrapper);
-}
-
-/// The engine's wrapper (and the handle it holds), then the runtime wrapper,
-/// which the conversion allocated.
-fn releaseWrapper(wrapper: *runtime.CallbackWrapper) void {
-    wrapper.deinit();
-    wrapper.allocator.destroy(wrapper);
+    filter.allocator.destroy(filter);
 }
 
 test "ConvertToInt for unsigned short wraps modulo 2^16 and truncates toward zero" {

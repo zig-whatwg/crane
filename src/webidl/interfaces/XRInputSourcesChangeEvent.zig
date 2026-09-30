@@ -137,25 +137,11 @@ pub const XRInputSourcesChangeEvent = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_added(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_added) |cached| {
-            return cached;
-        }
-        const value = try XRInputSourcesChangeEventImpl.get_added(instance);
-        state.own.cached_added = value;
-        return value;
+        return try XRInputSourcesChangeEventImpl.get_added(instance);
     }
 
     /// Extended attributes: [SameObject]
     pub fn get_removed(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_removed) |cached| {
-            return cached;
-        }
-        const value = try XRInputSourcesChangeEventImpl.get_removed(instance);
-        state.own.cached_removed = value;
-        return value;
+        return try XRInputSourcesChangeEventImpl.get_removed(instance);
     }
 };

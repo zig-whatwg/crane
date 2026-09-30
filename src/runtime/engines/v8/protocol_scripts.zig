@@ -85,7 +85,7 @@ fn protocolErrorInfo(info: *const ffi.V8ErrorInfo, realm: ?Context) engine.Error
         .lineno = if (info.line_number > 0) @intCast(info.line_number) else 0,
         // V8 counts columns from 0; ErrorEvent.colno counts from 1.
         .colno = if (info.column_number >= 0) @intCast(info.column_number + 1) else 0,
-        .error_value = if (info.exception) |exception| .{ .handle = .{ .ptr = exception, .needs_disposal = false } } else JSValue.jsUndefined,
+        .error_value = if (info.exception) |exception| .{ .handle = .{ .ptr = exception } } else JSValue.jsUndefined,
         .realm = realm,
     };
 }
@@ -314,7 +314,7 @@ pub fn evaluateClassicScriptToString(realm: Context, source: engine.ScriptSource
             .error_value = JSValue.jsUndefined,
             .realm = realm,
         };
-        error_info.error_value = .{ .handle = .{ .ptr = exception, .needs_disposal = false } };
+        error_info.error_value = .{ .handle = .{ .ptr = exception } };
         report(entered.isolate, error_info, reporter);
         return error.ExceptionReported;
     }

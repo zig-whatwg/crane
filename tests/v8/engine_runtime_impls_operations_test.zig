@@ -71,7 +71,7 @@ test "a simple exception is the realm's own TypeError, RangeError or ReferenceEr
     const ctx = try realm();
     const type_error = try v8.value_construction.createSimpleException(ctx, .TypeError, "bad argument");
     defer v8.engine.v8ReleaseValue(type_error);
-    try std.testing.expect(type_error.handle.needs_disposal);
+    try std.testing.expect(type_error == .handle);
     try expose("typeError", type_error);
     try std.testing.expectEqual(@as(i32, 1), try eval("typeError instanceof TypeError && typeError.message === 'bad argument' ? 1 : 0"));
 
@@ -108,7 +108,7 @@ test "a dictionary is an ordinary object with its members in the order given" {
     };
     const dict = try v8.value_construction.createDictionaryObject(ctx, &members);
     defer v8.engine.v8ReleaseValue(dict);
-    try std.testing.expect(dict.handle.needs_disposal);
+    try std.testing.expect(dict == .handle);
     try expose("dict", dict);
     try std.testing.expectEqual(@as(i32, 1), try eval(
         \\Object.getPrototypeOf(dict) === Object.prototype &&
@@ -260,7 +260,7 @@ test "bytes are written into a view from its offset, and never past its end" {
 }
 
 /// `value` as the binding hands an impl an `any` argument: primitives
-/// classified, an object as a borrowed handle (a Global tagged `.local`).
+/// classified, an object as a borrowed handle (the argument's Global).
 /// A string argument is copied: free it with `JSValue.deinit`.
 fn argument(value: *ffi.Value) !runtime.JSValue {
     return v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, value);
@@ -285,81 +285,77 @@ const Call = struct {
 };
 
 /// A callback interface value made of script's `expression`, as the binding
-/// converts one. The wrapper takes the value's handle: its deinit releases it.
-fn callbackOf(expression: []const u8) !runtime.CallbackWrapper {
+/// converts one. The wrapper takes the value's handle: releasing the wrapper
+/// (`conversions.releaseCallbackWrapper`) releases it.
+fn callbackOf(expression: []const u8) !*runtime.CallbackWrapper {
     const value = try evalHandle(expression);
     const made = (v8.createCallbackFromV8Value(std.testing.allocator, isolate_once.?, context_once.?, value, "acceptNode") catch return error.OutOfMemory) orelse {
         ffi.v8_Value_Dispose(value);
         return error.NotCallable;
     };
-    return .{
-        .engine_handle = made,
-        .engine = &v8.engine.v8_engine_interface,
-        .engine_ctx = context_once.?,
-        .allocator = std.testing.allocator,
-    };
+    return @ptrCast(made);
 }
 
 test "a callback interface value is called as a function, or through its operation, and what it throws stays in flight" {
     const ctx = try realm();
 
     // A function: called with undefined as this and the arguments given.
-    var function = try callbackOf("(function (n) { 'use strict'; return this === undefined ? n + 1 : -1; })");
-    defer function.deinit();
-    var call: Call = .{ .callback = &function };
+    const function = try callbackOf("(function (n) { 'use strict'; return this === undefined ? n + 1 : -1; })");
+    defer v8.conversions.releaseCallbackWrapper(function);
+    var call: Call = .{ .callback = function };
     try std.testing.expect(try catching(Call.run, &call) == null);
     const result = try call.result;
     defer v8.engine.v8ReleaseValue(result);
     try std.testing.expectEqual(@as(f64, 6), try v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, result));
 
     // An object: its operation looked up at the call, with it as this.
-    var object = try callbackOf("({ base: 10, acceptNode(n) { return this.base + n; } })");
-    defer object.deinit();
-    call = .{ .callback = &object };
+    const object = try callbackOf("({ base: 10, acceptNode(n) { return this.base + n; } })");
+    defer v8.conversions.releaseCallbackWrapper(object);
+    call = .{ .callback = object };
     try std.testing.expect(try catching(Call.run, &call) == null);
     const from_object = try call.result;
     defer v8.engine.v8ReleaseValue(from_object);
     try std.testing.expectEqual(@as(f64, 15), try v8.webidl_conversions_numeric.convertToUnrestrictedDouble(ctx, from_object));
 
     // "rethrow": the call's exception is the caller's, in flight.
-    var throwing = try callbackOf("(function () { throw new RangeError('filtered'); })");
-    defer throwing.deinit();
-    call = .{ .callback = &throwing };
+    const throwing = try callbackOf("(function () { throw new RangeError('filtered'); })");
+    defer v8.conversions.releaseCallbackWrapper(throwing);
+    call = .{ .callback = throwing };
     const thrown = (try catching(Call.run, &call)) orelse return error.NothingThrown;
     defer ffi.v8_Global_Dispose(thrown);
     try std.testing.expectError(error.ExceptionPending, call.result);
-    try expose("rethrown", .{ .handle = .{ .ptr = thrown, .needs_disposal = false } });
+    try expose("rethrown", .{ .handle = .{ .ptr = thrown } });
     try std.testing.expectEqual(@as(i32, 1), try eval("rethrown instanceof RangeError && rethrown.message === 'filtered' ? 1 : 0"));
 
     // WebIDL § 3.12 step 10.2: Get(O, opName) is rethrown - a getter that
     // throws is the call's exception.
-    var throwing_getter = try callbackOf("({ get acceptNode() { throw new SyntaxError('getter'); } })");
-    defer throwing_getter.deinit();
-    call = .{ .callback = &throwing_getter };
+    const throwing_getter = try callbackOf("({ get acceptNode() { throw new SyntaxError('getter'); } })");
+    defer v8.conversions.releaseCallbackWrapper(throwing_getter);
+    call = .{ .callback = throwing_getter };
     const from_getter = (try catching(Call.run, &call)) orelse return error.NothingThrown;
     defer ffi.v8_Global_Dispose(from_getter);
     try std.testing.expectError(error.ExceptionPending, call.result);
-    try expose("fromGetter", .{ .handle = .{ .ptr = from_getter, .needs_disposal = false } });
+    try expose("fromGetter", .{ .handle = .{ .ptr = from_getter } });
     try std.testing.expectEqual(@as(i32, 1), try eval("fromGetter instanceof SyntaxError && fromGetter.message === 'getter' ? 1 : 0"));
 
     // Step 10.3: no such property - undefined is not callable - is a TypeError.
-    var no_operation = try callbackOf("({})");
-    defer no_operation.deinit();
-    call = .{ .callback = &no_operation };
+    const no_operation = try callbackOf("({})");
+    defer v8.conversions.releaseCallbackWrapper(no_operation);
+    call = .{ .callback = no_operation };
     const missing = (try catching(Call.run, &call)) orelse return error.NothingThrown;
     defer ffi.v8_Global_Dispose(missing);
     try std.testing.expectError(error.ExceptionPending, call.result);
-    try expose("missing", .{ .handle = .{ .ptr = missing, .needs_disposal = false } });
+    try expose("missing", .{ .handle = .{ .ptr = missing } });
     try std.testing.expectEqual(@as(i32, 1), try eval("missing instanceof TypeError ? 1 : 0"));
 
     // Step 10.3 again: a property that is not callable is a TypeError too.
-    var not_callable = try callbackOf("({ acceptNode: 3 })");
-    defer not_callable.deinit();
-    call = .{ .callback = &not_callable };
+    const not_callable = try callbackOf("({ acceptNode: 3 })");
+    defer v8.conversions.releaseCallbackWrapper(not_callable);
+    call = .{ .callback = not_callable };
     const type_error = (try catching(Call.run, &call)) orelse return error.NothingThrown;
     defer ffi.v8_Global_Dispose(type_error);
     try std.testing.expectError(error.ExceptionPending, call.result);
-    try expose("notCallable", .{ .handle = .{ .ptr = type_error, .needs_disposal = false } });
+    try expose("notCallable", .{ .handle = .{ .ptr = type_error } });
     try std.testing.expectEqual(@as(i32, 1), try eval("notCallable instanceof TypeError ? 1 : 0"));
 }
 
@@ -392,7 +388,7 @@ test "convert to unrestricted double is ToNumber, and what it throws stays in fl
     const thrown = (try catching(ToNumber.run, &to_number)) orelse return error.NothingThrown;
     defer ffi.v8_Global_Dispose(thrown);
     try std.testing.expectError(error.ExceptionPending, to_number.result);
-    try expose("symbolError", .{ .handle = .{ .ptr = thrown, .needs_disposal = false } });
+    try expose("symbolError", .{ .handle = .{ .ptr = thrown } });
     try std.testing.expectEqual(@as(i32, 1), try eval("symbolError instanceof TypeError ? 1 : 0"));
 }
 
@@ -405,7 +401,7 @@ test "a callback-function argument is handed over as an owned handle to the same
 
     const taken = v8.callback_interfaces.takeCallbackFunction(tagged);
     try std.testing.expect(taken == .handle);
-    try std.testing.expect(taken.handle.needs_disposal);
+    try std.testing.expect(taken == .handle);
     try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(taken.handle.ptr));
     try expose("taken", taken);
     try std.testing.expectEqual(@as(i32, 1), try eval("taken === theCallback ? 1 : 0"));
@@ -432,7 +428,7 @@ const protocol = @import("engine");
 
 /// What script's `expression` evaluates to, as an Owned handle.
 fn evalOwned(expression: []const u8) !protocol.Owned {
-    return .{ .value = .{ .handle = .{ .ptr = try evalHandle(expression), .needs_disposal = true } } };
+    return .{ .value = .{ .handle = .{ .ptr = try evalHandle(expression) } } };
 }
 
 test "every protocol operation's V8 function compiles" {
@@ -485,7 +481,7 @@ test "protocol: createResolvedPromise is an Owned promise of the realm, fulfille
     const ctx = try realm();
     const resolved = try protocol.createResolvedPromise(ctx, runtime.JSValue.fromNumber(42));
     defer resolved.release();
-    try std.testing.expect(resolved.value.handle.needs_disposal);
+    try std.testing.expect(resolved.value == .handle);
     try expose("protocolResolved", resolved.value);
     try std.testing.expectEqual(@as(i32, 1), try eval("protocolResolved instanceof Promise ? 1 : 0"));
     const promise: *ffi.Promise = @ptrCast(@alignCast(resolved.value.handle.ptr));
@@ -801,12 +797,12 @@ test "protocol: retainValue holds a primitive by value and anything else as a ha
     try std.testing.expectEqual(@as(f64, 4), number.value.number);
     number.release();
 
-    // A string and an object each become a Global of the event's own; the
-    // view a getter returns reads the same value and is never released.
+    // A string and an object each become a Global of the event's own; a
+    // borrowed view reads the same value.
     const text = try protocol.retainValue(ctx, runtime.JSValue.fromStringRef("abc"));
     defer text.release();
     try std.testing.expect(text.value == .handle);
-    try std.testing.expect(!text.borrow().needsDisposal());
+    try std.testing.expectEqual(text.value.handle.ptr, text.borrow().handle.ptr);
 
     const object = try evalOwned("globalThis.retained = { x: 7 }");
     defer object.release();

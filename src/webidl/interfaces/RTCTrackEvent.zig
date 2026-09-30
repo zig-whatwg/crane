@@ -136,14 +136,7 @@ pub const RTCTrackEvent = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_streams(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_streams) |cached| {
-            return cached;
-        }
-        const value = try RTCTrackEventImpl.get_streams(instance);
-        state.own.cached_streams = value;
-        return value;
+        return try RTCTrackEventImpl.get_streams(instance);
     }
 
     pub fn get_transceiver(instance: *runtime.Instance) anyerror!*runtime.Instance {
