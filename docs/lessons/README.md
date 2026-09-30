@@ -225,6 +225,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [When one subtest in a file hangs and its siblings pass, compare what triggers each one](debugging-when-one-subtest-hangs-compare-what-triggers-it.md) - Before blaming the feature, diff what triggers the passing and the hanging subtests.
 - [The path production rarely takes keeps its leaks](debugging-the-path-production-rarely-takes-keeps-its-leaks.md) - A path production rarely takes keeps every leak it has; measure the no-snapshot path's handles as well as the snapshot's.
 - [When a member reads undefined, check what the identifier names](debugging-when-a-member-reads-undefined-check-what-the-identifier-names.md) - `undefined` from a member the interface has means the receiver is something else; print a control case beside the failing one first.
+- [A per-page slowdown with flat native contexts is a table, not a page](debugging-a-per-page-slowdown-with-flat-native-contexts-is-a-table-not-a-page.md) - Flat native contexts with a rising curve means the process keeps something per page that is not a page: sample the slow page before theorising, and diff snapshots by type - a process-wide table and a realm-less handle are both invisible to the realm count.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.
