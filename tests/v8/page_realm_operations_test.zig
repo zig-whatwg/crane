@@ -565,6 +565,40 @@ test "an `any` argument that converts to a primitive leaves no handle behind" {
     }
 }
 
+test "an `any` argument that is an object is released once the call returns" {
+    try customEventInRealm();
+    const isolate = isolate_once.?;
+
+    // The control: the same objects stored as an expando - no conversion.
+    var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    _ = try run("globalThis.details = []; for (let i = 0; i < 64; i++) details.push({ i }); for (let i = 0; i < 64; i++) ce.expando = details[i];");
+    const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+
+    // The event takes a hold of its own on each detail and lets go of the
+    // one before (CustomEvent.setDetail), so a call leaves nothing of its
+    // own behind but the argument's handle - until the binding releases it.
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const reports = try run("for (let i = 0; i < 64; i++) ce.initCustomEvent('x', false, false, details[i]);");
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+    const calls = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    const detail_kept = try run("if (ce.detail !== details[63]) throw new Error('the event lost its detail');");
+    try std.testing.expectEqual(@as(usize, 0), detail_kept.count);
+    _ = try run("delete globalThis.details;");
+    // What one handle costs in V8's count: the event's hold on its last
+    // detail is the one handle the calls may leave.
+    const one_handle = blk: {
+        const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - before;
+    };
+    if (calls > control + one_handle) {
+        std.debug.print("64 initCustomEvent calls with an object detail: {d} bytes of global handles left, against {d} for 64 expando stores (+{d} for the event's own hold)\n", .{ calls, control, one_handle });
+        return error.HandlesLeaked;
+    }
+}
+
 test "an `any` dictionary member that converts to a primitive leaves no handle behind" {
     try customEventInRealm();
     const isolate = isolate_once.?;

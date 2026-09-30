@@ -597,11 +597,37 @@ pub fn anyHandleIsKeptOnlyAsHandle(comptime T: type) bool {
 /// `anyHandleIsKeptOnlyAsHandle` accepts, still refers to that handle: true
 /// exactly for a `.handle` JSValue.
 pub fn anyConversionKeepsHandle(comptime T: type, value: T) bool {
+    return anyArgumentHandle(T, value) != null;
+}
+
+/// The argument handle `value` still refers to, if it does: a `.handle`
+/// JSValue's, for a `T` that `anyHandleIsKeptOnlyAsHandle` accepts.
+pub fn anyArgumentHandle(comptime T: type, value: T) ?*anyopaque {
     comptime std.debug.assert(anyHandleIsKeptOnlyAsHandle(T));
-    if (T == runtime.JSValue) return value == .handle;
-    if (T == ?runtime.JSValue) return if (value) |v| v == .handle else false;
-    if (!value.was_passed) return false;
-    return anyConversionKeepsHandle(@FieldType(T, "value"), value.value);
+    if (T == runtime.JSValue) return if (value == .handle) value.handle.ptr else null;
+    if (T == ?runtime.JSValue) return if (value) |v| anyArgumentHandle(runtime.JSValue, v) else null;
+    if (!value.was_passed) return null;
+    return anyArgumentHandle(@FieldType(T, "value"), value.value);
+}
+
+/// Release an operation's or a constructor's `any` argument once the call is
+/// over: the handle `info.get` made, which a `.handle` still refers to (a
+/// primitive's went at conversion, `convertArgReleasing`).
+///
+/// The argument is BORROWED for the call (AGENTS.md "The engine boundary",
+/// rule 3): an impl that keeps it takes a hold of its own first
+/// (`engine.retainValue`). Every impl parameter typed `any` was read for
+/// that (the hardening lane's audit, 2026-09-30: 422 parameters; the three
+/// that kept the argument - IDBKeyRange's factories, XSLTProcessor's
+/// setParameter, ShadowRoot's adoptedStyleSheets setter - take their own
+/// hold now). Kept, it was one Global per call for the process's life.
+///
+/// Arguments only: an attribute setter's value, a dictionary's `any` member
+/// and a sequence's element keep today's conservative answer (kept) until
+/// their keepers are read the same way.
+pub fn releaseAnyArgument(comptime T: type, value: T) void {
+    if (comptime !anyHandleIsKeptOnlyAsHandle(T)) return;
+    if (anyArgumentHandle(T, value)) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
 }
 
 /// WebIDL [LegacyNullToEmptyString] (3.3.23): the arguments of `fn_name` -
@@ -3395,6 +3421,14 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
+        /// An operation's or constructor's argument, once the call is over:
+        /// what its conversion allocated (`freeConvertedArg`) and, for an
+        /// `any`, the handle it still refers to (`releaseAnyArgument`).
+        fn freeArgument(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
+            freeConvertedArg(T, allocator, arg);
+            releaseAnyArgument(T, arg);
+        }
+
         /// Convert multiple JS arguments into a slice for variadic parameters
         fn collectVariadicArgs(
             comptime ElemType: type,
@@ -3466,11 +3500,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         const arg1 = try collectVariadicArgs(ElemType, allocator, isolate, v8_context, info.raw, 0);
                         // Free each element in the slice, then free the slice itself
                         defer {
-                            if (comptime needsArgCleanup(ElemType)) {
-                                for (arg1) |elem| {
-                                    freeConvertedArg(ElemType, allocator, elem);
-                                }
-                            }
+                            for (arg1) |elem| freeArgument(ElemType, allocator, elem);
                             if (arg1.len > 0) allocator.free(arg1);
                         }
                         // Each element is a restricted float conversion; the
@@ -3492,7 +3522,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
-                    defer freeConvertedArg(Param1Type, allocator, arg1);
+                    defer freeArgument(Param1Type, allocator, arg1);
                     break :blk try method_fn(instance, arg1);
                 } else if (webidl_param_count == 2) {
                     const Param1Type = params[1].type.?;
@@ -3512,7 +3542,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
-                    defer freeConvertedArg(Param1Type, allocator, arg1);
+                    defer freeArgument(Param1Type, allocator, arg1);
 
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
@@ -3527,7 +3557,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
-                    defer freeConvertedArg(Param2Type, allocator, arg2);
+                    defer freeArgument(Param2Type, allocator, arg2);
                     break :blk try method_fn(instance, arg1, arg2);
                 } else if (webidl_param_count == 3) {
                     const Param1Type = params[1].type.?;
@@ -3547,7 +3577,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
-                    defer freeConvertedArg(Param1Type, allocator, arg1);
+                    defer freeArgument(Param1Type, allocator, arg1);
 
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
@@ -3562,7 +3592,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
-                    defer freeConvertedArg(Param2Type, allocator, arg2);
+                    defer freeArgument(Param2Type, allocator, arg2);
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
@@ -3577,7 +3607,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
-                    defer freeConvertedArg(Param3Type, allocator, arg3);
+                    defer freeArgument(Param3Type, allocator, arg3);
                     break :blk try method_fn(instance, arg1, arg2, arg3);
                 } else if (webidl_param_count == 4) {
                     const Param1Type = params[1].type.?;
@@ -3598,7 +3628,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
-                    defer freeConvertedArg(Param1Type, allocator, arg1);
+                    defer freeArgument(Param1Type, allocator, arg1);
 
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
@@ -3613,7 +3643,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
-                    defer freeConvertedArg(Param2Type, allocator, arg2);
+                    defer freeArgument(Param2Type, allocator, arg2);
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
@@ -3627,7 +3657,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
-                    defer freeConvertedArg(Param3Type, allocator, arg3);
+                    defer freeArgument(Param3Type, allocator, arg3);
 
                     const arg4 = if (js_arg_count >= 4) arg_blk: {
                         const v8_arg4 = info.get(3);
@@ -3641,7 +3671,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return error.NotEnoughArguments;
                         }
                     };
-                    defer freeConvertedArg(Param4Type, allocator, arg4);
+                    defer freeArgument(Param4Type, allocator, arg4);
                     break :blk try method_fn(instance, arg1, arg2, arg3, arg4);
                 } else {
                     // Five or more: the same per-argument conversion as the
@@ -3659,7 +3689,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     var assigned: usize = 0;
                     defer {
                         inline for (params[1..], 1..) |param, i| {
-                            if (i <= assigned) freeConvertedArg(param.type.?, allocator, call_args[i]);
+                            if (i <= assigned) freeArgument(param.type.?, allocator, call_args[i]);
                         }
                     }
                     inline for (params[1..], 1..) |param, i| {
@@ -4295,7 +4325,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
-                defer freeConvertedArg(Param1Type, allocator, arg1);
+                defer freeArgument(Param1Type, allocator, arg1);
 
                 if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
                     log.debug("[CTOR_ARGS] MutationObserver calling Interface.call_constructor...\n", .{});
@@ -4324,7 +4354,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
-                defer freeConvertedArg(Param1Type, allocator, arg1);
+                defer freeArgument(Param1Type, allocator, arg1);
 
                 // Second param may be optional (use default if not provided)
                 const arg2 = if (js_arg_count >= 2) blk: {
@@ -4340,7 +4370,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
-                defer freeConvertedArg(Param2Type, allocator, arg2);
+                defer freeArgument(Param2Type, allocator, arg2);
 
                 return try Interface.call_constructor(ctx, arg1, arg2);
             } else if (webidl_param_count == 3) {
@@ -4362,7 +4392,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
-                defer freeConvertedArg(Param1Type, allocator, arg1);
+                defer freeArgument(Param1Type, allocator, arg1);
 
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
@@ -4377,7 +4407,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
-                defer freeConvertedArg(Param2Type, allocator, arg2);
+                defer freeArgument(Param2Type, allocator, arg2);
 
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
@@ -4392,7 +4422,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
-                defer freeConvertedArg(Param3Type, allocator, arg3);
+                defer freeArgument(Param3Type, allocator, arg3);
 
                 return try Interface.call_constructor(ctx, arg1, arg2, arg3);
             } else if (webidl_param_count == 4) {
@@ -4415,7 +4445,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
-                defer freeConvertedArg(Param1Type, allocator, arg1);
+                defer freeArgument(Param1Type, allocator, arg1);
 
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
@@ -4430,7 +4460,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
-                defer freeConvertedArg(Param2Type, allocator, arg2);
+                defer freeArgument(Param2Type, allocator, arg2);
 
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
@@ -4445,7 +4475,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
-                defer freeConvertedArg(Param3Type, allocator, arg3);
+                defer freeArgument(Param3Type, allocator, arg3);
 
                 // Handle fourth parameter - may be optional
                 const arg4 = if (js_arg_count >= 4) blk: {
@@ -4460,7 +4490,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         return error.NotEnoughArguments;
                     }
                 };
-                defer freeConvertedArg(Param4Type, allocator, arg4);
+                defer freeArgument(Param4Type, allocator, arg4);
 
                 return try Interface.call_constructor(ctx, arg1, arg2, arg3, arg4);
             } else {
