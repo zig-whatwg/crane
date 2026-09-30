@@ -10,3 +10,5 @@
 **Fix**: Crane's vendor file (tests/wpt_runner/resources/testdriver-vendor.js) sets `test_driver.click = element => test_driver_internal.click(element)`. Its native, the runner's WebDriver remote end (tests/wpt_runner/test_driver.zig), does Element Click's own checks without layout: stale if not connected, and invalid argument for a file input. A connected element counts as in view and unobscured. The file's header states the deviation.
 
 **Takeaway**: **Read what the upstream helper does before the vendor hook it calls: a check it makes in page script is one the vendor cannot reach, and without layout that check fails every time.**
+
+**Again (same day)**: The first replacement was an arrow function, `element => internal.click(element)`. dom/events/Event-dispatch-redispatch.html calls `new test_driver.click(button)`, and an arrow function is not constructible, so the file went from OK 3/1 to ERROR. A replacement must keep the shape of the function it replaces. It is now a plain `function`, and the file is OK 4/0.
