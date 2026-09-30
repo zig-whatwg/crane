@@ -45,7 +45,52 @@ HISTORY_SAMPLE = 15   # paths kept per movement bucket, so the file stays small
 
 # status -> (label, css class). Anything unrecognised is treated as an error,
 # which is the safe direction: a status we do not know about is not a pass.
-GATING = {'TIMEOUT', 'CRASH', 'ERROR', 'EXTERNAL-TIMEOUT', 'PRECONDITION_FAILED'}
+GATING = {'TIMEOUT', 'CRASH', 'ERROR', 'EXTERNAL-TIMEOUT', 'PRECONDITION_FAILED', 'NONE-PASSED'}
+
+# A derived status, not one the runner writes: the harness finished (OK) but not
+# one of the file's subtests passed. It blocks the gate like a timeout - "OK" said
+# only that the page ran to the end, and 1,053 files were OK with nothing passing
+# when this rule was added (2026-09-30, the user's decision). A file with no
+# subtests at all is not NONE-PASSED: there was nothing to fail.
+NONE_PASSED = 'NONE-PASSED'
+# Which rule `last_statuses` in the history was computed under. A generation that
+# follows a rule change files OK -> NONE-PASSED as "reclassified", not "regressed":
+# the file did not get worse, the gate got stricter.
+GATE_RULE = 2
+
+
+def alt_rates(worklist, records):
+    """Two readings the subtest headline hides: the pass rate outside encoding/ and
+    the mean per-file pass rate, both from the journal's own counts.
+
+    encoding/ held ~87% of all subtests when these were added (2026-09-30), so the
+    headline percentage is mostly one directory; a per-file mean weights every file
+    the same, however many subtests it has.
+    """
+    np_pass = np_all = 0
+    rates = []
+    for p in worklist:
+        rec = records.get(p)
+        if not rec:
+            continue
+        n = rec.get('passed', 0) + rec.get('failed', 0) + rec.get('timed_out', 0) + rec.get('notrun', 0)
+        if n == 0:
+            continue
+        rates.append(rec.get('passed', 0) / n)
+        if not p.startswith('encoding/'):
+            np_pass += rec.get('passed', 0)
+            np_all += n
+    return (np_pass / np_all * 100 if np_all else 0.0,
+            sum(rates) / len(rates) * 100 if rates else 0.0)
+
+
+def gate_status(rec):
+    """The status the gate judges `rec` by: the runner's, or NONE-PASSED."""
+    st = rec.get('status', 'ERROR')
+    if st == 'OK' and rec.get('passed', 0) == 0 and (
+            rec.get('failed', 0) + rec.get('timed_out', 0) + rec.get('notrun', 0)) > 0:
+        return NONE_PASSED
+    return st
 
 # When a variant's query started reaching the page: 71ffd213a (2026-09-22
 # 11:42 -0400) put the navigated URL into location.*. Before it
@@ -461,11 +506,13 @@ def build(worklist, records, shape=None):
         if rec is None:
             areas[a]['unrun'] += 1
             continue
-        status = rec.get('status', 'ERROR')
+        status = gate_status(rec)
         areas[a]['run'] += 1
         if status in GATING:
             areas[a]['gating'] += 1
             areas[a][status.lower()] += 1
+            if status == NONE_PASSED:
+                areas[a]['sub_fail'] += rec.get('failed', 0)
         elif status == 'OK':
             if rec.get('failed', 0) == 0 and rec.get('timed_out', 0) == 0:
                 areas[a]['clean'] += 1
@@ -743,7 +790,7 @@ def status_of(rec):
     """One word per file for the history diff: OK, UNRUN, or the gating status."""
     if rec is None:
         return 'UNRUN'
-    st = rec.get('status', 'ERROR')
+    st = gate_status(rec)
     if st == 'OK':
         return 'OK'
     return st if st in GATING else 'ERROR'
@@ -764,6 +811,8 @@ def record_generation(worklist, records, areas):
 
     cur = {p: status_of(records.get(p)) for p in worklist}
     prev = history.get('last_statuses')
+    # `prev` was computed under the rule the history records (1 if it records none).
+    rule_changed = prev is not None and history.get('gate_rule', 1) != GATE_RULE
 
     tot = collections.Counter()
     for c in areas.values():
@@ -774,7 +823,8 @@ def record_generation(worklist, records, areas):
         'head': git_head(),
         'total': len(worklist), 'run': tot['run'], 'unrun': tot['unrun'],
         'blocking': tot['gating'], 'crash': tot['crash'], 'timeout': tot['timeout'],
-        'error': tot['gating'] - tot['crash'] - tot['timeout'],
+        'error': tot['gating'] - tot['crash'] - tot['timeout'] - tot['none-passed'],
+        'none_passed': tot['none-passed'],
         'clean': tot['clean'], 'partial': tot['partial'],
         'sub_pass': tot['sub_pass'], 'sub_fail': tot['sub_fail'],
         'sub_targeted': round(tot['sub_targeted']),
@@ -799,6 +849,8 @@ def record_generation(worklist, records, areas):
                 key = 'newly_run_blocking' if now in GATING else 'newly_run_ok'
             elif now == 'OK' and before in GATING:
                 key = 'unblocked'
+            elif before == 'OK' and now == NONE_PASSED and rule_changed:
+                key = 'reclassified'   # the gate got stricter; the file did not change
             elif before == 'OK' and now in GATING:
                 key = 'regressed'
             elif now == 'UNRUN':
@@ -816,13 +868,16 @@ def record_generation(worklist, records, areas):
                 last['regenerations'] = last.get('regenerations', 0) + 1
                 last['regenerated_at'] = snap['at']
             history['last_statuses'] = cur
+            history['gate_rule'] = GATE_RULE
             _save_history(history)
             return history
         snap['moves'] = dict(moves)
         snap['samples'] = dict(samples)
 
+    snap['gate_rule'] = GATE_RULE
     history['generations'].append(snap)
     history['last_statuses'] = cur
+    history['gate_rule'] = GATE_RULE
     _save_history(history)
     return history
 
@@ -867,7 +922,8 @@ def rebuild_history(worklist, records, shape=None):
             'reconstructed': True, 'journal': journal,
             'total': len(worklist), 'run': tot['run'], 'unrun': tot['unrun'],
             'blocking': tot['gating'], 'crash': tot['crash'], 'timeout': tot['timeout'],
-            'error': tot['gating'] - tot['crash'] - tot['timeout'],
+            'error': tot['gating'] - tot['crash'] - tot['timeout'] - tot['none-passed'],
+            'none_passed': tot['none-passed'],
             'clean': tot['clean'], 'partial': tot['partial'],
             'sub_pass': tot['sub_pass'], 'sub_fail': tot['sub_fail'],
             'sub_targeted': round(tot['sub_targeted']),
@@ -1111,6 +1167,7 @@ def render_history(history):
             parts = []
             if mv.get('unblocked'): parts.append(f'<span class="good">{mv["unblocked"]:,} unblocked</span>')
             if mv.get('regressed'): parts.append(f'<span class="badtext">{mv["regressed"]:,} regressed</span>')
+            if mv.get('reclassified'): parts.append(f'<span class="dim">{mv["reclassified"]:,} reclassified as blocking (OK with none passed, gate rule {g.get("gate_rule", GATE_RULE)})</span>')
             nr = mv.get('newly_run_ok', 0) + mv.get('newly_run_blocking', 0)
             if nr: parts.append(f'{nr:,} newly run <span class="dim">({mv.get("newly_run_blocking",0):,} blocking)</span>')
             if mv.get('reshuffled'): parts.append(f'<span class="dim">{mv["reshuffled"]:,} reshuffled</span>')
@@ -1119,7 +1176,7 @@ def render_history(history):
             samples = g.get('samples') or {}
             if samples:
                 items = []
-                for key in ('regressed', 'unblocked', 'newly_run_blocking', 'reshuffled', 'newly_run_ok', 'dropped'):
+                for key in ('regressed', 'reclassified', 'unblocked', 'newly_run_blocking', 'reshuffled', 'newly_run_ok', 'dropped'):
                     for line_ in samples.get(key, []):
                         items.append(f'<li class="{key}">{html.escape(line_)}</li>')
                 movement += (f'<details><summary class="dim">files</summary>'
@@ -1209,6 +1266,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     sub_passing = round(tot['sub_passing'])
     sub_pct = (sub_passing / sub_targeted * 100) if sub_targeted else 0.0
     clean_pct = (clean / total * 100) if total else 0.0
+    non_enc_pct, file_mean_pct = alt_rates(worklist, records)
 
     comp_rows = []
     for tier, label, why in COMPOSITION:
@@ -1435,8 +1493,8 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
 <div class="gate">
   <h2>WPT 0.1 release gate</h2>
   <div class="verdict">{'MET' if gate_met else f'{gating:,} blocking'}
-    <small>{'Zero crashes, zero timeouts, whole subset run.' if gate_met else
-      f'0.1 ships when crashes and timeouts reach zero. {unrun:,} of {total:,} sources not yet run.'}</small>
+    <small>{'Zero crashes, timeouts, errors and files with none passing; whole subset run.' if gate_met else
+      f'0.1 ships when no file crashes, times out, errors, or passes none of its subtests. {unrun:,} of {total:,} sources not yet run.'}</small>
   </div>
 </div>
 
@@ -1444,8 +1502,11 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   <div class="card"><div class="k">Run</div><div class="v">{run:,}<span class="dim" style="font-size:14px"> / {total:,}</span></div></div>
   <div class="card"><div class="k">Timeouts</div><div class="v" style="color:var(--bad)">{tot['timeout']:,}</div></div>
   <div class="card"><div class="k">Crashes</div><div class="v" style="color:var(--bad)">{tot['crash']:,}</div></div>
+  <div class="card"><div class="k">OK, none passed</div><div class="v" style="color:var(--bad)">{tot['none-passed']:,}</div></div>
   <div class="card"><div class="k">Clean files</div><div class="v" style="color:var(--ok)">{clean:,}</div></div>
   <div class="card"><div class="k">Subtests passing</div><div class="v">{sub_passing:,}<span class="dim" style="font-size:14px"> / {sub_targeted:,}</span></div></div>
+  <div class="card"><div class="k">Pass rate outside encoding/</div><div class="v">{non_enc_pct:.1f}%</div></div>
+  <div class="card"><div class="k">Mean per-file pass rate</div><div class="v">{file_mean_pct:.1f}%</div></div>
 </div>
 
 {roadmap_html}
@@ -1515,6 +1576,9 @@ def main():
     print(f"subtests: {passing:,} passing of {targeted:,} targeted  "
           f"({passing / targeted * 100 if targeted else 0:.2f}%)  |  "
           f"files clean {clean / total * 100 if total else 0:.2f}%")
+    non_enc_pct, file_mean_pct = alt_rates(worklist, records)
+    print(f"  of which OK with none passed: {tot['none-passed']:,}  |  pass rate outside encoding/ "
+          f"{non_enc_pct:.1f}%  |  mean per-file pass rate {file_mean_pct:.1f}%")
     print('  composition: ' + '  '.join(
         f"{t}={round(tot['sub_t_' + t]):,}/{tot['tier_' + t]}f" for t in TIERS))
     if rescanned:
@@ -1527,8 +1591,37 @@ def main():
             print(f"history: generation {g['n']} (baseline)")
         else:
             print(f"history: generation {g['n']}  +{mv.get('unblocked',0)} unblocked  "
-                  f"-{mv.get('regressed',0)} regressed  {mv.get('newly_run_ok',0)+mv.get('newly_run_blocking',0)} newly run")
+                  f"-{mv.get('regressed',0)} regressed  {mv.get('reclassified',0)} reclassified  "
+                  f"{mv.get('newly_run_ok',0)+mv.get('newly_run_blocking',0)} newly run")
     print(f"\nwrote {out}\n  open {out}")
+
+
+def _check_gate_rule():
+    """The gate's status rule, pinned: OK with none passed blocks; OK with no
+    subtests, or with any pass, does not; the runner's own statuses pass through."""
+    assert gate_status({'status': 'OK', 'passed': 0, 'failed': 40}) == NONE_PASSED
+    assert gate_status({'status': 'OK', 'passed': 0, 'failed': 0, 'timed_out': 1}) == NONE_PASSED
+    assert gate_status({'status': 'OK', 'passed': 0, 'notrun': 3}) == NONE_PASSED
+    assert gate_status({'status': 'OK', 'passed': 1, 'failed': 40}) == 'OK'
+    assert gate_status({'status': 'OK', 'passed': 0, 'failed': 0}) == 'OK'
+    assert gate_status({'status': 'TIMEOUT', 'passed': 0, 'failed': 0}) == 'TIMEOUT'
+    assert NONE_PASSED in GATING
+    assert status_of({'status': 'OK', 'passed': 0, 'failed': 2}) == NONE_PASSED
+    # A rule change files OK -> NONE-PASSED as reclassified, never as regressed.
+    import tempfile
+    global HISTORY
+    saved = HISTORY
+    with tempfile.TemporaryDirectory() as d:
+        HISTORY = os.path.join(d, 'h.json')
+        with open(HISTORY, 'w') as f:
+            json.dump({'generations': [{'n': 1}], 'last_statuses': {'a.html': 'OK', 'b.html': 'OK'}}, f)
+        recs = {'a.html': {'status': 'OK', 'passed': 0, 'failed': 3},
+                'b.html': {'status': 'TIMEOUT', 'passed': 0, 'failed': 0}}
+        h = record_generation(['a.html', 'b.html'], recs, {})
+        mv = h['generations'][-1]['moves']
+        assert mv.get('reclassified') == 1 and mv.get('regressed') == 1, mv
+        assert h['gate_rule'] == GATE_RULE
+    HISTORY = saved
 
 
 def _check_history_chart():
@@ -1559,6 +1652,7 @@ if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
         _check_declared_variants()
         _check_history_chart()
+        _check_gate_rule()
         print('wpt_progress self-test: ok')
     else:
         main()

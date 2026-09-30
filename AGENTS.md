@@ -110,6 +110,14 @@ missed two use-after-frees that shipped.
 
 ### Keep the progress report current
 
+**The 0.1 gate: no file in the worklist blocks.** A file blocks when it times
+out, errors or crashes, or when its harness finishes (OK) but none of its
+subtests passes (`NONE-PASSED`, `gate_status` in `tools/wpt_progress.py`). "OK"
+says only that the page ran to its end; 1,053 files were OK with nothing passing
+when this rule was added (2026-09-30). Report blocking files by this rule, and
+beside the headline subtest rate report the rate outside `encoding/` and the mean
+per-file rate, which the page prints: `encoding/` holds most of the subtests.
+
 `wpt-results/progress.html` is how the 0.1 gate is watched. It is regenerated
 from journals, and only from `wpt-results/*.jsonl` and
 `wpt-results/<label>/*.jsonl` - ONE directory deep: it keeps the latest record
