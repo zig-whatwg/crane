@@ -2841,6 +2841,19 @@ pub fn build(b: *std.Build) void {
         addTestFilesFromDir(b, bench_step, "tests/benchmarks", target, &benchmark_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add benchmark test files: {}\n", .{err});
         };
+
+        // Intl's wall-clock benchmarks (avg-ns thresholds) belong here for the same
+        // reason: in `zig build test` they went red under build load, not on a defect
+        // (2026-09-30: three DateTimeFormat/NumberFormat thresholds failed a lane's gate
+        // while three test builds shared the machine).
+        const intl_bench_imports = [_]std.Build.Module.Import{
+            .{ .name = "clock", .module = clock_mod },
+            .{ .name = "host", .module = host_mod },
+            .{ .name = "intl", .module = intl_mod },
+        };
+        addTestFilesFromDir(b, bench_step, "tests/intl_bench", target, &intl_bench_imports, false) catch |err| {
+            std.debug.print("Warning: Failed to add intl benchmark test files: {}\n", .{err});
+        };
     }
 
     // ========================================================================
