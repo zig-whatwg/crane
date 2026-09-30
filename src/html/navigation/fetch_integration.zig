@@ -45,6 +45,10 @@ pub const NavigationFetchResult = struct {
     /// Whether cross-origin
     is_cross_origin: bool,
 
+    /// HTML "was created via cross-origin redirects": a hop of the fetch's
+    /// redirect chain went to a URL whose origin was not the previous URL's.
+    has_cross_origin_redirects: bool = false,
+
     /// Response headers (optional, for COOP/COEP)
     headers: ?HeaderMap,
 
@@ -349,6 +353,21 @@ pub fn resultFromResponse(
 
     // Determine cross-origin status
     result.is_cross_origin = isCrossOrigin(options.origin, url);
+
+    // "Populate a session history entry": "If locationURL's origin is not
+    // the same as currentURL's origin, then set hasCrossOriginRedirects to
+    // true" - for each hop of the response's URL list.
+    const hops = response.url_list.items;
+    if (hops.len > 1) {
+        for (hops[0 .. hops.len - 1], hops[1..]) |from, to| {
+            // A hop whose origin cannot be worked out is not same origin.
+            const same = fetch.internal.origins.sameOrigin(allocator, from, to) catch false;
+            if (!same) {
+                result.has_cross_origin_redirects = true;
+                break;
+            }
+        }
+    }
 
     // Copy relevant headers for COOP/COEP
     result.headers = NavigationFetchResult.HeaderMap.init(allocator);
@@ -756,4 +775,30 @@ test "extractOrigin" {
     try std.testing.expectEqualStrings("https://example.com", extractOrigin("https://example.com/path").?);
     try std.testing.expectEqualStrings("https://example.com:8080", extractOrigin("https://example.com:8080/path").?);
     try std.testing.expectEqualStrings("http://localhost", extractOrigin("http://localhost/").?);
+}
+
+test "resultFromResponse - a redirect chain that crosses origins marks the result" {
+    const allocator = std.testing.allocator;
+    // Out and back again: the final URL is same origin with the first, and
+    // the document is still "created via cross-origin redirects".
+    const across = try fetch.internal.InternalResponse.init(allocator);
+    defer across.deinit();
+    across.status = 200;
+    try across.addUrl("http://a.test/start");
+    try across.addUrl("https://b.test/redirect");
+    try across.addUrl("http://a.test/final");
+    var crossed = try resultFromResponse(allocator, "http://a.test/start", across, .{});
+    defer crossed.deinit();
+    try std.testing.expect(crossed.has_cross_origin_redirects);
+    try std.testing.expectEqualStrings("http://a.test/final", crossed.final_url);
+
+    // Redirects within one origin, and no redirect at all, do not.
+    const within = try fetch.internal.InternalResponse.init(allocator);
+    defer within.deinit();
+    within.status = 200;
+    try within.addUrl("http://a.test/start");
+    try within.addUrl("http://a.test/next");
+    var same = try resultFromResponse(allocator, "http://a.test/start", within, .{});
+    defer same.deinit();
+    try std.testing.expect(!same.has_cross_origin_redirects);
 }

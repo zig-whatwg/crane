@@ -603,26 +603,39 @@ pub const BrowsingContext = struct {
     /// The session history of this context's traversable, with an entry for
     /// this context and every context from it up to its traversable ("initialize
     /// the navigable"): each one missing gets an entry for its active
-    /// document, at the current step. `info_of` gives a document's URL and
-    /// origin, owned by the allocator it is given.
+    /// document - the traversable's at the current step, a child's at the
+    /// step its parent's document began at ("create a new child navigable"
+    /// 12.4). `info_of` gives a document's URL and origin, owned by the
+    /// allocator it is given.
     pub fn ensureHistoryEntries(
         self: *BrowsingContext,
         info_of: *const fn (document: InstancePtr, allocator: Allocator) anyerror!joint_history.DocumentInfo,
     ) !*JointHistory {
         const history = try self.jointHistory();
+        // From the traversable down: a child's first entry takes its step
+        // from its parent's entries.
+        var chain: [65]*BrowsingContext = undefined;
+        var count: usize = 0;
         var current: ?*BrowsingContext = self;
-        var depth: usize = 0;
-        while (current) |ctx| : (depth += 1) {
-            if (depth > 64) break;
-            if (!history.hasNavigable(ctx.id)) {
-                if (ctx.getActiveDocument()) |document| {
-                    const info = try info_of(document, history.allocator);
-                    defer history.allocator.free(info.url);
-                    defer history.allocator.free(info.origin);
-                    try history.addInitialEntry(ctx.id, info.url, document, info.origin);
-                }
+        while (current) |ctx| : (current = ctx.parent) {
+            if (count == chain.len) break;
+            chain[count] = ctx;
+            count += 1;
+        }
+        var i = count;
+        while (i > 0) {
+            i -= 1;
+            const ctx = chain[i];
+            if (history.hasNavigable(ctx.id)) continue;
+            const document = ctx.getActiveDocument() orelse continue;
+            const info = try info_of(document, history.allocator);
+            defer history.allocator.free(info.url);
+            defer history.allocator.free(info.origin);
+            if (ctx.parent) |parent| {
+                try history.addChildInitialEntry(ctx.id, parent.id, info.url, document, info.origin);
+            } else {
+                try history.addInitialEntry(ctx.id, info.url, document, info.origin);
             }
-            current = ctx.parent;
         }
         return history;
     }
