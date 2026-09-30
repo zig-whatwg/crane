@@ -4741,10 +4741,15 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
+            // Every handle made here is this callback's: SetReturnValue and
+            // Array::Set copy what they are given. Kept, an enumeration of a
+            // collection's keys cost its context, its array and one Integer
+            // per index.
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                 return;
             };
+            defer v8.v8_Context_Dispose(v8_context);
 
             // Get the 'this' object (the interface instance)
             const this_obj = info.getThis();
@@ -4755,6 +4760,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (instance_ptr == null) {
                 // Called on prototype, not an instance - return empty array
                 const empty_arr = v8.v8_Array_New(isolate, 0);
+                defer v8.v8_Array_Dispose(empty_arr);
                 info.setReturnValue(@ptrCast(empty_arr));
                 return;
             }
@@ -4780,9 +4786,11 @@ pub fn V8Interface(comptime Interface: type) type {
             // V8's indexed property interceptor expects integer indices here.
             // V8 internally converts these to strings when needed for ownKeys.
             const indices_arr = v8.v8_Array_New(isolate, @intCast(length));
+            defer v8.v8_Array_Dispose(indices_arr);
             var i: u32 = 0;
             while (i < length) : (i += 1) {
                 const v8_idx = v8.v8_Integer_New(isolate, @intCast(i));
+                defer v8.v8_Value_Dispose(@ptrCast(v8_idx));
                 _ = v8.v8_Array_Set(indices_arr, v8_context, i, @ptrCast(v8_idx));
             }
             info.setReturnValue(@ptrCast(indices_arr));
@@ -5441,10 +5449,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
+            // Every handle made here is this callback's (see the indexed
+            // enumerator): released once V8 has copied it.
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                 return;
             };
+            defer v8.v8_Context_Dispose(v8_context);
 
             // Get the 'this' object
             const this_obj = info.getThis();
@@ -5455,6 +5466,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (instance_ptr == null) {
                 // Return empty array for prototype
                 const empty_arr = v8.v8_Array_New(isolate, 0);
+                defer v8.v8_Array_Dispose(empty_arr);
                 info.setReturnValue(@ptrCast(empty_arr));
                 return;
             }
@@ -5476,6 +5488,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Get property names from interface delegate
                 const names = Interface.getSupportedPropertyNames(instance, std.heap.c_allocator) catch {
                     const empty_arr = v8.v8_Array_New(isolate, 0);
+                    defer v8.v8_Array_Dispose(empty_arr);
                     info.setReturnValue(@ptrCast(empty_arr));
                     return;
                 };
@@ -5496,7 +5509,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 // in the prescribed order. V8 will merge/deduplicate with the indexed
                 // enumerator results.
                 var keys: std.ArrayListUnmanaged(*v8.Value) = .empty;
-                defer keys.deinit(std.heap.c_allocator);
+                defer {
+                    for (keys.items) |key| v8.v8_Value_Dispose(key);
+                    keys.deinit(std.heap.c_allocator);
+                }
 
                 // 1. Add indexed properties (ascending) if interface supports them
                 const has_indexed_item = comptime blk: {
@@ -5531,6 +5547,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                 // Create V8 array from keys
                 const result_arr = v8.v8_Array_New(isolate, @intCast(keys.items.len));
+                defer v8.v8_Array_Dispose(result_arr);
                 for (keys.items, 0..) |v8_val, idx| {
                     _ = v8.v8_Array_Set(result_arr, v8_context, @intCast(idx), v8_val);
                 }
@@ -5539,6 +5556,7 @@ pub fn V8Interface(comptime Interface: type) type {
             } else {
                 // No getSupportedPropertyNames - return empty array
                 const empty_arr = v8.v8_Array_New(isolate, 0);
+                defer v8.v8_Array_Dispose(empty_arr);
                 info.setReturnValue(@ptrCast(empty_arr));
             }
         }

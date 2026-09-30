@@ -1537,6 +1537,8 @@ pub fn windowIndexedPropertyQuery(
         // Per spec, indexed properties on Window are configurable but not writable
         const isolate = info.getIsolate();
         const attrs = v8.v8_Integer_New(isolate, 3); // 3 = ReadOnly | DontEnum
+        // SetReturnValue copies; the Global is ours.
+        defer v8.v8_Value_Dispose(@ptrCast(attrs));
         info.setReturnValue(@ptrCast(attrs));
         return .kYes;
     }
@@ -1552,31 +1554,33 @@ pub fn windowIndexedPropertyEnumerator(
     const WindowImpl = @import("impls").Window;
 
     const isolate = info.getIsolate();
-    const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
 
+    // Every handle below is this callback's: SetReturnValue and Array::Set
+    // copy what they are given. Kept, they were two Globals per enumeration
+    // of the window's own keys - the context and the array - and one more per
+    // child navigable.
     const this_obj = info.getThis();
     defer v8.v8_Object_Dispose(this_obj);
     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
-    if (instance_ptr == null) {
-        // No instance - return empty array
-        info.setReturnValue(@ptrCast(v8.v8_Array_New(isolate, 0)));
-        return;
-    }
-
-    const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
-    const length = WindowImpl.get_length(instance) catch {
-        info.setReturnValue(@ptrCast(v8.v8_Array_New(isolate, 0)));
-        return;
-    };
+    const length: u32 = if (instance_ptr) |ptr| blk: {
+        const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
+        break :blk WindowImpl.get_length(instance) catch 0;
+    } else 0;
 
     // Create array of indices as integers
     // V8's indexed property interceptor expects integer indices here.
     // V8 internally converts these to strings when needed for ownKeys.
     const arr = v8.v8_Array_New(isolate, @intCast(length));
-    var i: u32 = 0;
-    while (i < length) : (i += 1) {
-        const idx_val = v8.v8_Integer_New(isolate, @intCast(i));
-        _ = v8.v8_Array_Set(arr, v8_context, i, @ptrCast(idx_val));
+    defer v8.v8_Array_Dispose(arr);
+    if (length > 0) {
+        const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+        defer v8.v8_Context_Dispose(v8_context);
+        var i: u32 = 0;
+        while (i < length) : (i += 1) {
+            const idx_val = v8.v8_Integer_New(isolate, @intCast(i));
+            defer v8.v8_Value_Dispose(@ptrCast(idx_val));
+            _ = v8.v8_Array_Set(arr, v8_context, i, @ptrCast(idx_val));
+        }
     }
     info.setReturnValue(@ptrCast(arr));
 }

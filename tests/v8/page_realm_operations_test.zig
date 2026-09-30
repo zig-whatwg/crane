@@ -900,6 +900,29 @@ test "protocol: a Window realm made afresh has the host's Window as its global o
     try std.testing.expect(w.realm.?.hasIntrinsics());
 }
 
+test "protocol: a Window's indexed property enumerator leaves no handle behind" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    const isolate = isolate_once.?;
+
+    // The control: the same enumeration of an ordinary object, no interceptor.
+    var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, "let n = 0; for (let i = 0; i < 32; i++) n += Object.getOwnPropertyNames({ a: 1 }).length; n > 0", "true");
+    const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+
+    // Enumerating the Window's own keys runs its indexed property enumerator
+    // (the child navigables, none here), which kept the context Global it
+    // asked for and the array it returned: two handles a call.
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, "let m = 0; for (let i = 0; i < 32; i++) m += Object.getOwnPropertyNames(globalThis).length; m > 0", "true");
+    const enumerated = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    if (enumerated > control) {
+        std.debug.print("32 enumerations of a Window's own keys: {d} bytes of global handles left, against {d} for an ordinary object\n", .{ enumerated, control });
+        return error.HandlesLeaked;
+    }
+}
+
 test "protocol: a realm restored from a snapshot the agent lacks is built afresh" {
     // The no-snapshot startup path: an agent made without a snapshot (as on
     // JavaScriptCore, always) still gets a working Window realm.
