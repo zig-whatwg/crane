@@ -38,6 +38,7 @@ const same_object = @import("same_object.zig");
 const fetch_body = @import("fetch_body.zig");
 const blob_bytes = @import("dom").blob_bytes;
 const global_settings = @import("dom").global_settings;
+const document_fetches = @import("dom").document_fetches;
 const infra = @import("infra");
 const encoding = @import("encoding");
 
@@ -961,10 +962,46 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     if (pending.body != null) body_taken = true;
     internal.pending_fetch = pending;
     pending.keep_alive.hold(instance);
+    // "Abort a document" reaches it through `live_pending`.
+    live_pending.append(std.heap.c_allocator, pending) catch {};
+    document_fetches.install(&abortFetchesIn);
 
     // Step 11.11: If this's timeout is not 0, end the fetch once it has run
     // that long.
     pending.armTimeout(xhr_state.timeout);
+}
+
+/// Every PendingFetch on this thread not yet freed, for `abortFetchesIn`.
+threadlocal var live_pending: std.ArrayListUnmanaged(*PendingFetch) = .empty;
+
+/// HTML "abort a document" step 2, for this interface: the request of every
+/// XMLHttpRequest whose relevant realm is `realm` - a document of it is being
+/// destroyed ("destroy a document" step 2) - is canceled, "discarding any
+/// tasks queued for them, and discarding any further data received from the
+/// network for them". No request error steps run and no event fires - "destroy
+/// a document" step 7 removes the document's queued tasks without running
+/// them - and the object keeps its state (XHR defines no steps of its own for
+/// a document that stops being fully active). Its fetch is terminated
+/// (Fetch "terminate", as a fetch group's termination does), and a response
+/// already in hand is dropped with its task. Installed into
+/// dom.document_fetches; HTMLIFrameElement's removing steps call it for every
+/// document "destroy a child navigable" destroys.
+///
+/// xhr/open-url-multi-window-4.htm expects `error` and `loadend` instead,
+/// after an XHR proposal (whatwg/xhr#3) that was never adopted; Edge, like
+/// this, fires nothing (wpt.fyi: TIMEOUT).
+fn abortFetchesIn(realm: runtime.Context) void {
+    // Backwards: a cancel may free its entry, which swapRemove replaces with
+    // one already visited.
+    var i = live_pending.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (i >= live_pending.items.len) continue;
+        const pending = live_pending.items[i];
+        if (pending.cancelled or pending.instance.ctx != realm) continue;
+        const internal = getInternal(pending.instance);
+        if (internal.pending_fetch == pending) internal.cancelFetch() else pending.cancel();
+    }
 }
 
 /// One asynchronous send()'s fetch, from `send()` until its body has been
@@ -1274,6 +1311,11 @@ const PendingFetch = struct {
     fn maybeFree(self: *PendingFetch) void {
         if (self.fetch_holds or self.task_queued) return;
         if (!self.cancelled and !self.complete) return;
+        for (live_pending.items, 0..) |p, i| {
+            if (p != self) continue;
+            _ = live_pending.swapRemove(i);
+            break;
+        }
         self.releasePipe();
         self.keep_alive.release();
         self.disarmTimeout();

@@ -308,6 +308,9 @@ fn destroyWindowDocuments(bc: *html_core.BrowsingContext) void {
     bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
     for (tree.items) |navigable| {
         const window: *runtime.Instance = @ptrCast(@alignCast(navigable.getActiveWindow() orelse continue));
+        // "Destroy a document" step 2, "abort a document" step 2: the
+        // fetches its script started are canceled, firing nothing.
+        dom_module.document_fetches.abortAll(window.ctx);
         dom_module.window_documents.destroyed(window.ctx);
     }
 }
