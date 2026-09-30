@@ -20,12 +20,14 @@
 //! - Length value parser (px, em, %, etc.)
 //! - Property parser framework for routing
 //! - The @import rules a style sheet starts with (import_rules)
+//! - A style sheet's rules, as "parse a stylesheet's contents" gives them
+//!   (rules), for the CSSOM objects that wrap them (src/dom/cssom.zig)
 //!
 //! This module does NOT include:
 //! - Selector parsing (see src/selector/)
-//! - At-rules other than @import
+//! - The grammar of at-rules other than @import
 //! - Cascade/inheritance
-//! - CSSOM
+//! - The CSSOM objects themselves (src/dom/cssom.zig, the CSS* impls)
 //!
 //! ## Quirks Mode Support
 //!
@@ -86,6 +88,7 @@ pub const Keyword = property_parser.Keyword;
 
 /// The @import rules a style sheet starts with: its critical subresources.
 pub const import_rules = @import("import_rules.zig");
+pub const rules = @import("rules.zig");
 
 // ============================================================================
 // Tests

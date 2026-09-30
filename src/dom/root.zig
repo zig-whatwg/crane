@@ -101,6 +101,9 @@ pub const range_mutations = @import("range_mutations.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
 pub const document_internals = @import("document_internals.zig");
+/// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule
+/// objects wrap.
+pub const cssom = @import("cssom.zig");
 
 // Re-export slot_helpers functions
 pub const isElement = slot_helpers.isElement;

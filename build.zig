@@ -1234,6 +1234,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     css_mod.addImport("quirks", quirks_mod);
+    // The CSSOM's model (src/dom/cssom.zig) holds a sheet's parsed rules.
+    dom_mod.addImport("css", css_mod);
 
     // Selector module (CSS Selectors Level 4 implementation)
     const selector_mod = b.addModule("selector", .{
