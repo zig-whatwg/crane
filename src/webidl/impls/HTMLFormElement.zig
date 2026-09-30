@@ -681,6 +681,7 @@ fn submitForm(form: *runtime.Instance) !void {
     defer if (base_url) |b| document.ctx.allocator.free(b);
     var base = basic_parser.parse(allocator, base_url orelse document_url, null) catch null;
     defer if (base) |*b| b.deinit();
+    // Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
     var parsed_action = basic_parser.parse(allocator, action, if (base) |*b| b else null) catch return;
     defer parsed_action.deinit();
 

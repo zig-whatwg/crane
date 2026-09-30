@@ -646,13 +646,16 @@ pub fn init(
 
 /// DOM "clone a single node" step 3.1, for a Document: "set copy's encoding,
 /// content type, URL, origin, type, and mode to those of node". This copies
-/// the mode; the rest are Node.zig's stated deviation. (Installed through
-/// dom.cloning_steps, as Node's clone algorithm may not reach Document's
-/// state; a no-op for any other node.)
+/// the encoding and the mode; the rest are Node.zig's stated deviation.
+/// (Installed through dom.cloning_steps, as Node's clone algorithm may not
+/// reach Document's state; a no-op for any other node.)
 fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool) anyerror!void {
     _ = subtree;
     const source = getInternal(node) orelse return;
     const target = getInternal(copy) orelse return;
+    const encoding = try source.encoding.clone(target.allocator);
+    target.encoding.deinit(target.allocator);
+    target.encoding = encoding;
     target.mode = source.mode;
 }
 
@@ -4195,16 +4198,8 @@ fn automaticFeaturesSandboxed(document: *runtime.Instance) bool {
 /// `url_string` encoding-parsed relative to `document` and serialized,
 /// owned by `allocator`; null on failure.
 fn parseRelativeToDocument(document: *runtime.Instance, url_string: []const u8, allocator: std.mem.Allocator) ?[]u8 {
-    const base = NodeImpl.get_baseURI(document) catch return null;
-    defer document.ctx.allocator.free(base);
-    const base_arg = if (base.len > 0)
-        webidl.Opt(runtime.USVString).passed(base)
-    else
-        webidl.Opt(runtime.USVString).notPassed();
-    const parsed = (interfaces.URL.call_static_parse(document, url_string, base_arg) catch null) orelse return null;
-    defer runtime.Instance.deinit(parsed);
-    const href = interfaces.URL.get_href(parsed) catch return null;
-    defer parsed.ctx.allocator.free(href);
+    const href = (@import("html").encoding_parse.encodingParseAndSerialize(document, url_string) catch return null) orelse return null;
+    defer document.ctx.allocator.free(href);
     return allocator.dupe(u8, href) catch null;
 }
 

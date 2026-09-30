@@ -31,6 +31,14 @@ const ParseErrorCode = @import("parse_errors.zig").ParseErrorCode;
 const ParseErrorCallback = @import("parse_errors.zig").ParseErrorCallback;
 const document_write = @import("document_write.zig");
 const InputStreamManager = document_write.InputStreamManager;
+const encoding_sniffing = @import("encoding_sniffing.zig");
+
+/// A parser driver's "change the encoding" (HTML §13.2.3.4), which the tree
+/// builder runs for a meta element that declares `requested`.
+pub const ChangeTheEncoding = struct {
+    context: *anyopaque,
+    change: *const fn (context: *anyopaque, requested: encoding_sniffing.Encoding) void,
+};
 
 /// The 24 insertion modes defined in HTML Standard §13.2.6.4
 ///
@@ -560,6 +568,13 @@ pub const TreeBuilder = struct {
     /// The parser set the document's mode (`quirks_mode`): the Document the
     /// DOM adapter builds takes it. Called with `dom_adapter_context`.
     dom_adapter_on_mode_set: ?*const fn (QuirksMode, ?*anyopaque) void = null,
+
+    /// The parser's "change the encoding" (HTML §13.2.3.4), which a meta
+    /// element runs while the confidence is tentative. Set by a driver
+    /// decoding a byte stream, which holds the confidence and the input
+    /// stream; null when the input was never bytes (document.write(),
+    /// fragments, DOMParser), which have no encoding to change.
+    change_the_encoding: ?ChangeTheEncoding = null,
 
     /// Input stream manager for document.write() support.
     ///
@@ -1635,22 +1650,12 @@ pub const TreeBuilder = struct {
                     _ = try self.insertHtmlElement(tag);
                     _ = self.open_elements.remove(self.open_elements.len - 1) catch unreachable;
 
-                    // Handle charset/encoding from meta element
-                    // HTML Standard §4.2.5.4: Specifying the document's character encoding
-                    // Check for charset attribute or http-equiv="Content-Type" with charset
-                    if (tag.getAttribute("charset") != null) {
-                        // charset attribute specifies encoding directly
-                        // In a full implementation, this would trigger encoding change
-                        // if parsing a byte stream with tentative encoding
-                    } else if (tag.getAttribute("http-equiv")) |http_equiv| {
-                        const http_equiv_val = http_equiv.getValue();
-                        if (std.ascii.eqlIgnoreCase(http_equiv_val, "Content-Type")) {
-                            // content attribute should contain charset parameter
-                            if (tag.getAttribute("content")) |content| {
-                                _ = extractCharsetFromContentType(content.getValue());
-                                // Would trigger encoding change if needed
-                            }
-                        }
+                    // "If the active speculative HTML parser is null" -
+                    // Crane has none - the encoding the element declares
+                    // changes the encoding (the driver checks that the
+                    // confidence is tentative).
+                    if (self.change_the_encoding) |hook| {
+                        if (metaDeclaredEncoding(tag)) |requested| hook.change(hook.context, requested);
                     }
                 } else if (std.mem.eql(u8, name, "title")) {
                     try self.parseGenericRCDATA(tag);
@@ -4436,38 +4441,22 @@ fn isVoidElement(name: []const u8) bool {
     return false;
 }
 
-/// Extract charset from Content-Type header value.
+/// The encoding a meta start tag declares, per the "in head" insertion
+/// mode's meta steps: 1. its charset attribute, when getting an encoding from
+/// the value gives one; 2. otherwise, with an http-equiv attribute that is an
+/// ASCII case-insensitive match for "Content-Type", the encoding its content
+/// attribute gives the algorithm for extracting a character encoding from a
+/// meta element. Null when it declares none.
 ///
-/// HTML Standard §4.2.5.4: Extracting character encoding from meta element.
-/// Looks for "charset=" parameter in the content-type value.
-fn extractCharsetFromContentType(content: []const u8) ?[]const u8 {
-    // Simple implementation: look for "charset=" case-insensitively
-    var i: usize = 0;
-    while (i + 8 <= content.len) {
-        if (std.ascii.eqlIgnoreCase(content[i .. i + 8], "charset=")) {
-            var start = i + 8;
-            // Skip optional quotes
-            if (start < content.len and (content[start] == '"' or content[start] == '\'')) {
-                const quote = content[start];
-                start += 1;
-                // Find closing quote
-                var end = start;
-                while (end < content.len and content[end] != quote) {
-                    end += 1;
-                }
-                return content[start..end];
-            } else {
-                // Find end of value (semicolon or end of string)
-                var end = start;
-                while (end < content.len and content[end] != ';' and content[end] != ' ') {
-                    end += 1;
-                }
-                return content[start..end];
-            }
-        }
-        i += 1;
+/// Spec: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead
+fn metaDeclaredEncoding(tag: anytype) ?encoding_sniffing.Encoding {
+    if (tag.getAttribute("charset")) |charset| {
+        if (encoding_sniffing.lookup(charset.getValue())) |found| return found;
     }
-    return null;
+    const http_equiv = tag.getAttribute("http-equiv") orelse return null;
+    if (!std.ascii.eqlIgnoreCase(http_equiv.getValue(), "Content-Type")) return null;
+    const content = tag.getAttribute("content") orelse return null;
+    return encoding_sniffing.extractFromMetaContent(content.getValue());
 }
 
 // =========================================================================

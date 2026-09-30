@@ -239,6 +239,10 @@ pub const ScriptingParseOptions = struct {
     /// parsing so that scripts executing during parsing can access DOM elements via
     /// document.getElementById(), document.querySelector(), etc.
     existing_document: ?*runtime.Instance = null,
+    /// The input is the page's byte stream, decoded with the encoding HTML's
+    /// encoding sniffing algorithm determines (see
+    /// html.scripted_parser.ByteStream); null when it is characters.
+    byte_stream: ?html_mod.scripted_parser.ByteStream = null,
 };
 
 /// Parse an HTML document with scripting support: the top-level page's parse.
@@ -278,6 +282,7 @@ pub fn parseHTMLWithScripting(
             .loadScript = loader.loadScript,
         } else null,
         .base_url = options.base_url,
+        .byte_stream = options.byte_stream,
     }) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         error.InvalidStateError => error.InvalidStateError,

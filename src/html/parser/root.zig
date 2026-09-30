@@ -40,6 +40,10 @@ pub const getErrorDescription = @import("parse_errors.zig").getErrorDescription;
 pub const InputStream = @import("input_stream.zig").InputStream;
 pub const InputCharacter = @import("input_stream.zig").InputCharacter;
 
+// Determining the character encoding (HTML §13.2.3.2) and decoding the
+// input byte stream
+pub const encoding_sniffing = @import("encoding_sniffing.zig");
+
 // Tokenizer
 pub const Tokenizer = @import("tokenizer.zig").Tokenizer;
 

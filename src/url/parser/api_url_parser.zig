@@ -14,6 +14,7 @@ const std = @import("std");
 const infra = @import("infra");
 const URLRecord = @import("url_record").URLRecord;
 const basic_parser = @import("basic_parser");
+const url_serializer = @import("url_serializer");
 
 /// Parse a URL string
 ///
@@ -39,6 +40,45 @@ pub fn parseURL(
 ) !URLRecord {
     // Call basic URL parser (which handles preprocessing internally per spec)
     return basic_parser.parse(allocator, input, base);
+}
+
+/// Parse a URL string given `encoding`, the encoding its query is
+/// percent-encoded after encoding with (URL "URL parser" with an encoding;
+/// HTML "encoding-parse a URL" passes the document's).
+pub fn parseURLWithEncoding(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    base: ?*const URLRecord,
+    encoding: *const basic_parser.Encoding,
+) !URLRecord {
+    return basic_parser.parseWithEncoding(allocator, input, base, encoding);
+}
+
+/// `input` parsed against the base URL string `base` (none when null or
+/// empty, or when it does not parse) given `encoding`, serialized; null for
+/// failure. Owned by `allocator`. The URL-side half of HTML's
+/// "encoding-parse-and-serialize a URL": the caller supplies its document's
+/// base URL and character encoding.
+pub fn encodingParseAndSerialize(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    base: ?[]const u8,
+    encoding: *const basic_parser.Encoding,
+) error{OutOfMemory}!?[]const u8 {
+    var base_record: ?URLRecord = null;
+    if (base) |b| {
+        if (b.len > 0) base_record = basic_parser.parse(allocator, b, null) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => null,
+        };
+    }
+    defer if (base_record) |*record| record.deinit();
+    var record = basic_parser.parseWithEncoding(allocator, input, if (base_record) |*r| r else null, encoding) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return null,
+    };
+    defer record.deinit();
+    return url_serializer.serialize(allocator, &record, false) catch return error.OutOfMemory;
 }
 
 /// Preprocess URL input string per spec

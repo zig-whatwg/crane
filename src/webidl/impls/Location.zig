@@ -686,9 +686,9 @@ pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyer
 /// HTML §7.2.4: copy this's url; set its query to null for the empty string,
 /// otherwise basic-URL-parse the value without a leading "?" with the query
 /// state as state override; Location-object navigate to it. The fragment is
-/// kept. Deviation, stated: the query is percent-encoded as UTF-8, not in
-/// the relevant document's encoding, and the same-origin-domain check (step
-/// 2) is not modelled.
+/// kept. Deviation, stated (encoding-parse-utf8): the query is
+/// percent-encoded as UTF-8, not in the relevant document's encoding -
+/// queued; and the same-origin-domain check (step 2) is not modelled.
 pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.window == null) return;
@@ -974,6 +974,7 @@ fn reparse(allocator: Allocator, url: []const u8) ![]u8 {
 /// document of the script that is running - and serialized; owned. Failure
 /// is a "SyntaxError". With no script running, the Location's own URL is the
 /// base.
+/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
 fn parseRelativeToEntry(instance: *runtime.Instance, internal: *InternalState, url: []const u8) ![]u8 {
     const allocator = internal.allocator;
     if (entryDocument()) |document| {

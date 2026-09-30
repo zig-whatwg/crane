@@ -1084,15 +1084,28 @@ pub const Context = struct {
         const kind = document_type.classify(computed);
         var synthesized: ?[]u8 = null;
         defer if (synthesized) |markup| self.allocator.free(markup);
+        // A text document's encoding: its bytes are decoded before the
+        // markup that holds them is made.
+        var text_encoding: ?[]const u8 = null;
+        const sniffing = html_mod.parser.encoding_sniffing;
         const markup: []const u8 = switch (kind) {
             .html => result.body,
             // "Loading an XML document". Deviation, stated: Crane has no XML
             // parser. An XHTML page is parsed as HTML, as it always was here;
             // any other XML document is left as it is, empty.
             .xml => if (std.mem.eql(u8, computed, "application/xhtml+xml")) result.body else return,
-            // "Loading a text document": one pre holding the text.
+            // "Loading a text document": one pre holding the text, decoded
+            // by the type's rules - a BOM, the charset parameter, else the
+            // default (the sniffing algorithm without the prescan).
             .text => blk: {
-                synthesized = try document_type.textDocumentMarkup(self.allocator, result.body);
+                const sniffed = sniffing.sniff(result.body, .{
+                    .transport = sniffing.transportEncoding(self.allocator, result.content_type),
+                    .prescan = false,
+                });
+                text_encoding = sniffing.canonicalName(sniffed.encoding);
+                const text = try sniffing.decode(self.allocator, result.body, sniffed.encoding);
+                defer self.allocator.free(text);
+                synthesized = try document_type.textDocumentMarkup(self.allocator, text);
                 break :blk synthesized.?;
             },
             // "Loading a media document": an img, video or audio hosting the
@@ -1111,7 +1124,14 @@ pub const Context = struct {
             .base_url = self.url,
             .scripting_enabled = kind == .html or kind == .xml,
             .script_loader = options.script_loader,
+            // An HTML page is its response's bytes, decoded with the encoding
+            // HTML's sniffing algorithm determines from them and their
+            // Content-Type; the markup made for other types is characters.
+            .byte_stream = if (kind == .html or kind == .xml) .{ .content_type = result.content_type } else null,
         });
+        if (text_encoding) |name| {
+            if (self.document_instance) |document| dom_mod.document_internals.setEncoding(document, name) catch {};
+        }
         // "Create and initialize a Document object" step 11: its content type
         // is the response's computed type. An XHTML page parsed as HTML keeps
         // the HTML document it was always given.
@@ -1145,6 +1165,10 @@ pub const Context = struct {
         /// Custom script loader (optional)
         /// If null, external scripts will use default HTTP fetch
         script_loader: ?ScriptLoader = null,
+        /// The content is the page's byte stream, to decode with the encoding
+        /// HTML's encoding sniffing algorithm determines; null when it is
+        /// characters already.
+        byte_stream: ?html_mod.scripted_parser.ByteStream = null,
     };
 
     /// Load and parse HTML content into the document
@@ -1230,6 +1254,7 @@ pub const Context = struct {
                 .base_url = options.base_url,
                 .script_loader = script_loader,
                 .existing_document = document,
+                .byte_stream = options.byte_stream,
             },
         ) catch |err| {
             log.debug("HTML parse error: {}\n", .{err});

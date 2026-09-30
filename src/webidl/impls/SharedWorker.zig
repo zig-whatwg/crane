@@ -222,6 +222,7 @@ fn memberString(ctx: runtime.Context, object: runtime.JSValue, member: []const u
 
 /// `script_url` encoding-parsed relative to `api_base_url` and serialized.
 /// OWNED (`allocator`). SyntaxError when it does not parse.
+/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
 fn resolveScriptURL(allocator: std.mem.Allocator, script_url: []const u8, api_base_url: ?[]const u8) error{ SyntaxError, OutOfMemory }![]const u8 {
     var base_record: ?@import("url_record").URLRecord = null;
     defer if (base_record) |*b| b.deinit();

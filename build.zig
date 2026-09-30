@@ -1355,6 +1355,8 @@ pub fn build(b: *std.Build) void {
     url_parser_api_mod.addImport("infra", infra_mod);
     url_parser_api_mod.addImport("url_record", url_internal_url_record_mod);
     url_parser_api_mod.addImport("basic_parser", url_basic_parser_mod);
+    // encodingParseAndSerialize serializes what it parses.
+    url_parser_api_mod.addImport("url_serializer", url_serializer_mod);
 
     const url_parser_state_mod = b.createModule(.{
         .root_source_file = b.path("src/url/parser/parser_state.zig"),
@@ -1477,6 +1479,9 @@ pub fn build(b: *std.Build) void {
     url_basic_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
     url_basic_parser_mod.addImport("encode_sets", url_encode_sets_mod);
     url_basic_parser_mod.addImport("windows_drive", url_windows_drive_mod);
+    // The URL parser's query state percent-encodes after encoding with the
+    // given encoding (HTML "encoding-parse a URL": the document's).
+    url_basic_parser_mod.addImport("encoding", encoding_mod);
 
     const url_special_schemes_mod = b.createModule(.{
         .root_source_file = b.path("src/url/internal/special_schemes.zig"),
@@ -1982,6 +1987,9 @@ pub fn build(b: *std.Build) void {
     html_core_mod.addImport("fetch", fetch_mod);
     html_core_mod.addImport("storage", storage_mod); // For web_storage.zig Storage backend
     html_core_mod.addImport("encoding", encoding_mod); // For iframe document loading encoding detection
+    // HTML "determining the character encoding": the transport layer's charset
+    // is the charset parameter of the Content-Type, parsed as a MIME type.
+    html_core_mod.addImport("mimesniff", mimesniff_mod);
     // WorkerLocation's origin is the URL Standard's origin of the worker's URL.
     html_core_mod.addImport("origin", url_origin_mod_internal);
     html_core_mod.addImport("basic_parser", url_basic_parser_mod);
@@ -2025,6 +2033,9 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("dictionaries", dictionaries_mod);
     // DOM module for document_internals access in parser_script_execution.zig
     html_mod.addImport("dom", dom_mod);
+    // HTML "encoding-parse a URL" (html.encoding_parse) runs the URL parser
+    // with a document's encoding.
+    html_mod.addImport("api_parser", url_parser_api_mod);
 
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
