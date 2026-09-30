@@ -160,6 +160,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [An API that exists but never settles hangs its suite](spec-compliance-an-api-that-exists-but-never-settles-hangs-its-suite.md) - Before exposing an API whose promises and events depend on machinery not yet built, count what waits on them: an object that exists and never settles is worse than one that is missing.
 - [HTML bounds frame nesting only for src; browsers bound script navigations too](spec-compliance-html-bounds-frame-nesting-only-for-src.md) - A file whose subtests all pass while it times out is waiting for a load event; when the spec has no bound on a recursion, take a shipping engine's and say so.
 - ["UTF-8 decode" never fails](spec-compliance-utf-8-decode-never-fails.md) - Where the spec decodes, decode; validation is a different algorithm with a different name.
+- [A replacement loop must restart the decoder its encoding makes](spec-compliance-a-replacement-loop-must-restart-the-decoder-its-encoding-makes.md) - A decoder's "initial state" belongs to its encoding: reset through `newDecoder()`, and test an error loop with a single-byte encoding that has unmapped bytes, not with UTF-8.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
