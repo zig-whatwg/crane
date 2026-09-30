@@ -8,7 +8,7 @@
 //! its init) and cleanup runs every installed sweep; cleanup never imports
 //! the type.
 //!
-//! lint-impls: hook for HTMLInputElement, HTMLTextAreaElement
+//! lint-impls: hook for HTMLInputElement, HTMLTextAreaElement, ProcessingInstruction
 
 const std = @import("std");
 

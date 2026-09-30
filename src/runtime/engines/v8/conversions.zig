@@ -412,12 +412,37 @@ pub fn fromV8Sequence(
         // Use v8_Object_Get with integer key instead of v8_Array_Get to properly
         // walk the prototype chain for holey arrays. Per WebIDL spec, sequence
         // conversion must use [[Get]] which includes prototype lookup.
+        //
+        // Both handles are this loop's: the key goes once Get has read it,
+        // and the element once its conversion is done with it - by the rule
+        // the binding applies to an argument (`releaseElementHandle`). Kept,
+        // they were two Globals per element of every sequence argument.
         const index_key = v8.v8_Integer_New(isolate, @intCast(i));
-        const v8_value = v8.v8_Object_Get(@ptrCast(array), context, @ptrCast(index_key)) orelse continue;
-        slice[i] = try fromV8Value(T, allocator, isolate, context, v8_value);
+        defer v8.v8_Value_Dispose(@ptrCast(index_key));
+        // Get fails only when it threw ("? Get"): the exception is pending.
+        const v8_value = v8.v8_Object_Get(@ptrCast(array), context, @ptrCast(index_key)) orelse return ConversionError.ExceptionPending;
+        const element = fromV8Value(T, allocator, isolate, context, v8_value) catch |err| {
+            if (comptime interface_mod.argHandleIsCopied(T) or interface_mod.anyHandleIsKeptOnlyAsHandle(T)) v8.v8_Value_Dispose(v8_value);
+            return err;
+        };
+        releaseElementHandle(T, element, v8_value);
+        slice[i] = element;
     }
 
     return slice;
+}
+
+/// Release the handle `element` was converted from, when nothing refers to it
+/// any more: always for a conversion that copies (`argHandleIsCopied`), and
+/// for an `any` unless it converted to `.handle`
+/// (`anyConversionKeepsHandle`). Any other type keeps it - the conservative
+/// answer, as for an argument.
+fn releaseElementHandle(comptime T: type, element: T, handle: *v8.Value) void {
+    if (comptime interface_mod.argHandleIsCopied(T)) {
+        v8.v8_Value_Dispose(handle);
+    } else if (comptime interface_mod.anyHandleIsKeptOnlyAsHandle(T)) {
+        if (!interface_mod.anyConversionKeepsHandle(T, element)) v8.v8_Value_Dispose(handle);
+    }
 }
 
 /// Convert V8 Object to WebIDL record<K,V>
@@ -1638,6 +1663,17 @@ pub fn fromV8Value(
                     // releases it only for a copying conversion).
                     if (comptime !interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = runtime.JSValue.jsNull;
+                } else if (comptime interface_mod.anyHandleIsKeptOnlyAsHandle(field.type)) {
+                    // An `any` member: kept only when it converted to
+                    // `.handle` (an object, function or symbol); a primitive
+                    // was copied out, and its handle goes now - the rule the
+                    // binding applies to an `any` argument.
+                    const member = fromV8Value(field.type, allocator, isolate, context, field_v8) catch |err| {
+                        v8.v8_Value_Dispose(field_v8);
+                        return err;
+                    };
+                    if (!interface_mod.anyConversionKeepsHandle(field.type, member)) v8.v8_Value_Dispose(field_v8);
+                    @field(result, field.name) = member;
                 } else {
                     // Convert field value
                     @field(result, field.name) = try fromV8Value(

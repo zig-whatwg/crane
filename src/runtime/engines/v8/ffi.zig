@@ -1805,16 +1805,6 @@ pub extern fn v8_FunctionTemplate_GetPrototypeObject(tpl: *FunctionTemplate, con
 /// function from the template which has a different prototype object.
 pub extern fn v8_GetGlobalPrototype(context: *Context, constructor_name: [*:0]const u8) ?*Object;
 
-/// Patch Window[Symbol.hasInstance] to use custom type checking instead of prototype chain.
-/// This is needed because V8 snapshots don't preserve the identity between Function.prototype
-/// and objects in the prototype chain. The custom hasInstance checks the internal type info
-/// in field 1 instead, which IS correctly preserved in snapshots.
-pub extern fn v8_PatchWindowInstanceOf(isolate: *Isolate, context: *Context, global: *Object) void;
-
-/// Patch Document[Symbol.hasInstance] to use custom type checking instead of prototype chain.
-/// This is needed for cross-realm Document access (iframe.contentDocument instanceof Document).
-pub extern fn v8_PatchDocumentInstanceOf(isolate: *Isolate, context: *Context, global: *Object) void;
-
 pub extern fn v8_FunctionTemplate_Inherit(tpl: *FunctionTemplate, parent: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetPrototypeProviderTemplate(self: *FunctionTemplate, provider: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetLength(tpl: *FunctionTemplate, length: c_int) void;

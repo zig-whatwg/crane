@@ -243,19 +243,6 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, null);
     ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, null);
 
-    if (restored) {
-        // A snapshot does not keep Function.prototype's identity with the
-        // objects on the global's chain, so after a restore `Window.prototype`
-        // is not what the global inherits from. Symbol.hasInstance is patched
-        // to read the type info instead, which the snapshot does keep - for
-        // Window, and for the Document objects that cross contexts.
-        // (Event's patch is gone: every event's chain reaches its realm's
-        // Event.prototype after a restore, and the patch answered false for
-        // all of them - crane/events-instanceof.html.)
-        ffi.v8_PatchWindowInstanceOf(isolate, context, global);
-        ffi.v8_PatchDocumentInstanceOf(isolate, context, global);
-    }
-
     // HTML "create a new realm", the customization for the global object:
     // the host's new Window, bound to `global` (BORROWED by the host).
     const window = options.create_global_object(realm, .{ .handle = .{ .ptr = global } }, options.host) orelse {

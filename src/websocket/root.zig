@@ -166,6 +166,7 @@ pub const send_buffer = @import("send_buffer.zig");
 pub const events = @import("events.zig");
 pub const utf8 = @import("utf8.zig");
 pub const binary_types = @import("binary_types.zig");
+pub const pump_token = @import("pump_token.zig");
 
 // Re-export common types
 pub const CloseCodes = close_codes.CloseCodes;
