@@ -17,6 +17,8 @@ const Dir = std.Io.Dir;
 test {
     _ = model;
     _ = @import("png.zig");
+    _ = @import("html.zig");
+    _ = @import("chart.zig");
 }
 
 pub const Revision = struct {
