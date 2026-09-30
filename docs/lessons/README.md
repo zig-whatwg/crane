@@ -130,6 +130,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [An argument the callee must free leaks on the path that forgets](architecture-an-argument-the-callee-must-free-leaks-on-the-path-that-forgets.md) - Make arguments borrowed and let the keeper take its own copy; never `page_allocator.create` a small object.
 - [A getter's result is the binding's, like an operation's](architecture-a-getter-s-result-is-the-binding-s-like-an-operation-s.md) - Ownership of a return value is one rule for every path that returns it, and for every caller that receives it.
 - [A stored pointer is a Global only if a Global was stored](architecture-a-stored-pointer-is-a-global-only-if-a-global-was-stored.md) - Store an `engine.Owned`, never a `*anyopaque` you will later call a handle.
+- [When a step names something the engine makes later, reserve its identity instead of moving the creation](architecture-reserve-what-a-step-names-before-the-engine-makes-it.md) - When a spec step names an object the engine only makes later, reserve the object's identity where the step runs; move the creation earlier only if everything that reads it in between is meant to see it.
+- [An object made on first use cannot compute what the spec fixed at an earlier moment](architecture-an-object-made-on-first-use-cannot-compute-what-the-spec-fixed-earlier.md) - Record at that moment, where the object will look, and build from the record; never recompute from current state.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -163,6 +165,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A replacement loop must restart the decoder its encoding makes](spec-compliance-a-replacement-loop-must-restart-the-decoder-its-encoding-makes.md) - A decoder's "initial state" belongs to its encoding: reset through `newDecoder()`, and test an error loop with a single-byte encoding that has unmapped bytes, not with UTF-8.
 - [A parsed element is inserted before its text](spec-compliance-a-parsed-element-is-inserted-before-its-text.md) - An element whose processing reads its children must hear from the parser when they are all there: for a parsed element, insertion and children-changed run before its content has arrived.
 - [An opaque response's status is 0](spec-compliance-an-opaque-response-s-status-is-0.md) - Before checking a response's status or headers, ask whether it can be no-cors cross-origin: an opaque response says 0 and nothing, and the check has to read the internal response.
+- [A "return" inside a state-override parse ends the parse](spec-compliance-a-return-inside-a-state-override-parse-ends-the-parse.md) - In a parser that runs spec steps inside a loop, every spec "return" must stop the loop; test override cases for "no failure", not only for the result.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
@@ -210,6 +213,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Compare two runners only with each runner's own snapshot](testing-compare-two-runners-only-with-each-runner-s-own-snapshot.md) - A runner and its snapshot are one artifact: freeze them together, and put the right snapshot in place before every run.
 - [A correction for a bug becomes the bug when the bug is fixed](testing-a-correction-for-a-bug-becomes-the-bug-when-it-is-fixed.md) - A correction must name the bug it corrects, so fixing the bug retires it; evidence printed live that stops supporting a model is a refutation, not a caveat.
 - [A stash poll hangs on a request nothing sends](testing-a-stash-poll-hangs-on-a-request-nothing-sends.md) - When a file polls the server for a stashed value, find what should send the request that fills the stash - a ping, a beacon, a report - before looking at what reads it.
+- [A test block in html_core never runs](testing-a-test-block-in-html-core-never-runs.md) - A test in src/html/** does not run: put html_core tests under tests/html/, and prove a new test is live by seeing it fail once.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
