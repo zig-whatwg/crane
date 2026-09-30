@@ -917,9 +917,10 @@ fn activationFromRecord(internal: *InternalState, s: navigation_entries.Scope, c
 
 /// The activation of a document no navigation of Crane's committed - the
 /// top-level page the host loaded: that of the navigation that replaced its
-/// top-level traversable's initial about:blank. Its old entry is null (step
-/// 7.4: the initial about:blank's is never kept), its new entry the entry it
-/// was loaded with - its document state's first - and its type "replace".
+/// top-level traversable's initial about:blank, which the host never made.
+/// Its old entry is null (there is no entry before it), its new entry the
+/// entry it was loaded with - its document state's first - and its type
+/// "replace".
 fn hostActivation(internal: *InternalState, s: navigation_entries.Scope, current: *const joint_history.Entry) ?*runtime.Instance {
     var first: *const joint_history.Entry = current;
     for (s.history.entries.items) |*entry| {
@@ -1004,6 +1005,12 @@ fn kindOf(navigation_type: joint_history.NavigationType) Kind {
 /// A traversal's target that is not in the entry list - which step 4's
 /// same-origin condition rules out in the spec - gets a new entry object as
 /// for a push.
+///
+/// Deviation, stated: History's traversal sets the traversable's current
+/// step before it navigates the navigables that change documents (the spec
+/// sets it once they are all updated), so for a traversal the current entry
+/// - the old entry here, and what navigation.currentEntry reads in the
+/// listener - is already the target.
 fn pageSwapActivationHook(window: *runtime.Instance, swap: *const dom.navigation_api.PageSwap) ?*runtime.Instance {
     const target = targetOf(window) orelse return null;
     const instance = target.instance;
