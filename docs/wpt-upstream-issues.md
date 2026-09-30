@@ -5,7 +5,9 @@ times out in every shipping engine - and the upstream issue filed for each. The
 exclusions live in `tools/wpt_subset.py`'s EXCLUDE table, which cites the issue.
 
 **When an issue closes:** check that the fix is in the WPT snapshot
-(`tests/wpt`, the zig-whatwg/wpt fork), delete the file's EXCLUDE entry,
+(`tests/wpt`, the zig-whatwg/wpt fork; the upstream commit it is built on is
+in its `.crane-upstream-revision`, and `CRANE-UPSTREAM.md` there says how to
+move it), delete the file's EXCLUDE entry,
 re-run `python3 tools/wpt_subset.py`, run the file, and move the row below to
 "Resolved".
 
@@ -23,6 +25,11 @@ gh issue list --repo web-platform-tests/wpt --search "63098 63099 63100" --state
 | [wpt#63099](https://github.com/web-platform-tests/wpt/issues/63099) | 2026-09-30 | `html/browsers/history/the-history-interface/joint_session_history/002.html` | Its third subtest waits for `document.open()` to fire `pageshow` and add a history entry - the pre-whatwg/html#3946 model |
 | [wpt#63100](https://github.com/web-platform-tests/wpt/issues/63100) | 2026-09-30 | `html/browsers/history/the-location-interface/location_replace_session_history.html` | Completes only if an iframe's document is restored from session history without reloading (optional bfcache); times out in Servo, where it was written, too |
 
+**Re-checked 2026-09-30 against upstream afe89a5df4** (the snapshot rebuilt on
+wpt.fyi's aligned Chrome/Firefox/Safari revision, from fae291ef5): all four files
+are unchanged upstream since fae291ef5, all three issues are open, and the
+worklist regenerated against the new manifest still excludes all four.
+
 ## Resolved
 
 None yet.
@@ -31,5 +38,6 @@ None yet.
 
 `html/browsers/browsing-the-web/history-traversal/pageswap/pageswap-push-navigation-hidden-document.html`
 also times out in Chrome, Firefox and Safari, but because `test_driver.minimize_window()` cannot hide a
-window in wpt.fyi's automated runs - an infrastructure limit, not a test bug. Crane can pass it once its
-test_driver implements `minimize_window` by marking the page hidden, so it stays in the worklist.
+window in wpt.fyi's automated runs - an infrastructure limit, not a test bug. Crane's test_driver
+implements `minimize_window` by marking the page hidden, and the file PASSES in Crane since the testdriver
+merge (822673be0, 2026-09-30) - the one file in the worklist all three shipping browsers time out on.

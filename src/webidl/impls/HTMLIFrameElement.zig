@@ -486,6 +486,7 @@ fn parseHtmlForIframe(
             .scripting_enabled = scripting_enabled,
             .window = window_instance,
             .document = document_instance,
+            .script_loader = html_module.embedder_scripts.forRealm(runtime_ctx),
             .byte_stream = if (byte_stream) |stream| .{
                 .content_type = stream.content_type,
                 .parent_encoding = parent_encoding,
@@ -2292,9 +2293,9 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
 /// dom.navigables: HTML "follow the hyperlink created by" `subject`, an `a`
 /// or `area` element (4.6.4), with no hyperlink suffix.
 ///
-/// Not modelled, stated: the hyperlink's referrer policy and user
-/// involvement, and blob URL entries (step 6's noopener for a blob: URL).
-fn followHyperlink(subject: *runtime.Instance) void {
+/// Not modelled, stated: the hyperlink's referrer policy, and blob URL
+/// entries (step 6's noopener for a blob: URL).
+fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navigation_api.UserInvolvement) void {
     const document = (interfaces.Node.get_ownerDocument(subject) catch null) orelse return;
     // Step 1: "If subject cannot navigate, then return": its node document is
     // not fully active (it has no Window), or it is not an a element and not
@@ -2330,9 +2331,8 @@ fn followHyperlink(subject: *runtime.Instance) void {
     const noopener = hasLinkType(rel_value, "noopener") or hasLinkType(rel_value, "noreferrer") or
         (!hasLinkType(rel_value, "opener") and std.ascii.eqlIgnoreCase(target, "_blank"));
 
-    // Steps 7-11. Not modelled, stated: user involvement (a script click is
-    // "none"; a user's would be "activation").
-    navigateByTarget(document, .{ .target = target, .url = url, .noopener = noopener, .source_element = subject });
+    // Steps 7-11: navigate with the given user involvement.
+    navigateByTarget(document, .{ .target = target, .url = url, .noopener = noopener, .source_element = subject, .user_involvement = user_involvement });
 }
 
 /// The target of the first base element in `document` that has one, or "".
@@ -2407,7 +2407,10 @@ fn navigateFromLocation(ctx: ?*anyopaque, url: []const u8, request: html_core.wi
     if (integration.browsing_context == null or integration.state == .discarded) return false;
     var behavior = request.history_behavior;
     if (activeDocumentOf(integration)) |document| {
-        if (!document_lifecycle.isCompletelyLoaded(document)) behavior = .replace;
+        // Step 3: "If location's relevant Document is not yet completely
+        // loaded, and the incumbent global object does not have transient
+        // activation, then set historyHandling to "replace"."
+        if (!document_lifecycle.isCompletelyLoaded(document) and !html_module.user_activation.incumbentHasTransientActivation()) behavior = .replace;
     }
     navigate(integration, url, .{
         .source_document = if (request.source_document) |d| @ptrCast(@alignCast(d)) else null,

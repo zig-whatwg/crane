@@ -130,14 +130,17 @@ pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
 }
 
 /// Operation: blur
+/// HTMLOrSVGElement: the unfocusing steps (src/html/focus.zig, shared with
+/// HTMLElement and the mixin).
 pub fn call_blur(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    @import("html").focus.blurMethod(instance);
 }
 
 /// Operation: focus
+/// HTMLOrSVGElement: the focusing steps (src/html/focus.zig, shared with
+/// HTMLElement and the mixin).
 pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FocusOptions)) anyerror!void {
-    _ = instance;
+    // preventScroll and focusVisible: nothing is rendered or scrolled.
     _ = options;
-    return error.NotImplemented;
+    @import("html").focus.focusMethod(instance);
 }

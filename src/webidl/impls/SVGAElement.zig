@@ -49,7 +49,6 @@ const xlink_namespace = "http://www.w3.org/1999/xlink";
 /// to follow, neither an href nor an xlink:href attribute, nothing;
 /// otherwise follow the hyperlink (dom.navigables).
 fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) void {
-    _ = event;
     const has_href = interfaces.Element.call_hasAttribute(target, runtime.DOMString.initInterned("href")) catch false;
     const has_xlink_href = interfaces.Element.call_hasAttributeNS(target, runtime.DOMString.initInterned(xlink_namespace), runtime.DOMString.initInterned("href")) catch false;
     if (!has_href and !has_xlink_href) return;
@@ -61,7 +60,8 @@ fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) vo
         const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
         installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
     }
-    navigables.followHyperlink(target);
+    // "With userInvolvement set to event's user navigation involvement."
+    navigables.followHyperlink(target, @import("html").user_activation.userNavigationInvolvement(event));
 }
 
 /// Deinitialize instance

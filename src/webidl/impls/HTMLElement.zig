@@ -798,20 +798,11 @@ pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(runti
     }
 }
 
-/// Operation: blur
+/// Operation: blur (HTMLOrSVGElement): the unfocusing steps
+/// (src/html/focus.zig, shared with SVGElement and the mixin).
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-blur
 pub fn call_blur(instance: *runtime.Instance) anyerror!void {
-    // Run the unfocusing steps
-    // In a full implementation, this would:
-    // 1. Remove focus from this element
-    // 2. Fire blur event
-    // 3. Update document.activeElement
-    const internal = getInternalState(instance) orelse return;
-    internal.was_focused_by_script = false;
-
-    // Fire blur event (simplified)
-    // TODO(events): fire "blur" at the element - nothing is dispatched
-    // yet. (This used to read the onblur handler and drop it.)
+    @import("html").focus.blurMethod(instance);
 }
 
 /// Operation: click
@@ -931,37 +922,13 @@ pub fn call_hidePopover(instance: *runtime.Instance) anyerror!void {
     // yet. (This used to read the ontoggle handler and drop it.)
 }
 
-/// Operation: focus
+/// Operation: focus (HTMLOrSVGElement): the focusing steps
+/// (src/html/focus.zig, shared with SVGElement and the mixin).
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-focus
-///
-/// The focus(options) method steps are:
-/// 1. If this element is a focusable element, run the focusing steps for it.
-/// 2. Otherwise, do nothing.
-///
-/// For now, we implement a simplified version that:
-/// - Updates document.activeElement
-/// - Fires focus event
-/// - TODO: Check focusability, handle preventScroll option
 pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FocusOptions)) anyerror!void {
-    const internal = getInternalState(instance) orelse return;
-    _ = options; // FocusOptions - preventScroll, focusVisible
-
-    // Mark as focused by script
-    internal.was_focused_by_script = true;
-
-    // Get the owner document and update its activeElement
-    // Per spec: "the Document of the area element is the active document of the
-    // browsing context, and its activeElement is the element"
-    const NodeImpl = @import("Node.zig");
-    if (NodeImpl.get_ownerDocument(instance) catch null) |owner_doc| {
-        const DocumentImpl = @import("Document.zig");
-        DocumentImpl.setActiveElement(owner_doc, instance);
-    }
-
-    // Fire focus event (simplified)
-    // TODO: Fire proper FocusEvent with relatedTarget
-    // TODO(events): fire "focus" at the element - nothing is dispatched
-    // yet. (This used to read the onfocus handler and drop it.)
+    // preventScroll and focusVisible: nothing is rendered or scrolled.
+    _ = options;
+    @import("html").focus.focusMethod(instance);
 }
 
 /// Operation: attachInternals
