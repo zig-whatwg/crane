@@ -40,192 +40,19 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Script type enumeration
-/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#concept-script-type
-pub const ScriptType = enum {
-    /// Not yet determined or unsupported type
-    null,
-    /// Classic JavaScript script
-    classic,
-    /// JavaScript module script
-    module,
-    /// Import map
-    importmap,
-    /// Speculation rules
-    speculationrules,
-};
+// The script element's processing-model state - its type and result, and
+// the flags "prepare the script element" reads and sets - is defined in
+// html/script_element.zig, where html's processing model can see it too.
+// This impl keeps one per element (in its registry block, for the element's
+// life) and installs the hook that reaches it.
+const script_element_state = @import("html").script_element;
 
-/// Script result type
-/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#concept-script-result
-pub const ScriptResult = union(enum) {
-    /// Initial state before preparation
-    uninitialized,
-    /// Error state (failed to load/parse)
-    null,
-    /// Successfully prepared classic script
-    script: ClassicScript,
-    /// Successfully prepared module script
-    module_script: ModuleScript,
-    /// Import map parse result
-    import_map_result: void, // TODO: Implement import map result type
-    /// Speculation rules parse result
-    speculation_rules_result: void, // TODO: Implement speculation rules result type
-};
-
-/// Classic script representation
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#classic-script
-pub const ClassicScript = struct {
-    /// The script source text
-    source_text: []const u8,
-    /// Base URL for the script
-    base_url: []const u8,
-    /// Settings object (document's origin, etc.)
-    settings_object: ?*runtime.Instance,
-    /// Whether script had a parse error
-    parse_error: bool,
-    /// Muted errors flag (for cross-origin scripts)
-    muted_errors: bool,
-
-    pub fn init(source: []const u8, base: []const u8) ClassicScript {
-        return .{
-            .source_text = source,
-            .base_url = base,
-            .settings_object = null,
-            .parse_error = false,
-            .muted_errors = false,
-        };
-    }
-};
-
-/// Module script representation
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-script
-pub const ModuleScript = struct {
-    /// The script source text
-    source_text: []const u8,
-    /// Base URL for the script
-    base_url: []const u8,
-    /// Settings object (document's origin, etc.)
-    settings_object: ?*runtime.Instance,
-    /// The module record (V8 compiled module)
-    module_record: ?*anyopaque,
-    /// Whether script had a parse error
-    parse_error: bool,
-    /// Parse error details
-    parse_error_message: ?[]const u8,
-    /// Muted errors flag (for cross-origin scripts)
-    muted_errors: bool,
-    /// Credentials mode for fetching imports
-    credentials_mode: CredentialsMode,
-
-    pub const CredentialsMode = enum {
-        same_origin,
-        include,
-        omit,
-    };
-
-    pub fn init(source: []const u8, base: []const u8) ModuleScript {
-        return .{
-            .source_text = source,
-            .base_url = base,
-            .settings_object = null,
-            .module_record = null,
-            .parse_error = false,
-            .parse_error_message = null,
-            .muted_errors = false,
-            .credentials_mode = .same_origin,
-        };
-    }
-};
-
-/// Internal state for HTMLScriptElement
+/// Internal state for HTMLScriptElement: the script element's state.
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
-pub const InternalState = struct {
-    allocator: std.mem.Allocator,
+pub const InternalState = script_element_state.State;
 
-    /// The parser document - set by HTML/XML parser on inserted scripts
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#parser-document
-    /// Scripts with non-null parser_document are "parser-inserted"
-    parser_document: ?*runtime.Instance,
-
-    /// The preparation-time document - prevents cross-document execution
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#preparation-time-document
-    preparation_time_document: ?*runtime.Instance,
-
-    /// Force async flag - initially true, set false by parser
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-force-async
-    force_async: bool,
-
-    /// From external file flag - has src attribute
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#concept-script-external
-    from_external_file: bool,
-
-    /// Ready to be parser-executed flag - used for parser-inserted scripts
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#ready-to-be-parser-executed
-    ready_to_be_parser_executed: bool,
-
-    /// Already started flag - prevents re-execution
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#already-started
-    already_started: bool,
-
-    /// Delaying the load event flag
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#concept-script-delay-load
-    delaying_the_load_event: bool,
-
-    /// Script type (classic, module, importmap, speculationrules, or null)
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#concept-script-type
-    script_type: ScriptType,
-
-    /// Script result
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#concept-script-result
-    result: ScriptResult,
-
-    /// Steps to run when the result is ready (for async/deferred scripts)
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#steps-to-run-when-the-result-is-ready
-    steps_to_run_when_ready: ?*const fn (*runtime.Instance) void,
-
-    /// Cached script source text (for inline scripts)
-    cached_source_text: ?[]const u8,
-
-    /// The URL an external script was fetched from, owned here.
-    ///
-    /// The script's base URL has to outlive "prepare the script element": a
-    /// deferred, async or parser-blocking script executes long after the
-    /// preparation that resolved its `src` has returned, and the resolved URL
-    /// used to be freed on that return, leaving `ClassicScript.base_url`
-    /// pointing into freed memory by the time the script ran.
-    script_url: ?[]const u8,
-
-    pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-            .parser_document = null,
-            .preparation_time_document = null,
-            .force_async = true, // Initially true per spec
-            .from_external_file = false,
-            .ready_to_be_parser_executed = false,
-            .already_started = false,
-            .delaying_the_load_event = false,
-            .script_type = .null,
-            .result = .uninitialized,
-            .steps_to_run_when_ready = null,
-            .cached_source_text = null,
-            .script_url = null,
-        };
-    }
-
-    pub fn deinit(self: *InternalState) void {
-        // Free cached source text if allocated
-        if (self.cached_source_text) |text| {
-            self.allocator.free(text);
-        }
-        if (self.script_url) |url| {
-            self.allocator.free(url);
-        }
-    }
-};
-
-/// Get the internal state from an instance
-/// Made public for use by script execution module
+/// Get the internal state from an instance - also what `script_element.of`
+/// answers, for html's script processing model.
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
@@ -252,6 +79,8 @@ pub fn init(
         .mark_parser_inserted = &markParserInsertedStep,
         .mark_already_started = &markAlreadyStartedStep,
     });
+    // And html's script processing model reaches its state.
+    script_element_state.install(.{ .state = &getInternal });
 
     // Chain to parent class (HTMLElement) which chains to Element → Node → EventTarget
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
@@ -295,172 +124,19 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 }
 
 // =============================================================================
-// Script Element Helpers (for parser integration)
+// Script element state, as this impl's own steps read it
 // =============================================================================
 
-/// Set the parser document for this script element
-/// Called by the HTML parser when inserting the script
-pub fn setParserDocument(instance: *runtime.Instance, document: ?*runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        internal.parser_document = document;
-    }
+/// Whether the script is parser-inserted: its parser document is not null.
+fn isParserInserted(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.parser_document != null;
 }
 
-/// Get the parser document for this script element
-pub fn getParserDocument(instance: *runtime.Instance) ?*runtime.Instance {
-    if (getInternal(instance)) |internal| {
-        return internal.parser_document;
-    }
-    return null;
-}
-
-/// Set force_async to false (called by parser)
-pub fn clearForceAsync(instance: *runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        internal.force_async = false;
-    }
-}
-
-/// Check if script is parser-inserted
-pub fn isParserInserted(instance: *runtime.Instance) bool {
-    if (getInternal(instance)) |internal| {
-        return internal.parser_document != null;
-    }
-    return false;
-}
-
-/// Check if script has already started
-pub fn hasAlreadyStarted(instance: *runtime.Instance) bool {
-    if (getInternal(instance)) |internal| {
-        return internal.already_started;
-    }
-    return false;
-}
-
-/// Set already_started flag
-pub fn setAlreadyStarted(instance: *runtime.Instance, value: bool) void {
-    if (getInternal(instance)) |internal| {
-        internal.already_started = value;
-    }
-}
-
-/// Get the script type
-pub fn getScriptType(instance: *runtime.Instance) ScriptType {
-    if (getInternal(instance)) |internal| {
-        return internal.script_type;
-    }
-    return .null;
-}
-
-/// Set the script type
-pub fn setScriptType(instance: *runtime.Instance, script_type: ScriptType) void {
-    if (getInternal(instance)) |internal| {
-        internal.script_type = script_type;
-    }
-}
-
-/// Get the script result
-pub fn getResult(instance: *runtime.Instance) ScriptResult {
-    if (getInternal(instance)) |internal| {
-        return internal.result;
-    }
-    return .uninitialized;
-}
-
-/// Set the script result
-pub fn setResult(instance: *runtime.Instance, result: ScriptResult) void {
-    if (getInternal(instance)) |internal| {
-        internal.result = result;
-    }
-}
-
-/// Check if script is ready to be parser-executed
-pub fn isReadyToBeParserExecuted(instance: *runtime.Instance) bool {
-    if (getInternal(instance)) |internal| {
-        return internal.ready_to_be_parser_executed;
-    }
-    return false;
-}
-
-/// Set ready_to_be_parser_executed flag
-pub fn setReadyToBeParserExecuted(instance: *runtime.Instance, value: bool) void {
-    if (getInternal(instance)) |internal| {
-        internal.ready_to_be_parser_executed = value;
-    }
-}
-
-/// Get force_async flag
-pub fn getForceAsync(instance: *runtime.Instance) bool {
-    if (getInternal(instance)) |internal| {
-        return internal.force_async;
-    }
-    return true;
-}
-
-/// Set preparation-time document
-pub fn setPreparationTimeDocument(instance: *runtime.Instance, document: ?*runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        internal.preparation_time_document = document;
-    }
-}
-
-/// Get preparation-time document
-pub fn getPreparationTimeDocument(instance: *runtime.Instance) ?*runtime.Instance {
-    if (getInternal(instance)) |internal| {
-        return internal.preparation_time_document;
-    }
-    return null;
-}
-
-/// Set from_external_file flag
-pub fn setFromExternalFile(instance: *runtime.Instance, value: bool) void {
-    if (getInternal(instance)) |internal| {
-        internal.from_external_file = value;
-    }
-}
-
-/// Get from_external_file flag
-pub fn isFromExternalFile(instance: *runtime.Instance) bool {
-    if (getInternal(instance)) |internal| {
-        return internal.from_external_file;
-    }
-    return false;
-}
-
-/// Cache the source text for inline scripts
-pub fn cacheSourceText(instance: *runtime.Instance, text: []const u8) !void {
-    if (getInternal(instance)) |internal| {
-        // Free old cached text if any
-        if (internal.cached_source_text) |old| {
-            internal.allocator.free(old);
-        }
-        internal.cached_source_text = try internal.allocator.dupe(u8, text);
-    }
-}
-
-/// Get cached source text
-pub fn getCachedSourceText(instance: *runtime.Instance) ?[]const u8 {
-    if (getInternal(instance)) |internal| {
-        return internal.cached_source_text;
-    }
-    return null;
-}
-
-/// Record the URL an external script comes from, taking a copy the element
-/// owns. Returns the element's copy - the one a script result may point at -
-/// or null when the element has no internal state.
-pub fn setScriptUrl(instance: *runtime.Instance, url: []const u8) !?[]const u8 {
-    const internal = getInternal(instance) orelse return null;
-    const owned = try internal.allocator.dupe(u8, url);
-    if (internal.script_url) |old| internal.allocator.free(old);
-    internal.script_url = owned;
-    return owned;
-}
-
-/// The URL recorded by `setScriptUrl`, if any.
-pub fn getScriptUrl(instance: *runtime.Instance) ?[]const u8 {
-    const internal = getInternal(instance) orelse return null;
-    return internal.script_url;
+/// The script's already started flag.
+fn hasAlreadyStarted(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.already_started;
 }
 
 // =============================================================================
@@ -739,7 +415,7 @@ pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
 
     // Still cached, because `get_text` reads the cache and `runClassicScript`
     // takes its source from it rather than re-walking the children.
-    try cacheSourceText(instance, value.asSlice());
+    if (getInternal(instance)) |internal| try internal.cacheSourceText(value.asSlice());
 }
 
 /// Setter for charset (obsolete)
