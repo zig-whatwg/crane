@@ -661,9 +661,6 @@ fn matchesPseudoClass(
         .Visited,
         .Hover,
         .Active,
-        .Focus,
-        .FocusVisible,
-        .FocusWithin,
         .Enabled,
         .Disabled,
         .ReadOnly,
@@ -676,6 +673,13 @@ fn matchesPseudoClass(
 
         // :target - HTML's "target element" of the element's document.
         .Target => isTargetElement(element),
+
+        // :focus, :focus-within and :focus-visible - the focus state of the
+        // element's top-level traversable (html.focus, which applies the
+        // focus fixup rule), through the hook Document installs.
+        .Focus => @import("dom").focus_matching.matchesFocus(element),
+        .FocusWithin => @import("dom").focus_matching.matchesFocusWithin(element),
+        .FocusVisible => @import("dom").focus_matching.matchesFocusVisible(element),
 
         // :state(ident) matches an element whose custom state set contains
         // ident. A custom state set exists only for an element whose
