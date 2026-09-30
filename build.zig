@@ -4116,6 +4116,32 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(lint_engine_tests).step);
 
     // ========================================================================
+    // WPT: the wpt.fyi upload package
+    // ========================================================================
+    // tools/wpt_upload_package.zig turns a supervised sweep's reports, result
+    // streams and journals into gzipped wptreport chunks for wpt.fyi, and
+    // `check` dry-runs wpt.fyi's shape checks over a package. It uploads
+    // nothing. `zig build test` runs its tests.
+    const wpt_upload_package_module = b.createModule(.{
+        .root_source_file = b.path("tools/wpt_upload_package.zig"),
+        // A tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const wpt_upload_package_exe = b.addExecutable(.{
+        .name = "wpt_upload_package",
+        .root_module = wpt_upload_package_module,
+    });
+    const wpt_upload_package_step = b.step("wpt-upload-package", "Package a WPT sweep for wpt.fyi (-- build --input=... --manifest=... --out=...), or check a package (-- check <chunk.json.gz>...)");
+    const wpt_upload_package_run = b.addRunArtifact(wpt_upload_package_exe);
+    wpt_upload_package_run.has_side_effects = true;
+    wpt_upload_package_run.setCwd(b.path("."));
+    if (b.args) |args| wpt_upload_package_run.addArgs(args);
+    wpt_upload_package_step.dependOn(&wpt_upload_package_run.step);
+    const wpt_upload_package_tests = b.addTest(.{ .root_module = wpt_upload_package_module });
+    test_step.dependOn(&b.addRunArtifact(wpt_upload_package_tests).step);
+
+    // ========================================================================
     // HELP: Available JavaScript Engines
     // ========================================================================
 

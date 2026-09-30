@@ -10,7 +10,8 @@
 //! 1. A worklist file, when a supervisor spawned this process. Taken verbatim.
 //! 2. Explicit paths on the command line, resolved through MANIFEST.json so a
 //!    virtual URL like `url/x.any.html` finds its `url/x.any.js` source.
-//! 3. MANIFEST.json's `items.testharness`, filtered to the in-scope categories.
+//! 3. MANIFEST.json's `items.testharness`, filtered to the in-scope categories
+//!    - or, with `--full-corpus`, all of it.
 //!    The legacy filesystem walk is an escape hatch for a checkout with no
 //!    usable manifest; it cannot report a denominator.
 
@@ -137,6 +138,19 @@ pub const DiscoveryResult = struct {
     }
 };
 
+/// Why a manifest testharness source the runner has no `FileType` for was
+/// not run. Only a full-corpus run records these; the in-scope run's
+/// exclusion patterns already keep XML documents out.
+pub const xml_document_skip_reason = "XML document (.xhtml/.xht/.svg/.xml): Crane has no XML parser";
+pub const unknown_type_skip_reason = "not a file type the runner executes";
+
+pub fn skipReasonForUnrunnable(path: []const u8) []const u8 {
+    for ([_][]const u8{ ".xhtml", ".xht", ".svg", ".xml" }) |ext| {
+        if (std.mem.endsWith(u8, path, ext)) return xml_document_skip_reason;
+    }
+    return unknown_type_skip_reason;
+}
+
 /// Discover test files
 ///
 /// Uses the official WPT MANIFEST.json to resolve test URLs to source files.
@@ -225,7 +239,10 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
         var manifest = try wpt_manifest.loadManifest(allocator, options.wpt_root);
         defer manifest.deinit();
 
-        var sel = try selection.selectInScope(allocator, &manifest, options.filters.items);
+        // --full-corpus: every testharness source, past the allowlist and the
+        // exclusion patterns (selection.Scope.full_corpus).
+        const scope: selection.Scope = if (options.full_corpus) .full_corpus else .in_scope;
+        var sel = try selection.select(allocator, &manifest, options.filters.items, scope);
         defer sel.deinit();
 
         result.total_in_scope_urls = sel.url_count;
@@ -237,7 +254,14 @@ pub fn discoverTests(allocator: std.mem.Allocator, options: Options) !DiscoveryR
             }
 
             const file_type = config.FileType.fromPath(source_path);
-            if (file_type == .unknown) continue;
+            if (file_type == .unknown) {
+                // In scope, the exclusion patterns already keep these out. A
+                // full-corpus run selected them on purpose, so each one that
+                // cannot run is recorded with its reason: a result wpt.fyi
+                // shows as missing must be accounted for, not vanish.
+                if (options.full_corpus) try result.addSkipped(source_path, skipReasonForUnrunnable(source_path));
+                continue;
+            }
 
             // The manifest describes the upstream tree; our checkout may be
             // sparse, so a listed source is not guaranteed to be on disk.
@@ -570,6 +594,93 @@ test "the legacy scan walks the filesystem and honours exclusions" {
     try testing.expectEqual(@as(usize, 1), result.skipped.items.len);
     try testing.expectEqualStrings("url/resources/helper.any.js", result.skipped.items[0].path);
     try testing.expectEqualStrings("excluded by pattern", result.skipped.items[0].reason);
+}
+
+/// A WPT root with a MANIFEST.json listing `files`, each created on disk.
+fn writeManifestTree(dir: std.Io.Dir, manifest_json: []const u8, files: []const []const u8) !void {
+    try dir.writeFile(std.testing.io, .{ .sub_path = "MANIFEST.json", .data = manifest_json });
+    for (files) |f| {
+        if (std.fs.path.dirname(f)) |d| try dir.createDirPath(std.testing.io, d);
+        try dir.writeFile(std.testing.io, .{ .sub_path = f, .data = "" });
+    }
+}
+
+const full_corpus_manifest =
+    \\{"version": 9, "url_base": "/", "items": {"testharness": {
+    \\  "dom": {"nodes": {"Node-appendChild.html": ["h", [null, {}]]}},
+    \\  "css": {"selectors": {"focus-visible.html": ["h", [null, {}]]}},
+    \\  "html": {"rendering": {"replaced.html": ["h", [null, {}]]}},
+    \\  "svg": {"types": {"SVGLength.svg": ["h", [null, {}]]}}
+    \\}}}
+;
+
+const full_corpus_files = [_][]const u8{
+    "dom/nodes/Node-appendChild.html",
+    "css/selectors/focus-visible.html",
+    "html/rendering/replaced.html",
+    "svg/types/SVGLength.svg",
+};
+
+test "a full-corpus discovery takes every manifest source and names the ones it cannot run" {
+    const allocator = testing.allocator;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try writeManifestTree(tmp.dir, full_corpus_manifest, &full_corpus_files);
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(root);
+
+    var options = testOptions(allocator);
+    defer options.deinit();
+    options.wpt_root = root;
+    options.full_corpus = true;
+
+    var result = try discoverTests(allocator, options);
+    defer result.deinit();
+
+    // css/ is off the allowlist and html/rendering/ is excluded; the full
+    // corpus runs both.
+    try testing.expectEqual(@as(usize, 3), result.test_files.items.len);
+    try testing.expectEqualStrings("css/selectors/focus-visible.html", result.test_files.items[0].path);
+    try testing.expectEqualStrings("dom/nodes/Node-appendChild.html", result.test_files.items[1].path);
+    try testing.expectEqualStrings("html/rendering/replaced.html", result.test_files.items[2].path);
+    try testing.expectEqual(@as(usize, 4), result.total_in_scope_urls);
+    try testing.expectEqual(@as(usize, 4), result.total_manifest_urls);
+
+    // The .svg is a real testharness test the runner has no file type for:
+    // it is recorded with its reason, not dropped.
+    try testing.expectEqual(@as(usize, 1), result.skipped.items.len);
+    try testing.expectEqualStrings("svg/types/SVGLength.svg", result.skipped.items[0].path);
+    try testing.expectEqualStrings(xml_document_skip_reason, result.skipped.items[0].reason);
+}
+
+test "without --full-corpus the same tree is filtered to the runner's scope" {
+    const allocator = testing.allocator;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try writeManifestTree(tmp.dir, full_corpus_manifest, &full_corpus_files);
+    const root = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(root);
+
+    var options = testOptions(allocator);
+    defer options.deinit();
+    options.wpt_root = root;
+
+    var result = try discoverTests(allocator, options);
+    defer result.deinit();
+
+    try testing.expectEqual(@as(usize, 1), result.test_files.items.len);
+    try testing.expectEqualStrings("dom/nodes/Node-appendChild.html", result.test_files.items[0].path);
+    try testing.expectEqual(@as(usize, 1), result.total_in_scope_urls);
+}
+
+test "skipReasonForUnrunnable names XML documents apart from other file types" {
+    try testing.expectEqualStrings(xml_document_skip_reason, skipReasonForUnrunnable("a/b.xhtml"));
+    try testing.expectEqualStrings(xml_document_skip_reason, skipReasonForUnrunnable("a/b.xht"));
+    try testing.expectEqualStrings(xml_document_skip_reason, skipReasonForUnrunnable("a/b.svg"));
+    try testing.expectEqualStrings(xml_document_skip_reason, skipReasonForUnrunnable("a/b.xml"));
+    try testing.expectEqualStrings(unknown_type_skip_reason, skipReasonForUnrunnable("a/b.sharedworker.js"));
 }
 
 test "globMatch" {

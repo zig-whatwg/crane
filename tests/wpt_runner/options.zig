@@ -37,6 +37,11 @@ pub const Options = struct {
     /// MANIFEST.json. Kept as an escape hatch for a checkout whose manifest is
     /// stale or absent; it cannot report a denominator.
     legacy_scan: bool = false,
+    /// Select every testharness source in MANIFEST.json (`--full-corpus`),
+    /// not just the in-scope ones: the allowlist and the exclusion patterns in
+    /// config.zig do not apply, directory arguments still narrow. This is the
+    /// run a wpt.fyi upload is made from; the 0.1 gate is not.
+    full_corpus: bool = false,
     /// Report what would run and exit without executing anything.
     discover_only: bool = false,
     /// Write the discovered source list, one path per line, to this file.
@@ -135,13 +140,39 @@ pub const Options = struct {
     /// A supervised run is several processes, each covering a slice of the
     /// worklist; naming the reports after the slice keeps a later child from
     /// silently overwriting an earlier one's results.
+    ///
+    /// A shard's worklist starts at index 0 like every other shard's, so a
+    /// journalled child also names its report after its journal
+    /// (`wptreport-journal.shard1-0.json`): with the start index alone, the
+    /// shards of one `--parallel` run overwrote a single wptreport-0.json.
     pub fn reportPath(self: Options, allocator: std.mem.Allocator) ![]const u8 {
         if (self.isChild()) {
-            const name = try std.fmt.allocPrint(allocator, "wptreport-{d}.json", .{self.start_index});
+            const name = if (self.journal_path) |j|
+                try std.fmt.allocPrint(allocator, "wptreport-{s}-{d}.json", .{ journalStem(j), self.start_index })
+            else
+                try std.fmt.allocPrint(allocator, "wptreport-{d}.json", .{self.start_index});
             defer allocator.free(name);
             return std.fs.path.join(allocator, &.{ self.output_dir, name });
         }
         return std.fs.path.join(allocator, &.{ self.output_dir, "wptreport.json" });
+    }
+
+    /// Where a journalled run streams its wptreport results, or null if it
+    /// keeps no journal. Caller owns the returned path.
+    ///
+    /// The report proper is written when a process finishes, so a child that
+    /// crashes or is killed by the stall watchdog loses every result it held.
+    /// The stream gets each file's results as JSON lines when the file is
+    /// done, beside the journal and appended across restarts as the journal
+    /// is: `journal.shard1.jsonl` streams to `journal.shard1.wptreport.jsonl`.
+    pub fn resultsStreamPath(self: Options, allocator: std.mem.Allocator) !?[]const u8 {
+        const journal = (try self.journalPath(allocator)) orelse return null;
+        defer allocator.free(journal);
+        const dir = std.fs.path.dirname(journal);
+        const name = try std.fmt.allocPrint(allocator, "{s}.wptreport.jsonl", .{journalStem(journal)});
+        defer allocator.free(name);
+        if (dir) |d| return try std.fs.path.join(allocator, &.{ d, name });
+        return try allocator.dupe(u8, name);
     }
 
     /// Check if a test path matches the filters
@@ -173,6 +204,12 @@ pub const Options = struct {
         return false;
     }
 };
+
+/// A journal's file name without its directory or `.jsonl` extension.
+fn journalStem(journal_path: []const u8) []const u8 {
+    const base = std.fs.path.basename(journal_path);
+    return if (std.mem.endsWith(u8, base, ".jsonl")) base[0 .. base.len - ".jsonl".len] else base;
+}
 
 /// Check if a path looks like a test file
 pub fn isTestFile(path: []const u8) bool {
@@ -210,6 +247,8 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
             options.pattern = arg["--pattern=".len..];
         } else if (std.mem.eql(u8, arg, "--legacy-scan")) {
             options.legacy_scan = true;
+        } else if (std.mem.eql(u8, arg, "--full-corpus")) {
+            options.full_corpus = true;
         } else if (std.mem.eql(u8, arg, "--discover-only")) {
             options.discover_only = true;
         } else if (std.mem.startsWith(u8, arg, "--worklist-out=")) {
@@ -305,6 +344,53 @@ test "parseArgs routes a path with a test extension to specific_files" {
     try testing.expectEqualStrings("url/url-constructor.any.js", options.specific_files.items[0]);
     try testing.expectEqual(@as(usize, 1), options.filters.items.len);
     try testing.expectEqualStrings("dom/", options.filters.items[0]);
+}
+
+test "--full-corpus is off by default and parsed when given" {
+    const allocator = std.testing.allocator;
+
+    var plain = try parseArgs(allocator, &.{"dom/"});
+    defer plain.deinit();
+    try std.testing.expect(!plain.full_corpus);
+
+    var full = try parseArgs(allocator, &.{ "--full-corpus", "--discover-only", "--worklist-out=full.txt", "css/" });
+    defer full.deinit();
+    try std.testing.expect(full.full_corpus);
+    try std.testing.expect(full.discover_only);
+    try std.testing.expectEqualStrings("full.txt", full.worklist_out.?);
+    // A directory argument still narrows a full-corpus run.
+    try std.testing.expectEqual(@as(usize, 1), full.filters.items.len);
+}
+
+test "a journalled run streams its results beside the journal" {
+    const allocator = std.testing.allocator;
+
+    var none = try parseArgs(allocator, &.{"dom/"});
+    defer none.deinit();
+    try std.testing.expectEqual(@as(?[]const u8, null), try none.resultsStreamPath(allocator));
+
+    var child = try parseArgs(allocator, &.{ "--from-file=out/worklist.shard1.txt", "--journal=out/journal.shard1.jsonl", "--output=out" });
+    defer child.deinit();
+    const path = (try child.resultsStreamPath(allocator)).?;
+    defer allocator.free(path);
+    try std.testing.expectEqualStrings("out/journal.shard1.wptreport.jsonl", path);
+}
+
+test "shards of one run write differently named reports" {
+    const allocator = std.testing.allocator;
+
+    // Every shard's worklist starts at 0, so naming a report after the start
+    // index alone made three shards overwrite one wptreport-0.json.
+    var a = try parseArgs(allocator, &.{ "--from-file=o/worklist.shard0.txt", "--journal=o/journal.shard0.jsonl", "--output=o" });
+    defer a.deinit();
+    var b = try parseArgs(allocator, &.{ "--from-file=o/worklist.shard1.txt", "--journal=o/journal.shard1.jsonl", "--output=o" });
+    defer b.deinit();
+    const pa = try a.reportPath(allocator);
+    defer allocator.free(pa);
+    const pb = try b.reportPath(allocator);
+    defer allocator.free(pb);
+    try std.testing.expect(!std.mem.eql(u8, pa, pb));
+    try std.testing.expectEqualStrings("o/wptreport-journal.shard0-0.json", pa);
 }
 
 test "parseArgs reads supervisor flags" {

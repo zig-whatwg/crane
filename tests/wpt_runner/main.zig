@@ -689,9 +689,29 @@ pub fn executeTests(
         null;
     defer if (run_journal) |*j| j.deinit();
 
+    // Beside the journal, each finished file's results as JSON lines
+    // (result_reporter.ResultStream): the report below is written only when
+    // this process finishes, so a crash or a stall kill would lose every
+    // result it held. Created and appended exactly as the journal is.
+    const stream_path = try options.resultsStreamPath(allocator);
+    defer if (stream_path) |p| allocator.free(p);
+    var result_stream: ?result_reporter.ResultStream = if (stream_path) |p|
+        if (options.appendsToJournal())
+            try result_reporter.ResultStream.append(allocator, p)
+        else
+            try result_reporter.ResultStream.create(allocator, p)
+    else
+        null;
+    defer if (result_stream) |*s| s.deinit();
+
     for (discovery.test_files.items, 0..) |test_file, file_offset| {
         var tally: FileTally = FileTally.start();
         tally.index = discovery.base_index + file_offset;
+        // This file's results are the report's entries from here on. They are
+        // streamed BEFORE the journal record: a crash between the two then
+        // leaves real results under a CRASH record the supervisor writes, never
+        // a finished record whose results are missing.
+        const file_first = report.results.items.len;
 
         // Load content once per test file (still needed for parsing metadata)
         const content = loadTestContent(allocator, options, test_file) catch |err| {
@@ -707,6 +727,7 @@ pub fn executeTests(
             error_result.deinit(allocator);
 
             tally.status = .@"error";
+            if (result_stream) |*rs| try rs.writeResults(report.resultsSince(file_first));
             if (run_journal) |*j| try tally.record(j, test_file.path, currentAgent(browser));
             continue;
         };
@@ -726,6 +747,7 @@ pub fn executeTests(
             error_result.deinit(allocator);
 
             tally.status = .@"error";
+            if (result_stream) |*rs| try rs.writeResults(report.resultsSince(file_first));
             if (run_journal) |*j| try tally.record(j, test_file.path, currentAgent(browser));
             continue;
         };
@@ -844,6 +866,7 @@ pub fn executeTests(
         // so the file is done. Journal it before starting the next one:
         // anything after this point that kills the process must not be blamed
         // on this test.
+        if (result_stream) |*rs| try rs.writeResults(report.resultsSince(file_first));
         if (run_journal) |*j| try tally.record(j, test_file.path, currentAgent(browser));
 
         // Reset HTTP connection pool between test files to prevent connection exhaustion
