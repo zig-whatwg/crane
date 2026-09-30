@@ -39,14 +39,18 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for hasBeenActive
+/// Getter for hasBeenActive (HTML 6.4.4): "return true if this's relevant
+/// global object has sticky activation, and false otherwise."
 pub fn get_hasBeenActive(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const user_activation = @import("html").user_activation;
+    const window = user_activation.windowOfRealm(instance.ctx) orelse return false;
+    return user_activation.hasStickyActivation(window);
 }
 
-/// Getter for isActive
+/// Getter for isActive (HTML 6.4.4): "return true if this's relevant global
+/// object has transient activation, and false otherwise."
 pub fn get_isActive(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    const user_activation = @import("html").user_activation;
+    const window = user_activation.windowOfRealm(instance.ctx) orelse return false;
+    return user_activation.hasTransientActivation(window);
 }

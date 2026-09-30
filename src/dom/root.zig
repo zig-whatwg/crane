@@ -109,6 +109,13 @@ pub const document_internals = @import("document_internals.zig");
 /// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule
 /// objects wrap.
 pub const cssom = @import("cssom.zig");
+/// HTML's user activation timestamps, the focused area of a document and a
+/// document's visibility state: the hooks the user input algorithms reach
+/// Window's and Document's state through (src/html/user_activation.zig,
+/// focus.zig).
+pub const user_activation_state = @import("user_activation_state.zig");
+pub const focused_area = @import("focused_area.zig");
+pub const visibility_state = @import("visibility_state.zig");
 
 // Re-export slot_helpers functions
 pub const isElement = slot_helpers.isElement;

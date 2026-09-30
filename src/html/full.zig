@@ -235,6 +235,17 @@ pub const WorkerHost = worker_host.WorkerHost;
 /// they move onto runTaskInRealm.
 pub const worker_v8_context = worker_host;
 
+/// The embedder's answer for the scripts of frame and popup documents
+/// (the WPT runner's testdriver vendor file).
+pub const embedder_scripts = @import("embedder_scripts.zig");
+/// HTML 6.4 user activation.
+pub const user_activation = @import("user_activation.zig");
+/// HTML 6.6 focus: focusable areas, the focusing steps, activeElement.
+pub const focus = @import("focus.zig");
+/// The events a user's pointer and keyboard produce, and their default
+/// actions (UI Events, Pointer Events, Input Events).
+pub const user_input = @import("user_input.zig");
+
 // ============================================================================
 // Re-exports for Testing Convenience
 // ============================================================================

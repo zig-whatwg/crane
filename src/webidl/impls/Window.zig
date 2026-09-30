@@ -233,6 +233,12 @@ pub const InternalState = struct {
     /// Set by context_manager.createWindowBoundToGlobal().
     bound_v8_global: ?*anyopaque = null,
 
+    /// HTML 6.4.1: the last activation timestamp and the last
+    /// history-action activation timestamp, positive infinity until the
+    /// first activation notification. Read and written by
+    /// src/html/user_activation.zig through dom.user_activation_state.
+    user_activation: @import("dom").user_activation_state.Timestamps = .{},
+
     pub fn init(allocator: Allocator) !InternalState {
         return .{
             .allocator = allocator,
@@ -410,6 +416,9 @@ pub fn init(
     @import("dom").navigable_container.install(.{ .of = &containerOf });
     // A frame's host binds the Window to the global its realm made here.
     @import("dom").window_globals.install(.{ .bind = &setBoundV8Global });
+    // The user activation algorithms (src/html/user_activation.zig) keep a
+    // window's activation timestamps here.
+    @import("dom").user_activation_state.install(.{ .get = &userActivationTimestamps, .set = &setUserActivationTimestamps });
     // The WindowOrWorkerGlobalScope mixin reads a window's settings here.
     @import("dom").global_settings.install(.{
         .owns = &isWindow,
@@ -445,6 +454,20 @@ pub fn init(
 
 fn isWindow(global: *runtime.Instance) bool {
     return global.stateAs(State) != null;
+}
+
+/// dom.user_activation_state: `window`'s activation timestamps.
+fn userActivationTimestamps(window: *runtime.Instance) ?@import("dom").user_activation_state.Timestamps {
+    if (!isWindow(window)) return null;
+    const internal = getInternal(window) orelse return null;
+    return internal.user_activation;
+}
+
+/// dom.user_activation_state: set `window`'s activation timestamps.
+fn setUserActivationTimestamps(window: *runtime.Instance, timestamps: @import("dom").user_activation_state.Timestamps) void {
+    if (!isWindow(window)) return;
+    const internal = getInternal(window) orelse return;
+    internal.user_activation = timestamps;
 }
 
 /// The settings object's origin, serialized; the caller owns it.

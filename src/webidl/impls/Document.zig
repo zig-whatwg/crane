@@ -214,6 +214,10 @@ pub const InternalState = struct {
 
     // === Active element (focus) ===
     active_element: ?*runtime.Instance,
+    /// `active_element`'s slab generation when it was designated
+    /// (dom.focused_area.Designation): a removed element can be collected
+    /// while the document still names it.
+    active_element_generation: u64 = 0,
 
     // === StyleSheetList (DocumentOrShadowRoot mixin) ===
     style_sheets: ?*runtime.Instance,
@@ -641,7 +645,38 @@ pub fn init(
     // Document exists to be cloned.
     @import("dom").cloning_steps.install(&cloningSteps);
 
+    // User input (testdriver lane): the focusing steps designate a document's
+    // focused area (src/html/focus.zig), and a top-level traversable's system
+    // visibility state updates its documents' visibility state, through these
+    // hooks.
+    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea });
+    @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
+
     return instance;
+}
+
+/// dom.focused_area: `document`'s focused area, or null for its viewport.
+fn focusedArea(document: *runtime.Instance) ?@import("dom").focused_area.Designation {
+    const internal = getInternal(document) orelse return null;
+    const element = internal.active_element orelse return null;
+    return .{ .element = element, .generation = internal.active_element_generation };
+}
+
+/// dom.focused_area: designate an element (null: the viewport) as
+/// `document`'s focused area.
+fn setFocusedArea(document: *runtime.Instance, designation: ?@import("dom").focused_area.Designation) void {
+    const internal = getInternal(document) orelse return;
+    internal.active_element = if (designation) |d| d.element else null;
+    internal.active_element_generation = if (designation) |d| d.generation else 0;
+}
+
+/// dom.visibility_state: "update the visibility state" of `document`.
+fn updateVisibilityStateFromHook(document: *runtime.Instance, state: @import("dom").visibility_state.State) void {
+    if (getInternal(document) == null) return;
+    updateVisibilityState(document, switch (state) {
+        .visible => ._visible_,
+        .hidden => ._hidden_,
+    });
 }
 
 /// DOM "clone a single node" step 3.1, for a Document: "set copy's encoding,
@@ -1876,11 +1911,22 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSVa
     return (try engine.retainValue(instance.ctx, observable_array)).take();
 }
 
-/// Getter for activeElement
-/// Returns the deepest element in the document which has focus, or null.
+/// Getter for activeElement (DocumentOrShadowRoot): HTML's activeElement
+/// getter steps, in src/html/focus.zig - the focused area's DOM anchor
+/// retargeted against this document; the body element, else the document
+/// element, when the viewport has the focus.
+///
+/// Stated deviation: the spec applies the focus fixup rule ("When the
+/// designated focused area of the document is removed from that Document in
+/// some way ..., designate the Document's viewport to be the new focused
+/// area of the document") as a state change during "update the rendering";
+/// html.focus.focusedAreaOf applies it when the focused area is read, here
+/// and in every other reader. The rule fires no event, so activeElement
+/// reads the same either way.
+/// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-documentorshadowroot-activeelement
 pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.active_element;
+    if (getInternal(instance) == null) return error.InvalidStateError;
+    return @import("html").focus.activeElement(instance);
 }
 
 /// Set the active element (focused element) for this document.
