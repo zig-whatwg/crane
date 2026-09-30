@@ -240,7 +240,6 @@ src/webidl/impls/Document.zig Node.getInternalState 1
 src/webidl/impls/Document.zig Node.getNextSibling 14
 src/webidl/impls/Document.zig Node.getNodeType 13
 src/webidl/impls/Document.zig Node.getParent 2
-src/webidl/impls/Document.zig Node.get_baseURI 1
 src/webidl/impls/Document.zig Node.init 1
 src/webidl/impls/Document.zig Node.removeNodeFromParent 1
 src/webidl/impls/Document.zig Node.setNodeType 7
