@@ -270,6 +270,17 @@ pub fn domAdapterOnModeSet(mode: html_core.parser.QuirksMode, context: ?*anyopaq
     document_internals.setMode(adapter.document, documentMode(mode)) catch {};
 }
 
+/// Static callback wrapper for an element the "text" insertion mode popped:
+/// a style element's style block updates now ("The element is popped off
+/// the stack of open elements of an HTML parser"). Passed to
+/// tree_builder.setDomAdapterPoppedCallback().
+pub fn domAdapterOnElementPopped(tree_node: *TreeNode, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    if (!tree_node.hasTagName("style")) return;
+    const element = adapter.node_map.get(tree_node) orelse return;
+    dom.style_sheet_owners.poppedByParser(element);
+}
+
 /// The DOM document mode for the parser's.
 pub fn documentMode(mode: html_core.parser.QuirksMode) document_internals.Mode {
     return switch (mode) {
@@ -466,6 +477,9 @@ pub const DomTreeAdapter = struct {
         // children-changed steps wait for its end tag too - is
         // parser-inserted.
         if (std.mem.eql(u8, local_name, "script")) dom.script_elements.markParserInserted(element, self.document);
+        // A style element updates its style block when the parser pops it
+        // (`domAdapterOnElementPopped`), not as it is inserted and filled.
+        if (std.mem.eql(u8, local_name, "style")) dom.style_sheet_owners.createdByParser(element);
 
         for (tree_node.attributes.toSlice()) |attr| appendParsedAttribute(element, attr);
 

@@ -2036,6 +2036,8 @@ pub fn build(b: *std.Build) void {
     // HTML "encoding-parse a URL" (html.encoding_parse) runs the URL parser
     // with a document's encoding.
     html_mod.addImport("api_parser", url_parser_api_mod);
+    // A style sheet's @import rules, for style_sheet_loading.zig.
+    html_mod.addImport("css", css_mod);
 
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls
