@@ -2164,12 +2164,6 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
         return error.NoGlobal;
     };
 
-    // 7b. Patch Document[Symbol.hasInstance] for cross-context instanceof checks.
-    // When iframe.contentDocument is accessed from this context, the returned
-    // Document is from the child context with a different prototype chain.
-    // This custom Symbol.hasInstance checks the internal type info instead.
-    v8.v8_PatchDocumentInstanceOf(isolate, v8_ctx, global);
-
     // 8. Set up Window prototype chain: global → Window.prototype
     const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6);
     if (window_key) |wk| {
