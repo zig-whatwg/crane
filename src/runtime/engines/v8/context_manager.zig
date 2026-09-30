@@ -2170,11 +2170,6 @@ pub fn hydrateWindowContext(comptime namespaces_module: type, options: Hydration
     // This custom Symbol.hasInstance checks the internal type info instead.
     v8.v8_PatchDocumentInstanceOf(isolate, v8_ctx, global);
 
-    // 7c. Patch Event[Symbol.hasInstance] for event instanceof checks.
-    // V8 snapshots don't preserve prototype identity, so event objects created
-    // and dispatched within the runtime fail instanceof Event checks.
-    v8.v8_PatchEventInstanceOf(isolate, v8_ctx, global);
-
     // 8. Set up Window prototype chain: global → Window.prototype
     const window_key = v8.v8_String_NewFromUtf8(isolate, "Window", 6);
     if (window_key) |wk| {
