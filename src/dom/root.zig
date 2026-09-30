@@ -104,6 +104,12 @@ pub const document_internals = @import("document_internals.zig");
 /// The CSSOM's model: what CSSStyleSheet, CSSRuleList and the CSSRule
 /// objects wrap.
 pub const cssom = @import("cssom.zig");
+/// A Document's script lists, currentScript and what the script processing
+/// model asks of it - its ScriptRunner - and its module and import maps.
+pub const document_scripts = @import("document_scripts.zig");
+pub const document_modules = @import("document_modules.zig");
+/// A Document's browsing context's window, as a frame's parser sets it.
+pub const document_browsing_context = @import("document_browsing_context.zig");
 
 // Re-export slot_helpers functions
 pub const isElement = slot_helpers.isElement;

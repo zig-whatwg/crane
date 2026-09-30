@@ -86,14 +86,10 @@ pub const Mode = enum {
     limited_quirks,
 };
 
-/// Speculation rule eagerness levels
+/// Speculation rule eagerness levels - defined with the hook html's script
+/// processing model hands prefetch hints through.
 /// Spec: https://html.spec.whatwg.org/multipage/speculative-loading.html#speculation-rule-eagerness
-pub const SpeculationEagerness = enum {
-    immediate,
-    eager,
-    moderate,
-    conservative,
-};
+pub const SpeculationEagerness = @import("dom").document_scripts.SpeculationEagerness;
 
 /// Internal state for Document implementation
 /// Spec: https://dom.spec.whatwg.org/#concept-document
@@ -220,29 +216,11 @@ pub const InternalState = struct {
 
     // === Script execution state (HTML Standard §4.12.1.1) ===
 
-    /// Pending parsing-blocking script
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#pending-parsing-blocking-script
-    pending_parsing_blocking_script: ?*runtime.Instance,
-
-    /// Set of scripts that will execute as soon as possible
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#set-of-scripts-that-will-execute-as-soon-as-possible
-    scripts_to_execute_asap: std.ArrayList(*runtime.Instance),
-
-    /// List of scripts that will execute in order as soon as possible
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-in-order-as-soon-as-possible
-    scripts_to_execute_in_order_asap: std.ArrayList(*runtime.Instance),
-
-    /// List of scripts that will execute when document has finished parsing
-    /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-when-the-document-has-finished-parsing
-    scripts_to_execute_when_parsing_finished: std.ArrayList(*runtime.Instance),
-
-    /// The currently executing script element (for document.currentScript)
-    /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-currentscript
-    current_script: ?*runtime.Instance,
-
-    /// Ignore-destructive-writes counter
-    /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-destructive-writes-counter
-    ignore_destructive_writes_counter: u32,
+    /// The pending parsing-blocking script, the three script lists,
+    /// currentScript and the ignore-destructive-writes counter - reached by
+    /// html's script processing model through dom.document_scripts, which
+    /// this impl installs.
+    scripts: dom_document_scripts.Scripts,
 
     /// Throw-on-dynamic-markup-insertion counter
     /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#throw-on-dynamic-markup-insertion-counter
@@ -404,12 +382,7 @@ pub const InternalState = struct {
             .style_sheets = null,
             // Event handlers
             // Script execution state
-            .pending_parsing_blocking_script = null,
-            .scripts_to_execute_asap = .empty,
-            .scripts_to_execute_in_order_asap = .empty,
-            .scripts_to_execute_when_parsing_finished = .empty,
-            .current_script = null,
-            .ignore_destructive_writes_counter = 0,
+            .scripts = dom_document_scripts.Scripts.init(allocator),
             .throw_on_dynamic_markup_insertion_counter = 0,
             .unload_counter = 0,
             .insertion_point = null,
@@ -498,9 +471,7 @@ pub const InternalState = struct {
         // and is just a reference here for document.write() integration
 
         // Script execution lists (don't own the script elements, just the list storage)
-        self.scripts_to_execute_asap.deinit(self.allocator);
-        self.scripts_to_execute_in_order_asap.deinit(self.allocator);
-        self.scripts_to_execute_when_parsing_finished.deinit(self.allocator);
+        self.scripts.deinit();
 
         // Module map - dispose module handles and free keys
         {
@@ -640,6 +611,9 @@ pub fn init(
     // A clone of a Document keeps its mode. Installed here, before any
     // Document exists to be cloned.
     @import("dom").cloning_steps.install(&cloningSteps);
+
+    // html's script processing model reaches a document's script state.
+    installScriptHooks();
 
     return instance;
 }
@@ -1611,9 +1585,10 @@ pub fn get_scripts(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// "The currentScript attribute, on getting, must return the value to which it
 /// was most recently set." Execute the script element sets it around a classic
 /// script's run (and leaves it null for a module script) through
-/// `setCurrentScript`; this getter used to ignore that and return null always.
+/// dom.document_scripts; this getter used to ignore that and return null always.
 pub fn get_currentScript(instance: *runtime.Instance) anyerror!?typedefs.HTMLOrSVGScriptElement {
-    const script = getCurrentScript(instance) orelse return null;
+    const internal = getInternal(instance) orelse return null;
+    const script = internal.scripts.current_script orelse return null;
     return .{ .htmlscript_element = script };
 }
 
@@ -2763,7 +2738,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const runtime.DOMStri
             // stopping when the tokenizer reaches the insertion point or when
             // the processing of the tokenizer is aborted by the tree
             // construction stage."
-            if (internal.pending_parsing_blocking_script == null) stream.processInserted();
+            if (internal.scripts.pending_parsing_blocking_script == null) stream.processInserted();
             return;
         }
     }
@@ -2773,7 +2748,7 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const runtime.DOMStri
         // Step 9.1: "If document's unload counter is greater than 0 or
         // document's ignore-destructive-writes counter is greater than 0, then
         // return."
-        if (internal.ignore_destructive_writes_counter > 0 or internal.unload_counter > 0) {
+        if (internal.scripts.ignore_destructive_writes_counter > 0 or internal.unload_counter > 0) {
             return;
         }
         // Step 9.2: "Run the document open steps with document." Deviation,
@@ -3839,7 +3814,7 @@ fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
     // execute as soon as possible and the list of scripts that will execute
     // in order as soon as possible are empty" - script_execution says when a
     // script leaves them (loadDelayMayHaveEnded). Then step 8.
-    const scripts_pending = internal.scripts_to_execute_asap.items.len > 0 or internal.scripts_to_execute_in_order_asap.items.len > 0;
+    const scripts_pending = internal.scripts.scripts_to_execute_asap.items.len > 0 or internal.scripts.scripts_to_execute_in_order_asap.items.len > 0;
     if (scripts_pending or @import("dom").content_navigables.delaysLoadEvent(document) or @import("dom").style_sheet_owners.delaysLoadEvent(document)) {
         internal.load_waiting_on_delay = true;
         return;
@@ -4506,133 +4481,76 @@ pub fn copyOrigin(instance: *runtime.Instance, source: *runtime.Instance) !void 
 // =============================================================================
 // Script Execution Management (HTML Standard §4.12.1.1)
 // =============================================================================
+//
+// The script processing model's state on a Document - its script lists,
+// currentScript, the ignore-destructive-writes counter - and its module and
+// import maps are reached by html/script_execution.zig through the hooks this
+// block installs, and a frame's parser sets its window through another; they
+// are their own install, apart from the others in `init`.
 
-/// Get pending parsing-blocking script
-/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#pending-parsing-blocking-script
-pub fn getPendingParsingBlockingScript(instance: *runtime.Instance) ?*runtime.Instance {
+const dom_document_scripts = @import("dom").document_scripts;
+const dom_document_modules = @import("dom").document_modules;
+const dom_document_browsing_context = @import("dom").document_browsing_context;
+
+/// Install the hooks html's script processing model reaches a Document's
+/// script state through. Idempotent; called from `init`, before any Document
+/// exists to be asked.
+fn installScriptHooks() void {
+    dom_document_scripts.install(.{
+        .scripts = &scriptsOf,
+        .scripting_enabled = &isScriptingEnabled,
+        .has_style_sheet_blocking_scripts = &hasStyleSheetBlockingScripts,
+        .inline_script_allowed_by_csp = &isInlineScriptAllowedByCSP,
+        .external_script_allowed_by_csp = &isExternalScriptAllowedByCSP,
+        .add_prefetch_hint = &addPrefetchHintStep,
+        .url = &recordedUrl,
+    });
+    dom_document_browsing_context.install(.{ .set_window = &setDefaultView });
+    dom_document_modules.install(.{
+        .allocator = &moduleAllocator,
+        .get_module = &getModule,
+        .set_module = &setModuleStep,
+        .set_module_dispose_function = &setModuleDisposeFunction,
+        .import_map_acquired = &hasImportMapAcquired,
+        .acquire_import_map = &setImportMapAcquired,
+        .add_import_mapping = &addImportMappingStep,
+        .add_scoped_import_mapping = &addScopedImportMappingStep,
+        .resolve_import_specifier = &resolveImportSpecifier,
+    });
+}
+
+/// dom.document_scripts: the document's scripts.
+fn scriptsOf(instance: *runtime.Instance) ?*dom_document_scripts.Scripts {
     const internal = getInternal(instance) orelse return null;
-    return internal.pending_parsing_blocking_script;
+    return &internal.scripts;
 }
 
-/// Set pending parsing-blocking script
-pub fn setPendingParsingBlockingScript(instance: *runtime.Instance, script: ?*runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        internal.pending_parsing_blocking_script = script;
-    }
+/// dom.document_scripts: the document's URL as recorded ("" when unset).
+fn recordedUrl(instance: *runtime.Instance) []const u8 {
+    const internal = getInternal(instance) orelse return "";
+    return internal.url;
 }
 
-/// Add script to "execute as soon as possible" set
-/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#set-of-scripts-that-will-execute-as-soon-as-possible
-pub fn addScriptToExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.scripts_to_execute_asap.append(internal.allocator, script);
+fn addPrefetchHintStep(instance: *runtime.Instance, url: []const u8, eagerness: SpeculationEagerness) error{ InvalidStateError, OutOfMemory }!void {
+    return addPrefetchHint(instance, url, eagerness);
 }
 
-/// Remove script from "execute as soon as possible" set
-pub fn removeScriptFromExecuteAsap(instance: *runtime.Instance, script: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    for (internal.scripts_to_execute_asap.items, 0..) |s, i| {
-        if (s == script) {
-            _ = internal.scripts_to_execute_asap.orderedRemove(i);
-            return;
-        }
-    }
-}
-
-/// Add script to "execute in order as soon as possible" list
-/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-in-order-as-soon-as-possible
-pub fn addScriptToExecuteInOrderAsap(instance: *runtime.Instance, script: *runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.scripts_to_execute_in_order_asap.append(internal.allocator, script);
-}
-
-/// Get first script in "execute in order" list
-pub fn getFirstScriptToExecuteInOrder(instance: *runtime.Instance) ?*runtime.Instance {
+/// dom.document_modules: the allocator module scripts are made with.
+fn moduleAllocator(instance: *runtime.Instance) ?std.mem.Allocator {
     const internal = getInternal(instance) orelse return null;
-    if (internal.scripts_to_execute_in_order_asap.items.len > 0) {
-        return internal.scripts_to_execute_in_order_asap.items[0];
-    }
-    return null;
+    return internal.allocator;
 }
 
-/// Remove first script from "execute in order" list
-pub fn removeFirstScriptFromExecuteInOrder(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    if (internal.scripts_to_execute_in_order_asap.items.len > 0) {
-        _ = internal.scripts_to_execute_in_order_asap.orderedRemove(0);
-    }
+fn setModuleStep(instance: *runtime.Instance, url: []const u8, module: *anyopaque) dom_document_modules.Error!void {
+    return setModule(instance, url, module);
 }
 
-/// Add script to "execute when document has finished parsing" list
-/// Spec: https://html.spec.whatwg.org/multipage/scripting.html#list-of-scripts-that-will-execute-when-the-document-has-finished-parsing
-pub fn addScriptToExecuteWhenParsingFinished(instance: *runtime.Instance, script: *runtime.Instance) !void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    try internal.scripts_to_execute_when_parsing_finished.append(internal.allocator, script);
+fn addImportMappingStep(instance: *runtime.Instance, specifier: []const u8, resolved_url: []const u8) dom_document_modules.Error!void {
+    return addImportMapping(instance, specifier, resolved_url);
 }
 
-/// Get scripts to execute when parsing finished
-pub fn getScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) []const *runtime.Instance {
-    const internal = getInternal(instance) orelse return &.{};
-    return internal.scripts_to_execute_when_parsing_finished.items;
-}
-
-/// Clear scripts to execute when parsing finished
-pub fn clearScriptsToExecuteWhenParsingFinished(instance: *runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        internal.scripts_to_execute_when_parsing_finished.clearRetainingCapacity();
-    }
-}
-
-/// Get scripts from "execute as soon as possible" set
-pub fn getScriptsToExecuteAsap(instance: *runtime.Instance) []*runtime.Instance {
-    const internal = getInternal(instance) orelse return &[_]*runtime.Instance{};
-    return internal.scripts_to_execute_asap.items;
-}
-
-/// Pop and return the first script from "execute in order" list
-pub fn popFirstScriptToExecuteInOrderAsap(instance: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    if (internal.scripts_to_execute_in_order_asap.items.len > 0) {
-        return internal.scripts_to_execute_in_order_asap.orderedRemove(0);
-    }
-    return null;
-}
-
-/// Get currently executing script (for document.currentScript)
-/// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-currentscript
-pub fn getCurrentScript(instance: *runtime.Instance) ?*runtime.Instance {
-    const internal = getInternal(instance) orelse return null;
-    return internal.current_script;
-}
-
-/// Set currently executing script
-pub fn setCurrentScript(instance: *runtime.Instance, script: ?*runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        internal.current_script = script;
-    }
-}
-
-/// Increment ignore-destructive-writes counter
-/// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#ignore-destructive-writes-counter
-pub fn incrementIgnoreDestructiveWritesCounter(instance: *runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        internal.ignore_destructive_writes_counter += 1;
-    }
-}
-
-/// Decrement ignore-destructive-writes counter
-pub fn decrementIgnoreDestructiveWritesCounter(instance: *runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        if (internal.ignore_destructive_writes_counter > 0) {
-            internal.ignore_destructive_writes_counter -= 1;
-        }
-    }
-}
-
-/// Check if destructive writes should be ignored
-pub fn shouldIgnoreDestructiveWrites(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return false;
-    return internal.ignore_destructive_writes_counter > 0;
+fn addScopedImportMappingStep(instance: *runtime.Instance, scope_prefix: []const u8, specifier: []const u8, resolved_url: []const u8) dom_document_modules.Error!void {
+    return addScopedImportMapping(instance, scope_prefix, specifier, resolved_url);
 }
 
 // =============================================================================
