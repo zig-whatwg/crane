@@ -103,7 +103,7 @@
     const g = meta.generation;
     const tot = suites.totals;
     fill("updated", `last updated ${longDate(g.at)}`);
-    fill("version", `Generation ${n(g.n)}, regenerated at Crane `, commitLink(g.head), `; ${plural(tot.files, "file")} from `, el("code", { text: meta.scope.worklist }));
+    fill("version", `Generation ${n(g.n)}, regenerated at Crane `, commitLink(g.head), );
 
     const runs = Object.entries(meta.runs).sort((a, b) => b[1].files - a[1].files || (a[0] < b[0] ? -1 : 1));
     const runNodes = [];
@@ -408,8 +408,9 @@
       state.suiteNo.set(s.path, i + 1);
       const id = sectionId(s.name);
       const sec = el("section", { class: "suite", id, "aria-labelledby": `${id}-h` },
-        el("h2", { id: `${id}-h` }, el("span", { class: "secno", text: `${i + 1}` }), breakable(`${s.name}/`), selfLink(id, `section ${i + 1}, ${s.name}`)),
-        el("p", { class: "suite-lede", text: lede(s) }),
+        el("div", { class: "suite-head" },
+          el("h2", { id: `${id}-h` }, el("span", { class: "secno", text: `${i + 1}` }), breakable(`${s.name}/`), selfLink(id, `section ${i + 1}, ${s.name}`)),
+          el("p", { class: "suite-lede", text: lede(s) })),
         el("div", { class: "boxes" }, confBox(s), testsBox(s)));
       host.append(sec);
       state.sections.set(s.name, sec);
