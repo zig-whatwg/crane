@@ -580,6 +580,104 @@ fn isShadowIncludingInclusiveAncestor(ancestor: *Instance, node_in: *Instance) b
 }
 
 // ============================================================================
+// :focus, :focus-within, :focus-visible
+// ============================================================================
+
+/// The shadow-including parent of `node`: its parent, or a shadow root's host.
+fn shadowIncludingParent(node: *Instance) ?*Instance {
+    if (form_associated.parentOf(node)) |parent| return parent;
+    if (isShadowRoot(node)) return interfaces.ShadowRoot.get_host(node) catch null;
+    return null;
+}
+
+/// HTML 4.16.3: "For the purposes of the CSS :focus pseudo-class, an element
+/// has the focus when: it is not itself a navigable container; and any of
+/// the following are true: it is one of the elements listed in the current
+/// focus chain of the top-level traversable; or its shadow root shadowRoot
+/// is not null and shadowRoot is the root of at least one element that has
+/// the focus."
+pub fn matchesFocus(element: *Instance) bool {
+    if (!isElement(element) or isNavigableContainer(element)) return false;
+    const document = nodeDocument(element) orelse return false;
+    const chain = focusChain(currentlyFocusedArea(document));
+    for (chain.items[0..chain.len]) |entry| {
+        if (!isElement(entry)) continue;
+        if (entry == element) return true;
+        // A shadow host of the entry, at any depth.
+        var node = entry;
+        var depth: usize = 0;
+        while (depth < 64) : (depth += 1) {
+            const root = rootOf(node);
+            if (!isShadowRoot(root)) break;
+            const host = interfaces.ShadowRoot.get_host(root) catch break;
+            if (host == element) return true;
+            node = host;
+        }
+    }
+    return false;
+}
+
+/// Selectors 4 :focus-within: the element matches :focus, or one of its
+/// shadow-including descendants does (the focused element's
+/// shadow-including ancestors, and the containers of the frames it is in).
+pub fn matchesFocusWithin(element: *Instance) bool {
+    if (!isElement(element)) return false;
+    const document = nodeDocument(element) orelse return false;
+    const chain = focusChain(currentlyFocusedArea(document));
+    for (chain.items[0..chain.len]) |entry| {
+        if (!isElement(entry)) continue;
+        var node: ?*Instance = entry;
+        var depth: usize = 0;
+        while (node) |n| : (node = shadowIncludingParent(n)) {
+            if (n == element) return true;
+            depth += 1;
+            if (depth == 4096) break;
+        }
+    }
+    return false;
+}
+
+/// The input modality of the last user interaction, for :focus-visible: a
+/// pointer press or a key press, in the top-level document it happened in
+/// (held with its generation: a later page is a new document).
+const Modality = struct { document: *Instance, generation: u64, pointer: bool };
+threadlocal var last_modality: ?Modality = null;
+
+/// user_input: the user pressed a pointer button (`pointer`) or a key in the
+/// top-level traversable `document` is in.
+pub fn noteInputModality(document: *Instance, pointer: bool) void {
+    const top = topLevelDocumentOf(document);
+    last_modality = .{ .document = top, .generation = runtime.SlabAllocator.generationOf(top), .pointer = pointer };
+}
+
+/// Whether `element` takes text input: a text control or an editing host.
+fn takesTextInput(element: *Instance) bool {
+    if (form_associated.isTextArea(element)) return true;
+    if (isEditingHost(element)) return true;
+    if (!form_associated.isInput(element)) return false;
+    var buffer: [16]u8 = undefined;
+    const input_type = form_associated.inputType(element, &buffer);
+    const not_text = [_][]const u8{ "checkbox", "radio", "submit", "reset", "button", "image", "file", "color", "range", "hidden" };
+    for (not_text) |t| if (std.mem.eql(u8, input_type, t)) return false;
+    return true;
+}
+
+/// Selectors 4 :focus-visible, with the heuristic Blink applies (a stated
+/// heuristic, as the selector's definition allows): a focused element
+/// matches when it takes text input, or when the last user interaction in
+/// its top-level traversable was not a pointer press - keyboard focus, and
+/// script focus with no pointer interaction before it.
+pub fn matchesFocusVisible(element: *Instance) bool {
+    if (!matchesFocus(element)) return false;
+    if (takesTextInput(element)) return true;
+    const modality = last_modality orelse return true;
+    const document = nodeDocument(element) orelse return true;
+    const top = topLevelDocumentOf(document);
+    if (modality.document != top or runtime.SlabAllocator.generationOf(top) != modality.generation) return true;
+    return !modality.pointer;
+}
+
+// ============================================================================
 // Sequential focus navigation (6.6.5)
 // ============================================================================
 

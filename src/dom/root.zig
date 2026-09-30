@@ -116,6 +116,7 @@ pub const cssom = @import("cssom.zig");
 pub const user_activation_state = @import("user_activation_state.zig");
 pub const focused_area = @import("focused_area.zig");
 pub const visibility_state = @import("visibility_state.zig");
+pub const focus_matching = @import("focus_matching.zig");
 
 // Re-export slot_helpers functions
 pub const isElement = slot_helpers.isElement;

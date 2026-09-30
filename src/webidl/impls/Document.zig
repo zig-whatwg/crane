@@ -651,6 +651,15 @@ pub fn init(
     // hooks.
     @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea });
     @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
+    // The selector matchers ask whether an element matches :focus,
+    // :focus-within and :focus-visible through this one (html.focus, which
+    // applies the focus fixup rule as activeElement does).
+    const focus = @import("html").focus;
+    @import("dom").focus_matching.install(.{
+        .matches_focus = &focus.matchesFocus,
+        .matches_focus_within = &focus.matchesFocusWithin,
+        .matches_focus_visible = &focus.matchesFocusVisible,
+    });
 
     return instance;
 }
