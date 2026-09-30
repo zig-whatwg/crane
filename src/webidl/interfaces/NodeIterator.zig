@@ -77,7 +77,7 @@ pub const NodeIterator = struct {
             referenceNode: *runtime.Instance = undefined,
             pointerBeforeReferenceNode: bool = undefined,
             whatToShow: u32 = undefined,
-            filter: ??*runtime.CallbackWrapper = null,
+            filter: ?runtime.JSValue = null,
             cached_root: ?*runtime.Instance = null,
             _internal: ?*NodeIteratorImpl.InternalState = null,
         },
@@ -143,7 +143,7 @@ pub const NodeIterator = struct {
         return try NodeIteratorImpl.get_whatToShow(instance);
     }
 
-    pub fn get_filter(instance: *runtime.Instance) anyerror!??*runtime.CallbackWrapper {
+    pub fn get_filter(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try NodeIteratorImpl.get_filter(instance);
     }
 

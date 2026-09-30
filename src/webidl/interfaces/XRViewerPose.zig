@@ -97,13 +97,6 @@ pub const XRViewerPose = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_views(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_views) |cached| {
-            return cached;
-        }
-        const value = try XRViewerPoseImpl.get_views(instance);
-        state.own.cached_views = value;
-        return value;
+        return try XRViewerPoseImpl.get_views(instance);
     }
 };

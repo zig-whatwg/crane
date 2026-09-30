@@ -239,10 +239,10 @@ pub fn createJavaScriptModuleScript(
 // import.meta, and the scripts a record names
 // =============================================================================
 
-/// Every module script alive on this thread. A module map owns each; this
-/// only links them, so that a [[HostDefined]] the engine hands back is read
-/// only while its script exists. Main thread only: worker module scripts go
-/// through html/workers/module_worker.zig.
+/// Every module script alive: the page's, its frames' and its workers', which
+/// all run on the page's thread (a worker's module map is its WorkerHost's).
+/// A module map owns each; this only links them, so that a [[HostDefined]]
+/// the engine hands back is read only while its script exists.
 var live_scripts: ?*ModuleScript = null;
 
 fn track(script: *ModuleScript) void {

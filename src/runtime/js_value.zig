@@ -8,7 +8,10 @@
 //! 1. **Engine Independence**: No imports from engine-specific modules (v8, jsc, etc.)
 //! 2. **Type Safety**: Tagged union prevents type confusion at compile time
 //! 3. **No Sentinel Values**: Explicit undefined/null variants instead of @ptrFromInt(1)
-//! 4. **Lifecycle Clarity**: Distinguish between values that need disposal and those that don't
+//! 4. **Ownership in the types**: a `JSValue` is BORROWED wherever it is
+//!    passed; what must be released is the engine protocol's `engine.Owned`
+//!    (AGENTS.md "The engine boundary", rule 3). A `JSValue` an impl RETURNS
+//!    is the binding's: kept values go back as `engine.retainValue(...).take()`
 //!
 //! ## Usage in Impl Files
 //!
@@ -59,9 +62,9 @@ pub const JSValue = union(enum) {
     /// The data may or may not be owned depending on context
     string: StringValue,
 
-    /// Opaque handle to an engine-managed object/function
-    /// This could be a V8 Global handle, JSC JSValueRef, etc.
-    /// The handle is managed by the engine and may need disposal
+    /// Opaque handle to an engine-managed value (object, function, symbol, a
+    /// string the engine keeps as one). Who releases it is its holder's type:
+    /// see EngineHandle.
     handle: EngineHandle,
 
     /// Zig runtime.Instance pointer
@@ -86,52 +89,20 @@ pub const JSValue = union(enum) {
         }
     };
 
-    /// Opaque engine handle
-    /// The actual pointer type depends on the engine:
-    /// - V8: Global<Value>* (persistent handle)
-    /// - JSC: JSValueRef (protected value)
-    /// - SpiderMonkey: JS::PersistentRooted<JS::Value>*
+    /// Opaque engine handle: a handle the engine made - for V8 a
+    /// `Global<Value>*`, for JavaScriptCore a protected JSValueRef.
     ///
-    /// KEEP: anyopaque required - JS engine handles are inherently opaque.
-    /// Each JS engine provides different handle types that cannot be unified
-    /// at compile time. The runtime layer casts to the appropriate engine type.
+    /// It says nothing about who releases it; the type that holds it does. A
+    /// `JSValue` is BORROWED wherever it is passed - an argument, an
+    /// ErrorInfo's value, `engine.Owned.borrow()`. What must be released is an
+    /// `engine.Owned` (or a Completion, CallbackFunction, CallbackInterface),
+    /// released exactly once. A `JSValue` an impl RETURNS to the binding is
+    /// the binding's, which releases it once it is the call's result: a value
+    /// the impl keeps goes back as a hold of the binding's own,
+    /// `engine.retainValue(realm, kept).take()`.
     pub const EngineHandle = struct {
         /// KEEP: anyopaque required - V8 Global<Value>*, JSC JSValueRef, etc.
         ptr: *anyopaque,
-
-        /// Engine-specific disposal flag
-        /// If true, the engine's disposal function should be called
-        needs_disposal: bool = true,
-
-        /// Handle scope type - whether this handle is local (stack-bound) or global (heap)
-        /// Local handles are only valid within the current HandleScope and must NOT be stored
-        /// Global handles persist until explicitly disposed and CAN be stored
-        handle_scope: HandleScope = .global,
-
-        /// Handle scope discriminator
-        pub const HandleScope = enum {
-            /// Local handle - only valid within current HandleScope
-            /// WARNING: Do NOT store in struct fields!
-            local,
-            /// Global handle - persists until explicit disposal
-            /// Safe to store in struct fields
-            global,
-        };
-
-        /// Check if this handle can safely be stored in struct fields
-        pub fn canBeStored(self: EngineHandle) bool {
-            return self.handle_scope == .global;
-        }
-
-        /// Debug assertion to verify handle is global before storage
-        /// In release builds, this is a no-op
-        pub fn assertGlobalForStorage(self: EngineHandle) void {
-            if (@import("builtin").mode == .Debug) {
-                if (self.handle_scope != .global) {
-                    @panic("Attempted to store a local V8 handle! Convert to Global first.");
-                }
-            }
-        }
     };
 
     // ========================================================================
@@ -164,55 +135,10 @@ pub const JSValue = union(enum) {
         return .{ .string = .{ .data = data, .owned = true } };
     }
 
-    /// Create a JSValue from a GLOBAL engine handle (safe to store)
-    /// Use this for Global<Value> handles that persist beyond HandleScope
+    /// A JSValue naming the engine handle `ptr` (see EngineHandle: holding
+    /// it says nothing about releasing it).
     pub fn fromHandle(ptr: *anyopaque) JSValue {
-        return .{ .handle = .{ .ptr = ptr, .needs_disposal = true, .handle_scope = .global } };
-    }
-
-    /// Create a JSValue from a GLOBAL handle that doesn't need disposal
-    /// (e.g., when the caller retains ownership)
-    pub fn fromHandleNonOwning(ptr: *anyopaque) JSValue {
-        return .{ .handle = .{ .ptr = ptr, .needs_disposal = false, .handle_scope = .global } };
-    }
-
-    /// Create a JSValue from a LOCAL engine handle (DO NOT store!)
-    /// Use this for temporary values within a HandleScope
-    /// WARNING: The returned JSValue must NOT be stored in struct fields!
-    pub fn fromLocalHandle(ptr: *anyopaque) JSValue {
-        return .{ .handle = .{ .ptr = ptr, .needs_disposal = false, .handle_scope = .local } };
-    }
-
-    /// Create a JSValue from a V8 Promise pointer.
-    ///
-    /// Use this when returning promises to JavaScript. The promise pointer
-    /// should be obtained from:
-    /// - `Promise(T).getPromise()` (from src/runtime/engines/v8/promise.zig)
-    /// - `asyncPromiseToV8()` (bridge from Zig AsyncPromise to V8 Promise)
-    /// - `createRejectedV8Promise()` or `createResolvedV8Promise()`
-    ///
-    /// ## IMPORTANT
-    ///
-    /// Do NOT use `fromAnyopaque(@ptrCast(zig_promise))` for Zig AsyncPromise!
-    /// Zig pointers are NOT V8 handles and will cause crashes.
-    ///
-    /// ## Example
-    ///
-    /// ```zig
-    /// // WRONG - Zig pointer is not a V8 handle!
-    /// const zig_promise = try AsyncPromise(void).init(allocator, event_loop);
-    /// return runtime.JSValue.fromAnyopaque(@ptrCast(zig_promise)); // CRASH!
-    ///
-    /// // CORRECT - Use the bridge to create a V8 Promise
-    /// const v8_promise = try asyncPromiseToV8(void, allocator, isolate, context, zig_promise);
-    /// return runtime.JSValue.fromPromise(v8_promise);
-    /// ```
-    pub fn fromPromise(promise_ptr: *anyopaque) JSValue {
-        // The promise's handle is a Global the impl just made and holds nowhere
-        // else, so it is handed over: the binding releases it once the promise
-        // is the call's result. V8's GC cannot reclaim a promise while a
-        // Global to it exists - kept, each one pinned its page's context.
-        return .{ .handle = .{ .ptr = promise_ptr, .needs_disposal = true, .handle_scope = .global } };
+        return .{ .handle = .{ .ptr = ptr } };
     }
 
     /// Create a JSValue from a Zig runtime Instance
@@ -232,69 +158,17 @@ pub const JSValue = union(enum) {
     }
 
     // ========================================================================
-    // Type-Safe Factory Methods
-    // ========================================================================
-
-    /// Create a JSValue from a typed global handle.
-    ///
-    /// Use this when you have a concrete global handle type from the engine.
-    /// This is the preferred pattern over fromAnyopaque.
-    ///
-    /// ## Example
-    /// ```zig
-    /// const handle = try v8.createGlobalHandle(isolate, value);
-    /// return JSValue.fromGlobalHandle(handle);
-    /// ```
-    pub fn fromGlobalHandle(handle: *anyopaque) JSValue {
-        return .{ .handle = .{ .ptr = handle, .needs_disposal = true, .handle_scope = .global } };
-    }
-
-    /// Create a JSValue from a typed local value.
-    ///
-    /// Use this when you have a local value within a HandleScope.
-    /// WARNING: The returned JSValue must NOT be stored!
-    ///
-    /// ## Example
-    /// ```zig
-    /// const local_value = v8.ffi.v8_String_NewFromUtf8(isolate, "hello");
-    /// return JSValue.fromLocalValue(local_value);
-    /// ```
-    pub fn fromLocalValue(local_value: *anyopaque) JSValue {
-        return .{ .handle = .{ .ptr = local_value, .needs_disposal = false, .handle_scope = .local } };
-    }
-
-    /// Create a JSValue from any typed pointer.
-    ///
-    /// Generic factory that accepts any pointer type and converts it to a handle.
-    /// Useful for strongly-typed V8/engine types.
-    ///
-    /// ## Example
-    /// ```zig
-    /// const function: *v8.ffi.Function = ...;
-    /// return JSValue.fromTypedPtr(function);
-    /// ```
-    pub fn fromTypedPtr(comptime T: type, ptr: *T) JSValue {
-        return .{ .handle = .{ .ptr = @ptrCast(ptr), .needs_disposal = false } };
-    }
-
-    // ========================================================================
     // Legacy Anyopaque Methods (Deprecated)
     // ========================================================================
 
-    /// Create from legacy anyopaque pointer
+    /// Create from legacy anyopaque pointer: an engine handle, or null for
+    /// JavaScript null.
     ///
-    /// DEPRECATED: Use typed alternatives instead:
-    /// - `fromGlobalHandle()` for global handles
-    /// - `fromLocalValue()` for local values within HandleScope
-    /// - `fromLocalHandle()` for other local handles
-    /// - `fromInstance()` for runtime.Instance pointers
-    /// - `fromPromise()` for V8 Promise pointers
-    ///
-    /// This is for gradual migration. The pointer is treated as an engine handle.
-    /// Use with caution - the type information is lost.
+    /// DEPRECATED: use `fromHandle()` for an engine handle and `fromInstance()`
+    /// for a runtime.Instance. The type information is lost here.
     pub fn fromAnyopaque(ptr: ?*const anyopaque) JSValue {
         if (ptr) |p| {
-            return .{ .handle = .{ .ptr = @ptrCast(@constCast(p)), .needs_disposal = false } };
+            return .{ .handle = .{ .ptr = @ptrCast(@constCast(p)) } };
         }
         return jsNull;
     }
@@ -417,32 +291,10 @@ pub const JSValue = union(enum) {
         };
     }
 
-    /// Get the full EngineHandle struct if this is a handle value.
-    ///
-    /// Returns the typed EngineHandle struct which includes metadata about
-    /// disposal requirements and handle scope. Prefer this over toAnyopaque()
-    /// when you need to know about handle lifecycle.
-    ///
-    /// ## Example
-    /// ```zig
-    /// if (value.getEngineHandle()) |handle| {
-    ///     if (handle.needs_disposal) {
-    ///         // Schedule disposal
-    ///     }
-    /// }
-    /// ```
-    pub fn getEngineHandle(self: JSValue) ?EngineHandle {
-        return switch (self) {
-            .handle => |h| h,
-            else => null,
-        };
-    }
-
     /// Convert to legacy anyopaque pointer
     ///
     /// DEPRECATED: Use typed alternatives instead:
     /// - `asEngineHandle()` to get the raw handle pointer
-    /// - `getEngineHandle()` to get full handle with metadata
     /// - `toInstance()` to get typed runtime.Instance
     /// - `asInstance()` for anyopaque instance extraction
     ///
@@ -461,15 +313,6 @@ pub const JSValue = union(enum) {
     // ========================================================================
     // Lifecycle
     // ========================================================================
-
-    /// Check if this value needs engine-side disposal
-    pub fn needsDisposal(self: JSValue) bool {
-        return switch (self) {
-            .handle => |h| h.needs_disposal,
-            .string => |s| s.owned,
-            else => false,
-        };
-    }
 
     /// Free any owned resources (strings only - engine handles need engine disposal)
     pub fn deinit(self: *JSValue, allocator: std.mem.Allocator) void {
@@ -566,156 +409,6 @@ pub const OptionalJSValue = union(enum) {
 };
 
 // ============================================================================
-// LocalValue - Move-only type for temporary V8 values
-// ============================================================================
-
-/// A V8 Local handle that is only valid within the current HandleScope.
-///
-/// This type is designed to PREVENT accidental storage of Local handles.
-/// It should be used for temporary values that are:
-/// - Returned from V8 FFI calls
-/// - Used within a single function
-/// - NOT stored in struct fields
-///
-/// To persist the value beyond the HandleScope, convert to a GlobalHandle
-/// using `toGlobal()`.
-///
-/// ## Usage
-///
-/// ```zig
-/// // Get a local value from V8
-/// const local = LocalValue.fromRawPtr(v8_function_call_result);
-///
-/// // Use it immediately
-/// const result = try someV8Operation(local.rawPtr());
-///
-/// // If you need to store it, convert to global first
-/// if (local.toGlobal(isolate)) |global| {
-///     my_struct.stored_callback = global;
-/// }
-/// ```
-pub const LocalValue = struct {
-    /// The underlying V8 Local value pointer
-    ///
-    /// KEEP: anyopaque required - V8 Local<Value>* handle from FFI boundary.
-    /// Local handles are stack-bound and engine-specific.
-    ptr: *anyopaque,
-
-    /// Create a LocalValue from a raw pointer (from V8 FFI)
-    pub fn fromRawPtr(ptr: *anyopaque) LocalValue {
-        return .{ .ptr = ptr };
-    }
-
-    /// Get the raw pointer for FFI calls
-    /// WARNING: Use immediately, do NOT store the result!
-    pub fn rawPtr(self: LocalValue) *anyopaque {
-        return self.ptr;
-    }
-
-    /// Convert to a JSValue (marked as local, should not be stored)
-    pub fn toJSValue(self: LocalValue) JSValue {
-        return JSValue.fromLocalHandle(self.ptr);
-    }
-
-    /// Check if this contains a valid (non-null) pointer
-    pub fn isValid(self: LocalValue) bool {
-        // In V8, null pointers indicate empty handles
-        // Since ptr is non-optional, it's always valid
-        _ = self;
-        return true;
-    }
-};
-
-/// Create a LocalValue from an optional raw pointer
-pub fn localValueFromOptional(ptr: ?*anyopaque) ?LocalValue {
-    if (ptr) |p| {
-        return LocalValue.fromRawPtr(p);
-    }
-    return null;
-}
-
-// ============================================================================
-// Promise - Type-safe wrapper for V8 Promises
-// ============================================================================
-
-/// A type-safe wrapper for V8 Promise handles.
-///
-/// Promises ALWAYS use GlobalHandle internally to ensure the promise
-/// survives beyond the HandleScope where it was created. This prevents
-/// use-after-free when the promise is resolved/rejected later.
-///
-/// ## Type Parameter
-///
-/// The type parameter `T` represents the resolved value type.
-/// This is for documentation purposes - the actual JavaScript value
-/// is stored in the GlobalHandle.
-///
-/// ## Usage
-///
-/// ```zig
-/// // Create a promise
-/// const promise = try Promise(void).create(isolate, local_promise_ptr);
-/// defer promise.deinit();
-///
-/// // Store it safely
-/// my_struct.pending_promise = promise;
-///
-/// // Later, resolve or reject
-/// try promise.resolve(isolate, result_value);
-/// ```
-pub fn Promise(comptime T: type) type {
-    _ = T; // Type parameter for documentation only
-
-    return struct {
-        /// The GlobalHandle storing the Promise object
-        /// This MUST be a global handle to survive HandleScope destruction
-        handle: ?*anyopaque = null,
-
-        /// Whether this promise handle is valid
-        is_valid: bool = false,
-
-        const Self = @This();
-
-        /// Create a Promise from a local promise pointer
-        /// The local handle is converted to a global handle for storage
-        pub fn create(handle_ptr: *anyopaque) Self {
-            return .{
-                .handle = handle_ptr,
-                .is_valid = true,
-            };
-        }
-
-        /// Create an empty/invalid promise
-        pub fn empty() Self {
-            return .{
-                .handle = null,
-                .is_valid = false,
-            };
-        }
-
-        /// Check if this promise is valid
-        pub fn isValid(self: Self) bool {
-            return self.is_valid and self.handle != null;
-        }
-
-        /// Get the raw handle pointer for V8 operations
-        pub fn getHandle(self: Self) ?*anyopaque {
-            if (self.is_valid) {
-                return self.handle;
-            }
-            return null;
-        }
-
-        /// Dispose of the promise handle
-        /// After calling this, the promise should not be used
-        pub fn deinit(self: *Self) void {
-            self.handle = null;
-            self.is_valid = false;
-        }
-    };
-}
-
-// ============================================================================
 // Tests
 // ============================================================================
 
@@ -753,7 +446,6 @@ test "JSValue string" {
     const value = JSValue.fromStringRef("hello");
     try std.testing.expect(value.isString());
     try std.testing.expectEqualStrings("hello", value.asString().?);
-    try std.testing.expect(!value.needsDisposal());
 }
 
 test "JSValue handle" {
@@ -761,15 +453,6 @@ test "JSValue handle" {
     const value = JSValue.fromHandle(&dummy);
     try std.testing.expect(value.isHandle());
     try std.testing.expect(value.asEngineHandle().? == @as(*anyopaque, &dummy));
-    try std.testing.expect(value.needsDisposal());
-}
-
-test "JSValue handle non-owning" {
-    var dummy: u8 = 0;
-    const value = JSValue.fromHandleNonOwning(&dummy);
-    try std.testing.expect(value.isHandle());
-    try std.testing.expect(value.asEngineHandle().? == @as(*anyopaque, &dummy));
-    try std.testing.expect(!value.needsDisposal());
 }
 
 test "OptionalJSValue not passed" {
@@ -799,68 +482,6 @@ test "JSValue toAnyopaque for handle returns pointer" {
     var dummy: u8 = 0;
     const value = JSValue.fromHandle(&dummy);
     try std.testing.expect(value.toAnyopaque() != null);
-}
-
-test "JSValue handle scope - global can be stored" {
-    var dummy: u8 = 0;
-    const value = JSValue.fromHandle(&dummy);
-    switch (value) {
-        .handle => |h| {
-            try std.testing.expect(h.handle_scope == .global);
-            try std.testing.expect(h.canBeStored());
-        },
-        else => try std.testing.expect(false),
-    }
-}
-
-test "JSValue handle scope - local should not be stored" {
-    var dummy: u8 = 0;
-    const value = JSValue.fromLocalHandle(&dummy);
-    switch (value) {
-        .handle => |h| {
-            try std.testing.expect(h.handle_scope == .local);
-            try std.testing.expect(!h.canBeStored());
-        },
-        else => try std.testing.expect(false),
-    }
-}
-
-test "LocalValue basic operations" {
-    var dummy: u8 = 42;
-    const local = LocalValue.fromRawPtr(&dummy);
-    try std.testing.expect(local.isValid());
-    try std.testing.expect(local.rawPtr() == @as(*anyopaque, &dummy));
-}
-
-test "LocalValue to JSValue marks as local" {
-    var dummy: u8 = 0;
-    const local = LocalValue.fromRawPtr(&dummy);
-    const js_value = local.toJSValue();
-    switch (js_value) {
-        .handle => |h| {
-            try std.testing.expect(h.handle_scope == .local);
-        },
-        else => try std.testing.expect(false),
-    }
-}
-
-test "Promise type wrapper" {
-    var dummy: u8 = 0;
-    const PromiseVoid = Promise(void);
-    var promise = PromiseVoid.create(&dummy);
-    try std.testing.expect(promise.isValid());
-    try std.testing.expect(promise.getHandle() != null);
-
-    promise.deinit();
-    try std.testing.expect(!promise.isValid());
-    try std.testing.expect(promise.getHandle() == null);
-}
-
-test "Promise empty" {
-    const PromiseVoid = Promise(void);
-    const promise = PromiseVoid.empty();
-    try std.testing.expect(!promise.isValid());
-    try std.testing.expect(promise.getHandle() == null);
 }
 
 // ============================================================================

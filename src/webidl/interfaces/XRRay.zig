@@ -149,13 +149,6 @@ pub const XRRay = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_matrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_matrix) |cached| {
-            return cached;
-        }
-        const value = try XRRayImpl.get_matrix(instance);
-        state.own.cached_matrix = value;
-        return value;
+        return try XRRayImpl.get_matrix(instance);
     }
 };

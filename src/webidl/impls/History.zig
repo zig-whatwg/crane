@@ -196,10 +196,12 @@ pub fn get_state(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const bc = activeNavigable(internal) orelse return error.SecurityError;
     const history = try ensureEntries(bc);
     const entry = history.currentEntry(bc.id) orelse return runtime.JSValue.jsNull;
-    return stateValue(internal, entry);
+    // The History keeps the state; the binding gets a hold of its own.
+    return (try engine.retainValue(instance.ctx, try stateValue(internal, entry))).take();
 }
 
 /// The deserialized state of `entry`, cached for as long as it is the entry.
+/// BORROWED from the History.
 fn stateValue(internal: *InternalState, entry: *joint_history.Entry) !runtime.JSValue {
     if (internal.state_value) |value| {
         if (internal.state_entry == entry.id) return value;

@@ -154,6 +154,12 @@ pub const InternalState = struct {
     /// "The end" is waiting at step 8 - something delays the load event -
     /// and has not queued step 9's task yet.
     load_waiting_on_delay: bool = false,
+    /// HTML "will declaratively refresh": the shared declarative refresh
+    /// steps have run to step 12 for this document.
+    will_declaratively_refresh: bool = false,
+    /// The refresh those steps set up, until it comes due (or the document
+    /// goes, which cancels it). Owned.
+    declarative_refresh: ?*DeclarativeRefresh = null,
 
     /// The document element (root element, usually <html>)
     document_element: ?*runtime.Instance,
@@ -457,6 +463,11 @@ pub const InternalState = struct {
             self.allocator.free(url);
             self.about_base_url = null;
         }
+        // A refresh still waiting must not fire into a freed document.
+        if (self.declarative_refresh) |refresh| {
+            self.declarative_refresh = null;
+            refresh.cancel();
+        }
         if (self.url.len > 0) {
             self.allocator.free(self.url);
         }
@@ -623,6 +634,7 @@ pub fn init(
         .destroy = &lifecycleDestroy,
         .set_about_base_url = &lifecycleSetAboutBaseUrl,
         .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
+        .declarative_refresh = &lifecycleDeclarativeRefresh,
     });
     @import("dom").document_origin.install(.{ .domain = &originDomain });
     // A clone of a Document keeps its mode. Installed here, before any
@@ -1838,16 +1850,10 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Return cached instance if available ([SameObject] semantics)
+    // The document keeps its array ([SameObject]); the binding gets a hold
+    // of its own.
     if (internal.adopted_style_sheets) |sheets| {
-        // Return the cached V8 handle wrapped as JSValue
-        return runtime.JSValue{
-            .handle = .{
-                .ptr = sheets,
-                .needs_disposal = false, // Engine-owned: engine.createObservableArray
-                .handle_scope = .global,
-            },
-        };
+        return (try engine.retainValue(instance.ctx, runtime.JSValue.fromHandle(sheets))).take();
     }
 
     // Create new ObservableArray exotic object
@@ -1857,14 +1863,14 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSVa
         return runtime.JSValue.jsUndefined;
     };
 
-    // Cache the raw V8 object pointer for future access
-    // Extract the handle pointer from the JSValue union
+    // The document keeps the array's handle (engine.createObservableArray
+    // handed it over) for every later read; the binding gets a hold of its
+    // own.
     internal.adopted_style_sheets = switch (observable_array) {
         .handle => |h| h.ptr,
-        else => null,
+        else => return observable_array,
     };
-
-    return observable_array;
+    return (try engine.retainValue(instance.ctx, observable_array)).take();
 }
 
 /// Getter for activeElement
@@ -3520,8 +3526,7 @@ pub fn call_createTextNode(instance: *runtime.Instance, data: runtime.DOMString)
 /// 6. Return walker
 pub fn call_createTreeWalker(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // The binding hands a callback argument over: the walker owns it from
-    // here and releases it in its deinit.
+    // The filter argument, borrowed for the call: the walker takes its own.
     const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
 
     // Step 1: Create TreeWalker
@@ -4016,6 +4021,193 @@ fn lifecycleAboutFallbackBaseUrl(document: *runtime.Instance) ?[]const u8 {
     return null;
 }
 
+// ============================================================================
+// Declarative refresh (HTML §4.2.5.3)
+// ============================================================================
+
+/// A refresh the shared declarative refresh steps set up for a document:
+/// where it goes and after how long, and - once the document has completely
+/// loaded - the timer it waits on. The document owns it
+/// (`InternalState.declarative_refresh`) until it fires; the document's end
+/// cancels it.
+const DeclarativeRefresh = struct {
+    allocator: std.mem.Allocator,
+    document: *runtime.Instance,
+    generation: u64,
+    /// urlRecord, serialized. Owned.
+    url: []u8,
+    /// `time`, in milliseconds.
+    delay_ms: u64,
+    /// The timer it waits on, once armed.
+    timer: ?runtime.TimerInterface = null,
+    timer_id: runtime.TimerId = 0,
+
+    fn destroy(self: *DeclarativeRefresh) void {
+        self.allocator.free(self.url);
+        self.allocator.destroy(self);
+    }
+
+    /// The document is going: the timer must not fire into it.
+    fn cancel(self: *DeclarativeRefresh) void {
+        if (self.timer) |timer| _ = timer.clearTimeout(self.timer_id);
+        self.destroy();
+    }
+
+    /// The refresh has come due. The document gives it up, and its step
+    /// runs as a task of the document's realm, entered from the event loop.
+    fn fire(data: ?*anyopaque) void {
+        const self: *DeclarativeRefresh = @ptrCast(@alignCast(data orelse return));
+        defer self.destroy();
+        if (runtime.SlabAllocator.generationOf(self.document) != self.generation) return;
+        const internal = getInternal(self.document) orelse return;
+        if (internal.declarative_refresh == self) internal.declarative_refresh = null;
+        engine.runTaskInRealm(self.document.ctx, refreshComesDue, self) catch |err| {
+            log.debug("declarative refresh not run: {}", .{err});
+        };
+    }
+};
+
+/// dom.document_lifecycle: HTML "shared declarative refresh steps" given
+/// `document`, `input` and, for a meta element's Refresh pragma, `meta`.
+/// Steps 2-11.10 are html_core's `declarative_refresh.parse`.
+///
+/// Step 13 takes its first option: navigate once the refresh has come due.
+/// "The later of" `time` seconds after the completely loaded time and after
+/// the meta element's insertion is `time` seconds from now for a document
+/// that has completely loaded - the element was inserted just now - and
+/// `time` seconds from the completely loaded time otherwise.
+///
+/// Not modelled, stated: the document's active sandboxing flag set is not
+/// recorded, so step 13's sandboxed automatic features browsing context flag
+/// is read from its navigable's sandboxing flags when the steps run; the
+/// flag is set exactly when allow-scripts is absent.
+fn lifecycleDeclarativeRefresh(document: *runtime.Instance, input: []const u8, meta: ?*runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    // Step 1: "If document's will declaratively refresh is true, then
+    // return."
+    if (internal.will_declaratively_refresh) return;
+    // Steps 2-11.10.
+    const parsed = html_core.navigation.declarative_refresh.parse(input) orelse return;
+    // Step 9: "Let urlRecord be document's URL." Steps 11.11-11.12: "Set
+    // urlRecord to the result of encoding-parsing a URL given urlString,
+    // relative to document. If urlRecord is failure, then return."
+    const url: []u8 = if (parsed.url) |url_string|
+        parseRelativeToDocument(document, url_string, internal.allocator) orelse return
+    else blk: {
+        const own = get_URL(document) catch return;
+        defer document.ctx.allocator.free(own);
+        break :blk internal.allocator.dupe(u8, own) catch return;
+    };
+    // Step 11.13: "If urlRecord's scheme is "javascript", then return."
+    if (html_core.navigation.navigate_steps.isJavascript(url)) {
+        internal.allocator.free(url);
+        return;
+    }
+    // Step 12: "Set document's will declaratively refresh to true."
+    internal.will_declaratively_refresh = true;
+    // Step 13: "if meta is given, document's active sandboxing flag set does
+    // not have the sandboxed automatic features browsing context flag set" -
+    // a refresh that may never navigate is not set up.
+    if (meta != null and automaticFeaturesSandboxed(document)) {
+        internal.allocator.free(url);
+        return;
+    }
+    const refresh = internal.allocator.create(DeclarativeRefresh) catch {
+        internal.allocator.free(url);
+        return;
+    };
+    refresh.* = .{
+        .allocator = internal.allocator,
+        .document = document,
+        .generation = runtime.SlabAllocator.generationOf(document),
+        .url = url,
+        .delay_ms = std.math.mul(u64, parsed.time, std.time.ms_per_s) catch std.math.maxInt(u64),
+    };
+    internal.declarative_refresh = refresh;
+    // A document still loading starts the wait from "completely finish
+    // loading" (completeLoading).
+    if (internal.completely_loaded) armDeclarativeRefresh(document);
+}
+
+/// Start `document`'s declarative refresh waiting: `time` seconds from now.
+fn armDeclarativeRefresh(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    const refresh = internal.declarative_refresh orelse return;
+    if (refresh.timer != null) return;
+    const timer = document.ctx.getOptionalTimer() orelse return;
+    const id = timer.setTimeout(refresh.delay_ms, &DeclarativeRefresh.fire, refresh);
+    if (id == 0) return;
+    refresh.timer = timer;
+    refresh.timer_id = id;
+}
+
+/// Step 13's navigation, once the refresh has come due: "navigate document's
+/// node navigable to urlRecord using document, with historyHandling set to
+/// "replace"" - for a document that is still fully active.
+fn refreshComesDue(data: ?*anyopaque) void {
+    const refresh: *DeclarativeRefresh = @ptrCast(@alignCast(data.?));
+    const document = refresh.document;
+    if (!isShownByItsWindow(document)) return;
+    const window = (get_defaultView(document) catch null) orelse return;
+    const internal = getInternal(document) orelse return;
+    const own_url = get_URL(document) catch return;
+    defer document.ctx.allocator.free(own_url);
+    const navigate_steps = html_core.navigation.navigate_steps;
+    // Deviation, stated: a refresh to the document's own URL - fragments
+    // excluded, with no fragment of its own - is a reload, not a replace
+    // navigation. All three browsers report navigationType "reload" for it
+    // (navigation-api/navigate-event/navigate-meta-refresh.html passes in
+    // Chrome, Firefox and Safari); the spec navigates with "replace". This
+    // is Blink's HttpRefreshScheduler::NavigateTask (EqualIgnoringFragmentIdentifier
+    // and no fragment: WebFrameLoadType::kReload), and Gecko's
+    // nsDocShell::ForceRefreshURI (the same URI: LOAD_REFRESH, not
+    // LOAD_REFRESH_REPLACE). Blink also refuses the reload for a frame
+    // that has shown only initial empty documents.
+    const reload = navigate_steps.equalsExcludingFragments(refresh.url, own_url) and
+        std.mem.indexOfScalar(u8, refresh.url, '#') == null and
+        !internal.is_initial_about_blank;
+    const dom = @import("dom");
+    if (reload) {
+        // Location.reload()'s path: History installs the hook when it is
+        // made.
+        if (!dom.history_traversal.isInstalled()) _ = interfaces.Window.get_history(window) catch {};
+        dom.history_traversal.reload(window);
+        return;
+    }
+    if (dom.navigables.isInstalled()) {
+        dom.navigables.navigateByTarget(document, .{ .target = "_self", .url = refresh.url, .history_behavior = .replace });
+        return;
+    }
+    // No navigable container on this thread has made the hook: the
+    // document is its page's, which its Location navigates.
+    if (!dom.top_level_navigation.isInstalled()) _ = interfaces.Window.get_location(window) catch return;
+    dom.top_level_navigation.navigate(window, refresh.url, .{ .history_behavior = .replace, .source_document = document });
+}
+
+/// Whether `document`'s navigable is sandboxed without allow-scripts - which
+/// sets the sandboxed automatic features browsing context flag.
+fn automaticFeaturesSandboxed(document: *runtime.Instance) bool {
+    const window = (get_defaultView(document) catch null) orelse return false;
+    const browsing_context = html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    return !browsing_context.allowsScripts();
+}
+
+/// `url_string` encoding-parsed relative to `document` and serialized,
+/// owned by `allocator`; null on failure.
+fn parseRelativeToDocument(document: *runtime.Instance, url_string: []const u8, allocator: std.mem.Allocator) ?[]u8 {
+    const base = NodeImpl.get_baseURI(document) catch return null;
+    defer document.ctx.allocator.free(base);
+    const base_arg = if (base.len > 0)
+        webidl.Opt(runtime.USVString).passed(base)
+    else
+        webidl.Opt(runtime.USVString).notPassed();
+    const parsed = (interfaces.URL.call_static_parse(document, url_string, base_arg) catch null) orelse return null;
+    defer runtime.Instance.deinit(parsed);
+    const href = interfaces.URL.get_href(parsed) catch return null;
+    defer parsed.ctx.allocator.free(href);
+    return allocator.dupe(u8, href) catch null;
+}
+
 /// Page Visibility "update the visibility state" of `document`.
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#update-the-visibility-state
 fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisibilityState) void {
@@ -4030,7 +4222,7 @@ fn updateVisibilityState(document: *runtime.Instance, state: enums.DocumentVisib
     fireEvent(document, document, "visibilitychange", true);
 }
 
-const LifecycleStep = enum { dom_content_loaded, load, container_load };
+const LifecycleStep = enum { dom_content_loaded, load, container_load, declarative_refresh };
 
 const LifecycleTask = struct {
     allocator: std.mem.Allocator,
@@ -4081,7 +4273,7 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
     // those tasks nothing to do. Running them fired a second load at the
     // frame's container, for a document the frame no longer shows.
     switch (task.step) {
-        .dom_content_loaded, .load => if (!isShownByItsWindow(task.target)) return,
+        .dom_content_loaded, .load, .declarative_refresh => if (!isShownByItsWindow(task.target)) return,
         .container_load => {},
     }
 
@@ -4097,6 +4289,8 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
         .container_load => if (!@import("dom").content_navigables.runLoadEventSteps(task.target)) {
             fireEvent(task.target, task.target, "load", false);
         },
+        // A refresh set up while the document loaded starts waiting now.
+        .declarative_refresh => armDeclarativeRefresh(task.target),
     }
 }
 
@@ -4139,6 +4333,10 @@ fn completeLoading(document: *runtime.Instance) void {
     if (@import("dom").navigable_container.of(window)) |container| {
         queueLifecycleTask(container, .container_load);
     }
+    // A declarative refresh comes due `time` seconds after the completely
+    // loaded time. Its wait starts in a task queued behind the container's
+    // load event, so a refresh of no time never overtakes that event.
+    if (internal.declarative_refresh != null) queueLifecycleTask(document, .declarative_refresh);
 }
 
 /// Fire an event named `event_type` at `target`, created in `realm_of`'s
@@ -4243,8 +4441,7 @@ pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime
 /// 7. Return iterator
 pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // The binding hands a callback argument over: the iterator owns it from
-    // here and releases it in its deinit.
+    // The filter argument, borrowed for the call: the iterator takes its own.
     const filter_wrapper: ?*runtime.CallbackWrapper = if (filter.was_passed) (filter.value orelse null) else null;
 
     // Step 1: Create NodeIterator

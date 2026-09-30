@@ -150,13 +150,15 @@ pub const InternalState = struct {
     /// LocalDOMWindow::Trace visits custom_elements_.
     custom_elements_pin: same_object.Pin = .{},
 
-    /// BarProp instances (lazily created)
+    /// The six BarProp objects, each made on first read and held for the
+    /// Window's life (a native pointer V8 cannot see needs the pin).
     locationbar: ?*runtime.Instance = null,
     menubar: ?*runtime.Instance = null,
     personalbar: ?*runtime.Instance = null,
     scrollbars: ?*runtime.Instance = null,
     statusbar: ?*runtime.Instance = null,
     toolbar: ?*runtime.Instance = null,
+    bar_pins: [6]same_object.Pin = @splat(.{}),
 
     /// Screen-related (lazily created)
     screen: ?*runtime.Instance = null,
@@ -243,6 +245,7 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         self.navigator_pin.release();
+        for (&self.bar_pins) |*pin| pin.release();
         self.navigation_pin.release();
         self.custom_elements_pin.release();
         self.local_storage_pin.release();
@@ -992,40 +995,40 @@ pub fn get_customElements(instance: *runtime.Instance) anyerror!*runtime.Instanc
 // BarProp Properties (§7.2.2)
 // ============================================================================
 
-/// Getter for locationbar
+/// HTML §7.2.2.2: "The locationbar attribute must return the location bar
+/// BarProp object" - and each of menubar, personalbar, scrollbars,
+/// statusbar and toolbar its own BarProp object - made on first read.
+fn barProp(instance: *runtime.Instance, comptime index: usize, comptime field: []const u8) !*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (@field(internal, field)) |bar| return bar;
+    const bar = try interfaces.BarProp.init(instance.ctx.allocator, instance.ctx);
+    @field(internal, field) = bar;
+    internal.bar_pins[index].hold(bar);
+    return bar;
+}
+
 pub fn get_locationbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.locationbar orelse error.NotImplemented;
+    return barProp(instance, 0, "locationbar");
 }
 
-/// Getter for menubar
 pub fn get_menubar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.menubar orelse error.NotImplemented;
+    return barProp(instance, 1, "menubar");
 }
 
-/// Getter for personalbar
 pub fn get_personalbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.personalbar orelse error.NotImplemented;
+    return barProp(instance, 2, "personalbar");
 }
 
-/// Getter for scrollbars
 pub fn get_scrollbars(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.scrollbars orelse error.NotImplemented;
+    return barProp(instance, 3, "scrollbars");
 }
 
-/// Getter for statusbar
 pub fn get_statusbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.statusbar orelse error.NotImplemented;
+    return barProp(instance, 4, "statusbar");
 }
 
-/// Getter for toolbar
 pub fn get_toolbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.toolbar orelse error.NotImplemented;
+    return barProp(instance, 5, "toolbar");
 }
 
 /// Getter for status - The status bar text
@@ -2548,7 +2551,13 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
         const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
         installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
     }
-    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, window_features.popup) orelse return null;
+    // Step 15.1: "Set targetNavigable's active browsing context's is popup
+    // to the result of checking if a popup window is requested". Deviation,
+    // stated, matching Chrome and Safari (window-open-popup-behavior passes
+    // 51/51 in both; Firefox follows the text): a window opened with noopener
+    // or noreferrer is never a popup, whatever its features.
+    const is_popup = window_features.popup and !noopener;
+    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, is_popup) orelse return null;
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
     internal.auxiliary_navigables.append(allocator, integration) catch {
         integration.deinit();
@@ -2587,7 +2596,10 @@ fn namedPopup(window: *runtime.Instance, name: []const u8, depth: usize) ?NamedP
     const internal = getInternal(window) orelse return null;
     for (internal.auxiliary_navigables.items) |integration| {
         const bc = integration.browsing_context orelse continue;
-        if (bc.is_closed) continue;
+        // A popup close() was called on is closing, and targeting passes it
+        // by from that moment (close-method.window.js: "window.close()
+        // affects name targeting immediately").
+        if (bc.is_closed or bc.is_closing) continue;
         const popup: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
         if (std.mem.eql(u8, bc.target_name, name)) return .{ .integration = integration, .window = popup };
         if (namedPopup(popup, name, depth + 1)) |found| return found;

@@ -28,14 +28,26 @@ const namespace = @import("namespace.zig");
 const interface_mod = @import("interface.zig");
 const dom_type_info = @import("dom_type_info.zig");
 const callback_wrapper = @import("callback_wrapper.zig");
-const callback_registry = @import("callback_registry.zig");
-const engine_mod = @import("engine.zig");
 const typedefs = @import("typedefs");
 const js_value_mod = @import("js_value.zig");
 const pointer_tag = @import("pointer_tag.zig");
 const DebugAssertions = pointer_tag.DebugAssertions;
 const global_handles = @import("global_handles.zig");
 const value_operations = @import("value_operations.zig");
+
+/// What a callback-interface argument's wrapper is allocated from: a
+/// general-purpose allocator, since the binding makes and frees one per call
+/// (the page allocator it used spent a whole page on each). A test swaps in
+/// `std.testing.allocator` to see that none outlives its call.
+pub var callback_allocator: std.mem.Allocator = std.heap.c_allocator;
+
+/// Release a callback interface argument (`*runtime.CallbackWrapper`) the
+/// binding converted, once the call it was converted for has returned: the
+/// wrapper, the argument's handle it took over, and its context handle.
+pub fn releaseCallbackWrapper(argument: *runtime.CallbackWrapper) void {
+    const wrapper: *callback_wrapper.CallbackWrapper = @ptrCast(@alignCast(argument));
+    wrapper.deinit();
+}
 
 /// Type-safe JavaScript value representation
 pub const JSValue = js_value_mod.JSValue;
@@ -1071,10 +1083,10 @@ pub fn fromV8Value(
             return runtime.JSValue{ .string = .{ .data = buffer, .owned = true } };
         }
 
-        // For objects/functions/etc., store as a LOCAL handle.
-        // The pointer from v8_FunctionCallbackInfo_GetArgument is a Local<Value>*,
-        // NOT a Global<Value>*. This is critical for correct usage in impl code.
-        return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value), .handle_scope = .local } };
+        // An object, function or symbol: the argument's own handle - a
+        // Global<Value>* (v8_FunctionCallbackInfo_GetArgument makes one), which
+        // the impl borrows for the call.
+        return runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } };
     }
 
     // Handle unions (for constructor overloading and type unions)
@@ -1811,73 +1823,35 @@ pub fn fromV8Value(
         return TaggedPointer.init(@ptrCast(@constCast(value)), .local_value).toConstPtr();
     }
 
-    // Handle CallbackWrapper types (for callback interfaces like EventListener, NodeFilter, etc.)
-    // We create a runtime.CallbackWrapper that wraps the V8-specific callback wrapper.
-    // The runtime.CallbackWrapper uses the engine interface to invoke the V8 callback.
+    // Callback interface types (EventListener, NodeFilter, XPathNSResolver):
+    // the argument as this adapter's CallbackWrapper, which the engine-neutral
+    // `*runtime.CallbackWrapper` names opaquely. BORROWED by the impl for the
+    // call: the binding releases it when the call returns
+    // (`releaseCallbackWrapper`), and an impl that keeps the callback takes a
+    // CallbackInterface of its own (takeCallbackInterface).
     if (T == *runtime.CallbackWrapper) {
-        // CRITICAL: CallbackWrappers MUST use a persistent allocator, NOT the arena allocator.
-        // The arena is reset during GC sweeps (onGCSweep -> ArenaAllocator.reset()), but
-        // callbacks stored in EventTarget must survive across GC cycles.
-        // Using arena allocator here causes use-after-free when event listeners are invoked.
-        const persistent_allocator = std.heap.page_allocator;
-
-        // Create a V8 CallbackWrapper from the V8 value (function or object with handleEvent)
-        // Note: createFromV8Value may return callback-specific errors which we map to TypeError
-        const v8_wrapper_opt = callback_wrapper.createFromV8Value(
-            persistent_allocator,
+        const wrapper = callback_wrapper.createFromV8Value(
+            callback_allocator,
             isolate,
             context,
             value,
             "handleEvent", // Default method name for callback interfaces
         ) catch return ConversionError.TypeError;
-        const v8_wrapper = v8_wrapper_opt orelse return ConversionError.TypeError;
-        // Register wrapper for cleanup when context is destroyed
-        callback_registry.register(v8_wrapper);
-
-        // Create a runtime.CallbackWrapper that properly wraps the V8 callback.
-        // CRITICAL: We cannot just @ptrCast because runtime.CallbackWrapper and V8 CallbackWrapper
-        // have INCOMPATIBLE struct layouts! runtime.CallbackWrapper.invoke() calls
-        // self.engine.invokeCallback(), so we must set up the engine interface correctly.
-        const runtime_wrapper = persistent_allocator.create(runtime.CallbackWrapper) catch return ConversionError.TypeError;
-        runtime_wrapper.* = .{
-            .engine_handle = v8_wrapper, // V8 CallbackWrapper pointer
-            .engine = &engine_mod.v8_engine_interface, // V8 engine interface with invokeCallback
-            .engine_ctx = v8_wrapper.callback_context.?, // the wrapper's own context handle
-            .allocator = persistent_allocator,
-        };
-        return runtime_wrapper;
+        return @ptrCast(wrapper orelse return ConversionError.TypeError);
     }
     if (T == ?*runtime.CallbackWrapper) {
         // Optional callback - null/undefined is valid
         if (v8.v8_Value_IsNullOrUndefined(value)) {
             return null;
         }
-        // CRITICAL: Use persistent allocator for optional callbacks too (same reason as above)
-        const persistent_allocator = std.heap.page_allocator;
-
-        // Note: createFromV8Value may return callback-specific errors which we map to TypeError
-        const v8_wrapper = callback_wrapper.createFromV8Value(
-            persistent_allocator,
+        const wrapper = callback_wrapper.createFromV8Value(
+            callback_allocator,
             isolate,
             context,
             value,
             "handleEvent",
         ) catch return ConversionError.TypeError;
-        if (v8_wrapper) |w| {
-            // Register wrapper for cleanup when context is destroyed
-            callback_registry.register(w);
-
-            // Create a runtime.CallbackWrapper that properly wraps the V8 callback
-            const runtime_wrapper = persistent_allocator.create(runtime.CallbackWrapper) catch return ConversionError.TypeError;
-            runtime_wrapper.* = .{
-                .engine_handle = w, // V8 CallbackWrapper pointer
-                .engine = &engine_mod.v8_engine_interface, // V8 engine interface
-                .engine_ctx = w.callback_context.?, // the wrapper's own context handle
-                .allocator = persistent_allocator,
-            };
-            return runtime_wrapper;
-        }
-        return null;
+        return if (wrapper) |w| @ptrCast(w) else null;
     }
 
     // Handle pointer types that might be generated by codegen for buffer sources
@@ -2372,21 +2346,6 @@ pub fn toV8Value(
 
     // Handle void (return undefined)
     if (T == void) {
-        return toV8Undefined(isolate);
-    }
-
-    // Handle CallbackWrapper types (EventHandler, etc.)
-    // Extract the V8 Function from the wrapper for getters
-    if (T == *runtime.CallbackWrapper) {
-        // The engine-agnostic wrapper a conversion made (conversions ~1600):
-        // its engine handle is the V8 wrapper, which holds the callback value -
-        // function or object - as a Global. Return that Global, borrowed, as
-        // instanceToV8 returns the wrapper cache's; the getter's
-        // `nodeIterator.filter === filter` depends on it being the same value.
-        // This used to cast the runtime wrapper AS the V8 one, and returned a
-        // Local slot where a Global is expected.
-        const engine_wrapper: *callback_wrapper.CallbackWrapper = @ptrCast(@alignCast(value.engine_handle));
-        if (engine_wrapper.getGlobalValuePtr()) |global| return global;
         return toV8Undefined(isolate);
     }
 

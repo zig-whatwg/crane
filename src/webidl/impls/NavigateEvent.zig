@@ -191,7 +191,9 @@ pub fn get_downloadRequest(instance: *runtime.Instance) anyerror!?runtime.DOMStr
 
 pub fn get_info(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return runtime.JSValue.jsUndefined;
-    if (internal.info) |value| return value.borrow();
+    // The event keeps `info`; the binding releases what a getter returns, so
+    // it gets a hold of its own.
+    if (internal.info) |value| return (try engine.retainValue(instance.ctx, value.value)).take();
     return runtime.JSValue.jsUndefined;
 }
 

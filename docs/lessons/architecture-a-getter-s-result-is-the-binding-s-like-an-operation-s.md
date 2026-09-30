@@ -1,0 +1,17 @@
+# Architecture: A getter's result is the binding's, like an operation's
+
+**Date**: 2026-09-29
+**Lesson**: The binding had two rules for an impl's JSValue result. Operations released it when the value was flagged `needs_disposal`. Attribute getters never released anything. Kept values were "returned borrowed" through the flag, and every getter that made a value leaked it. There is now one rule: the binding releases every value an impl returns, getters included, and a kept value goes back as a hold of the binding's own (`engine.retainValue(realm, kept.value).take()`).
+
+**Why**: The flag let each path read ownership its own way, so the two paths drifted apart without anything failing. The getter path's `getterValueIsOwned(runtime.JSValue)` was false. That made `Owned.borrow()` safe for getters, and every `take()`, `undefined` or number a getter returned leaked a Global per read. The generated `[SameObject]` cache of a JSValue getter was correct only because of that leak: it handed the binding the cached handle, which the binding never released.
+
+**What Happened**: gc_bench measured per-read growth: `void e.error` on an ErrorEvent (undefined), `void io.thresholds` (a new frozen array each read) and `void c.detail`. An operation returning the same `take()`n value released it. When part B removed the flag, the getter path had to take a rule. Releasing results there would have broken three things: the `[SameObject]` cache (the second read returns a freed handle), every `borrow()` getter, and every getter returning a stored argument handle (PopStateEvent.state, ShadowRoot.adoptedStyleSheets).
+
+**Fix**:
+1. `JSValue.EngineHandle` is only `ptr`. `needs_disposal`, the `.local`/`.global` tag, `needsDisposal()` and the owning/non-owning constructors are gone.
+2. The binding releases every JSValue result except an instance's wrapper: the operation path, the getter path (`?JSValue` too), `document.all()` and a builtin's steps. `v8ReleaseValue` disposes a `.handle` unconditionally, since only an `engine.Owned` reaches it.
+3. Getters of kept values return `engine.retainValue(...).take()`: events' data/detail/error/reason/state, AbortSignal.reason, FileReader.result, XMLHttpRequest.response, History.state, the filter attributes, adoptedStyleSheets and the streams' stored promises (`toReturnKept`). The streams' `returned` slots, which existed only to keep a returned promise alive for a binding that never released it, are gone.
+4. Codegen does not emit the `[SameObject]` cache for a `runtime.JSValue` getter. The impl's slot keeps the value (CookieChangeEvent.changed, and now IntersectionObserver.thresholds), so `x.attr === x.attr` still holds.
+5. Engine code that calls such a getter through `interfaces` is the caller the hold belongs to, and it releases it. There were eight such callers: EventTarget's onerror arguments (ErrorEvent.error), fetch's four reads of AbortSignal.reason, Response's body abort, pipeTo's abort algorithm, and MessageEvent's constructor, which called its own get_ports and dropped the result. Each leaked a Global per call. They were found only by a search of every caller of a generated member that returns `runtime.JSValue`. Each had borrowed the result under the old rule, so hand-reading the getters could not find them.
+
+**Takeaway**: **Ownership of a return value is one rule for every path that returns it, and for every caller that receives it. A flag on the value lets each path read it differently, and the difference only shows up as a leak.**

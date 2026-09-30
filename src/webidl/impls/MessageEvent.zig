@@ -197,7 +197,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
                 if (state.own._internal) |internal| {
                     internal.ports = try ctx.allocator.dupe(*runtime.Instance, ports);
                     // Where no array can be made now, the first read makes it.
-                    _ = get_ports(instance) catch {};
+                    makePortsArray(instance) catch {};
                 }
             }
         }
@@ -249,10 +249,10 @@ fn keepData(ctx: runtime.Context, instance: *runtime.Instance, data: runtime.JSV
 /// - Returns an ArrayBuffer if binaryType is "arraybuffer" and message was binary
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    // The event keeps what it holds: a handle goes out borrowed, and the
-    // binding reads it and leaves it.
+    // The event keeps what it holds: a handle goes to the binding as a hold
+    // of its own.
     return switch (state.own.data) {
-        .handle => |h| .{ .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope } },
+        .handle => (try engine.retainValue(instance.ctx, state.own.data)).take(),
         else => state.own.data,
     };
 }
@@ -304,21 +304,29 @@ pub fn get_source(instance: *runtime.Instance) anyerror!?typedefs.MessageEventSo
 /// in deinit.
 pub fn get_ports(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
-    const internal = state.own._internal orelse return runtime.JSValue.jsUndefined;
-    if (internal.ports_hold == null) {
-        const allocator = instance.ctx.allocator;
-        const values = try allocator.alloc(runtime.JSValue, internal.ports.len);
-        defer allocator.free(values);
-        for (internal.ports, values) |port, *value| value.* = .{ .instance = port };
-        const ports = try engine.createFrozenArray(instance.ctx, values);
-        internal.ports_hold = ports;
-        state.own.ports = ports.value;
-    }
-    // Borrowed: the event keeps its array.
+    if (state.own._internal == null) return runtime.JSValue.jsUndefined;
+    try makePortsArray(instance);
+    // The event keeps its array; the binding gets a hold of its own.
     return switch (state.own.ports) {
-        .handle => |h| .{ .handle = .{ .ptr = h.ptr, .needs_disposal = false, .handle_scope = h.handle_scope } },
+        .handle => (try engine.retainValue(instance.ctx, state.own.ports)).take(),
         else => state.own.ports,
     };
+}
+
+/// The event's frozen ports array, made once and kept (`ports_hold`). The
+/// constructor makes it at once, since it is what keeps the ports: calling
+/// get_ports there would take a hold nothing releases.
+fn makePortsArray(instance: *runtime.Instance) !void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    if (internal.ports_hold != null) return;
+    const allocator = instance.ctx.allocator;
+    const values = try allocator.alloc(runtime.JSValue, internal.ports.len);
+    defer allocator.free(values);
+    for (internal.ports, values) |port, *value| value.* = .{ .instance = port };
+    const ports = try engine.createFrozenArray(instance.ctx, values);
+    internal.ports_hold = ports;
+    state.own.ports = ports.value;
 }
 
 /// Operation: initMessageEvent (legacy)

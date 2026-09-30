@@ -109,13 +109,6 @@ pub const ChapterInformation = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_artwork(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_artwork) |cached| {
-            return cached;
-        }
-        const value = try ChapterInformationImpl.get_artwork(instance);
-        state.own.cached_artwork = value;
-        return value;
+        return try ChapterInformationImpl.get_artwork(instance);
     }
 };

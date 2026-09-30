@@ -398,72 +398,64 @@ functions predate the rule.
 
 ## The impls boundary
 
-One rule, applied strictly: **state is reached through the impl that owns it.**
-How depends on where the caller stands relative to the owner:
+**An interface's impl is reached ONLY through that interface's own generated
+file. Nothing else references it - no other impl, not an ancestor's impl, not
+src/dom, src/html, src/browser, the engine adapter, tools or tests.** (The
+user's rule, 2026-09-29. It replaces the old exception that let an impl call its
+ancestors' impls directly.)
 
 ```
-Impl -> itself or an ANCESTOR  ->  the ancestor's impl, directly
-Impl -> any other type         ->  interfaces; no IDL member -> a src/dom/ hook
-External code                  ->  interfaces; no IDL member -> a src/dom/ hook
+Anything -> an IDL member of any type  ->  interfaces.X.<member>
+Anything -> a step with no IDL member  ->  a src/dom hook the owning impl installs
+The generated interface X.zig          ->  its own impl (the one allowed reference)
 ```
 
-1. **Your own type and your ancestors: go through the impl.** An impl IS its
-   ancestors, so it reaches their state through their impls - Text, Attr,
-   Document and the ParentNode mixin set a node's document with
-   `NodeImpl.setOwnerDocument`, because every one of them is a Node. A mixin's
-   ancestors are the ones every type that includes it shares (ParentNode is
-   included only by Node types, so Node is its ancestor; Element is not).
-   **Never use a `src/dom/` hook, or read an ancestor's generated state, to reach
-   state your own hierarchy owns** - that is a detour around the impl.
-2. **Another type, with an IDL member: the interface.**
-   `interfaces.Node.get_ownerDocument(n)` from Range, not
-   `NodeImpl.getOwnerDocument(n)`. IDL constants too:
-   `interfaces.Node.get_DOCUMENT_NODE()`. Interfaces are the stable API and may
-   add CEReactions, validation and other cross-cutting concerns; a direct impl
-   call bypasses all of it.
-3. **Another type, no IDL surface: a hook the owner installs.** Setting a node's
-   document from DOMImplementation or the HTML parsers, joining a live range to
-   its document from Document, setting up a traverser, making a collection live -
-   the owning impl installs the step into a hook module in `src/dom/`
-   (`node_document.zig`, `range_boundaries.zig`, `traversal.zig`,
-   `live_collections.zig`, `abort_algorithms.zig`), each declaring its owners on
-   a `//! lint-impls: hook for <Owner>` line. Add a hook module for a new step
-   rather than an import. An ANCESTOR that needs a descendant's state - the
-   AbstractRange getters reading a Range's boundary points - is in this case too:
-   a base type cannot depend on its subclasses, so that is dispatch through a
-   hook the subclasses install.
+1. **IDL members: the interface.** `interfaces.Node.get_ownerDocument(n)`, never
+   `NodeImpl.getOwnerDocument(n)` - from Range, from Text (Node's own
+   descendant), from anywhere. IDL constants too: `interfaces.Node.get_DOCUMENT_NODE()`.
+   Interfaces are the stable API and carry CEReactions, validation and the other
+   cross-cutting concerns; a direct impl call bypasses all of it.
+2. **No IDL member: a hook the owner installs.** Setting a node's document,
+   joining a live range to its document, setting up a traverser, making a
+   collection live, an element's form reset steps - the owning impl installs the
+   step into a hook module in `src/dom/` (`node_document.zig`,
+   `range_boundaries.zig`, `traversal.zig`, `live_collections.zig`,
+   `abort_algorithms.zig`, ...), each declaring its owners on a
+   `//! lint-impls: hook for <Owner>` line. Callers call the hook and never name
+   the impl. Add a hook module for a new step rather than an import. This holds
+   for a type's own descendants too: Text sets its node document through the
+   hook, not through NodeImpl.
+3. **Shared helpers do not live in `src/webidl/impls/`.** A helper that serves
+   several types goes in `src/dom/`, `src/html/` or its subsystem, and reaches
+   types through interfaces and hooks like any other code.
 
-Never `@import("Other.zig")` a type that is not your ancestor in new code, and
-never cast another impl's `_internal` to its `InternalState` and write through it.
+Never `@import("impls")` or name an `XImpl` outside the generated layers in new
+code, and never cast another type's `_internal` to its `InternalState`.
 
-**Both halves are checked, and `zig build test` runs the check:**
+**Existing references are debt, not precedent.** About 200 files outside the
+generated layers still reference impls (most of them impls reaching ancestors,
+which the old rule allowed). A change that touches such a line converts it.
+
+**Checked by `zig build lint-impls`** (part of `zig build test`), counting ancestors since 1a94e0043:
 
 ```bash
 zig build lint-impls -j2 --cache-dir /tmp/crane-z16-cache                # fails on any new reference into an impl
 zig build lint-impls -j2 --cache-dir /tmp/crane-z16-cache -- --update    # after paying debt down: record the lower baseline
 ```
 
-`tools/lint_impls_boundary.zig` reads each impl's ancestry from the generated
-interfaces (`ParentInterface`, `MixinTypes`) and enforces:
-
-- **Strictly, with no baseline:** a hook used from inside the hierarchy that
-  owns it - Text calling `node_document.set` - fails, naming file and line. The
-  owner installing it, and naming its types (TitleCase members), are fine.
-- **As a ratchet:** references into any impl that is not the file's own type or
-  an ancestor, per file AND per `Impl.member`, against
-  `tools/impls_boundary_baseline.txt`. A count that rises fails; so does a pair
-  the baseline lacks - which is what catches a swap, one reference traded for a
-  new one at the same total. Calling a non-ancestor's `init` counts: creating
-  another type through its impl is a reference into it.
-
-The generated layers (interfaces, mixins, namespaces, codegen) are skipped:
-delegating to impls is their job.
+`tools/lint_impls_boundary.zig` counts references into impls per file AND per
+`Impl.member` against `tools/impls_boundary_baseline.txt`, and enforces strictly
+that a hook is not used from inside the hierarchy that owns it. A count that
+rises fails; so does a pair the baseline lacks - which catches a swap. The
+generated layers (interfaces, mixins, namespaces, codegen) are skipped:
+delegating to impls is their job. `--rebase-for-rule-change` exists for one purpose: re-recording the
+baseline when the RULE changes (it was used once, when ancestors started to count); a code change
+never uses it.
 
 The baseline only goes down. `--update` refuses to record an increase, and
 editing the file by hand to make the check pass defeats the only thing that
 stops this debt growing. The count is whatever the baseline says - **do not
-write it down here.** The last hardcoded figure said "53 files, 245 instances"
-and was 138/434 by the time anyone checked.
+write it down here.**
 
 ---
 
@@ -639,8 +631,9 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
 
 - Memory leaks, Zig or C++
 - Committing a hand-edited generated file
-- Calling impls across the boundary in **new** code - `zig build lint-impls`
-  (part of `zig build test`) enforces it
+- Referencing an impl from anywhere but its own generated interface, in **new**
+  code - ancestors included; `zig build lint-impls` (part of `zig build test`)
+  enforces it
 - V8 outside the V8 adapter in **new** code - `zig build lint-engine` (part of
   `zig build test`) enforces it; see "The engine boundary"
 - A `get_`/`set_`/`call_` name on a function the generated code does not bind -
@@ -657,8 +650,8 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
 
 ## Known debt — do not add to it
 
-- References into impls from code that does not own them - recorded in
-  `tools/impls_boundary_baseline.txt`, which may only go down
+- References into impls from anywhere but their own generated interface -
+  recorded in `tools/impls_boundary_baseline.txt`, which may only go down
 - API-named functions in mixin impls that nothing calls - recorded in
   `tools/impls_naming_baseline.txt`, which may only go down
 - V8 references outside src/runtime/engines/v8/ - recorded in

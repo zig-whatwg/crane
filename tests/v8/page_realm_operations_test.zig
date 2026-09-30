@@ -61,7 +61,7 @@ fn scriptValue(expression: []const u8) !*ffi.Value {
 }
 
 /// `value` as the binding hands an object to an impl: conversions.fromV8Value
-/// tags it `.local` - borrowed for the call - over the same Global.
+/// makes a `.handle` - borrowed for the call - over the same Global.
 fn borrowed(value: *ffi.Value) runtime.JSValue {
     return v8.conversions.fromV8Value(runtime.JSValue, std.testing.allocator, isolate_once.?, context_once.?, value) catch unreachable;
 }
@@ -1695,4 +1695,173 @@ test "constructing a DOMException leaves no handle behind, as constructing an Ev
     // And it still has its stack.
     const reports = try run("if (typeof new DOMException('m').stack !== 'string') throw new Error('no stack');");
     try std.testing.expectEqual(@as(usize, 0), reports.count);
+}
+
+test "protocol: listeners added and removed in a loop leave no callback wrapper behind" {
+    // WebIDL: a callback interface argument (EventListener) is the call's; a
+    // listener the target keeps is its own callback interface value. Every
+    // wrapper the binding makes for the argument must be gone once the call
+    // returns - std.testing.allocator fails the test on any that outlives it.
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    const saved = v8.conversions.callback_allocator;
+    v8.conversions.callback_allocator = std.testing.allocator;
+    defer v8.conversions.callback_allocator = saved;
+    try expectEval(w,
+        \\const f = () => {};
+        \\const o = { handleEvent() {} };
+        \\let heard = 0;
+        \\const g = () => { heard++; };
+        \\for (let i = 0; i < 10; i++) {
+        \\  addEventListener('x', f); removeEventListener('x', f);
+        \\  addEventListener('y', o, true); removeEventListener('y', o, true);
+        \\}
+        \\addEventListener('z', g);
+        \\dispatchEvent(new Event('z'));
+        \\removeEventListener('z', g);
+        \\dispatchEvent(new Event('z'));
+        \\String(heard)
+    , "1");
+}
+
+test "protocol: what a getter returns is the binding's - a kept value reads the same, and no read leaves a handle" {
+    // AGENTS.md "The engine boundary", rule 3: the binding releases every
+    // value an impl returns. A value the object keeps goes back as a hold of
+    // the binding's own (engine.retainValue(...).take()), so it reads the same
+    // every time and survives the binding's release; a value made for the
+    // read is released with it.
+    // `io` takes the default threshold: the constructor does not parse
+    // options.threshold yet (it always keeps [0]), and what this test pins is
+    // the frozen array's identity, not the parse.
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    try expectEval(w,
+        \\const e = new ErrorEvent('x');
+        \\const c = new CustomEvent('x', { detail: { a: 1 } });
+        \\const s = AbortSignal.abort({ why: 1 });
+        \\const p = new PopStateEvent('x', { state: { b: 2 } });
+        \\const m = new MessageEvent('x', { data: { d: 4 } });
+        \\const k = new CookieChangeEvent('change', { changed: [{ name: 'a', value: 'b' }] });
+        \\const io = new IntersectionObserver(() => {});
+        \\globalThis.reads = () => {
+        \\  void e.error; void c.detail; void s.reason; void p.state; void m.data;
+        \\  void k.changed; void k.deleted; void io.thresholds;
+        \\};
+        \\[
+        \\  e.error === undefined,
+        \\  c.detail === c.detail && c.detail.a === 1,
+        \\  s.reason === s.reason && s.reason.why === 1,
+        \\  p.state === p.state && p.state.b === 2,
+        \\  m.data === m.data && m.data.d === 4,
+        \\  k.changed === k.changed && k.changed[0].name === 'a',
+        \\  k.deleted === k.deleted && k.deleted.length === 0,
+        \\  io.thresholds === io.thresholds && Object.isFrozen(io.thresholds) && io.thresholds.join() === '0',
+        \\].join()
+    , "true,true,true,true,true,true,true,true");
+
+    const isolate = isolate_once.?;
+    // What one handle costs in V8's count.
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    try std.testing.expect(handle_bytes > 0);
+
+    // Eight reads a round; a leak is at least one handle a round. The same
+    // loop without the reads is the control for what running script costs.
+    const rounds = 64;
+    try expectEval(w, "reads(); reads(); 'warm'", "warm");
+    var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, "for (let n = 0; n < 64; n++) {} 'control'", "control");
+    const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, "for (let n = 0; n < 64; n++) reads(); 'read'", "read");
+    const read = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    if (read -| control >= handle_bytes * rounds / 4) {
+        std.debug.print("{d} rounds of getter reads left {d} bytes of global handles; the control {d} ({d} bytes a handle)\n", .{ rounds, read, control, handle_bytes });
+        return error.HandlesLeaked;
+    }
+}
+
+test "protocol: engine code that reads a kept value through its getter releases the hold it gets" {
+    // A getter's result is a hold of the caller's own (retainValue().take()),
+    // for engine code that calls the getter through `interfaces` as much as
+    // for the binding. The special error event handling reads
+    // ErrorEvent.error for onerror's fifth argument (EventTarget's
+    // ErrorEventArguments) and must release it, or every onerror call leaks a
+    // handle. The control takes the same path with a primitive error, which
+    // retainValue holds by value, with no handle - so only the object's hold
+    // is left to count. (fetch() and pipeTo read AbortSignal.reason the same
+    // way; this realm's global fails fetch's brand check, and a stream keeps
+    // its stored error, so gc_bench measures those.)
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    try expectEval(w,
+        \\globalThis.seen = [];
+        \\onerror = (message, filename, lineno, colno, error) => { seen.push(error); };
+        \\globalThis.object = { o: 1 };
+        \\globalThis.errorEvent = new ErrorEvent('error', { error: object });
+        \\globalThis.primitiveEvent = new ErrorEvent('error', { error: 1 });
+        \\dispatchEvent(errorEvent); dispatchEvent(primitiveEvent);
+        \\[seen.length, seen[0] === object ? 'object' : String(seen[0]), String(seen[1])].join()
+    , "2,object,1");
+
+    const isolate = isolate_once.?;
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    try std.testing.expect(handle_bytes > 0);
+
+    // 64 onerror calls a run; a leak is a handle a call. Both runs are warmed
+    // first, then each is measured on its own.
+    const rounds = 64;
+    const control_run = "seen.length = 0; for (let n = 0; n < 64; n++) dispatchEvent(primitiveEvent); String(seen.length)";
+    const read_run = "seen.length = 0; for (let n = 0; n < 64; n++) dispatchEvent(errorEvent); String(seen.length)";
+    try expectEval(w, control_run, "64");
+    try expectEval(w, read_run, "64");
+    var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, control_run, "64");
+    const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, read_run, "64");
+    const read = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    if (read -| control >= handle_bytes * rounds / 4) {
+        std.debug.print("{d} onerror calls with an object error left {d} bytes of global handles; with a number, {d} ({d} bytes a handle)\n", .{ rounds, read, control, handle_bytes });
+        return error.HandlesLeaked;
+    }
+}
+
+test "protocol: a MessageEvent made with ports keeps one frozen array, the one every read returns" {
+    // FrozenArray: the constructor makes the event's ports array at once
+    // (the array is what keeps the ports) and keeps it; every read returns a
+    // hold of that array, before a collection and after it. The WeakMap marks
+    // the array without keeping it: only the event's own hold does.
+    //
+    // The constructor used to make the array by calling get_ports and
+    // dropping the result - a hold of its caller's own under part B - which
+    // left one handle per event. That is measured by gc_bench, not here: the
+    // argument conversion of `ports` leaves handles of its own (one per
+    // sequence and two per element, on main as well), so a handle count
+    // after a collection cannot single the constructor out.
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    try expectEval(w,
+        \\globalThis.port = new MessageChannel().port1;
+        \\globalThis.withPorts = new MessageEvent('x', { ports: [port] });
+        \\globalThis.marks = new WeakMap([[withPorts.ports, 1]]);
+        \\[withPorts.ports === withPorts.ports, withPorts.ports[0] === port, Object.isFrozen(withPorts.ports)].join()
+    , "true,true,true");
+    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    try expectEval(w, "[marks.has(withPorts.ports), withPorts.ports === withPorts.ports, withPorts.ports[0] === port].join()", "true,true,true");
 }

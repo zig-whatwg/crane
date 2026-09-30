@@ -5,8 +5,8 @@
 //!
 //! Each takes the realm as a runtime.Context and hands back only what its
 //! declaration in src/runtime/engine_protocol.zig says: an OWNED persistent
-//! handle (`.handle`, needs_disposal) the caller releases with releaseValue or
-//! returns to the binding. Every V8 handle made along the way is released
+//! handle (`.handle`) the caller releases with releaseValue or returns to the
+//! binding. Every V8 handle made along the way is released
 //! here - "every `v8_*` return is owned" is this file's rule, not the
 //! caller's.
 

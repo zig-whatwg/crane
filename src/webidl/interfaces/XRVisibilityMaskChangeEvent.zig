@@ -153,25 +153,11 @@ pub const XRVisibilityMaskChangeEvent = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_vertices(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_vertices) |cached| {
-            return cached;
-        }
-        const value = try XRVisibilityMaskChangeEventImpl.get_vertices(instance);
-        state.own.cached_vertices = value;
-        return value;
+        return try XRVisibilityMaskChangeEventImpl.get_vertices(instance);
     }
 
     /// Extended attributes: [SameObject]
     pub fn get_indices(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_indices) |cached| {
-            return cached;
-        }
-        const value = try XRVisibilityMaskChangeEventImpl.get_indices(instance);
-        state.own.cached_indices = value;
-        return value;
+        return try XRVisibilityMaskChangeEventImpl.get_indices(instance);
     }
 };

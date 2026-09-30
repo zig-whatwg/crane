@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -355,8 +356,12 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
     if (internal.adopted_style_sheets) |sheets| {
-        // Return the stored JSValue directly
-        return sheets;
+        // The shadow root keeps the value it was set to; a handle goes to the
+        // binding as a hold of its own.
+        return switch (sheets) {
+            .handle => (try engine.retainValue(instance.ctx, sheets)).take(),
+            else => sheets,
+        };
     }
     // Return undefined if not set
     // TODO: Return empty V8 Array - need V8 array creation utility
@@ -372,15 +377,8 @@ pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValu
         old.deinit(internal.allocator);
     }
 
-    // Store the new value directly as JSValue
-    // The caller should ensure the handle is global-scoped for persistence
-    // If the value is a handle, verify it's safe to store
-    switch (value) {
-        .handle => |h| {
-            h.assertGlobalForStorage();
-        },
-        else => {},
-    }
+    // Store the new value directly as JSValue: the argument's handle, which
+    // the binding does not release.
     internal.adopted_style_sheets = value;
 }
 

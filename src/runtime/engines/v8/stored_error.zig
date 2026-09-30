@@ -273,7 +273,8 @@ pub const StoredError = union(enum) {
         const RuntimeJSValue = @import("runtime").JSValue;
         return switch (self) {
             .none => RuntimeJSValue.jsUndefined,
-            .js_exception => |g| RuntimeJSValue.fromHandleNonOwning(g.ptr),
+            // BORROWED: the stored error keeps its Global.
+            .js_exception => |g| RuntimeJSValue.fromHandle(g.ptr),
             .zig_error => RuntimeJSValue.jsUndefined,
             .message => |m| RuntimeJSValue.fromStringRef(m),
         };

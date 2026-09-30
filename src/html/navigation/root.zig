@@ -12,6 +12,7 @@
 //!   steps, and what the navigation API reads of them
 //! - **navigate_steps**: the pure steps of "navigate" (history handling,
 //!   fragment navigations, about:blank and javascript: URLs)
+//! - **declarative_refresh**: parsing a meta refresh or Refresh header value
 //! - **fetch_integration**: the navigation fetch
 //! - **document_type**: which document a response makes
 //! - **termination_nesting**: the event loop's termination nesting level
@@ -19,6 +20,7 @@
 
 pub const fetch_integration = @import("fetch_integration.zig");
 pub const navigate_steps = @import("navigate_steps.zig");
+pub const declarative_refresh = @import("declarative_refresh.zig");
 pub const termination_nesting = @import("termination_nesting.zig");
 pub const joint_history = @import("joint_history.zig");
 pub const document_type = @import("document_type.zig");

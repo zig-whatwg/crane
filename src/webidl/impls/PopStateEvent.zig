@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -83,9 +84,14 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     return instance;
 }
 
-/// Getter for state
+/// Getter for state. The event keeps the value it was initialized to; a
+/// handle goes to the binding as a hold of its own.
 pub fn get_state(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    return instance.getState(State).own.state;
+    const kept = instance.getState(State).own.state;
+    return switch (kept) {
+        .handle => (try engine.retainValue(instance.ctx, kept)).take(),
+        else => kept,
+    };
 }
 
 /// Getter for hasUAVisualTransition

@@ -143,8 +143,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// Spec: https://dom.spec.whatwg.org/#dom-customevent-detail
 /// Returns the value it was initialized with.
 pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    return state.own.detail;
+    // The event keeps its detail; the binding gets a hold of its own.
+    const internal = getInternal(instance) orelse return runtime.JSValue.jsNull;
+    return (try engine.retainValue(instance.ctx, internal.detail.value)).take();
 }
 
 /// Operation: initCustomEvent (legacy)

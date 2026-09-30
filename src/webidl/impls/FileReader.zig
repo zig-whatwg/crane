@@ -136,12 +136,12 @@ pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
     return @intFromEnum(internal.state);
 }
 
-/// The result getter steps are to return this's result. Borrowed: this
-/// reader keeps holding it.
+/// The result getter steps are to return this's result. The reader keeps
+/// holding it; the binding gets a hold of its own.
 pub fn get_result(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     const internal = getInternal(instance) orelse return null;
     const result = internal.result orelse return null;
-    return result.borrow();
+    return (try engine.retainValue(instance.ctx, result.value)).take();
 }
 
 /// The error getter steps are to return this's error.

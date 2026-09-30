@@ -100,14 +100,7 @@ pub const XRCPUDepthInformation = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_data) |cached| {
-            return cached;
-        }
-        const value = try XRCPUDepthInformationImpl.get_data(instance);
-        state.own.cached_data = value;
-        return value;
+        return try XRCPUDepthInformationImpl.get_data(instance);
     }
 
     pub fn call_getDepthInMeters(instance: *runtime.Instance, x: f32, y: f32) anyerror!f32 {

@@ -104,37 +104,16 @@ pub const AuthenticatorAssertionResponse = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_authenticatorData(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_authenticatorData) |cached| {
-            return cached;
-        }
-        const value = try AuthenticatorAssertionResponseImpl.get_authenticatorData(instance);
-        state.own.cached_authenticatorData = value;
-        return value;
+        return try AuthenticatorAssertionResponseImpl.get_authenticatorData(instance);
     }
 
     /// Extended attributes: [SameObject]
     pub fn get_signature(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_signature) |cached| {
-            return cached;
-        }
-        const value = try AuthenticatorAssertionResponseImpl.get_signature(instance);
-        state.own.cached_signature = value;
-        return value;
+        return try AuthenticatorAssertionResponseImpl.get_signature(instance);
     }
 
     /// Extended attributes: [SameObject]
     pub fn get_userHandle(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_userHandle) |cached| {
-            return cached;
-        }
-        const value = try AuthenticatorAssertionResponseImpl.get_userHandle(instance);
-        state.own.cached_userHandle = value;
-        return value;
+        return try AuthenticatorAssertionResponseImpl.get_userHandle(instance);
     }
 };

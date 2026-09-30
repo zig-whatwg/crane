@@ -540,12 +540,6 @@ pub const Deferred = struct {
         engine.markPromiseAsHandled(self.promise.realm, self.promise.value);
     }
 
-    /// The promise as a return value. Borrowed from this Deferred: the binding
-    /// reads it synchronously, so it must outlive only the current call.
-    pub fn returnValue(self: Deferred) runtime.JSValue {
-        return toReturn(self.promise);
-    }
-
     /// The promise as the call's result, handed over (`toReturnOwned`): for a
     /// Deferred made for this call and kept nowhere once it returns. Only the
     /// promise is handed over: the caller still releases the rest
@@ -582,18 +576,24 @@ pub fn disposeOptional(value: *?Value) void {
     value.* = null;
 }
 
-/// A value as an impl return that the impl may still hold: the binding reads
-/// it and leaves it alone. Right for a stored promise; a value made only to
-/// be returned leaks this way, so use `toReturnOwned` for that. Also the
-/// BORROWED form an engine operation takes.
+/// The value BORROWED, as an engine operation takes it. Never an impl's
+/// result: the binding releases what an impl returns - a value the impl keeps
+/// goes back as `toReturnKept`, one made for the return as `toReturnOwned`.
 pub fn toReturn(value: Value) runtime.JSValue {
     return (engine.Owned{ .value = value.value }).borrow();
 }
 
+/// A value the impl keeps (a stored promise), as the call's result: a hold of
+/// the binding's own, which it releases once it is the result.
+pub fn toReturnKept(value: Value) Error!runtime.JSValue {
+    const held = engine.retainValue(value.realm, value.value) catch |err| return fromEngineError(err);
+    return held.take();
+}
+
 /// A value made only to be returned, handed over: the binding releases it
 /// once it is the call's result. Only for a value the impl keeps nowhere - a
-/// stored promise (a writer's [[closeRequest]], say) must use `toReturn`, or
-/// the binding frees it under its holder.
+/// stored promise (a writer's [[closeRequest]], say) must use `toReturnKept`,
+/// or the binding frees it under its holder.
 pub fn toReturnOwned(value: Value) runtime.JSValue {
     return value.value;
 }
@@ -603,7 +603,7 @@ pub fn toReturnOwned(value: Value) runtime.JSValue {
 /// would have.
 pub fn adoptHandle(realm: Realm, handle: *anyopaque) Value {
     return .{
-        .value = .{ .handle = .{ .ptr = handle, .needs_disposal = true, .handle_scope = .global } },
+        .value = .{ .handle = .{ .ptr = handle } },
         .realm = realm.ctx,
     };
 }

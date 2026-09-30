@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -157,7 +158,11 @@ pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
     const key = local_str;
 
     // Convert JSValue to anyopaque for storage (we'll need to reconvert when getting)
-    const value_ptr = value.toAnyopaque() orelse return error.TypeError;
+    // Only an engine handle: `toAnyopaque` gave a platform object's Instance
+    // pointer, which call_getParameter would read as a Global.
+    // TODO: a primitive or platform object parameter (XSLT's number, string,
+    // boolean and node-set values) needs a hold of its own.
+    const value_ptr: *const anyopaque = if (value == .handle) value.handle.ptr else return error.TypeError;
     try internal.parameters.put(key, .{
         .namespace_uri = if (ns_str.len > 0) ns_str else null,
         .local_name = local_str,
@@ -175,9 +180,9 @@ pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMS
     const local_str = localName.asSlice();
 
     if (internal.parameters.get(local_str)) |param| {
-        // Convert stored V8 handle back to JSValue
-        // param.value is a stored V8 handle from setParameter
-        return runtime.JSValue.fromHandleNonOwning(@constCast(param.value));
+        // param.value is a handle the processor keeps (setParameter): the
+        // result is a hold of the binding's own.
+        return (try engine.retainValue(instance.ctx, runtime.JSValue.fromHandle(@constCast(param.value)))).take();
     }
 
     // Return undefined if parameter not found

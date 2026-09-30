@@ -271,7 +271,7 @@ test "Blob.text() is the UTF-8 decode of its bytes: the BOM stripped, an invalid
     defer Blob.deinit(blob);
     const text = try fulfillmentOf(try Blob.call_text(blob));
     defer ffi.v8_Value_Dispose(text);
-    const decoded = try protocol.convertToDOMString(&data, runtime.JSValue.fromHandleNonOwning(@ptrCast(text)), std.testing.allocator);
+    const decoded = try protocol.convertToDOMString(&data, runtime.JSValue.fromHandle(@ptrCast(text)), std.testing.allocator);
     defer std.testing.allocator.free(decoded);
     try std.testing.expectEqualStrings("a\xef\xbf\xbdb", decoded);
 }
@@ -286,12 +286,12 @@ test "Blob.arrayBuffer() and bytes() are fulfilled with a copy of every byte" {
 
     const buffer = try fulfillmentOf(try Blob.call_arrayBuffer(blob));
     defer ffi.v8_Value_Dispose(buffer);
-    const buffer_value = runtime.JSValue.fromHandleNonOwning(@ptrCast(buffer));
+    const buffer_value = runtime.JSValue.fromHandle(@ptrCast(buffer));
     try std.testing.expectEqualSlices(u8, "\x00\x01\xff", protocol.borrowArrayBufferBytes(&data, buffer_value) orelse return error.NotABuffer);
 
     const view = try fulfillmentOf(try Blob.call_bytes(blob));
     defer ffi.v8_Value_Dispose(view);
-    const view_value = runtime.JSValue.fromHandleNonOwning(@ptrCast(view));
+    const view_value = runtime.JSValue.fromHandle(@ptrCast(view));
     const description = protocol.describeArrayBufferView(&data, view_value) orelse return error.NotAView;
     try std.testing.expectEqual(protocol.ViewType.uint8_array, description.view_type);
     try std.testing.expectEqual(@as(usize, 3), description.byte_length);

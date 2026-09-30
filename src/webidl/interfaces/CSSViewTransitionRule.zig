@@ -104,13 +104,6 @@ pub const CSSViewTransitionRule = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_types(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_types) |cached| {
-            return cached;
-        }
-        const value = try CSSViewTransitionRuleImpl.get_types(instance);
-        state.own.cached_types = value;
-        return value;
+        return try CSSViewTransitionRuleImpl.get_types(instance);
     }
 };

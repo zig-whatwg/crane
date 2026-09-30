@@ -243,24 +243,22 @@ fn sameStorageKey(source_global: *runtime.Instance, source_origin: []const u8, d
 fn eligibleForMessaging(instance: *runtime.Instance) bool {
     const global = relevantGlobal(instance) orelse return false;
     if (global.stateAs(interfaces.Window.State) != null) {
-        if (interfaces.Window.get_closed(global) catch true) return false;
+        // Fully active: still its Window's document, and still with a
+        // browsing context ("destroy" sets it to null). Not `closed`: a
+        // window that is closing is still fully active until it is
+        // destroyed, and its beforeunload and unload handlers still post.
         const document = interfaces.Window.get_document(global) catch return false;
-        // Document's `location` getter answers "fully active" exactly: null
-        // unless it is.
-        const location = interfaces.Document.get_location(document) catch return false;
-        return location != null;
+        const view = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
+        return view == global;
     }
     return !workerClosing(global);
 }
 
 /// A WorkerGlobalScope's closing flag, which the worker host keeps (close()
-/// and "terminate a worker" set its phase).
-/// TODO(networking): `@import("html").worker_host.scopeClosing(global.ctx)
-/// orelse false` - networking is adding scopeClosing to worker_host.zig.
-/// Until it lands no worker reads as closing here.
+/// and "terminate a worker" set its phase). A global no worker host runs
+/// has no flag to read, and counts as not closing.
 fn workerClosing(global: *runtime.Instance) bool {
-    _ = global;
-    return false;
+    return @import("html").worker_host.scopeClosing(global.ctx) orelse false;
 }
 
 /// One destination's task: step 9's steps, in its realm.

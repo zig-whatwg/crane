@@ -152,5 +152,5 @@ pub fn structuredDeserializeWithTransfer(
     var code: c_int = 0;
     const value = ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(serialized.ptr, serialized.len, data.ptr, data.len, &code) orelse
         return EngineError.DataCloneError;
-    return .{ .handle = .{ .ptr = @ptrCast(value), .needs_disposal = true, .handle_scope = .global } };
+    return .{ .handle = .{ .ptr = @ptrCast(value) } };
 }
