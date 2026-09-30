@@ -1054,91 +1054,83 @@ pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instanc
     return cloneTheContents(instance.ctx.allocator, bounds);
 }
 
-/// DOM §5.4 - Range.insertNode(node)
-/// Inserts node into the range's context tree
+/// DOM 5.5 "insert" a node into a live range; insertNode(node)'s steps.
 pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
     const start = internal.start_container orelse return error.InvalidStateError;
-    const start_type = NodeImpl.getNodeType(start) orelse return error.InvalidStateError;
+    const start_offset = internal.start_offset;
+    const start_type = try interfaces.Node.get_nodeType(start);
+    // A CDATASection is a Text node too.
+    const start_is_text = start_type == interfaces.Node.get_TEXT_NODE() or start_type == interfaces.Node.get_CDATA_SECTION_NODE();
 
-    // Step 1: Validate start node
-    if (start_type == NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE or
-        start_type == NodeImpl.NodeType.COMMENT_NODE or
-        (start_type == NodeImpl.NodeType.TEXT_NODE and NodeImpl.getParent(start) == null) or
+    // Step 1: "If range's start node is a ProcessingInstruction or Comment
+    // node, is a Text node whose parent is null, or is node, then throw a
+    // "HierarchyRequestError" DOMException."
+    if (start_type == interfaces.Node.get_PROCESSING_INSTRUCTION_NODE() or
+        start_type == interfaces.Node.get_COMMENT_NODE() or
+        (start_is_text and DomTree.parent(start) == null) or
         start == node)
     {
         return error.HierarchyRequestError;
     }
 
-    // Step 2-4: Determine reference node and parent
-    var referenceNode: ?*runtime.Instance = null;
-    var parent: *runtime.Instance = undefined;
+    // Steps 2-4: referenceNode is the start node if it is a Text node,
+    // otherwise its child at the start offset, or null.
+    var reference: ?*runtime.Instance = if (start_is_text) start else childAt(start, start_offset);
 
-    if (start_type == NodeImpl.NodeType.TEXT_NODE) {
-        // Step 3: Start node is Text node - reference is start node
-        referenceNode = start;
-        parent = NodeImpl.getParent(start) orelse return error.HierarchyRequestError;
-    } else {
-        // Step 4: Get child at start offset
-        var idx: u32 = 0;
-        var child = NodeImpl.getFirstChild(start);
-        while (child != null and idx < internal.start_offset) : (idx += 1) {
-            child = NodeImpl.getNextSibling(child.?);
-        }
-        referenceNode = child;
-        parent = start;
-    }
+    // Step 5: "Let parent be range's start node if referenceNode is null;
+    // otherwise referenceNode's parent."
+    const parent = if (reference) |r| DomTree.parent(r) orelse return error.HierarchyRequestError else start;
 
-    // Step 5-6: Validate pre-insertion
-    // (simplified - full validation would need ensurePreInsertValidity)
-
-    // Step 7: If start node is Text, split it (use interface per Golden Rule #13)
-    if (start_type == NodeImpl.NodeType.TEXT_NODE and internal.start_offset > 0) {
-        const newText = try interfaces.Text.call_splitText(start, internal.start_offset);
-        referenceNode = newText;
-    }
-
-    // Step 8: If node is referenceNode, use its next sibling
-    if (referenceNode != null and node == referenceNode.?) {
-        referenceNode = NodeImpl.getNextSibling(referenceNode.?);
-    }
-
-    // Step 9: Remove node from its current parent if it has one
-    if (NodeImpl.getParent(node)) |oldParent| {
-        try NodeImpl.removeNodeFromParent(node, oldParent);
-    }
-
-    // Step 10-11: Calculate new offset
-    var newOffset: u32 = 0;
-    if (referenceNode) |refNode| {
-        newOffset = getChildIndex(parent, refNode) orelse 0;
-    } else {
-        newOffset = NodeImpl.getChildCount(parent);
-    }
-
-    // Increase by node's length
-    const node_type = NodeImpl.getNodeType(node) orelse return error.InvalidStateError;
-    if (node_type == NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE) {
-        newOffset += NodeImpl.getChildCount(node);
-    } else {
-        newOffset += 1;
-    }
-
-    // Step 12: Insert node before referenceNode (use interface per Golden Rule #13)
-    if (referenceNode) |refNode| {
-        _ = interfaces.Node.call_insertBefore(parent, node, refNode) catch return error.HierarchyRequestError;
-    } else {
-        _ = interfaces.Node.call_appendChild(parent, node) catch return error.HierarchyRequestError;
-    }
-
-    // Step 13: If range is collapsed, update end
-    if (internal.start_container == internal.end_container and
-        internal.start_offset == internal.end_offset)
+    // Step 6: "Ensure pre-insert validity of node into parent before
+    // referenceNode" - before step 7 splits anything.
     {
-        internal.end_container = parent;
-        internal.end_offset = newOffset;
+        const node_base = dom.instance_bridge.getNodeBase(@ptrCast(node)) orelse return error.InvalidStateError;
+        const parent_base = dom.instance_bridge.getNodeBase(@ptrCast(parent)) orelse return error.InvalidStateError;
+        const reference_base: ?*dom.NodeBase = if (reference) |r| dom.instance_bridge.getNodeBase(@ptrCast(r)) else null;
+        try dom.mutation.ensurePreInsertValidity(node_base, parent_base, reference_base);
     }
+
+    // Step 7: "If range's start node is a Text node, set referenceNode to
+    // the result of splitting it with offset range's start offset" - at
+    // offset 0 too, which leaves an empty Text node before the insertion.
+    if (start_is_text) reference = try interfaces.Text.call_splitText(start, start_offset);
+
+    // Step 8: "If node is referenceNode, set referenceNode to its next
+    // sibling."
+    if (reference == node) reference = interfaces.Node.get_nextSibling(node) catch null;
+
+    // Step 9: "If node's parent is non-null, then remove node."
+    if (DomTree.parent(node)) |old_parent| _ = try interfaces.Node.call_removeChild(old_parent, node);
+
+    // Step 10: "Let newOffset be parent's length if referenceNode is null;
+    // otherwise referenceNode's index."
+    var new_offset: u32 = if (reference) |r| DomTree.index(r) else getNodeLength(parent);
+
+    // Step 11: "Increase newOffset by node's length if node is a
+    // DocumentFragment node; otherwise 1."
+    new_offset += if ((try interfaces.Node.get_nodeType(node)) == interfaces.Node.get_DOCUMENT_FRAGMENT_NODE()) getNodeLength(node) else 1;
+
+    // Step 12: "Pre-insert node into parent before referenceNode."
+    _ = try interfaces.Node.call_insertBefore(parent, node, reference);
+
+    // Step 13: "If range is collapsed, then set range's end to (parent,
+    // newOffset)."
+    if (internal.start_container == internal.end_container and internal.start_offset == internal.end_offset) {
+        internal.end_container = parent;
+        internal.end_offset = new_offset;
+    }
+}
+
+/// `node`'s child at `index`, or null.
+fn childAt(node: *runtime.Instance, index: u32) ?*runtime.Instance {
+    var i: u32 = 0;
+    var child = interfaces.Node.get_firstChild(node) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
+        if (i == index) return c;
+        i += 1;
+    }
+    return null;
 }
 
 /// DOM 5.5 "The surroundContents(newParent) method steps".
