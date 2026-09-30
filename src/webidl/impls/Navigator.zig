@@ -81,9 +81,13 @@ pub fn get_presentation(instance: *runtime.Instance) anyerror!*runtime.Instance 
 }
 
 /// Getter for keyboard
+/// Keyboard Lock: "[SecureContext, SameObject] readonly attribute Keyboard
+/// keyboard" - one Keyboard per Navigator, made in its relevant realm on
+/// first use. The generated getter keeps it (`cached_keyboard`), and the
+/// binding ties its wrapper to the Navigator's with the [SameObject] edge,
+/// so it lives exactly as long as the Navigator's wrapper does.
 pub fn get_keyboard(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.Keyboard.init(instance.ctx.allocator, instance.ctx);
 }
 
 /// Getter for clipboard
