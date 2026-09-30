@@ -153,8 +153,10 @@
       const out = [];
       const sep = () => out.length && out.push(" · ");
       if (prev) {
-        out.push(el("span", { class: g.pass - prev.pass < 0 ? "fail" : null, text: `${signed(g.pass - prev.pass)} passing` }),
-          `, ${signed(g.total - prev.total)} in total since generation ${prev.n}`);
+        out.push(el("span", { class: g.pass - prev.pass < 0 ? "fail" : null, text: `${signed(g.pass - prev.pass)} passing` }));
+        // A total that changes from the report's estimate to an exact sum moved
+        // with the method, not with Crane: say so instead of printing a delta.
+        out.push(prev.est && !g.est ? ` since generation ${prev.n}; the total is an exact sum from here` : `, ${signed(g.total - prev.total)} in total since generation ${prev.n}`);
       } else out.push("The first generation");
       if (g.fail != null) {
         sep();
