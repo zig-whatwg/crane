@@ -14,18 +14,27 @@
 //!     alias of ANOTHER impl - `const NodeImpl = @import("Node.zig");` then
 //!     `NodeImpl.getParent(...)`, `NodeImpl.InternalState` - and every inline
 //!     `@import("Other.zig").member`. Lower-case files there are helper
-//!     modules (same_object.zig, node_filter.zig), not impls. Inheritance
-//!     chaining - a call to `ParentImpl.init`, `.deinit` or `.initWithState` -
-//!     is how an impl builds its own parent state and is not counted.
+//!     modules (same_object.zig, node_filter.zig), not impls. Only a file's
+//!     references to ITSELF are exempt; a parent's `init` counts.
 //!   * everywhere else in src/ except the generated layers: every reference
 //!     through the `impls` module.
 //!
 //! Keying on the member, not just a per-file total, is what catches a swap:
 //! trading one reference for a new one leaves the total unchanged.
 //!
+//! The rule (AGENTS.md "The impls boundary"): an interface's impl is referenced
+//! ONLY by that interface's own generated file. So an impl file counts every
+//! reference to any impl but itself - its ancestors' included, and a src/dom/
+//! hook is what a descendant uses instead - and other code counts every use of
+//! the `impls` module.
+//!
 //! The baseline only goes down. After paying debt down:
 //!     zig build lint-impls -- --update
-//! which refuses to record an increase.
+//! which refuses to record an increase. The one exception is a change of what
+//! the rule counts, which moves every number at once:
+//!     zig build lint-impls -- --rebase-for-rule-change
+//! records the current counts whatever they are. Use it once, in the commit
+//! that changes the rule, and say so in the commit message.
 //!
 //! It also checks that impl names are the binding map (see "Names are the
 //! binding map" below): strictly for interfaces, namespaces and helpers, and as
@@ -121,8 +130,7 @@ const Alias = struct { name: []const u8, impl: []const u8 };
 /// Record every `needle.member` in `code` - `needle` on a whole identifier,
 /// not preceded by `.` - as a reference to `impl`. A null `impl` means
 /// `needle` is the impls module itself, so the first member names the impl
-/// (`impls.Node.getParent`). References to the file's own types - itself and
-/// its ancestors, `itself` - are not references into ANOTHER impl.
+/// (`impls.Node.getParent`). References to the file itself, `itself`, are not references into ANOTHER impl.
 fn collect(
     gpa: std.mem.Allocator,
     out: *std.ArrayList(Reference),
@@ -164,9 +172,22 @@ pub fn contains(items: []const []const u8, name: []const u8) bool {
 }
 
 /// References an impl file (`own`.zig) makes into OTHER impls, counting only
-/// `own` itself as its own - the command passes its ancestors too.
+/// `own` itself as its own: an ancestor is another type.
 pub fn implReferences(gpa: std.mem.Allocator, own: []const u8, text: []const u8) !std.ArrayList(Reference) {
     return references(gpa, &.{own}, text);
+}
+
+/// The references one file makes into impls under the boundary rule: an impl
+/// may be referenced only by its interface's own generated file. So an impl
+/// file counts every reference to any impl but ITSELF - ancestors included; a
+/// descendant reaches its ancestor through the interface or a src/dom/ hook -
+/// and other code counts every use of the `impls` module. Null for the
+/// generated layers, which are meant to call impls.
+pub fn scanFile(gpa: std.mem.Allocator, path: []const u8, text: []const u8) !?std.ArrayList(Reference) {
+    if (skipped(path)) return null;
+    if (implName(path)) |own| return try implReferences(gpa, own, text);
+    if (std.mem.indexOf(u8, text, "impls") == null) return .empty;
+    return try externalReferences(gpa, text);
 }
 
 /// References a file outside the impls makes through the `impls` module.
@@ -174,10 +195,10 @@ pub fn externalReferences(gpa: std.mem.Allocator, text: []const u8) !std.ArrayLi
     return references(gpa, &.{}, text);
 }
 
-/// The one scanner. `itself` holds the types a file IS - an impl's own type
-/// and its ancestors (see `Hierarchy.itselfTypes`); it is empty outside the
-/// impls. Only an impl may name other impls by file (`@import("X.zig")`),
-/// and a reference to any of `itself` is the file reaching its own state.
+/// The one scanner. `itself` holds the impl's own type only (its ancestors are
+/// other types); it is empty outside the impls. Only an impl may name other
+/// impls by file (`@import("X.zig")`), and a reference to `itself` is the file
+/// reaching its own state.
 fn references(gpa: std.mem.Allocator, itself: []const []const u8, text: []const u8) !std.ArrayList(Reference) {
     var modules: std.ArrayList([]const u8) = .empty;
     defer modules.deinit(gpa);
@@ -276,171 +297,20 @@ pub fn parseInterface(text: []const u8) Shape {
     return shape;
 }
 
-/// Parents and mixin includers of every interface.
+/// The interfaces that exist, and each one's parent. The boundary rule no
+/// longer reads ancestry - only an interface's own generated file may reference
+/// its impl - so this is only the set of interface names, for the naming check.
 pub const Hierarchy = struct {
     parents: std.StringHashMapUnmanaged(?[]const u8) = .empty,
-    includers: std.StringHashMapUnmanaged(std.ArrayList([]const u8)) = .empty,
 
-    pub fn addInterface(self: *Hierarchy, gpa: std.mem.Allocator, name: []const u8, parent: ?[]const u8, mixins: []const u8) !void {
+    pub fn addInterface(self: *Hierarchy, gpa: std.mem.Allocator, name: []const u8, parent: ?[]const u8) !void {
         try self.parents.put(gpa, name, parent);
-        var parts = std.mem.tokenizeAny(u8, mixins, " \t\r\n,");
-        while (parts.next()) |mixin| {
-            const gop = try self.includers.getOrPut(gpa, mixin);
-            if (!gop.found_existing) gop.value_ptr.* = .empty;
-            try gop.value_ptr.append(gpa, name);
-        }
     }
 
     pub fn deinit(self: *Hierarchy, gpa: std.mem.Allocator) void {
-        var it = self.includers.valueIterator();
-        while (it.next()) |list| list.deinit(gpa);
-        self.includers.deinit(gpa);
         self.parents.deinit(gpa);
     }
-
-    fn ancestorsOrSelf(self: *const Hierarchy, gpa: std.mem.Allocator, name: []const u8) !std.ArrayList([]const u8) {
-        var out: std.ArrayList([]const u8) = .empty;
-        errdefer out.deinit(gpa);
-        var current: ?[]const u8 = name;
-        var guard: usize = 0;
-        while (current) |c| : (guard += 1) {
-            if (guard > 64 or contains(out.items, c)) break;
-            try out.append(gpa, c);
-            current = self.parents.get(c) orelse null;
-        }
-        return out;
-    }
-
-    /// The types a file implementing `name` IS: itself and its ancestors. For
-    /// a mixin, whose functions run on every interface that includes it, the
-    /// ancestors ALL its includers share - ParentNode is included only by Node
-    /// types, so Node is an ancestor of ParentNode's; Element is not.
-    pub fn itselfTypes(self: *const Hierarchy, gpa: std.mem.Allocator, name: []const u8) !std.ArrayList([]const u8) {
-        const includers = self.includers.get(name) orelse return self.ancestorsOrSelf(gpa, name);
-        if (includers.items.len == 0) return self.ancestorsOrSelf(gpa, name);
-
-        var shared = try self.ancestorsOrSelf(gpa, includers.items[0]);
-        defer shared.deinit(gpa);
-        for (includers.items[1..]) |includer| {
-            var chain = try self.ancestorsOrSelf(gpa, includer);
-            defer chain.deinit(gpa);
-            var i: usize = 0;
-            while (i < shared.items.len) {
-                if (contains(chain.items, shared.items[i])) i += 1 else _ = shared.orderedRemove(i);
-            }
-        }
-        var out: std.ArrayList([]const u8) = .empty;
-        errdefer out.deinit(gpa);
-        try out.append(gpa, name);
-        // An includer itself is not something every includer IS.
-        for (shared.items) |t| {
-            if (!contains(out.items, t) and !contains(includers.items, t)) try out.append(gpa, t);
-        }
-        return out;
-    }
 };
-
-// ---------------------------------------------------------------------------
-// Hook modules in src/dom/
-// ---------------------------------------------------------------------------
-
-/// A hook module and the impls whose state it reaches.
-pub const Hook = struct { module: []const u8, owners: []const []const u8 };
-
-/// A hook module declares its owners on a `//! lint-impls: hook for A, B` line.
-pub fn parseHookOwners(gpa: std.mem.Allocator, text: []const u8) !std.ArrayList([]const u8) {
-    var out: std.ArrayList([]const u8) = .empty;
-    errdefer out.deinit(gpa);
-    const key = "//! lint-impls: hook for ";
-    const at = std.mem.indexOf(u8, text, key) orelse return out;
-    const end = std.mem.indexOfScalarPos(u8, text, at, '\n') orelse text.len;
-    var names = std.mem.tokenizeAny(u8, text[at + key.len .. end], " \t\r,");
-    while (names.next()) |name| try out.append(gpa, name);
-    return out;
-}
-
-/// Uses of a hook by a file that is itself - or descends from - the hook's
-/// owner. Such a file reaches that state through the owning impl, directly:
-/// the hook exists for code OUTSIDE the owner's hierarchy. Installing the
-/// implementation (`install*`) is the owner's own business and is allowed.
-pub fn hookViolations(gpa: std.mem.Allocator, itself: []const []const u8, hooks: []const Hook, text: []const u8) !std.ArrayList(Reference) {
-    var out: std.ArrayList(Reference) = .empty;
-    errdefer out.deinit(gpa);
-    for (hooks) |hook| {
-        var owned = false;
-        for (hook.owners) |owner| {
-            if (contains(itself, owner)) owned = true;
-        }
-        if (!owned) continue;
-
-        var dom_modules: std.ArrayList([]const u8) = .empty;
-        defer dom_modules.deinit(gpa);
-        var hook_aliases: std.ArrayList([]const u8) = .empty;
-        defer hook_aliases.deinit(gpa);
-        var declarations: std.ArrayList(u32) = .empty;
-        defer declarations.deinit(gpa);
-
-        var lines = std.mem.splitScalar(u8, text, '\n');
-        var number: u32 = 0;
-        while (lines.next()) |raw| {
-            number += 1;
-            const decl = constDecl(codeOf(raw)) orelse continue;
-            if (std.mem.eql(u8, decl.rhs, "@import(\"dom\")")) {
-                try dom_modules.append(gpa, decl.name);
-                try declarations.append(gpa, number);
-            }
-        }
-        lines = std.mem.splitScalar(u8, text, '\n');
-        number = 0;
-        while (lines.next()) |raw| {
-            number += 1;
-            const decl = constDecl(codeOf(raw)) orelse continue;
-            const direct = std.mem.startsWith(u8, decl.rhs, "@import(\"dom\").") and std.mem.eql(u8, decl.rhs["@import(\"dom\").".len..], hook.module);
-            var via_module = false;
-            for (dom_modules.items) |m| {
-                if (decl.rhs.len == m.len + 1 + hook.module.len and std.mem.startsWith(u8, decl.rhs, m) and decl.rhs[m.len] == '.' and std.mem.endsWith(u8, decl.rhs, hook.module)) via_module = true;
-            }
-            if (direct or via_module) {
-                try hook_aliases.append(gpa, decl.name);
-                try declarations.append(gpa, number);
-            }
-        }
-
-        lines = std.mem.splitScalar(u8, text, '\n');
-        number = 0;
-        while (lines.next()) |raw| {
-            number += 1;
-            if (std.mem.indexOfScalar(u32, declarations.items, number) != null) continue;
-            const code = codeOf(raw);
-            for (hook_aliases.items) |alias| try collectHook(gpa, &out, number, code, alias, hook.module);
-            for (dom_modules.items) |m| {
-                const prefix = try std.fmt.allocPrint(gpa, "{s}.{s}", .{ m, hook.module });
-                defer gpa.free(prefix);
-                try collectHook(gpa, &out, number, code, prefix, hook.module);
-            }
-            const inline_prefix = try std.fmt.allocPrint(gpa, "@import(\"dom\").{s}", .{hook.module});
-            defer gpa.free(inline_prefix);
-            try collectHook(gpa, &out, number, code, inline_prefix, hook.module);
-        }
-    }
-    return out;
-}
-
-fn collectHook(gpa: std.mem.Allocator, out: *std.ArrayList(Reference), line: u32, code: []const u8, needle: []const u8, module: []const u8) !void {
-    var pos: usize = 0;
-    while (std.mem.indexOfPos(u8, code, pos, needle)) |at| {
-        pos = at + needle.len;
-        if (at > 0 and (isIdentChar(code[at - 1]) or code[at - 1] == '.')) continue;
-        if (pos >= code.len or code[pos] != '.') continue;
-        const member = identAt(code, pos + 1);
-        // Installing is the owner's business, and a TitleCase member is one
-        // of the hook's types - the contract an owner implements - not a
-        // function that reaches state.
-        if (std.mem.startsWith(u8, member, "install")) continue;
-        if (member.len > 0 and std.ascii.isUpper(member[0])) continue;
-        try out.append(gpa, .{ .line = line, .impl = module, .member = member, .code = std.mem.trim(u8, code, " \t") });
-    }
-}
 
 /// Counts per "path Impl.member" key.
 pub const Counts = std.StringHashMapUnmanaged(u32);
@@ -727,14 +597,17 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     var update = false;
+    var rebase = false;
     var args = try init.minimal.args.iterateAllocator(arena);
     defer args.deinit();
     _ = args.next();
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--update")) {
             update = true;
+        } else if (std.mem.eql(u8, arg, "--rebase-for-rule-change")) {
+            rebase = true;
         } else {
-            std.debug.print("usage: lint_impls_boundary [--update]\n", .{});
+            std.debug.print("usage: lint_impls_boundary [--update | --rebase-for-rule-change]\n", .{});
             std.process.exit(2);
         }
     }
@@ -756,7 +629,7 @@ pub fn main(init: std.process.Init) !void {
             const path = try std.fmt.allocPrint(arena, "src/webidl/interfaces/{s}", .{entry.name});
             const text = try std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(16 << 20));
             const shape = parseInterface(text);
-            try hierarchy.addInterface(arena, name, shape.parent, shape.mixins);
+            try hierarchy.addInterface(arena, name, shape.parent);
             if (std.mem.indexOf(u8, text, "pub const is_mixin = true;") != null) try mixins.put(arena, name, {});
             const inherits = try inheritedMixins(arena, text);
             for (inherits.items) |mixin| try inherited.put(arena, mixin, {});
@@ -776,28 +649,11 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    // Hook modules and the impls whose state each reaches.
-    var hooks: std.ArrayList(Hook) = .empty;
-    {
-        var dir = try std.Io.Dir.cwd().openDir(io, "src/dom", .{ .iterate = true });
-        defer dir.close(io);
-        var it = dir.iterate();
-        while (try it.next(io)) |entry| {
-            if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".zig")) continue;
-            const path = try std.fmt.allocPrint(arena, "src/dom/{s}", .{entry.name});
-            const text = try std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(16 << 20));
-            const owners = try parseHookOwners(arena, text);
-            if (owners.items.len == 0) continue;
-            try hooks.append(arena, .{ .module = try arena.dupe(u8, entry.name[0 .. entry.name.len - 4]), .owners = owners.items });
-        }
-    }
-
     // Scan src/.
     var current: Counts = .empty;
     // `Impl.member` of every reference the scan sees: what some code calls.
     var routed: std.StringHashMapUnmanaged(void) = .empty;
     var sites = std.StringHashMapUnmanaged(std.ArrayList(Reference)).empty;
-    var hook_misuse: std.ArrayList(struct { path: []const u8, ref: Reference }) = .empty;
     var src = try std.Io.Dir.cwd().openDir(io, "src", .{ .iterate = true });
     defer src.close(io);
     var walker = try src.walk(arena);
@@ -807,15 +663,7 @@ pub fn main(init: std.process.Init) !void {
         const path = try std.fmt.allocPrint(arena, "src/{s}", .{entry.path});
         if (skipped(path)) continue;
         const text = try std.Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20));
-        const refs = if (implName(path)) |own| blk: {
-            const itself = try hierarchy.itselfTypes(arena, own);
-            const misuse = try hookViolations(arena, itself.items, hooks.items, text);
-            for (misuse.items) |ref| try hook_misuse.append(arena, .{ .path = path, .ref = ref });
-            break :blk try references(arena, itself.items, text);
-        } else if (std.mem.indexOf(u8, text, "impls") != null)
-            try externalReferences(arena, text)
-        else
-            continue;
+        const refs = (try scanFile(arena, path, text)).?;
         for (refs.items) |ref| {
             try routed.put(arena, try std.fmt.allocPrint(arena, "{s}.{s}", .{ ref.impl, ref.member }), {});
             const key = try std.fmt.allocPrint(arena, "{s} {s}.{s}", .{ path, ref.impl, ref.member });
@@ -869,22 +717,6 @@ pub fn main(init: std.process.Init) !void {
     var stdout_writer = std.Io.File.stdout().writer(io, &buffer);
     const out = &stdout_writer.interface;
 
-    // Strict, not a ratchet: a hook used from inside its owner's hierarchy.
-    if (hook_misuse.items.len > 0) {
-        try out.print("impls boundary: {d} use(s) of a hook from inside the hierarchy that owns its state.\n\n", .{hook_misuse.items.len});
-        for (hook_misuse.items) |m| try out.print("  {s}:{d}: {s}.{s} - {s}\n", .{ m.path, m.ref.line, m.ref.impl, m.ref.member, m.ref.code });
-        try out.print(
-            \\
-            \\A type reaches state its own ancestors own through their impls, directly
-            \\(AGENTS.md "The impls boundary"). A src/dom/ hook is only for code OUTSIDE
-            \\the owner's hierarchy; e.g. Text sets a node's document with
-            \\NodeImpl.setOwnerDocument, DOMImplementation with node_document.set.
-            \\
-        , .{});
-        try out.flush();
-        std.process.exit(1);
-    }
-
     // Strict, not a ratchet: a name that says a function is bound when it is not.
     if (name_misuse.items.len > 0) {
         try out.print("impl names: {d} function(s) named for script that nothing binds.\n\n", .{name_misuse.items.len});
@@ -908,7 +740,7 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     }
 
-    const boundary_ok = try ratchet(arena, io, out, update, .{
+    const boundary_ok = try ratchet(arena, io, out, update, rebase, .{
         .label = "impls boundary",
         .path = baseline_path,
         .header = boundary_header,
@@ -920,7 +752,7 @@ pub fn main(init: std.process.Init) !void {
         \\
         ,
     }, &current, &sites);
-    const naming_ok = try ratchet(arena, io, out, update, .{
+    const naming_ok = try ratchet(arena, io, out, update, false, .{
         .label = "impl names",
         .path = naming_baseline_path,
         .header = naming_header,
@@ -937,6 +769,13 @@ pub fn main(init: std.process.Init) !void {
     if (!boundary_ok or !naming_ok) std.process.exit(1);
 }
 
+/// Whether a run may write the baseline. `--update` only when nothing is above
+/// it; a rebase always - the rule changed, so the old numbers count something else.
+pub fn mayRecord(update: bool, rebase: bool, above_baseline: usize) bool {
+    if (rebase) return true;
+    return update and above_baseline == 0;
+}
+
 const RatchetSpec = struct {
     label: []const u8,
     path: []const u8,
@@ -948,12 +787,16 @@ const RatchetSpec = struct {
 
 /// One ratchet: compare `current` with the baseline at `spec.path` and report.
 /// `--update` records a first baseline, or a lowered one - never an increase.
+/// `--rebase-for-rule-change` records the current counts whatever they are: it
+/// exists for the one commit that changes what the rule counts (see
+/// `mayRecord`), and is used once per rule change.
 /// False when a key is above its baseline, or there is no baseline.
 fn ratchet(
     arena: std.mem.Allocator,
     io: std.Io,
     out: *std.Io.Writer,
     update: bool,
+    rebase: bool,
     spec: RatchetSpec,
     current: *const Counts,
     sites: ?*const std.StringHashMapUnmanaged(std.ArrayList(Reference)),
@@ -978,6 +821,11 @@ fn ratchet(
     const baseline = try parseBaseline(arena, text.?);
 
     const found = try violations(arena, current, &baseline);
+    if (mayRecord(false, rebase, found.items.len)) {
+        try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = spec.path, .data = try formatBaselineWithHeader(arena, spec.header, current) });
+        try out.print("{s}: baseline REBASED for a rule change - {d} {s}, {d} keys ({d} above the old baseline).\n", .{ spec.label, total, spec.noun, current.count(), found.items.len });
+        return true;
+    }
     if (found.items.len > 0) {
         try out.print("{s}: {d} key(s) above the baseline.\n\n", .{ spec.label, found.items.len });
         for (found.items) |v| {
@@ -1053,24 +901,6 @@ test "the file itself, lower-case helper modules and interfaces are not impls" {
     var refs = try implReferences(testing.allocator, "Document", text);
     defer refs.deinit(testing.allocator);
     try expectRefs(refs.items, &.{});
-}
-
-test "an ancestor impl is the file's own: chaining and every other call to it are not counted" {
-    const text =
-        \\const NodeImpl = @import("Node.zig");
-        \\const ElementImpl = @import("Element.zig");
-        \\pub fn init(a: A) !*I {
-        \\    const i = try NodeImpl.init(a, State, vtable, ctx);
-        \\    errdefer NodeImpl.deinit(i);
-        \\    _ = NodeImpl.getFirstChild(i);
-        \\    return ElementImpl.init(a, State, vtable, ctx);
-        \\}
-    ;
-    // Element is not an ancestor of Text: creating one through its impl is a
-    // reference into another type, `init` or not.
-    var refs = try references(testing.allocator, &.{ "Text", "CharacterData", "Node", "EventTarget" }, text);
-    defer refs.deinit(testing.allocator);
-    try expectRefs(refs.items, &.{"7:Element.init"});
 }
 
 test "comments do not count, and an alias is matched on a whole identifier" {
@@ -1214,137 +1044,66 @@ test "an interface's parent and mixins are read from its generated Meta" {
     try testing.expectEqual(@as(usize, 0), std.mem.trim(u8, bare.mixins, " \n").len);
 }
 
-fn testHierarchy() !Hierarchy {
-    var h: Hierarchy = .{};
-    try h.addInterface(testing.allocator, "EventTarget", null, "");
-    try h.addInterface(testing.allocator, "Node", "EventTarget", "");
-    try h.addInterface(testing.allocator, "CharacterData", "Node", "");
-    try h.addInterface(testing.allocator, "Text", "CharacterData", "Slottable,");
-    try h.addInterface(testing.allocator, "Document", "Node", "ParentNode, NonElementParentNode,");
-    try h.addInterface(testing.allocator, "Element", "Node", "ParentNode,");
-    try h.addInterface(testing.allocator, "Window", "EventTarget", "WindowOrWorkerGlobalScope,");
-    try h.addInterface(testing.allocator, "WorkerGlobalScope", "EventTarget", "WindowOrWorkerGlobalScope,");
-    try h.addInterface(testing.allocator, "AbstractRange", null, "");
-    try h.addInterface(testing.allocator, "Range", "AbstractRange", "");
-    try h.addInterface(testing.allocator, "DOMImplementation", null, "");
-    return h;
-}
-
-test "a type is itself and its ancestors; a mixin is the ancestors every includer shares" {
-    var h = try testHierarchy();
-    defer h.deinit(testing.allocator);
-
-    var text = try h.itselfTypes(testing.allocator, "Text");
-    defer text.deinit(testing.allocator);
-    try testing.expect(contains(text.items, "Text"));
-    try testing.expect(contains(text.items, "CharacterData"));
-    try testing.expect(contains(text.items, "Node"));
-    try testing.expect(contains(text.items, "EventTarget"));
-    try testing.expect(!contains(text.items, "Document"));
-
-    var parent_node = try h.itselfTypes(testing.allocator, "ParentNode");
-    defer parent_node.deinit(testing.allocator);
-    try testing.expect(contains(parent_node.items, "ParentNode"));
-    try testing.expect(contains(parent_node.items, "Node"));
-    try testing.expect(!contains(parent_node.items, "Document"));
-    try testing.expect(!contains(parent_node.items, "Element"));
-
-    var shared = try h.itselfTypes(testing.allocator, "WindowOrWorkerGlobalScope");
-    defer shared.deinit(testing.allocator);
-    try testing.expect(contains(shared.items, "EventTarget"));
-    try testing.expect(!contains(shared.items, "Window"));
-}
-
-test "references to the file's own ancestors are not counted; other types are" {
+test "scanFile: an ancestor's impl is another type's - a descendant's reference counts" {
     const text =
         \\const NodeImpl = @import("Node.zig");
-        \\const RangeImpl = @import("Range.zig");
-        \\fn f() void {
-        \\    _ = NodeImpl.getOwnerDocument(i);
-        \\    _ = RangeImpl.call_detach(r);
+        \\const CharacterDataImpl = @import("CharacterData.zig");
+        \\pub fn init(a: A) !*I {
+        \\    const i = try NodeImpl.init(a, State, vtable, ctx);
+        \\    _ = CharacterDataImpl.getData(i);
+        \\    return i;
         \\}
     ;
-    var refs = try references(testing.allocator, &.{ "Text", "CharacterData", "Node", "EventTarget" }, text);
+    var refs = (try scanFile(testing.allocator, "src/webidl/impls/Text.zig", text)).?;
     defer refs.deinit(testing.allocator);
-    try expectRefs(refs.items, &.{"5:Range.call_detach"});
+    try expectRefs(refs.items, &.{ "4:Node.init", "5:CharacterData.getData" });
 }
 
-test "a hook's owner is declared in its module" {
-    var owners = try parseHookOwners(testing.allocator, "//! DOM stuff\n//! lint-impls: hook for Range, StaticRange\nconst std = 1;\n");
-    defer owners.deinit(testing.allocator);
-    try testing.expectEqual(@as(usize, 2), owners.items.len);
-    try testing.expectEqualStrings("Range", owners.items[0]);
-    try testing.expectEqualStrings("StaticRange", owners.items[1]);
-
-    var none = try parseHookOwners(testing.allocator, "//! not a hook\n");
-    defer none.deinit(testing.allocator);
-    try testing.expectEqual(@as(usize, 0), none.items.len);
+test "scanFile: a file's references to itself are not counted" {
+    const text =
+        \\const Self = @import("Text.zig");
+        \\const TextImpl = @import("Text.zig");
+        \\fn f() void {
+        \\    _ = TextImpl.getInternal(x);
+        \\    _ = @import("Text.zig").other(x);
+        \\}
+    ;
+    var refs = (try scanFile(testing.allocator, "src/webidl/impls/Text.zig", text)).?;
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{});
 }
 
-test "a hook used from inside its owner's hierarchy is a violation; outside, installing, and dispatch down are not" {
-    const hooks = [_]Hook{
-        .{ .module = "node_document", .owners = &.{"Node"} },
-        .{ .module = "range_boundaries", .owners = &.{ "Range", "StaticRange" } },
-    };
-    const text_zig =
+test "scanFile: a descendant calling its hierarchy's hook is not a reference into an impl" {
+    const text =
         \\const node_document = @import("dom").node_document;
         \\fn split() void {
         \\    try node_document.set(new_node, doc);
         \\}
     ;
-    var v1 = try hookViolations(testing.allocator, &.{ "Text", "CharacterData", "Node", "EventTarget" }, &hooks, text_zig);
-    defer v1.deinit(testing.allocator);
-    try expectRefs(v1.items, &.{"3:node_document.set"});
-
-    // DOMImplementation is not a Node: outside the hierarchy, the hook is its route.
-    var v2 = try hookViolations(testing.allocator, &.{"DOMImplementation"}, &hooks, text_zig);
-    defer v2.deinit(testing.allocator);
-    try expectRefs(v2.items, &.{});
-
-    // The owner installs its implementation.
-    const node_zig =
-        \\const dom_module = @import("dom");
-        \\fn init() void {
-        \\    dom_module.node_document.install(.{ .set = &hook });
-        \\}
-    ;
-    var v3 = try hookViolations(testing.allocator, &.{ "Node", "EventTarget" }, &hooks, node_zig);
-    defer v3.deinit(testing.allocator);
-    try expectRefs(v3.items, &.{});
-
-    // AbstractRange is Range's ANCESTOR: reading a subclass's state through
-    // the hook is dispatch downward, which an ancestor cannot do otherwise.
-    const abstract_zig =
-        \\const range_boundaries = @import("dom").range_boundaries;
-        \\fn get() void {
-        \\    _ = range_boundaries.of(instance);
-        \\}
-    ;
-    var v4 = try hookViolations(testing.allocator, &.{"AbstractRange"}, &hooks, abstract_zig);
-    defer v4.deinit(testing.allocator);
-    try expectRefs(v4.items, &.{});
-
-    // Range reaching its own state through its own hook is not.
-    var v5 = try hookViolations(testing.allocator, &.{ "Range", "AbstractRange" }, &hooks, abstract_zig);
-    defer v5.deinit(testing.allocator);
-    try expectRefs(v5.items, &.{"3:range_boundaries.of"});
+    var refs = (try scanFile(testing.allocator, "src/webidl/impls/Text.zig", text)).?;
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{});
 }
 
-test "an owner naming its hook's types implements the contract - not a use" {
-    const hooks = [_]Hook{.{ .module = "node_document", .owners = &.{"Node"} }};
-    const text =
-        \\const dom_module = @import("dom");
-        \\fn hook(node: *I, document: ?*I) dom_module.node_document.Error!void {
-        \\    return setOwnerDocument(node, document);
-        \\}
-        \\fn init() void {
-        \\    dom_module.node_document.install(.{ .set = &hook });
-        \\    _ = dom_module.node_document.set(node, document);
-        \\}
-    ;
-    var v = try hookViolations(testing.allocator, &.{ "Node", "EventTarget" }, &hooks, text);
-    defer v.deinit(testing.allocator);
-    try expectRefs(v.items, &.{"7:node_document.set"});
+test "scanFile: the generated layers are skipped, other code counts every use of the impls module" {
+    try testing.expect((try scanFile(testing.allocator, "src/webidl/interfaces/Text.zig", "const N = @import(\"../impls/Node.zig\");")) == null);
+    var refs = (try scanFile(testing.allocator, "src/browser/Context.zig", "const impls = @import(\"impls\");\nfn f() void { _ = impls.Node.getParent(n); }\n")).?;
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{"2:Node.getParent"});
+}
+
+test "a swap of one reference for a new pair at the same total still fails" {
+    var current: Counts = .empty;
+    defer current.deinit(testing.allocator);
+    var baseline: Counts = .empty;
+    defer baseline.deinit(testing.allocator);
+    try baseline.put(testing.allocator, "src/webidl/impls/Text.zig Node.getOwnerDocument", 2);
+    try current.put(testing.allocator, "src/webidl/impls/Text.zig Node.getOwnerDocument", 1);
+    try current.put(testing.allocator, "src/webidl/impls/Text.zig Node.getParent", 1);
+    var found = try violations(testing.allocator, &current, &baseline);
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 1), found.items.len);
+    try testing.expectEqualStrings("src/webidl/impls/Text.zig Node.getParent", found.items[0].key);
 }
 
 // ---------------------------------------------------------------------------
@@ -1505,4 +1264,11 @@ test "a mixin module binds its impl's functions like an interface's file" {
     defer found.deinit(testing.allocator);
     try testing.expectEqual(@as(usize, 1), found.items.len);
     try testing.expectEqualStrings("get_stale", found.items[0].name);
+}
+
+test "only --rebase-for-rule-change may record an increase" {
+    try testing.expect(!mayRecord(true, false, 3));
+    try testing.expect(mayRecord(true, false, 0));
+    try testing.expect(!mayRecord(false, false, 0));
+    try testing.expect(mayRecord(false, true, 3));
 }
