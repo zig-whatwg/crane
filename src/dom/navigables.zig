@@ -127,7 +127,7 @@ test "without an installed implementation nothing navigates" {
     // Never dereferenced: with no implementation nothing reads it.
     var element: runtime.Instance = undefined;
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
-    followHyperlink(&element);
+    followHyperlink(&element, .activation);
     traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1);
     try std.testing.expect(findByName(&element, "name") == null);
 }
