@@ -65,6 +65,7 @@ const infra = @import("infra");
 
 // Fetch for external scripts
 const fetch = @import("fetch");
+const dom = @import("dom");
 
 // Content Security Policy
 const csp = @import("csp");
@@ -365,9 +366,11 @@ pub fn prepareScriptElement(
         const script_url = (HTMLScriptElementImpl.setScriptUrl(script_element, parsed_url) catch
             return ScriptExecutionError.OutOfMemory) orelse parsed_url;
 
-        // Step 33.11: fetch the script. Crane's fetch is synchronous, so
-        // onComplete - "mark as ready el given result" - runs right here, and
-        // the scheduling of step 35 below sees a script whose result is known.
+        // Step 33.11: fetch the script. A parser's script is fetched
+        // synchronously, so onComplete - "mark as ready el given result" -
+        // runs right here, and the scheduling of step 35 below sees a script
+        // whose result is known; a script no parser inserted is fetched in
+        // parallel (below).
         //
         // A request CSP blocks is a network error to Fetch
         // (https://www.w3.org/TR/CSP3/ §4.1.2), so it takes the same path as
@@ -406,30 +409,25 @@ pub fn prepareScriptElement(
         // step, so a script that prepare returns from earlier (a type that is
         // no JavaScript MIME type, nomodule) is never fetched.
         const cached = if (allowed_by_csp) HTMLScriptElementImpl.getCachedSourceText(script_element) else null;
-        var muted_errors = false;
         if (cached == null and allowed_by_csp) {
+            // A script no parser inserted is fetched in parallel, as the spec
+            // fetches every script: onComplete - "mark as ready" - runs from
+            // the networking task that hands over the response
+            // (`ClassicScriptFetch`), so script, timers and the element's
+            // moves run meanwhile. A parser's script is still fetched here,
+            // synchronously: the parser does not yet stop for it.
+            if (parser_document == null) {
+                if (node_document) |doc| {
+                    if (startClassicScriptFetch(script_element, doc, script_url)) {
+                        return handleScriptSchedulingOf(allocator, script_element, parser_document, script_type, .fetching);
+                    }
+                }
+            }
             var fetched = fetchClassicScriptSource(allocator, script_element, node_document, src, script_url);
             defer fetched.deinit();
-            muted_errors = fetched.muted;
-            if (fetched.body) |body| {
-                HTMLScriptElementImpl.cacheSourceText(script_element, body) catch
-                    return ScriptExecutionError.OutOfMemory;
-            }
-        }
-
-        if (HTMLScriptElementImpl.getCachedSourceText(script_element)) |body| {
-            if (allowed_by_csp) {
-                var script = ClassicScript.init(body, script_url);
-                script.muted_errors = muted_errors;
-                HTMLScriptElementImpl.setResult(script_element, .{ .script = script });
-            } else {
-                HTMLScriptElementImpl.setResult(script_element, .null);
-            }
+            try setClassicScriptResult(script_element, true, fetched.body, script_url, fetched.muted);
         } else {
-            // "fetch a classic script" hands onComplete null for a network
-            // error or a non-ok status. The element still goes through the
-            // scheduling below: executing it is what fires the error event.
-            HTMLScriptElementImpl.setResult(script_element, .null);
+            try setClassicScriptResult(script_element, allowed_by_csp, null, script_url, false);
         }
 
         // Step 35: scheduling - which also decides when the result, already
@@ -554,10 +552,11 @@ pub fn prepareScriptElement(
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#prepare-the-script-element
 ///
-/// The result is already in hand when this runs - Crane fetches scripts
-/// synchronously - so the only question left is WHEN it counts as ready ("mark
-/// as ready", which runs the element's "steps to run when the result is
-/// ready"):
+/// Unless the result is still being fetched (`Delivery.fetching`: a script
+/// no parser inserted, whose fetch's task marks it ready), it is in hand when
+/// this runs - the parser's scripts are fetched synchronously - so the only
+/// question left is WHEN it counts as ready ("mark as ready", which runs the
+/// element's "steps to run when the result is ready"):
 ///
 /// - For step 35's first two cases, the async set and the in-order list, the
 ///   spec's onComplete runs from a task (fetch's processResponseConsumeBody,
@@ -573,6 +572,26 @@ fn handleScriptScheduling(
     script_element: *runtime.Instance,
     parser_document: ?*runtime.Instance,
     script_type: ScriptType,
+) ScriptExecutionError!bool {
+    return handleScriptSchedulingOf(allocator, script_element, parser_document, script_type, .in_hand);
+}
+
+/// How an element's result reaches "mark as ready".
+const Delivery = enum {
+    /// The result is in hand: a task delivers it (35.2, 35.3), or the
+    /// parser reads it (35.4, 35.5).
+    in_hand,
+    /// The result is being fetched: the fetch's task delivers it
+    /// (`ClassicScriptFetch`).
+    fetching,
+};
+
+fn handleScriptSchedulingOf(
+    allocator: std.mem.Allocator,
+    script_element: *runtime.Instance,
+    parser_document: ?*runtime.Instance,
+    script_type: ScriptType,
+    delivery: Delivery,
 ) ScriptExecutionError!bool {
     const has_src = hasSrcAttribute(script_element);
     const has_async = hasAsyncAttribute(script_element);
@@ -603,12 +622,12 @@ fn handleScriptScheduling(
             // a script the parser never touched lands here whether or not the
             // author wrote `async`.
             doc_state.addScriptToExecuteAsap(doc, script_element) catch {};
-            queueMarkAsReady(script_element, doc);
+            if (delivery == .in_hand) queueMarkAsReady(script_element, doc);
         } else if (!is_parser_inserted) {
             // 35.3: the list of scripts that will execute in order as soon as
             // possible.
-            doc_state.addScriptToExecuteInOrderAsap(doc, script_element) catch {};
-            queueMarkAsReady(script_element, doc);
+            appendInOrderScript(doc, script_element);
+            if (delivery == .in_hand) queueMarkAsReady(script_element, doc);
         } else if (has_defer or script_type == .module) {
             // 35.4: the list of scripts that will execute when the document
             // has finished parsing; the parser runs it at "the end".
@@ -683,6 +702,9 @@ fn queueMarkAsReady(script_element: *runtime.Instance, document: *runtime.Instan
 fn markReadyNow(allocator: std.mem.Allocator, script_element: *runtime.Instance, document: *runtime.Instance) void {
     markReady(script_element);
     drainReadyScripts(allocator, document);
+    // "The end" step 7 waits for the document's as-soon-as-possible
+    // scripts: the drain may have emptied them.
+    dom.document_lifecycle.loadDelayMayHaveEnded(document);
 }
 
 /// A queued "mark as ready".
@@ -789,9 +811,10 @@ pub fn executeScriptsWhenParsingFinished(
     // Step 5.1 spins the event loop until the first deferred script is ready,
     // and while it spins, the scripts that execute as soon as possible run as
     // their results arrive. Crane's parser does not yield while it parses and
-    // its fetches finish at preparation, so every result in that set has
-    // arrived - its delivery is only waiting for the task queued behind this
-    // parse. Delivered here, an async script runs before the deferred ones, as
+    // fetches its own scripts at preparation, so every such result in that
+    // set has arrived - its delivery is only waiting for the task queued
+    // behind this parse; a script-inserted one still fetching is left to its
+    // fetch's task. Delivered here, an async script runs before the deferred ones, as
     // it does in a browser whenever it loaded no later than they did
     // (execution-timing/085: a fast async script and a slow deferred one).
     // Deviation, stated: with a real network an async script slower than the
@@ -870,8 +893,9 @@ fn drainReadyScripts(allocator: std.mem.Allocator, document: *runtime.Instance) 
 const AsapResults = enum {
     /// Those marked ready - the task delivering the result has run.
     delivered,
-    /// Every one: Crane fetches at preparation, so each result is in hand
-    /// and only its delivery task is pending (the end of parsing).
+    /// Every one whose result is in hand - fetched at preparation, only its
+    /// delivery task pending (the end of parsing) - but not one still being
+    /// fetched in parallel.
     delivered_or_not,
 };
 
@@ -885,6 +909,8 @@ fn runOneReadyAsapScript(allocator: std.mem.Allocator, document: *runtime.Instan
     const scripts = doc_state.getScriptsToExecuteAsap(document);
     for (scripts) |script| {
         if (which == .delivered and !HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) continue;
+        // A script still being fetched has no result to deliver yet.
+        if (isFetching(script)) continue;
         // Its result is in hand (see `AsapResults`): deliver it now.
         markReady(script);
         _ = doc_state.removeScriptFromExecuteAsap(document, script);
@@ -901,10 +927,17 @@ fn runOneReadyAsapScript(allocator: std.mem.Allocator, document: *runtime.Instan
 /// Order is the whole point of this list, so a script that is not ready blocks
 /// the ones behind it rather than being skipped.
 fn runOneReadyInOrderScript(allocator: std.mem.Allocator, document: *runtime.Instance) bool {
-    const script = doc_state.popFirstScriptToExecuteInOrderAsap(document) orelse return false;
+    const script = popFirstInOrderScript(document) orelse return false;
 
     if (!HTMLScriptElementImpl.isReadyToBeParserExecuted(script)) {
-        doc_state.addScriptToExecuteInOrderAsap(document, script) catch {};
+        // It stays the head of the list: the rest go back behind it, in
+        // their order. (Appending it after them let the script behind it
+        // run first as soon as fetches stopped all ending at once.)
+        var rest: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+        defer rest.deinit(allocator);
+        while (popFirstInOrderScript(document)) |other| rest.append(allocator, other) catch break;
+        appendInOrderScript(document, script);
+        for (rest.items) |other| appendInOrderScript(document, other);
         return false;
     }
 
@@ -912,6 +945,18 @@ fn runOneReadyInOrderScript(allocator: std.mem.Allocator, document: *runtime.Ins
         log.debug("In-order async script execution error: {}", .{err});
     };
     return true;
+}
+
+/// The head of the document's list of scripts that will execute in order as
+/// soon as possible, taken off it.
+fn popFirstInOrderScript(document: *runtime.Instance) ?*runtime.Instance {
+    return doc_state.popFirstScriptToExecuteInOrderAsap(document);
+}
+
+/// Append `script` to the document's list of scripts that will execute in
+/// order as soon as possible.
+fn appendInOrderScript(document: *runtime.Instance, script: *runtime.Instance) void {
+    doc_state.addScriptToExecuteInOrderAsap(document, script) catch {};
 }
 
 /// Execute every ready script in the document's "execute ASAP" set.
@@ -2478,6 +2523,229 @@ fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, 
         return .{ .body = null, .content_type = null, .status = response.status, .final_url = null };
     };
     return result;
+}
+
+/// "Fetch a classic script" onComplete for `element`: "mark as ready el
+/// given result", as far as the result - a classic script of `body` (kept by
+/// the element, which the result points into), or null for no body (a
+/// network error, a status that is not ok) or a script CSP blocked.
+fn setClassicScriptResult(element: *runtime.Instance, allowed: bool, body: ?[]const u8, url: []const u8, muted: bool) ScriptExecutionError!void {
+    if (!allowed) return HTMLScriptElementImpl.setResult(element, .null);
+    if (body) |source| HTMLScriptElementImpl.cacheSourceText(element, source) catch return ScriptExecutionError.OutOfMemory;
+    if (HTMLScriptElementImpl.getCachedSourceText(element)) |kept| {
+        var script = ClassicScript.init(kept, url);
+        script.muted_errors = muted;
+        HTMLScriptElementImpl.setResult(element, .{ .script = script });
+    } else {
+        // The element still goes through the scheduling: executing it is
+        // what fires the error event.
+        HTMLScriptElementImpl.setResult(element, .null);
+    }
+}
+
+// =============================================================================
+// "Fetch a classic script" in parallel, for a script no parser inserted
+// =============================================================================
+
+const AsyncFetch = fetch.algorithms.AsyncFetch;
+
+/// A script-inserted external classic script's fetch, on the event loop
+/// (`fetch.algorithms.AsyncFetch`): HTML "fetch a classic script", whose
+/// processResponseConsumeBody runs from the networking task that hands the
+/// response over, and whose onComplete marks the element ready there - so a
+/// script moved to another document while it loads is not executed ("execute
+/// the script element" step 2), and the document it was prepared in waits
+/// for it at "the end" step 7 (its as-soon-as-possible queues hold it).
+///
+/// Held (engine.keepPlatformObjectAlive) from the start until its task has
+/// run: nothing else keeps a script-inserted element that script dropped,
+/// and its document's queues hold only its address. Every way the fetch can
+/// end releases the hold: its task, the task dropped with the loop, the
+/// fetch terminated with its realm (`gone`).
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-classic-script
+const ClassicScriptFetch = struct {
+    allocator: std.mem.Allocator,
+    element: *runtime.Instance,
+    element_generation: u64,
+    /// The preparation-time document: its queues hold the element.
+    document: *runtime.Instance,
+    document_generation: u64,
+    /// The element's realm: a realm that has ended terminates the fetch.
+    realm: runtime.Context,
+    /// The element's script URL (BORROWED from the element, which the hold
+    /// keeps).
+    url: []const u8,
+    fetch: ?*AsyncFetch = null,
+    /// What `done` found: the body (OWNED) or none, and muted errors.
+    body: ?[]u8 = null,
+    muted: bool = false,
+    /// The task that delivers the result is queued.
+    task_queued: bool = false,
+
+    fn elementIsLive(self: *const ClassicScriptFetch) bool {
+        return runtime.SlabAllocator.generationOf(self.element) == self.element_generation;
+    }
+
+    fn documentIsLive(self: *const ClassicScriptFetch) bool {
+        return runtime.SlabAllocator.generationOf(self.document) == self.document_generation;
+    }
+
+    fn client(self: *ClassicScriptFetch) AsyncFetch.Client {
+        return .{ .context = self, .done = fetchDone, .alive = fetchAlive, .gone = fetchGone };
+    }
+};
+
+/// Every script fetch on this thread whose result has not been delivered.
+threadlocal var script_fetches: std.ArrayListUnmanaged(*ClassicScriptFetch) = .empty;
+
+/// Whether `element`'s result is still being fetched.
+fn isFetching(element: *runtime.Instance) bool {
+    for (script_fetches.items) |f| {
+        if (f.element == element and f.elementIsLive()) return true;
+    }
+    return false;
+}
+
+/// Start "fetch a classic script" for `element` (not parser-inserted) at
+/// `url`, prepared in `document`. False when it cannot run in parallel - no
+/// event loop to hand the response to - and the caller fetches it
+/// synchronously instead.
+fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instance, url: []const u8) bool {
+    if (element.ctx.getOptionalEventLoop() == null) return false;
+    const allocator = element.ctx.allocator;
+    const self = allocator.create(ClassicScriptFetch) catch return false;
+    self.* = .{
+        .allocator = allocator,
+        .element = element,
+        .element_generation = runtime.SlabAllocator.generationOf(element),
+        .document = document,
+        .document_generation = runtime.SlabAllocator.generationOf(document),
+        .realm = element.ctx,
+        .url = url,
+    };
+    script_fetches.append(std.heap.smp_allocator, self) catch {
+        allocator.destroy(self);
+        return false;
+    };
+
+    // Steps 1-3: a potential-CORS request, its client the element's node
+    // document's settings object, initiator type "script" (as
+    // `fetchClassicScript`).
+    const request = fetch.internal.InternalRequest.init(allocator, url) catch return abandonStart(self);
+    script_request.createPotentialCorsRequest(request, .script, script_request.corsSettingFromAttribute(getAttribute(element, "crossorigin")));
+    script_request.populateRequestFromClient(request, document.ctx) catch {
+        request.deinit();
+        return abandonStart(self);
+    };
+    request.initiator_type = .script;
+    // The fetch owns the request from here, even when it fails to start.
+    self.fetch = AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), self.client()) catch
+        return abandonStart(self);
+    engine.keepPlatformObjectAlive(element);
+    return true;
+}
+
+fn abandonStart(self: *ClassicScriptFetch) bool {
+    forgetFetch(self);
+    self.allocator.destroy(self);
+    return false;
+}
+
+fn forgetFetch(self: *ClassicScriptFetch) void {
+    for (script_fetches.items, 0..) |f, i| {
+        if (f == self) {
+            _ = script_fetches.swapRemove(i);
+            return;
+        }
+    }
+}
+
+fn fetchAlive(context: *anyopaque) bool {
+    const self: *ClassicScriptFetch = @ptrCast(@alignCast(context));
+    return self.realm.engine_ctx != null;
+}
+
+/// The element's realm ended with the fetch in flight, and the fetch was
+/// terminated: nothing is delivered. (A fetch whose task is queued is left
+/// to the task, or to the task's drop.)
+fn fetchGone(context: *anyopaque) void {
+    const self: *ClassicScriptFetch = @ptrCast(@alignCast(context));
+    self.fetch = null;
+    if (self.task_queued) return;
+    finishFetch(self, .teardown);
+}
+
+/// The response, body and all (from the event loop's network step): step 5,
+/// processResponseConsumeBody - keep what onComplete needs, and queue the
+/// task that delivers it.
+fn fetchDone(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
+    const self: *ClassicScriptFetch = @ptrCast(@alignCast(context));
+    self.fetch = null;
+    if (outcome) |result_value| {
+        var result = result_value;
+        defer result.deinit();
+        const response = result.response;
+        // Step 5.1: "If bodyBytes is null or failure, or response's status
+        // is not an ok status, then run onComplete given null" - the
+        // response's own status, as `fetchClassicScript` reads it.
+        if (response.response_type != .@"error" and response.status >= 200 and response.status < 300) {
+            const bytes: []const u8 = if (response.body) |b| b.getBytes() else "";
+            self.body = self.allocator.dupe(u8, bytes) catch null;
+            // Step 5.5: muted errors for a CORS-cross-origin response.
+            self.muted = response.response_type == .@"opaque" or response.response_type == .opaqueredirect;
+        }
+    } else |_| {}
+
+    const loop = if (self.elementIsLive()) self.element.ctx.getOptionalEventLoop() else null;
+    const event_loop = loop orelse return finishFetch(self, .teardown);
+    self.task_queued = true;
+    event_loop.queueTask(.{ .callback = &runFetchedTask, .context = self, .drop = &dropFetchedTask });
+}
+
+/// The networking task: onComplete - "mark as ready el given result".
+fn runFetchedTask(data: ?*anyopaque) void {
+    const self: *ClassicScriptFetch = @ptrCast(@alignCast(data orelse return));
+    defer finishFetch(self, .settled);
+    if (!self.elementIsLive() or !self.documentIsLive()) return;
+    // A realm retired by a navigation runs none of its tasks.
+    if (self.realm.engine_ctx == null) return;
+    engine.runTaskInRealm(self.element.ctx, fetchedSteps, self) catch return;
+}
+
+fn fetchedSteps(data: ?*anyopaque) void {
+    const self: *ClassicScriptFetch = @ptrCast(@alignCast(data.?));
+    // No longer fetching: the queues may run it now.
+    forgetFetch(self);
+    // Out of memory keeping the body: the result is null, as for no body.
+    setClassicScriptResult(self.element, true, self.body, self.url, self.muted) catch
+        setClassicScriptResult(self.element, false, null, self.url, false) catch {};
+    markReadyNow(self.allocator, self.element, self.document);
+}
+
+/// `Task.drop`: the loop is ending with the task still queued.
+fn dropFetchedTask(data: ?*anyopaque) void {
+    const self: *ClassicScriptFetch = @ptrCast(@alignCast(data orelse return));
+    finishFetch(self, .teardown);
+}
+
+/// How a script fetch ends, which says whether its document is told.
+const FetchEnding = enum { settled, teardown };
+
+fn finishFetch(self: *ClassicScriptFetch, ending: FetchEnding) void {
+    forgetFetch(self);
+    if (self.fetch) |f| {
+        self.fetch = null;
+        f.terminate();
+    }
+    if (self.elementIsLive()) engine.releasePlatformObject(self.element);
+    if (self.body) |b| self.allocator.free(b);
+    const document = self.document;
+    const document_live = self.documentIsLive();
+    self.allocator.destroy(self);
+    // A script that never ran still leaves nothing to wait for once its
+    // fetch is over - unless the page itself is going.
+    if (ending == .settled and document_live) dom.document_lifecycle.loadDelayMayHaveEnded(document);
 }
 
 // =============================================================================

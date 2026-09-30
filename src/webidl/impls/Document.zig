@@ -3815,8 +3815,10 @@ fn becomeInteractive(data: ?*anyopaque) void {
 /// completes the load, once step 8 finds nothing delaying it.
 fn lifecycleFinishLoading(document: *runtime.Instance) void {
     queueLifecycleTask(document, .dom_content_loaded);
-    // Step 7 - the scripts that execute as soon as possible - runs them as
-    // they arrive (script_execution), so nothing is left to wait for here.
+    // Step 7 - the scripts that execute as soon as possible, or in order as
+    // soon as possible - run as their results arrive (script_execution); a
+    // script-inserted script still fetching keeps them non-empty, which
+    // queueLoadUnlessDelayed waits on.
     queueLoadUnlessDelayed(document);
 }
 
@@ -3833,7 +3835,12 @@ fn lifecycleFinishLoading(document: *runtime.Instance) void {
 /// synchronous.
 fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
-    if (@import("dom").content_navigables.delaysLoadEvent(document) or @import("dom").style_sheet_owners.delaysLoadEvent(document)) {
+    // Step 7: "Spin the event loop until the set of scripts that will
+    // execute as soon as possible and the list of scripts that will execute
+    // in order as soon as possible are empty" - script_execution says when a
+    // script leaves them (loadDelayMayHaveEnded). Then step 8.
+    const scripts_pending = internal.scripts_to_execute_asap.items.len > 0 or internal.scripts_to_execute_in_order_asap.items.len > 0;
+    if (scripts_pending or @import("dom").content_navigables.delaysLoadEvent(document) or @import("dom").style_sheet_owners.delaysLoadEvent(document)) {
         internal.load_waiting_on_delay = true;
         return;
     }
