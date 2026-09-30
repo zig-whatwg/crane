@@ -31,10 +31,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
-const api_parser = @import("api_parser");
-const encoding_mod = @import("encoding");
-const url_serializer = @import("url_serializer");
-const URLRecord = @import("url_record").URLRecord;
+const html = @import("html");
 
 const DOMString = runtime.DOMString;
 const USVString = runtime.USVString;
@@ -202,56 +199,11 @@ fn urlString(instance: *runtime.Instance, comptime spec: Spec) ![]const u8 {
 }
 
 /// HTML "encoding-parsing-and-serializing a URL" given `input`, relative to
-/// `element`'s node document: the URL parser run against the document base
-/// URL with the document's character encoding, serialized - or null for
-/// failure. Owned by `element.ctx.allocator`.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#encoding-parsing-and-serializing-a-url
-pub fn encodingParseAndSerialize(element: *runtime.Instance, input: []const u8) !?[]const u8 {
-    const allocator = element.ctx.allocator;
-    var record = (try encodingParse(element, input)) orelse return null;
-    defer record.deinit();
-    return try url_serializer.serialize(allocator, &record, false);
-}
-
-/// HTML "encoding-parse a URL" given `input`, relative to `node`'s node
-/// document (`node` itself when it is a Document): 1-2. the encoding is the
-/// document's character encoding; 4. the base URL is the document base URL;
-/// 5. the URL parser runs with both. Null for failure; the record is the
-/// caller's to `deinit`.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/urls-and-fetching.html#encoding-parsing-a-url
-pub fn encodingParse(node: *runtime.Instance, input: []const u8) !?URLRecord {
-    const allocator = node.ctx.allocator;
-    // "the document base URL" of the node document, which Node's baseURI
-    // serializes. Owned by the node's context allocator.
-    const base = interfaces.Node.get_baseURI(node) catch |err| switch (err) {
-        error.OutOfMemory => return err,
-        else => "",
-    };
-    defer if (base.len > 0) allocator.free(base);
-
-    var base_record: ?URLRecord = if (base.len > 0) api_parser.parseURL(allocator, base, null) catch |err| switch (err) {
-        error.OutOfMemory => return err,
-        else => null,
-    } else null;
-    defer if (base_record) |*record| record.deinit();
-
-    const encoding = documentEncoding(node);
-    return api_parser.parseURLWithEncoding(allocator, input, if (base_record) |*record| record else null, encoding) catch |err| switch (err) {
-        error.OutOfMemory => return err,
-        else => return null,
-    };
-}
-
-/// The character encoding of `node`'s node document (`node` itself when it
-/// is a Document): the encoding its characterSet names, UTF-8 when there is
-/// none.
-fn documentEncoding(node: *runtime.Instance) *const encoding_mod.Encoding {
-    const document = (interfaces.Node.get_ownerDocument(node) catch null) orelse node;
-    var name = interfaces.Document.get_characterSet(document) catch return encoding_mod.UTF_8;
-    defer name.deinit(document.ctx.allocator);
-    return encoding_mod.getEncoding(name.asSlice()) orelse encoding_mod.UTF_8;
+/// `element`'s node document - html.encoding_parse, with the document's base
+/// URL and character encoding - or null for failure. Owned by
+/// `element.ctx.allocator`.
+fn encodingParseAndSerialize(element: *runtime.Instance, input: []const u8) !?[]const u8 {
+    return html.encoding_parse.encodingParseAndSerialize(element, input);
 }
 
 /// Infra "convert to a scalar value string": every lone surrogate - WTF-8 in

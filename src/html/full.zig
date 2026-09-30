@@ -194,6 +194,8 @@ pub const ScriptLoaderFn = external_script_loader.ScriptLoaderFn;
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing
 pub const scripted_parser = @import("scripted_parser.zig");
+/// HTML "encoding-parse a URL" relative to a Document.
+pub const encoding_parse = @import("encoding_parse.zig");
 
 /// Parser script execution callback and context for V8 integration.
 /// Provides the bridge between tree builder's script callback and V8 execution.

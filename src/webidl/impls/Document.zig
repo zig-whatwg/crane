@@ -4205,7 +4205,7 @@ fn automaticFeaturesSandboxed(document: *runtime.Instance) bool {
 /// `url_string` encoding-parsed relative to `document` and serialized,
 /// owned by `allocator`; null on failure.
 fn parseRelativeToDocument(document: *runtime.Instance, url_string: []const u8, allocator: std.mem.Allocator) ?[]u8 {
-    const href = (@import("reflection.zig").encodingParseAndSerialize(document, url_string) catch return null) orelse return null;
+    const href = (@import("html").encoding_parse.encodingParseAndSerialize(document, url_string) catch return null) orelse return null;
     defer document.ctx.allocator.free(href);
     return allocator.dupe(u8, href) catch null;
 }

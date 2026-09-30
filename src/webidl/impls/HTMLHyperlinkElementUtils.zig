@@ -25,7 +25,7 @@ const webidl = @import("webidl");
 const HTMLHyperlinkElementUtils = interfaces.HTMLHyperlinkElementUtils;
 
 const ElementImpl = @import("Element.zig");
-const reflection = @import("reflection.zig");
+const html = @import("html");
 
 pub const State = HTMLHyperlinkElementUtils.State;
 
@@ -74,7 +74,7 @@ fn hrefAttribute(element: *runtime.Instance) ?[]const u8 {
 /// that parse (UTF-8, as the URL API's always is) gives back the same URL.
 fn elementUrl(element: *runtime.Instance) ?*runtime.Instance {
     const href = hrefAttribute(element) orelse return null;
-    const serialized = (reflection.encodingParseAndSerialize(element, href) catch return null) orelse return null;
+    const serialized = (html.encoding_parse.encodingParseAndSerialize(element, href) catch return null) orelse return null;
     defer element.ctx.allocator.free(serialized);
     return interfaces.URL.call_static_parse(element, serialized, webidl.Opt(runtime.USVString).notPassed()) catch null;
 }

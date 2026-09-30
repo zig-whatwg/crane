@@ -1359,6 +1359,8 @@ pub fn build(b: *std.Build) void {
     url_parser_api_mod.addImport("infra", infra_mod);
     url_parser_api_mod.addImport("url_record", url_internal_url_record_mod);
     url_parser_api_mod.addImport("basic_parser", url_basic_parser_mod);
+    // encodingParseAndSerialize serializes what it parses.
+    url_parser_api_mod.addImport("url_serializer", url_serializer_mod);
 
     const url_parser_state_mod = b.createModule(.{
         .root_source_file = b.path("src/url/parser/parser_state.zig"),
@@ -2036,6 +2038,9 @@ pub fn build(b: *std.Build) void {
     html_mod.addImport("dictionaries", dictionaries_mod);
     // DOM module for document_internals access in parser_script_execution.zig
     html_mod.addImport("dom", dom_mod);
+    // HTML "encoding-parse a URL" (html.encoding_parse) runs the URL parser
+    // with a document's encoding.
+    html_mod.addImport("api_parser", url_parser_api_mod);
 
     // Add html_core to impls for DOMParser, innerHTML, document.write, Window implementations
     // Using html_core (not html) to avoid cycle: impls → html → interfaces → impls

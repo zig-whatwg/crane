@@ -59,6 +59,9 @@ pub const Inputs = struct {
 /// encoding/sniffing.html pins it: "No (UTF-8) sniffing allowed".
 pub const default_encoding: Encoding = &enc.WINDOWS_1252;
 
+/// UTF-8, the encoding of a document nothing else set one for.
+pub const utf_8: Encoding = &enc.UTF_8;
+
 /// The prescan's end condition: "User agents are encouraged to only prescan
 /// the first 1024 bytes."
 pub const prescan_limit = 1024;
