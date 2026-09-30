@@ -23,6 +23,12 @@ const log = std.log.scoped(.forms);
 // Import related impls for attribute access
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
+const form_associated = @import("html").form_associated;
+const attributeValue = form_associated.attributeValue;
+const hasAttribute = form_associated.hasAttribute;
+const isElementNamed = form_associated.isElementNamed;
+const parentOf = form_associated.parentOf;
+const nextInTree = form_associated.nextInTree;
 
 pub const State = HTMLFormElement.State;
 
@@ -41,6 +47,12 @@ pub const InternalState = struct {
     /// HTML § 4.10.22.3 "planned navigation": the token of the queued task
     /// that will navigate, or 0 for null.
     planned_navigation: u64 = 0,
+    /// § 4.10.22.3 "constructing entry list", initially false.
+    constructing_entry_list: bool = false,
+    /// § 4.10.22.3 "firing submission events", initially false.
+    firing_submission_events: bool = false,
+    /// § 4.10.22 "locked for reset", initially false.
+    locked_for_reset: bool = false,
 
     pub fn deinit(self: *InternalState) void {
         _ = self;
@@ -67,6 +79,11 @@ pub fn init(
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, ArenaAllocator.get());
     internal.* = .{};
+
+    // The form's algorithms other element types run (a submit button's
+    // activation, FormData's constructor): installed before anyone can hold
+    // a form.
+    @import("dom").form_submission.install(submission_algorithms);
 
     return instance;
 }
@@ -269,16 +286,40 @@ pub fn set_method(instance: *runtime.Instance, value: runtime.DOMString) anyerro
 }
 
 /// Operation: requestSubmit
+/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-requestsubmit
+///
+/// 1. If submitter is not null, then:
+///    1. If submitter is not a submit button, then throw a TypeError.
+///    2. If submitter's form owner is not this form element, then throw a
+///       "NotFoundError" DOMException.
+/// 2. Otherwise, set submitter to this form element.
+/// 3. Submit this form element, from submitter.
 pub fn call_requestSubmit(instance: *runtime.Instance, submitter: webidl.Opt(?*runtime.Instance)) anyerror!void {
-    _ = instance;
-    _ = submitter;
-    return error.NotImplemented;
+    const given: ?*runtime.Instance = if (submitter.was_passed) submitter.value else null;
+    if (given) |element| {
+        if (!form_associated.isSubmitButton(element)) return error.TypeError;
+        if (form_associated.formOwner(element) != instance) return error.NotFoundError;
+        return submit(instance, element, .{});
+    }
+    try submit(instance, instance, .{});
 }
 
 /// Operation: reset
+/// Spec: https://html.spec.whatwg.org/multipage/forms.html#dom-form-reset
+///
+/// 1. If this's locked for reset is true, then return.
+/// 2. Set this's locked for reset to true.
+/// 3. Reset this.
+/// 4. Set this's locked for reset to false.
 pub fn call_reset(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = Registry.get(instance) orelse return;
+    if (internal.locked_for_reset) return;
+    internal.locked_for_reset = true;
+    // Looked up again: the reset event's listeners can run anything.
+    defer if (Registry.get(instance)) |after| {
+        after.locked_for_reset = false;
+    };
+    try resetForm(instance);
 }
 
 /// Operation: checkValidity
@@ -289,25 +330,81 @@ pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
 
 /// Operation: submit
 ///
-/// HTML § 4.10.22.3: submit the form from the form itself, "submitted from
-/// submit() method" true - so no submit event and no constraint validation.
+/// HTML § 4.10.22.3: "submit this from this, with submitted from submit()
+/// method set to true" - so no submit event and no constraint validation.
 pub fn call_submit(instance: *runtime.Instance) anyerror!void {
-    try submitForm(instance);
+    try submit(instance, instance, .{ .from_submit_method = true });
+}
+
+/// Installed into dom.form_submission when a form is made.
+const submission_algorithms: @import("dom").form_submission.Implementation = .{
+    .submit = &submitFromHook,
+    .reset = &resetForm,
+    .construct_entry_list = &constructEntryListInto,
+};
+
+fn submitFromHook(form: *runtime.Instance, submitter: *runtime.Instance, user_involvement: @import("dom").form_submission.UserInvolvement) anyerror!void {
+    try submit(form, submitter, .{ .user_involvement = user_involvement });
+}
+
+// ============================================================================
+// Resetting a form (HTML § 4.10.23)
+// ============================================================================
+
+/// "When a form element form is reset, run these steps:
+/// 1. Let reset be the result of firing an event named reset at form, with
+///    the bubbles and cancelable attributes initialized to true.
+/// 2. If reset is true, then invoke the reset algorithm of each resettable
+///    element whose form owner is form."
+fn resetForm(form: *runtime.Instance) anyerror!void {
+    const event = try interfaces.Event.call_constructor(
+        form.ctx,
+        runtime.DOMString.initInterned("reset"),
+        webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = true, .cancelable = true }),
+    );
+    // A listener can keep the event; only one nothing wrapped is freed here.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    const reset = blk: {
+        defer event.releaseIfUnwrapped(generation);
+        break :blk try @import("dom").fire_event.dispatchTrusted(form, event);
+    };
+    if (!reset) return;
+
+    // The resettable elements - input, output, select and textarea - whose
+    // form owner is form, in tree order. Collected first: a reset algorithm
+    // changes state, never the tree, but nothing here depends on that.
+    const allocator = form.ctx.allocator;
+    var controls: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer controls.deinit(allocator);
+    const root = form_associated.rootOf(form);
+    var node: ?*runtime.Instance = root;
+    while (node) |n| : (node = nextInTree(n, root, false)) {
+        if (!form_associated.isElement(n)) continue;
+        const resettable = form_associated.isInput(n) or form_associated.isSelect(n) or
+            form_associated.isTextArea(n) or n.stateAs(interfaces.HTMLOutputElement.State) != null;
+        if (!resettable) continue;
+        if (form_associated.formOwner(n) != form) continue;
+        try controls.append(allocator, n);
+    }
+    const form_controls = @import("dom").form_controls;
+    for (controls.items) |control| form_controls.reset(control);
 }
 
 // ============================================================================
 // Form submission (HTML § 4.10.22.3 - § 4.10.22.5)
 //
-// Everything below reaches other elements through their interfaces. Two
-// stated deviations:
+// Everything below reaches other elements through their interfaces and the
+// shared form-associated algorithms (form_associated.zig). Stated
+// deviations:
 //
-//   * No `formdata` event (§ 4.10.22.4 steps 6-7): firing one needs a FormData
-//     over this entry list, which FormData's impl cannot yet be handed. So the
-//     "constructing entry list" re-entrancy guard has nothing to guard.
+//   * Constraint validation (submit step 5.4) is not implemented, so every
+//     form validates: an invalid control does not stop a submission.
 //   * "Submit as entity body" encodes multipart/form-data through Fetch's
 //     FormData extraction: UTF-8 whatever the form's encoding, and a file
 //     control's empty File as an empty string field (FormData cannot yet be
 //     handed a Blob).
+//   * An Image Button's selected coordinate is always (0, 0): nothing is
+//     rendered, so no activation selects one.
 // ============================================================================
 
 /// An entry (§ 4.10.22.4): a name and a value, both scalar value strings in
@@ -338,70 +435,6 @@ fn takeString(allocator: std.mem.Allocator, owner: *runtime.Instance, s: runtime
     return allocator.dupe(u8, owned.asSlice());
 }
 
-/// The attribute's value, or null when the element has no such attribute.
-fn attributeValue(allocator: std.mem.Allocator, element: *runtime.Instance, comptime name: []const u8) !?[]u8 {
-    // Presence is asked separately: Element.getAttribute answers "" for a
-    // missing attribute, which would make an absent accept-charset pick
-    // UTF-8 over the document's encoding and a checkbox without a value
-    // submit "" instead of "on".
-    if (!hasAttribute(element, name)) return null;
-    const value = (try interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned(name))) orelse return null;
-    return try takeString(allocator, element, value);
-}
-
-fn hasAttribute(element: *runtime.Instance, comptime name: []const u8) bool {
-    return interfaces.Element.call_hasAttribute(element, runtime.DOMString.initInterned(name)) catch false;
-}
-
-/// Whether `node` is an element with local name `name` (HTML elements are
-/// lower-case, so this is an exact match on the lower-cased name).
-fn isElementNamed(node: *runtime.Instance, comptime name: []const u8) bool {
-    // Only an element may be handed to Element's members: the ancestor walks
-    // reach the Document and the child walks reach Text, and Element's
-    // accessors read whatever state they are given as an element's.
-    const node_type = interfaces.Node.get_nodeType(node) catch return false;
-    if (node_type != 1) return false; // ELEMENT_NODE
-    var local = interfaces.Element.get_localName(node) catch return false;
-    defer local.deinit(node.ctx.allocator);
-    return std.ascii.eqlIgnoreCase(local.asSlice(), name);
-}
-
-fn parentOf(node: *runtime.Instance) ?*runtime.Instance {
-    return interfaces.Node.get_parentNode(node) catch null;
-}
-
-/// Whether `node` is `ancestor` or one of its descendants.
-fn isInclusiveDescendant(node: *runtime.Instance, ancestor: *runtime.Instance) bool {
-    var current: ?*runtime.Instance = node;
-    while (current) |n| : (current = parentOf(n)) {
-        if (n == ancestor) return true;
-    }
-    return false;
-}
-
-/// The first `legend` element child of `fieldset`, if any.
-fn firstLegendChild(fieldset: *runtime.Instance) ?*runtime.Instance {
-    var child = interfaces.Node.get_firstChild(fieldset) catch null;
-    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
-        if (isElementNamed(c, "legend")) return c;
-    }
-    return null;
-}
-
-/// § 4.10.19.5: a form control is disabled if it has a `disabled` attribute,
-/// or is a descendant of a disabled fieldset and not of that fieldset's first
-/// legend child.
-fn isDisabledControl(field: *runtime.Instance) bool {
-    if (hasAttribute(field, "disabled")) return true;
-    var ancestor = parentOf(field);
-    while (ancestor) |a| : (ancestor = parentOf(a)) {
-        if (!isElementNamed(a, "fieldset") or !hasAttribute(a, "disabled")) continue;
-        const legend = firstLegendChild(a) orelse return true;
-        if (!isInclusiveDescendant(field, legend)) return true;
-    }
-    return false;
-}
-
 /// § 4.10.10: an option is disabled if it has a `disabled` attribute or is a
 /// child of a disabled optgroup.
 fn isDisabledOption(option: *runtime.Instance) bool {
@@ -416,20 +449,6 @@ fn hasAncestorNamed(node: *runtime.Instance, comptime name: []const u8) bool {
         if (isElementNamed(a, name)) return true;
     }
     return false;
-}
-
-/// The node after `node` in tree order within `root`'s subtree, not
-/// descending into `node` when `skip_children` is set.
-fn nextInTree(node: *runtime.Instance, root: *runtime.Instance, skip_children: bool) ?*runtime.Instance {
-    if (!skip_children) {
-        if (interfaces.Node.get_firstChild(node) catch null) |child| return child;
-    }
-    var current = node;
-    while (current != root) {
-        if (interfaces.Node.get_nextSibling(current) catch null) |sibling| return sibling;
-        current = parentOf(current) orelse return null;
-    }
-    return null;
 }
 
 /// § 4.10.7 "get the list of options" of a select: its option descendants in
@@ -488,100 +507,189 @@ fn pickEncoding(allocator: std.mem.Allocator, form: *runtime.Instance, document:
     return encoding_mod.getOutputEncoding(chosen);
 }
 
-/// § 4.10.22.4 "Constructing the entry list", for a submission whose
-/// submitter is the form itself: every button is skipped (5.1), and so is
-/// every image button (5.2.1).
-fn constructEntryList(allocator: std.mem.Allocator, form: *runtime.Instance, encoding: *const encoding_mod.Encoding) !EntryList {
+/// Whether `element` is a submittable element: button, input, select or
+/// textarea (form-associated custom elements are not implemented).
+fn isSubmittable(element: *runtime.Instance) bool {
+    return form_associated.isButton(element) or form_associated.isInput(element) or
+        form_associated.isSelect(element) or form_associated.isTextArea(element);
+}
+
+/// § 4.10.22.4 "construct the entry list" given form, submitter (null when
+/// the form is its own submitter) and encoding. Null when the form is
+/// already constructing one.
+fn constructEntryList(allocator: std.mem.Allocator, form: *runtime.Instance, submitter: ?*runtime.Instance, encoding: *const encoding_mod.Encoding) !?EntryList {
+    // 1. If form's constructing entry list is true, then return null.
+    const internal = Registry.get(form) orelse return null;
+    if (internal.constructing_entry_list) return null;
+    // 2. Set form's constructing entry list to true.
+    internal.constructing_entry_list = true;
+    // 8, however this leaves (the formdata event's listeners can run
+    // anything, so the state is looked up again).
+    defer if (Registry.get(form)) |after| {
+        after.constructing_entry_list = false;
+    };
+
+    // 4. Let entry list be a new empty entry list.
     var entries: EntryList = .empty;
     errdefer freeEntries(allocator, &entries);
 
-    // Step 3: the submittable elements whose form owner is form, in tree
-    // order. Walked here rather than read from `form.elements`: that
-    // collection is [SameObject], cached on the form by the interface, and
-    // a snapshot of the controls at its first read. A nested form owns its
-    // own descendants. (A control associated by its `form` attribute is not
-    // found; TODO(forms).)
-    var next = nextInTree(form, form, false);
-    while (next) |field| {
-        const nested_form = isElementNamed(field, "form");
-        next = nextInTree(field, form, nested_form);
-        if (nested_form) continue;
-        const kind: enum { input, select, textarea } = if (isElementNamed(field, "input"))
-            .input
-        else if (isElementNamed(field, "select"))
-            .select
-        else if (isElementNamed(field, "textarea"))
-            .textarea
-        else
-            // button is always skipped here (5.1); fieldset, object and
-            // output are listed but not submittable.
-            continue;
+    // 3, 5. The submittable elements whose form owner is form, in tree order.
+    // A control can be associated from anywhere in the form's tree through
+    // its form attribute, so the whole tree is walked.
+    const root = form_associated.rootOf(form);
+    var next: ?*runtime.Instance = root;
+    while (next) |field| : (next = nextInTree(field, root, false)) {
+        if (!form_associated.isElement(field) or !isSubmittable(field)) continue;
+        if (form_associated.formOwner(field) != form) continue;
+        try appendFieldEntries(allocator, &entries, field, submitter, encoding);
+    }
 
-        // 5.1: a datalist ancestor, or disabled.
-        if (hasAncestorNamed(field, "datalist") or isDisabledControl(field)) continue;
+    // 6. Let form data be a new FormData object associated with entry list.
+    const form_data = try entryListFormData(form, entries.items);
+    const form_data_generation = runtime.SlabAllocator.generationOf(form_data);
+    defer form_data.releaseIfUnwrapped(form_data_generation);
 
-        var input_type: []u8 = &.{};
-        defer allocator.free(input_type);
-        if (kind == .input) {
-            input_type = try takeString(allocator, field, try interfaces.HTMLInputElement.get_type(field));
-            // 5.1: a button that is not the submitter; 5.2.1: an image button
-            // that is not the submitter.
-            if (eql(input_type, "submit") or eql(input_type, "reset") or eql(input_type, "button") or eql(input_type, "image")) continue;
-            // 5.1: an unchecked checkbox or radio button.
-            if ((eql(input_type, "checkbox") or eql(input_type, "radio")) and !(try interfaces.HTMLInputElement.get_checked(field))) continue;
-        }
+    // 7. Fire an event named formdata at form using FormDataEvent, with the
+    //    formData attribute initialized to form data and the bubbles
+    //    attribute initialized to true.
+    {
+        const event = try interfaces.FormDataEvent.call_constructor(
+            form.ctx,
+            runtime.DOMString.initInterned("formdata"),
+            .{ .base = .{ .bubbles = true }, .formData = form_data },
+        );
+        const generation = runtime.SlabAllocator.generationOf(event);
+        defer event.releaseIfUnwrapped(generation);
+        _ = try @import("dom").fire_event.dispatchTrusted(form, event);
+    }
 
-        // 5.4: no name attribute, or an empty one.
-        const name = (try attributeValue(allocator, field, "name")) orelse continue;
-        if (name.len == 0) {
-            allocator.free(name);
-            continue;
-        }
-        defer allocator.free(name);
-
-        switch (kind) {
-            .select => {
-                // 5.6: each option in the list of options whose selectedness
-                // is true and that is not disabled. (Not `selectedOptions`:
-                // it is [SameObject] and cached, like `form.elements`.)
-                const Visit = struct {
-                    allocator: std.mem.Allocator,
-                    entries: *EntryList,
-                    name: []const u8,
-                    fn option(self: @This(), element: *runtime.Instance) anyerror!void {
-                        if (!(try interfaces.HTMLOptionElement.get_selected(element))) return;
-                        if (isDisabledOption(element)) return;
-                        const value = try takeString(self.allocator, element, try interfaces.HTMLOptionElement.get_value(element));
-                        try appendEntry(self.allocator, self.entries, self.name, value);
-                    }
-                };
-                try forEachOption(field, Visit{ .allocator = allocator, .entries = &entries, .name = name }, Visit.option);
-            },
-            .textarea => {
-                // 5.10: the value.
-                const value = try takeString(allocator, field, try interfaces.HTMLTextAreaElement.get_value(field));
-                try appendEntry(allocator, &entries, name, value);
-            },
-            .input => {
-                const value: []u8 = if (eql(input_type, "checkbox") or eql(input_type, "radio"))
-                    // 5.7: the value attribute, or "on".
-                    (try attributeValue(allocator, field, "value")) orelse try allocator.dupe(u8, "on")
-                else if (eql(input_type, "file"))
-                    // 5.8.1: no files are ever selected here, so a File with an
-                    // empty name - represented by that name.
-                    try allocator.dupe(u8, "")
-                else if (eql(input_type, "hidden") and std.ascii.eqlIgnoreCase(name, "_charset_"))
-                    // 5.9: the encoding's name.
-                    try allocator.dupe(u8, encoding.name)
+    // 9. Return a clone of entry list - as the formdata event's listeners
+    //    left it, through form data.
+    freeEntries(allocator, &entries);
+    entries = .empty;
+    const after = interfaces.FormData.getEntriesForIterable(form_data) orelse &.{};
+    for (after) |entry| {
+        switch (entry.value) {
+            .usvstring => |value| try appendEntry(allocator, &entries, entry.name, try allocator.dupe(u8, value)),
+            .file => |file| {
+                // A File is represented by its name; a Blob that is not a
+                // File became one named "blob" (XHR "create an entry").
+                const name: []u8 = if (file.stateAs(interfaces.File.State) != null)
+                    try takeString(allocator, file, try interfaces.File.get_name(file))
                 else
-                    // 5.10: the value.
-                    try takeString(allocator, field, try interfaces.HTMLInputElement.get_value(field));
-                try appendEntry(allocator, &entries, name, value);
-                if (eql(input_type, "file")) entries.items[entries.items.len - 1].is_file = true;
+                    try allocator.dupe(u8, "blob");
+                try appendEntry(allocator, &entries, entry.name, name);
+                entries.items[entries.items.len - 1].is_file = true;
             },
         }
     }
     return entries;
+}
+
+/// Step 5's substeps for one field: append its entries, if any.
+fn appendFieldEntries(allocator: std.mem.Allocator, entries: *EntryList, field: *runtime.Instance, submitter: ?*runtime.Instance, encoding: *const encoding_mod.Encoding) !void {
+    var type_buffer: [16]u8 = undefined;
+    const input_type: []const u8 = if (form_associated.isInput(field)) form_associated.inputType(field, &type_buffer) else "";
+    const is_input = form_associated.isInput(field);
+
+    // 5.1: a datalist ancestor; disabled; a button that is not submitter; an
+    // unchecked checkbox or radio button.
+    if (hasAncestorNamed(field, "datalist") or form_associated.isDisabled(field)) return;
+    if (form_associated.isButtonControl(field) and field != submitter) return;
+    if (is_input and (eql(input_type, "checkbox") or eql(input_type, "radio")) and
+        !(try interfaces.HTMLInputElement.get_checked(field))) return;
+
+    // 5.2: an Image Button (the submitter, per 5.1): name.x and name.y, the
+    // selected coordinate.
+    if (is_input and eql(input_type, "image")) {
+        const given = (try attributeValue(allocator, field, "name")) orelse try allocator.dupe(u8, "");
+        defer allocator.free(given);
+        const prefix: []const u8 = if (given.len > 0) try std.fmt.allocPrint(allocator, "{s}.", .{given}) else "";
+        defer if (prefix.len > 0) allocator.free(prefix);
+        const name_x = try std.fmt.allocPrint(allocator, "{s}x", .{prefix});
+        defer allocator.free(name_x);
+        const name_y = try std.fmt.allocPrint(allocator, "{s}y", .{prefix});
+        defer allocator.free(name_y);
+        try appendEntry(allocator, entries, name_x, try allocator.dupe(u8, "0"));
+        try appendEntry(allocator, entries, name_y, try allocator.dupe(u8, "0"));
+        return;
+    }
+
+    // 5.4-5.5: no name attribute, or an empty one.
+    const name = (try attributeValue(allocator, field, "name")) orelse return;
+    defer allocator.free(name);
+    if (name.len == 0) return;
+
+    if (form_associated.isSelect(field)) {
+        // 5.6: each option in the list of options whose selectedness is true
+        // and that is not disabled. (Not `selectedOptions`: it is
+        // [SameObject] and cached.)
+        const Visit = struct {
+            allocator: std.mem.Allocator,
+            entries: *EntryList,
+            name: []const u8,
+            fn option(self: @This(), element: *runtime.Instance) anyerror!void {
+                if (!(try interfaces.HTMLOptionElement.get_selected(element))) return;
+                if (isDisabledOption(element)) return;
+                const value = try takeString(self.allocator, element, try interfaces.HTMLOptionElement.get_value(element));
+                try appendEntry(self.allocator, self.entries, self.name, value);
+            }
+        };
+        try forEachOption(field, Visit{ .allocator = allocator, .entries = entries, .name = name }, Visit.option);
+    } else if (is_input and (eql(input_type, "checkbox") or eql(input_type, "radio"))) {
+        // 5.7: the value attribute, or "on".
+        const value = (try attributeValue(allocator, field, "value")) orelse try allocator.dupe(u8, "on");
+        try appendEntry(allocator, entries, name, value);
+    } else if (is_input and eql(input_type, "file")) {
+        // 5.8.1: no files are ever selected here, so a File with an empty
+        // name - represented by that name.
+        try appendEntry(allocator, entries, name, try allocator.dupe(u8, ""));
+        entries.items[entries.items.len - 1].is_file = true;
+    } else if (is_input and eql(input_type, "hidden") and std.ascii.eqlIgnoreCase(name, "_charset_")) {
+        // 5.9: the encoding's name.
+        try appendEntry(allocator, entries, name, try allocator.dupe(u8, encoding.name));
+    } else {
+        // 5.10: the value of the field element.
+        const value = if (form_associated.isTextArea(field))
+            try takeString(allocator, field, try interfaces.HTMLTextAreaElement.get_value(field))
+        else if (form_associated.isButton(field))
+            try takeString(allocator, field, try interfaces.HTMLButtonElement.get_value(field))
+        else
+            try takeString(allocator, field, try interfaces.HTMLInputElement.get_value(field));
+        try appendEntry(allocator, entries, name, value);
+    }
+
+    // 5.11: a dirname attribute that is not empty, on an auto-directionality
+    // form-associated element: its directionality, under the dirname.
+    if (form_associated.isAutoDirectionalityFormAssociated(field)) {
+        if (try attributeValue(allocator, field, "dirname")) |dirname| {
+            defer allocator.free(dirname);
+            if (dirname.len > 0) {
+                const dir: []const u8 = switch (form_associated.directionality(field)) {
+                    .ltr => "ltr",
+                    .rtl => "rtl",
+                };
+                try appendEntry(allocator, entries, dirname, try allocator.dupe(u8, dir));
+            }
+        }
+    }
+}
+
+/// dom.form_submission's "construct the entry list": FormData(form,
+/// submitter)'s steps 1.1-1.4, appending the clone to `form_data`.
+fn constructEntryListInto(form: *runtime.Instance, submitter: ?*runtime.Instance, form_data: *runtime.Instance) anyerror!void {
+    // 1.1: a submitter must be a submit button whose form owner is form.
+    if (submitter) |element| {
+        if (!form_associated.isSubmitButton(element)) return error.TypeError;
+        if (form_associated.formOwner(element) != form) return error.NotFoundError;
+    }
+    // 1.2-1.3: the entry list with the default encoding, UTF-8; null (a
+    // form already constructing one) throws.
+    const allocator = form.ctx.allocator;
+    var entries = (try constructEntryList(allocator, form, submitter, encoding_mod.UTF_8)) orelse return error.InvalidStateError;
+    defer freeEntries(allocator, &entries);
+    // 1.4: set this's entry list to it.
+    for (entries.items) |entry| try interfaces.FormData.call_append(form_data, entry.name, entry.value);
 }
 
 fn eql(a: []const u8, comptime b: []const u8) bool {
@@ -640,43 +748,134 @@ fn serializeEntries(allocator: std.mem.Allocator, entries: []const Entry, encodi
     return output.toOwnedSlice(allocator);
 }
 
-/// § 4.10.22.3 "submit", from the form itself with "submitted from submit()
-/// method" true (steps 5.1-5.9 are skipped).
-fn submitForm(form: *runtime.Instance) !void {
+/// The optional arguments of § 4.10.22.3 "submit".
+const SubmitOptions = struct {
+    /// "submitted from submit() method".
+    from_submit_method: bool = false,
+    /// "userInvolvement" - "none" by default.
+    user_involvement: @import("dom").form_submission.UserInvolvement = .none,
+};
+
+/// A form "cannot navigate" if it is not connected, or its node document is
+/// not fully active. (Only the first is checked: a document that is not
+/// fully active has no navigable for the planned navigation to reach.)
+fn cannotNavigate(form: *runtime.Instance) bool {
+    return !(interfaces.Node.get_isConnected(form) catch false);
+}
+
+/// The value of a submit button's form-submission attribute (`formaction`,
+/// `formmethod`, ...) when `submitter` is a submit button that has it, owned;
+/// null otherwise - the form's own attribute then applies.
+fn submitterAttribute(allocator: std.mem.Allocator, submitter: *runtime.Instance, form: *runtime.Instance, comptime name: []const u8) !?[]u8 {
+    if (submitter == form or !form_associated.isSubmitButton(submitter)) return null;
+    return attributeValue(allocator, submitter, name);
+}
+
+/// A method or formmethod keyword's state; invalid values are GET.
+fn methodState(value: []const u8) []const u8 {
+    if (std.ascii.eqlIgnoreCase(value, "post")) return "post";
+    if (std.ascii.eqlIgnoreCase(value, "dialog")) return "dialog";
+    return "get";
+}
+
+/// An enctype or formenctype keyword's state; invalid values are
+/// application/x-www-form-urlencoded.
+fn enctypeState(value: []const u8) []const u8 {
+    if (std.ascii.eqlIgnoreCase(value, "multipart/form-data")) return "multipart/form-data";
+    if (std.ascii.eqlIgnoreCase(value, "text/plain")) return "text/plain";
+    return "application/x-www-form-urlencoded";
+}
+
+/// § 4.10.22.3 "submit" `form` from `submitter` - a submit button, or the
+/// form itself.
+fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: SubmitOptions) !void {
     const allocator = form.ctx.allocator;
 
-    // Step 1: If form cannot navigate, then return. (Not connected; a
-    // document that is not fully active has no navigable to reach below.)
-    if (!(try interfaces.Node.get_isConnected(form))) return;
-    // Step 3: form document.
+    // 1. If form cannot navigate, then return.
+    if (cannotNavigate(form)) return;
+    // 2. If form's constructing entry list is true, then return.
+    if (Registry.get(form)) |internal| {
+        if (internal.constructing_entry_list) return;
+    }
+    // 3. Let form document be form's node document.
     const document = (try interfaces.Node.get_ownerDocument(form)) orelse return;
 
-    // Step 6: Let encoding be the result of picking an encoding for the form.
-    const encoding = try pickEncoding(allocator, form, document);
-    // Step 7: Let entry list be the result of constructing the entry list.
-    var entries = try constructEntryList(allocator, form, encoding);
-    defer freeEntries(allocator, &entries);
+    // 5. If submitted from submit() method is false:
+    if (!options.from_submit_method) {
+        const internal = Registry.get(form) orelse return;
+        // 5.1-5.2: firing submission events.
+        if (internal.firing_submission_events) return;
+        internal.firing_submission_events = true;
+        // 5.3-5.4: user validity and interactive validation - not
+        // implemented (stated above); every form validates.
 
-    // Step 10: method - the form's, as the form is the submitter.
-    var method_string = try interfaces.HTMLFormElement.get_method(form);
-    defer method_string.deinit(form.ctx.allocator);
-    const method = method_string.asSlice();
-    // Step 11: dialog closes the nearest dialog ancestor; nothing navigates.
+        // 5.5: submitterButton is null if submitter is form.
+        const submitter_button: ?*runtime.Instance = if (submitter == form) null else submitter;
+        // 5.6: fire submit, a SubmitEvent with submitter, bubbling and
+        // cancelable.
+        const should_continue = blk: {
+            // 5.7, however the dispatch ends.
+            defer if (Registry.get(form)) |after| {
+                after.firing_submission_events = false;
+            };
+            const event = try interfaces.SubmitEvent.call_constructor(
+                form.ctx,
+                runtime.DOMString.initInterned("submit"),
+                webidl.Opt(dictionaries.SubmitEventInit).passed(.{
+                    .base = .{ .bubbles = true, .cancelable = true },
+                    .submitter = submitter_button,
+                }),
+            );
+            const generation = runtime.SlabAllocator.generationOf(event);
+            defer event.releaseIfUnwrapped(generation);
+            break :blk try @import("dom").fire_event.dispatchTrusted(form, event);
+        };
+        // 5.8: If shouldContinue is false, then return.
+        if (!should_continue) return;
+        // 5.9: dispatching submit could have changed this.
+        if (cannotNavigate(form)) return;
+    }
+
+    // 6. Let encoding be the result of picking an encoding for the form.
+    const encoding = try pickEncoding(allocator, form, document);
+    // 7. Let entry list be the result of constructing the entry list with
+    //    form, submitter and encoding. (8: it is not null - nothing between
+    //    step 2 and here constructs one.)
+    var entries = (try constructEntryList(allocator, form, if (submitter == form) null else submitter, encoding)) orelse return;
+    defer freeEntries(allocator, &entries);
+    // 9. The formdata event could have changed this.
+    if (cannotNavigate(form)) return;
+
+    // 10. Let method be the submitter element's method: its formmethod
+    //     attribute's state if it is a submit button that has one, else the
+    //     form's method attribute's state.
+    const method: []const u8 = blk: {
+        if (try submitterAttribute(allocator, submitter, form, "formmethod")) |value| {
+            defer allocator.free(value);
+            break :blk methodState(value);
+        }
+        const value = (try attributeValue(allocator, form, "method")) orelse break :blk "get";
+        defer allocator.free(value);
+        break :blk methodState(value);
+    };
+    // 11. dialog closes the nearest dialog ancestor; nothing navigates.
     // TODO(forms): close the dialog.
     if (eql(method, "dialog")) return;
 
-    // Steps 12-13: action, or the form document's URL when it is empty.
+    // 12-13: action - the submitter's formaction or the form's action - or
+    // the form document's URL when it is empty.
     const document_url = try interfaces.Document.get_URL(document);
     defer document.ctx.allocator.free(document_url);
-    const action_attribute = try attributeValue(allocator, form, "action");
+    const action_attribute = (try submitterAttribute(allocator, submitter, form, "formaction")) orelse
+        try attributeValue(allocator, form, "action");
     defer if (action_attribute) |a| allocator.free(a);
     const action: []const u8 = if (action_attribute) |a| (if (a.len > 0) a else document_url) else document_url;
 
-    // Steps 14-15: "encoding-parsing a URL given action, relative to
-    // submitter's node document" - its document base URL, which for an
-    // about:blank document is its creator's (an initial about:blank frame's
-    // form has no other). (The document's encoding does not reach the URL
-    // parser; see encoding-parse.)
+    // 14-15: "encoding-parsing a URL given action, relative to submitter's
+    // node document" - its document base URL, which for an about:blank
+    // document is its creator's (an initial about:blank frame's form has no
+    // other). (The document's encoding does not reach the URL parser; see
+    // encoding-parse.)
     const base_url = interfaces.Node.get_baseURI(document) catch null;
     defer if (base_url) |b| document.ctx.allocator.free(b);
     var base = basic_parser.parse(allocator, base_url orelse document_url, null) catch null;
@@ -685,27 +884,42 @@ fn submitForm(form: *runtime.Instance) !void {
     var parsed_action = basic_parser.parse(allocator, action, if (base) |*b| b else null) catch return;
     defer parsed_action.deinit();
 
-    // Steps 18-23: the target. The navigable for it is chosen when the
-    // planned navigation runs (dom.navigables), which opens a new one for
-    // "_blank" or a name nothing has.
-    const target = try elementTarget(allocator, form, document);
+    // 17. Let enctype be the submitter element's enctype.
+    const enctype: []const u8 = blk: {
+        if (try submitterAttribute(allocator, submitter, form, "formenctype")) |value| {
+            defer allocator.free(value);
+            break :blk enctypeState(value);
+        }
+        const value = (try attributeValue(allocator, form, "enctype")) orelse break :blk "application/x-www-form-urlencoded";
+        defer allocator.free(value);
+        break :blk enctypeState(value);
+    };
+
+    // 18-20: formTarget - a submit button's formtarget attribute - then the
+    // target, "getting an element's target" given the submitter's form owner
+    // (form) and formTarget. The navigable for it is chosen when the planned
+    // navigation runs (dom.navigables), which opens a new one for "_blank"
+    // or a name nothing has.
+    const form_target = try submitterAttribute(allocator, submitter, form, "formtarget");
+    defer if (form_target) |t| allocator.free(t);
+    const target = try elementTarget(allocator, form, form_target, document);
     errdefer allocator.free(target);
 
-    // Step 26: the scheme and method pick the behaviour.
+    // 26. The scheme and method pick the behaviour.
     const scheme = parsed_action.scheme();
     const is_get = eql(method, "get");
     const mutate = is_get and (eql(scheme, "http") or eql(scheme, "https") or eql(scheme, "data") or eql(scheme, "file"));
     if (!is_get and (eql(scheme, "http") or eql(scheme, "https"))) {
         // "Submit as entity body": a POST resource of the entry list encoded
-        // by the form's enctype, planned to the parsed action as it is. The
-        // entry list goes with it, as a FormData, for the navigate event
-        // (navigate's formDataEntryList).
+        // by enctype, planned to the parsed action as it is. The entry list
+        // goes with it, as a FormData, for the navigate event (navigate's
+        // formDataEntryList).
         const form_data = entryListFormData(form, entries.items) catch |err| {
             allocator.free(target);
             return err;
         };
         const form_data_generation = runtime.SlabAllocator.generationOf(form_data);
-        var post = entityBody(allocator, form, form_data, entries.items, encoding) catch |err| {
+        var post = entityBody(allocator, enctype, form_data, entries.items, encoding) catch |err| {
             form_data.releaseIfUnwrapped(form_data_generation);
             allocator.free(target);
             return err;
@@ -733,12 +947,13 @@ fn submitForm(form: *runtime.Instance) !void {
     planNavigation(form, url, target);
 }
 
-/// HTML "get an element's target" for the form: its target attribute, else
-/// the target of the document's first base element that has one, else "";
-/// one with an ASCII tab or newline and a "<" in it is "_blank" (dangling
-/// markup). Owned.
-fn elementTarget(allocator: std.mem.Allocator, form: *runtime.Instance, document: *runtime.Instance) ![]u8 {
-    const given = (try attributeValue(allocator, form, "target")) orelse blk: {
+/// HTML "get an element's target" given the form and a target override
+/// (the submitter's formtarget): the override if given, else the form's
+/// target attribute, else the target of the document's first base element
+/// that has one, else ""; one with an ASCII tab or newline and a "<" in it is
+/// "_blank" (dangling markup). Owned.
+fn elementTarget(allocator: std.mem.Allocator, form: *runtime.Instance, override: ?[]const u8, document: *runtime.Instance) ![]u8 {
+    const given = if (override) |t| try allocator.dupe(u8, t) else (try attributeValue(allocator, form, "target")) orelse blk: {
         const base = (interfaces.Document.call_querySelector(document, runtime.DOMString.initInterned("base[target]")) catch null) orelse
             break :blk try allocator.dupe(u8, "");
         break :blk (try attributeValue(allocator, base, "target")) orelse try allocator.dupe(u8, "");
@@ -763,12 +978,8 @@ const PostResource = struct {
 };
 
 /// "Submit as entity body": "Switch on enctype" - the body and mimeType for
-/// the entry list. The form is its own submitter here, so its enctype is
-/// the form's.
-fn entityBody(allocator: std.mem.Allocator, form: *runtime.Instance, form_data: *runtime.Instance, entries: []const Entry, encoding: *const encoding_mod.Encoding) !PostResource {
-    var enctype_string = try interfaces.HTMLFormElement.get_enctype(form);
-    defer enctype_string.deinit(form.ctx.allocator);
-    const enctype = enctype_string.asSlice();
+/// the entry list, given the submitter's enctype.
+fn entityBody(allocator: std.mem.Allocator, enctype: []const u8, form_data: *runtime.Instance, entries: []const Entry, encoding: *const encoding_mod.Encoding) !PostResource {
     if (eql(enctype, "multipart/form-data")) return multipartBody(allocator, form_data);
     if (eql(enctype, "text/plain")) {
         // "Let body be the result of running the text/plain encoding

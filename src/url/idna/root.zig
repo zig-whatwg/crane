@@ -49,6 +49,9 @@ pub const punycode_mod = punycode;
 pub const normalization_mod = normalization;
 pub const mapping_mod = mapping;
 pub const bidi_mod = bidi;
+/// The Unicode data tables (DerivedBidiClass and the rest), for HTML's
+/// directionality, which needs each code point's bidirectional class.
+pub const unicode_data_mod = unicode_data;
 pub const context_mod = context;
 
 pub const IDNAError = error{
