@@ -440,7 +440,6 @@ src/webidl/impls/HTMLLabelElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLLabelElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLLegendElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLLegendElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLLinkElement.zig HTMLElement.init 1
 src/webidl/impls/HTMLMapElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLMapElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLMarqueeElement.zig HTMLElement.deinit 2
@@ -530,8 +529,6 @@ src/webidl/impls/HTMLSourceElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLSourceElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLSpanElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLSpanElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLStyleElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLStyleElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLTableCaptionElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLTableCaptionElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLTableCellElement.zig HTMLElement.deinit 2
