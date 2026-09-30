@@ -1550,6 +1550,97 @@ pub const WorkerHost = struct {
         return self.executeScriptEx(source, true);
     }
 
+    /// "Run a worker" for a module worker, from "obtain script" on: fetch a
+    /// module worker script graph - the root's response (`source`, fetched
+    /// from `url`) already in hand, its URL the worker's - and onComplete:
+    /// "If script is null or if script's error to rethrow is non-null", the
+    /// worker fails - false, and the caller queues `error` at the worker
+    /// object; otherwise "run the module script script", then the incoming
+    /// messages, as a classic worker's script does.
+    ///
+    /// Spec: https://html.spec.whatwg.org/multipage/workers.html#run-a-worker
+    pub fn executeModuleScript(self: *Self, url: []const u8, source: []const u8) bool {
+        if (!module_script.supported) return false;
+        if (!self.runsTasks()) return false;
+        const prev_context = current_worker_context;
+        current_worker_context = self;
+        defer current_worker_context = prev_context;
+
+        const env = self.moduleEnvironment() orelse return false;
+        const graph = module_script.moduleWorkerScriptGraph(&env, url, self.script_url, source) orelse return false;
+        if (graph.error_to_rethrow != null) return false;
+
+        self.runModuleScript(&env, graph);
+        self.processIncomingMessagesInternal();
+        _ = engine.runEngineTasks(self.agent);
+        self.armPlatformPump(false);
+        return true;
+    }
+
+    /// HTML "run a module script" for the worker: evaluate between "prepare
+    /// to run script" and "clean up after running script"; "upon rejection
+    /// of evaluationPromise with reason, report an exception given by
+    /// reason" for the worker's global scope.
+    ///
+    /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-module-script
+    /// "Upon rejection" is a reaction: even for a graph whose evaluation
+    /// promise is already rejected, the report is a microtask queued after
+    /// the ones the evaluation queued, and runs in step 9's checkpoint
+    /// (microtasks/evaluation-order-1-throw-static-import: "body",
+    /// "microtask", then "global-error").
+    fn runModuleScript(self: *Self, env: *const module_script.Environment, script: *module_script.ModuleScript) void {
+        const realm = self.realm orelse return;
+        self.entered += 1;
+        defer self.entered -= 1;
+        // Step 5: prepare to run script.
+        const scope = engine.prepareToRunScript(realm) catch return;
+        // Step 9: clean up after running script - the microtask checkpoint.
+        defer engine.cleanUpAfterRunningScript(scope);
+        switch (module_script.run(env, script)) {
+            .ok => {},
+            // Steps 6-7 settled the evaluation promise with a rejection (an
+            // error to rethrow, or a synchronous throw): step 8's reaction.
+            .report => |exception| {
+                defer exception.release();
+                const promise = engine.createRejectedPromise(realm, exception.value) catch
+                    return self.reportValue(realm, exception.value);
+                defer promise.release();
+                self.reportRejectionLater(realm, promise.value);
+            },
+            .pending => |promise| {
+                defer promise.release();
+                self.reportRejectionLater(realm, promise.value);
+            },
+        }
+    }
+
+    /// "Report an exception" `value` (BORROWED) for the worker's global
+    /// scope, with the error information the engine extracts from it.
+    fn reportValue(self: *Self, realm: runtime.Context, value: runtime.JSValue) void {
+        const info = engine.extractErrorInformation(realm, value, self.allocator) catch return;
+        defer self.allocator.free(info.message);
+        defer self.allocator.free(info.filename);
+        const runtime_info: runtime.ErrorInfo = .{
+            .message = info.message,
+            .filename = info.filename,
+            .lineno = info.lineno,
+            .colno = info.colno,
+            .error_value = info.error_value,
+        };
+        reportException(self, &runtime_info);
+    }
+
+    /// Step 8: react to the evaluation promise, and report the reason if it
+    /// rejects - while this host, held by address, is still a live one.
+    fn reportRejectionLater(self: *Self, realm: runtime.Context, promise: runtime.JSValue) void {
+        // c_allocator: the reaction can outlive this host.
+        const pending = std.heap.c_allocator.create(PendingModuleEvaluation) catch return;
+        pending.* = .{ .host = self, .realm = realm };
+        engine.reactToPromise(realm, promise, &PendingModuleEvaluation.steps, pending) catch {
+            std.heap.c_allocator.destroy(pending);
+        };
+    }
+
     /// HTML "report an exception" for the worker's global scope, as
     /// runClassicScript and invokeCallbackFunction hand it over: fire `error`
     /// at the global scope (cancelable - `self.onerror` returning true, or a
@@ -2118,10 +2209,9 @@ const SharedConnect = struct {
     /// "Run a worker" with `is shared` true.
     fn runSharedWorker(self: *SharedConnect) void {
         const allocator = self.allocator;
-        // 12. Fetch a classic worker script. A module worker's graph is not
-        // fetched here yet: a module SharedWorker fails to start, as a
-        // failed fetch does.
-        if (self.worker_type != .classic) return self.fireError();
+        // 12. Fetch a classic worker script, or - for a module worker - the
+        // root of its module worker script graph (the rest is fetched in the
+        // worker's realm, below). A failed fetch is a null script.
         var fetched = workers.fetchWorkerScript(allocator, self.url, .{
             .worker_type = self.worker_type,
             .requesting_origin = self.origin,
@@ -2151,9 +2241,19 @@ const SharedConnect = struct {
         // onComplete 3, 5 and 13: the inside port, entangled with outsidePort,
         // for the `connect` event queued once the script has run.
         const inside_end = self.takeInsideEnd();
-        // onComplete 10: run the classic script. An exception it throws is
-        // reported to the worker's global scope; the worker runs on.
-        host.executeScript(fetched.source) catch |err| log.debug("shared worker script: {}", .{err});
+        switch (self.worker_type) {
+            // onComplete 10: run the classic script. An exception it throws
+            // is reported to the worker's global scope; the worker runs on.
+            .classic => host.executeScript(fetched.source) catch |err| log.debug("shared worker script: {}", .{err}),
+            // A module worker's graph: onComplete 1 - a null script, or one
+            // with an error to rethrow, fires `error` at the worker, and the
+            // inside settings are discarded. Else run the module script.
+            .module => if (!host.executeModuleScript(self.url, fetched.source)) {
+                message_ports.discard(inside_end);
+                host.terminate();
+                return self.fireError();
+            },
+        }
         host.connectPort(inside_end);
     }
 
@@ -2284,6 +2384,7 @@ const ConnectTask = struct {
 const worker_hooks: engine.HostHooks = .{
     .loadImportedModule = if (module_script.supported) loadImportedModule else null,
     .importMetaUrl = if (module_script.supported) module_script.importMetaUrl else null,
+    .importMetaResolve = if (module_script.supported) importMetaResolve else null,
     // HTML 8.1.6.4 HostPromiseRejectionTracker, and "perform a microtask
     // checkpoint" step 5 - the unhandledrejection and rejectionhandled events
     // at the worker's global scope. A worker agent had neither, so no worker
@@ -2291,6 +2392,51 @@ const worker_hooks: engine.HostHooks = .{
     .promiseRejectionTracker = rejected_promises.hooks.promiseRejectionTracker,
     .afterMicrotaskCheckpoint = rejected_promises.hooks.afterMicrotaskCheckpoint,
 };
+
+/// A worker's module evaluation promise, waiting to settle. Its host
+/// is read only while it is still on this thread's `hosts` list, and its
+/// realm is the same one.
+const PendingModuleEvaluation = struct {
+    host: *WorkerHost,
+    realm: runtime.Context,
+
+    const steps: engine.PromiseReactionSteps = .{
+        .fulfilled = settled,
+        .rejected = rejected,
+    };
+
+    fn liveHost(self: *const PendingModuleEvaluation) ?*WorkerHost {
+        for (hosts.items) |host| {
+            if (host == self.host and host.realm == self.realm and host.runsTasks()) return host;
+        }
+        return null;
+    }
+
+    fn settled(data: ?*anyopaque, _: runtime.JSValue) void {
+        const self: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
+        std.heap.c_allocator.destroy(self);
+    }
+
+    fn rejected(data: ?*anyopaque, reason: runtime.JSValue) void {
+        const self: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
+        defer std.heap.c_allocator.destroy(self);
+        const host = self.liveHost() orelse return;
+        host.reportValue(self.realm, reason);
+    }
+};
+
+/// HTML HostGetImportMetaProperties steps 4-6 in a worker -
+/// `HostHooks.importMetaResolve`: resolve a module specifier against
+/// `base_url` in the worker whose realm is `realm` (a worker global's import
+/// map is empty). OWNED (`allocator`), or null for the TypeError.
+fn importMetaResolve(host: ?*anyopaque, realm: runtime.Context, base_url: []const u8, specifier: []const u8, allocator: Allocator) ?[]u8 {
+    const self: *WorkerHost = @ptrCast(@alignCast(host orelse return null));
+    if (self.realm != realm) return null;
+    const env = self.moduleEnvironment() orelse return null;
+    const url = module_script.resolve(&env, specifier, base_url) orelse return null;
+    defer env.context_instance.ctx.allocator.free(url);
+    return allocator.dupe(u8, url) catch null;
+}
 
 /// FinishLoadingImportedModule for an import(): ends the host's hold on
 /// `request`.
@@ -2427,6 +2573,9 @@ const WorkerModules = struct {
             .allocator = self.allocator,
             .context_instance = global_scope,
             .map = .{ .context = self, .getFn = &mapGet, .putFn = &mapPut },
+            // CSSStyleSheet is not exposed in a worker: a CSS module request
+            // is a TypeError, and nothing is fetched for it.
+            .css_allowed = false,
         };
     }
 

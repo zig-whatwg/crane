@@ -1533,7 +1533,27 @@ fn reportModuleException(realm: runtime.Context, value: runtime.JSValue) void {
 pub const module_hooks: engine.HostHooks = .{
     .loadImportedModule = if (module_script.supported) loadImportedModule else null,
     .importMetaUrl = if (module_script.supported) module_script.importMetaUrl else null,
+    .importMetaResolve = if (module_script.supported) importMetaResolve else null,
 };
+
+/// HTML HostGetImportMetaProperties steps 4-6, import.meta.resolve(specifier)
+/// in a Window realm (or a ShadowRealm of one) - `HostHooks.importMetaResolve`:
+/// resolve a module specifier given the module script whose settings object
+/// is `realm`'s and whose base URL is `base_url` - the document's import map
+/// first, then a URL-like specifier against the base URL. OWNED
+/// (`allocator`), or null where the spec throws its TypeError.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#hostgetimportmetaproperties
+fn importMetaResolve(host: ?*anyopaque, realm: runtime.Context, base_url: []const u8, specifier: []const u8, allocator: std.mem.Allocator) ?[]u8 {
+    _ = host;
+    const window = windowOfRealm(principalRealm(realm)) orelse return null;
+    const document = interfaces.Window.get_document(window) catch return null;
+    var shadow_realm_map: ShadowRealmModuleMap = undefined;
+    const env = importEnvironment(realm, window, document, &shadow_realm_map) orelse return null;
+    const url = module_script.resolve(&env, specifier, base_url) orelse return null;
+    defer window.ctx.allocator.free(url);
+    return allocator.dupe(u8, url) catch null;
+}
 
 /// FinishLoadingImportedModule for an import(): ends the host's hold on
 /// `request`. (Only an engine with modules makes one.)

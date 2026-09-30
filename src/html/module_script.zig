@@ -26,7 +26,8 @@
 //! <script type=module> has a null result, so it fires `error`.
 //!
 //! What is NOT here yet: CSS module scripts (they need a constructable
-//! CSSStyleSheet as a synthetic export), and import.meta.resolve.
+//! CSSStyleSheet as a synthetic export). import.meta.resolve is the engine's
+//! builtin over `resolve` (the hosts' HostHooks.importMetaResolve).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -202,6 +203,15 @@ pub const Environment = struct {
     /// of its own and parses URLs against its principal realm's settings
     /// (`context_instance`). A ShadowRealm has no platform object to name it.
     realm_override: ?runtime.Context = null,
+    /// HTML "module type allowed" for "css": only where the CSSStyleSheet
+    /// interface is exposed in the settings object's realm - a Window's, not
+    /// a worker's.
+    css_allowed: bool = true,
+
+    /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-type-allowed
+    pub fn moduleTypeAllowed(self: *const Environment, module_type: ModuleType) bool {
+        return module_type != .css or self.css_allowed;
+    }
 
     /// The settings object's realm: every record and value is made in it.
     pub fn realm(self: *const Environment) runtime.Context {
@@ -604,6 +614,36 @@ pub fn fetchExternalModuleScriptGraph(env: *const Environment, url: []const u8) 
     return fetchDescendantsAndLink(env, result);
 }
 
+/// Fetch a module worker script graph, with the root's response in hand.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-module-worker-script-tree
+/// "Fetch a worklet/module worker script graph": fetch a single module script
+/// given url - moduleMap[(url, "javascript-or-wasm")], else the response,
+/// which becomes a JavaScript module script whose base URL is the response's
+/// URL (step 13.7.2) - then fetch the descendants of and link it. The
+/// worker's constructor fetched the root already (a blob: URL may be revoked
+/// as soon as it returns), so `source` and `response_url` are that fetch's
+/// body and URL, its MIME type already checked; the module map, the
+/// descendants and linking are the worker's settings object's.
+/// Returns the graph's root for onComplete, or null for "null".
+pub fn moduleWorkerScriptGraph(env: *const Environment, url: []const u8, response_url: []const u8, source: []const u8) ?*ModuleScript {
+    if (!supported) return null;
+    const key = std.mem.concat(env.allocator, u8, &.{ ModuleType.javascript.keyPrefix(), url }) catch return null;
+    defer env.allocator.free(key);
+    const script: *ModuleScript = if (env.map.get(key)) |entry| blk: {
+        if (entry == fetch_failed) return null;
+        break :blk @ptrCast(@alignCast(entry));
+    } else blk: {
+        const created = createJavaScriptModuleScript(env, source, response_url) catch return null;
+        if (!env.map.put(key, @ptrCast(created))) {
+            created.destroy();
+            return null;
+        }
+        break :blk created;
+    };
+    return fetchDescendantsAndLink(env, script);
+}
+
 /// The module type an import's "type" attribute asks for, or null for a type
 /// the host does not support ("module type allowed" is false: TypeError).
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-type-from-module-request
@@ -729,6 +769,10 @@ fn loadRequestedModules(env: *const Environment, script: *ModuleScript) ?LoadFai
             env.context_instance.ctx.allocator.free(url);
             return failWith(env, .type_error, "Unsupported module type");
         };
+        if (!env.moduleTypeAllowed(module_type)) {
+            env.context_instance.ctx.allocator.free(url);
+            return failWith(env, .type_error, "Unsupported module type");
+        }
 
         requests.appendAssumeCapacity(.{ .specifier = request.specifier, .url = url, .module_type = module_type });
     }
