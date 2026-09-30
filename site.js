@@ -120,6 +120,9 @@
     else if (w.kind === "fork") fill("wpt", el("a", { href: `${meta.links.wpt_fork}/tree/${w.revision}` }, el("code", { text: w.revision.slice(0, 10) })), " in Crane’s fork of WPT (the upstream revision it tracks is not recorded)");
     else fill("wpt", "not recorded for this generation");
 
+    fill("subtests", el("strong", { class: "subs-total", text: n(tot.sub_pass) }), ` passing of ${n(tot.sub_reported)} reported, in ${n(tot.files)} test files`);
+    fill("sub-pass", n(tot.sub_pass));
+    fill("sub-reported", n(tot.sub_reported));
     fill("n-files", n(tot.files));
     fill("n-suites", n(suites.suites.length));
     fill("n-blocking", plural(tot.blocking, "file"));
