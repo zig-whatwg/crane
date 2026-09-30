@@ -112,7 +112,11 @@ pub const TestCategory = struct {
 };
 
 /// In-scope test categories
-/// These match the WHATWG/W3C specs implemented in this project
+/// These match the WHATWG/W3C specs implemented in this project.
+///
+/// This list and `exclusion_patterns` below define the runner's own scope.
+/// `--full-corpus` bypasses both (selection.Scope.full_corpus): a wpt.fyi
+/// upload reports every testharness test, not just the ones Crane targets.
 pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "url", .description = "URL Standard" },
     .{ .name = "urlpattern", .description = "URLPattern Standard" },

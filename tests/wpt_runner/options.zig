@@ -37,6 +37,11 @@ pub const Options = struct {
     /// MANIFEST.json. Kept as an escape hatch for a checkout whose manifest is
     /// stale or absent; it cannot report a denominator.
     legacy_scan: bool = false,
+    /// Select every testharness source in MANIFEST.json (`--full-corpus`),
+    /// not just the in-scope ones: the allowlist and the exclusion patterns in
+    /// config.zig do not apply, directory arguments still narrow. This is the
+    /// run a wpt.fyi upload is made from; the 0.1 gate is not.
+    full_corpus: bool = false,
     /// Report what would run and exit without executing anything.
     discover_only: bool = false,
     /// Write the discovered source list, one path per line, to this file.
@@ -210,6 +215,8 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
             options.pattern = arg["--pattern=".len..];
         } else if (std.mem.eql(u8, arg, "--legacy-scan")) {
             options.legacy_scan = true;
+        } else if (std.mem.eql(u8, arg, "--full-corpus")) {
+            options.full_corpus = true;
         } else if (std.mem.eql(u8, arg, "--discover-only")) {
             options.discover_only = true;
         } else if (std.mem.startsWith(u8, arg, "--worklist-out=")) {
@@ -305,6 +312,22 @@ test "parseArgs routes a path with a test extension to specific_files" {
     try testing.expectEqualStrings("url/url-constructor.any.js", options.specific_files.items[0]);
     try testing.expectEqual(@as(usize, 1), options.filters.items.len);
     try testing.expectEqualStrings("dom/", options.filters.items[0]);
+}
+
+test "--full-corpus is off by default and parsed when given" {
+    const allocator = std.testing.allocator;
+
+    var plain = try parseArgs(allocator, &.{"dom/"});
+    defer plain.deinit();
+    try std.testing.expect(!plain.full_corpus);
+
+    var full = try parseArgs(allocator, &.{ "--full-corpus", "--discover-only", "--worklist-out=full.txt", "css/" });
+    defer full.deinit();
+    try std.testing.expect(full.full_corpus);
+    try std.testing.expect(full.discover_only);
+    try std.testing.expectEqualStrings("full.txt", full.worklist_out.?);
+    // A directory argument still narrows a full-corpus run.
+    try std.testing.expectEqual(@as(usize, 1), full.filters.items.len);
 }
 
 test "parseArgs reads supervisor flags" {
