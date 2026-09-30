@@ -325,10 +325,7 @@ pub fn deinit(instance: *runtime.Instance) void {
             node_base.child_nodes.deinit();
             dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
 
-            // Free dynamically allocated node_name if it was allocated
-            if (node_base.node_name_allocated and node_base.node_name.len > 0) {
-                internal.allocator.free(@constCast(node_base.node_name));
-            }
+            freeNodeName(internal, node_base);
 
             // Unregister from bridge before destroying
             instance_bridge.unregister(instance);
@@ -409,7 +406,13 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
             // Check local_name to dispatch to the correct HTML element deinit
             // so that element-specific internal state gets cleaned up.
             const local_name = if (internal.local_name) |ln| ln.asSlice() else "";
-            if (std.mem.eql(u8, local_name, "script")) {
+            if (instance.vtable == &interfaces.SVGScriptElement.vtable) {
+                // An SVG script shares HTML's local name, not its interface:
+                // taken for an HTMLScriptElement, its own teardown never ran
+                // and its script element state leaked with every page that
+                // had one (SVGScriptElement.init, leak-traced).
+                interfaces.SVGScriptElement.deinit(instance);
+            } else if (std.mem.eql(u8, local_name, "script")) {
                 interfaces.HTMLScriptElement.deinit(instance);
             } else if (std.mem.eql(u8, local_name, "iframe")) {
                 // iframe elements need special cleanup for their browsing context
@@ -2030,6 +2033,18 @@ pub fn appendChild(parent: *runtime.Instance, node: *runtime.Instance) !*runtime
     return call_appendChild(parent, node);
 }
 
+/// Free `node_base`'s node name if setLocalName allocated it. Both of a
+/// node's exits call this - its deinit and the final teardown sweep of nodes
+/// still alive - so they cannot drift apart: the sweep freed the NodeBase and
+/// not its name, one leak per element alive at exit (5 script elements over
+/// html/semantics/scripting-1, leak-traced to setLocalName).
+fn freeNodeName(internal: *InternalState, node_base: *NodeBase) void {
+    if (node_base.node_name_allocated and node_base.node_name.len > 0) {
+        internal.allocator.free(@constCast(node_base.node_name));
+    }
+    node_base.node_name_allocated = false;
+}
+
 /// Clean up ALL remaining Node internal states AND their NodeBases.
 /// This is called during final context cleanup to catch any leaked nodes
 /// that were removed from the tree (via removeChild) but never explicitly deinited.
@@ -2051,6 +2066,7 @@ pub fn cleanupAllRemainingInternal() void {
             // Clean up NodeBase resources
             node_base.child_nodes.deinit();
             dom_module.observer_registrations.releaseList(instance, &node_base.registered_observers);
+            freeNodeName(internal, node_base);
 
             // Unregister from instance_bridge
             instance_bridge.unregister(instance);

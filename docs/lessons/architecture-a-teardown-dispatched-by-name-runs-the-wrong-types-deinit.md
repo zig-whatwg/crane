@@ -1,0 +1,12 @@
+# Architecture: A teardown dispatched by name runs the wrong type's deinit
+
+**Date**: 2026-09-30
+**Lesson**: `Node.deinitNodeByType` chose an element's teardown by its local name: "script" went to HTMLScriptElement's deinit, "iframe" to HTMLIFrameElement's, everything else to Element's. An SVG `<script>` has HTML's local name and not its interface, so its own deinit never ran and its script element state leaked with every page that had one.
+
+**Why**: A tree's teardown frees its nodes one by one through this dispatch, so a subclass whose deinit it does not name never runs that deinit on the tree path. The only other exit is the wrapper cache's `onObjectFreed`, which calls `vtable.deinit` (the most-derived one) - and that path is taken only for a node that is a root when its wrapper goes. So most element subclasses' own teardown is reached by one exit and not the other.
+
+**What Happened**: Leak traces on main's runner over crane/script-*.html: 7 of 7 leaked allocations were `SVGScriptElement.init`'s state, from the parser (`createForeignElement`) and `createElementNS`. The HTMLScriptElement deinit the dispatch ran instead did nothing harmful - its registry had no entry for an SVG element - which is why it went unnoticed. A count over the element impls: 146 define a deinit; 15 do teardown of their own, and the tree path reaches three of them (Element, HTMLScriptElement, HTMLIFrameElement; SVGScriptElement now); 68 are stubs that do not even chain to their parent, so on the wrapper path they leave the Element and Node state behind.
+
+**Fix**: the ELEMENT_NODE branch dispatches an SVG script by its vtable (`&interfaces.SVGScriptElement.vtable`) to `interfaces.SVGScriptElement.deinit` (7 -> 0 leaked over crane/script-*.html). The general fix - dispatch every element by `vtable.deinit` - runs teardowns that have never run on this path, so each has to be audited first: its own batch.
+
+**Takeaway**: **Dispatch a teardown on the object's type (its vtable), never on a name another type can share - and when a type has two exits, count how many of its subclasses each one actually reaches.**
