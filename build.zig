@@ -3866,6 +3866,13 @@ pub fn build(b: *std.Build) void {
     wpt_site_after_progress.setCwd(b.path("."));
     wpt_site_after_progress.step.dependOn(&progress_only.step);
     progress_step.dependOn(&wpt_site_after_progress.step);
+    // And after the report `wpt` refreshes, so every regeneration of the report - both
+    // steps that write it - regenerates the site (the user's requirement, 2026-09-30).
+    const wpt_site_after_wpt = b.addRunArtifact(wpt_site_exe);
+    wpt_site_after_wpt.has_side_effects = true;
+    wpt_site_after_wpt.setCwd(b.path("."));
+    wpt_site_after_wpt.step.dependOn(&progress_report.step);
+    wpt_step.dependOn(&wpt_site_after_wpt.step);
     const wpt_site_tests = b.addTest(.{ .root_module = wpt_site_module });
     test_step.dependOn(&b.addRunArtifact(wpt_site_tests).step);
 
