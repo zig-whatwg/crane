@@ -41,8 +41,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <header class="head">
       <h1>Crane <span class="h1-rest">Web Platform Tests Results</span></h1>
       <p class="subtitle">Conformance record, regenerated with every run &mdash; <span data-fill="updated">last updated &hellip;</span></p>
+      <div class="headline" role="group" aria-label="WPT subtest totals">
+        <p class="headline-figure"><span class="hl-pass" data-fill="hl-pass">&hellip;</span><span class="hl-of"> / <span data-fill="hl-total">&hellip;</span></span></p>
+        <p class="headline-label">WPT subtests passing</p>
+        <dl class="headline-counts">
+          <div><dt>Failed</dt><dd data-fill="hl-fail">&hellip;</dd></div>
+          <div><dt>Timed out</dt><dd data-fill="hl-timeout">&hellip;</dd></div>
+          <div><dt>Not run</dt><dd data-fill="hl-notrun">&hellip;</dd></div>
+          <div><dt>Test files</dt><dd data-fill="hl-files">&hellip;</dd></div>
+          <div><dt>Blocking files</dt><dd data-fill="hl-blocking">&hellip;</dd></div>
+        </dl>
+      </div>
       <dl class="head-meta">
-        <div class="head-subtests"><dt>Subtests</dt><dd data-fill="subtests">&hellip;</dd></div>
         <div><dt>This version</dt><dd data-fill="version">&hellip;</dd></div>
         <div><dt>Runs</dt><dd data-fill="runs">&hellip;</dd></div>
         <div><dt>WPT revision</dt><dd data-fill="wpt">&hellip;</dd></div>
@@ -60,10 +70,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <p class="note-label">How to read a section</p>
         <p>Each suite is a numbered section. Its <em>Conformance</em> box counts files by standing and subtests by result; its <em>Tests</em> box opens in place into directories, files and each file&rsquo;s subtests. Everything has a permanent link, <span class="self-demo" aria-hidden="true">&para;</span>.</p>
         <dl class="legend" aria-label="File standings">
-          <div><dt><span class="key key-clean"></span>Passing every subtest</dt></div>
-          <div><dt><span class="key key-partial"></span>Some subtests failing</dt></div>
+          <div><dt><span class="key key-clean"></span>Clean</dt></div>
+          <div><dt><span class="key key-partial"></span>With failures</dt></div>
           <div><dt><span class="key key-blocking"></span>Blocking</dt><dd>NONE-PASSED, TIMEOUT, ERROR, CRASH</dd></div>
-          <div><dt><span class="key key-empty"></span>No subtests reported</dt></div>
+          <div><dt><span class="key key-empty"></span>No subtests</dt></div>
           <div><dt><span class="key key-unrun"></span>Not run yet</dt></div>
         </dl>
       </div>
@@ -81,15 +91,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <p class="readout" id="readout" aria-live="polite">&nbsp;</p>
         <div class="chart-plot" id="chart-plot"></div>
         <figcaption class="chart-key">
-          <span><span class="key key-clean"></span>Passing every subtest</span>
-          <span><span class="key key-partial"></span>Some subtests failing</span>
+          <span><span class="key key-clean"></span>Clean</span>
+          <span><span class="key key-partial"></span>With failures</span>
           <span><span class="key key-blocking"></span>Blocking</span>
           <span><span class="key key-unrun"></span>Not run</span>
         </figcaption>
       </figure>
       <div class="note" role="note">
         <p class="note-label">Two changes of rule sit inside this history</p>
-        <p><span data-fill="recon">Early generations</span> were reconstructed afterwards from the journals that survived, so they show less coverage than was measured at the time. From generation <span data-fill="rule2">82</span> the gate counts NONE-PASSED files as blocking; before it they sat among the files with some subtests failing, which is why blocking rises there. In this history, as in the progress report it comes from, a file that reports no subtests counts as passing every subtest.<span data-fill="reconcile"></span></p>
+        <p><span data-fill="recon">Early generations</span> were reconstructed afterwards from the journals that survived, so they show less coverage than was measured at the time. From generation <span data-fill="rule2">82</span> the gate counts NONE-PASSED files as blocking; before it they sat among the files with failures, which is why blocking rises there. In this history, as in the progress report it comes from, a file that reports no subtests counts as clean.<span data-fill="reconcile"></span></p>
         <p>Subtest totals are not charted: the way subtests were counted changed twice in this period, so a line would show changes of method, not of Crane.</p>
       </div>
       <details class="gens" id="gens">

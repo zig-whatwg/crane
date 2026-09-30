@@ -54,6 +54,10 @@ browser comparison.
 - Testharness tests only: Crane has no rendering or layout, so reftests are not run and tests that need
   rendering or layout (html/rendering/, canvas, scrolling, focus traversal) are excluded from the worklist
   by design. The site must say so plainly wherever totals appear.
+- THE NUMBERS ARE THE HEADLINE (the user, emphatically, 2026-09-30): the page opens with the total WPT subtests
+  passing / reported in large type, with failed, timed out, not run, test files and blocking files beneath it; every
+  suite section opens with its own subtest numbers. No "passing every subtest" phrasing - file categories are
+  plain labels (Clean, With failures, Blocking, No subtests, Not run).
 - The total count of passing subtests (passing of reported) leads the page header - the user's explicit
   requirement (2026-09-30), after the first published version buried it. Show it with its scope and with
   encoding/'s share beside it, since encoding/ holds most subtests; per-suite and per-file figures carry
