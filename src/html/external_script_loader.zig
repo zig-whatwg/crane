@@ -44,11 +44,8 @@ const interfaces = @import("interfaces");
 const Element = interfaces.Element;
 const HTMLScriptElement = interfaces.HTMLScriptElement;
 
-// Import impls for internal state access (Golden Rule #12 exception)
-const impls = @import("impls");
-const HTMLScriptElementImpl = impls.HTMLScriptElement;
-const DocumentImpl = impls.Document;
-const ElementImpl = impls.Element;
+// A script element's processing-model state, through its hook.
+const script_element_state = @import("script_element.zig");
 
 // HTML parser types
 const html_core = @import("html_core");
@@ -325,7 +322,7 @@ pub const ExternalScriptLoader = struct {
                     .allocator = self.allocator,
                 });
                 // Mark as from external file
-                HTMLScriptElementImpl.setFromExternalFile(script_element, true);
+                if (script_element_state.of(script_element)) |state| state.from_external_file = true;
                 return null; // Parser continues
             },
 
@@ -338,7 +335,7 @@ pub const ExternalScriptLoader = struct {
                     .allocator = self.allocator,
                 });
                 // Mark as from external file
-                HTMLScriptElementImpl.setFromExternalFile(script_element, true);
+                if (script_element_state.of(script_element)) |state| state.from_external_file = true;
                 return null; // Parser continues
             },
 
@@ -353,7 +350,7 @@ pub const ExternalScriptLoader = struct {
                 // Mark as loaded and from external file
                 try self.markScriptLoaded(resolved_path);
                 self.allocator.free(resolved_path);
-                HTMLScriptElementImpl.setFromExternalFile(script_element, true);
+                if (script_element_state.of(script_element)) |state| state.from_external_file = true;
 
                 return content; // Caller should execute this
             },

@@ -60,9 +60,6 @@ const parser_scripts = @import("parser_script_execution.zig");
 const DomTreeAdapter = parser_scripts.DomTreeAdapter;
 const ParserScriptContext = parser_scripts.ParserScriptContext;
 
-// Import impls for Document.setDefaultView (needed for nested iframe support)
-const impls = @import("impls");
-
 /// Error type for HTML parsing operations
 pub const ParseError = error{
     OutOfMemory,
@@ -248,7 +245,7 @@ pub fn parseHTMLWithScripting(
 
     // Set defaultView if window was provided (for nested iframes)
     if (options.window) |window| {
-        impls.Document.setDefaultView(document, window);
+        dom.document_browsing_context.setWindow(document, window);
     }
 
     // A byte stream: HTML §13.2.3.2 "determining the character encoding".

@@ -82,6 +82,9 @@ pub fn init(
     // Set node type to DOCUMENT_TYPE_NODE (10)
     try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_TYPE_NODE);
 
+    // The parsers set a doctype's identifiers through `dom.node_creation`.
+    @import("dom").node_creation.installDocumentType(.{ .set_ids = &setIdsHook });
+
     // Initialize DocumentType internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     // The registry owns this block, so `Registry.remove` returns it to the
@@ -91,6 +94,15 @@ pub fn init(
     internal.* = InternalState.init(allocator);
 
     return instance;
+}
+
+/// `dom.node_creation.setDoctypeIds`: the parser's DOCTYPE token's name,
+/// public identifier and system identifier; a missing one stays "".
+fn setIdsHook(doctype: *runtime.Instance, name: ?[]const u8, public_id: ?[]const u8, system_id: ?[]const u8) void {
+    const internal = getInternal(doctype) orelse return;
+    if (name) |n| internal.name = internal.allocator.dupe(u8, n) catch "";
+    if (public_id) |p| internal.public_id = internal.allocator.dupe(u8, p) catch "";
+    if (system_id) |s| internal.system_id = internal.allocator.dupe(u8, s) catch "";
 }
 
 /// Deinitialize instance

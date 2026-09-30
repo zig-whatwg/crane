@@ -166,6 +166,9 @@ pub fn init(
     // `dom.node_document`, never through this impl. The hook is installed
     // here, before anything can hold this node to set its document.
     dom_module.node_document.install(.{ .set = &setNodeDocumentHook });
+    // And a parser's DOM adapter frees a node it made and never inserted
+    // through `dom.node_creation`, as the tree teardown frees a child.
+    dom_module.node_creation.installNode(.{ .destroy_uninserted = &deinitNodeByType });
 
     // Initialize Node internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;

@@ -1304,6 +1304,22 @@ fn run(init: std.process.Init) !u8 {
     var report = result_reporter.WptReport.init(allocator);
     defer report.deinit();
 
+    // wpt.fyi keys a test on its URL, and MANIFEST.json is where the runner
+    // got each run's URL from; the run's identity (product, versions, upstream
+    // revision) comes from the tree and the host.
+    var report_manifest = try wpt_manifest.loadManifest(allocator, options.wpt_root);
+    defer report_manifest.deinit();
+    report.manifest = &report_manifest;
+    {
+        var revision_known = false;
+        const detected = try result_reporter.RunInfo.detect(allocator, options.wpt_root, &revision_known);
+        report.run_info = detected;
+        if (!revision_known) {
+            print("\nwptreport: {s}/{s} is absent or not a 40-character commit; " ++
+                "revision is \"\" and the report is NOT uploadable to wpt.fyi.\n", .{ options.wpt_root, result_reporter.upstream_revision_file });
+        }
+    }
+
     // Start WPT server (provides URL rewrites and proper resource serving).
     // Under --supervise the parent already started one and this adopts it,
     // which is what keeps a restart from fighting over the ports.
