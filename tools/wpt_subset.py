@@ -187,7 +187,9 @@ def walk(node, prefix=()):
         if isinstance(value, dict):
             yield from walk(value, path)
         elif isinstance(value, list):
-            yield '/'.join(path), len(value)
+            # [hash, [url, extras], [url, extras], ...]: the first element is
+            # the file's hash, not a URL.
+            yield '/'.join(path), len(value) - 1
 
 
 def excluded(path):
