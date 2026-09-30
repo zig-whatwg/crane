@@ -10,3 +10,5 @@
 **Fix**: The navigate event (HTML 7.2.6.10.4), intercept(), the transition, precommit handlers, navigatesuccess and navigateerror, fired from every navigation path: pushState/replaceState, fragment navigations, "navigate" step 21, reload and traversals.
 
 **Takeaway**: **Before exposing an API whose promises and events depend on machinery not yet built, count what waits on them: an object that exists and never settles is worse than one that is missing.**
+
+**Again (2026-09-29, networking lane)**: making `link.crossOrigin`'s setter work (it threw NotImplemented) turned modulepreload-cross-origin-referrerpolicy.sub.html from OK (7 fast failures) into a TIMEOUT: the test got past the setter and waited on a `load` no modulepreload link ever fired. A setter or a constructor that starts working is exposure too - check what the test does next. Fixed with the modulepreload link type's fetch and events (f15c983f8): 0 -> 7/7.
