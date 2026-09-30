@@ -76,13 +76,17 @@ test "a mixin's further overloads are inherited, and the overload table asks the
 }
 
 test "a [SameObject] mixin attribute caches in the includer's state around the inherited getter" {
+    // A platform object type the codegen knows: since part B an engine value
+    // (runtime.JSValue, which an unregistered type becomes) is not cached.
+    var reg = codegen.ir.TypeRegistry.init(testing.allocator);
+    defer reg.deinit();
+    try reg.registerInterface("DOMTokenList", "dom.idl", null);
     const attrs = [_]types.Attribute{
-        // A platform object type the codegen knows: since part B an engine value
-        // (runtime.JSValue, which an unknown type becomes) is not cached.
         .{ .name = "leash", .idlType = .{ .type = "DOMTokenList" }, .readonly = true, .extAttrs = @constCast(&same_object), .mixin = "Walkable" },
     };
-    var buffer = try render(&attrs, &.{}, &.{});
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
     defer buffer.deinit();
+    try writer.writeDelegateFunctions(&buffer.writer, "DogImpl", &reg, &attrs, &.{}, &.{}, options);
     const out = buffer.written();
 
     // The mixin has no state; the includer's own State holds the cache.
