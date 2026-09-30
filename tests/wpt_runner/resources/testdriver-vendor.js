@@ -25,5 +25,8 @@
   internal.minimize_window = __crane_test_driver_minimize_window;
   internal.set_window_rect = __crane_test_driver_set_window_rect;
   internal.get_window_rect = __crane_test_driver_get_window_rect;
-  window.test_driver.click = element => internal.click(element);
+  // A plain function, as upstream's is: tests call it with `new` too.
+  window.test_driver.click = function(element) {
+    return internal.click(element);
+  };
 })();
