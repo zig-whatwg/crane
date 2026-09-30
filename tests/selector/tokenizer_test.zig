@@ -467,3 +467,10 @@ test "Tokenizer: token position tracking" {
     try testing.expectEqual(@as(usize, 4), tok3.start);
     try testing.expectEqual(@as(usize, 13), tok3.end);
 }
+
+test "Tokenizer: a dashed ident (--foo) is one ident token" {
+    var tokenizer = Tokenizer.init(testing.allocator, "--green");
+    const token = try tokenizer.nextToken();
+    try testing.expectEqual(Token.Tag.ident, token.tag);
+    try testing.expectEqualStrings("--green", token.value);
+}

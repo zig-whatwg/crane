@@ -1991,3 +1991,48 @@ test "protocol: the indexed and named property interceptors release the handles 
         return error.HandlesLeaked;
     }
 }
+
+test "protocol: a trusted animation event reaches a listener for its legacy webkit type, renamed, and keeps its own type" {
+    // DOM "invoke" step 9: when no listener on a target matched a trusted
+    // event's type, a legacy-mapped type (animationend -> webkitAnimationEnd,
+    // ...) is tried, with the event's type attribute renamed while those
+    // listeners run and restored afterwards. Script cannot make a trusted
+    // event, so the dispatch is the user agent's: dom.fire_event.
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    try expectEval(w,
+        \\globalThis.seen = [];
+        \\globalThis.legacyOnly = new EventTarget();
+        \\legacyOnly.addEventListener('webkitAnimationEnd', e => seen.push('legacy:' + e.type + ':' + e.isTrusted));
+        \\globalThis.both = new EventTarget();
+        \\both.addEventListener('animationend', e => seen.push('unprefixed:' + e.type));
+        \\both.addEventListener('webkitAnimationEnd', e => seen.push('legacy-on-both'));
+        \\globalThis.animationEvent = new AnimationEvent('animationend');
+        \\'ok'
+    , "ok");
+
+    const legacy_only = try evalOwned(w, "legacyOnly");
+    defer legacy_only.release();
+    const both = try evalOwned(w, "both");
+    defer both.release();
+    const event = try evalOwned(w, "animationEvent");
+    defer event.release();
+    const legacy_target = protocol.convertToPlatformObject(w, legacy_only.value) orelse return error.NotAPlatformObject;
+    const both_target = protocol.convertToPlatformObject(w, both.value) orelse return error.NotAPlatformObject;
+    const event_instance = protocol.convertToPlatformObject(w, event.value) orelse return error.NotAPlatformObject;
+
+    const dom = @import("dom");
+    _ = try dom.fire_event.dispatchTrusted(legacy_target, event_instance);
+    // Step 9.4: the type is the event's own again once the listeners ran.
+    try expectEval(w, "[seen.join(), animationEvent.type].join('|')", "legacy:webkitAnimationEnd:true|animationend");
+
+    // A target with a listener for the type itself never reaches the legacy
+    // one: found is true.
+    try expectEval(w, "seen.length = 0; 'ok'", "ok");
+    _ = try dom.fire_event.dispatchTrusted(both_target, event_instance);
+    try expectEval(w, "[seen.join(), animationEvent.type].join('|')", "unprefixed:animationend|animationend");
+
+    // An untrusted dispatch is never renamed.
+    try expectEval(w, "seen.length = 0; legacyOnly.dispatchEvent(new AnimationEvent('animationend')); String(seen.length)", "0");
+}

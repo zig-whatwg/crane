@@ -23,6 +23,13 @@ pub const Implementation = struct {
     /// `node` is going away while `observer` - taken at slab generation
     /// `generation` - is registered on it.
     node_released: *const fn (observer: *runtime.Instance, generation: u64, node: *runtime.Instance) void,
+    /// A transient registered observer of `observer` (generation
+    /// `generation`) has been appended to `node`'s list: "remove" step 15.
+    /// The observer remembers the node, to take it off again.
+    transient_added: *const fn (observer: *runtime.Instance, generation: u64, node: *runtime.Instance) void,
+    /// "Notify mutation observers" step 6.3 for `observer`: remove all its
+    /// transient registered observers from the nodes that list them.
+    remove_transients: *const fn (observer: *runtime.Instance) void,
 };
 
 /// Per thread, like the nodes and observers it serves.
@@ -44,4 +51,18 @@ pub fn releaseList(node: *runtime.Instance, list: *infra.List(RegisteredObserver
         }
     }
     list.deinit();
+}
+
+/// "remove" step 15: a transient registered observer of `observer` now sits
+/// in `node`'s registered observer list.
+pub fn transientAdded(observer: *runtime.Instance, generation: u64, node: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.transient_added(observer, generation, node);
+}
+
+/// "Notify mutation observers" step 6.3: remove all transient registered
+/// observers whose observer is `observer`.
+pub fn removeTransients(observer: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    impl.remove_transients(observer);
 }

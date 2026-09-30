@@ -555,6 +555,13 @@ pub fn isCallable(value: runtime.JSValue) bool {
     return ffi.v8_Value_IsFunction(handle);
 }
 
+/// ECMAScript IsConstructor: v8::Object::IsConstructor, false for anything
+/// that is not an object (a primitive has no handle to ask).
+pub fn isConstructor(value: runtime.JSValue) bool {
+    const handle = value_operations.handleOf(value) orelse return false;
+    return ffi.v8_Value_IsConstructor(handle);
+}
+
 /// Engine table `keepPlatformObjectAlive`: the wrapper cache holds
 /// `instance`'s wrapper for its pending activity (Blink's
 /// ActiveScriptWrappable), until `releasePlatformObject` or the realm's end.

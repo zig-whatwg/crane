@@ -61,6 +61,14 @@ pub const InternalState = struct {
     /// mutation, a crash charged to whichever file ran next.
     self_pin: same_object.Pin = .{},
 
+    /// The nodes that list a transient registered observer of this observer
+    /// (DOM "remove" step 15), weak like the node list. Notify step 6.3 takes
+    /// those registrations off again. The spec reaches them through the node
+    /// list; they are on the removed nodes, which it does not name, so the
+    /// observer keeps them itself, as Blink's MutationObserverRegistration
+    /// keeps its transient registration nodes.
+    transient_nodes: std.ArrayListUnmanaged(same_object.Link) = .empty,
+
     /// Queue of pending mutation records
     record_queue: std.ArrayListUnmanaged(*runtime.Instance),
 
@@ -130,6 +138,7 @@ pub const InternalState = struct {
 
         // Clear node list (don't free nodes, we don't own them)
         self.node_list.deinit(self.allocator);
+        self.transient_nodes.deinit(self.allocator);
         self.self_pin.release();
 
         // Free MutationRecord instances we own
@@ -162,7 +171,11 @@ pub fn init(
 
     // A node going away reaches its observers through this hook. Installed
     // before this observer can register anywhere.
-    dom_module.observer_registrations.install(.{ .node_released = &nodeReleasedHook });
+    dom_module.observer_registrations.install(.{
+        .node_released = &nodeReleasedHook,
+        .transient_added = &transientAddedHook,
+        .remove_transients = &removeTransientsHook,
+    });
 
     // Initialize internal state using ArenaAllocator
     const ArenaAllocator = @import("runtime").ArenaAllocator;
@@ -310,13 +323,21 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
 
         for (0..nodebase.registered_observers.len) |i| {
             if (nodebase.registered_observers.get(i)) |registered| {
-                // Check if this registered observer belongs to this MutationObserver
+                // Check if this registered observer belongs to this
+                // MutationObserver. A transient one is not "registered" in
+                // this sense: it is a copy that lasts until the next notify,
+                // and Blink and Gecko keep them out of this lookup too, so
+                // re-observing a removed node registers it for good.
+                if (registered.transient_source != null) continue;
                 const registered_handle = handles.mutationObserverToAnyopaque(registered.observer);
                 const instance_ptr: *anyopaque = @ptrCast(instance);
                 if (registered_handle == instance_ptr) {
-                    // Step 7.2: Update options - replace the registration
-                    // We need to create a new RegisteredObserver with updated options
-                    // Note: In the spec this also clears transient registered observers
+                    // Step 7.1: "For each node of this's node list, remove
+                    // all transient registered observers whose source is
+                    // registered from node's registered observer list." They
+                    // sit on the nodes removed from under target.
+                    removeTransientsWhere(instance, internal, nodebase);
+                    // Step 7.2: "Set registered's options to options."
                     const new_registered = RegisteredObserver{
                         .observer = observer_handle.?,
                         .observer_generation = runtime.SlabAllocator.generationOf(instance),
@@ -380,6 +401,64 @@ fn unregisterFromNodes(instance: *runtime.Instance, internal: *InternalState) vo
         }
     }
     internal.node_list.clearRetainingCapacity();
+    // And the transient copies, which borrow this observer's attribute
+    // filters: Blink's disconnect clears them with the registrations.
+    removeTransientsWhere(instance, internal, null);
+}
+
+/// Take this observer's transient registered observers - those whose source
+/// is `source`, or all of them when it is null - off the nodes that list
+/// them.
+fn removeTransientsWhere(instance: *runtime.Instance, internal: *InternalState, source: ?*const anyopaque) void {
+    const instance_ptr: *anyopaque = @ptrCast(instance);
+    var kept: usize = 0;
+    for (internal.transient_nodes.items) |link| {
+        var still_listed = false;
+        if (link.isLive()) {
+            if (instance_bridge.getNodeBase(@ptrCast(link.instance))) |nodebase| {
+                var i: usize = 0;
+                while (i < nodebase.registered_observers.len) {
+                    const registered = nodebase.registered_observers.get(i) orelse break;
+                    const mine = registered.transient_source != null and
+                        handles.mutationObserverToAnyopaque(registered.observer) == instance_ptr;
+                    if (mine and (source == null or registered.transient_source == source)) {
+                        _ = nodebase.registered_observers.remove(i) catch break;
+                        continue;
+                    }
+                    if (mine) still_listed = true;
+                    i += 1;
+                }
+            }
+        }
+        if (still_listed) {
+            internal.transient_nodes.items[kept] = link;
+            kept += 1;
+        }
+    }
+    internal.transient_nodes.shrinkRetainingCapacity(kept);
+}
+
+/// `dom.observer_registrations`: DOM "remove" step 15 appended a transient
+/// registered observer of this observer to `node`'s list.
+fn transientAddedHook(observer: *runtime.Instance, generation: u64, node: *runtime.Instance) void {
+    if (runtime.SlabAllocator.generationOf(observer) != generation) return;
+    const state = observer.getState(State);
+    const internal_ptr = state.own._internal orelse return;
+    const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
+    for (internal.transient_nodes.items) |link| {
+        if (link.instance == node and link.isLive()) return;
+    }
+    internal.transient_nodes.append(internal.allocator, same_object.Link.to(node)) catch {};
+}
+
+/// `dom.observer_registrations`: "notify mutation observers" step 6.3 - "for
+/// each node of mo's node list, remove all transient registered observers
+/// whose observer is mo from node's registered observer list."
+fn removeTransientsHook(observer: *runtime.Instance) void {
+    const state = observer.getState(State);
+    const internal_ptr = state.own._internal orelse return;
+    const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
+    removeTransientsWhere(observer, internal, null);
 }
 
 /// `dom.observer_registrations`: `node` is going away while this observer is
@@ -395,6 +474,14 @@ fn nodeReleasedHook(observer: *runtime.Instance, generation: u64, node: *runtime
     while (i < internal.node_list.items.len) {
         if (internal.node_list.items[i].instance == node) {
             _ = internal.node_list.swapRemove(i);
+            continue;
+        }
+        i += 1;
+    }
+    i = 0;
+    while (i < internal.transient_nodes.items.len) {
+        if (internal.transient_nodes.items[i].instance == node) {
+            _ = internal.transient_nodes.swapRemove(i);
             continue;
         }
         i += 1;

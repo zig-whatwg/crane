@@ -369,22 +369,31 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, of
         return error.IndexSizeError;
     }
 
+    // Step 3: "If offset + count is greater than length, then set count to
+    // length - offset." Compared as a difference: offset plus a count near
+    // 2^32 wraps.
+    const count = @min(count_param, length - offset);
+
     // Step 4: "Queue a mutation record of "characterData" for node with
     // null, null, node's data, « », « », null, and null." Before step 5
     // changes the data: the record copies it.
     try dom.mutation_observer_algorithms.queueCharacterDataMutationRecord(instance, internal.getData());
 
-    // Steps 3, 5-7: Replace data using InternalState's optimized method
-    // This handles inline vs heap storage automatically
-    try internal.replaceData(offset, count_param, data);
+    // Steps 5-7: insert data after offset code units, then remove count
+    // code units from offset + data's length - one splice, which handles
+    // inline vs heap storage.
+    try internal.replaceData(offset, count, data);
 
-    // Steps 8-11: Update live ranges
-    // TODO: Call dom.range_tracking.updateRangesAfterReplace
-    // This requires access to owner_document from Node's inherited state
+    // Steps 8-11: the live ranges whose boundary points are in node.
+    dom.mutation.runLiveRangeReplaceDataSteps(instance, offset, count, @intCast(data.len));
 
-    // Step 12: Run children changed steps for parent
-    // TODO: Call dom.mutation.runChildrenChangedSteps
-    // This requires access to parent_node from Node's inherited state
+    // Step 12: "If node's parent is non-null, then run the children changed
+    // steps for node's parent."
+    if (interfaces.Node.get_parentNode(instance) catch null) |parent| {
+        if (dom.instance_bridge.getNodeBase(@ptrCast(parent))) |parent_base| {
+            dom.mutation.runChildrenChangedSteps(parent_base);
+        }
+    }
 }
 
 // =============================================================================

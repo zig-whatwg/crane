@@ -49,10 +49,11 @@ pub const CustomElementDefinition = struct {
     /// The local name (equals name for autonomous, equals extends for customized built-in)
     local_name: []const u8,
 
-    /// The constructor callback
-    constructor: callbacks.CustomElementConstructor,
+    /// The constructor: define()'s argument, taken over from the binding.
+    /// OWNED, released with the definition.
+    constructor: engine.CallbackFunction,
 
-    /// Observed attributes list (for attributeChangedCallback)
+    /// Observed attributes list (for attributeChangedCallback). OWNED.
     observed_attributes: []const []const u8,
 
     /// Lifecycle callbacks
@@ -78,38 +79,39 @@ pub const CustomElementDefinition = struct {
         already_constructed: void,
     };
 
-    /// Lifecycle callback names and values
-    /// Each callback is stored as runtime.JSValue with global handle scope for persistence
+    /// "lifecycle callbacks": a map from the names below to a Web IDL
+    /// Function callback value or null. Each value is a hold of the
+    /// definition's own (OWNED), released with it.
     pub const LifecycleCallbacks = struct {
-        connectedCallback: ?runtime.JSValue = null,
-        disconnectedCallback: ?runtime.JSValue = null,
-        adoptedCallback: ?runtime.JSValue = null,
-        connectedMoveCallback: ?runtime.JSValue = null,
-        attributeChangedCallback: ?runtime.JSValue = null,
-        formAssociatedCallback: ?runtime.JSValue = null,
-        formResetCallback: ?runtime.JSValue = null,
-        formDisabledCallback: ?runtime.JSValue = null,
-        formStateRestoreCallback: ?runtime.JSValue = null,
+        connectedCallback: ?engine.Owned = null,
+        disconnectedCallback: ?engine.Owned = null,
+        adoptedCallback: ?engine.Owned = null,
+        connectedMoveCallback: ?engine.Owned = null,
+        attributeChangedCallback: ?engine.Owned = null,
+        formAssociatedCallback: ?engine.Owned = null,
+        formResetCallback: ?engine.Owned = null,
+        formDisabledCallback: ?engine.Owned = null,
+        formStateRestoreCallback: ?engine.Owned = null,
 
-        /// Dispose all stored callback handles
+        /// Release every callback held.
         pub fn deinit(self: *LifecycleCallbacks, allocator: Allocator) void {
+            _ = allocator;
             inline for (std.meta.fields(LifecycleCallbacks)) |field| {
-                if (@TypeOf(@field(self, field.name)) == ?runtime.JSValue) {
-                    if (@field(self, field.name)) |*cb| {
-                        cb.deinit(allocator);
-                    }
-                    @field(self, field.name) = null;
-                }
+                if (@field(self, field.name)) |callback| callback.release();
+                @field(self, field.name) = null;
             }
         }
     };
 
-    pub fn init(allocator: Allocator, name: []const u8, local_name: []const u8, constructor: callbacks.CustomElementConstructor) !*CustomElementDefinition {
+    /// A definition holding `constructor` (taken: released with it).
+    pub fn init(allocator: Allocator, name: []const u8, local_name: []const u8, constructor: engine.CallbackFunction) !*CustomElementDefinition {
         const def = try allocator.create(CustomElementDefinition);
         errdefer allocator.destroy(def);
+        const owned_name = try allocator.dupe(u8, name);
+        errdefer allocator.free(owned_name);
 
         def.* = .{
-            .name = try allocator.dupe(u8, name),
+            .name = owned_name,
             .local_name = try allocator.dupe(u8, local_name),
             .constructor = constructor,
             .observed_attributes = &.{},
@@ -126,18 +128,19 @@ pub const CustomElementDefinition = struct {
     pub fn deinit(self: *CustomElementDefinition) void {
         self.allocator.free(self.name);
         self.allocator.free(self.local_name);
-        for (self.observed_attributes) |attr| {
-            self.allocator.free(attr);
-        }
-        if (self.observed_attributes.len > 0) {
-            self.allocator.free(self.observed_attributes);
-        }
+        freeStrings(self.allocator, self.observed_attributes);
         self.construction_stack.deinit(self.allocator);
-        // Dispose lifecycle callback handles
         self.lifecycle_callbacks.deinit(self.allocator);
+        self.constructor.release();
         self.allocator.destroy(self);
     }
 };
+
+/// Free a list of strings and the list.
+fn freeStrings(allocator: Allocator, strings: []const []const u8) void {
+    for (strings) |string| allocator.free(string);
+    if (strings.len > 0) allocator.free(strings);
+}
 
 /// Internal state for CustomElementRegistry implementation
 pub const InternalState = struct {
@@ -152,23 +155,12 @@ pub const InternalState = struct {
     /// Custom element definitions (name -> definition)
     definitions: std.StringHashMapUnmanaged(*CustomElementDefinition) = .empty,
 
-    /// Map of constructors to definitions (for getName())
-    constructor_to_definition: std.AutoHashMapUnmanaged(usize, *CustomElementDefinition) = .{},
-
     /// Whether element definition is currently running (prevents reentrant invocation)
     element_definition_is_running: bool = false,
 
-    /// when-defined promise map (name -> promise resolver)
-    /// For now we store a simple flag indicating if whenDefined was called
-    /// TODO: Integrate with proper Promise implementation
-    when_defined_waiters: std.StringHashMapUnmanaged(WhenDefinedWaiter) = .{},
-
-    pub const WhenDefinedWaiter = struct {
-        /// Callback to invoke when definition is registered
-        /// In a real implementation, this would resolve a Promise
-        resolved: bool = false,
-        constructor: ?callbacks.CustomElementConstructor = null,
-    };
+    /// "when-defined promise map": a name (OWNED key) to the promise
+    /// whenDefined() handed out for it (OWNED capability).
+    when_defined: std.StringHashMapUnmanaged(engine.PromiseCapability) = .empty,
 
     pub fn init(allocator: Allocator) !*InternalState {
         const state = try allocator.create(InternalState);
@@ -179,15 +171,18 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // Clean up definitions
         var it = self.definitions.valueIterator();
         while (it.next()) |def| {
             def.*.deinit();
         }
         self.definitions.deinit(self.allocator);
-        self.constructor_to_definition.deinit(self.allocator);
         self.scoped_document_set.deinit(self.allocator);
-        self.when_defined_waiters.deinit(self.allocator);
+        var promises = self.when_defined.iterator();
+        while (promises.next()) |entry| {
+            engine.releasePromiseCapability(entry.value_ptr);
+            self.allocator.free(entry.key_ptr.*);
+        }
+        self.when_defined.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 
@@ -196,10 +191,14 @@ pub const InternalState = struct {
         return self.definitions.get(name);
     }
 
-    /// Look up a definition by constructor
-    pub fn getDefinitionByConstructor(self: *InternalState, constructor: callbacks.CustomElementConstructor) ?*CustomElementDefinition {
-        const key = @intFromPtr(constructor);
-        return self.constructor_to_definition.get(key);
+    /// The definition whose constructor is `constructor` (SameValue), or
+    /// null.
+    pub fn getDefinitionByConstructor(self: *InternalState, realm: runtime.Context, constructor: runtime.JSValue) ?*CustomElementDefinition {
+        var it = self.definitions.valueIterator();
+        while (it.next()) |def| {
+            if (engine.sameValue(realm, def.*.constructor.function.value, constructor)) return def.*;
+        }
+        return null;
     }
 
     /// Check if a name is already defined
@@ -207,23 +206,9 @@ pub const InternalState = struct {
         return self.definitions.contains(name);
     }
 
-    /// Check if a constructor is already registered
-    pub fn hasConstructor(self: *InternalState, constructor: callbacks.CustomElementConstructor) bool {
-        const key = @intFromPtr(constructor);
-        return self.constructor_to_definition.contains(key);
-    }
-
     /// Add a new definition
     pub fn addDefinition(self: *InternalState, def: *CustomElementDefinition) !void {
         try self.definitions.put(self.allocator, def.name, def);
-        const key = @intFromPtr(def.constructor);
-        try self.constructor_to_definition.put(self.allocator, key, def);
-
-        // Resolve any waiters for this name
-        if (self.when_defined_waiters.getPtr(def.name)) |waiter| {
-            waiter.resolved = true;
-            waiter.constructor = def.constructor;
-        }
     }
 };
 
@@ -280,13 +265,22 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 ///
 /// Defines a new custom element, mapping the given name to the given constructor.
 pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constructor_data: callbacks.CustomElementConstructor, options: webidl.Opt(dictionaries.ElementDefinitionOptions)) anyerror!void {
+    // The binding hands the constructor over: take it before anything can
+    // fail. The definition keeps it; every other way out releases it.
+    const constructor = engine.takeCallbackFunction(@ptrCast(constructor_data));
+    var kept = false;
+    defer if (!kept) constructor.release();
+
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = internal.allocator;
+    const realm = instance.ctx;
+    const constructor_value = constructor.function.value;
 
     const name_str = name.asSlice();
 
-    // Step 1: If IsConstructor(constructor) is false, throw TypeError
-    // (Handled by the callback type)
+    // Step 1: "If IsConstructor(constructor) is false, then throw a
+    // TypeError." The binding checked only that it is callable.
+    if (!engine.isConstructor(realm, constructor_value)) return error.TypeError;
 
     // Step 2: If name is not a valid custom element name, throw SyntaxError
     if (!dom_names.isValidCustomElementName(name_str)) {
@@ -298,8 +292,10 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
         return error.NotSupportedError;
     }
 
-    // Step 4: If registry already has a definition with this constructor, throw NotSupportedError
-    if (internal.hasConstructor(constructor_data)) {
+    // Step 4: "If this's custom element definition set contains an item with
+    // constructor constructor, then throw a "NotSupportedError"
+    // DOMException." SameValue: each call converts the argument afresh.
+    if (internal.getDefinitionByConstructor(realm, constructor_value) != null) {
         return error.NotSupportedError;
     }
 
@@ -342,25 +338,155 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
 
     // Step 9: Set element definition is running to true
     internal.element_definition_is_running = true;
-    defer internal.element_definition_is_running = false;
 
-    // Steps 10-14: Initialize form-associated, disable flags, observed attributes
-    // These would be extracted from the constructor's static properties
-    // For now, use defaults
+    // Steps 10-13: formAssociated, disableInternals and disableShadow false,
+    // observedAttributes empty.
+    var collected: Collected = .{};
 
-    // Step 15: Create the definition
-    const def = try CustomElementDefinition.init(allocator, name_str, local_name, constructor_data);
+    // Step 14: "Run the following steps while catching any exceptions" ...
+    const read = readDefinitionSteps(realm, allocator, constructor_value, &collected);
+    // "Then, regardless of whether the above steps threw an exception or
+    // not: set this's element definition is running to false."
+    internal.element_definition_is_running = false;
+    // "Finally, if the steps threw an exception, rethrow that exception."
+    read catch |err| {
+        collected.deinit(allocator);
+        return err;
+    };
+
+    // Step 15: "Let definition be a new custom element definition with name
+    // name, local name localName, constructor constructor, observed
+    // attributes observedAttributes, lifecycle callbacks lifecycleCallbacks,
+    // form-associated formAssociated, disable internals disableInternals,
+    // and disable shadow disableShadow."
+    const def = CustomElementDefinition.init(allocator, name_str, local_name, constructor) catch |err| {
+        collected.deinit(allocator);
+        return err;
+    };
+    kept = true;
+    def.observed_attributes = collected.observed_attributes;
+    def.lifecycle_callbacks = collected.lifecycle_callbacks;
+    def.form_associated = collected.form_associated;
+    def.disable_internals = collected.disable_internals;
+    def.disable_shadow = collected.disable_shadow;
     errdefer def.deinit();
 
-    // Step 16: Add to custom element definition set
+    // Step 16: "Append definition to this's custom element definition set."
     try internal.addDefinition(def);
 
-    // Steps 17-18: Upgrade existing elements
-    // TODO: Implement upgrade logic - iterate shadow-including descendants
-    // For now, this is a no-op
+    // Steps 17-18: "upgrade particular elements within a document". Upgrade
+    // constructs each candidate through the definition's constructor, which
+    // Crane cannot do yet: [HTMLConstructor] and the construction stack are
+    // the custom-elements construction work (tmp/plans/lane-domcore-handoff.md).
+    // TODO(custom-elements): enqueue a custom element upgrade reaction for
+    // each candidate once upgrades construct.
 
-    // Step 19: Resolve whenDefined promise if any waiters
-    // (Handled in addDefinition)
+    // Step 19: "If this's when-defined promise map[name] exists: resolve it
+    // with constructor, and remove it."
+    if (internal.when_defined.fetchRemove(name_str)) |entry| {
+        var capability = entry.value;
+        engine.resolvePromise(&capability, constructor_value) catch {};
+        engine.releasePromiseCapability(&capability);
+        allocator.free(entry.key);
+    }
+}
+
+/// What define()'s step 14 reads off the constructor and its prototype.
+const Collected = struct {
+    lifecycle_callbacks: CustomElementDefinition.LifecycleCallbacks = .{},
+    observed_attributes: []const []const u8 = &.{},
+    form_associated: bool = false,
+    disable_internals: bool = false,
+    disable_shadow: bool = false,
+
+    fn deinit(self: *Collected, allocator: Allocator) void {
+        self.lifecycle_callbacks.deinit(allocator);
+        freeStrings(allocator, self.observed_attributes);
+        self.observed_attributes = &.{};
+    }
+};
+
+/// define() step 14's steps, in order: every Get is script-visible (a
+/// getter or a Proxy trap runs), and what one throws ends the steps and is
+/// rethrown by define() (error.ExceptionPending), as is the TypeError of a
+/// non-object prototype or a non-callable callback (error.TypeError).
+fn readDefinitionSteps(realm: runtime.Context, allocator: Allocator, constructor: runtime.JSValue, out: *Collected) anyerror!void {
+    // Step 14.1: "Let prototype be ? Get(constructor, "prototype")."
+    const prototype = try engine.getProperty(realm, constructor, "prototype");
+    defer prototype.release();
+
+    // Step 14.2: "If prototype is not an Object, then throw a TypeError."
+    if (engine.typeOf(realm, prototype.value) != .object) return error.TypeError;
+
+    // Steps 14.3-14.4: for each name of lifecycleCallbacks, in the map's
+    // order, "Let callbackValue be ? Get(prototype, callbackName)" and, if
+    // it is not undefined, convert it to a Function. The order is the
+    // living standard's - connectedMoveCallback third, as WPT checks; an
+    // older text listed it after adoptedCallback.
+    inline for (.{ "connectedCallback", "disconnectedCallback", "connectedMoveCallback", "adoptedCallback", "attributeChangedCallback" }) |callback_name| {
+        @field(out.lifecycle_callbacks, callback_name) = try functionProperty(realm, prototype.value, callback_name);
+    }
+
+    // Step 14.5: "If lifecycleCallbacks["attributeChangedCallback"] is not
+    // null": observedAttributes from ? Get(constructor,
+    // "observedAttributes"), converted to a sequence<DOMString>.
+    if (out.lifecycle_callbacks.attributeChangedCallback != null) {
+        out.observed_attributes = try stringSequenceProperty(realm, allocator, constructor, "observedAttributes");
+    }
+
+    // Steps 14.6-14.10: disabledFeatures, the same way; "internals" and
+    // "shadow" in it set disableInternals and disableShadow.
+    const disabled_features = try stringSequenceProperty(realm, allocator, constructor, "disabledFeatures");
+    defer freeStrings(allocator, disabled_features);
+    for (disabled_features) |feature| {
+        if (std.mem.eql(u8, feature, "internals")) out.disable_internals = true;
+        if (std.mem.eql(u8, feature, "shadow")) out.disable_shadow = true;
+    }
+
+    // Steps 14.11-14.12: "Let formAssociatedValue be ? Get(constructor,
+    // "formAssociated"). Set formAssociated to the result of converting
+    // formAssociatedValue to a boolean."
+    const form_associated = try engine.getProperty(realm, constructor, "formAssociated");
+    defer form_associated.release();
+    out.form_associated = engine.toBoolean(realm, form_associated.value);
+
+    // Step 14.13: a form-associated element's four callbacks, likewise.
+    if (out.form_associated) {
+        inline for (.{ "formAssociatedCallback", "formResetCallback", "formDisabledCallback", "formStateRestoreCallback" }) |callback_name| {
+            @field(out.lifecycle_callbacks, callback_name) = try functionProperty(realm, prototype.value, callback_name);
+        }
+    }
+}
+
+/// "Let callbackValue be ? Get(prototype, callbackName). If callbackValue is
+/// not undefined, then set lifecycleCallbacks[callbackName] to the result of
+/// converting callbackValue to the Web IDL Function callback type" - which
+/// throws a TypeError for a value that is not callable. OWNED, or null.
+fn functionProperty(realm: runtime.Context, object: runtime.JSValue, property: []const u8) anyerror!?engine.Owned {
+    const value = try engine.getProperty(realm, object, property);
+    if (engine.typeOf(realm, value.value) == .undefined) {
+        value.release();
+        return null;
+    }
+    if (!engine.isCallable(realm, value.value)) {
+        value.release();
+        return error.TypeError;
+    }
+    return value;
+}
+
+/// "Let iterable be ? Get(constructor, property). If iterable is not
+/// undefined, then set result to the result of converting iterable to a
+/// sequence<DOMString>. Rethrow any exceptions from the conversion." OWNED;
+/// empty when the property is undefined.
+fn stringSequenceProperty(realm: runtime.Context, allocator: Allocator, constructor: runtime.JSValue, property: []const u8) anyerror![]const []const u8 {
+    const iterable = try engine.getProperty(realm, constructor, property);
+    defer iterable.release();
+    if (engine.typeOf(realm, iterable.value) == .undefined) return &.{};
+    // WebIDL sequence<T> conversion: a value with no @@iterator method is a
+    // TypeError.
+    const strings = (try engine.convertToSequenceOfDOMStrings(realm, iterable.value, allocator)) orelse return error.TypeError;
+    return strings;
 }
 
 /// Check if a name is a known HTML element
@@ -414,17 +540,10 @@ pub fn call_get(instance: *runtime.Instance, name: runtime.DOMString) anyerror!r
     return runtime.JSValue.jsUndefined;
 }
 
-/// `def`'s constructor as a result: a hold of the binding's own.
-///
-/// `def.constructor` is define()'s argument as the binding converted it - a
-/// callback function, whose handle is TAGGED (conversions.zig, "callback
-/// function") and so is not a Global to read as one. Taking it as a
-/// CallbackFunction reads the function without copying it; the definition
-/// keeps its handle, so that view is never released, and the result is a
-/// second hold (retainValue).
+/// `def`'s constructor as a result: a hold of the caller's own (the
+/// binding takes it).
 fn constructorValue(realm: runtime.Context, def: *const CustomElementDefinition) !runtime.JSValue {
-    const constructor = engine.takeCallbackFunction(@ptrCast(def.constructor));
-    return (try engine.retainValue(realm, constructor.function.borrow())).take();
+    return (try engine.retainValue(realm, def.constructor.function.value)).take();
 }
 
 /// Operation: getName(constructor)
@@ -432,10 +551,14 @@ fn constructorValue(realm: runtime.Context, def: *const CustomElementDefinition)
 ///
 /// Returns the name for the given constructor, or null if not defined.
 pub fn call_getName(instance: *runtime.Instance, constructor_data: callbacks.CustomElementConstructor) anyerror!?runtime.DOMString {
+    // The binding hands the argument over; it is only compared.
+    const constructor = engine.takeCallbackFunction(@ptrCast(constructor_data));
+    defer constructor.release();
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Step 1: If definition set contains an item with this constructor, return its name
-    if (internal.getDefinitionByConstructor(constructor_data)) |def| {
+    // Step 1: "If this's custom element definition set contains an item with
+    // constructor constructor, then return that item's name."
+    if (internal.getDefinitionByConstructor(instance.ctx, constructor.function.value)) |def| {
         return runtime.DOMString.initInterned(def.name);
     }
 
@@ -489,33 +612,46 @@ pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) any
 /// Operation: whenDefined(name)
 /// Spec: https://html.spec.whatwg.org/multipage/custom-elements.html#dom-customelementregistry-whendefined
 ///
-/// Returns a promise that resolves when the named element is defined.
-/// TODO: This should return a Promise<CustomElementConstructor> - for now returns the constructor directly if defined
-/// Note: Returns pointer to match interface signature. Caller should treat as Promise object.
+/// A promise, in this's relevant realm, fulfilled with the constructor once
+/// `name` is defined. The result is OWNED: the binding takes it.
 pub fn call_whenDefined(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
+    const realm = instance.ctx;
     const name_str = name.asSlice();
 
-    // Step 1: If name is not a valid custom element name, return rejected promise with SyntaxError
+    // Step 1: "If name is not a valid custom element name, then return a
+    // promise rejected with a "SyntaxError" DOMException."
     if (!dom_names.isValidCustomElementName(name_str)) {
-        return error.SyntaxError;
+        const exception = try engine.createDOMException(realm, "SyntaxError", "The name is not a valid custom element name.");
+        defer exception.release();
+        return (try engine.createRejectedPromise(realm, exception.value)).take();
     }
 
-    // Step 2: If already defined, return resolved promise with constructor
+    // Step 2: "If this's custom element definition set contains an item with
+    // name name, then return a promise resolved with that item's
+    // constructor."
     if (internal.getDefinitionByName(name_str)) |def| {
-        return constructorValue(instance.ctx, def);
+        return (try engine.createResolvedPromise(realm, def.constructor.function.value)).take();
     }
 
-    // Step 3: Create/return pending promise
-    // For now, we store a waiter and return a placeholder
-    // TODO: Integrate with proper Promise implementation
-    const waiter = InternalState.WhenDefinedWaiter{};
-    try internal.when_defined_waiters.put(internal.allocator, try internal.allocator.dupe(u8, name_str), waiter);
+    // Step 3: "If this's when-defined promise map[name] does not exist, then
+    // set this's when-defined promise map[name] to a new promise."
+    const entry = try internal.when_defined.getOrPut(internal.allocator, name_str);
+    if (!entry.found_existing) {
+        entry.key_ptr.* = internal.allocator.dupe(u8, name_str) catch |err| {
+            internal.when_defined.removeByPtr(entry.key_ptr);
+            return err;
+        };
+        entry.value_ptr.* = engine.createPromise(realm) catch |err| {
+            internal.allocator.free(entry.key_ptr.*);
+            internal.when_defined.removeByPtr(entry.key_ptr);
+            return err;
+        };
+    }
 
-    // Return placeholder - in reality this would be a Promise object
-    // For now, throw error to indicate async pending state
-    return error.NotImplemented;
+    // Step 4: "Return this's when-defined promise map[name]" - the same
+    // promise every time; the binding gets a hold of its own.
+    return (try engine.retainValue(realm, entry.value_ptr.promise)).take();
 }
 
 // ============================================================================

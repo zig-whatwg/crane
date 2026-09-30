@@ -354,6 +354,10 @@ pub const PseudoClassSelector = struct {
                 selector_list_ptr.deinit();
                 allocator.destroy(selector_list_ptr);
             },
+            .NthChild, .NthLastChild => |pattern| if (pattern.of) |selector_list_ptr| {
+                selector_list_ptr.deinit();
+                allocator.destroy(selector_list_ptr);
+            },
             else => {},
         }
     }
@@ -372,6 +376,21 @@ pub const PseudoClassSelector = struct {
                     max_spec = max_spec.max(spec);
                 }
                 break :blk max_spec;
+            },
+
+            // Selectors 4 16.1: ":nth-child(An+B of S)" is the specificity of
+            // a pseudo-class plus that of its most specific complex selector
+            // in S.
+            .NthChild, .NthLastChild => |pattern| blk: {
+                var spec = Specificity{ .class = 1 };
+                if (pattern.of) |selector_list_ptr| {
+                    var max_spec = Specificity{};
+                    for (selector_list_ptr.selectors) |*selector| max_spec = max_spec.max(selector.calculateSpecificity());
+                    spec.id += max_spec.id;
+                    spec.class += max_spec.class;
+                    spec.element += max_spec.element;
+                }
+                break :blk spec;
             },
 
             // All other pseudo-classes count as class selectors (0,1,0)
@@ -435,12 +454,22 @@ pub const PseudoClassKind = union(enum) {
 
     // Scoping
     Scope,
+
+    // Location pseudo-class (Selectors 4 8.2): the document's target element.
+    Target,
+
+    // Custom state (HTML "custom state pseudo-class"): :state(<ident>)
+    State: []const u8,
 };
 
 /// Nth pattern (an+b)
 pub const NthPattern = struct {
     a: i32, // Coefficient
     b: i32, // Constant
+    /// ":nth-child(An+B of S)" and ":nth-last-child(An+B of S)": only the
+    /// siblings matching S count, and the element must match S itself
+    /// (Selectors 4 14.4.1). OWNED by the pseudo-class; null without "of".
+    of: ?*SelectorList = null,
 };
 
 /// Pseudo-element selector
@@ -946,6 +975,7 @@ pub const Parser = struct {
         if (std.mem.eql(u8, name, "read-only")) return .ReadOnly;
         if (std.mem.eql(u8, name, "read-write")) return .ReadWrite;
         if (std.mem.eql(u8, name, "checked")) return .Checked;
+        if (std.mem.eql(u8, name, "target")) return .Target;
 
         return error.InvalidSelector;
     }
@@ -961,11 +991,20 @@ pub const Parser = struct {
 
         // Check pseudo-class type
         if (std.mem.eql(u8, name, "nth-child")) {
-            const pattern = try self.parseNthPattern();
+            var pattern = try self.parseNthPattern();
+            pattern.of = try self.parseNthOfSelector();
             kind = PseudoClassKind{ .NthChild = pattern };
         } else if (std.mem.eql(u8, name, "nth-last-child")) {
-            const pattern = try self.parseNthPattern();
+            var pattern = try self.parseNthPattern();
+            pattern.of = try self.parseNthOfSelector();
             kind = PseudoClassKind{ .NthLastChild = pattern };
+        } else if (std.mem.eql(u8, name, "state")) {
+            // HTML: ":state(<custom-ident>)". The ident is a slice of the
+            // selector string, as :lang()'s argument is.
+            const token = self.current_token orelse return error.UnexpectedEOF;
+            if (token.tag != .ident or !isCssIdentifier(token.value)) return error.InvalidSelector;
+            try self.advance();
+            kind = PseudoClassKind{ .State = token.value };
         } else if (std.mem.eql(u8, name, "nth-of-type")) {
             const pattern = try self.parseNthPattern();
             kind = PseudoClassKind{ .NthOfType = pattern };
@@ -1070,6 +1109,33 @@ pub const Parser = struct {
         }
 
         return NthPattern{ .a = a, .b = b };
+    }
+
+    /// Whether `value`, which the tokenizer returned as an ident, is a CSS
+    /// <ident-token> (CSS Syntax 4.3.9 "would start an identifier"): this
+    /// tokenizer also hands numbers over as idents, and a <custom-ident>
+    /// cannot start with a digit, or with "-" and a digit.
+    fn isCssIdentifier(value: []const u8) bool {
+        if (value.len == 0) return false;
+        if (std.ascii.isDigit(value[0])) return false;
+        if (value[0] == '-' and value.len > 1 and std.ascii.isDigit(value[1])) return false;
+        if (std.mem.eql(u8, value, "-")) return false;
+        return true;
+    }
+
+    /// Selectors 4 14.4.1: the optional "of <complex-real-selector-list>"
+    /// after An+B in :nth-child() and :nth-last-child(). OWNED by the caller
+    /// (the pseudo-class); null when there is none.
+    fn parseNthOfSelector(self: *Parser) ParserError!?*SelectorList {
+        self.skipWhitespace();
+        const token = self.current_token orelse return null;
+        if (token.tag != .ident or !std.ascii.eqlIgnoreCase(token.value, "of")) return null;
+        try self.advance();
+        self.skipWhitespace();
+        const selector_list = try self.allocator.create(SelectorList);
+        errdefer self.allocator.destroy(selector_list);
+        selector_list.* = try self.parseSelectorList();
+        return selector_list;
     }
 
     /// Parse language code for :lang() pseudo-class
@@ -1285,3 +1351,44 @@ test "getFailureRecovery - child combinator failure with descendant backup" {
 // ============================================================================
 // Specificity Tests
 // ============================================================================
+
+// ============================================================================
+// :target, :state() and :nth-child(An+B of S)
+// ============================================================================
+
+test "parse :target as a pseudo-class" {
+    var selector = try parseSelector(testing.allocator, "div:target");
+    defer selector.deinit();
+    const simple = selector.selectors[0].compound.simple_selectors;
+    try testing.expect(simple[simple.len - 1].PseudoClass.kind == .Target);
+}
+
+test "parse :state(ident) keeping its ident" {
+    var selector = try parseSelector(testing.allocator, ":state(--green)");
+    defer selector.deinit();
+    const kind = selector.selectors[0].compound.simple_selectors[0].PseudoClass.kind;
+    try testing.expectEqualStrings("--green", kind.State);
+    try testing.expectError(error.InvalidSelector, parseSelector(testing.allocator, ":state()"));
+    try testing.expectError(error.InvalidSelector, parseSelector(testing.allocator, ":state(1)"));
+}
+
+test "parse :nth-child(An+B of S), its selector list owned by the pseudo-class" {
+    var selector = try parseSelector(testing.allocator, ":nth-child(2 of :state(--green), .x)");
+    defer selector.deinit();
+    const pattern = selector.selectors[0].compound.simple_selectors[0].PseudoClass.kind.NthChild;
+    try testing.expectEqual(@as(i32, 0), pattern.a);
+    try testing.expectEqual(@as(i32, 2), pattern.b);
+    try testing.expectEqual(@as(usize, 2), pattern.of.?.selectors.len);
+
+    var plain = try parseSelector(testing.allocator, ":nth-last-child(2n+1)");
+    defer plain.deinit();
+    try testing.expect(plain.selectors[0].compound.simple_selectors[0].PseudoClass.kind.NthLastChild.of == null);
+}
+
+test "the specificity of :nth-child(An+B of S) adds S's most specific selector" {
+    var selector = try parseSelector(testing.allocator, ":nth-child(2 of #a, .b)");
+    defer selector.deinit();
+    const spec = selector.selectors[0].calculateSpecificity();
+    try testing.expectEqual(@as(u32, 1), spec.id);
+    try testing.expectEqual(@as(u32, 1), spec.class);
+}

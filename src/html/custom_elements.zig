@@ -399,8 +399,8 @@ fn invokeCallback(
 
     const cb_type = callback_type orelse return;
 
-    // Get the callback function pointer from definition
-    const callback: ?*anyopaque = switch (cb_type) {
+    // The callback's value from the definition (a hold of the definition's)
+    const callback = switch (cb_type) {
         .connected => definition.lifecycle_callbacks.connectedCallback,
         .disconnected => definition.lifecycle_callbacks.disconnectedCallback,
         .adopted => definition.lifecycle_callbacks.adoptedCallback,
