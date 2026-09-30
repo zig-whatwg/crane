@@ -436,7 +436,7 @@ code, and never cast another type's `_internal` to its `InternalState`.
 generated layers still reference impls (most of them impls reaching ancestors,
 which the old rule allowed). A change that touches such a line converts it.
 
-**Checked by `zig build lint-impls`** (part of `zig build test`):
+**Checked by `zig build lint-impls`** (part of `zig build test`), counting ancestors since 1a94e0043:
 
 ```bash
 zig build lint-impls -j2 --cache-dir /tmp/crane-z16-cache                # fails on any new reference into an impl
@@ -448,10 +448,9 @@ zig build lint-impls -j2 --cache-dir /tmp/crane-z16-cache -- --update    # after
 that a hook is not used from inside the hierarchy that owns it. A count that
 rises fails; so does a pair the baseline lacks - which catches a swap. The
 generated layers (interfaces, mixins, namespaces, codegen) are skipped:
-delegating to impls is their job. **Status 2026-09-29:** the lint still exempts
-references to a file's own ancestors, which the rule above now forbids; making
-it count them (and recording that higher baseline once) is the next change to
-the tool. Until then, reviewers enforce the ancestor half by hand.
+delegating to impls is their job. `--rebase-for-rule-change` exists for one purpose: re-recording the
+baseline when the RULE changes (it was used once, when ancestors started to count); a code change
+never uses it.
 
 The baseline only goes down. `--update` refuses to record an increase, and
 editing the file by hand to make the check pass defeats the only thing that
