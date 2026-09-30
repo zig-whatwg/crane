@@ -225,3 +225,119 @@ test "a document committed before its parser ran reaches every entry of its docu
     // The first entry, another document state, is untouched.
     try testing.expect(h.entryAt(top, 0).?.document == null);
 }
+
+test "a prepared entry is the entry the commit makes: its id, key and navigation API id" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try h.addInitialEntry(top, "http://x.test/a", null, "http://x.test");
+    const key_a = h.currentEntry(top).?.api_key;
+
+    // A push: a new id, key and navigation API id, reserved before the commit.
+    const pushed = h.prepareDocument(top, "http://x.test", .push);
+    try testing.expect(isUuid(&pushed.api_key));
+    try testing.expect(!std.mem.eql(u8, &key_a, &pushed.api_key));
+    try h.commitPreparedDocument(top, "http://x.test/b", null, "http://x.test", .push, pushed);
+    const b = h.currentEntry(top).?;
+    try testing.expectEqual(pushed.id, b.id);
+    try testing.expectEqualSlices(u8, &pushed.api_key, &b.api_key);
+    try testing.expectEqualSlices(u8, &pushed.api_id, &b.api_id);
+    const key_b = b.api_key;
+
+    // A same-origin replace keeps the key it replaces (finalize a
+    // cross-document navigation step 9.3); the id and navigation API id are new.
+    const same = h.prepareDocument(top, "http://x.test", .replace);
+    try testing.expectEqualSlices(u8, &key_b, &same.api_key);
+    try testing.expect(same.id != pushed.id);
+    try h.commitPreparedDocument(top, "http://x.test/c", null, "http://x.test", .replace, same);
+    try testing.expectEqual(same.id, h.currentEntry(top).?.id);
+    try testing.expectEqualSlices(u8, &same.api_id, &h.currentEntry(top).?.api_id);
+
+    // A cross-origin replace does not.
+    const cross = h.prepareDocument(top, "http://y.test", .replace);
+    try testing.expect(!std.mem.eql(u8, &key_b, &cross.api_key));
+
+    // An id reserved and never committed is never handed out again.
+    try h.commitDocument(top, "http://x.test/d", null, "http://x.test", .push);
+    try testing.expect(h.currentEntry(top).?.id != cross.id);
+}
+
+test "an activation belongs to its document state until another document takes it" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try h.addInitialEntry(top, "http://x.test/a", null, "http://x.test");
+    try testing.expect(h.activationOf(h.currentEntry(top).?.document_state) == null);
+    const from = try h.snapshot(h.currentEntry(top).?);
+
+    try h.commitDocument(top, "http://x.test/b", null, "http://x.test", .push);
+    const b = h.currentEntry(top).?;
+    const state_b = b.document_state;
+    try h.setActivation(b.id, .{ .navigation_type = .push, .previous = from, .entry = try h.snapshot(b) });
+    const recorded = h.activationOf(state_b).?;
+    try testing.expectEqual(joint.NavigationType.push, recorded.navigation_type);
+    try testing.expectEqualStrings("http://x.test/a", recorded.previous.?.url);
+    try testing.expectEqualStrings("http://x.test/b", recorded.entry.url);
+
+    // A pushState entry shares the document state, and so its activation;
+    // a same-document replace of the activated entry keeps it too.
+    try h.commitSameDocument(top, "http://x.test/b#1", .null, .push, null);
+    try testing.expect(h.activationOf(state_b) == recorded);
+    try h.commitSameDocument(top, "http://x.test/b#2", .null, .replace, null);
+    try testing.expect(h.activationOf(state_b) == recorded);
+
+    // A reload's new document takes the state's activation over: one per state.
+    const reloaded = h.currentEntry(top).?;
+    try h.setActivation(reloaded.id, .{ .navigation_type = .reload, .previous = try h.snapshot(reloaded), .entry = try h.snapshot(reloaded) });
+    try testing.expectEqual(joint.NavigationType.reload, h.activationOf(state_b).?.navigation_type);
+
+    // A cross-document replace is a new document state: the old one's goes.
+    try h.commitDocument(top, "http://x.test/c", null, "http://x.test", .replace);
+    try testing.expect(h.activationOf(h.currentEntry(top).?.document_state) == null);
+}
+
+test "a recorded activation names the entry as it was committed and the entry the navigation left" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try h.addInitialEntry(top, "http://x.test/a", null, "http://x.test");
+    const previous = try h.snapshot(h.currentEntry(top).?);
+    const prepared = h.prepareDocument(top, "http://x.test", .push);
+    // The pageswap event's target, before the commit makes it.
+    var target = try h.preparedSnapshot(top, "http://x.test/b", "http://x.test", prepared);
+    defer target.deinit(testing.allocator);
+    try testing.expect(h.entryById(prepared.id) == null);
+    try h.commitPreparedDocument(top, "http://x.test/b", null, "http://x.test", .push, prepared);
+    try h.recordActivation(prepared.id, .push, previous);
+    const recorded = h.activationOf(h.currentEntry(top).?.document_state).?;
+    try testing.expectEqual(target.id, recorded.entry.id);
+    try testing.expectEqualSlices(u8, &target.api_key, &recorded.entry.api_key);
+    try testing.expectEqualStrings("http://x.test/a", recorded.previous.?.url);
+    // An entry that is not there takes nothing, and leaks nothing.
+    const stray = try h.snapshot(h.currentEntry(top).?);
+    try testing.expectError(error.NoSuchEntry, h.recordActivation(9999, .reload, stray));
+}
+
+test "a child navigable's first entry takes the step its parent's document began at" {
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    var doc: u8 = 0;
+    try h.addInitialEntry(top, "http://x.test/t", &doc, "http://x.test");
+    // A fragment navigation: a second step on the same document.
+    try h.commitSameDocument(top, "http://x.test/t#1", .null, .push, null);
+    try testing.expectEqual(@as(u32, 1), h.current_step);
+    // A frame added now belongs to its parent's document, which began at
+    // step 0 ("create a new child navigable" 12.3-12.4).
+    try h.addChildInitialEntry(frame, top, "about:blank", null, "http://x.test");
+    try testing.expectEqual(@as(u32, 0), h.currentEntry(frame).?.step);
+    try h.commitDocument(frame, "http://x.test/f", null, "http://x.test", .replace);
+    // Back to step 0: the frame is still on its entry.
+    h.current_step = 0;
+    try testing.expectEqualStrings("http://x.test/f", h.currentEntry(frame).?.url);
+    // A push at step 0 truncates the parent's forward entry, not the frame's
+    // current one.
+    try h.commitSameDocument(top, "http://x.test/t#b", .null, .push, null);
+    try testing.expectEqualStrings("http://x.test/f", h.currentEntry(frame).?.url);
+    try testing.expectEqual(@as(usize, 1), h.entryCount(frame));
+    try testing.expectEqual(@as(usize, 2), h.entryCount(top));
+    // A navigable whose parent has no entries yet starts at the current step.
+    try h.addChildInitialEntry(3, 99, "about:blank", null, "http://x.test");
+    try testing.expectEqual(h.current_step, h.currentEntry(3).?.step);
+}
