@@ -1439,56 +1439,94 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance) !*runt
 
 /// Operation: normalize
 /// https://dom.spec.whatwg.org/#dom-node-normalize
-/// Removes empty text nodes and merges adjacent text nodes
+///
+/// "The normalize() method steps are to run these steps for each descendant
+/// exclusive Text node node of this". The walk is live: a merge removes the
+/// Text nodes after node, so the next node in tree order is found after each
+/// one is done with.
 pub fn call_normalize(instance: *runtime.Instance) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return;
-
-    var child_base = node_base.first_child;
-    while (child_base) |current_base| {
-        // Get runtime.Instance for child via bridge
-        const child_opaque = instance_bridge.getInstance(current_base) orelse {
-            child_base = current_base.next_sibling;
+    var current: ?*runtime.Instance = interfaces.Node.get_firstChild(instance) catch null;
+    while (current) |node| {
+        if (!isExclusiveText(node)) {
+            current = followingInTree(node, instance, true);
             continue;
-        };
-        const current_child: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
-        const child_internal = getInternal(current_child) orelse {
-            child_base = current_base.next_sibling;
+        }
+        const parent = (interfaces.Node.get_parentNode(node) catch null) orelse return error.InvalidStateError;
+
+        // Step 1: "Let length be node's length."
+        var length = try interfaces.CharacterData.get_length(node);
+
+        // Step 2: "If length is zero, then remove node and continue with the
+        // next exclusive Text node, if any."
+        if (length == 0) {
+            const next = followingInTree(node, instance, false);
+            _ = try interfaces.Node.call_removeChild(parent, node);
+            current = next;
             continue;
-        };
-
-        // Recursively normalize
-        try call_normalize(current_child);
-
-        // Handle text nodes
-        if (child_internal.node_type == NodeType.TEXT_NODE) {
-            // Remove empty text nodes
-            const data_slice = CharacterDataImpl.getData(current_child) orelse "";
-            if (data_slice.len == 0) {
-                // TODO: Remove this node
-                child_base = current_base.next_sibling;
-                continue;
-            }
-
-            // Merge with adjacent text nodes
-            // TODO: Implement data concatenation and node removal
-            // For now, just check if there's an adjacent text node
-            if (current_base.next_sibling) |next| {
-                const next_opaque_ptr = instance_bridge.getInstance(next);
-                if (next_opaque_ptr) |ptr| {
-                    const next_instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
-                    const next_internal = getInternal(next_instance);
-                    if (next_internal) |ni| {
-                        if (ni.node_type == NodeType.TEXT_NODE) {
-                            // TODO: Merge text content
-                        }
-                    }
-                }
-            }
         }
 
-        child_base = current_base.next_sibling;
+        // Step 3: "Let data be the concatenation of the data of node's
+        // contiguous exclusive Text nodes (excluding itself), in tree order."
+        // A run's earlier nodes were merged into its first one already, so
+        // only the nodes after node remain in it.
+        const allocator = instance.ctx.allocator;
+        var data: std.ArrayListUnmanaged(u8) = .empty;
+        defer data.deinit(allocator);
+        var sibling = interfaces.Node.get_nextSibling(node) catch null;
+        while (sibling) |s| : (sibling = interfaces.Node.get_nextSibling(s) catch null) {
+            if (!isExclusiveText(s)) break;
+            var piece = try interfaces.CharacterData.get_data(s);
+            defer piece.deinit(s.ctx.allocator);
+            try data.appendSlice(allocator, piece.asSlice());
+        }
+
+        // Step 4: "Replace data of node with length, 0, and data."
+        try interfaces.CharacterData.call_replaceData(node, length, 0, runtime.DOMString.initInterned(data.items));
+
+        // Step 5: "Let currentNode be node's next sibling."
+        var current_node = interfaces.Node.get_nextSibling(node) catch null;
+        // Step 6: "While currentNode is an exclusive Text node:"
+        while (current_node) |merged| {
+            if (!isExclusiveText(merged)) break;
+            // Steps 6.1-6.4: the live ranges in or at currentNode move into
+            // node.
+            dom_module.mutation.runLiveRangeNormalizeSteps(node, merged, length);
+            // Step 6.5: "Add currentNode's length to length."
+            length += try interfaces.CharacterData.get_length(merged);
+            // Step 6.6: "Set currentNode to its next sibling."
+            current_node = interfaces.Node.get_nextSibling(merged) catch null;
+        }
+
+        // Step 7: "Remove node's contiguous exclusive Text nodes (excluding
+        // itself), in tree order."
+        while (interfaces.Node.get_nextSibling(node) catch null) |merged| {
+            if (!isExclusiveText(merged)) break;
+            _ = try interfaces.Node.call_removeChild(parent, merged);
+        }
+
+        current = followingInTree(node, instance, false);
     }
+}
+
+/// "An exclusive Text node is a Text node that is not a CDATASection node."
+fn isExclusiveText(node: *runtime.Instance) bool {
+    const node_type = interfaces.Node.get_nodeType(node) catch return false;
+    return node_type == interfaces.Node.get_TEXT_NODE();
+}
+
+/// The node after `node` in tree order within `root`'s descendants, or null:
+/// its first child when `descend`, else the next sibling of it or of its
+/// nearest ancestor below `root` that has one.
+fn followingInTree(node: *runtime.Instance, root: *runtime.Instance, descend: bool) ?*runtime.Instance {
+    if (descend) {
+        if (interfaces.Node.get_firstChild(node) catch null) |child| return child;
+    }
+    var current = node;
+    while (current != root) {
+        if (interfaces.Node.get_nextSibling(current) catch null) |next| return next;
+        current = (interfaces.Node.get_parentNode(current) catch null) orelse return null;
+    }
+    return null;
 }
 
 // =============================================================================
