@@ -132,6 +132,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A stored pointer is a Global only if a Global was stored](architecture-a-stored-pointer-is-a-global-only-if-a-global-was-stored.md) - Store an `engine.Owned`, never a `*anyopaque` you will later call a handle.
 - [When a step names something the engine makes later, reserve its identity instead of moving the creation](architecture-reserve-what-a-step-names-before-the-engine-makes-it.md) - When a spec step names an object the engine only makes later, reserve the object's identity where the step runs; move the creation earlier only if everything that reads it in between is meant to see it.
 - [An object made on first use cannot compute what the spec fixed at an earlier moment](architecture-an-object-made-on-first-use-cannot-compute-what-the-spec-fixed-earlier.md) - Record at that moment, where the object will look, and build from the record; never recompute from current state.
+- [A queue that re-appends the head it cannot serve reorders it](architecture-a-queue-that-re-appends-its-head-reorders.md) - A drain that cannot serve its head must leave the head where it was; code that only ever saw every item ready at once has never exercised that path.
+- [Capture what a late callback reads, not the object it came from](architecture-capture-what-a-callback-reads-not-what-it-read-it-from.md) - Before capturing an object for a callback that may run after it, list what the callback's steps read; capture those values, and there is nothing left to keep alive or to find dangling.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -166,6 +168,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A parsed element is inserted before its text](spec-compliance-a-parsed-element-is-inserted-before-its-text.md) - An element whose processing reads its children must hear from the parser when they are all there: for a parsed element, insertion and children-changed run before its content has arrived.
 - [An opaque response's status is 0](spec-compliance-an-opaque-response-s-status-is-0.md) - Before checking a response's status or headers, ask whether it can be no-cors cross-origin: an opaque response says 0 and nothing, and the check has to read the internal response.
 - [A "return" inside a state-override parse ends the parse](spec-compliance-a-return-inside-a-state-override-parse-ends-the-parse.md) - In a parser that runs spec steps inside a loop, every spec "return" must stop the loop; test override cases for "no failure", not only for the result.
+- ["Upon rejection" is a reaction, even for a promise already rejected](spec-compliance-upon-rejection-is-a-reaction.md) - Where the spec says "upon fulfillment" or "upon rejection", react to a promise - even one you know is settled - so the step lands behind the microtasks already queued.
+- [importScripts() fetches no-cors and runs with rethrow errors](spec-compliance-importscripts-rethrows-and-fetches-no-cors.md) - "Rethrow errors" means the report never happens: keep the thrown value from the engine's reporter and throw it into the caller once the script has been cleaned up after.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
@@ -214,6 +218,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A correction for a bug becomes the bug when the bug is fixed](testing-a-correction-for-a-bug-becomes-the-bug-when-it-is-fixed.md) - A correction must name the bug it corrects, so fixing the bug retires it; evidence printed live that stops supporting a model is a refutation, not a caveat.
 - [A stash poll hangs on a request nothing sends](testing-a-stash-poll-hangs-on-a-request-nothing-sends.md) - When a file polls the server for a stashed value, find what should send the request that fills the stash - a ping, a beacon, a report - before looking at what reads it.
 - [A test block in html_core never runs](testing-a-test-block-in-html-core-never-runs.md) - A test in src/html/** does not run: put html_core tests under tests/html/, and prove a new test is live by seeing it fail once.
+- [An unknown META global is dropped, and the file runs where it never asked to](testing-an-unknown-meta-global-is-dropped-not-skipped.md) - A global the runner does not know must be run or deliberately skipped, never dropped: an empty list is the defaults, so a file of unknown globals runs in contexts it never asked for.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
