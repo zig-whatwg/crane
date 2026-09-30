@@ -21,7 +21,7 @@ const HTMLCollectionImpl = @import("HTMLCollection.zig");
 // One-way, by design: the option impl owns selectedness and never imports this
 // file back. See the header comment in HTMLOptionElement.zig.
 const OptionImpl = @import("HTMLOptionElement.zig");
-const form_associated = @import("form_associated.zig");
+const form_associated = @import("html").form_associated;
 
 pub const State = HTMLSelectElement.State;
 

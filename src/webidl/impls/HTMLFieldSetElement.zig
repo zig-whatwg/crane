@@ -58,7 +58,7 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 
 /// Getter for form: the element's form owner.
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return @import("form_associated.zig").formOwner(instance);
+    return @import("html").form_associated.formOwner(instance);
 }
 
 /// Getter for type: "must return the string "fieldset"".

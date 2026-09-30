@@ -20,7 +20,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const form_associated = @import("form_associated.zig");
+const form_associated = @import("html").form_associated;
 const dom = @import("dom");
 const HTMLLabelElement = interfaces.HTMLLabelElement;
 const log = std.log.scoped(.forms);
@@ -44,14 +44,12 @@ pub fn init(
 ) !*runtime.Instance {
     // Installed before any label exists (idempotent).
     dom.activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    return HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    return interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    interfaces.HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation

@@ -23,8 +23,7 @@ const log = std.log.scoped(.forms);
 // Import related impls for attribute access
 const ElementImpl = @import("Element.zig");
 const NodeImpl = @import("Node.zig");
-const EventTargetImpl = @import("EventTarget.zig");
-const form_associated = @import("form_associated.zig");
+const form_associated = @import("html").form_associated;
 const attributeValue = form_associated.attributeValue;
 const hasAttribute = form_associated.hasAttribute;
 const isElementNamed = form_associated.isElementNamed;
@@ -367,7 +366,7 @@ fn resetForm(form: *runtime.Instance) anyerror!void {
     const generation = runtime.SlabAllocator.generationOf(event);
     const reset = blk: {
         defer event.releaseIfUnwrapped(generation);
-        break :blk try EventTargetImpl.dispatchTrusted(form, event);
+        break :blk try @import("dom").fire_event.dispatchTrusted(form, event);
     };
     if (!reset) return;
 
@@ -561,7 +560,7 @@ fn constructEntryList(allocator: std.mem.Allocator, form: *runtime.Instance, sub
         );
         const generation = runtime.SlabAllocator.generationOf(event);
         defer event.releaseIfUnwrapped(generation);
-        _ = try EventTargetImpl.dispatchTrusted(form, event);
+        _ = try @import("dom").fire_event.dispatchTrusted(form, event);
     }
 
     // 9. Return a clone of entry list - as the formdata event's listeners
@@ -829,7 +828,7 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
             );
             const generation = runtime.SlabAllocator.generationOf(event);
             defer event.releaseIfUnwrapped(generation);
-            break :blk try EventTargetImpl.dispatchTrusted(form, event);
+            break :blk try @import("dom").fire_event.dispatchTrusted(form, event);
         };
         // 5.8: If shouldContinue is false, then return.
         if (!should_continue) return;

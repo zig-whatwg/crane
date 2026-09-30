@@ -32,8 +32,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const EventImpl = @import("Event.zig");
-const UIEventImpl = @import("UIEvent.zig");
+const event_construction = @import("dom").event_construction;
 const InputEvent = interfaces.InputEvent;
 
 pub const State = InputEvent.State;
@@ -70,7 +69,7 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try UIEventImpl.init(allocator, StateType, vtable, ctx);
+    const instance = try interfaces.UIEvent.initWithState(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
@@ -86,7 +85,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    UIEventImpl.deinit(instance);
+    interfaces.UIEvent.deinit(instance);
 }
 
 /// Constructor: inner event creation steps, UIEventInit's members, then
@@ -95,8 +94,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const instance = try init(ctx.allocator, State, &InputEvent.vtable, ctx);
     errdefer deinit(instance);
     const dict: dictionaries.InputEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{} } };
-    try EventImpl.innerEventCreationSteps(instance, @"type", dict.base.base);
-    UIEventImpl.initializeMembers(instance, dict.base);
+    try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base.base));
+    event_construction.initializeUIEvent(instance, event_construction.uiEventInitFrom(dict.base));
 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = internal.allocator;

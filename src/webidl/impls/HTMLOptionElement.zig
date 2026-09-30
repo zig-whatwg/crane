@@ -525,8 +525,8 @@ fn optionText(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// return the same value as the form IDL attribute on that select element.
 /// Otherwise, it must return null."
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    var parent = NodeImpl.getParent(instance) orelse return null;
-    if (isElementNamed(parent, "optgroup")) parent = NodeImpl.getParent(parent) orelse return null;
+    var parent = (interfaces.Node.get_parentNode(instance) catch null) orelse return null;
+    if (isElementNamed(parent, "optgroup")) parent = (interfaces.Node.get_parentNode(parent) catch null) orelse return null;
     if (parent.stateAs(interfaces.HTMLSelectElement.State) == null) return null;
     return interfaces.HTMLSelectElement.get_form(parent);
 }

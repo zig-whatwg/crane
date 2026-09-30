@@ -13,7 +13,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const MouseEvent = interfaces.MouseEvent;
 const EventImpl = @import("Event.zig");
-const UIEventImpl = @import("UIEvent.zig");
+const event_construction = @import("dom").event_construction;
 const clock = @import("clock");
 
 pub const State = MouseEvent.State;
@@ -32,8 +32,9 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
+    // Through UIEvent's init, which installs its constructing steps
+    // (dom.event_construction) and chains to Event's.
+    return interfaces.UIEvent.initWithState(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
@@ -109,7 +110,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     // Initialize UIEvent attributes (in state.base.own): view, detail and the
     // legacy which.
-    UIEventImpl.initializeMembers(instance, ui_init);
+    event_construction.initializeUIEvent(instance, event_construction.uiEventInitFrom(ui_init));
 
     // Initialize MouseEvent attributes (in state.own)
     const screenX_f = event_init.screenX orelse 0.0;

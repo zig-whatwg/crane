@@ -26,8 +26,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const EventImpl = @import("Event.zig");
-const UIEventImpl = @import("UIEvent.zig");
+const event_construction = @import("dom").event_construction;
 const CompositionEvent = interfaces.CompositionEvent;
 
 pub const State = CompositionEvent.State;
@@ -60,7 +59,7 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try UIEventImpl.init(allocator, StateType, vtable, ctx);
+    const instance = try interfaces.UIEvent.initWithState(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
@@ -76,7 +75,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    UIEventImpl.deinit(instance);
+    interfaces.UIEvent.deinit(instance);
 }
 
 /// Constructor: inner event creation steps, UIEventInit's members, then data.
@@ -84,8 +83,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const instance = try init(ctx.allocator, State, &CompositionEvent.vtable, ctx);
     errdefer deinit(instance);
     const dict: dictionaries.CompositionEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{} } };
-    try EventImpl.innerEventCreationSteps(instance, @"type", dict.base.base);
-    UIEventImpl.initializeMembers(instance, dict.base);
+    try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base.base));
+    event_construction.initializeUIEvent(instance, event_construction.uiEventInitFrom(dict.base));
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try internal.setData(if (dict.data) |d| d.asSlice() else "");
     return instance;
@@ -105,8 +104,8 @@ pub fn get_data(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// "If this's dispatch flag is set, return; initialize this with typeArg,
 /// bubblesArg and cancelableArg; set view to viewArg and data to dataArg."
 pub fn call_initCompositionEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?typedefs.WindowProxy), dataArg: webidl.Opt(runtime.DOMString)) anyerror!void {
-    if (EventImpl.getDispatchFlag(instance)) return;
-    try UIEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, if (viewArg.was_passed) webidl.Opt(?*runtime.Instance).passed(viewArg.value) else webidl.Opt(?*runtime.Instance).notPassed(), webidl.Opt(i32).notPassed());
+    if (event_construction.dispatchFlag(instance)) return;
+    try interfaces.UIEvent.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, if (viewArg.was_passed) webidl.Opt(?*runtime.Instance).passed(viewArg.value) else webidl.Opt(?*runtime.Instance).notPassed(), webidl.Opt(i32).notPassed());
     const internal = getInternal(instance) orelse return;
     try internal.setData(if (dataArg.was_passed) dataArg.value.asSlice() else "");
 }

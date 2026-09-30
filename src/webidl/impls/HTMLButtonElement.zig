@@ -21,9 +21,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const ElementImpl = @import("Element.zig");
 const reflection = @import("reflection.zig");
-const form_associated = @import("form_associated.zig");
+const form_associated = @import("html").form_associated;
 const dom = @import("dom");
 const HTMLButtonElement = interfaces.HTMLButtonElement;
 const log = std.log.scoped(.forms);
@@ -47,14 +46,12 @@ pub fn init(
 ) !*runtime.Instance {
     // Installed before any button exists (idempotent).
     dom.activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    return HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    return interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    interfaces.HTMLElement.deinit(instance);
 }
 
 /// Constructor implementation
@@ -117,12 +114,10 @@ fn userInvolvement(event: *runtime.Instance) dom.form_submission.UserInvolvement
 // Attributes
 // ============================================================================
 
-/// The value of a content attribute in no namespace, BORROWED; null when
-/// absent.
-fn attribute(instance: *runtime.Instance, comptime name: []const u8) ?[]const u8 {
-    const element = ElementImpl.getInternal(instance) orelse return null;
-    const entry = element.findAttribute(null, name) orelse return null;
-    return entry.value;
+/// The value of a content attribute in no namespace, owned by the element's
+/// allocator; null when absent.
+fn attribute(instance: *runtime.Instance, comptime name: []const u8) ?[]u8 {
+    return form_associated.attributeValue(instance.ctx.allocator, instance, name) catch null;
 }
 
 /// Getter for type: "1. If this is a submit button, then return "submit".
@@ -143,7 +138,9 @@ pub fn get_type(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// the keyword corresponding to the value of command."
 pub fn get_command(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const value = attribute(instance, "command") orelse return runtime.DOMString.initEmpty();
-    if (std.mem.startsWith(u8, value, "--")) return runtime.DOMString.initDupe(instance.ctx.allocator, value);
+    // Custom: the value itself, handed over.
+    if (std.mem.startsWith(u8, value, "--")) return runtime.DOMString.initOwned(value);
+    defer instance.ctx.allocator.free(value);
     const keywords = [_][]const u8{ "toggle-popover", "show-popover", "hide-popover", "close", "request-close", "show-modal" };
     for (keywords) |keyword| {
         if (std.ascii.eqlIgnoreCase(value, keyword)) return runtime.DOMString.initInterned(keyword);
@@ -174,6 +171,7 @@ pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// string, the element's node document's URL must be returned instead."
 pub fn get_formAction(instance: *runtime.Instance) anyerror!runtime.USVString {
     if (attribute(instance, "formaction")) |value| {
+        defer instance.ctx.allocator.free(value);
         if (value.len > 0) return reflection.get(runtime.USVString, instance, .{ .name = "formaction", .url = true });
     }
     const document = (try interfaces.Node.get_ownerDocument(instance)) orelse return try instance.ctx.allocator.dupe(u8, "");
@@ -185,6 +183,7 @@ pub fn get_formAction(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// absent.
 fn enumeratedNoMissingDefault(instance: *runtime.Instance, comptime name: []const u8, comptime known: []const []const u8, comptime invalid: []const u8) runtime.DOMString {
     const value = attribute(instance, name) orelse return runtime.DOMString.initEmpty();
+    defer instance.ctx.allocator.free(value);
     inline for (known) |candidate| {
         if (std.ascii.eqlIgnoreCase(value, candidate)) return runtime.DOMString.initInterned(candidate);
     }

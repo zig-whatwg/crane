@@ -1,6 +1,6 @@
 //! Form-associated elements (HTML § 4.10.18 - 4.10.19): the algorithms the
 //! form controls, the label and the form share. Everything here reaches the
-//! elements through their interfaces; it keeps no state.
+//! elements through their interfaces and the dom hooks; it keeps no state.
 //!
 //!   * tree order and element tests
 //!   * the form owner (§ 4.10.18.3)
@@ -23,7 +23,6 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
-const enums = @import("enums");
 const unicode_data = @import("url").idna.unicode_data_mod;
 const engine = @import("engine");
 const log = std.log.scoped(.forms);
@@ -476,18 +475,6 @@ pub const SelectionDirection = enum {
 
 /// setRangeText()'s SelectionMode.
 pub const SelectionMode = enum { select, start, end, preserve };
-
-/// The SelectionMode argument of setRangeText(replacement, start, end,
-/// selectionMode): "preserve" when not given.
-pub fn selectionModeOf(mode: webidl.Opt(enums.SelectionMode)) SelectionMode {
-    if (!mode.was_passed) return .preserve;
-    return switch (mode.value) {
-        ._select_ => .select,
-        ._start_ => .start,
-        ._end_ => .end,
-        ._preserve_ => .preserve,
-    };
-}
 
 /// A text control's selection, in UTF-16 code units of its relevant value.
 /// A collapsed selection is the text entry cursor position.

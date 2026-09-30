@@ -72,6 +72,7 @@ pub const form_controls = @import("form_controls.zig");
 pub const form_submission = @import("form_submission.zig");
 pub const node_lists = @import("node_lists.zig");
 pub const teardown_sweeps = @import("teardown_sweeps.zig");
+pub const event_construction = @import("event_construction.zig");
 pub const navigables = @import("navigables.zig");
 pub const navigation_api = @import("navigation_api.zig");
 pub const navigation_objects = @import("navigation_objects.zig");

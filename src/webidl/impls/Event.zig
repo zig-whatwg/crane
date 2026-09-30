@@ -96,7 +96,15 @@ pub fn init(
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     // Initialize state will be done in call_constructor
+    // The constructing steps every subclass runs (dom.event_construction);
+    // each subclass's init chains through this one.
+    @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &getDispatchFlag });
     return instance;
+}
+
+/// dom.event_construction's inner event creation steps.
+fn innerEventCreationStepsHook(event: *runtime.Instance, event_type: runtime.DOMString, init_dict: @import("dom").event_construction.EventInit) anyerror!void {
+    return innerEventCreationSteps(event, event_type, .{ .bubbles = init_dict.bubbles, .cancelable = init_dict.cancelable, .composed = init_dict.composed });
 }
 
 /// Deinitialize instance

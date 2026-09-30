@@ -2023,6 +2023,8 @@ pub fn build(b: *std.Build) void {
     // engine-neutral code calls `engine.op`.
     html_mod.addImport("engine", engine_mod);
     html_mod.addImport("dictionaries", dictionaries_mod);
+    // The Unicode bidi classes, for HTML's directionality (form_associated.zig).
+    html_mod.addImport("url", url_mod);
     // DOM module for document_internals access in parser_script_execution.zig
     html_mod.addImport("dom", dom_mod);
 

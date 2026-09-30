@@ -30,8 +30,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const EventImpl = @import("Event.zig");
-const UIEventImpl = @import("UIEvent.zig");
+const event_construction = @import("dom").event_construction;
 const KeyboardEvent = interfaces.KeyboardEvent;
 
 pub const State = KeyboardEvent.State;
@@ -99,7 +98,7 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try UIEventImpl.init(allocator, StateType, vtable, ctx);
+    const instance = try interfaces.UIEvent.initWithState(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
@@ -116,7 +115,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    UIEventImpl.deinit(instance);
+    interfaces.UIEvent.deinit(instance);
 }
 
 /// Constructor: inner event creation steps, the UIEventInit members, then
@@ -126,8 +125,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     errdefer deinit(instance);
     const dict: dictionaries.KeyboardEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{ .base = .{ .base = .{} } } };
     const modifier_init = dict.base;
-    try EventImpl.innerEventCreationSteps(instance, @"type", modifier_init.base.base);
-    UIEventImpl.initializeMembers(instance, modifier_init.base);
+    try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(modifier_init.base.base));
+    event_construction.initializeUIEvent(instance, event_construction.uiEventInitFrom(modifier_init.base));
 
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try internal.setKey(if (dict.key) |k| k.asSlice() else "");
@@ -246,8 +245,8 @@ pub fn call_getModifierState(instance: *runtime.Instance, keyArg: runtime.DOMStr
 /// bubblesArg and cancelableArg; set view, key, location and the four
 /// modifier attributes from the arguments."
 pub fn call_initKeyboardEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), keyArg: webidl.Opt(runtime.DOMString), locationArg: webidl.Opt(u32), ctrlKey: webidl.Opt(bool), altKey: webidl.Opt(bool), shiftKey: webidl.Opt(bool), metaKey: webidl.Opt(bool)) anyerror!void {
-    if (EventImpl.getDispatchFlag(instance)) return;
-    try UIEventImpl.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, webidl.Opt(i32).notPassed());
+    if (event_construction.dispatchFlag(instance)) return;
+    try interfaces.UIEvent.call_initUIEvent(instance, typeArg, bubblesArg, cancelableArg, viewArg, webidl.Opt(i32).notPassed());
     const internal = getInternal(instance) orelse return;
     try internal.setKey(if (keyArg.was_passed) keyArg.value.asSlice() else "");
     internal.location = locationArg.getOrDefault(0);

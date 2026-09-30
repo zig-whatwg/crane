@@ -40,7 +40,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const EventImpl = @import("Event.zig");
+const event_construction = @import("dom").event_construction;
 const UIEvent = interfaces.UIEvent;
 
 pub const State = UIEvent.State;
@@ -59,25 +59,28 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    return runtime.Instance.init(allocator, StateType, vtable, ctx);
+    // UIEventInit's members, for every subclass (dom.event_construction).
+    event_construction.installUIEvent(.{ .initialize = &initializeMembers });
+    return interfaces.Event.initWithState(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance: UIEvent owns nothing; the Event part owns the type
 /// string and the flags.
 pub fn deinit(instance: *runtime.Instance) void {
-    EventImpl.deinit(instance);
+    interfaces.Event.deinit(instance);
 }
 
 /// UIEvent's event constructing steps for an event whose Event part has
 /// just been initialized: "for each member -> value of dictionary: if event
 /// has an attribute whose identifier is member, initialize that attribute
 /// to value" - view, detail and the legacy which. For UIEvent's own
-/// constructor and for each interface inheriting from it.
-pub fn initializeMembers(instance: *runtime.Instance, dictionary: dictionaries.UIEventInit) void {
+/// constructor and, through dom.event_construction, each interface
+/// inheriting from it.
+fn initializeMembers(instance: *runtime.Instance, init_dict: event_construction.UIEventInit) void {
     const state = instance.stateAs(State) orelse return;
-    state.own.view = dictionary.view;
-    state.own.detail = dictionary.detail orelse 0;
-    state.own.which = dictionary.which orelse 0;
+    state.own.view = init_dict.view;
+    state.own.detail = init_dict.detail;
+    state.own.which = init_dict.which;
     state.own.sourceCapabilities = null;
 }
 
@@ -87,8 +90,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const instance = try init(ctx.allocator, State, &UIEvent.vtable, ctx);
     errdefer deinit(instance);
     const dict: dictionaries.UIEventInit = if (eventInitDict.was_passed) eventInitDict.value else .{ .base = .{} };
-    try EventImpl.innerEventCreationSteps(instance, @"type", dict.base);
-    initializeMembers(instance, dict);
+    try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(dict.base));
+    initializeMembers(instance, event_construction.uiEventInitFrom(dict));
     return instance;
 }
 
@@ -125,8 +128,8 @@ pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!?*runtime.In
 /// typeArg, bubblesArg and cancelableArg. 3. Set view to viewArg and detail
 /// to detailArg."
 pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: runtime.DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) anyerror!void {
-    if (EventImpl.getDispatchFlag(instance)) return;
-    try EventImpl.call_initEvent(instance, typeArg, bubblesArg, cancelableArg);
+    if (event_construction.dispatchFlag(instance)) return;
+    try interfaces.Event.call_initEvent(instance, typeArg, bubblesArg, cancelableArg);
     const state = instance.stateAs(State) orelse return;
     state.own.view = if (viewArg.was_passed) viewArg.value else null;
     state.own.detail = if (detailArg.was_passed) detailArg.value else 0;

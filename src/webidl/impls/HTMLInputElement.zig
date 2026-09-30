@@ -31,9 +31,8 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLInputElement = interfaces.HTMLInputElement;
-const ElementImpl = @import("Element.zig");
 const reflection = @import("reflection.zig");
-const form_associated = @import("form_associated.zig");
+const form_associated = @import("html").form_associated;
 const dom = @import("dom");
 const instance_bridge = dom.instance_bridge;
 const NodeBase = dom.NodeBase;
@@ -139,23 +138,21 @@ pub const InputType = enum {
 
 pub const ValueMode = enum { value, default, default_on, filename };
 
-fn typeAttribute(instance: *runtime.Instance) ?[]const u8 {
-    const element = ElementImpl.getInternal(instance) orelse return null;
-    const entry = element.findAttribute(null, "type") orelse return null;
-    return entry.value;
-}
-
 /// The element's type attribute's state.
 pub fn typeOf(instance: *runtime.Instance) InputType {
-    return InputType.fromAttribute(typeAttribute(instance));
+    const value = attribute(instance, "type") orelse return .text;
+    defer instance.ctx.allocator.free(value);
+    return InputType.fromAttribute(value);
 }
 
-/// The value of a content attribute in no namespace, BORROWED from the
-/// element's attribute list; null when absent.
-fn attribute(instance: *runtime.Instance, comptime name: []const u8) ?[]const u8 {
-    const element = ElementImpl.getInternal(instance) orelse return null;
-    const entry = element.findAttribute(null, name) orelse return null;
-    return entry.value;
+/// The value of a content attribute in no namespace, owned by the element's
+/// allocator; null when absent.
+fn attribute(instance: *runtime.Instance, comptime name: []const u8) ?[]u8 {
+    return form_associated.attributeValue(instance.ctx.allocator, instance, name) catch null;
+}
+
+fn hasAttribute(instance: *runtime.Instance, comptime name: []const u8) bool {
+    return form_associated.hasAttribute(instance, name);
 }
 
 fn setAttributeValue(instance: *runtime.Instance, comptime name: []const u8, value: []const u8) !void {
@@ -268,8 +265,7 @@ pub fn init(
     }
 
     // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
 
     // createIn, not set: the registry then owns the block and returns it to the
@@ -287,8 +283,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (Registry.get(instance)) |internal| internal.deinit();
     Registry.remove(instance);
 
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    interfaces.HTMLElement.deinit(instance);
 }
 
 /// dom.teardown_sweeps: an input still alive when the browser ends is never
@@ -414,9 +409,14 @@ fn setCheckedness(instance: *runtime.Instance, checked: bool) void {
 }
 
 /// The radio button group's name: a name attribute that is not empty.
-fn groupName(instance: *runtime.Instance) ?[]const u8 {
+/// Owned by the element's allocator.
+fn groupName(instance: *runtime.Instance) ?[]u8 {
     const name = attribute(instance, "name") orelse return null;
-    return if (name.len == 0) null else name;
+    if (name.len == 0) {
+        instance.ctx.allocator.free(name);
+        return null;
+    }
+    return name;
 }
 
 /// Whether `other` is in `instance`'s radio button group: a radio button in
@@ -426,6 +426,7 @@ fn inSameGroup(instance: *runtime.Instance, name: []const u8, owner: ?*runtime.I
     if (other == instance or !form_associated.isInput(other)) return false;
     if (typeOf(other) != .radio) return false;
     const other_name = groupName(other) orelse return false;
+    defer other.ctx.allocator.free(other_name);
     if (!std.mem.eql(u8, name, other_name)) return false;
     return form_associated.formOwner(other) == owner;
 }
@@ -434,6 +435,7 @@ fn inSameGroup(instance: *runtime.Instance, name: []const u8, owner: ?*runtime.I
 /// button group must be set to false."
 fn uncheckOthersInGroup(instance: *runtime.Instance) void {
     const name = groupName(instance) orelse return;
+    defer instance.ctx.allocator.free(name);
     const owner = form_associated.formOwner(instance);
     const root = form_associated.rootOf(instance);
     var node: ?*runtime.Instance = root;
@@ -446,6 +448,7 @@ fn uncheckOthersInGroup(instance: *runtime.Instance) void {
 /// The checked radio button in `instance`'s group other than itself, if any.
 fn checkedInGroup(instance: *runtime.Instance) ?*runtime.Instance {
     const name = groupName(instance) orelse return null;
+    defer instance.ctx.allocator.free(name);
     const owner = form_associated.formOwner(instance);
     const root = form_associated.rootOf(instance);
     var node: ?*runtime.Instance = root;
@@ -510,6 +513,7 @@ fn legacyCanceledActivation(instance: *runtime.Instance) void {
             if (saved) |radio| {
                 if (radio.isLive()) {
                     if (groupName(instance)) |name| {
+                        defer instance.ctx.allocator.free(name);
                         if (inSameGroup(instance, name, form_associated.formOwner(instance), radio.element)) {
                             setCheckedness(radio.element, true);
                             return;
@@ -535,10 +539,10 @@ fn runActivationBehavior(instance: *runtime.Instance, event: *runtime.Instance) 
             // 1. If the element is not connected, then return.
             if (!(interfaces.Node.get_isConnected(instance) catch false)) return;
             // 2. Fire input, bubbling and composed. 3. Fire change, bubbling.
-            form_associated.fireSimpleEvent(instance, "input", .{ .bubbles = true, .composed = true }) catch |err| {
+            fireEvent(instance, "input", .{ .bubbles = true, .composed = true }) catch |err| {
                 log.warn("input event not fired: {}", .{err});
             };
-            form_associated.fireSimpleEvent(instance, "change", .{ .bubbles = true }) catch |err| {
+            fireEvent(instance, "change", .{ .bubbles = true }) catch |err| {
                 log.warn("change event not fired: {}", .{err});
             };
         },
@@ -567,6 +571,20 @@ fn runActivationBehavior(instance: *runtime.Instance, event: *runtime.Instance) 
     // implemented.
 }
 
+/// DOM "fire an event" named `event_type` at the element: a trusted Event
+/// made in its realm, dispatched through dom.fire_event.
+fn fireEvent(instance: *runtime.Instance, comptime event_type: []const u8, init_dict: dictionaries.EventInit) !void {
+    const event = try interfaces.Event.call_constructor(
+        instance.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.EventInit).passed(init_dict),
+    );
+    // A listener can keep the event; only one nothing wrapped is freed here.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    _ = try dom.fire_event.dispatchTrusted(instance, event);
+}
+
 /// An event's "user navigation involvement": "activation" when it is
 /// trusted, "none" otherwise.
 fn userInvolvement(event: *runtime.Instance) dom.form_submission.UserInvolvement {
@@ -581,7 +599,7 @@ fn isMutable(instance: *runtime.Instance, input_type: InputType) bool {
         .text, .search, .url, .tel, .email, .password, .date, .month, .week, .time, .@"datetime-local", .number => true,
         else => false,
     };
-    return !(readonly_applies and attribute(instance, "readonly") != null);
+    return !(readonly_applies and hasAttribute(instance, "readonly"));
 }
 
 /// dom.form_controls: "The reset algorithm for input elements is to set the
@@ -596,7 +614,7 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.clearValue();
     internal.dirty_checkedness = false;
-    setCheckedness(instance, attribute(instance, "checked") != null);
+    setCheckedness(instance, hasAttribute(instance, "checked"));
 }
 
 // ============================================================================
@@ -611,11 +629,15 @@ fn valueIn(instance: *runtime.Instance, input_type: InputType) ![]u8 {
     return switch (input_type.valueMode()) {
         // "value": the element's value - the dirty one, or the value
         // attribute sanitized.
-        .value => if (internal.value) |v| allocator.dupe(u8, v) else sanitize(allocator, instance, input_type, attribute(instance, "value") orelse ""),
+        .value => if (internal.value) |v| allocator.dupe(u8, v) else blk: {
+            const given = attribute(instance, "value");
+            defer if (given) |g| instance.ctx.allocator.free(g);
+            break :blk sanitize(allocator, instance, input_type, given orelse "");
+        },
         // "default": the value attribute, or the empty string.
-        .default => allocator.dupe(u8, attribute(instance, "value") orelse ""),
+        .default => attribute(instance, "value") orelse allocator.dupe(u8, ""),
         // "default/on": the value attribute, or "on".
-        .default_on => allocator.dupe(u8, attribute(instance, "value") orelse "on"),
+        .default_on => attribute(instance, "value") orelse allocator.dupe(u8, "on"),
         // "filename": no files are ever selected, so the empty string.
         .filename => allocator.dupe(u8, ""),
     };
@@ -719,7 +741,7 @@ fn sanitize(allocator: std.mem.Allocator, instance: *runtime.Instance, input_typ
         .email => {
             const stripped = try stripNewlines(allocator, value);
             defer allocator.free(stripped);
-            if (attribute(instance, "multiple") == null) return allocator.dupe(u8, trimAsciiWhitespace(stripped));
+            if (!hasAttribute(instance, "multiple")) return allocator.dupe(u8, trimAsciiWhitespace(stripped));
             // multiple: "split on commas, strip leading and trailing ASCII
             // whitespace from each resulting token, if any, and let the
             // element's values be the (possibly empty) resulting list of
@@ -1166,6 +1188,7 @@ fn numberToString(allocator: std.mem.Allocator, input_type: InputType, number: f
 /// An attribute parsed with the type's string-to-number algorithm, or null.
 fn numberAttribute(instance: *runtime.Instance, input_type: InputType, comptime name: []const u8) ?f64 {
     const value = attribute(instance, name) orelse return null;
+    defer instance.ctx.allocator.free(value);
     return stringToNumber(input_type, value);
 }
 
@@ -1202,6 +1225,7 @@ fn stepDefaults(input_type: InputType) struct { step: f64, scale: f64 } {
 fn allowedValueStep(instance: *runtime.Instance, input_type: InputType) ?f64 {
     const defaults = stepDefaults(input_type);
     const value = attribute(instance, "step") orelse return defaults.step * defaults.scale;
+    defer instance.ctx.allocator.free(value);
     if (std.ascii.eqlIgnoreCase(value, "any")) return null;
     const parsed = parseValidFloat(value) orelse return defaults.step * defaults.scale;
     if (parsed <= 0) return defaults.step * defaults.scale;
@@ -1327,6 +1351,7 @@ pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString 
     //     <input autocomplete="home country">    -> ""  (country is not a
     //                                                    contact field)
     const value = attribute(instance, "autocomplete") orelse return runtime.DOMString.initEmpty();
+    defer instance.ctx.allocator.free(value);
     inline for ([_][]const u8{ "on", "off" }) |candidate| {
         if (std.ascii.eqlIgnoreCase(value, candidate)) {
             return runtime.DOMString.initInterned(candidate);
@@ -1386,6 +1411,7 @@ pub fn get_files(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// element's node document's URL must be returned instead."
 fn urlAttributeOrDocumentUrl(instance: *runtime.Instance, comptime name: []const u8) anyerror!runtime.USVString {
     if (attribute(instance, name)) |value| {
+        defer instance.ctx.allocator.free(value);
         if (value.len > 0) return reflection.get(runtime.USVString, instance, .{ .name = name, .url = true });
     }
     const document = (try interfaces.Node.get_ownerDocument(instance)) orelse return try instance.ctx.allocator.dupe(u8, "");
@@ -1402,6 +1428,7 @@ pub fn get_formAction(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// absent.
 fn enumeratedNoMissingDefault(instance: *runtime.Instance, comptime name: []const u8, comptime known: []const []const u8, comptime invalid: []const u8) runtime.DOMString {
     const value = attribute(instance, name) orelse return runtime.DOMString.initEmpty();
+    defer instance.ctx.allocator.free(value);
     inline for (known) |candidate| {
         if (std.ascii.eqlIgnoreCase(value, candidate)) return runtime.DOMString.initInterned(candidate);
     }
@@ -1736,5 +1763,17 @@ pub fn call_setRangeText(instance: *runtime.Instance, replacement: runtime.DOMSt
 
 /// Operation: setRangeText(replacement, start, end, selectionMode)
 pub fn call_setRangeText__1(instance: *runtime.Instance, replacement: runtime.DOMString, start: u32, end: u32, selectionMode: webidl.Opt(enums.SelectionMode)) anyerror!void {
-    try setRangeText(instance, replacement.asSlice(), .{ start, end }, form_associated.selectionModeOf(selectionMode));
+    try setRangeText(instance, replacement.asSlice(), .{ start, end }, selectionModeOf(selectionMode));
+}
+
+/// The SelectionMode argument of setRangeText(replacement, start, end,
+/// selectionMode): "preserve" when not given.
+fn selectionModeOf(mode: webidl.Opt(enums.SelectionMode)) form_associated.SelectionMode {
+    if (!mode.was_passed) return .preserve;
+    return switch (mode.value) {
+        ._select_ => .select,
+        ._start_ => .start,
+        ._end_ => .end,
+        ._preserve_ => .preserve,
+    };
 }

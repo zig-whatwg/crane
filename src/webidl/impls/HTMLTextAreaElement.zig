@@ -17,7 +17,7 @@ const NodeImpl = @import("Node.zig");
 // text alike, so reading it yields "" for every textarea. Node.zig's own
 // collectTextContent goes through here for the same reason.
 const CharacterDataImpl = @import("CharacterData.zig");
-const form_associated = @import("form_associated.zig");
+const form_associated = @import("html").form_associated;
 const dom = @import("dom");
 
 pub const State = HTMLTextAreaElement.State;
@@ -513,7 +513,7 @@ pub fn call_setRangeText(instance: *runtime.Instance, replacement: runtime.DOMSt
 
 /// Operation: setRangeText(replacement, start, end, selectionMode)
 pub fn call_setRangeText__1(instance: *runtime.Instance, replacement: runtime.DOMString, start: u32, end: u32, selectionMode: webidl.Opt(enums.SelectionMode)) anyerror!void {
-    try setRangeText(instance, replacement.asSlice(), .{ start, end }, form_associated.selectionModeOf(selectionMode));
+    try setRangeText(instance, replacement.asSlice(), .{ start, end }, selectionModeOf(selectionMode));
 }
 
 /// Operation: checkValidity
@@ -533,4 +533,16 @@ pub fn call_setCustomValidity(instance: *runtime.Instance, @"error": runtime.DOM
     _ = instance;
     _ = @"error";
     return error.NotImplemented;
+}
+
+/// The SelectionMode argument of setRangeText(replacement, start, end,
+/// selectionMode): "preserve" when not given.
+fn selectionModeOf(mode: webidl.Opt(enums.SelectionMode)) form_associated.SelectionMode {
+    if (!mode.was_passed) return .preserve;
+    return switch (mode.value) {
+        ._select_ => .select,
+        ._start_ => .start,
+        ._end_ => .end,
+        ._preserve_ => .preserve,
+    };
 }
