@@ -13,6 +13,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const MouseEvent = interfaces.MouseEvent;
 const EventImpl = @import("Event.zig");
+const UIEventImpl = @import("UIEvent.zig");
 const clock = @import("clock");
 
 pub const State = MouseEvent.State;
@@ -106,9 +107,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.base.own.isTrusted = false;
     state.base.base.own.timeStamp = @as(typedefs.DOMHighResTimeStamp, @floatFromInt(clock.monotonicMillis()));
 
-    // Initialize UIEvent attributes (in state.base.own)
-    state.base.own.view = ui_init.view;
-    state.base.own.detail = ui_init.detail orelse 0;
+    // Initialize UIEvent attributes (in state.base.own): view, detail and the
+    // legacy which.
+    UIEventImpl.initializeMembers(instance, ui_init);
 
     // Initialize MouseEvent attributes (in state.own)
     const screenX_f = event_init.screenX orelse 0.0;
