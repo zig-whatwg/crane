@@ -72,74 +72,27 @@ pub const ImplError = error{
     InvalidAccessError,
 };
 
-/// The pump's half of the WebSocket, owned independently of the instance.
-///
-/// The timer callback cannot be handed `*InternalState`: that block comes from
-/// the process-wide `ArenaAllocator` and `deinit` returns it to a size-classed
-/// free list, from which the next same-sized request takes it (AGENTS.md,
-/// "InstanceRegistry.createIn destabilises the DOM"). A timer still holding it
-/// would then write into a different object's state. The same applies to
-/// `*runtime.Instance`, whose address the slab recycles.
-///
-/// So the token is its own allocation from the page allocator, and it is the
-/// ONLY thing the timer points at. Ownership follows one rule:
-///
-///   armed == true   the scheduled timer owns it; the callback frees it
-///   armed == false  the impl owns it; `detach` frees it
-///
-/// `detach` therefore never calls `clearTimeout`. Cancelling is a single bool
-/// store on a block nothing else can reach, which keeps teardown free of the
-/// added work that costs this codebase crashes (AGENTS.md, "The teardown race
-/// taxes every change"). A cancelled token costs one more tick, then goes.
-const PollToken = struct {
-    /// The WebSocket this pumps. Read ONLY while `cancelled` is false - after
-    /// `detach` the instance may already be back in the slab.
-    instance: *runtime.Instance,
-    /// Set by `detach`. Once true the callback touches nothing but the token.
-    cancelled: bool = false,
-    /// True exactly while a timer is scheduled against this token.
-    armed: bool = false,
-    /// True while `pumpCallback` is on the stack. `detach` must not free the
-    /// token under its own caller, and dispatching an event runs script, which
-    /// can drop the last reference to the WebSocket and take deinit with it.
-    in_callback: bool = false,
-    /// The realm's timer interface, captured at construction.
-    timer: runtime.TimerInterface,
+/// The pump's half of the WebSocket: the token its scheduled turns point at,
+/// and who frees it (websocket.pump_token). The timer callback is never handed
+/// `*InternalState` or the Instance: the arena recycles one, the slab the
+/// other, and a turn scheduled against either would run on whatever lives
+/// there next. The token is its own allocation, freed exactly once by
+/// whoever owns it - the turn scheduled against it, the turn running, or the
+/// socket's teardown (`detach`) when neither.
+const PollToken = websocket.pump_token.PumpToken(runtime.Instance, runtime.TimerInterface);
 
-    fn allocator() std.mem.Allocator {
-        return std.heap.page_allocator;
-    }
+/// Where tokens come from: a token is a few words, freed on its own schedule,
+/// so neither the arena (recycled blocks) nor page_allocator (a page each).
+fn tokenAllocator() std.mem.Allocator {
+    return std.heap.c_allocator;
+}
 
-    fn create(instance: *runtime.Instance, timer: runtime.TimerInterface) !*PollToken {
-        const self = try allocator().create(PollToken);
-        self.* = .{ .instance = instance, .timer = timer };
-        return self;
-    }
-
-    /// Schedule the next pump. No-op if one is already scheduled.
-    fn arm(self: *PollToken) void {
-        if (self.armed or self.cancelled) return;
-        self.armed = true;
-        _ = self.timer.setTimeout(POLL_INTERVAL_MS, pumpCallback, @ptrCast(self));
-    }
-
-    /// Give up the instance. Frees the token unless someone else still owns it.
-    fn detach(self: *PollToken) void {
-        self.cancelled = true;
-        if (!self.armed and !self.in_callback) allocator().destroy(self);
-    }
-};
-
-/// Timer callback. Runs one pump, then re-arms while the socket is live.
+/// Timer callback: one turn of the socket's pump, then the next one armed
+/// while the socket is live.
 fn pumpCallback(user_data: ?*anyopaque) void {
     const token: *PollToken = @ptrCast(@alignCast(user_data orelse return));
-    token.armed = false;
-
-    // The instance is gone; the token is ours to release.
-    if (token.cancelled) {
-        PollToken.allocator().destroy(token);
-        return;
-    }
+    // Null: the socket went before this turn fired, and the token with it.
+    const instance = token.beginTurn() orelse return;
 
     // A timer callback runs with NO HandleScope on the stack, and everything
     // the pump does downstream of an event - wrapping the event object,
@@ -150,58 +103,47 @@ fn pumpCallback(user_data: ?*anyopaque) void {
     //     Cannot create a handle without a HandleScope
     //
     // which aborts the process. `pumpInScope` opens it.
-    token.in_callback = true;
-    const still_live = pumpInScope(token.instance);
-    token.in_callback = false;
-
-    // `pump` dispatches events, which run script. If that collected the
-    // WebSocket, `detach` has already run and left the free to us - so this is
-    // the first read of the token that is safe to make afterwards.
-    if (token.cancelled) {
-        PollToken.allocator().destroy(token);
-        return;
-    }
+    const still_live = pumpInScope(token, instance);
 
     // A socket that reached CLOSED and fired its close event has nothing left
     // to poll for. Stopping is what lets `hasPendingWork` go false and the
     // event loop go idle - a pump that re-armed forever would hold every test
-    // open for its full timeout.
-    if (!still_live) return;
-    token.arm();
+    // open for its full timeout. A socket that went during the turn leaves
+    // the token to `endTurn` (or to the turn it armed first).
+    token.endTurn(still_live, POLL_INTERVAL_MS, pumpCallback);
 }
 
 /// Run one pump turn as a task of the socket's realm.
 ///
 /// A timer callback is entered from the event loop, not from script, so
-/// nothing has entered the socket's realm. The Engine table's
-/// `runTaskInRealm` does: the realm's agent (a worker's own, never the
-/// page's), a scope and its context - and afterwards the end of the task
-/// the realm's way, which for a worker is its microtask checkpoint and what
-/// it posted leaving for the page (the harness in a worker reports its
-/// results by message, so a close event that ran `test.done()` and stopped
-/// there would still read as a timeout). A window's host loop ends its own.
+/// nothing has entered the socket's realm. `runTaskInRealm` does: the realm's
+/// agent (a worker's own, never the page's), a scope and its context - and
+/// afterwards the end of the task the realm's way, which for a worker is its
+/// microtask checkpoint and what it posted leaving for the page (the harness
+/// in a worker reports its results by message, so a close event that ran
+/// `test.done()` and stopped there would still read as a timeout). A window's
+/// host loop ends its own.
 ///
-/// If the realm cannot be entered - it has gone - the pump does NOTHING and
-/// reports itself live, so the next turn can try again. A worker realm that
-/// ends frees every Instance in its wrapper cache, and `InternalState.deinit`
-/// cancels the token on the way, so no turn is ever pumped into a destroyed
-/// realm.
-fn pumpInScope(instance: *runtime.Instance) bool {
+/// A realm that has ended (retired: no engine context) never comes back, so
+/// the pump stops; one that cannot be entered this turn is tried again.
+fn pumpInScope(token: *PollToken, instance: *runtime.Instance) bool {
     // `pump` may run script that frees the WebSocket, so nothing after it
     // reads `instance`: the realm is its own object.
     const realm = instance.ctx;
-    var turn = PumpTurn{ .instance = instance };
+    if (realm.engine_ctx == null) return false;
+    var turn = PumpTurn{ .token = token, .instance = instance };
     engine.runTaskInRealm(realm, PumpTurn.steps, &turn) catch return true;
     return turn.live;
 }
 
 const PumpTurn = struct {
+    token: *PollToken,
     instance: *runtime.Instance,
     live: bool = true,
 
     fn steps(data: ?*anyopaque) void {
         const self: *PumpTurn = @ptrCast(@alignCast(data orelse return));
-        self.live = pump(self.instance);
+        self.live = pump(self.token, self.instance);
     }
 };
 
@@ -398,11 +340,15 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// then `close`).
 ///
 /// Returns false when there is nothing left to poll for, so the caller stops
-/// re-arming. Every `return false` below is also a point past which `internal`
-/// may no longer exist: dispatching an event runs script, and script can drop
-/// the last reference to the WebSocket. Nothing here touches `internal` after a
-/// dispatch without fetching it again.
-fn pump(instance: *runtime.Instance) bool {
+/// re-arming. Dispatching an event runs script, and script can end the
+/// socket there and then - end its realm (remove the iframe that made it),
+/// which frees the socket, its state, its connection and its Instance. The
+/// socket's teardown detaches the token, which a turn keeps alive to its end,
+/// so after every dispatch the token is read FIRST and nothing else is
+/// touched once it says the socket went: re-reading the Instance read a
+/// freed slab slot, and the connection captured before the dispatch was
+/// freed memory.
+fn pump(token: *PollToken, instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     if (internal.pump_done) return false;
     const connection = internal.connection orelse return false;
@@ -437,7 +383,8 @@ fn pump(instance: *runtime.Instance) bool {
             fireSimpleEvent(instance, "open");
 
             // The open listener ran script. It may have closed the socket, and
-            // it may have dropped it entirely.
+            // it may have ended it entirely.
+            if (token.cancelled) return false;
             const after_open = getInternal(instance) orelse return false;
             if (after_open.pump_done) return false;
         }
@@ -468,14 +415,15 @@ fn pump(instance: *runtime.Instance) bool {
 
         fireMessageEvent(instance, internal, message.data, message.is_text);
 
-        // Dispatch runs script, which may have closed or dropped the socket.
+        // Dispatch runs script, which may have closed or ended the socket.
+        if (token.cancelled) return false;
         const after_message = getInternal(instance) orelse return false;
         if (after_message.pump_done) return false;
     }
 
     // 5. The WebSocket connection is closed: the close task.
     if (connection.closed) {
-        finishClose(instance, internal);
+        finishClose(token, instance, internal);
         return false;
     }
 
@@ -493,7 +441,7 @@ fn pump(instance: *runtime.Instance) bool {
 /// Runs once. The close event's values are read before `error` fires: an
 /// error listener runs script, and script may drop the WebSocket and its
 /// connection with it.
-fn finishClose(instance: *runtime.Instance, internal: *InternalState) void {
+fn finishClose(token: *PollToken, instance: *runtime.Instance, internal: *InternalState) void {
     if (internal.pump_done) return;
     internal.pump_done = true;
 
@@ -516,13 +464,13 @@ fn finishClose(instance: *runtime.Instance, internal: *InternalState) void {
     // 2.
     if (failed) {
         fireSimpleEvent(instance, "error");
-        // Script ran: the WebSocket may be gone. Nothing below reads it but
-        // through `instance`, which the dispatch paths look up afresh.
-        if (getInternal(instance) == null) return;
+        // Script ran: the WebSocket may be gone (see `pump`).
+        if (token.cancelled) return;
     }
 
     // 3.
     fireCloseEvent(instance, outcome);
+    if (token.cancelled) return;
 
     // Nothing more will fire: the socket's lifetime is its wrapper's again.
     releasePendingActivity(instance);
@@ -836,9 +784,9 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
         log.warn("no timer interface in this realm; WebSocket to {s} cannot be pumped", .{url});
         return instance;
     };
-    const token = try PollToken.create(instance, timer);
+    const token = try PollToken.create(tokenAllocator(), instance, timer);
     internal.poll = token;
-    token.arm();
+    token.arm(POLL_INTERVAL_MS, pumpCallback);
 
     // WebSockets § 7: a WebSocket whose connection is not yet closed must not
     // be collected while it has listeners for the events still to come - and
@@ -1188,7 +1136,7 @@ pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: we
 
     // The close event is fired from the pump, never from here: script called
     // close() and must see readyState CLOSING return first.
-    if (internal.poll) |token| token.arm();
+    if (internal.poll) |token| token.arm(POLL_INTERVAL_MS, pumpCallback);
 }
 
 /// Operation: send
