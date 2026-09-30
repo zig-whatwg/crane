@@ -577,7 +577,7 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
     try w.writeAll(direction_contract);
     try w.writeAll("<div class=\"frame\">\n<main class=\"doc\" id=\"main\">\n<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">Web Platform Tests Results</span></h1>\n");
     try writeHeadline(w, f);
-    try w.writeAll("<p class=\"subtitle\">Crane&rsquo;s conformance record, regenerated with every run &mdash; last updated ");
+    try w.writeAll("<p class=\"subtitle\">Crane&rsquo;s conformance record, regenerated with every run; last updated ");
     try html.longDate(w, g.at);
     try w.writeAll("</p>\n<dl class=\"head-meta\">\n<div><dt>This version</dt><dd>");
     try w.print("Generation {d}, recorded at Crane ", .{g.n});
