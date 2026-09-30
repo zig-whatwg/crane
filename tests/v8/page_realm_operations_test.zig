@@ -1951,3 +1951,43 @@ test "protocol: a MessageEvent made with ports keeps one frozen array, the one e
     ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
     try expectEval(w, "[marks.has(withPorts.ports), withPorts.ports === withPorts.ports, withPorts.ports[0] === port].join()", "true,true,true");
 }
+
+/// Bytes of global handles `source` leaves behind in `w` (it must evaluate
+/// to "ok").
+fn handleBytesLeftBy(w: runtime.Context, source: []const u8) !usize {
+    const isolate = isolate_once.?;
+    const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    try expectEval(w, source, "ok");
+    return ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+}
+
+test "protocol: the indexed and named property interceptors release the handles they return" {
+    // A string a named getter returns (`el.dataset.x`) is converted to a
+    // Global that setReturnValue only reads: kept, it was one handle per read,
+    // and encoding/legacy-mb-*-decode read 60,000 a page - a megabyte of
+    // strings a page that no collection could free. The indexed getter
+    // (`classList[0]`), the named descriptor and the named query made the
+    // same kind of value the same way.
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w);
+    try expectEval(w,
+        \\globalThis.el = new Document().createElementNS('http://www.w3.org/1999/xhtml', 'span');
+        \\el.setAttribute('data-bytes', 'E1 78');
+        \\el.className = 'a b';
+        \\el.plain = 'E1 78';
+        \\[el.dataset.bytes, el.classList[0], el.plain].join()
+    , "E1 78,a,E1 78");
+
+    // The control: the same loop over an own data property - what running
+    // the script costs, if anything.
+    const control = try handleBytesLeftBy(w, "for (let i = 0; i < 64; i++) el.plain.length; 'ok'");
+    const named = try handleBytesLeftBy(w, "for (let i = 0; i < 64; i++) el.dataset.bytes.length; 'ok'");
+    const indexed = try handleBytesLeftBy(w, "for (let i = 0; i < 64; i++) el.classList[0].length; 'ok'");
+    const descriptor = try handleBytesLeftBy(w, "for (let i = 0; i < 64; i++) Object.getOwnPropertyDescriptor(el.dataset, 'bytes').value.length; 'ok'");
+    const query = try handleBytesLeftBy(w, "for (let i = 0; i < 64; i++) 'bytes' in el.dataset; 'ok'");
+    if (named > control or indexed > control or descriptor > control or query > control) {
+        std.debug.print("64 reads left global handle bytes: named getter {d}, indexed getter {d}, named descriptor {d}, named query {d}; an own property {d}\n", .{ named, indexed, descriptor, query, control });
+        return error.HandlesLeaked;
+    }
+}

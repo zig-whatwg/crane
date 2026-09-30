@@ -33,6 +33,7 @@
 //! - Single point of maintenance for registry logic
 
 const std = @import("std");
+const TombstoneGuard = @import("tombstones.zig").TombstoneGuard;
 
 /// Generic instance registry that maps pointer addresses to internal state.
 ///
@@ -71,6 +72,12 @@ pub fn InstanceRegistry(comptime T: type) type {
 
         var map: ?std.AutoHashMap(usize, Slot) = null;
 
+        /// Every node a page makes is registered here and removed when the
+        /// page ends, so the map sees a page's worth of removals per page and
+        /// its tombstones would take every free slot: the guard rehashes
+        /// before an insert when they could (tombstones.zig).
+        var guard: TombstoneGuard = .{};
+
         /// Ensure the registry is initialized.
         /// This is called automatically by get/set/remove but can be called
         /// explicitly if needed.
@@ -99,6 +106,7 @@ pub fn InstanceRegistry(comptime T: type) type {
         /// the only way a discarded node's internal state comes back.
         pub fn set(instance: anytype, internal: *T) !void {
             const m = ensure();
+            guard.beforeInsert(m);
             try m.put(@intFromPtr(instance), .{ .ptr = internal });
         }
 
@@ -129,6 +137,7 @@ pub fn InstanceRegistry(comptime T: type) type {
             }.free;
 
             const m = ensure();
+            guard.beforeInsert(m);
             try m.put(@intFromPtr(instance), .{
                 .ptr = internal,
                 .owner = @ptrCast(arena),
@@ -143,6 +152,7 @@ pub fn InstanceRegistry(comptime T: type) type {
         pub fn remove(instance: anytype) void {
             const m = ensure();
             if (m.fetchRemove(@intFromPtr(instance))) |kv| {
+                guard.noteRemoval(m);
                 // Returns the block only if the registry allocated it. A
                 // caller-owned block freed here would be a double free; an owned
                 // block left here is the 904 bytes per element this exists to stop.
@@ -172,6 +182,7 @@ pub fn InstanceRegistry(comptime T: type) type {
         pub fn clear() void {
             if (map) |*m| {
                 m.clearRetainingCapacity();
+                guard.reset();
             }
         }
 
@@ -212,6 +223,7 @@ pub fn InstanceRegistry(comptime T: type) type {
                     // free lists that are about to be discarded is pure cost.
                 }
                 m.clearRetainingCapacity();
+                guard.reset();
             }
         }
 
