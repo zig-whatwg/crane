@@ -10,7 +10,7 @@
   const n = (x) => nf.format(x || 0);
   const $ = (sel, root = document) => root.querySelector(sel);
 
-  const state = { meta: null, suites: null, rows: new Map(), sections: new Map(), dirCache: new Map(), fileCache: new Map() };
+  const state = { suiteNo: new Map(), meta: null, suites: null, rows: new Map(), sections: new Map(), dirCache: new Map(), fileCache: new Map() };
 
   // ---------------------------------------------------------------- helpers
   function el(tag, attrs, ...kids) {
@@ -30,6 +30,14 @@
     const e = document.createElementNS(svgNS, tag);
     for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
     return e;
+  }
+  // A path or file name with break opportunities after its separators, so a
+  // narrow column wraps it at "_", "-", "." or "/" rather than mid-word.
+  function breakable(text) {
+    const code = document.createElement("code");
+    const parts = String(text).split(/(?<=[_\-./])/);
+    parts.forEach((p, i) => { if (i) code.append(document.createElement("wbr")); code.append(p); });
+    return code;
   }
   function plural(x, one, many) { return `${n(x)} ${x === 1 ? one : (many || one + "s")}`; }
   const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -101,7 +109,7 @@
     const runNodes = [];
     runs.slice(0, 2).forEach(([id, r], i) => {
       if (i > 0) runNodes.push("; ");
-      runNodes.push(el("code", { text: id }), ` (${plural(r.files, "file")}, `, r.commit ? commitLink(r.commit) : "commit not in its label", `, ${shortDateY(r.date)})`);
+      runNodes.push(el("code", { text: id }), ` (${plural(r.files, "file")}, `, r.commit ? commitLink(r.commit) : "commit not in its label", ", ", el("span", { class: "nowrap", text: shortDateY(r.date) }), ")");
     });
     if (runs.length > 2) runNodes.push(el("span", { class: "runs-more", text: `; and ${plural(runs.length - 2, "more run")}, named on each file` }));
     if (!runs.length) runNodes.push("none yet");
@@ -124,7 +132,7 @@
     }
     fill("history-no", `${suites.suites.length + 1}`);
     const spark = drawStack(meta.history, { width: 168, height: 30, spark: true });
-    fill("spark", spark, el("span", { class: "spark-text", text: `${plural(meta.history.length, "generation")} since ${shortDateY(meta.history[0] && meta.history[0].at)}` }));
+    fill("spark", spark, el("span", { class: "spark-text" }, `${plural(meta.history.length, "generation")} since `, el("span", { class: "nowrap", text: shortDateY(meta.history[0] && meta.history[0].at) })));
   }
 
   // ---------------------------------------------------------------- contents rail
@@ -248,7 +256,8 @@
   // suite (xhr/ keeps hundreds of files at its top) does not become the page.
   const CAP_OVER = 24, CAP_SHOW = 12;
   function fillList(ul, d) {
-    const dirs = d.dirs.map(dirRow);
+    const suiteNo = state.suiteNo.get(d.path);
+    const dirs = d.dirs.map((x, i) => dirRow(x, suiteNo ? `${suiteNo}.${i + 1}` : null));
     const files = d.files.map(fileRow);
     ul.replaceChildren(...dirs, ...files);
     if (files.length > CAP_OVER) {
@@ -267,11 +276,11 @@
     for (const li of ul.querySelectorAll(":scope > .capped")) li.classList.remove("capped");
   }
 
-  function dirRow(dir) {
+  function dirRow(dir, secno) {
     const t = dir.totals;
     const fold = el("div", { class: "fold" }, el("div", { class: "fold-in" }));
     const id = `r-${state.rows.size}`;
-    const btn = el("button", { class: "toggle", type: "button", "aria-expanded": "false", "aria-controls": id }, twisty(), el("code", { text: `${dir.name}/` }));
+    const btn = el("button", { class: "toggle", type: "button", "aria-expanded": "false", "aria-controls": id }, twisty(), secno ? el("span", { class: "dir-no", text: secno }) : null, breakable(`${dir.name}/`));
     const tally = el("span", { class: "tally" },
       el("span", { text: plural(t.files, "file") }),
       t.blocking ? el("span", { class: "blk", text: `${n(t.blocking)} blocking` }) : null,
@@ -308,7 +317,7 @@
     const reported = c.pass + c.fail + c.timeout + c.notrun;
     const fold = el("div", { class: "fold" }, el("div", { class: "fold-in" }));
     const id = `r-${state.rows.size}`;
-    const btn = el("button", { class: "toggle", type: "button", "aria-expanded": "false", "aria-controls": id }, twisty(), el("code", { text: f.name }));
+    const btn = el("button", { class: "toggle", type: "button", "aria-expanded": "false", "aria-controls": id }, twisty(), breakable(f.name));
     const blocking = BLOCKING.has(f.gate);
     const stat = el("span", { class: "tally fstat" },
       el("span", { class: "fcount" }, reported ? [el("b", { text: n(c.pass) }), ` / ${n(reported)}`] : ""),
@@ -396,9 +405,10 @@
     const host = $("#suites");
     host.replaceChildren();
     state.suites.suites.forEach((s, i) => {
+      state.suiteNo.set(s.path, i + 1);
       const id = sectionId(s.name);
       const sec = el("section", { class: "suite", id, "aria-labelledby": `${id}-h` },
-        el("h2", { id: `${id}-h` }, el("span", { class: "secno", text: `${i + 1}` }), el("code", { text: `${s.name}/` }), selfLink(id, `section ${i + 1}, ${s.name}`)),
+        el("h2", { id: `${id}-h` }, el("span", { class: "secno", text: `${i + 1}` }), breakable(`${s.name}/`), selfLink(id, `section ${i + 1}, ${s.name}`)),
         el("p", { class: "suite-lede", text: lede(s) }),
         el("div", { class: "boxes" }, confBox(s), testsBox(s)));
       host.append(sec);
@@ -592,6 +602,10 @@
     fill("recon", firstLive > 0 ? `Generations 1 to ${gens[firstLive - 1].n}` : "No generation");
     const r2 = gens.find((g) => g.gate_rule === 2);
     if (r2) fill("rule2", String(r2.n));
+    const last = gens[gens.length - 1], tot = state.suites.totals;
+    if (last && (last.total !== tot.files || last.blocking !== tot.blocking)) {
+      fill("reconcile", ` The latest generation, ${last.n}, was recorded against ${plural(last.total, "worklist file")} with ${n(last.blocking)} blocking; the sections above read the current worklist of ${n(tot.files)} files (${n(tot.files - tot.unrun)} run, ${n(tot.blocking)} blocking), and the two agree again when the progress report next records a generation.`);
+    }
     void live;
 
     const table = el("table", null,
