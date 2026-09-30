@@ -2060,6 +2060,32 @@ pub fn V8Interface(comptime Interface: type) type {
         /// object (the old Window) by the spec. Blink reads the holder, the global
         /// object itself; here the context manager records each realm's Window.
         /// For an attached realm both answers are the same Window.
+        /// HTML: "The window, frames, and self getter steps are to return
+        /// this's relevant realm.[[GlobalEnv]].[[GlobalThisValue]]" - the
+        /// WindowProxy, which the getter's own realm answers without its
+        /// Window: when `this` is that realm's global, its global this value
+        /// is the context's global proxy. `self` and `frames` are own data
+        /// properties holding it already; `window` is an accessor, and a
+        /// removed frame's realm ends (engine.WindowRealmEnd.
+        /// navigable_destroyed) with its global still attached but its Window
+        /// freed, so looking the Window up made `w.window` throw where
+        /// `w.self` answered (self-et-al.window.js). Answers false for any
+        /// other `this`, which the generic path brand-checks.
+        fn answerWindowGetter(info: *const v8.FunctionCallbackInfo) bool {
+            const isolate = info.getIsolate();
+            // V8 enters the getter's creation context: the method's realm.
+            const method_ctx = v8.v8_Isolate_GetCurrentContext(isolate) orelse return false;
+            defer v8.v8_Context_Dispose(method_ctx);
+            const method_global = v8.v8_Context_Global(method_ctx) orelse return false;
+            defer v8.v8_Object_Dispose(method_global);
+            const this_obj = info.getThis();
+            defer v8.v8_Object_Dispose(this_obj);
+            if (!v8.v8_Value_StrictEquals(@ptrCast(this_obj), @ptrCast(method_global))) return false;
+            // Copied into the return value; ours is released above.
+            info.setReturnValue(@ptrCast(method_global));
+            return true;
+        }
+
         fn realmWindow(method_ctx: *v8.Context, method_global: *v8.Object) ?*anyopaque {
             if (@import("context_manager.zig").getWindowForContext(method_ctx)) |window| return @ptrCast(window);
             return v8.v8_Object_GetAlignedPointerFromInternalField(method_global, 0);
@@ -2143,6 +2169,11 @@ pub fn V8Interface(comptime Interface: type) type {
                         const v8_num = conv.toV8Long(isolate_inner, @intCast(result));
                         info.setReturnValue(@ptrCast(v8_num));
                     } else {
+                        // `window` needs no Window (see answerWindowGetter).
+                        if (comptime is_global_interface and std.mem.eql(u8, getter_name, "get_window")) {
+                            if (answerWindowGetter(info)) return;
+                        }
+
                         // Instance getter - extract instance from 'this' and call
                         const this_obj = info.getThis();
                         defer v8.v8_Object_Dispose(this_obj);

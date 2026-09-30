@@ -641,10 +641,28 @@ pub inline fn createWindowRealm(options: *const WindowRealmOptions) Error!Contex
     return impl.createWindowRealm(options);
 }
 
-/// Destroy a Window realm (Blink's DisposeContext order). After it the
-/// Context may only be compared.
-pub inline fn destroyWindowRealm(realm: Context) void {
-    impl.destroyWindowRealm(realm);
+/// How a Window realm ends - Blink's LocalWindowProxy lifecycle states.
+pub const WindowRealmEnd = enum {
+    /// Its page is gone, or a navigation gave its navigable a new Window
+    /// (Blink kGlobalObjectIsDetached): the WindowProxy is detached from the
+    /// global object, and script that still holds it reaches nothing.
+    global_detached,
+    /// HTML "destroy a child navigable": its navigable is gone - an iframe
+    /// was removed - but script may still hold its WindowProxy (Blink
+    /// kFrameIsDetached, which leaves the global attached). The global stays
+    /// attached, severed from the Window the host frees: its own properties
+    /// (`self`, `frames`, `globalThis`) and `window` keep answering, and a
+    /// member that needs the Window throws a TypeError. (The spec keeps the
+    /// Window alive for as long as a WindowProxy for it is held; that is not
+    /// modelled yet.)
+    navigable_destroyed,
+};
+
+/// Destroy a Window realm (Blink's DisposeContext order), as `how` says -
+/// and the realms of its frames first, the same way. After it the Context may
+/// only be compared.
+pub inline fn destroyWindowRealm(realm: Context, how: WindowRealmEnd) void {
+    impl.destroyWindowRealm(realm, how);
 }
 
 /// A worker's realm, in `agent`. OWNED: `destroyWorkerRealm`.

@@ -333,6 +333,21 @@ fn severWindow(global: *ffi.Object, window: *engine.Instance) void {
     }
 }
 
+/// Sever `context`'s WindowProxy and the global object behind it - both
+/// carry the Window in field 0 - from `window`, which is being freed while
+/// the global stays attached (engine.WindowRealmEnd.navigable_destroyed).
+/// Only compares `window`; never reads it.
+fn severAttachedGlobal(context: *ffi.Context, window: *engine.Instance) void {
+    const proxy = ffi.v8_Context_Global(context) orelse return;
+    defer ffi.v8_Object_Dispose(proxy);
+    severWindow(proxy, window);
+    // V1 GetPrototype on a global proxy answers the hidden global object,
+    // which V2 (severWindow's walk) steps over.
+    const global = ffi.v8_Object_GetPrototype(proxy) orelse return;
+    defer ffi.v8_Global_Dispose(global);
+    if (ffi.v8_Value_IsObject(global)) severWindow(@ptrCast(global), window);
+}
+
 fn clearWindowField(object: *ffi.Object, window: *engine.Instance) void {
     if (ffi.v8_Object_InternalFieldCount(object) < 1) return;
     const ptr = ffi.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse return;
@@ -465,8 +480,9 @@ fn isEnding(realm: Context) bool {
     return false;
 }
 
-/// The end of a Window realm (Blink's LocalWindowProxy::DisposeContext order).
-pub fn destroyWindowRealm(realm: Context) void {
+/// The end of a Window realm (Blink's LocalWindowProxy::DisposeContext order),
+/// as `how` says (engine.WindowRealmEnd).
+pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
     // A realm ends once, and its end can reach itself: the context manager's
     // teardown frees what the realm's wrapper cache holds, and a removed
     // iframe element wrapped only here (`frames[0].frameElement`) takes its
@@ -479,9 +495,10 @@ pub fn destroyWindowRealm(realm: Context) void {
     ending_realms = &ending;
     defer ending_realms = ending.next;
 
-    // Its frames' realms that are still alive end first.
+    // Its frames' realms that are still alive end first, the same way: a
+    // removed frame's frames are destroyed navigables too.
     if (window_realms.get(realm)) |s| {
-        while (s.children.pop()) |child| destroyWindowRealm(child);
+        while (s.children.pop()) |child| destroyWindowRealm(child, how);
         s.children.deinit(std.heap.c_allocator);
     }
     const state = if (window_realms.fetchRemove(realm)) |kv| kv.value else null;
@@ -514,9 +531,21 @@ pub fn destroyWindowRealm(realm: Context) void {
     // its frames, and retires the realm - which from here on has no engine
     // context, and may only be compared.
     context_manager.removeContext(context);
-    // 2. Break the context's link to its global proxy - the WindowProxy, which
-    // outlives it - unless a later realm already took the proxy over.
-    if (state == null or !state.?.window_proxy_handed_on) ffi.v8_Context_DetachGlobal(context);
+    // 2. The context and its global proxy - the WindowProxy, which outlives
+    // them.
+    switch (how) {
+        // Break the link, unless a later realm already took the proxy over.
+        .global_detached => if (state == null or !state.?.window_proxy_handed_on) ffi.v8_Context_DetachGlobal(context),
+        // Blink's DisposeContext(kFrameIsDetached) leaves the global
+        // attached: script that holds a removed frame's WindowProxy still
+        // reads its own properties - `self`, `frames`, `globalThis` - and
+        // `window` (self-et-al.window.js). Detached, every read threw "no
+        // access", from whenever the collector freed the removed iframe.
+        // The global outlives the Window the context manager just freed, so
+        // it is severed from it: a member that needs the Window finds none
+        // and throws a TypeError, rather than reading freed memory.
+        .navigable_destroyed => if (state) |s| if (s.window) |window| severAttachedGlobal(context, window),
+    }
     // 3. Exit the context entered for the realm's life - unless a realm
     // that took over its WindowProxy was entered in its place. Only the last
     // entered context can be exited; one still under another is left entered

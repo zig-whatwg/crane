@@ -243,19 +243,57 @@ fn destroyRetiredRealm(data: *anyopaque, global: ?*anyopaque, allocator: std.mem
     _ = global;
     _ = allocator;
     const realm: runtime.Context = @ptrCast(@alignCast(data));
-    engine.destroyWindowRealm(realm);
+    engine.destroyWindowRealm(realm, .global_detached);
 }
 
-/// Cleanup callback for iframe context
-/// Called when the iframe is removed from the document: the navigable's realm
-/// ends (engine.destroyWindowRealm, which ends its frames' realms first).
+/// Cleanup callback for iframe context, run when the integration goes with
+/// its element: the navigable's realm, if it still has one, ends
+/// (engine.destroyWindowRealm, which ends its frames' realms first) - its
+/// page is ending with the element in it. A removed iframe's realm is not
+/// here any more: the removal took it (`endRemovedFrameRealm`).
 fn iframeContextCleanup(integration: *IFrameIntegration) void {
     if (integration.context_cleanup_data) |data| {
         // Cleared first: nothing re-entered below may reach a realm that is
         // ending. Ending one twice finds nothing the second time.
         integration.context_cleanup_data = null;
-        engine.destroyWindowRealm(@ptrCast(@alignCast(data)));
+        engine.destroyWindowRealm(@ptrCast(@alignCast(data)), .global_detached);
     }
+}
+
+/// HTML "destroy a child navigable", for the realm: an iframe removed from
+/// its document takes its navigable's realm with it, and the realm ends at a
+/// task queued by the removal - never with the frame's own script on the
+/// stack (a frame can remove its own container), and never at whatever point
+/// the collector frees the removed element, which is when it used to end:
+/// html/browsers/the-window-object/self-et-al.window.js read anything from 0
+/// to 7 of 8 by when that happened. Blink ends it in
+/// LocalWindowProxy::DisposeContext(kFrameIsDetached), which leaves the
+/// global attached (engine.WindowRealmEnd.navigable_destroyed).
+///
+/// The element hands the realm over (`context_cleanup_data`), so neither its
+/// collection nor an insertion that makes a new navigable ends or retires it
+/// again. A task its loop drops needs nothing: the loop goes as its page
+/// ends, and the page's realm ends its frames' realms first.
+///
+/// Deviation, stated: the realm's end frees its Window, so after this task a
+/// removed frame's WindowProxy answers only its self-references (`self`,
+/// `frames`, `globalThis`, `window`); every other Window member throws a
+/// TypeError. The spec keeps the Window for as long as script holds its
+/// WindowProxy - `closed` reads true (its browsing context is discarded),
+/// `document` answers - as Chrome, Edge and Firefox do.
+/// crane/fl-removed-frame-window-survives-gc.html pins the deviation. Lifting
+/// it needs the Window kept while its WindowProxy is held, and so the Window's
+/// and Document's children traced from their wrappers rather than pinned
+/// (same_object.Pin), or the pins would keep the frame's context forever.
+fn queueRemovedFrameRealmEnd(element: *runtime.Instance, integration: *IFrameIntegration) void {
+    const data = integration.context_cleanup_data orelse return;
+    const loop = element.ctx.getOptionalEventLoop() orelse return;
+    integration.context_cleanup_data = null;
+    loop.queueTask(.{ .callback = endRemovedFrameRealm, .context = data, .drop = null });
+}
+
+fn endRemovedFrameRealm(data: ?*anyopaque) void {
+    engine.destroyWindowRealm(@ptrCast(@alignCast(data.?)), .navigable_destroyed);
 }
 
 /// HTML "destroy a child navigable", for the documents: the active
@@ -3783,6 +3821,8 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
         }
     }
     const was_delaying = internal.integration.delaying_load;
+    // "Destroy a child navigable": its realm ends at a task of its own.
+    if (internal.integration.state != .discarded) queueRemovedFrameRealmEnd(instance, internal.integration);
     internal.integration.onRemovedFromDocument();
     // The node document may have been waiting on this frame's navigation to
     // fire its load event. It has no content navigable now.
