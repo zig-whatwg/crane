@@ -20,6 +20,9 @@ const fetch = @import("fetch");
 // Host platform IO, for file: URLs.
 const host = @import("host");
 
+/// The response `resultFromResponse` takes, as Fetch hands it over.
+pub const InternalResponse = fetch.internal.InternalResponse;
+
 /// Fetch result for navigation
 pub const NavigationFetchResult = struct {
     allocator: Allocator,
@@ -287,9 +290,9 @@ pub fn navigationRequest(
         .manual => .manual,
     };
 
-    // Set referrer if provided
+    // Set referrer if provided - a copy, which the request frees.
     if (options.referrer) |ref| {
-        internal_request.referrer = .{ .url = ref };
+        internal_request.setReferrerUrl(ref) catch return NavigationFetchError.OutOfMemory;
     }
 
     // Set origin if provided
@@ -620,6 +623,10 @@ pub fn contentTypeFromPath(path: []const u8) []const u8 {
 }
 
 /// Percent-decode a string
+/// URL "percent-decode" (URL Standard 1.3) of a data: URL's body: a "%"
+/// followed by two hex digits is that byte, and every other byte stays -
+/// "+" included, which only application/x-www-form-urlencoded reads as a
+/// space.
 fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
     // Pre-calculate the maximum size needed
     var result = try allocator.alloc(u8, input.len);
@@ -639,10 +646,6 @@ fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
             result[write_idx] = byte;
             write_idx += 1;
             i += 3;
-        } else if (input[i] == '+') {
-            result[write_idx] = ' ';
-            write_idx += 1;
-            i += 1;
         } else {
             result[write_idx] = input[i];
             write_idx += 1;
@@ -775,30 +778,4 @@ test "extractOrigin" {
     try std.testing.expectEqualStrings("https://example.com", extractOrigin("https://example.com/path").?);
     try std.testing.expectEqualStrings("https://example.com:8080", extractOrigin("https://example.com:8080/path").?);
     try std.testing.expectEqualStrings("http://localhost", extractOrigin("http://localhost/").?);
-}
-
-test "resultFromResponse - a redirect chain that crosses origins marks the result" {
-    const allocator = std.testing.allocator;
-    // Out and back again: the final URL is same origin with the first, and
-    // the document is still "created via cross-origin redirects".
-    const across = try fetch.internal.InternalResponse.init(allocator);
-    defer across.deinit();
-    across.status = 200;
-    try across.addUrl("http://a.test/start");
-    try across.addUrl("https://b.test/redirect");
-    try across.addUrl("http://a.test/final");
-    var crossed = try resultFromResponse(allocator, "http://a.test/start", across, .{});
-    defer crossed.deinit();
-    try std.testing.expect(crossed.has_cross_origin_redirects);
-    try std.testing.expectEqualStrings("http://a.test/final", crossed.final_url);
-
-    // Redirects within one origin, and no redirect at all, do not.
-    const within = try fetch.internal.InternalResponse.init(allocator);
-    defer within.deinit();
-    within.status = 200;
-    try within.addUrl("http://a.test/start");
-    try within.addUrl("http://a.test/next");
-    var same = try resultFromResponse(allocator, "http://a.test/start", within, .{});
-    defer same.deinit();
-    try std.testing.expect(!same.has_cross_origin_redirects);
 }

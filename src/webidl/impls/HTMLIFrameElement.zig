@@ -738,6 +738,10 @@ const Navigation = struct {
     /// owned).
     prepared: ?html_core.navigation.joint_history.Prepared = null,
     target_origin: ?[]u8 = null,
+    /// The request's referrer, resolved (Fetch "determine request's
+    /// referrer" for the source document): its URL, or null for no
+    /// referrer. Owned.
+    referrer: ?[]u8 = null,
     /// The user navigated from the browser's UI (userInvolvement "browser
     /// UI"), which no self-referential URL bound applies to.
     browser_initiated: bool = false,
@@ -769,6 +773,7 @@ const Navigation = struct {
         if (self.post_body) |b| self.allocator.free(b);
         if (self.post_content_type) |t| self.allocator.free(t);
         if (self.target_origin) |o| self.allocator.free(o);
+        if (self.referrer) |r| self.allocator.free(r);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
@@ -906,6 +911,57 @@ fn initiatorSameOrigin(source: ?*runtime.Instance, active_url: []const u8, alloc
     return std.mem.eql(u8, a, b);
 }
 
+/// Navigate step 21's condition: whether `active`'s origin is "same
+/// origin-domain" (HTML 7.1.1.2) with `source`'s - navigate's
+/// sourceDocument's; true with no source (the user agent's own navigation).
+///
+/// "1. If A and B are the same opaque origin, then return true. 2. If A and
+/// B are both tuple origins, then: 1. If A and B's schemes are identical,
+/// and their domains are identical and non-null, then return true. 2.
+/// Otherwise, if A and B are same origin and their domains are identical and
+/// null, then return true. 3. Return false."
+///
+/// Deviation, stated: this engine keeps no identity for an opaque origin
+/// (Origin.isSameOrigin treats each as distinct), so two documents are the
+/// same opaque origin only when they are the same document - one a
+/// sandboxed frame navigates itself in.
+fn initiatorSameOriginDomain(source: ?*runtime.Instance, active: *runtime.Instance, allocator: std.mem.Allocator) bool {
+    const src = source orelse return true;
+    const a = documentOriginOf(src, allocator) orelse return false;
+    defer allocator.free(a);
+    const b = documentOriginOf(active, allocator) orelse return false;
+    defer allocator.free(b);
+    const a_opaque = std.mem.eql(u8, a, "null");
+    const b_opaque = std.mem.eql(u8, b, "null");
+    // Step 1.
+    if (a_opaque or b_opaque) return a_opaque and b_opaque and src == active;
+    // Step 2: both tuple origins.
+    const a_domain = dom_module.document_origin.domain(src);
+    const b_domain = dom_module.document_origin.domain(active);
+    // 2.1.
+    if (a_domain != null and b_domain != null) {
+        return std.mem.eql(u8, schemeOfOrigin(a), schemeOfOrigin(b)) and std.mem.eql(u8, a_domain.?, b_domain.?);
+    }
+    // 2.2.
+    if (a_domain == null and b_domain == null) return std.mem.eql(u8, a, b);
+    // Step 3.
+    return false;
+}
+
+/// `document`'s origin, serialized ("null" for an opaque one) and owned by
+/// `allocator`, as its Window reports it - which an about:blank or srcdoc
+/// document inherits; null when it has no Window to ask.
+fn documentOriginOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?[]u8 {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
+    return originOfWindow(window, allocator) catch null;
+}
+
+/// The scheme of a serialized tuple origin ("scheme://host[:port]").
+fn schemeOfOrigin(origin: []const u8) []const u8 {
+    const end = std.mem.indexOf(u8, origin, "://") orelse return origin;
+    return origin[0..end];
+}
+
 /// HTML "navigate" `integration`'s navigable to `url` (serialized, absolute).
 /// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
 ///
@@ -990,6 +1046,10 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             return;
         };
     }
+    // "Create navigation params by fetching" step 3's request: its referrer
+    // is the document state's request referrer, "client" - the source
+    // document, as Fetch resolves it.
+    if (options.source_document) |source| record.referrer = requestReferrerOf(source, allocator);
     // Step 5: "Let initiatorBaseURLSnapshot be sourceDocument's document base
     // URL" - kept only where it can be used, for a document at about:blank
     // or about:srcdoc (navigate step 22.3's document state).
@@ -1015,7 +1075,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // is a fetch scheme (navigate-event/navigate-to-srcdoc).
     if (options.traversal_entry == 0 and active != null and
         options.user_involvement != .browser_ui and
-        initiatorSameOrigin(options.source_document, active_url, allocator) and
+        initiatorSameOriginDomain(options.source_document, active.?, allocator) and
         !document_lifecycle.isInitialAboutBlank(active.?) and
         navigate_steps.isFetchScheme(url))
     {
@@ -1049,6 +1109,30 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     }
     // Step 23: "In parallel": beforeunload, then the fetch.
     queueNavigationTask(integration, id, &runBeforeUnload);
+}
+
+/// Fetch "determine request's referrer" step 2 for a request whose
+/// referrer is "client" and whose client is `source`'s: "If document's
+/// origin is opaque, return no referrer. While document is an iframe srcdoc
+/// document, let document be document's browsing context's container
+/// document. Let referrerSource be document's URL." Owned by `allocator`;
+/// null for no referrer (main fetch strips and applies the policy).
+fn requestReferrerOf(source: *runtime.Instance, allocator: std.mem.Allocator) ?[]u8 {
+    const window = (interfaces.Document.get_defaultView(source) catch null) orelse return null;
+    const origin = originOfWindow(window, allocator) catch return null;
+    defer allocator.free(origin);
+    if (std.mem.eql(u8, origin, "null")) return null;
+    var document = source;
+    var depth: usize = 0;
+    while (depth < 64) : (depth += 1) {
+        const url = documentUrlOf(document, allocator) catch return null;
+        if (!navigate_steps.matchesAboutSrcdoc(url)) return url;
+        allocator.free(url);
+        const view = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
+        const container = dom_module.navigable_container.of(view) orelse return null;
+        document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return null;
+    }
+    return null;
 }
 
 /// Queue `callback` for navigation `id` on the navigable's event loop - a
@@ -1153,6 +1237,13 @@ fn startFetch(record: *Navigation) void {
             // The navigable's cookie jar: a frame's top's, a popup's own
             // (its opener's).
             .cookie_jar = if (record.integration.browsing_context) |bc| bc.cookieJar() else null,
+            // The request's referrer; main fetch applies the referrer
+            // policy. Not modelled, stated: the policy itself - the source
+            // document's policy container's, or an iframe's referrerpolicy
+            // attribute for "navigate an iframe or frame" - since documents
+            // here carry no policy container: the request keeps the default,
+            // strict-origin-when-cross-origin (main fetch step 8).
+            .referrer = record.referrer,
         }) catch {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
@@ -2204,32 +2295,37 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
 /// Not modelled, stated: the hyperlink's referrer policy and user
 /// involvement, and blob URL entries (step 6's noopener for a blob: URL).
 fn followHyperlink(subject: *runtime.Instance) void {
-    const ElementImpl = @import("Element.zig");
-    const NodeImpl = @import("Node.zig");
-    const document = NodeImpl.getOwnerDocument(subject) orelse return;
+    const document = (interfaces.Node.get_ownerDocument(subject) catch null) orelse return;
     // Step 1: "If subject cannot navigate, then return": its node document is
     // not fully active (it has no Window), or it is not an a element and not
     // connected.
     if ((interfaces.Document.get_defaultView(document) catch null) == null) return;
     const is_anchor = subject.stateAs(interfaces.HTMLAnchorElement.State) != null;
-    if (!is_anchor and !(NodeImpl.get_isConnected(subject) catch false)) return;
+    if (!is_anchor and !(interfaces.Node.get_isConnected(subject) catch false)) return;
 
     // Steps 2-3: "get an element's target" - its target attribute, else the
     // document's first base element with one; "if target is not null, and
     // contains an ASCII tab or newline and a U+003C (<), then set target to
     // "_blank"" (dangling markup).
-    const target_attr = ElementImpl.call_getAttribute(subject, runtime.DOMString.initInterned("target")) catch null;
+    const target_attr = interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("target")) catch null;
     const given_target: []const u8 = if (target_attr) |t| t.asSlice() else baseTarget(document);
     const dangling = std.mem.indexOfAny(u8, given_target, "\t\n\r") != null and std.mem.indexOfScalar(u8, given_target, '<') != null;
     const target: []const u8 = if (dangling) "_blank" else given_target;
 
-    // Steps 4-5: the URL, encoding-parsed relative to the node document.
-    const href = (ElementImpl.call_getAttribute(subject, runtime.DOMString.initInterned("href")) catch null) orelse return;
+    // Steps 4-5: the URL, encoding-parsed relative to the node document. An
+    // SVG a takes it from its href attribute, falling back to the XLink
+    // namespace's href only when href is absent (SVG 2) - an empty href
+    // still wins.
+    const href = (interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("href")) catch null) orelse
+        (if (subject.stateAs(interfaces.HTMLElement.State) == null)
+            interfaces.Element.call_getAttributeNS(subject, runtime.DOMString.initInterned("http://www.w3.org/1999/xlink"), runtime.DOMString.initInterned("href")) catch null
+        else
+            null) orelse return;
     const url = parseRelativeToDocument(document, href.asSlice()) orelse return;
     defer document.ctx.allocator.free(url);
 
     // Step 6: "get an element's noopener".
-    const rel = ElementImpl.call_getAttribute(subject, runtime.DOMString.initInterned("rel")) catch null;
+    const rel = interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("rel")) catch null;
     const rel_value: []const u8 = if (rel) |r| r.asSlice() else "";
     const noopener = hasLinkType(rel_value, "noopener") or hasLinkType(rel_value, "noreferrer") or
         (!hasLinkType(rel_value, "opener") and std.ascii.eqlIgnoreCase(target, "_blank"));
