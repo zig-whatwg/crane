@@ -37,6 +37,9 @@ const engine = @import("engine");
 
 // A worker's module scripts: its module map, and import()'s graph.
 const module_script = @import("module_script.zig");
+// The request a script fetch builds, populated from its client.
+const script_request = @import("script_request.zig");
+const fetch_mod = @import("fetch");
 
 // Unhandled promise rejections: HostPromiseRejectionTracker and "notify about
 // rejected promises", for the worker's global as for a window's.
@@ -366,16 +369,142 @@ pub fn postMessageFromScope(ctx: runtime.Context, message: runtime.JSValue, tran
     try wctx.postMessageToOwner(message, transfer);
 }
 
-/// WorkerGlobalScope importScripts(): run the fetched `source` of `url` in
-/// the worker whose realm is `ctx`, as the worker's scripts run.
-pub fn runImportedScript(ctx: runtime.Context, source: []const u8, url: []const u8) anyerror!void {
+/// A classic script importScripts() fetched: what "fetch a classic
+/// worker-imported script" returns, for `runImportedScript`.
+pub const ImportedScript = struct {
+    allocator: Allocator,
+    /// The source text, UTF-8 (a leading BOM stripped). Owned.
+    source: []u8,
+    /// The response's URL - after redirects. Owned.
+    url: []u8,
+    /// The script's muted errors: its response was CORS-cross-origin.
+    muted: bool,
+
+    pub fn deinit(self: *ImportedScript) void {
+        self.allocator.free(self.source);
+        self.allocator.free(self.url);
+    }
+};
+
+/// HTML "fetch a classic worker-imported script" given `url` (parsed) and
+/// the settings object of the worker whose realm is `ctx`.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-classic-worker-imported-script
+/// "Let request be a new request whose URL is url, client is settingsObject,
+///  destination is "script", initiator type is "other", parser metadata is
+///  "not parser-inserted", and whose use-URL-credentials flag is set." Its
+///  mode is a new request's, "no-cors", so a script from another origin
+///  loads - with muted errors. "Unlike other algorithms in this section, the
+///  fetching process is synchronous here."
+/// Then, on the response's unsafe response - an opaque response's own status
+/// and headers (Crane's fetch hands back the internal response, marked with
+/// its filter type): "If any of the following are true: bodyBytes is null or
+/// failure; response's status is not an ok status; or the result of
+/// extracting a MIME type from response's header list is not a JavaScript
+/// MIME type, then throw a "NetworkError" DOMException."
+pub fn fetchClassicWorkerImportedScript(ctx: runtime.Context, url: []const u8) error{ NetworkError, OutOfMemory }!ImportedScript {
+    const allocator = ctx.allocator;
+    const request = fetch_mod.internal.InternalRequest.init(allocator, url) catch return error.OutOfMemory;
+    defer request.deinit();
+    request.destination = .script;
+    request.initiator_type = .other;
+    request.use_url_credentials = true;
+    // "client is settingsObject": what Fetch reads from it.
+    script_request.populateRequestFromClient(request, ctx) catch return error.OutOfMemory;
+
+    var fetched = fetch_mod.algorithms.fetch(allocator, request, .{}) catch |err| return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.NetworkError,
+    };
+    defer fetched.timing_info.deinit();
+    const response = fetched.response;
+    defer response.deinit();
+
+    if (response.response_type == .@"error") return error.NetworkError;
+    if (response.status < 200 or response.status >= 300) return error.NetworkError;
+    const body = if (response.body) |b| b.data.items else return error.NetworkError;
+    const content_type = response.header_list.getFirstValue("content-type") orelse "";
+    if (!module_script.isJavaScriptMimeType(content_type)) return error.NetworkError;
+
+    // "Let sourceText be the result of UTF-8 decoding bodyBytes": a leading
+    // BOM goes; the engine replaces what is not UTF-8.
+    const text = if (std.mem.startsWith(u8, body, "\xEF\xBB\xBF")) body[3..] else body;
+    const source = try allocator.dupe(u8, text);
+    errdefer allocator.free(source);
+    return .{
+        .allocator = allocator,
+        .source = source,
+        .url = try allocator.dupe(u8, response.url() orelse url),
+        // "Let mutedErrors be true if response was CORS-cross-origin."
+        .muted = response.response_type == .@"opaque" or response.response_type == .opaqueredirect,
+    };
+}
+
+/// "Import scripts into worker global scope" step 6.2: run the classic
+/// script `script` in the worker whose realm is `ctx`, with rethrow errors
+/// true.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
+/// "If evaluationStatus is an abrupt completion: If rethrow errors is true and
+///  script's muted errors is false: Clean up after running script with
+///  settings. Rethrow evaluationStatus.[[Value]]. If rethrow errors is true
+///  and script's muted errors is true: Clean up after running script with
+///  settings. Throw a "NetworkError" DOMException." So what the script throws
+/// - a parse error included - reaches importScripts()'s caller, and is not
+/// reported: the engine's report hands the value here, and it is thrown
+/// again once the engine has cleaned up (ExceptionPending).
+///
+/// importScripts() is called from script: the execution context stack is not
+/// empty, so "clean up after running script" performs no microtask
+/// checkpoint.
+pub fn runImportedScript(ctx: runtime.Context, script: *const ImportedScript) anyerror!void {
     const wctx = forScope(ctx) orelse return error.InvalidStateError;
     if (!wctx.runsTasks()) return;
-    // importScripts() is called from script: the execution context stack is
-    // not empty, so "clean up after running script" performs no microtask
-    // checkpoint.
-    try wctx.runScript(source, url, false);
+    const realm = wctx.realm orelse return error.InvalidStateError;
+    // "Create a classic script" step 4: a script with muted errors has
+    // about:blank as its base URL - its response's URL is not to be exposed,
+    // an import() in it included.
+    const record = try wctx.classicScript(if (script.muted) "about:blank" else script.url);
+
+    var rethrow: Rethrow = .{ .realm = realm };
+    defer if (rethrow.value) |value| value.release();
+    wctx.entered += 1;
+    defer wctx.entered -= 1;
+    const prev_context = current_worker_context;
+    current_worker_context = wctx;
+    defer current_worker_context = prev_context;
+    engine.runClassicScript(realm, .{ .utf8 = script.source }, script.url, record, rethrow.reporter()) catch |err| switch (err) {
+        error.ExceptionReported => {},
+        else => return err,
+    };
+
+    if (rethrow.thrown) {
+        if (script.muted) return error.NetworkError;
+        const value = rethrow.value orelse return error.NetworkError;
+        try engine.throwValue(realm, value.value);
+        return error.ExceptionPending;
+    }
 }
+
+/// The engine's "report an exception" for a script run with rethrow errors
+/// true: nothing is reported; the thrown value is kept for the caller.
+const Rethrow = struct {
+    realm: runtime.Context,
+    thrown: bool = false,
+    /// OWNED.
+    value: ?engine.Owned = null,
+
+    fn reporter(self: *Rethrow) engine.Reporter {
+        return .{ .report = keep, .host = self };
+    }
+
+    fn keep(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+        const self: *Rethrow = @ptrCast(@alignCast(host orelse return));
+        self.thrown = true;
+        if (self.value) |old| old.release();
+        self.value = engine.retainValue(self.realm, info.error_value) catch null;
+    }
+};
 
 fn forScope(ctx: runtime.Context) ?*WorkerHost {
     for (live_contexts.items) |live| {

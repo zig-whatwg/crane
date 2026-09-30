@@ -509,6 +509,12 @@ fn isHttpTokenString(s: []const u8) bool {
     return true;
 }
 
+/// Whether the MIME type Fetch's "extract a MIME type" finds in a
+/// Content-Type value is a JavaScript MIME type.
+pub fn isJavaScriptMimeType(content_type: []const u8) bool {
+    return isJavaScriptMimeTypeEssence(mimeEssence(content_type));
+}
+
 /// Spec: https://mimesniff.spec.whatwg.org/#javascript-mime-type
 fn isJavaScriptMimeTypeEssence(essence: []const u8) bool {
     const types = [_][]const u8{
