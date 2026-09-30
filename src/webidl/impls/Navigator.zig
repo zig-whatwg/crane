@@ -234,10 +234,14 @@ pub fn get_epubReadingSystem(instance: *runtime.Instance) anyerror!*runtime.Inst
     return error.NotImplemented;
 }
 
-/// Getter for userActivation
+/// Getter for userActivation (HTML 6.4.4): "[SameObject] readonly attribute
+/// UserActivation userActivation" - "a Navigator object has an associated
+/// user activation, which is a UserActivation object", made in its relevant
+/// realm on first use. The generated getter keeps it
+/// (`cached_userActivation`), and the binding ties its wrapper to the
+/// Navigator's with the [SameObject] edge.
 pub fn get_userActivation(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return interfaces.UserActivation.init(instance.ctx.allocator, instance.ctx);
 }
 
 /// Getter for bluetooth

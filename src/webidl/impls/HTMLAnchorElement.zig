@@ -374,7 +374,6 @@ fn hasActivationBehavior(target: *runtime.Instance) bool {
 /// attribute). Downloading (the download attribute) and the image map
 /// coordinates of an ismap image are not modelled.
 fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) void {
-    _ = event;
     const elem_internal = ElementImpl.getInternal(target) orelse return;
     if (elem_internal.findAttribute(null, "href") == null) return;
     const navigables = @import("dom").navigables;
@@ -388,5 +387,6 @@ fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) vo
     // HTML 4.6.6: following it sends the element's pings, before the
     // navigation starts.
     @import("html").hyperlink_auditing.audit(target);
-    navigables.followHyperlink(target);
+    // "With userInvolvement set to event's user navigation involvement."
+    navigables.followHyperlink(target, @import("html").user_activation.userNavigationInvolvement(event));
 }

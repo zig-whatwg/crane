@@ -63,7 +63,7 @@ pub const PostResource = struct {
 /// What the navigable container supplies.
 pub const Implementation = struct {
     navigate_by_target: *const fn (source_document: *runtime.Instance, request: Request) void,
-    follow_hyperlink: *const fn (subject: *runtime.Instance) void,
+    follow_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
     traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void,
     find_by_name: *const fn (source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance,
 };
@@ -90,10 +90,11 @@ pub fn navigateByTarget(source_document: *runtime.Instance, request: Request) vo
 }
 
 /// HTML "follow the hyperlink created by" `subject` - an `a` or `area`
-/// element - with no hyperlink suffix.
-pub fn followHyperlink(subject: *runtime.Instance) void {
+/// element - with no hyperlink suffix, with `user_involvement` (the
+/// activating event's "user navigation involvement").
+pub fn followHyperlink(subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void {
     const impl = implementation orelse return;
-    impl.follow_hyperlink(subject);
+    impl.follow_hyperlink(subject, user_involvement);
 }
 
 /// A history traversal changes `browsing_context`'s document (an
@@ -126,7 +127,7 @@ test "without an installed implementation nothing navigates" {
     // Never dereferenced: with no implementation nothing reads it.
     var element: runtime.Instance = undefined;
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
-    followHyperlink(&element);
+    followHyperlink(&element, .activation);
     traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1);
     try std.testing.expect(findByName(&element, "name") == null);
 }

@@ -1141,9 +1141,12 @@ fn locationObjectNavigate(internal: *InternalState, url: []const u8, behavior: n
         // The top-level page, "navigate"d as far as this engine can.
         const window = internal.window orelse return;
         const document = interfaces.Window.get_document(window) catch return;
-        // Step 3: "If this's relevant Document has not yet completely loaded,
-        // then set historyHandling to "replace"."
-        const handling: dom.top_level_navigation.HistoryBehavior = if (!dom.document_lifecycle.isCompletelyLoaded(document)) .replace else switch (behavior) {
+        // Step 3: "If location's relevant Document is not yet completely
+        // loaded, and the incumbent global object does not have transient
+        // activation, then set historyHandling to "replace"."
+        const replace = !dom.document_lifecycle.isCompletelyLoaded(document) and
+            !@import("html").user_activation.incumbentHasTransientActivation();
+        const handling: dom.top_level_navigation.HistoryBehavior = if (replace) .replace else switch (behavior) {
             .auto => .auto,
             .push => .push,
             .replace => .replace,

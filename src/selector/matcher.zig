@@ -414,7 +414,13 @@ pub const Matcher = struct {
             .Dir => |direction| matchesDir(element, direction),
             // User action pseudo-classes - not supported in querySelector
             // (these require runtime state tracking)
-            .AnyLink, .Link, .Visited, .Hover, .Active, .Focus, .FocusVisible, .FocusWithin => false,
+            .AnyLink, .Link, .Visited, .Hover, .Active => false,
+            // :focus, :focus-within and :focus-visible - the focus state of
+            // the element's top-level traversable (html.focus), asked of the
+            // element's own node through the hook Document installs.
+            .Focus => if (instanceOf(element)) |instance| dom.focus_matching.matchesFocus(@ptrCast(@alignCast(instance))) else false,
+            .FocusWithin => if (instanceOf(element)) |instance| dom.focus_matching.matchesFocusWithin(@ptrCast(@alignCast(instance))) else false,
+            .FocusVisible => if (instanceOf(element)) |instance| dom.focus_matching.matchesFocusVisible(@ptrCast(@alignCast(instance))) else false,
             // Input pseudo-classes - not supported without HTML library
             .Enabled, .Disabled, .ReadOnly, .ReadWrite, .Checked => false,
             // The document's target element and custom states live in the
@@ -422,6 +428,12 @@ pub const Matcher = struct {
             // ElementWithBase) does not see; ParentNode's matcher answers them.
             .Target, .State => false,
         };
+    }
+
+    /// The platform object (a runtime.Instance) whose node `element` is, if
+    /// it has one.
+    fn instanceOf(element: *Element) ?*anyopaque {
+        return dom.instance_bridge.getInstance(&element.base);
     }
 
     /// Match :scope pseudo-class

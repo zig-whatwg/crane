@@ -3638,6 +3638,7 @@ pub fn build(b: *std.Build) void {
             "src/platform/memory.zig",
             "tests/wpt_runner/options.zig",
             "tests/wpt_runner/discovery.zig",
+            "tests/wpt_runner/webdriver_keys.zig",
             "tests/wpt_runner/wpt_server.zig",
             "tests/wpt_runner/baseline.zig",
             "tests/wpt_runner/test_parser.zig",

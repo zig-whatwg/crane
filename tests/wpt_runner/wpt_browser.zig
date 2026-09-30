@@ -47,6 +47,7 @@ const html = @import("html");
 const workers = html.workers;
 
 const test_harness = @import("test_harness.zig");
+const test_driver = @import("test_driver.zig");
 const test_parser = @import("test_parser.zig");
 const host = @import("host");
 const config = @import("config.zig");
@@ -120,6 +121,9 @@ pub const WptBrowser = struct {
     /// Path to WPT's certificate authority, held because the fetch layer
     /// borrows it rather than copying. Null if the checkout has no certs.
     ca_bundle_path: ?[]const u8,
+    /// testdriver.js's automation backend (the WebDriver remote end), whose
+    /// natives the vendor file wires into each test realm.
+    test_driver: *test_driver.TestDriver,
 
     /// Initialize WptBrowser with a fresh Browser instance
     pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8) !*WptBrowser {
@@ -132,6 +136,9 @@ pub const WptBrowser = struct {
         });
         errdefer browser_instance.deinit();
 
+        const driver = try test_driver.TestDriver.create(allocator);
+        errdefer driver.destroy();
+
         self.* = WptBrowser{
             .allocator = allocator,
             .browser = browser_instance,
@@ -140,12 +147,18 @@ pub const WptBrowser = struct {
             .testharnessreport_js = null,
             .tests_run = 0,
             .ca_bundle_path = null,
+            .test_driver = driver,
         };
 
         // Register the blob URL resolver for Web Workers.
         // This allows Workers created with blob URLs (new Worker(URL.createObjectURL(blob)))
         // to resolve their script content from the BlobURLStore.
         workers.setBlobResolver(resolveBlobUrl);
+
+        // Frame and popup documents get the testdriver vendor file too - the
+        // embedder's hook, registered once here, before any page loads.
+        test_driver.registerForFrames(self.test_driver);
+        errdefer test_driver.unregisterForFrames();
 
         // Trust WPT's certificate authority, so `.https.` tests can be fetched
         // from :8443 at all. `wpt serve` signs its leaf certificate with a CA
@@ -183,6 +196,11 @@ pub const WptBrowser = struct {
     pub fn deinit(self: *WptBrowser) void {
         // Clear the blob resolver registration
         workers.clearBlobResolver();
+
+        // Pending testdriver commands give their promises back while the
+        // engine is still up.
+        test_driver.unregisterForFrames();
+        self.test_driver.destroy();
 
         if (self.ca_bundle_path) |ca| {
             // Drop the borrowed path before freeing it.
@@ -259,6 +277,9 @@ pub const WptBrowser = struct {
 
         // Navigate to create fresh context
         try self.browser.navigate(test_url, ctx_type);
+        // Whatever testdriver commands the test left pending end with it,
+        // before its page does.
+        defer self.test_driver.endTest();
 
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
@@ -323,6 +344,9 @@ pub const WptBrowser = struct {
         try self.browser.navigateWithOptions(test_url, context_type, .{
             .skip_load = true,
         });
+        // Whatever testdriver commands the test left pending end with it,
+        // before its page does.
+        defer self.test_driver.endTest();
 
         // Get the context
         const ctx = self.browser.current_context orelse return error.NoContext;
@@ -404,6 +428,14 @@ pub const WptBrowser = struct {
             log.debug("scriptLoaderCallback: skipping {s} (already loaded)", .{url});
             // An empty script, so the element still runs and fires load.
             return self.allocator.dupe(u8, "// Already loaded by WPT runner") catch null;
+        }
+        // testdriver.js's vendor hook: Crane's, with its natives defined on
+        // the test realm first (test_driver.zig).
+        if (std.mem.eql(u8, url, test_driver.vendor_path)) {
+            const ctx = self.browser.current_context orelse return null;
+            const realm = ctx.realm orelse return null;
+            self.test_driver.defineNatives(realm);
+            return self.allocator.dupe(u8, test_driver.vendor_js) catch null;
         }
         return null;
     }
