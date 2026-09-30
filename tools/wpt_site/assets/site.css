@@ -349,7 +349,8 @@ ul[data-capped="1"] > .row.capped { display: none; }
   .row-line { grid-template-columns: minmax(0, 1fr) auto; }
   .row-line .self { grid-column: 2; grid-row: 1; }
   .row-line .tally, .row-line .fstat { grid-column: 1 / -1; padding-left: 1.45rem; }
-  .sub { grid-template-columns: 4rem minmax(0, 1fr) auto; }
+  .sub { grid-template-columns: 3.3rem minmax(0, 1fr) auto; column-gap: 0.45rem; }
+  .msg { grid-column: 1 / -1; }
   .detail { margin-left: 0.4rem; margin-right: 0.2rem; padding: 0.6rem 0.65rem; }
   .tree ul { margin-left: 0.55rem; }
 }
