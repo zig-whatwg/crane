@@ -9,18 +9,18 @@
 //! ```json
 //! {
 //!   "run_info": {
-//!     "product": "whatwg-zig",
-//!     "browser_version": "1.0.0",
-//!     "os": "darwin",
-//!     "os_version": "14.0.0",
-//!     "processor": "aarch64",
-//!     "revision": "abc123"
+//!     "product": "crane",
+//!     "browser_version": "0.1.0-dev+73e0b7764",
+//!     "os": "mac",
+//!     "os_version": "14.0",
+//!     "processor": "arm64",
+//!     "revision": "<40-character upstream WPT commit>"
 //!   },
 //!   "time_start": 1699000000000,
 //!   "time_end": 1699000100000,
 //!   "results": [
 //!     {
-//!       "test": "/url/url-constructor.any.js",
+//!       "test": "/url/url-constructor.any.html",
 //!       "status": "OK",
 //!       "message": null,
 //!       "duration": 1234,
@@ -42,6 +42,8 @@ const test_harness = @import("test_harness.zig");
 const config = @import("config.zig");
 const clock = @import("clock");
 const host = @import("host");
+const wpt_test_ids = @import("wpt_test_ids.zig");
+const wpt_manifest = @import("manifest.zig");
 
 // =============================================================================
 // Lone Surrogate Sanitization
@@ -343,67 +345,107 @@ fn writeJsonString(writer: anytype, str: []const u8) !void {
 
 /// Run information for the test report
 pub const RunInfo = struct {
-    /// Product name (e.g., "whatwg-zig")
-    product: []const u8 = "whatwg-zig",
+    /// Product name. wpt.fyi files the run under this.
+    product: []const u8 = "crane",
     /// Version of the browser/engine
-    browser_version: []const u8 = "0.1.0",
-    /// Operating system name
+    browser_version: []const u8 = "0.1.0-dev",
+    /// Operating system name, as wptrunner writes it ("mac", "linux", "win")
     os: []const u8,
     /// OS version
     os_version: []const u8 = "",
     /// CPU architecture
     processor: []const u8,
-    /// Git revision/commit hash
+    /// The FULL 40-character upstream web-platform-tests commit the tests/wpt
+    /// snapshot is based on ("" when unknown: the report is then not uploadable).
     revision: []const u8 = "",
+    /// True when browser_version, os_version and revision are heap strings the
+    /// report must free (`detect`); false for the constants of `getDefault`.
+    owned: bool = false,
 
     pub fn getDefault() RunInfo {
-        const os_name = switch (builtin.os.tag) {
-            .macos => "darwin",
-            .linux => "linux",
-            .windows => "windows",
-            else => "unknown",
-        };
-
-        const processor = switch (builtin.cpu.arch) {
-            .x86_64 => "x86_64",
-            .aarch64 => "aarch64",
-            .x86 => "x86",
-            .arm => "arm",
-            else => "unknown",
-        };
-
         return RunInfo{
-            .os = os_name,
-            .processor = processor,
+            .os = wpt_test_ids.osName(builtin.os.tag),
+            .processor = wpt_test_ids.processorName(builtin.os.tag, builtin.cpu.arch),
         };
     }
 
-    /// Create RunInfo with git revision detected from repository
-    pub fn getWithRevision(allocator: std.mem.Allocator) RunInfo {
+    pub fn deinit(self: *RunInfo, allocator: std.mem.Allocator) void {
+        if (!self.owned) return;
+        allocator.free(self.browser_version);
+        allocator.free(self.os_version);
+        allocator.free(self.revision);
+        self.owned = false;
+    }
+
+    /// Run `argv`, returning its trimmed stdout (owned) or null on any failure.
+    fn capture(allocator: std.mem.Allocator, argv: []const []const u8) ?[]u8 {
+        const r = std.process.run(allocator, host.io(), .{
+            .argv = argv,
+            .expand_arg0 = .no_expand,
+        }) catch return null;
+        defer allocator.free(r.stdout);
+        defer allocator.free(r.stderr);
+        if (r.term != .exited or r.term.exited != 0) return null;
+        const t = std.mem.trim(u8, r.stdout, &std.ascii.whitespace);
+        if (t.len == 0) return null;
+        return allocator.dupe(u8, t) catch null;
+    }
+
+    /// The host's OS version the way wptrunner reports it: `sw_vers` on macOS,
+    /// VERSION_ID of /etc/os-release on Linux. "" when unknown.
+    fn osVersion(allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
+        switch (builtin.os.tag) {
+            .macos => if (capture(allocator, &.{ "sw_vers", "-productVersion" })) |v| return v,
+            .linux => if (capture(allocator, &.{ "sh", "-c", ". /etc/os-release 2>/dev/null && printf %s \"$VERSION_ID\"" })) |v| return v,
+            else => {},
+        }
+        return allocator.dupe(u8, "");
+    }
+
+    /// Describe this run: product "crane", version `0.1.0-dev+<Crane short
+    /// commit>`, the host OS, and revision = the upstream WPT commit read from
+    /// `<wpt_root>/.crane-upstream-revision`. Without that file (or with one
+    /// that is not 40 hex digits) revision is "" and `revision_known` is false.
+    /// Free with `deinit`.
+    pub fn detect(allocator: std.mem.Allocator, wpt_root: []const u8, revision_known: *bool) !RunInfo {
         var info = getDefault();
 
-        // Try to get git revision
-        const git_result = std.process.Child.run(.{
-            .allocator = allocator,
-            .argv = &.{ "git", "rev-parse", "--short", "HEAD" },
-            .cwd = null,
-            .expand_arg0 = .no_expand,
-        }) catch {
-            return info;
-        };
-        defer allocator.free(git_result.stdout);
-        defer allocator.free(git_result.stderr);
+        const short = capture(allocator, &.{ "git", "rev-parse", "--short", "HEAD" });
+        defer if (short) |s| allocator.free(s);
+        info.browser_version = try wpt_test_ids.browserVersion(allocator, short orelse "");
+        errdefer allocator.free(info.browser_version);
 
-        if (git_result.term.Exited == 0 and git_result.stdout.len > 0) {
-            const revision = std.mem.trim(u8, git_result.stdout, &std.ascii.whitespace);
-            if (revision.len > 0) {
-                info.revision = revision;
-            }
+        info.os_version = try osVersion(allocator);
+        errdefer allocator.free(info.os_version);
+
+        var revision: []u8 = try allocator.dupe(u8, "");
+        revision_known.* = false;
+        if (readUpstreamRevision(allocator, wpt_root)) |rev| {
+            allocator.free(revision);
+            revision = rev;
+            revision_known.* = true;
         }
-
+        info.revision = revision;
+        info.owned = true;
         return info;
     }
+
+    fn readUpstreamRevision(allocator: std.mem.Allocator, wpt_root: []const u8) ?[]u8 {
+        const path = std.fs.path.join(allocator, &.{ wpt_root, upstream_revision_file }) catch return null;
+        defer allocator.free(path);
+        const io = host.io();
+        const file = host.cwd().openFile(io, path, .{}) catch return null;
+        defer file.close(io);
+        var buf: [256]u8 = undefined;
+        const n = file.readPositionalAll(io, &buf, 0) catch return null;
+        var hex: [40]u8 = undefined;
+        const rev = wpt_test_ids.parseUpstreamRevision(buf[0..n], &hex) orelse return null;
+        return allocator.dupe(u8, rev) catch null;
+    }
 };
+
+/// Root of the WPT fork: the upstream commit its snapshot is based on.
+pub const upstream_revision_file = ".crane-upstream-revision";
 
 /// Full WPT report structure
 pub const WptReport = struct {
@@ -416,6 +458,9 @@ pub const WptReport = struct {
     time_end: i64 = 0,
     /// Test results
     results: std.ArrayList(TestResultJson),
+    /// Where each run's test URL comes from (MANIFEST.json); null falls back to
+    /// WPT's documented naming.
+    manifest: ?*wpt_manifest.Manifest = null,
 
     pub fn init(allocator: std.mem.Allocator) WptReport {
         return WptReport{
@@ -427,6 +472,7 @@ pub const WptReport = struct {
     }
 
     pub fn deinit(self: *WptReport) void {
+        self.run_info.deinit(self.allocator);
         for (self.results.items) |*result| {
             result.deinit(self.allocator);
         }
@@ -438,20 +484,25 @@ pub const WptReport = struct {
         self.time_end = clock.wallMillis();
     }
 
-    /// Add a test result from the harness collector
-    /// For multi-context tests (e.g., .any.js), the context is appended to the test path
-    /// in the format "path/test.any.js [context]" to distinguish different executions.
+    /// Add a test result from the harness collector.
+    ///
+    /// The result is named by the test URL wpt.fyi keys on ("/x.any.worker.html",
+    /// "/a.html?variant"): the manifest's URL for the run when there is one, WPT's
+    /// documented naming otherwise. Crane's own tests (crane/) are not reported.
     pub fn addResult(self: *WptReport, harness_result: test_harness.TestResult) !void {
         try self.addResultWithExpected(harness_result, null);
     }
 
     /// Add a test result with optional expected results metadata (for XFAIL tracking)
     pub fn addResultWithExpected(self: *WptReport, harness_result: test_harness.TestResult, expected: ?*const ExpectedResults) !void {
-        // Build test path with context suffix for multi-context tests
-        const test_path = if (harness_result.context) |ctx|
-            try std.fmt.allocPrint(self.allocator, "{s} [{s}]", .{ harness_result.test_path, ctx })
+        if (wpt_test_ids.isCraneTest(harness_result.test_path)) return;
+
+        const candidates: ?[]const []const u8 = if (self.manifest) |m|
+            m.getUrlsForSource(harness_result.test_path)
         else
-            try self.allocator.dupe(u8, harness_result.test_path);
+            null;
+        const test_path = try wpt_test_ids.resolveUrl(self.allocator, candidates, harness_result.test_path, harness_result.context);
+        errdefer self.allocator.free(test_path);
 
         // Set expected status at test level (for expected-fail directory, etc.)
         const test_expected: ?[]const u8 = if (expected) |exp| blk: {
@@ -840,8 +891,8 @@ test "WptReport with context" {
     report.finish();
 
     try testing.expectEqual(@as(usize, 1), report.results.items.len);
-    // The test path should include the context suffix
-    try testing.expectEqualStrings("url/test.any.js [worker]", report.results.items[0].test_path);
+    // The test ID is the URL of that run
+    try testing.expectEqualStrings("/url/test.any.worker.html", report.results.items[0].test_path);
 }
 
 test "WptReport multi-context same test" {
@@ -869,8 +920,73 @@ test "WptReport multi-context same test" {
 
     // Should have two distinct entries
     try testing.expectEqual(@as(usize, 2), report.results.items.len);
-    try testing.expectEqualStrings("url/test.any.js [window]", report.results.items[0].test_path);
-    try testing.expectEqualStrings("url/test.any.js [worker]", report.results.items[1].test_path);
+    try testing.expectEqualStrings("/url/test.any.html", report.results.items[0].test_path);
+    try testing.expectEqualStrings("/url/test.any.worker.html", report.results.items[1].test_path);
+}
+
+test "WptReport names each run by its manifest URL" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var manifest = try wpt_manifest.parseManifestBytes(allocator,
+        \\{"items":{"testharness":{"console":{"x.any.js":["h",
+        \\["console/x.any.html",{}],["console/x.any.worker.html",{}],["console/x.any.sharedworker.html",{}]]},
+        \\"e":{"f.html":["h",["e/f.html?a",{}],["e/f.html?b",{}]]}}}}
+    );
+    defer manifest.deinit();
+
+    var report = WptReport.init(allocator);
+    defer report.deinit();
+    report.manifest = &manifest;
+
+    const runs = [_]struct { []const u8, ?[]const u8 }{
+        .{ "console/x.any.js", "window" },
+        .{ "console/x.any.js", "worker" },
+        .{ "console/x.any.js", "sharedworker" },
+        .{ "e/f.html", "?b" },
+    };
+    for (runs) |r| {
+        var res = try test_harness.TestResult.initWithContext(allocator, r[0], r[1]);
+        defer res.deinit(allocator);
+        res.status = .ok;
+        try report.addResult(res);
+    }
+    try testing.expectEqualStrings("/console/x.any.html", report.results.items[0].test_path);
+    try testing.expectEqualStrings("/console/x.any.worker.html", report.results.items[1].test_path);
+    try testing.expectEqualStrings("/console/x.any.sharedworker.html", report.results.items[2].test_path);
+    try testing.expectEqualStrings("/e/f.html?b", report.results.items[3].test_path);
+}
+
+test "WptReport leaves Crane's own tests out" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    var report = WptReport.init(allocator);
+    defer report.deinit();
+
+    var res = try test_harness.TestResult.init(allocator, "crane/dom/thing.html");
+    defer res.deinit(allocator);
+    res.status = .ok;
+    try report.addResult(res);
+    try testing.expectEqual(@as(usize, 0), report.results.items.len);
+}
+
+test "RunInfo.detect: no .crane-upstream-revision means revision is empty" {
+    const allocator = std.testing.allocator;
+    var known = true;
+    var info = try RunInfo.detect(allocator, "/nonexistent-wpt-root", &known);
+    defer info.deinit(allocator);
+    try std.testing.expect(!known);
+    try std.testing.expectEqualStrings("", info.revision);
+    try std.testing.expectEqualStrings("crane", info.product);
+    try std.testing.expect(std.mem.startsWith(u8, info.browser_version, "0.1.0-dev"));
+    try std.testing.expect(info.os.len > 0);
+}
+
+test "RunInfo default names the product crane" {
+    const info = RunInfo.getDefault();
+    try std.testing.expectEqualStrings("crane", info.product);
+    try std.testing.expectEqualStrings(wpt_test_ids.osName(builtin.os.tag), info.os);
 }
 
 test "WptReport without context" {
@@ -891,8 +1007,7 @@ test "WptReport without context" {
     report.finish();
 
     try testing.expectEqual(@as(usize, 1), report.results.items.len);
-    // The test path should NOT have a context suffix
-    try testing.expectEqualStrings("url/test.window.js", report.results.items[0].test_path);
+    try testing.expectEqualStrings("/url/test.window.html", report.results.items[0].test_path);
 }
 
 // =============================================================================
