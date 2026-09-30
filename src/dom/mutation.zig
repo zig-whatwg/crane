@@ -337,37 +337,45 @@ fn setConnectedRecursive(node: anytype, connected: bool) void {
     }
 }
 
-/// Create transient registered observers for a removed node
-/// Spec: https://dom.spec.whatwg.org/#concept-node-remove step 15
+/// DOM "remove" step 15: "For each inclusive ancestor inclusiveAncestor of
+/// parent, and then for each registered of inclusiveAncestor's registered
+/// observer list, if
+/// registered's options["subtree"] is true, then append a new transient
+/// registered observer whose observer is registered's observer, options is
+/// registered's options, and source is registered to node's registered
+/// observer list."
+///
+/// Only `node` gets one: "queue a mutation record" walks the inclusive
+/// ancestors of its target, so a transient observer on the removed subtree's
+/// root sees every mutation inside it. The observer is told, so that notify
+/// step 6.3 can take the transient observers off again.
+/// Spec: https://dom.spec.whatwg.org/#concept-node-remove
 fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void {
-    // For each inclusive ancestor inclusiveAncestor of parent
+    const removed: *NodeBase = @ptrCast(node);
+    const removed_instance: ?*runtime.Instance = if (instance_bridge.getInstance(removed)) |opaque_ptr|
+        @ptrCast(@alignCast(opaque_ptr))
+    else
+        null;
     var current_ancestor: ?*NodeBase = @ptrCast(parent);
-    while (current_ancestor) |ancestor| {
-        // For each registered observer obs in inclusiveAncestor's registered observer list
+    while (current_ancestor) |ancestor| : (current_ancestor = ancestor.parent_node) {
+        // Appending below never touches this list: node is not an ancestor
+        // of its old parent.
         for (0..ancestor.registered_observers.len) |i| {
-            const source_obs = ancestor.registered_observers.get(i) orelse continue;
-            // If obs's options["subtree"] is true
-            if (source_obs.options.subtree) {
-                // For each node inclusiveDescendant of node's inclusive descendants
-                // (node itself and all its descendants)
-                try createTransientObserverForNodeAndDescendants(node, source_obs);
+            const registered = ancestor.registered_observers.get(i) orelse continue;
+            if (!registered.options.subtree) continue;
+            try removed.registered_observers.append(.{
+                .observer = registered.observer,
+                .observer_generation = registered.observer_generation,
+                .options = registered.options,
+                .transient_source = ancestor,
+            });
+            const observer_opaque = @import("handles.zig").mutationObserverToAnyopaque(registered.observer) orelse continue;
+            const observer: *runtime.Instance = @ptrCast(@alignCast(observer_opaque));
+            if (removed_instance) |instance| {
+                @import("observer_registrations.zig").transientAdded(observer, registered.observer_generation, instance);
             }
         }
-
-        // Move to next ancestor
-        current_ancestor = ancestor.parent_node;
     }
-}
-
-/// Helper: Create transient observer for a node and all its descendants
-/// TODO(Phase 6 - whatwg-9wkz8): Implement transient observers per DOM spec §4.3.3
-/// This requires adding is_transient, source_observer, source_options fields to RegisteredObserver
-fn createTransientObserverForNodeAndDescendants(node: anytype, source: RegisteredObserver) !void {
-    // Stub: Transient observers will be implemented in Phase 6 (MutationObserver integration)
-    // Per spec, transient observers are created when a node is removed while being observed
-    // with subtree: true, to continue observing the removed subtree.
-    _ = node;
-    _ = source;
 }
 
 /// Helper to get node type from any node-like type
@@ -1627,9 +1635,8 @@ pub fn remove(
         }
     }
 
-    // Step 15: Transient registered observers
-    // For each inclusive ancestor of parent that has registered observers with subtree=true,
-    // create transient observers on node and its inclusive descendants
+    // Step 15: transient registered observers on node, for every observer
+    // of an inclusive ancestor of parent that observes its subtree.
     try createTransientObserversForRemovedNode(node, parent);
 
     // Step 16: If suppress observers flag is unset, queue a tree mutation record
