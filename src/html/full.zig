@@ -165,6 +165,11 @@ pub const runtime = @import("runtime");
 pub const script_execution = @import("script_execution.zig");
 pub const script_request = @import("script_request.zig");
 
+/// A script element's processing-model state (its parser document, already
+/// started, result, ...), and the hook the processing model reaches an
+/// element's through - Blink's ScriptLoader, WebKit's ScriptElement.
+pub const script_element = @import("script_element.zig");
+
 /// "Report an exception": runtime script errors reach the global's error
 /// event and `onerror` through here.
 pub const report_exception = @import("report_exception.zig");
