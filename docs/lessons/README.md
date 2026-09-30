@@ -136,6 +136,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Capture what a late callback reads, not the object it came from](architecture-capture-what-a-callback-reads-not-what-it-read-it-from.md) - Before capturing an object for a callback that may run after it, list what the callback's steps read; capture those values, and there is nothing left to keep alive or to find dangling.
 - [An element alive at teardown is swept, not deinit'd](architecture-an-element-alive-at-teardown-is-swept-not-deinitd.md) - Heap memory an element owns has two exits - its deinit and the teardown sweep - and a new side table must take both.
 - [A workaround outlives its premise](architecture-a-workaround-outlives-its-premise.md) - When a workaround answers from side data instead of the ordinary mechanism, re-measure its premise against the path that never had it.
+- [Move the state's type out of the impl, not the state](architecture-move-the-states-type-out-of-the-impl-not-the-state.md) - Move the state's type out of the impl, not the state: one typed of() hook replaces a facade of accessors, and ownership never moves.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -253,3 +254,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [lint-impls counts every usage once per local alias](workflow-lint-impls-counts-every-usage-once-per-alias.md) - Before binding a non-ancestor impl in one more function, count the file's existing bindings.
 - [Stopping a chat job means stopping its build runner](workflow-stopping-a-chat-job-means-stopping-its-build-runner.md) - A chat job is stopped when nothing is left running in its mirror's directory; the orphaned build runner is the one that keeps going.
 - [Before deleting an API, grep for the field as well as its accessor](workflow-grep-for-the-field-not-only-its-accessor.md) - A deletion's blast radius is every reference to the storage, not every call of its getter: grep for the field, the type and the initialiser before you scope the work.
+- [A test file under tests/ joins every run the moment it exists](workflow-a-test-file-joins-every-run-once-it-exists.md) - Under tests/, existing is enough to run: park the next step's test in tmp/ until its code is in the tree you sync.
