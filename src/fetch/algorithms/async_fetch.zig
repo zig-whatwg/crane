@@ -35,6 +35,7 @@ const InternalRequest = internal_request.InternalRequest;
 const internal_response = @import("../internal/response.zig");
 const body_pipe = @import("../internal/body_pipe.zig");
 const PipeSource = body_pipe.PipeSource;
+const clock = @import("clock");
 const network = @import("../network/root.zig");
 const NetworkScheduler = network.NetworkScheduler;
 const NetworkResponse = network.NetworkResponse;
@@ -183,6 +184,18 @@ pub const AsyncFetch = struct {
     fn deliverable(self: *const AsyncFetch) bool {
         if (self.outcome == null) return false;
         return !self.collect or self.source == null;
+    }
+
+    /// Whether this fetch's response has started arriving and not ended:
+    /// lines of its header block are in, or its head is and its body is still
+    /// coming off a transfer that is not paused. What `catchUp` waits on.
+    pub fn isArriving(self: *const AsyncFetch) bool {
+        const job = self.transfer orelse return false;
+        if (job.paused) return false;
+        if (!self.awaiting_head) return self.source != null;
+        var header_bytes: c_long = 0;
+        _ = network.curl_ffi.easy_getinfo(job.transfer.handle, network.curl_ffi.c.CURLINFO_HEADER_SIZE, &header_bytes);
+        return header_bytes > 0;
     }
 
     /// Whether the fetch is over: its response delivered, and no body left
@@ -366,6 +379,43 @@ pub fn pumpWith(scheduler: ?*NetworkScheduler) bool {
         break;
     }
     return progressed;
+}
+
+/// INTERIM - let the network catch up with a response that is arriving, for
+/// at most `budget_ms`, before a deadline is judged. It emulates the socket
+/// reads a browser's network thread makes during a long task: Crane's
+/// networking advances only between tasks, so a response that started
+/// arriving while script held the loop sits half-read until the next pump -
+/// and a peer that holds the rest until its first segment is acknowledged
+/// (Nagle; wptserve writes a header block line by line) releases it only
+/// after that read, one round trip later. xhr/xhr-timeout-longtask.any.js
+/// timed out when the 150 ms timer's single network step found the header
+/// block incomplete, its rest ~1 ms away
+/// (docs/lessons/architecture-single-threaded-networking-must-send-the-request.md
+/// - "read the socket before declaring a timeout"). The real fix is
+/// networking that progresses while script runs; this goes when that lands.
+///
+/// Bounded and inert: it pumps the network and waits on its sockets - never
+/// runs script, never dispatches an event, never past the budget - and only
+/// while `fetch_slot`'s fetch is arriving (`AsyncFetch.isArriving`). A
+/// response that has not started arriving returns at once, and is judged as
+/// it always was. `fetch_slot` is the caller's handle, which the fetch's
+/// `finished`/`gone` callbacks clear: a pump may end and free the fetch.
+pub fn catchUpWith(scheduler: *NetworkScheduler, fetch_slot: *const ?*AsyncFetch, budget_ms: u32) void {
+    const deadline = clock.monotonicMillis() + budget_ms;
+    while (fetch_slot.*) |f| {
+        if (!f.isArriving()) return;
+        const now = clock.monotonicMillis();
+        if (now >= deadline) return;
+        scheduler.waitForSockets(@intCast(@min(deadline - now, 1)));
+        _ = pumpWith(scheduler);
+    }
+}
+
+/// `catchUpWith` on this thread's scheduler.
+pub fn catchUp(fetch_slot: *const ?*AsyncFetch, budget_ms: u32) void {
+    const scheduler = network.scheduler.existingThreadScheduler() orelse return;
+    catchUpWith(scheduler, fetch_slot, budget_ms);
 }
 
 /// Terminate every fetch whose client is gone, and tell each client so -

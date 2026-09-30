@@ -1193,6 +1193,10 @@ const PendingFetch = struct {
         pipe.consumer = null;
     }
 
+    /// How long a timeout waits, at most, for a response that has started
+    /// arriving (`async_fetch.catchUp`).
+    const catch_up_budget_ms = 20;
+
     /// Step 11.11's timer: the fetch has run for this's timeout. Set the
     /// timed out flag and terminate the fetch; its processResponse would then
     /// run the timeout steps, which this does instead.
@@ -1202,9 +1206,15 @@ const PendingFetch = struct {
         // The response may be in and unread: a long task can hold the loop
         // past the deadline with it waiting in the socket. The fetch and the
         // timer race in parallel, and the fetch finished first, so give the
-        // network its step before calling it a timeout. (Only while the realm
-        // lives: a sweep inside the pump would end this very call.)
-        if (alive(self)) _ = fetch_mod.algorithms.async_fetch.pump();
+        // network its step before calling it a timeout - and, INTERIM, while
+        // the response is arriving, the reads a network thread would have
+        // made during the long task (async_fetch.catchUp, bounded, inert).
+        // (Only while the realm lives: a sweep inside the pump would end this
+        // very call.)
+        if (alive(self)) {
+            _ = fetch_mod.algorithms.async_fetch.pump();
+            fetch_mod.algorithms.async_fetch.catchUp(&self.fetch, catch_up_budget_ms);
+        }
         if (self.cancelled or self.complete) return;
         // A response in, and its body not yet all read: in time only if the
         // body has arrived.
