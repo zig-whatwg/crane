@@ -68,6 +68,23 @@ pub fn getMode(instance: *runtime.Instance) ?Mode {
     return internal.mode;
 }
 
+/// Set the document's encoding (DOM "encoding", what characterSet returns)
+/// to the encoding named `name`, as the Encoding Standard spells it. HTML's
+/// encoding sniffing algorithm sets it when a navigation's response is
+/// decoded, and "change the encoding" when a meta element changes it.
+pub fn setEncoding(instance: *runtime.Instance, name: []const u8) !void {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const new = try runtime.DOMString.initDupe(internal.allocator, name);
+    internal.encoding.deinit(internal.allocator);
+    internal.encoding = new;
+}
+
+/// The name of the document's encoding.
+pub fn getEncoding(instance: *runtime.Instance) ?[]const u8 {
+    const internal = getInternal(instance) orelse return null;
+    return internal.encoding.asSlice();
+}
+
 /// Set the content type (e.g., "text/html", "application/xml")
 /// Used during document creation and initialization.
 pub fn setContentType(instance: *runtime.Instance, content_type: []const u8) !void {

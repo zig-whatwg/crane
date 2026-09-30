@@ -7,6 +7,7 @@
 //!
 //! - `InstanceRegistry(T)` - Generic registry pattern for instance-to-state mapping
 //! - `InternalStateAccessor(T, S)` - Generic accessor for internal state retrieval
+//! - `tombstones.TombstoneGuard` - when to rehash a long-lived address-keyed side table
 //!
 //! ## Note on CollectionMixin
 //!
@@ -30,6 +31,8 @@
 //! ```
 
 pub const InstanceRegistry = @import("registry.zig").InstanceRegistry;
+/// When to rehash a long-lived address-keyed side table (see tombstones.zig).
+pub const tombstones = @import("tombstones.zig");
 pub const InternalStateAccessor = @import("internal_state.zig").InternalStateAccessor;
 pub const OptionalInternalStateAccessor = @import("internal_state.zig").OptionalInternalStateAccessor;
 
@@ -53,6 +56,7 @@ pub const extractOptionalDictionary = typed_extraction.extractOptionalDictionary
 test {
     @import("std").testing.refAllDecls(@This());
     _ = @import("registry.zig");
+    _ = @import("tombstones.zig");
     _ = @import("internal_state.zig");
     _ = @import("typed_extraction.zig");
     // Note: collection.zig tests are run separately, not through this root

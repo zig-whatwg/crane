@@ -24,6 +24,7 @@
 
 const std = @import("std");
 const NodeBase = @import("node_base.zig").NodeBase;
+const tombstones = @import("webidl").utils.tombstones;
 
 // Forward declaration - will be resolved when Node.zig impl adds the node_base field
 // For now, we use a simpler approach that doesn't require modifying InternalState yet
@@ -44,6 +45,11 @@ pub const BridgeContext = struct {
 var instance_to_nodebase: std.AutoHashMap(*anyopaque, *NodeBase) = undefined;
 var initialized: bool = false;
 
+/// Every node a page makes enters this map and leaves it when the page ends;
+/// the guard rehashes before an insert once the tombstones those removals
+/// leave could take half the free slots (webidl.utils.tombstones).
+var guard: tombstones.TombstoneGuard = .{};
+
 /// How many (instance -> NodeBase) entries are live.
 ///
 /// Exposed for the Phase 6 memory benchmark. This map is keyed on the instance
@@ -53,6 +59,15 @@ var initialized: bool = false;
 pub fn entryCount() usize {
     if (!initialized) return 0;
     return instance_to_nodebase.count();
+}
+
+/// The table's slots by state (free, live, capacity), for the churn test and
+/// measurements: every node a page makes enters and leaves this map, so its
+/// free slots are what keeps registering the next page's nodes cheap - see
+/// webidl.utils.tombstones.
+pub fn tableSlots() tombstones.SlotCounts {
+    if (!initialized) return .{};
+    return tombstones.slotCounts(&instance_to_nodebase);
 }
 
 /// Initialize the bridge registry
@@ -91,6 +106,7 @@ pub fn deinit() void {
 /// ```
 pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
     if (!initialized) init();
+    guard.beforeInsert(&instance_to_nodebase);
     try instance_to_nodebase.put(instance, node_base);
     // Reverse direction lives on the node itself - see NodeBase.owner_instance.
     node_base.owner_instance = instance;
@@ -107,7 +123,7 @@ pub fn unregister(instance: *anyopaque) void {
         // keeps a freed instance from being observable through a resurrected node.
         node_base.owner_instance = null;
     }
-    _ = instance_to_nodebase.remove(instance);
+    if (instance_to_nodebase.remove(instance)) guard.noteRemoval(&instance_to_nodebase);
 }
 
 /// Get the NodeBase for a runtime.Instance
@@ -263,4 +279,46 @@ test "instance_bridge: typed accessors" {
     const found = getInstanceTyped(MockInstance, &node_base);
     try std.testing.expect(found != null);
     try std.testing.expectEqual(@as(u32, 42), found.?.id);
+}
+
+test "instance_bridge: a page's worth of nodes registered and released, page after page, leaves half the unused slots free" {
+    init();
+    defer deinit();
+
+    // Every node shares one NodeBase here: the table is what is measured.
+    var node_base = NodeBase{
+        .allocator = std.testing.allocator,
+        .node_type = NodeBase.ELEMENT_NODE,
+        .node_name = "span",
+        .parent_node = null,
+        .child_nodes = undefined,
+        .owner_document = null,
+        .registered_observers = undefined,
+    };
+
+    // Instances at addresses never used before, as a runner's pages make
+    // them; a few stay registered throughout.
+    const stride = 16;
+    var next: usize = 0x1000;
+    for (0..64) |_| {
+        try register(@ptrFromInt(next), &node_base);
+        next += stride;
+    }
+    for (0..40) |page| {
+        const first = next;
+        for (0..4096) |i| {
+            try register(@ptrFromInt(next), &node_base);
+            next += stride;
+            if (i == 0 and page > 0) {
+                const slots = tableSlots();
+                if (!slots.halfOfUnusedFree()) {
+                    std.debug.print("page {d}: {d} of {d} slots free, {d} live\n", .{ page, slots.free, slots.capacity, slots.live });
+                    return error.TombstonesFilledTheTable;
+                }
+            }
+        }
+        var address = first;
+        while (address < next) : (address += stride) unregister(@ptrFromInt(address));
+    }
+    try std.testing.expectEqual(@as(usize, 64), entryCount());
 }

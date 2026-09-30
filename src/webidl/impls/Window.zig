@@ -2466,6 +2466,7 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // Steps 3-4: "Set urlRecord to the result of encoding-parsing a URL given
     // url, relative to sourceDocument"; failure throws a "SyntaxError".
     const url_str: []const u8 = if (url.wasPassed()) url.getValue() else "";
+    // Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
     const url_record: ?[]const u8 = if (url_str.len == 0) null else try parseUrlRelativeTo(source_document, url_str, allocator);
     defer if (url_record) |u| allocator.free(u);
 

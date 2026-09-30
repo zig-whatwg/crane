@@ -240,7 +240,6 @@ src/webidl/impls/Document.zig Node.getInternalState 1
 src/webidl/impls/Document.zig Node.getNextSibling 14
 src/webidl/impls/Document.zig Node.getNodeType 13
 src/webidl/impls/Document.zig Node.getParent 2
-src/webidl/impls/Document.zig Node.get_baseURI 1
 src/webidl/impls/Document.zig Node.init 1
 src/webidl/impls/Document.zig Node.removeNodeFromParent 1
 src/webidl/impls/Document.zig Node.setNodeType 7
@@ -434,7 +433,6 @@ src/webidl/impls/HTMLLIElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLLIElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLLegendElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLLegendElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLLinkElement.zig HTMLElement.init 1
 src/webidl/impls/HTMLMapElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLMapElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLMarqueeElement.zig HTMLElement.deinit 2
@@ -524,8 +522,6 @@ src/webidl/impls/HTMLSourceElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLSourceElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLSpanElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLSpanElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLStyleElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLStyleElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLTableCaptionElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLTableCaptionElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLTableCellElement.zig HTMLElement.deinit 2

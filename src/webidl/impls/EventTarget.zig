@@ -240,6 +240,11 @@ pub fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !
 var internal_state_registry: ?std.AutoHashMap(usize, *InternalState) = null;
 var cleanup_hook_registered: bool = false;
 
+/// Every EventTarget - every node - a page makes enters the registry and
+/// leaves it; the guard rehashes before an insert once the tombstones those
+/// removals leave could take half the free slots (webidl.utils.tombstones).
+var registry_guard: webidl.utils.tombstones.TombstoneGuard = .{};
+
 fn ensureRegistry() *std.AutoHashMap(usize, *InternalState) {
     if (internal_state_registry == null) {
         internal_state_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
@@ -297,6 +302,7 @@ fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
 
 fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
     const registry = ensureRegistry();
+    registry_guard.beforeInsert(registry);
     try registry.put(@intFromPtr(instance), internal);
 }
 
@@ -306,6 +312,7 @@ fn removeFromRegistry(instance: *runtime.Instance) void {
     // rather than using InstanceRegistry, so it needs its own release - and it is on
     // every DOM node, so leaving it out keeps the leak on the hottest path there is.
     if (registry.fetchRemove(@intFromPtr(instance))) |kv| {
+        registry_guard.noteRemoval(registry);
         const Arena = @import("runtime").ArenaAllocator;
         if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, kv.value);
     }

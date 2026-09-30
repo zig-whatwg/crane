@@ -25,6 +25,7 @@ const webidl = @import("webidl");
 const HTMLHyperlinkElementUtils = interfaces.HTMLHyperlinkElementUtils;
 
 const ElementImpl = @import("Element.zig");
+const html = @import("html");
 
 pub const State = HTMLHyperlinkElementUtils.State;
 
@@ -62,19 +63,20 @@ fn hrefAttribute(element: *runtime.Instance) ?[]const u8 {
     return entry.value;
 }
 
-/// HTML "set the url": the href attribute parsed relative to the element's
-/// node document, as a URL object the caller releases with
-/// `runtime.Instance.deinit`; null when there is no href attribute or it does
-/// not parse.
+/// HTML "set the url": the href attribute encoding-parsed relative to the
+/// element's node document - with the document's character encoding, which
+/// a query is percent-encoded with - as a URL object the caller releases
+/// with `runtime.Instance.deinit`; null when there is no href attribute or
+/// it does not parse.
+///
+/// The URL object holds the parsed URL's serialization, parsed again: every
+/// non-ASCII code point of a serialized URL is percent-encoded already, so
+/// that parse (UTF-8, as the URL API's always is) gives back the same URL.
 fn elementUrl(element: *runtime.Instance) ?*runtime.Instance {
     const href = hrefAttribute(element) orelse return null;
-    const base = interfaces.Node.get_baseURI(element) catch return null;
-    defer element.ctx.allocator.free(base);
-    const base_arg = if (base.len > 0)
-        webidl.Opt(runtime.USVString).passed(base)
-    else
-        webidl.Opt(runtime.USVString).notPassed();
-    return interfaces.URL.call_static_parse(element, href, base_arg) catch null;
+    const serialized = (html.encoding_parse.encodingParseAndSerialize(element, href) catch return null) orelse return null;
+    defer element.ctx.allocator.free(serialized);
+    return interfaces.URL.call_static_parse(element, serialized, webidl.Opt(runtime.USVString).notPassed()) catch null;
 }
 
 /// A component of the element's url, or `fallback` (copied) when it has none.

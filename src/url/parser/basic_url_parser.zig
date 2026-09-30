@@ -21,6 +21,11 @@ const parseHost = @import("host_parser").parseHost;
 const percentEncode = @import("percent_encoding").utf8PercentEncode;
 const encodeSingleAscii = @import("percent_encoding").encodeSingleAscii;
 const EncodeSet = @import("encode_sets").EncodeSet;
+const shouldEncode = @import("encode_sets").shouldEncode;
+const encoding_mod = @import("encoding");
+
+/// An encoding the parser can percent-encode a query with.
+pub const Encoding = encoding_mod.Encoding;
 const windows_drive = @import("windows_drive");
 const path_helpers = @import("path");
 
@@ -49,6 +54,10 @@ const ParserContext = struct {
     base: ?*const URLRecord,
     state: ParserState,
     state_override: ?ParserState, // Spec line 1031
+    /// The encoding the query state percent-encodes after encoding with -
+    /// always an output encoding (basic URL parser step 5). UTF-8 unless the
+    /// caller passed one (HTML "encoding-parse a URL": the document's).
+    encoding: *const encoding_mod.Encoding = &encoding_mod.encoding.UTF_8,
 
     // URL being modified (for state override mode)
     url_mut: ?*URLRecord,
@@ -226,6 +235,21 @@ pub fn parse(allocator: std.mem.Allocator, input: []const u8, base: ?*const URLR
     return parseWithStateOverride(allocator, input, base, null, null);
 }
 
+/// The basic URL parser given `encoding`: the query is percent-encoded after
+/// encoding with it (the query state's step 2.2), unless the URL is not
+/// special or its scheme is "ws" or "wss" (step 1). HTML's "encoding-parse a
+/// URL" passes a document's character encoding.
+///
+/// Spec: https://url.spec.whatwg.org/#concept-basic-url-parser
+pub fn parseWithEncoding(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    base: ?*const URLRecord,
+    encoding: *const encoding_mod.Encoding,
+) ParseError!URLRecord {
+    return parseFull(allocator, input, base, null, null, encoding);
+}
+
 /// Basic URL Parser with state override support (spec lines 1030-1035)
 ///
 /// When state_override and url_mut are provided:
@@ -241,6 +265,17 @@ pub fn parseWithStateOverride(
     base: ?*const URLRecord,
     state_override: ?ParserState,
     url_mut: ?*URLRecord,
+) ParseError!URLRecord {
+    return parseFull(allocator, input, base, state_override, url_mut, &encoding_mod.encoding.UTF_8);
+}
+
+fn parseFull(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    base: ?*const URLRecord,
+    state_override: ?ParserState,
+    url_mut: ?*URLRecord,
+    encoding: *const encoding_mod.Encoding,
 ) ParseError!URLRecord {
     // P3 Optimization: Arena allocation for parsing
     // URL parsing creates many temporary allocations (Lists, strings, etc.).
@@ -259,6 +294,9 @@ pub fn parseWithStateOverride(
     // Note: preprocessed is allocated from arena, no need to free
 
     var ctx = try ParserContext.init(parse_allocator, preprocessed, base, state_override, url_mut);
+    // Step 5: "Set encoding to the result of getting an output encoding from
+    // encoding."
+    ctx.encoding = encoding_mod.getOutputEncoding(encoding);
     // Note: No defer ctx.deinit() needed - arena handles cleanup
 
     // If state override mode, initialize context from existing URL
@@ -1395,6 +1433,14 @@ fn opaquePathState(ctx: *ParserContext, c: ?u8) ParseError!void {
     }
 }
 
+fn inQuerySet(byte: u8) bool {
+    return shouldEncode(byte, .query);
+}
+
+fn inSpecialQuerySet(byte: u8) bool {
+    return shouldEncode(byte, .special_query);
+}
+
 fn queryState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Mark that we have a query (for state override mode)
     ctx.has_query = true;
@@ -1404,11 +1450,36 @@ fn queryState(ctx: *ParserContext, c: ?u8) ParseError!void {
     const is_hash_without_override = !ctx.hasStateOverride() and c != null and c.? == '#';
 
     if (is_eof or is_hash_without_override) {
+        // Step 1: "If encoding is not UTF-8 and one of the following is true:
+        // url is not special; url's scheme is "ws" or "wss" - then set
+        // encoding to UTF-8."
+        if (ctx.encoding != &encoding_mod.encoding.UTF_8) {
+            const scheme = ctx.scheme.items();
+            if (!ctx.isSpecial() or std.mem.eql(u8, scheme, "ws") or std.mem.eql(u8, scheme, "wss")) {
+                ctx.encoding = &encoding_mod.encoding.UTF_8;
+            }
+        }
         // Step 2.1-2.2 (lines 1502-1504): Percent-encode and append to query
         const encode_set: EncodeSet = if (ctx.isSpecial()) .special_query else .query;
-        const encoded = try percentEncode(ctx.allocator, ctx.buffer.items(), encode_set);
-        try ctx.query.appendSlice(encoded);
-        ctx.allocator.free(encoded);
+        if (ctx.encoding == &encoding_mod.encoding.UTF_8) {
+            const encoded = try percentEncode(ctx.allocator, ctx.buffer.items(), encode_set);
+            try ctx.query.appendSlice(encoded);
+            ctx.allocator.free(encoded);
+        } else {
+            // "Percent-encode after encoding, with encoding, buffer, and
+            // queryPercentEncodeSet" - one call for the whole buffer, as the
+            // ISO-2022-JP encoder is stateful.
+            var encoded: std.ArrayListUnmanaged(u8) = .empty;
+            defer encoded.deinit(ctx.allocator);
+            const in_set: encoding_mod.percent_encode.InSet = if (encode_set == .special_query) &inSpecialQuerySet else &inQuerySet;
+            encoding_mod.percentEncodeAfterEncoding(ctx.allocator, &encoded, ctx.encoding, ctx.buffer.items(), in_set, false) catch |err| switch (err) {
+                error.OutOfMemory => return ParseError.OutOfMemory,
+                // An output encoding always has an encoder, and one code
+                // point's bytes always fit.
+                else => return ParseError.InvalidURL,
+            };
+            try ctx.query.appendSlice(encoded.items);
+        }
 
         // Step 2.3 (line 1508): Clear buffer
         ctx.buffer.clear();

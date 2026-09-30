@@ -440,6 +440,33 @@ fn memberHandleIsSafe(comptime T: type) bool {
     return false;
 }
 
+/// Does `conv.toV8Value(T, ...)` make a fresh Global for every value of `T` -
+/// numbers, booleans, strings and enums, and the null of their optional forms
+/// - rather than hand back one it borrows (a cached wrapper, a stored callback,
+/// a script value)? A result the binding hands V8 through `setReturnValue` is
+/// read into a Local there and not released (`v8_PropertyCallbackInfo_
+/// SetReturnValue`, `v8_FunctionCallbackInfo_SetReturnValueGlobal`), so a
+/// fresh one is released by the binding after it: the attribute getters, and
+/// the indexed and named property interceptors. A named getter's string kept
+/// was one Global per `el.dataset.x` read - 60,000 a page on
+/// encoding/legacy-mb-*-decode, the heap growing a megabyte a page.
+///
+/// An ALLOWLIST, for the reason `argHandleIsCopied` is one: `*runtime.Instance`
+/// converts to the wrapper cache's own handle, a JSValue may be the impl's
+/// handle or a wrapper, an ArrayBufferView its buffer's - releasing any of
+/// them is a use-after-free. So a type not named here answers FALSE: keep
+/// the handle, keep the leak.
+pub fn getterValueIsOwned(comptime T: type) bool {
+    const owned = [_]type{
+        u8,                u16,                u32,               i8,   i16,  i32, u64, i64, f32, f64, bool,
+        runtime.DOMString, ?runtime.DOMString, runtime.USVString, ?u64, ?i64,
+    };
+    inline for (owned) |O| {
+        if (T == O) return true;
+    }
+    return @typeInfo(T) == .@"enum";
+}
+
 /// Types `argHandleIsCopied` names by identity, re-exported so `tests/v8` can
 /// name them too.
 pub const copied_arg_types = struct {
@@ -2695,21 +2722,6 @@ pub fn V8Interface(comptime Interface: type) type {
             };
         }
 
-        /// Whether the getter conversion makes a fresh Global for every value
-        /// of `T` - numbers, booleans, strings and enums, and the null of
-        /// their optional forms - rather than handing back one it borrows
-        /// (a cached wrapper, a stored callback, a script value).
-        fn getterValueIsOwned(comptime T: type) bool {
-            const owned = [_]type{
-                u8,                u16,                u32,               i8,   i16,  i32, u64, i64, f32, f64, bool,
-                runtime.DOMString, ?runtime.DOMString, runtime.USVString, ?u64, ?i64,
-            };
-            inline for (owned) |O| {
-                if (T == O) return true;
-            }
-            return @typeInfo(T) == .@"enum";
-        }
-
         /// Whether this interface's own or mixin state has the generated
         /// [SameObject] cache field `name` (an inherited attribute binds
         /// through its own interface, so its own State answers).
@@ -4613,6 +4625,9 @@ pub fn V8Interface(comptime Interface: type) type {
                             return .kNo;
                         };
                         info.setReturnValue(@ptrCast(v8_value));
+                        // setReturnValue reads the handle into a Local; one the
+                        // conversion made is the binding's to release.
+                        if (comptime getterValueIsOwned(ChildType)) v8.v8_Global_Dispose(@ptrCast(v8_value));
                     }
                     return .kYes;
                 } else {
@@ -4626,6 +4641,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     return .kNo;
                 };
                 info.setReturnValue(@ptrCast(v8_value));
+                if (comptime getterValueIsOwned(ActualReturnType)) v8.v8_Global_Dispose(@ptrCast(v8_value));
                 return .kYes;
             }
         }
@@ -5270,7 +5286,9 @@ pub fn V8Interface(comptime Interface: type) type {
                         info.setReturnValue(@ptrCast(wrapped));
                         return .kYes;
                     } else {
-                        // Special case for DOMString - convert to string directly
+                        // Special case for DOMString - convert to string directly.
+                        // Each string is made here, and setReturnValue only
+                        // reads it into a Local, so it is released after.
                         if (ChildType == runtime.DOMString) {
                             const slice = unwrapped_result.asSlice();
                             if (slice.len == 0) {
@@ -5278,11 +5296,13 @@ pub fn V8Interface(comptime Interface: type) type {
                                     return .kYes;
                                 };
                                 info.setReturnValue(@ptrCast(empty_str));
+                                v8.v8_Global_Dispose(@ptrCast(empty_str));
                             } else {
                                 const v8_str = v8.v8_String_NewFromUtf8(isolate, slice.ptr, @intCast(slice.len)) orelse {
                                     return .kYes;
                                 };
                                 info.setReturnValue(@ptrCast(v8_str));
+                                v8.v8_String_Dispose(v8_str);
                             }
                             return .kYes;
                         }
@@ -5290,13 +5310,19 @@ pub fn V8Interface(comptime Interface: type) type {
                             return .kYes;
                         };
                         info.setReturnValue(@ptrCast(v8_value));
+                        if (comptime getterValueIsOwned(ChildType)) v8.v8_Global_Dispose(@ptrCast(v8_value));
                         return .kYes;
                     }
                 }
                 return .kNo;
             } else {
+                // DOMStringMap's anonymous getter comes here: one string per
+                // `el.dataset.x` read - 60,000 a page on the legacy
+                // multi-byte decode tests - each kept for the life of the
+                // process until the conversion's handle was released.
                 const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch return .kYes;
                 info.setReturnValue(@ptrCast(v8_value));
+                if (comptime getterValueIsOwned(ActualReturnType)) v8.v8_Global_Dispose(@ptrCast(v8_value));
                 return .kYes;
             }
         }
@@ -5638,6 +5664,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const v8_attr = v8.v8_Integer_New(isolate, attr_value);
                     info.setReturnValue(@ptrCast(v8_attr));
+                    // Made here, read into a Local by setReturnValue: ours.
+                    v8.v8_Global_Dispose(@ptrCast(v8_attr));
                     return .kYes;
                 }
             }
@@ -5975,6 +6003,10 @@ pub fn V8Interface(comptime Interface: type) type {
             const type_info = @typeInfo(ActualReturnType);
 
             var v8_value: ?*v8.Value = null;
+            // Whether `v8_value` is a handle the conversion made, which the
+            // descriptor copies and the binding then releases - never a
+            // wrapper, which is the wrapper cache's.
+            var value_owned = false;
             if (type_info == .optional) {
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
@@ -5991,6 +6023,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
                             return .kNo;
                         };
+                        value_owned = comptime getterValueIsOwned(ChildType);
                     }
                 } else {
                     // null value - property doesn't exist
@@ -6000,9 +6033,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch {
                     return .kNo;
                 };
+                value_owned = comptime getterValueIsOwned(ActualReturnType);
             }
 
             if (v8_value == null) return .kNo;
+            defer if (value_owned) v8.v8_Global_Dispose(v8_value);
 
             // Per WebIDL §3.9.1, named properties are NOT enumerable by default
             // unless [LegacyEnumerableNamedProperties] is specified.
@@ -6036,6 +6071,9 @@ pub fn V8Interface(comptime Interface: type) type {
             ) orelse return .kNo;
 
             info.setReturnValue(@ptrCast(desc));
+            // The descriptor is made for this call, and setReturnValue reads
+            // it into a Local.
+            v8.v8_Global_Dispose(@ptrCast(desc));
             return .kYes;
         }
 

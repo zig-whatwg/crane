@@ -99,6 +99,102 @@ pub const ParseOptions = struct {
     /// URL it resolves their src against.
     script_loader: ?ScriptLoader = null,
     base_url: []const u8 = "",
+
+    /// The input is the document's byte stream - a navigation's response
+    /// body - to decode with the encoding HTML's encoding sniffing algorithm
+    /// determines, rather than characters already decoded. Null for a parse
+    /// of characters (document.open(), DOMParser), whose document keeps its
+    /// encoding.
+    byte_stream: ?ByteStream = null,
+};
+
+/// What the encoding sniffing algorithm knows about a byte stream besides
+/// its bytes (HTML §13.2.3.2).
+pub const ByteStream = struct {
+    /// The response's Content-Type, as received: its charset parameter is the
+    /// encoding the transport layer specifies (step 4).
+    content_type: ?[]const u8 = null,
+    /// The name of the container document's encoding, when the document is
+    /// in a child navigable whose container document is same origin with it
+    /// (step 6).
+    parent_encoding: ?[]const u8 = null,
+};
+
+const encoding_sniffing = html_core.parser.encoding_sniffing;
+const log = std.log.scoped(.scripted_parser);
+
+/// A byte stream's decoding while it is parsed: the encoding, its
+/// confidence, and what "change the encoding" needs to switch it.
+const ByteStreamDecoding = struct {
+    allocator: Allocator,
+    bytes: []const u8,
+    encoding: encoding_sniffing.Encoding,
+    confidence: encoding_sniffing.Confidence,
+    document: *runtime.Instance,
+    input_stream: *InputStreamManager,
+    /// The length of the decoded input as decoded: a longer buffer has had
+    /// document.write() insert into it, and its offsets are no longer the
+    /// decoded bytes'.
+    decoded_len: usize,
+
+    /// HTML §13.2.3.4 "change the encoding", which the tree builder runs for
+    /// a meta element that declares `requested`.
+    fn change(context: *anyopaque, requested: encoding_sniffing.Encoding) void {
+        const self: *ByteStreamDecoding = @ptrCast(@alignCast(context));
+        // The meta steps: only "if the confidence is currently tentative".
+        if (self.confidence != .tentative) return;
+        // Steps 1-4: nothing to change - the confidence becomes certain.
+        const new = encoding_sniffing.encodingToChangeTo(self.encoding, requested) orelse {
+            self.confidence = .certain;
+            return;
+        };
+        // Step 5: every byte converted so far - up to the tokenizer's next
+        // input character - means the same in both encodings, so the rest
+        // of the stream is decoded with the new one in place.
+        const tokenizer = self.input_stream.tokenizer;
+        const consumed = if (tokenizer) |t| t.nextInputPosition() else self.input_stream.buffer.items.len;
+        if (self.input_stream.buffer.items.len == self.decoded_len and consumed <= self.bytes.len and
+            encoding_sniffing.sameInterpretation(self.bytes[0..consumed], self.encoding, new))
+        {
+            const switched = blk: {
+                self.switchAt(consumed, new) catch |err| {
+                    log.warn("change the encoding: {}", .{err});
+                    break :blk false;
+                };
+                break :blk true;
+            };
+            if (switched) {
+                self.confidence = .certain;
+                return;
+            }
+        }
+        // Step 6 says to navigate to the document again (replace) with the
+        // new encoding. Deviation, stated: Crane ignores the new encoding
+        // and makes the confidence certain, as Blink does - its decoder
+        // switches codecs only for bytes not yet decoded
+        // (TextResourceDecoder::Decode -> FinalizeMetaCharsetCheck ->
+        // SetEncoding(..., kEncodingFromMetaTag), text_resource_decoder.cc)
+        // and nothing in Blink re-decodes or reloads for a meta found later.
+        // Re-running a navigation after its scripts ran is not something
+        // Crane's synchronous parse can do.
+        log.debug("change the encoding to {s} ignored: the bytes already parsed decode differently", .{encoding_sniffing.canonicalName(new)});
+        self.confidence = .certain;
+    }
+
+    /// Decode the bytes from `at` on with `new` and put them in place of the
+    /// input stream's characters from `at` on (whose offsets are the bytes'),
+    /// then make `new` the document's encoding.
+    fn switchAt(self: *ByteStreamDecoding, at: usize, new: encoding_sniffing.Encoding) !void {
+        const tail = try encoding_sniffing.decodeWith(self.allocator, self.bytes[at..], new);
+        defer self.allocator.free(tail);
+        const stream = self.input_stream;
+        stream.buffer.shrinkRetainingCapacity(at);
+        try stream.buffer.appendSlice(stream.allocator, tail);
+        stream.sync();
+        self.decoded_len = stream.buffer.items.len;
+        self.encoding = new;
+        try document_internals.setEncoding(self.document, encoding_sniffing.canonicalName(new));
+    }
 };
 
 /// The tree builder's hook for document.write(): process the characters it
@@ -155,8 +251,27 @@ pub fn parseHTMLWithScripting(
         impls.Document.setDefaultView(document, window);
     }
 
+    // A byte stream: HTML §13.2.3.2 "determining the character encoding".
+    // "The document's character encoding must immediately be set to the value
+    // returned from this algorithm, at the same time as the user agent uses
+    // the returned value to select the decoder to use for the input byte
+    // stream."
+    var decoded: ?[]u8 = null;
+    defer if (decoded) |d| allocator.free(d);
+    var sniffed: ?encoding_sniffing.Result = null;
+    if (options.byte_stream) |byte_stream| {
+        const result = encoding_sniffing.sniff(html, .{
+            .transport = if (byte_stream.content_type) |ct| encoding_sniffing.transportEncoding(allocator, ct) else null,
+            .parent = if (byte_stream.parent_encoding) |name| encoding_sniffing.lookup(name) else null,
+        });
+        sniffed = result;
+        document_internals.setEncoding(document, encoding_sniffing.canonicalName(result.encoding)) catch return error.OutOfMemory;
+        decoded = encoding_sniffing.decode(allocator, html, result.encoding) catch return error.OutOfMemory;
+    }
+    const input = decoded orelse html;
+
     // Step 2: the input stream, and the tokenizer reading it.
-    var input_stream = InputStreamManager.init(allocator, html) catch return error.OutOfMemory;
+    var input_stream = InputStreamManager.init(allocator, input) catch return error.OutOfMemory;
     defer input_stream.deinit();
     var tokenizer = Tokenizer.initWithStreamManager(allocator, &input_stream);
     defer tokenizer.deinit();
@@ -183,6 +298,7 @@ pub fn parseHTMLWithScripting(
     // Document as it parses the DOCTYPE, where script can already read it -
     // except in an iframe srcdoc document, whose URL matches about:srcdoc.
     tree_builder.setDomAdapterModeCallback(&parser_scripts.domAdapterOnModeSet);
+    tree_builder.setDomAdapterPoppedCallback(&parser_scripts.domAdapterOnElementPopped);
     if (document_internals.getURL(document)) |url| tree_builder.iframe_srcdoc = matchesAboutSrcdoc(url);
 
     // Step 5: the script end-tag steps.
@@ -206,6 +322,21 @@ pub fn parseHTMLWithScripting(
     const previous_stream = document_internals.getInputStreamManager(document);
     document_internals.setInputStreamManager(document, &input_stream);
     defer document_internals.setInputStreamManager(document, previous_stream);
+
+    // The parser's "change the encoding", while the encoding is tentative.
+    var byte_stream_decoding: ByteStreamDecoding = undefined;
+    if (sniffed) |result| {
+        byte_stream_decoding = .{
+            .allocator = allocator,
+            .bytes = html,
+            .encoding = result.encoding,
+            .confidence = result.confidence,
+            .document = document,
+            .input_stream = &input_stream,
+            .decoded_len = input.len,
+        };
+        tree_builder.change_the_encoding = .{ .context = @ptrCast(&byte_stream_decoding), .change = &ByteStreamDecoding.change };
+    }
 
     // Step 7: parse.
     tree_builder.parse() catch return error.TreeBuilderError;

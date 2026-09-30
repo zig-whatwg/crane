@@ -160,6 +160,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [An API that exists but never settles hangs its suite](spec-compliance-an-api-that-exists-but-never-settles-hangs-its-suite.md) - Before exposing an API whose promises and events depend on machinery not yet built, count what waits on them: an object that exists and never settles is worse than one that is missing.
 - [HTML bounds frame nesting only for src; browsers bound script navigations too](spec-compliance-html-bounds-frame-nesting-only-for-src.md) - A file whose subtests all pass while it times out is waiting for a load event; when the spec has no bound on a recursion, take a shipping engine's and say so.
 - ["UTF-8 decode" never fails](spec-compliance-utf-8-decode-never-fails.md) - Where the spec decodes, decode; validation is a different algorithm with a different name.
+- [A replacement loop must restart the decoder its encoding makes](spec-compliance-a-replacement-loop-must-restart-the-decoder-its-encoding-makes.md) - A decoder's "initial state" belongs to its encoding: reset through `newDecoder()`, and test an error loop with a single-byte encoding that has unmapped bytes, not with UTF-8.
+- [A parsed element is inserted before its text](spec-compliance-a-parsed-element-is-inserted-before-its-text.md) - An element whose processing reads its children must hear from the parser when they are all there: for a parsed element, insertion and children-changed run before its content has arrived.
+- [An opaque response's status is 0](spec-compliance-an-opaque-response-s-status-is-0.md) - Before checking a response's status or headers, ask whether it can be no-cors cross-origin: an opaque response says 0 and nothing, and the check has to read the internal response.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
@@ -206,6 +209,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A counter that drifts per call hides a leak per call](testing-a-counter-that-drifts-per-call-hides-a-leak-per-call.md) - Read a leak counter against a control statement run the same way, and cross-check it with V8's global handle bytes; a hand-kept counter is only as good as its least-counted creation site.
 - [Compare two runners only with each runner's own snapshot](testing-compare-two-runners-only-with-each-runner-s-own-snapshot.md) - A runner and its snapshot are one artifact: freeze them together, and put the right snapshot in place before every run.
 - [A correction for a bug becomes the bug when the bug is fixed](testing-a-correction-for-a-bug-becomes-the-bug-when-it-is-fixed.md) - A correction must name the bug it corrects, so fixing the bug retires it; evidence printed live that stops supporting a model is a refutation, not a caveat.
+- [A stash poll hangs on a request nothing sends](testing-a-stash-poll-hangs-on-a-request-nothing-sends.md) - When a file polls the server for a stashed value, find what should send the request that fills the stash - a ping, a beacon, a report - before looking at what reads it.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
@@ -221,6 +225,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [When one subtest in a file hangs and its siblings pass, compare what triggers each one](debugging-when-one-subtest-hangs-compare-what-triggers-it.md) - Before blaming the feature, diff what triggers the passing and the hanging subtests.
 - [The path production rarely takes keeps its leaks](debugging-the-path-production-rarely-takes-keeps-its-leaks.md) - A path production rarely takes keeps every leak it has; measure the no-snapshot path's handles as well as the snapshot's.
 - [When a member reads undefined, check what the identifier names](debugging-when-a-member-reads-undefined-check-what-the-identifier-names.md) - `undefined` from a member the interface has means the receiver is something else; print a control case beside the failing one first.
+- [A per-page slowdown with flat native contexts is a table, not a page](debugging-a-per-page-slowdown-with-flat-native-contexts-is-a-table-not-a-page.md) - Flat native contexts with a rising curve means the process keeps something per page that is not a page: sample the slow page before theorising, and diff snapshots by type - a process-wide table and a realm-less handle are both invisible to the realm count.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.

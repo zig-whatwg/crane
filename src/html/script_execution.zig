@@ -2103,6 +2103,8 @@ fn documentBaseUrlAlloc(allocator: std.mem.Allocator, document: ?*runtime.Instan
 /// For a UTF-8 document "encoding-parsing a URL" is the URL parser with the
 /// document base URL, which is what `URL.parse(input, base)` runs.
 ///
+/// Deviation, stated (encoding-parse-utf8): the query is encoded as UTF-8, not with the document's encoding - queued.
+///
 /// Goes through the URL interface because html cannot reach the URL module's
 /// parser directly (and the impls boundary rules out the impl). The temporary
 /// URL object is never exposed to script, so nothing wraps it and nothing else

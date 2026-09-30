@@ -31,9 +31,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
-const api_parser = @import("api_parser");
-const url_serializer = @import("url_serializer");
-const URLRecord = @import("url_record").URLRecord;
+const html = @import("html");
 
 const DOMString = runtime.DOMString;
 const USVString = runtime.USVString;
@@ -201,35 +199,11 @@ fn urlString(instance: *runtime.Instance, comptime spec: Spec) ![]const u8 {
 }
 
 /// HTML "encoding-parsing-and-serializing a URL" given `input`, relative to
-/// `element`'s node document: the URL parser run against the document base
-/// URL, serialized - or null for failure. Owned by `element.ctx.allocator`.
-///
-/// Deviation, stated: "encoding-parsing" uses the document's character
-/// encoding for the query; this parses as UTF-8, which is every document's
-/// encoding but a legacy one's. Crane's other encoding-parse sites
-/// (script src, window.open) do the same.
+/// `element`'s node document - html.encoding_parse, with the document's base
+/// URL and character encoding - or null for failure. Owned by
+/// `element.ctx.allocator`.
 fn encodingParseAndSerialize(element: *runtime.Instance, input: []const u8) !?[]const u8 {
-    const allocator = element.ctx.allocator;
-    // "the document base URL" of the element's node document, which Node's
-    // baseURI serializes. Owned by the element's context allocator.
-    const base = interfaces.Node.get_baseURI(element) catch |err| switch (err) {
-        error.OutOfMemory => return err,
-        else => "",
-    };
-    defer if (base.len > 0) allocator.free(base);
-
-    var base_record: ?URLRecord = if (base.len > 0) api_parser.parseURL(allocator, base, null) catch |err| switch (err) {
-        error.OutOfMemory => return err,
-        else => null,
-    } else null;
-    defer if (base_record) |*record| record.deinit();
-
-    var record = api_parser.parseURL(allocator, input, if (base_record) |*record| record else null) catch |err| switch (err) {
-        error.OutOfMemory => return err,
-        else => return null,
-    };
-    defer record.deinit();
-    return try url_serializer.serialize(allocator, &record, false);
+    return html.encoding_parse.encodingParseAndSerialize(element, input);
 }
 
 /// Infra "convert to a scalar value string": every lone surrogate - WTF-8 in
