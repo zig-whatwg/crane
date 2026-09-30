@@ -5,17 +5,18 @@
 //!
 //! The reflected attributes are the generated interface's, but for the four
 //! limited to only known values, which are here. What else is here is the
-//! stylesheet link type (4.6.7.23) and the preload link type (4.6.7.20):
+//! stylesheet link type (4.6.7.23), the preload link type (4.6.7.20) and
+//! the modulepreload link type (4.6.7.12):
 //! the appropriate times to fetch and process them - the element becoming
 //! browsing-context connected, and its href, rel, crossorigin, as, type and
 //! disabled attributes changing - and the fetch, whose load, with a style
 //! sheet's critical subresources, and whose load or error event are
 //! `style_sheet_loading`'s.
 //!
-//! Not modelled, stated: the other external resource link types
-//! (modulepreload, icon, manifest, ...) fetch nothing; a preload fills no
-//! map of preloaded resources, so what it fetched is fetched again by its
-//! consumer; alternative style sheets are fetched as any other; the style
+//! Not modelled, stated: the other external resource link types (icon,
+//! manifest, ...) fetch nothing; a preload fills no map of preloaded
+//! resources, and a modulepreload no module map, so what they fetched is
+//! fetched again by its consumer; alternative style sheets are fetched as any other; the style
 //! sheet itself is not parsed into CSSOM, so `sheet` is null;
 //! render-blocking and the script-blocking style sheet set are not kept.
 
@@ -158,6 +159,12 @@ fn fetchAndProcess(element: *runtime.Instance) void {
             if (attribute(element, "disabled") != null) return;
             internal.load = style_sheet_loading.startLink(element, options) orelse 0;
         },
+        .modulepreload => {
+            // Step 2: "Let destination be the current state of el's as
+            // attribute (a destination), or "script" if it is in no state."
+            const destination = asDestination(attribute(element, "as")) orelse .script;
+            internal.load = style_sheet_loading.startModulePreload(element, options, destination) orelse 0;
+        },
         .preload => {
             // Steps 3-4: "Let destination be the result of translating the
             // keyword representing the state of el's as attribute. If
@@ -172,13 +179,27 @@ fn fetchAndProcess(element: *runtime.Instance) void {
 }
 
 /// The external resource link the element's rel creates, of those this
-/// engine fetches: a stylesheet link, or else a preload link. (Both at once
-/// - `rel="preload stylesheet"` - is fetched as the style sheet.)
-fn linkType(element: *runtime.Instance) enum { none, stylesheet, preload } {
-    const rel = attribute(element, "rel") orelse return .none;
-    if (hasToken(rel, "stylesheet")) return .stylesheet;
-    if (hasToken(rel, "preload")) return .preload;
-    return .none;
+/// engine fetches: a stylesheet link, else a preload link, else a
+/// modulepreload link. (Two at once - `rel="preload stylesheet"` - is
+/// fetched as the first of those.)
+fn linkType(element: *runtime.Instance) LinkType {
+    return relLinkType(attribute(element, "rel"));
+}
+
+const LinkType = enum { none, stylesheet, preload, modulepreload };
+
+/// The `as` attribute's state, a potential destination, as a destination;
+/// null when it is in no state. "fetch" is the empty destination, which is
+/// not script-like.
+fn asDestination(as: ?[]const u8) ?Destination {
+    const value = as orelse return null;
+    if (std.ascii.eqlIgnoreCase(value, "fetch")) return .empty;
+    inline for (@typeInfo(Destination).@"enum".fields) |field| {
+        if (field.value != @intFromEnum(Destination.empty) and keywordIs(field.name, value)) {
+            return @field(Destination, field.name);
+        }
+    }
+    return null;
 }
 
 /// HTML "translate a preload destination" for the `as` attribute's value:
@@ -321,10 +342,11 @@ fn attributeChangeSteps(
 }
 
 /// The link type a rel value makes the element fetch (`linkType`).
-fn relLinkType(rel: ?[]const u8) enum { none, stylesheet, preload } {
+fn relLinkType(rel: ?[]const u8) LinkType {
     const value = rel orelse return .none;
     if (hasToken(value, "stylesheet")) return .stylesheet;
     if (hasToken(value, "preload")) return .preload;
+    if (hasToken(value, "modulepreload")) return .modulepreload;
     return .none;
 }
 
@@ -332,7 +354,7 @@ fn relLinkType(rel: ?[]const u8) enum { none, stylesheet, preload } {
 /// fetched.
 fn typeAllows(element: *runtime.Instance, type_attr: ?[]const u8) bool {
     return switch (linkType(element)) {
-        .none => true,
+        .none, .modulepreload => true,
         .stylesheet => supportedType(type_attr),
         .preload => typeMatches(type_attr, preloadDestination(attribute(element, "as")) orelse return true),
     };

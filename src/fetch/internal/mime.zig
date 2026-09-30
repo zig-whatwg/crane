@@ -97,6 +97,13 @@ pub fn extractMimeEssence(allocator: std.mem.Allocator, headers: *const HeaderLi
     return try essenceBytes(allocator, extracted);
 }
 
+/// Whether `essence` - lowercase, as `extractMimeEssence` gives it - is a
+/// JavaScript MIME type essence match: what "fetch a single module script"
+/// and nosniff require of a script's response.
+pub fn isJavaScriptEssence(essence: []const u8) bool {
+    return mimesniff.predicates.isJavaScriptMimeTypeEssenceMatch(essence);
+}
+
 /// The essence of `mime` ("type/subtype"), as bytes - a MIME type's type
 /// and subtype are HTTP token code points, all ASCII. OWNED.
 pub fn essenceBytes(allocator: std.mem.Allocator, mime: mimesniff.MimeType) ![]u8 {
@@ -136,6 +143,13 @@ test "extract a MIME type: Fetch's examples" {
     try expectExtracted(null, &.{});
     try expectExtracted(null, &.{"*/*"});
     try expectExtracted(null, &.{"bogus"});
+}
+
+test "a JavaScript MIME type essence: text/javascript and its legacy names, not JSON" {
+    try std.testing.expect(isJavaScriptEssence("text/javascript"));
+    try std.testing.expect(isJavaScriptEssence("application/x-javascript"));
+    try std.testing.expect(!isJavaScriptEssence("application/json"));
+    try std.testing.expect(!isJavaScriptEssence("text/plain"));
 }
 
 test "extract a MIME type's essence: lowercase, parameters dropped, failure null" {

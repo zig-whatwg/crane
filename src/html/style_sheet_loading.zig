@@ -85,6 +85,10 @@ const Kind = enum {
     /// A link element's preload: the one resource, no subresources, and no
     /// delay on the document's load event.
     preload,
+    /// A link element's modulepreload: one module script, fetched "cors",
+    /// failing on a MIME type that is not JavaScript; no delay on the
+    /// document's load event either.
+    modulepreload,
 };
 
 const Load = struct {
@@ -161,8 +165,8 @@ threadlocal var next_id: u64 = 1;
 pub fn delaysLoadEvent(document: *runtime.Instance) bool {
     for (loads.items) |load| {
         // "A user agent must not delay the load event for this link type"
-        // - preload.
-        if (load.kind == .preload) continue;
+        // - preload and modulepreload.
+        if (load.kind == .preload or load.kind == .modulepreload) continue;
         if (load.document == document and load.documentIsLive()) return true;
     }
     return false;
@@ -191,6 +195,27 @@ pub fn startLink(element: *runtime.Instance, options: LinkOptions) ?u64 {
 /// goes to the network again.
 pub fn startPreload(element: *runtime.Instance, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
     return startLinkFetch(element, .preload, options, destination);
+}
+
+/// HTML "fetch and process the linked resource" for `element`, a link
+/// element whose modulepreload link is to be fetched, `destination` its `as`
+/// attribute's state ("script" when it has none): step 3, a destination
+/// that is not script-like fires `error` from a task; otherwise "fetch a
+/// modulepreload module script graph" - "fetch a single module script" -
+/// then `error` if there is no module script, `load` if there is.
+///
+/// Not modelled, stated: the module map, which the fetched script would
+/// enter for a later import to find, and "fetch the descendants" - the
+/// script's own imports; and the script is not parsed, so a module that
+/// fails to parse still fires load.
+pub fn startModulePreload(element: *runtime.Instance, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
+    if (!destination.isScriptLike()) {
+        const load = newLoad(element, .modulepreload) orelse return null;
+        load.failed = true;
+        complete(load);
+        return load.id;
+    }
+    return startLinkFetch(element, .modulepreload, options, destination);
 }
 
 fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, destination: fetch.internal.Destination) ?u64 {
@@ -465,6 +490,13 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, cors: CorsSet
     request.destination = destination;
     request.mode = if (cors == .no_cors) .no_cors else .cors;
     request.credentials_mode = if (cors == .anonymous) .same_origin else .include;
+    // A module script is fetched "cors" whatever the attribute, with its
+    // "CORS settings attribute credentials mode": "same-origin" for No CORS
+    // and Anonymous, "include" for Use Credentials.
+    if (load.kind == .modulepreload) {
+        request.mode = .cors;
+        request.credentials_mode = if (cors == .use_credentials) .include else .same_origin;
+    }
     request.use_url_credentials = true;
     // "Set request's referrer policy to options's referrer policy."
     request.referrer_policy = referrer_policy;
@@ -547,6 +579,17 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
     // at el. Otherwise, fire an event named load at el" - whatever its
     // status or type.
     if (load.kind == .preload) return;
+    // A modulepreload - "fetch a single module script": no module script
+    // when the status is not ok, or the MIME type is not a JavaScript MIME
+    // type (for a script-like destination).
+    if (load.kind == .modulepreload) {
+        if (!fetch.internal.isOkStatus(response.status)) return fail(load);
+        const essence = fetch.internal.mime.extractMimeEssence(load.allocator, &response.header_list) catch return fail(load);
+        const e = essence orelse return fail(load);
+        defer load.allocator.free(e);
+        if (!fetch.internal.mime.isJavaScriptEssence(e)) return fail(load);
+        return;
+    }
     if (!fetch.internal.isOkStatus(response.status)) return fail(load);
     // "If the resource's Content-Type metadata is not text/css, then set
     // success to false" - with the quirk: "If the document has been set to
