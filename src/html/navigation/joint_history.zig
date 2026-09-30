@@ -86,6 +86,10 @@ pub const Entry = struct {
     resource: ?[]u8 = null,
     /// "Scroll restoration mode" is "manual".
     scroll_restoration_manual: bool = false,
+    /// What the navigation that committed its document state's document
+    /// recorded for that document's navigation.activation - on one entry of
+    /// the state (`setActivation`). Owned.
+    activation: ?*Activation = null,
 
     fn deinit(self: *Entry, allocator: Allocator) void {
         allocator.free(self.url);
@@ -93,7 +97,81 @@ pub const Entry = struct {
         self.api_state.deinit(allocator);
         allocator.free(self.origin);
         if (self.resource) |r| allocator.free(r);
+        self.dropActivation(allocator);
     }
+
+    fn dropActivation(self: *Entry, allocator: Allocator) void {
+        const activation = self.activation orelse return;
+        activation.deinit(allocator);
+        allocator.destroy(activation);
+        self.activation = null;
+    }
+};
+
+/// A NavigationType.
+pub const NavigationType = enum { push, replace, reload, traverse };
+
+/// A session history entry as it was at one moment - what a
+/// NavigationHistoryEntry records of it - kept after the entry itself has
+/// changed or gone (a "replace" changes an entry in place). Owned strings.
+pub const EntrySnapshot = struct {
+    id: u64,
+    navigable: u64,
+    url: []u8,
+    api_key: [36]u8,
+    api_id: [36]u8,
+    /// Its document state's origin, serialized.
+    origin: []u8,
+
+    pub fn deinit(self: *EntrySnapshot, allocator: Allocator) void {
+        allocator.free(self.url);
+        allocator.free(self.origin);
+    }
+
+    /// The entry it describes, for making a NavigationHistoryEntry from:
+    /// borrowing this snapshot's strings, with no document and no state.
+    pub fn asEntry(self: *const EntrySnapshot) Entry {
+        return .{
+            .id = self.id,
+            .navigable = self.navigable,
+            .step = 0,
+            .url = self.url,
+            .document_state = 0,
+            .document = null,
+            .api_key = self.api_key,
+            .api_id = self.api_id,
+            .origin = self.origin,
+        };
+    }
+};
+
+/// HTML "update document for history step application" step 7's inputs for
+/// a new document: what the navigation API makes the document's
+/// NavigationActivation from. Recorded when a cross-document navigation
+/// commits the document, before any of its script runs.
+pub const Activation = struct {
+    navigation_type: NavigationType,
+    /// previousEntryForActivation: the navigable's active entry before the
+    /// navigation, as it was then. Null for none.
+    previous: ?EntrySnapshot,
+    /// The entry the document was activated with - "navigation's current
+    /// entry" at that moment.
+    entry: EntrySnapshot,
+
+    pub fn deinit(self: *Activation, allocator: Allocator) void {
+        if (self.previous) |*p| p.deinit(allocator);
+        self.entry.deinit(allocator);
+    }
+};
+
+/// What a cross-document commit reserves before the document it makes
+/// exists: the new entry's id, navigation API key and navigation API ID -
+/// HTML's targetEntry, which the pageswap event names before the old
+/// document unloads.
+pub const Prepared = struct {
+    id: u64,
+    api_key: [36]u8,
+    api_id: [36]u8,
 };
 
 pub const HistoryHandling = enum { push, replace };
@@ -197,7 +275,27 @@ pub const JointHistory = struct {
         if (self.hasNavigable(navigable)) return;
         const doc_state = self.next_document_state;
         self.next_document_state += 1;
-        try self.append(navigable, self.current_step, url, doc_state, document, .null, .undefined, origin, null);
+        try self.append(navigable, self.current_step, url, doc_state, document, .null, .undefined, origin, null, null);
+    }
+
+    /// HTML "create a new child navigable" step 12 for `navigable`, a child
+    /// of `parent`: its first entry, at the step of the first of the
+    /// parent's entries that share the parent's current document state -
+    /// the step the parent's document began at, not the current one, so a
+    /// later truncation of the parent's forward entries leaves it. At the
+    /// current step when the parent has no entry. Nothing when it has one.
+    pub fn addChildInitialEntry(self: *JointHistory, navigable: u64, parent: u64, url: []const u8, document: ?*anyopaque, origin: []const u8) !void {
+        if (self.hasNavigable(navigable)) return;
+        var step = self.current_step;
+        if (self.currentEntry(parent)) |parent_entry| {
+            step = parent_entry.step;
+            for (self.entries.items) |entry| {
+                if (entry.navigable == parent and entry.document_state == parent_entry.document_state and entry.step < step) step = entry.step;
+            }
+        }
+        const doc_state = self.next_document_state;
+        self.next_document_state += 1;
+        try self.append(navigable, step, url, doc_state, document, .null, .undefined, origin, null, null);
     }
 
     fn append(
@@ -211,13 +309,15 @@ pub const JointHistory = struct {
         api_state: SerializedState,
         origin: []const u8,
         api_key: ?[36]u8,
+        prepared: ?Prepared,
     ) !void {
         const owned_url = try self.allocator.dupe(u8, url);
         errdefer self.allocator.free(owned_url);
         const owned_origin = try self.allocator.dupe(u8, origin);
         errdefer self.allocator.free(owned_origin);
+        const id = if (prepared) |p| p.id else self.next_id;
         try self.entries.append(self.allocator, .{
-            .id = self.next_id,
+            .id = id,
             .navigable = navigable,
             .step = step,
             .url = owned_url,
@@ -225,11 +325,11 @@ pub const JointHistory = struct {
             .document = document,
             .state = state,
             .api_state = api_state,
-            .api_key = api_key orelse self.randomUuid(),
-            .api_id = self.randomUuid(),
+            .api_key = if (prepared) |p| p.api_key else api_key orelse self.randomUuid(),
+            .api_id = if (prepared) |p| p.api_id else self.randomUuid(),
             .origin = owned_origin,
         });
-        self.next_id += 1;
+        if (prepared == null) self.next_id += 1;
     }
 
     /// "Clear the forward session history": every entry past the current
@@ -250,10 +350,91 @@ pub const JointHistory = struct {
     /// place of the navigable's current one, at its step - keeping its
     /// navigation API key when the two are same origin (step 9.3).
     pub fn commitDocument(self: *JointHistory, navigable: u64, url: []const u8, document: ?*anyopaque, origin: []const u8, handling: HistoryHandling) !void {
+        try self.commitPreparedDocument(navigable, url, document, origin, handling, self.prepareDocument(navigable, origin, handling));
+    }
+
+    /// Reserve the entry a cross-document commit of a document of `origin`
+    /// to `navigable` will make: a new id and navigation API ID, and a new
+    /// navigation API key - or, for a "replace" by a same-origin document,
+    /// the key of the entry it replaces (step 9.3). An id reserved is never
+    /// handed out again, committed or not.
+    pub fn prepareDocument(self: *JointHistory, navigable: u64, origin: []const u8, handling: HistoryHandling) Prepared {
+        const id = self.next_id;
+        self.next_id += 1;
+        const kept: ?[36]u8 = if (handling == .replace) blk: {
+            const current = self.currentEntry(navigable) orelse break :blk null;
+            break :blk if (std.mem.eql(u8, current.origin, origin)) current.api_key else null;
+        } else null;
+        return .{ .id = id, .api_key = kept orelse self.randomUuid(), .api_id = self.randomUuid() };
+    }
+
+    /// `commitDocument` with the entry `prepareDocument` reserved.
+    pub fn commitPreparedDocument(self: *JointHistory, navigable: u64, url: []const u8, document: ?*anyopaque, origin: []const u8, handling: HistoryHandling, prepared: Prepared) !void {
         const doc_state = self.next_document_state;
         self.next_document_state += 1;
-        const keep_key = if (self.currentEntry(navigable)) |current| std.mem.eql(u8, current.origin, origin) else false;
-        try self.commit(navigable, url, doc_state, document, .null, .undefined, origin, handling, keep_key);
+        try self.commit(navigable, url, doc_state, document, .null, .undefined, origin, handling, true, prepared);
+    }
+
+    /// A copy of `entry` as it is now, owned by this history's allocator.
+    pub fn snapshot(self: *JointHistory, entry: *const Entry) !EntrySnapshot {
+        const url = try self.allocator.dupe(u8, entry.url);
+        errdefer self.allocator.free(url);
+        const origin = try self.allocator.dupe(u8, entry.origin);
+        return .{ .id = entry.id, .navigable = entry.navigable, .url = url, .api_key = entry.api_key, .api_id = entry.api_id, .origin = origin };
+    }
+
+    /// The entry a commit with `prepared` will make for `navigable` - its
+    /// URL `url` and origin `origin` - as a snapshot owned by this history's
+    /// allocator: the pageswap event's targetEntry, named before it exists.
+    pub fn preparedSnapshot(self: *JointHistory, navigable: u64, url: []const u8, origin: []const u8, prepared: Prepared) !EntrySnapshot {
+        const owned_url = try self.allocator.dupe(u8, url);
+        errdefer self.allocator.free(owned_url);
+        const owned_origin = try self.allocator.dupe(u8, origin);
+        return .{ .id = prepared.id, .navigable = navigable, .url = owned_url, .api_key = prepared.api_key, .api_id = prepared.api_id, .origin = owned_origin };
+    }
+
+    /// Record the activation of the document a cross-document navigation
+    /// of type `navigation_type` committed to the entry `entry_id`: its
+    /// previousEntryForActivation (taken, owned by this history's
+    /// allocator) and the entry as it is now.
+    pub fn recordActivation(self: *JointHistory, entry_id: u64, navigation_type: NavigationType, previous: ?EntrySnapshot) !void {
+        var owned_previous = previous;
+        errdefer if (owned_previous) |*p| p.deinit(self.allocator);
+        const entry = self.entryById(entry_id) orelse return error.NoSuchEntry;
+        const now = try self.snapshot(entry);
+        const activation: Activation = .{
+            .navigation_type = navigation_type,
+            .previous = owned_previous,
+            .entry = now,
+        };
+        owned_previous = null;
+        try self.setActivation(entry_id, activation);
+    }
+
+    /// Record `activation` (taken, its snapshots owned by this history's
+    /// allocator) for the document of the entry `entry_id`'s document state:
+    /// it replaces any other entry of that state's - one document state has
+    /// one document at a time.
+    pub fn setActivation(self: *JointHistory, entry_id: u64, activation: Activation) !void {
+        var owned = activation;
+        errdefer owned.deinit(self.allocator);
+        const target = self.entryById(entry_id) orelse return error.NoSuchEntry;
+        const state = target.document_state;
+        for (self.entries.items) |*entry| {
+            if (entry.document_state == state) entry.dropActivation(self.allocator);
+        }
+        const kept = try self.allocator.create(Activation);
+        kept.* = owned;
+        target.activation = kept;
+    }
+
+    /// The activation recorded for `document_state`'s document, if any.
+    pub fn activationOf(self: *const JointHistory, document_state: u64) ?*const Activation {
+        for (self.entries.items) |entry| {
+            if (entry.document_state != document_state) continue;
+            if (entry.activation) |a| return a;
+        }
+        return null;
     }
 
     /// "URL and history update steps" / "navigate to a fragment": an entry on
@@ -270,7 +451,7 @@ pub const JointHistory = struct {
         const origin = try self.allocator.dupe(u8, current.origin);
         defer self.allocator.free(origin);
         const new_api_state = api_state orelse try current.api_state.clone(self.allocator);
-        try self.commit(navigable, url, current.document_state, current.document, state, new_api_state, origin, handling, true);
+        try self.commit(navigable, url, current.document_state, current.document, state, new_api_state, origin, handling, true, null);
         const committed = self.currentEntry(navigable) orelse unreachable;
         if (committed.resource) |old| self.allocator.free(old);
         committed.resource = resource;
@@ -336,17 +517,18 @@ pub const JointHistory = struct {
         origin: []const u8,
         handling: HistoryHandling,
         keep_key_on_replace: bool,
+        prepared: ?Prepared,
     ) !void {
         switch (handling) {
             .push => {
                 self.clearForward();
                 const step = self.current_step + 1;
-                try self.append(navigable, step, url, doc_state, document, state, api_state, origin, null);
+                try self.append(navigable, step, url, doc_state, document, state, api_state, origin, null, prepared);
                 self.current_step = step;
             },
             .replace => {
                 const current = self.currentEntry(navigable) orelse {
-                    try self.append(navigable, self.current_step, url, doc_state, document, state, api_state, origin, null);
+                    try self.append(navigable, self.current_step, url, doc_state, document, state, api_state, origin, null, prepared);
                     return;
                 };
                 const owned_url = try self.allocator.dupe(u8, url);
@@ -362,17 +544,25 @@ pub const JointHistory = struct {
                 current.state = state;
                 current.api_state.deinit(self.allocator);
                 current.api_state = api_state;
-                if (!keep_key_on_replace) current.api_key = self.randomUuid();
-                current.api_id = self.randomUuid();
-                // A new document state has a resource of its own, if any.
+                if (prepared) |p| {
+                    current.api_key = p.api_key;
+                    current.api_id = p.api_id;
+                    current.id = p.id;
+                } else {
+                    if (!keep_key_on_replace) current.api_key = self.randomUuid();
+                    current.api_id = self.randomUuid();
+                    current.id = self.next_id;
+                    self.next_id += 1;
+                }
+                // A new document state has a resource and an activation of
+                // its own, if any.
                 if (current.document_state != doc_state) {
                     if (current.resource) |r| self.allocator.free(r);
                     current.resource = null;
+                    current.dropActivation(self.allocator);
                 }
                 current.document_state = doc_state;
                 current.document = document;
-                current.id = self.next_id;
-                self.next_id += 1;
             },
         }
     }

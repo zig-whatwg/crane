@@ -7,6 +7,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
+const webidl = @import("webidl");
 const SVGAElement = interfaces.SVGAElement;
 
 pub const State = SVGAElement.State;
@@ -28,9 +29,39 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // Its activation behaviour: following its hyperlink (dom.activation).
+    @import("dom").activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     // TODO: Initialize your instance state here if needed
     return instance;
+}
+
+/// dom.activation: every SVG a element has activation behaviour.
+fn hasActivationBehavior(target: *runtime.Instance) bool {
+    return target.stateAs(State) != null;
+}
+
+/// The XLink namespace, where SVG's legacy `xlink:href` lives.
+const xlink_namespace = "http://www.w3.org/1999/xlink";
+
+/// dom.activation: the SVG a element's activation behaviour - SVG 2's a
+/// element follows its hyperlink as HTML's a does (HTML 4.6.4): with no URL
+/// to follow, neither an href nor an xlink:href attribute, nothing;
+/// otherwise follow the hyperlink (dom.navigables).
+fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) void {
+    _ = event;
+    const has_href = interfaces.Element.call_hasAttribute(target, runtime.DOMString.initInterned("href")) catch false;
+    const has_xlink_href = interfaces.Element.call_hasAttributeNS(target, runtime.DOMString.initInterned(xlink_namespace), runtime.DOMString.initInterned("href")) catch false;
+    if (!has_href and !has_xlink_href) return;
+    const navigables = @import("dom").navigables;
+    // The navigables are the iframe's to run; a page that never made an
+    // iframe has not installed them yet.
+    if (!navigables.isInstalled()) {
+        const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse return;
+        const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
+        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+    }
+    navigables.followHyperlink(target);
 }
 
 /// Deinitialize instance

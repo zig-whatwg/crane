@@ -24,14 +24,22 @@ pub const Scope = struct {
 };
 
 /// `window`'s scope - when it is still the window it was (its slab
-/// generation) and its document is its navigable's active document.
+/// generation) and its navigable's active window, whose document is then
+/// the navigable's active document.
+///
+/// Asked of the navigable, never through `window.document`: that getter is
+/// script's, with script's cross-origin check against the incumbent realm,
+/// and this is asked on behalf of whatever script is running - the top
+/// page's, navigating a cross-origin frame, made every frame's navigation
+/// API see its own document as not fully active, and "fire a push/replace/
+/// reload navigate event" canceled the navigation (see
+/// docs/lessons/architecture-a-frame-s-load-event-has-exactly-one-owner-and.md:
+/// engine code asking about a frame must not use the getters script uses).
 pub fn scopeOf(window: *runtime.Instance, generation: u64) ?Scope {
     if (runtime.SlabAllocator.generationOf(window) != generation) return null;
     const navigable = BrowsingContext.ofWindow(@ptrCast(window)) orelse return null;
     const active = navigable.getActiveDocument() orelse return null;
     const document: *runtime.Instance = @ptrCast(@alignCast(active));
-    const shown = interfaces.Window.get_document(window) catch return null;
-    if (shown != document) return null;
     const history = navigable.ensureHistoryEntries(&history_documents.infoOf) catch return null;
     return .{ .window = window, .navigable = navigable, .document = document, .history = history };
 }

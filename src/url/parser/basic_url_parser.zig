@@ -587,6 +587,13 @@ fn schemeStartState(ctx: *ParserContext, c: ?u8) ParseError!void {
     return ParseError.InvalidScheme;
 }
 
+/// The scheme state's "return" under a state override: the parse is over,
+/// and the URL keeps what it had.
+fn overrideReturn(ctx: *ParserContext) void {
+    ctx.buffer.clear();
+    ctx.state_override_complete = true;
+}
+
 fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Spec step 1 (line 1073)
     if (c) |char| {
@@ -602,20 +609,28 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
                 const buffer_is_special = helpers.isSpecialScheme(ctx.buffer.items());
                 const url_scheme_is_special = ctx.isSpecial();
 
-                // Step 2.1.1 (line 1079): special → non-special or vice versa
-                if (url_scheme_is_special and !buffer_is_special) return;
-                if (!url_scheme_is_special and buffer_is_special) return;
+                // Each "return" of step 2.1 ends the parse with the URL as it
+                // was - no failure: the loop must not go on to read the end
+                // of input in this state, which would be failure.
+                // Step 2.1.1: "If url's scheme is a special scheme and buffer
+                // is not a special scheme, then return."
+                if (url_scheme_is_special and !buffer_is_special) return overrideReturn(ctx);
+                // Step 2.1.2: "If url's scheme is not a special scheme and
+                // buffer is a special scheme, then return."
+                if (!url_scheme_is_special and buffer_is_special) return overrideReturn(ctx);
 
-                // Step 2.1.3 (line 1083): credentials/port + file
+                // Step 2.1.3: "If url includes credentials or has a non-null
+                // port, and buffer is "file", then return."
                 if ((ctx.username.items().len > 0 or ctx.password.items().len > 0 or ctx.port != null) and
                     std.mem.eql(u8, ctx.buffer.items(), "file"))
                 {
-                    return;
+                    return overrideReturn(ctx);
                 }
 
-                // Step 2.1.4 (line 1085): file scheme + empty host
+                // Step 2.1.4: "If url's scheme is "file" and its host is an
+                // empty host, then return."
                 if (std.mem.eql(u8, ctx.scheme.items(), "file") and ctx.host != null) {
-                    if (ctx.host.? == .empty) return;
+                    if (ctx.host.? == .empty) return overrideReturn(ctx);
                 }
             }
 

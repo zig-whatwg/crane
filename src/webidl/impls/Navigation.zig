@@ -37,7 +37,13 @@
 //!   reset runs the focusing steps on the body (or document element)
 //!   without an autofocus delegate; scroll behavior records only that
 //!   scrolling happened (no layout).
-//! - Activation is not modelled.
+//! - navigation.activation is made when it is first asked for, or when the
+//!   Navigation is made, from what the navigation that committed the
+//!   document recorded in the session history (joint_history.Activation)
+//!   before any of the document's script ran. A document the host loaded
+//!   with no navigation of Crane's before it (the top-level page) has the
+//!   activation of a navigation that replaced its initial about:blank: no
+//!   old entry, and navigation type "replace".
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -192,8 +198,13 @@ pub const InternalState = struct {
     trackers: std.ArrayListUnmanaged(*Tracker) = .empty,
     records: std.ArrayListUnmanaged(*EventRecord) = .empty,
     next_record_id: u64 = 1,
+    /// "Navigation's activation", once made, held.
+    activation: ?*runtime.Instance = null,
+    activation_pin: same_object.Pin = .{},
 
     fn deinit(self: *InternalState) void {
+        self.activation_pin.release();
+        self.activation = null;
         var it = self.handed.valueIterator();
         while (it.next()) |handed| {
             handed.*.pin.release();
@@ -236,6 +247,8 @@ pub fn init(
     try live.append(std.heap.c_allocator, instance);
     dom.navigation_api.install(.{
         .same_document_navigation = &sameDocumentNavigation,
+        .page_swap_activation = &pageSwapActivationHook,
+        .entries_removed = &entriesRemovedHook,
         .fire_push_replace_reload = &firePushReplaceReloadHook,
         .fire_traverse = &fireTraverseHook,
         .inform_about_aborting_navigation = &informAboutAbortingNavigationHook,
@@ -248,6 +261,10 @@ pub fn init(
     // "Initialize the navigation API entries for a new document": the current
     // entry, handed out now, is the "from" of the first currententrychange.
     _ = currentEntryObject(instance, internal) catch null;
+    // "Update document for history step application" step 7: the document's
+    // activation, made while its entries are still the ones it was
+    // activated with.
+    _ = activationObject(instance, internal);
     return instance;
 }
 
@@ -347,10 +364,10 @@ pub fn get_transition(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return transition.instance;
 }
 
-/// Getter for activation: not modelled, stated.
+/// "The activation getter steps are to return this's activation."
 pub fn get_activation(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return activationObject(instance, internal);
 }
 
 /// "1. If this has entries and events disabled, then return false. 2.
@@ -834,6 +851,197 @@ fn trackerInUse(internal: *InternalState, tracker: *Tracker) bool {
     for (internal.upcoming.items) |t| if (t == tracker) return true;
     for (internal.records.items) |record| if (record.tracker == tracker) return true;
     return false;
+}
+
+// ============================================================================
+// Activation (HTML 7.2.6.9) and the pageswap event's (HTML 7.4.6.1)
+// ============================================================================
+
+/// "Navigation's activation": made once, from what the navigation that
+/// committed the document recorded (joint_history.Activation), and held
+/// from then on. Null while the document is not fully active, for the
+/// initial about:blank, and when entries and events are disabled - there is
+/// then no current entry to be its new entry.
+fn activationObject(instance: *runtime.Instance, internal: *InternalState) ?*runtime.Instance {
+    if (internal.activation) |activation| return activation;
+    const scope = scopeOf(instance, internal);
+    if (navigation_entries.disabled(scope)) return null;
+    const s = scope.?;
+    const current = s.history.currentEntry(s.navigable.id) orelse return null;
+    const made = (if (s.history.activationOf(current.document_state)) |record|
+        activationFromRecord(internal, s, current, record)
+    else
+        hostActivation(internal, s, current)) orelse return null;
+    internal.activation = made;
+    internal.activation_pin.hold(made);
+    return made;
+}
+
+/// "Update document for history step application" step 7, from its record:
+/// 7.2-7.4 the old entry - the entry list's entry for
+/// previousEntryForActivation, or, for a "replace" by a same-origin
+/// document, a new NavigationHistoryEntry for it; 7.5 the new entry -
+/// navigation's current entry when the document was activated; 7.6 the
+/// navigation type.
+///
+/// Deviation, stated: step 7.4 also requires previousEntryForActivation's
+/// document not to be the initial about:blank. Chrome and Firefox give the
+/// initial about:blank's entry as the old entry of the navigation that
+/// replaces it (navigation-activation/activation-initial-about-blank.html
+/// passes in both), and so does Crane.
+fn activationFromRecord(internal: *InternalState, s: navigation_entries.Scope, current: *const joint_history.Entry, record: *const joint_history.Activation) ?*runtime.Instance {
+    var entries: std.ArrayListUnmanaged(*joint_history.Entry) = .empty;
+    defer entries.deinit(internal.allocator);
+    const listed = entryList(s, internal.allocator, &entries) != null;
+    var from: ?*runtime.Instance = null;
+    var from_detached = false;
+    if (record.previous) |*previous| {
+        // Step 3: "If previousEntryIndex is non-negative, then set
+        // activation's old entry to navigation's entry list[previousEntryIndex]."
+        if (listed) for (entries.items) |entry| {
+            if (entry.id == previous.id) from = entryObject(internal, s.window, entry) catch null;
+        };
+        // Step 4.
+        if (from == null and record.navigation_type == .replace and
+            std.mem.eql(u8, previous.origin, current.origin))
+        {
+            from = detachedEntryObject(s.window, previous);
+            from_detached = from != null;
+        }
+    }
+    const generation: u64 = if (from) |f| runtime.SlabAllocator.generationOf(f) else 0;
+    defer if (from_detached) from.?.releaseIfUnwrapped(generation);
+    const entry = activatedEntry(internal, s, &record.entry) orelse return null;
+    return makeActivation(s.window, .{ .from = from, .entry = entry.instance, .navigation_type = kindOf(record.navigation_type) }, entry);
+}
+
+/// The activation of a document no navigation of Crane's committed - the
+/// top-level page the host loaded: that of the navigation that replaced its
+/// top-level traversable's initial about:blank, which the host never made.
+/// Its old entry is null (there is no entry before it), its new entry the
+/// entry it was loaded with - its document state's first - and its type
+/// "replace".
+fn hostActivation(internal: *InternalState, s: navigation_entries.Scope, current: *const joint_history.Entry) ?*runtime.Instance {
+    var first: *const joint_history.Entry = current;
+    for (s.history.entries.items) |*entry| {
+        if (entry.navigable == s.navigable.id and entry.document_state == current.document_state and entry.step < first.step) first = entry;
+    }
+    var snapshot = s.history.snapshot(first) catch return null;
+    defer snapshot.deinit(s.history.allocator);
+    const entry = activatedEntry(internal, s, &snapshot) orelse return null;
+    return makeActivation(s.window, .{ .from = null, .entry = entry.instance, .navigation_type = .replace }, entry);
+}
+
+/// The NavigationHistoryEntry an activation's new entry is: the one the
+/// navigation API hands out for the entry, while the history still has it,
+/// or a new one for the entry as it was.
+const ActivatedEntry = struct {
+    instance: *runtime.Instance,
+    /// Made for this activation alone: let go if the activation is not made.
+    detached: bool,
+    generation: u64,
+};
+
+fn activatedEntry(internal: *InternalState, s: navigation_entries.Scope, snapshot: *const joint_history.EntrySnapshot) ?ActivatedEntry {
+    if (s.history.entryById(snapshot.id)) |entry| {
+        if (entry.navigable == s.navigable.id) {
+            const handed = entryObject(internal, s.window, entry) catch return null;
+            return .{ .instance = handed, .detached = false, .generation = 0 };
+        }
+    }
+    const made = detachedEntryObject(s.window, snapshot) orelse return null;
+    return .{ .instance = made, .detached = true, .generation = runtime.SlabAllocator.generationOf(made) };
+}
+
+/// A new NavigationActivation in `window`'s realm; null when it cannot be
+/// made. `entry` is its new entry, let go here if it was made for it alone
+/// and nothing came to hold it.
+fn makeActivation(window: *runtime.Instance, init_state: dom.navigation_objects.ActivationInit, entry: ActivatedEntry) ?*runtime.Instance {
+    defer if (entry.detached) entry.instance.releaseIfUnwrapped(entry.generation);
+    const hook = dom.navigation_objects;
+    if (!hook.activationsInstalled()) {
+        const installer = interfaces.NavigationActivation.init(window.ctx.allocator, window.ctx) catch return null;
+        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+    }
+    return hook.createActivation(window.ctx, init_state) catch |err| {
+        log.debug("[navigation] no activation: {s}", .{@errorName(err)});
+        return null;
+    };
+}
+
+/// "A new NavigationHistoryEntry in" `window`'s realm "whose session history
+/// entry is" the entry `snapshot` describes - one the navigation API does not
+/// keep, because the entry is not (or no longer) in its entry list. Unwrapped
+/// until something holds it.
+fn detachedEntryObject(window: *runtime.Instance, snapshot: *const joint_history.EntrySnapshot) ?*runtime.Instance {
+    const hook = dom.navigation_history_entries;
+    if (!hook.isInstalled()) {
+        const installer = interfaces.NavigationHistoryEntry.init(window.ctx.allocator, window.ctx) catch return null;
+        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+    }
+    const entry = snapshot.asEntry();
+    return hook.create(window, @ptrCast(&entry)) catch null;
+}
+
+fn kindOf(navigation_type: joint_history.NavigationType) Kind {
+    return switch (navigation_type) {
+        .push => .push,
+        .replace => .replace,
+        .reload => .reload,
+        .traverse => .traverse,
+    };
+}
+
+/// dom.navigation_api: HTML "fire the pageswap event" steps 2-4 for
+/// `window`'s navigation API. "Let destinationEntry be determined by
+/// switching on navigationType: reload - the current entry of navigation;
+/// traverse - the NavigationHistoryEntry in navigation's entry list whose
+/// session history entry is targetEntry; push, replace - a new
+/// NavigationHistoryEntry in displayedDocument's relevant realm with its
+/// session history entry set to targetEntry." Then a new
+/// NavigationActivation with old entry the current entry of navigation, new
+/// entry destinationEntry, and navigation type navigationType.
+///
+/// A traversal's target that is not in the entry list - which step 4's
+/// same-origin condition rules out in the spec - gets a new entry object as
+/// for a push.
+///
+/// Deviation, stated: History's traversal sets the traversable's current
+/// step before it navigates the navigables that change documents (the spec
+/// sets it once they are all updated), so for a traversal the current entry
+/// - the old entry here, and what navigation.currentEntry reads in the
+/// listener - is already the target.
+fn pageSwapActivationHook(window: *runtime.Instance, swap: *const dom.navigation_api.PageSwap) ?*runtime.Instance {
+    const target = targetOf(window) orelse return null;
+    const instance = target.instance;
+    const internal = target.internal;
+    const s = scopeOf(instance, internal) orelse return null;
+    const from = currentEntryObject(instance, internal) catch null;
+    const destination: ActivatedEntry = switch (swap.navigation_type) {
+        .reload => if (from) |current| .{ .instance = current, .detached = false, .generation = 0 } else detached(s, swap.target) orelse return null,
+        .traverse => listedEntry(internal, s, swap.target.id) orelse detached(s, swap.target) orelse return null,
+        .push, .replace => detached(s, swap.target) orelse return null,
+    };
+    return makeActivation(window, .{ .from = from, .entry = destination.instance, .navigation_type = swap.navigation_type }, destination);
+}
+
+fn detached(s: navigation_entries.Scope, snapshot: *const joint_history.EntrySnapshot) ?ActivatedEntry {
+    const made = detachedEntryObject(s.window, snapshot) orelse return null;
+    return .{ .instance = made, .detached = true, .generation = runtime.SlabAllocator.generationOf(made) };
+}
+
+/// The entry list's NavigationHistoryEntry for the session history entry
+/// `entry_id`, if the list has it.
+fn listedEntry(internal: *InternalState, s: navigation_entries.Scope, entry_id: u64) ?ActivatedEntry {
+    var entries: std.ArrayListUnmanaged(*joint_history.Entry) = .empty;
+    defer entries.deinit(internal.allocator);
+    if (entryList(s, internal.allocator, &entries) == null) return null;
+    for (entries.items) |entry| {
+        if (entry.id != entry_id) continue;
+        const handed = entryObject(internal, s.window, entry) catch return null;
+        return .{ .instance = handed, .detached = false, .generation = 0 };
+    }
+    return null;
 }
 
 // ============================================================================
@@ -1894,6 +2102,28 @@ fn disposeEntriesRemovedElsewhere(navigation: *runtime.Instance, s: navigation_e
         const other_scope = scopeOf(other, other_internal) orelse continue;
         if (other_scope.navigable == s.navigable or other_scope.navigable.getTop() != top) continue;
         others.append(std.heap.c_allocator, .{ .instance = other, .generation = runtime.SlabAllocator.generationOf(other) }) catch return;
+    }
+    for (others.items) |other| {
+        if (runtime.SlabAllocator.generationOf(other.instance) != other.generation) continue;
+        disposeEntriesForSessionHistoryRemoval(other.instance);
+    }
+}
+
+/// dom.navigation_api: the traversable whose top-level browsing context is
+/// `top_ptr` lost session history entries to a cross-document push -
+/// every navigation API of it disposes of those it handed out.
+fn entriesRemovedHook(top_ptr: *anyopaque) void {
+    const top: *html_core.window.BrowsingContext = @ptrCast(@alignCast(top_ptr));
+    // Taken before any event is fired: dispose handlers run script, which
+    // can make and free navigation objects.
+    const Other = struct { instance: *runtime.Instance, generation: u64 };
+    var others: std.ArrayListUnmanaged(Other) = .empty;
+    defer others.deinit(std.heap.c_allocator);
+    for (live.items) |navigation| {
+        const internal = getInternal(navigation) orelse continue;
+        const s = scopeOf(navigation, internal) orelse continue;
+        if (s.navigable.getTop() != top) continue;
+        others.append(std.heap.c_allocator, .{ .instance = navigation, .generation = runtime.SlabAllocator.generationOf(navigation) }) catch return;
     }
     for (others.items) |other| {
         if (runtime.SlabAllocator.generationOf(other.instance) != other.generation) continue;

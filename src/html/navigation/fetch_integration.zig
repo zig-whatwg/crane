@@ -20,6 +20,9 @@ const fetch = @import("fetch");
 // Host platform IO, for file: URLs.
 const host = @import("host");
 
+/// The response `resultFromResponse` takes, as Fetch hands it over.
+pub const InternalResponse = fetch.internal.InternalResponse;
+
 /// Fetch result for navigation
 pub const NavigationFetchResult = struct {
     allocator: Allocator,
@@ -44,6 +47,10 @@ pub const NavigationFetchResult = struct {
 
     /// Whether cross-origin
     is_cross_origin: bool,
+
+    /// HTML "was created via cross-origin redirects": a hop of the fetch's
+    /// redirect chain went to a URL whose origin was not the previous URL's.
+    has_cross_origin_redirects: bool = false,
 
     /// Response headers (optional, for COOP/COEP)
     headers: ?HeaderMap,
@@ -283,9 +290,9 @@ pub fn navigationRequest(
         .manual => .manual,
     };
 
-    // Set referrer if provided
+    // Set referrer if provided - a copy, which the request frees.
     if (options.referrer) |ref| {
-        internal_request.referrer = .{ .url = ref };
+        internal_request.setReferrerUrl(ref) catch return NavigationFetchError.OutOfMemory;
     }
 
     // Set origin if provided
@@ -349,6 +356,21 @@ pub fn resultFromResponse(
 
     // Determine cross-origin status
     result.is_cross_origin = isCrossOrigin(options.origin, url);
+
+    // "Populate a session history entry": "If locationURL's origin is not
+    // the same as currentURL's origin, then set hasCrossOriginRedirects to
+    // true" - for each hop of the response's URL list.
+    const hops = response.url_list.items;
+    if (hops.len > 1) {
+        for (hops[0 .. hops.len - 1], hops[1..]) |from, to| {
+            // A hop whose origin cannot be worked out is not same origin.
+            const same = fetch.internal.origins.sameOrigin(allocator, from, to) catch false;
+            if (!same) {
+                result.has_cross_origin_redirects = true;
+                break;
+            }
+        }
+    }
 
     // Copy relevant headers for COOP/COEP
     result.headers = NavigationFetchResult.HeaderMap.init(allocator);
@@ -601,6 +623,10 @@ pub fn contentTypeFromPath(path: []const u8) []const u8 {
 }
 
 /// Percent-decode a string
+/// URL "percent-decode" (URL Standard 1.3) of a data: URL's body: a "%"
+/// followed by two hex digits is that byte, and every other byte stays -
+/// "+" included, which only application/x-www-form-urlencoded reads as a
+/// space.
 fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
     // Pre-calculate the maximum size needed
     var result = try allocator.alloc(u8, input.len);
@@ -620,10 +646,6 @@ fn percentDecode(allocator: Allocator, input: []const u8) ![]u8 {
             result[write_idx] = byte;
             write_idx += 1;
             i += 3;
-        } else if (input[i] == '+') {
-            result[write_idx] = ' ';
-            write_idx += 1;
-            i += 1;
         } else {
             result[write_idx] = input[i];
             write_idx += 1;

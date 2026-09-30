@@ -705,6 +705,9 @@ pub const NavigateOptions = struct {
     /// A history traversal's navigation: the session history entry, by id,
     /// that the new document populates - no entry is added.
     traversal_entry: u64 = 0,
+    /// With it, the entry the navigable was on before the traversal (the
+    /// entry itself for a reload): the new document's activation names it.
+    traversal_from: u64 = 0,
     /// "sourceElement": the hyperlink or form submitter that navigates.
     source_element: ?*runtime.Instance = null,
     user_involvement: dom_module.navigation_api.UserInvolvement = .none,
@@ -728,6 +731,17 @@ const Navigation = struct {
     history_handling: navigate_steps.HistoryHandling,
     initial_insertion: bool,
     traversal_entry: u64 = 0,
+    traversal_from: u64 = 0,
+    /// What the commit decides before the active document unloads, for the
+    /// pageswap event and the new document's activation: the entry a push
+    /// or replace will make, and the new document's origin (serialized,
+    /// owned).
+    prepared: ?html_core.navigation.joint_history.Prepared = null,
+    target_origin: ?[]u8 = null,
+    /// The request's referrer, resolved (Fetch "determine request's
+    /// referrer" for the source document): its URL, or null for no
+    /// referrer. Owned.
+    referrer: ?[]u8 = null,
     /// The user navigated from the browser's UI (userInvolvement "browser
     /// UI"), which no self-referential URL bound applies to.
     browser_initiated: bool = false,
@@ -758,6 +772,8 @@ const Navigation = struct {
         if (self.initiator_base_url) |u| self.allocator.free(u);
         if (self.post_body) |b| self.allocator.free(b);
         if (self.post_content_type) |t| self.allocator.free(t);
+        if (self.target_origin) |o| self.allocator.free(o);
+        if (self.referrer) |r| self.allocator.free(r);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
@@ -895,6 +911,57 @@ fn initiatorSameOrigin(source: ?*runtime.Instance, active_url: []const u8, alloc
     return std.mem.eql(u8, a, b);
 }
 
+/// Navigate step 21's condition: whether `active`'s origin is "same
+/// origin-domain" (HTML 7.1.1.2) with `source`'s - navigate's
+/// sourceDocument's; true with no source (the user agent's own navigation).
+///
+/// "1. If A and B are the same opaque origin, then return true. 2. If A and
+/// B are both tuple origins, then: 1. If A and B's schemes are identical,
+/// and their domains are identical and non-null, then return true. 2.
+/// Otherwise, if A and B are same origin and their domains are identical and
+/// null, then return true. 3. Return false."
+///
+/// Deviation, stated: this engine keeps no identity for an opaque origin
+/// (Origin.isSameOrigin treats each as distinct), so two documents are the
+/// same opaque origin only when they are the same document - one a
+/// sandboxed frame navigates itself in.
+fn initiatorSameOriginDomain(source: ?*runtime.Instance, active: *runtime.Instance, allocator: std.mem.Allocator) bool {
+    const src = source orelse return true;
+    const a = documentOriginOf(src, allocator) orelse return false;
+    defer allocator.free(a);
+    const b = documentOriginOf(active, allocator) orelse return false;
+    defer allocator.free(b);
+    const a_opaque = std.mem.eql(u8, a, "null");
+    const b_opaque = std.mem.eql(u8, b, "null");
+    // Step 1.
+    if (a_opaque or b_opaque) return a_opaque and b_opaque and src == active;
+    // Step 2: both tuple origins.
+    const a_domain = dom_module.document_origin.domain(src);
+    const b_domain = dom_module.document_origin.domain(active);
+    // 2.1.
+    if (a_domain != null and b_domain != null) {
+        return std.mem.eql(u8, schemeOfOrigin(a), schemeOfOrigin(b)) and std.mem.eql(u8, a_domain.?, b_domain.?);
+    }
+    // 2.2.
+    if (a_domain == null and b_domain == null) return std.mem.eql(u8, a, b);
+    // Step 3.
+    return false;
+}
+
+/// `document`'s origin, serialized ("null" for an opaque one) and owned by
+/// `allocator`, as its Window reports it - which an about:blank or srcdoc
+/// document inherits; null when it has no Window to ask.
+fn documentOriginOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?[]u8 {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
+    return originOfWindow(window, allocator) catch null;
+}
+
+/// The scheme of a serialized tuple origin ("scheme://host[:port]").
+fn schemeOfOrigin(origin: []const u8) []const u8 {
+    const end = std.mem.indexOf(u8, origin, "://") orelse return origin;
+    return origin[0..end];
+}
+
 /// HTML "navigate" `integration`'s navigable to `url` (serialized, absolute).
 /// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
 ///
@@ -960,6 +1027,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         .history_handling = history_handling,
         .initial_insertion = options.initial_insertion,
         .traversal_entry = options.traversal_entry,
+        .traversal_from = options.traversal_from,
         .browser_initiated = options.user_involvement == .browser_ui,
     };
     if (options.srcdoc) |html| {
@@ -978,6 +1046,10 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             return;
         };
     }
+    // "Create navigation params by fetching" step 3's request: its referrer
+    // is the document state's request referrer, "client" - the source
+    // document, as Fetch resolves it.
+    if (options.source_document) |source| record.referrer = requestReferrerOf(source, allocator);
     // Step 5: "Let initiatorBaseURLSnapshot be sourceDocument's document base
     // URL" - kept only where it can be used, for a document at about:blank
     // or about:srcdoc (navigate step 22.3's document state).
@@ -1003,7 +1075,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // is a fetch scheme (navigate-event/navigate-to-srcdoc).
     if (options.traversal_entry == 0 and active != null and
         options.user_involvement != .browser_ui and
-        initiatorSameOrigin(options.source_document, active_url, allocator) and
+        initiatorSameOriginDomain(options.source_document, active.?, allocator) and
         !document_lifecycle.isInitialAboutBlank(active.?) and
         navigate_steps.isFetchScheme(url))
     {
@@ -1037,6 +1109,30 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     }
     // Step 23: "In parallel": beforeunload, then the fetch.
     queueNavigationTask(integration, id, &runBeforeUnload);
+}
+
+/// Fetch "determine request's referrer" step 2 for a request whose
+/// referrer is "client" and whose client is `source`'s: "If document's
+/// origin is opaque, return no referrer. While document is an iframe srcdoc
+/// document, let document be document's browsing context's container
+/// document. Let referrerSource be document's URL." Owned by `allocator`;
+/// null for no referrer (main fetch strips and applies the policy).
+fn requestReferrerOf(source: *runtime.Instance, allocator: std.mem.Allocator) ?[]u8 {
+    const window = (interfaces.Document.get_defaultView(source) catch null) orelse return null;
+    const origin = originOfWindow(window, allocator) catch return null;
+    defer allocator.free(origin);
+    if (std.mem.eql(u8, origin, "null")) return null;
+    var document = source;
+    var depth: usize = 0;
+    while (depth < 64) : (depth += 1) {
+        const url = documentUrlOf(document, allocator) catch return null;
+        if (!navigate_steps.matchesAboutSrcdoc(url)) return url;
+        allocator.free(url);
+        const view = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
+        const container = dom_module.navigable_container.of(view) orelse return null;
+        document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return null;
+    }
+    return null;
 }
 
 /// Queue `callback` for navigation `id` on the navigable's event loop - a
@@ -1141,6 +1237,13 @@ fn startFetch(record: *Navigation) void {
             // The navigable's cookie jar: a frame's top's, a popup's own
             // (its opener's).
             .cookie_jar = if (record.integration.browsing_context) |bc| bc.cookieJar() else null,
+            // The request's referrer; main fetch applies the referrer
+            // policy. Not modelled, stated: the policy itself - the source
+            // document's policy container's, or an iframe's referrerpolicy
+            // attribute for "navigate an iframe or frame" - since documents
+            // here carry no policy container: the request keeps the default,
+            // strict-origin-when-cross-origin (main fetch step 8).
+            .referrer = record.referrer,
         }) catch {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
@@ -1300,8 +1403,15 @@ fn runCommit(context: ?*anyopaque) void {
     // ongoing navigation is null - new navigations may start.
     integration.ongoing_navigation = .none;
 
+    // Step 5.1: the pageswap event the unload fires at the displayed
+    // document, naming targetEntry - which "finalize a cross-document
+    // navigation" has put in the session history by now, and Crane commits
+    // once the document is made: its id and keys are reserved here.
+    var swap = pageSwapOf(integration, record, response);
+    defer if (swap) |*step| step.deinit();
+
     // Step 5.3: "Unload a document and its descendants", in its realm.
-    if (!unloadActiveDocument(integration)) return endLoadDelay(integration);
+    if (!unloadActiveDocument(integration, if (swap) |*step| step else null)) return endLoadDelay(integration);
     if (integration.state == .discarded or integration.browsing_context == null) return;
 
     // "Create and initialize a Document object" steps 5-7: the realm the new
@@ -1340,15 +1450,91 @@ fn documentBaseUrl(document: *runtime.Instance, allocator: std.mem.Allocator) ?[
 }
 
 /// Unload the navigable's active document and its descendants, inside its
-/// realm - the unload handlers run from the event loop, not from script.
-/// False when the realm is gone.
-fn unloadActiveDocument(integration: *IFrameIntegration) bool {
+/// realm - the unload handlers run from the event loop, not from script -
+/// with the pageswap event `page_swap` names fired at it first. False when
+/// the realm is gone, or the pageswap event's listeners took the navigable
+/// or its document away.
+fn unloadActiveDocument(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
     const ctx = navigableContext(integration) orelse return false;
-    return inRealm(ctx, unloadActive, .{integration});
+    var unloaded = true;
+    if (!inRealm(ctx, unloadActive, .{ integration, page_swap, &unloaded })) return false;
+    return unloaded;
 }
 
-fn unloadActive(integration: *IFrameIntegration) void {
-    if (activeDocumentOf(integration)) |old| unloadDocumentAndDescendants(old, integration);
+fn unloadActive(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, unloaded: *bool) void {
+    if (activeDocumentOf(integration)) |old| unloaded.* = unloadDocumentAndDescendantsSwapping(old, integration, page_swap);
+}
+
+/// "Deactivate a document for a cross-document navigation" step 5.1's
+/// firePageSwapBeforeUnload: "fire the pageswap event" given the displayed
+/// document, targetEntry, the navigation type, and a null viewTransition.
+const PageSwapStep = struct {
+    allocator: std.mem.Allocator,
+    /// targetEntry, owned.
+    target: html_core.navigation.joint_history.EntrySnapshot,
+    navigation_type: dom_module.navigation_api.Kind,
+    has_activation: bool,
+
+    fn deinit(self: *PageSwapStep) void {
+        self.target.deinit(self.allocator);
+    }
+};
+
+/// What `runCommit` fires pageswap with for `record`, deciding - before the
+/// displayed document unloads - the new document's origin, and the entry a
+/// push or replace will commit (kept on `record` for `recordInHistory`).
+/// Null when the navigable has no history to name an entry in.
+fn pageSwapOf(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) ?PageSwapStep {
+    const bc = integration.browsing_context orelse return null;
+    const history = bc.ensureHistoryEntries(&history_documents.infoOf) catch return null;
+    const allocator = history.allocator;
+    const final_url = if (response.final_url.len > 0) response.final_url else record.url;
+    const origin = navigationParamsOrigin(integration, final_url, integration.allocator) catch return null;
+    if (record.target_origin) |old| integration.allocator.free(old);
+    record.target_origin = origin;
+
+    const kind: dom_module.navigation_api.Kind = if (record.traversal_entry != 0)
+        (if (record.traversal_entry == record.traversal_from) .reload else .traverse)
+    else if (record.history_handling == .push) .push else .replace;
+    const target = if (record.traversal_entry != 0) blk: {
+        const entry = history.entryById(record.traversal_entry) orelse return null;
+        break :blk history.snapshot(entry) catch return null;
+    } else blk: {
+        const prepared = history.prepareDocument(bc.id, origin, jointHandling(record.history_handling));
+        record.prepared = prepared;
+        break :blk history.preparedSnapshot(bc.id, final_url, origin, prepared) catch return null;
+    };
+
+    // "Fire the pageswap event" step 4: "targetEntry's document's origin is
+    // same origin with displayedDocument's origin; and targetEntry's
+    // document's was created via cross-origin redirects is false, or its
+    // latest entry is not null" - never, with no bfcache.
+    const displayed_window: ?*runtime.Instance = if (bc.getActiveWindow()) |w| @ptrCast(@alignCast(w)) else null;
+    const displayed_origin = originOfWindow(displayed_window, integration.allocator) catch null;
+    defer if (displayed_origin) |o| integration.allocator.free(o);
+    const same_origin = if (displayed_origin) |o| !std.mem.eql(u8, o, "null") and std.mem.eql(u8, o, origin) else false;
+    return .{
+        .allocator = allocator,
+        .target = target,
+        .navigation_type = kind,
+        .has_activation = same_origin and !response.has_cross_origin_redirects,
+    };
+}
+
+/// The pageswap step of "unload a document and its descendants" (6.1), at
+/// `document` in its realm. False when its listeners took the navigable
+/// away, or the document is no longer the one it shows: the unload stops
+/// there, as the navigable's removal has unloaded it already.
+fn firePageSwapAt(document: *runtime.Instance, generation: u64, integration: *IFrameIntegration, step: *const PageSwapStep) bool {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return true;
+    dom_module.navigation_api.firePageSwap(window, .{
+        .navigation_type = step.navigation_type,
+        .target = &step.target,
+        .has_activation = step.has_activation,
+    });
+    if (integration.state == .discarded or integration.browsing_context == null) return false;
+    if (runtime.SlabAllocator.generationOf(document) != generation) return false;
+    return activeDocumentOf(integration) == document;
 }
 
 /// `runCommit`'s commit, inside the realm the document goes in.
@@ -1364,15 +1550,23 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     // location.reload() from an inline script reloads it, not the entry the
     // navigation left.
     const final_url = if (response.final_url.len > 0) response.final_url else record.url;
-    const origin = navigationParamsOrigin(integration, final_url, integration.allocator) catch null;
-    defer if (origin) |o| integration.allocator.free(o);
-    const document_state = recordInHistory(integration, record, final_url, origin orelse "null");
+    // The origin decided before the displayed document unloaded, as the
+    // pageswap event saw it.
+    const computed: ?[]u8 = if (record.target_origin == null) navigationParamsOrigin(integration, final_url, integration.allocator) catch null else null;
+    defer if (computed) |o| integration.allocator.free(o);
+    const origin: []const u8 = record.target_origin orelse computed orelse "null";
+    const document_state = recordInHistory(integration, record, final_url, origin);
     integration.commitResponse(record.url, response) catch |err| {
         log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
         endLoadDelay(integration);
         return;
     };
     attachDocument(integration, document_state);
+    // A push cleared the traversable's forward session history, other
+    // navigables' entries with it: their navigation APIs dispose of them.
+    if (record.traversal_entry == 0 and record.history_handling == .push) {
+        if (integration.browsing_context) |bc| dom_module.navigation_api.entriesRemoved(@ptrCast(bc.getTop()));
+    }
     loadEventStepsIfNothingWill(integration);
 }
 
@@ -1389,15 +1583,41 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
 fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []const u8, origin: []const u8) ?u64 {
     const bc = integration.browsing_context orelse return null;
     const history = bc.jointHistory() catch return null;
+    const joint_history = html_core.navigation.joint_history;
+    // "Apply the history step" 12.1: previousEntry - the navigable's active
+    // entry before this navigation changes it: the one a traversal leaves,
+    // or the current one, which a push leaves and a replace changes in place.
+    const previous_entry: ?*joint_history.Entry = if (record.traversal_entry != 0)
+        history.entryById(record.traversal_from)
+    else
+        history.currentEntry(bc.id);
+    var previous: ?joint_history.EntrySnapshot = if (previous_entry) |entry| history.snapshot(entry) catch null else null;
+    // recordActivation takes it; anything left here goes.
+    defer if (previous) |*p| p.deinit(history.allocator);
     if (record.traversal_entry != 0) {
         const entry = history.entryById(record.traversal_entry) orelse return null;
-        return entry.document_state;
+        const kind: joint_history.NavigationType = if (record.traversal_entry == record.traversal_from) .reload else .traverse;
+        const state = entry.document_state;
+        const taken = previous;
+        previous = null;
+        history.recordActivation(entry.id, kind, taken) catch {};
+        return state;
     }
-    history.commitDocument(bc.id, url, null, origin, jointHandling(record.history_handling)) catch return null;
+    const handling = jointHandling(record.history_handling);
+    const committed = if (record.prepared) |prepared|
+        history.commitPreparedDocument(bc.id, url, null, origin, handling, prepared)
+    else
+        history.commitDocument(bc.id, url, null, origin, handling);
+    committed catch return null;
     // Navigate step 24.4: the document state's resource is documentResource
     // - a srcdoc document's markup, which a traversal back loads again.
     if (record.srcdoc) |markup| history.setCurrentResource(bc.id, markup) catch {};
     const current = history.currentEntry(bc.id) orelse return null;
+    // "Update document for history step application" step 7's inputs, for
+    // navigation.activation, before any of the document's script runs.
+    const taken = previous;
+    previous = null;
+    history.recordActivation(current.id, if (handling == .push) .push else .replace, taken) catch {};
     return current.document_state;
 }
 
@@ -1465,7 +1685,7 @@ fn jointHandling(handling: navigate_steps.HistoryHandling) html_core.navigation.
 /// navigable to the entry it traverses to - from its document state's
 /// resource, when that is a srcdoc document's markup. The top-level page
 /// cannot be replaced, so only a frame or popup can.
-fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8) void {
+fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void {
     for (live_navigables.items) |integration| {
         const bc = integration.browsing_context orelse continue;
         if (@as(*anyopaque, @ptrCast(bc)) != browsing_context_ptr) continue;
@@ -1477,7 +1697,7 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
             break :blk @import("Node.zig").getOwnerDocument(element);
         } else null;
-        navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .srcdoc = resource });
+        navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource });
         return;
     }
 }
@@ -1497,6 +1717,14 @@ fn loadEventStepsIfNothingWill(integration: *IFrameIntegration) void {
 /// first, then `document`. Their navigations in flight end with them, and
 /// their windows' timers stop ("unloading document cleanup steps" 4.2).
 fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFrameIntegration) void {
+    _ = unloadDocumentAndDescendantsSwapping(document, integration, null);
+}
+
+/// `unloadDocumentAndDescendants` with firePageSwapSteps: the pageswap event
+/// `page_swap` names, fired at `document` after its descendants have
+/// unloaded and before it does (step 6.1). False when that event's
+/// listeners took the navigable or `document` away before it unloaded.
+fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
     var documents = collectInclusiveDescendantDocuments(document, integration.allocator);
     defer documents.deinit(integration.allocator);
     // Children first: the list is parents-first, so walk it backwards.
@@ -1508,6 +1736,9 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
         if (entry.integration) |child| {
             if (child != integration) abandonNavigationsOf(child);
         }
+        if (i == 0) if (page_swap) |step| {
+            if (!firePageSwapAt(entry.document, entry.generation, integration, step)) return false;
+        };
         document_lifecycle.unload(entry.document);
         // Not kept for traversal (no bfcache): an entry that held it will be
         // repopulated by a navigation.
@@ -1516,6 +1747,7 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
         }
     }
     if (integration.browsing_context) |bc| destroyWindowDocuments(bc);
+    return true;
 }
 
 const DocumentEntry = struct {
@@ -2063,32 +2295,37 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
 /// Not modelled, stated: the hyperlink's referrer policy and user
 /// involvement, and blob URL entries (step 6's noopener for a blob: URL).
 fn followHyperlink(subject: *runtime.Instance) void {
-    const ElementImpl = @import("Element.zig");
-    const NodeImpl = @import("Node.zig");
-    const document = NodeImpl.getOwnerDocument(subject) orelse return;
+    const document = (interfaces.Node.get_ownerDocument(subject) catch null) orelse return;
     // Step 1: "If subject cannot navigate, then return": its node document is
     // not fully active (it has no Window), or it is not an a element and not
     // connected.
     if ((interfaces.Document.get_defaultView(document) catch null) == null) return;
     const is_anchor = subject.stateAs(interfaces.HTMLAnchorElement.State) != null;
-    if (!is_anchor and !(NodeImpl.get_isConnected(subject) catch false)) return;
+    if (!is_anchor and !(interfaces.Node.get_isConnected(subject) catch false)) return;
 
     // Steps 2-3: "get an element's target" - its target attribute, else the
     // document's first base element with one; "if target is not null, and
     // contains an ASCII tab or newline and a U+003C (<), then set target to
     // "_blank"" (dangling markup).
-    const target_attr = ElementImpl.call_getAttribute(subject, runtime.DOMString.initInterned("target")) catch null;
+    const target_attr = interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("target")) catch null;
     const given_target: []const u8 = if (target_attr) |t| t.asSlice() else baseTarget(document);
     const dangling = std.mem.indexOfAny(u8, given_target, "\t\n\r") != null and std.mem.indexOfScalar(u8, given_target, '<') != null;
     const target: []const u8 = if (dangling) "_blank" else given_target;
 
-    // Steps 4-5: the URL, encoding-parsed relative to the node document.
-    const href = (ElementImpl.call_getAttribute(subject, runtime.DOMString.initInterned("href")) catch null) orelse return;
+    // Steps 4-5: the URL, encoding-parsed relative to the node document. An
+    // SVG a takes it from its href attribute, falling back to the XLink
+    // namespace's href only when href is absent (SVG 2) - an empty href
+    // still wins.
+    const href = (interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("href")) catch null) orelse
+        (if (subject.stateAs(interfaces.HTMLElement.State) == null)
+            interfaces.Element.call_getAttributeNS(subject, runtime.DOMString.initInterned("http://www.w3.org/1999/xlink"), runtime.DOMString.initInterned("href")) catch null
+        else
+            null) orelse return;
     const url = parseRelativeToDocument(document, href.asSlice()) orelse return;
     defer document.ctx.allocator.free(url);
 
     // Step 6: "get an element's noopener".
-    const rel = ElementImpl.call_getAttribute(subject, runtime.DOMString.initInterned("rel")) catch null;
+    const rel = interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("rel")) catch null;
     const rel_value: []const u8 = if (rel) |r| r.asSlice() else "";
     const noopener = hasLinkType(rel_value, "noopener") or hasLinkType(rel_value, "noreferrer") or
         (!hasLinkType(rel_value, "opener") and std.ascii.eqlIgnoreCase(target, "_blank"));

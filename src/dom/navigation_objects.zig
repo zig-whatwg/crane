@@ -1,8 +1,10 @@
 //! The objects the navigation API makes for a navigation (HTML 7.2.6.8,
-//! 7.2.6.10): the NavigationDestination a navigate event carries, the
-//! NavigationTransition of an intercepted navigation, the
-//! NavigationPrecommitController a precommit handler is given, and the
-//! NavigateEvent's attributes a precommit redirect() changes. None of them
+//! 7.2.6.9, 7.2.6.10): the NavigationDestination a navigate event carries,
+//! the NavigationTransition of an intercepted navigation, the
+//! NavigationPrecommitController a precommit handler is given, the
+//! NavigateEvent's attributes a precommit redirect() changes, the
+//! NavigationActivation of a document and of a pageswap event, and the
+//! PageSwapEvent itself. None of them
 //! has a constructor script could use for this (NavigateEvent's takes a
 //! destination script cannot make), and what each records is its own state,
 //! so each installs its part of this hook and Navigation - which fires the
@@ -11,7 +13,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigationdestination
 //! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigationtransition
 //!
-//! lint-impls: hook for NavigateEvent, NavigationDestination, NavigationTransition, NavigationPrecommitController
+//! lint-impls: hook for NavigateEvent, NavigationDestination, NavigationTransition, NavigationPrecommitController, NavigationActivation, PageSwapEvent
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -55,6 +57,26 @@ pub const Transitions = struct {
     create: *const fn (realm: runtime.Context, init: TransitionInit) anyerror!*runtime.Instance,
 };
 
+/// A NavigationActivation's state (HTML 7.2.6.9): its old entry, new entry
+/// and navigation type. The activation keeps both entries alive.
+pub const ActivationInit = struct {
+    from: ?*runtime.Instance,
+    entry: *runtime.Instance,
+    navigation_type: navigation_api.Kind,
+};
+
+pub const Activations = struct {
+    /// A new NavigationActivation in `realm`.
+    create: *const fn (realm: runtime.Context, init: ActivationInit) anyerror!*runtime.Instance,
+};
+
+/// The event "fire the pageswap event" step 5 fires.
+pub const PageSwapEvents = struct {
+    /// A new PageSwapEvent of type "pageswap" in `realm`, whose activation is
+    /// `activation` (held by the event) and whose viewTransition is null.
+    create: *const fn (realm: runtime.Context, activation: ?*runtime.Instance) anyerror!*runtime.Instance,
+};
+
 pub const Controllers = struct {
     /// A new NavigationPrecommitController in `realm` whose event is `event`.
     create: *const fn (realm: runtime.Context, event: *runtime.Instance) anyerror!*runtime.Instance,
@@ -70,6 +92,8 @@ pub const Events = struct {
 threadlocal var destinations: ?Destinations = null;
 threadlocal var transitions: ?Transitions = null;
 threadlocal var controllers: ?Controllers = null;
+threadlocal var activations: ?Activations = null;
+threadlocal var page_swap_events: ?PageSwapEvents = null;
 threadlocal var events: ?Events = null;
 
 /// Called by NavigationDestination. Idempotent.
@@ -85,6 +109,16 @@ pub fn installTransitions(impl: Transitions) void {
 /// Called by NavigationPrecommitController. Idempotent.
 pub fn installControllers(impl: Controllers) void {
     controllers = impl;
+}
+
+/// Called by NavigationActivation. Idempotent.
+pub fn installActivations(impl: Activations) void {
+    activations = impl;
+}
+
+/// Called by PageSwapEvent. Idempotent.
+pub fn installPageSwapEvents(impl: PageSwapEvents) void {
+    page_swap_events = impl;
 }
 
 /// Called by NavigateEvent. Idempotent.
@@ -105,6 +139,12 @@ pub fn controllersInstalled() bool {
 }
 pub fn eventsInstalled() bool {
     return events != null;
+}
+pub fn activationsInstalled() bool {
+    return activations != null;
+}
+pub fn pageSwapEventsInstalled() bool {
+    return page_swap_events != null;
 }
 
 pub fn createDestination(realm: runtime.Context, init: DestinationInit) !*runtime.Instance {
@@ -132,6 +172,16 @@ pub fn createTransition(realm: runtime.Context, init: TransitionInit) !*runtime.
     return impl.create(realm, init);
 }
 
+pub fn createActivation(realm: runtime.Context, init: ActivationInit) !*runtime.Instance {
+    const impl = activations orelse return error.NotSupported;
+    return impl.create(realm, init);
+}
+
+pub fn createPageSwapEvent(realm: runtime.Context, activation: ?*runtime.Instance) !*runtime.Instance {
+    const impl = page_swap_events orelse return error.NotSupported;
+    return impl.create(realm, activation);
+}
+
 pub fn createController(realm: runtime.Context, event: *runtime.Instance) !*runtime.Instance {
     const impl = controllers orelse return error.NotSupported;
     return impl.create(realm, event);
@@ -145,4 +195,24 @@ pub fn setEventNavigationType(event: *runtime.Instance, kind: navigation_api.Kin
 pub fn setEventInfo(event: *runtime.Instance, info: runtime.JSValue) !void {
     const impl = events orelse return error.NotSupported;
     return impl.set_info(event, info);
+}
+
+test "without an installed activation part no NavigationActivation is made" {
+    const saved = activations;
+    defer activations = saved;
+    activations = null;
+    try std.testing.expect(!activationsInstalled());
+    // Never dereferenced: with no implementation nothing reads them.
+    var entry: runtime.Instance = undefined;
+    const realm: runtime.Context = @ptrFromInt(0x1000);
+    try std.testing.expectError(error.NotSupported, createActivation(realm, .{ .from = null, .entry = &entry, .navigation_type = .push }));
+}
+
+test "without an installed pageswap part no PageSwapEvent is made" {
+    const saved = page_swap_events;
+    defer page_swap_events = saved;
+    page_swap_events = null;
+    try std.testing.expect(!pageSwapEventsInstalled());
+    const realm: runtime.Context = @ptrFromInt(0x1000);
+    try std.testing.expectError(error.NotSupported, createPageSwapEvent(realm, null));
 }

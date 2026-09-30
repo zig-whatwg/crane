@@ -17,10 +17,19 @@
 //! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#navigate-event-firing
 //! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#update-the-navigation-api-entries-for-a-same-document-navigation
 //!
+//! It also fires the pageswap event at a document a cross-document
+//! navigation is about to replace (HTML "fire the pageswap event"), whose
+//! activation names the navigation's entries as the old document's
+//! navigation API sees them.
+//! Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#fire-the-pageswap-event
+//!
 //! lint-impls: hook for Navigation
 
 const std = @import("std");
 const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const fire_event = @import("fire_event.zig");
+const navigation_objects = @import("navigation_objects.zig");
 const joint_history = @import("html_core").navigation.joint_history;
 
 /// A NavigationType.
@@ -75,9 +84,29 @@ pub const Redirect = struct {
     info: ?runtime.JSValue = null,
 };
 
+/// HTML "fire the pageswap event"'s targetEntry and navigationType, as the
+/// navigation that replaces the displayed document names them.
+pub const PageSwap = struct {
+    navigation_type: Kind,
+    /// targetEntry: the entry the navigation commits, or, for a traversal or
+    /// a reload, the entry it goes to. BORROWED for the call.
+    target: *const joint_history.EntrySnapshot,
+    /// Step 4's conditions: the new document will be same origin with the
+    /// displayed one, and was not created via cross-origin redirects (Crane
+    /// keeps no document in bfcache, so its latest entry is always null).
+    has_activation: bool,
+};
+
 pub const Implementation = struct {
     same_document_navigation: *const fn (window: *runtime.Instance, kind: Kind) void,
+    /// "Fire the pageswap event" step 4's activation for `window`'s
+    /// navigation API, in its realm; null when none can be made.
+    page_swap_activation: *const fn (window: *runtime.Instance, swap: *const PageSwap) ?*runtime.Instance,
     fire_push_replace_reload: *const fn (window: *runtime.Instance, args: *const PushReplaceReload) bool,
+    /// The session history of the traversable whose top-level browsing
+    /// context is `top` lost entries: every navigation API of it disposes
+    /// of the entries it handed out that are gone.
+    entries_removed: *const fn (top: *anyopaque) void,
     fire_traverse: *const fn (window: *runtime.Instance, entry_id: u64, user_involvement: UserInvolvement) bool,
     inform_about_aborting_navigation: *const fn (window: *runtime.Instance) void,
     inform_about_child_navigable_destruction: *const fn (window: *runtime.Instance) void,
@@ -118,6 +147,20 @@ pub fn fireTraverse(window: *runtime.Instance, entry_id: u64, user_involvement: 
     return impl.fire_traverse(window, entry_id, user_involvement);
 }
 
+/// A cross-document push in the traversable whose top-level browsing
+/// context is `top` (an html_core BrowsingContext) cleared its forward
+/// session history, which took other navigables' entries with it: each
+/// navigation API that handed any of them out fires dispose at them and
+/// lets them go. HTML disposes only the navigating navigable's entries (and
+/// those only for a same-document navigation); all three browsers dispose
+/// of every navigable's (Blink's NavigationApi::
+/// DisposeEntriesForSessionHistoryRemoval, which the browser process asks
+/// of each frame whose entries a navigation removed). Script runs.
+pub fn entriesRemoved(top: *anyopaque) void {
+    const impl = implementation orelse return;
+    impl.entries_removed(top);
+}
+
 /// HTML "inform the navigation API about aborting navigation" in `window`'s
 /// navigable.
 pub fn informAboutAbortingNavigation(window: *runtime.Instance) void {
@@ -130,6 +173,40 @@ pub fn informAboutAbortingNavigation(window: *runtime.Instance) void {
 pub fn informAboutChildNavigableDestruction(window: *runtime.Instance) void {
     const impl = implementation orelse return;
     impl.inform_about_child_navigable_destruction(window);
+}
+
+/// HTML "fire the pageswap event" given `window`'s associated Document (the
+/// displayed document), `swap`'s target entry and navigation type, and a
+/// null viewTransition (no rendering, so no view transition), in `window`'s
+/// realm: after the document's child navigables have unloaded and before it
+/// unloads itself ("unload a document and its descendants" step 6.1).
+/// Script runs: the caller checks its navigable afterwards.
+pub fn firePageSwap(window: *runtime.Instance, swap: PageSwap) void {
+    // Steps 2-4: the activation, from "displayedDocument's relevant global
+    // object's navigation API" - made here if script never asked for it,
+    // since the activation's old entry is the entry that navigation API
+    // hands out as its current one.
+    var activation: ?*runtime.Instance = null;
+    if (swap.has_activation) {
+        _ = interfaces.Window.get_navigation(window) catch null;
+        if (implementation) |impl| activation = impl.page_swap_activation(window, &swap);
+    }
+    const activation_generation: u64 = if (activation) |a| runtime.SlabAllocator.generationOf(a) else 0;
+    // An activation no event came to hold goes now.
+    defer if (activation) |a| a.releaseIfUnwrapped(activation_generation);
+    // Step 5: "Fire an event named pageswap at displayedDocument's relevant
+    // global object, using PageSwapEvent with its activation set to
+    // activation, and its viewTransition set to viewTransition." The first
+    // PageSwapEvent installs its part of the hook; with none made yet, one
+    // is made to install it, and let go.
+    if (!navigation_objects.pageSwapEventsInstalled()) {
+        const installer = interfaces.PageSwapEvent.init(window.ctx.allocator, window.ctx) catch return;
+        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
+    }
+    const event = navigation_objects.createPageSwapEvent(window.ctx, activation) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
+    _ = fire_event.dispatchTrusted(window, event) catch {};
 }
 
 /// NavigateEvent's intercept(options), steps 4-9, once the event has passed
