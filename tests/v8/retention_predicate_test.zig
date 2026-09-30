@@ -297,3 +297,45 @@ test "argHandleIsCopied - an unknown type defaults to NOT copied" {
     try std.testing.expect(!copied(SomethingNew));
     try std.testing.expect(!copied([]runtime.JSValue));
 }
+
+// ---------------------------------------------------------------------------
+
+const resultOwned = v8.interface_mod.getterValueIsOwned;
+
+test "getterValueIsOwned - strings, numbers, booleans and enums are made fresh, so released" {
+    // conv.toV8Value makes a new Global for each (newStringFromWtf8,
+    // v8_Number_New, v8_Boolean_New), and setReturnValue only reads it into a
+    // Local: kept, a named getter's string was one Global per `el.dataset.x`.
+    try std.testing.expect(resultOwned(runtime.DOMString));
+    try std.testing.expect(resultOwned(?runtime.DOMString));
+    try std.testing.expect(resultOwned(runtime.USVString));
+    try std.testing.expect(resultOwned(u32));
+    try std.testing.expect(resultOwned(f64));
+    try std.testing.expect(resultOwned(bool));
+    const Direction = enum { forward, backward };
+    try std.testing.expect(resultOwned(Direction));
+}
+
+test "getterValueIsOwned - an Instance converts to the wrapper cache's handle: kept" {
+    // Releasing it frees the cache's entry, and the next read of the same
+    // object hands out a freed handle.
+    try std.testing.expect(!resultOwned(*runtime.Instance));
+    try std.testing.expect(!resultOwned(?*runtime.Instance));
+}
+
+test "getterValueIsOwned - a JSValue may be the impl's handle or a wrapper: kept" {
+    // The accessor getter decides a JSValue by its arm; the predicate cannot.
+    try std.testing.expect(!resultOwned(runtime.JSValue));
+    try std.testing.expect(!resultOwned(?runtime.JSValue));
+}
+
+test "getterValueIsOwned - an unknown type defaults to KEPT" {
+    // TRUE releases the handle, so the fallthrough must be FALSE: a type
+    // nobody listed keeps its handle and the old leak, which costs memory and
+    // never correctness.
+    const SomethingNew = struct { a: u32, b: *anyopaque };
+    try std.testing.expect(!resultOwned(SomethingNew));
+    try std.testing.expect(!resultOwned([]const runtime.DOMString));
+    const Shape = union(enum) { node: *runtime.Instance, text: runtime.DOMString };
+    try std.testing.expect(!resultOwned(Shape));
+}
