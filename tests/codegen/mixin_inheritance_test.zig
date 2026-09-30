@@ -77,7 +77,9 @@ test "a mixin's further overloads are inherited, and the overload table asks the
 
 test "a [SameObject] mixin attribute caches in the includer's state around the inherited getter" {
     const attrs = [_]types.Attribute{
-        .{ .name = "leash", .idlType = .{ .type = "Leash" }, .readonly = true, .extAttrs = @constCast(&same_object), .mixin = "Walkable" },
+        // A platform object type the codegen knows: since part B an engine value
+        // (runtime.JSValue, which an unknown type becomes) is not cached.
+        .{ .name = "leash", .idlType = .{ .type = "DOMTokenList" }, .readonly = true, .extAttrs = @constCast(&same_object), .mixin = "Walkable" },
     };
     var buffer = try render(&attrs, &.{}, &.{});
     defer buffer.deinit();
