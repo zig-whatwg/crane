@@ -1521,8 +1521,6 @@ pub fn windowIndexedPropertyQuery(
     index: u32,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
-    const WindowImpl = @import("impls").Window;
-
     const this_obj = info.getThis();
     defer v8.v8_Object_Dispose(this_obj);
     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
@@ -1531,7 +1529,7 @@ pub fn windowIndexedPropertyQuery(
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
     // Check if this index is valid
-    const length = WindowImpl.get_length(instance) catch return .kNo;
+    const length = @import("interfaces").Window.get_length(instance) catch return .kNo;
     if (index < length) {
         // Valid index - return property attributes (ReadOnly | DontEnum)
         // Per spec, indexed properties on Window are configurable but not writable
@@ -1551,8 +1549,6 @@ pub fn windowIndexedPropertyQuery(
 pub fn windowIndexedPropertyEnumerator(
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) void {
-    const WindowImpl = @import("impls").Window;
-
     const isolate = info.getIsolate();
 
     // Every handle below is this callback's: SetReturnValue and Array::Set
@@ -1564,7 +1560,7 @@ pub fn windowIndexedPropertyEnumerator(
     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
     const length: u32 = if (instance_ptr) |ptr| blk: {
         const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
-        break :blk WindowImpl.get_length(instance) catch 0;
+        break :blk @import("interfaces").Window.get_length(instance) catch 0;
     } else 0;
 
     // Create array of indices as integers
