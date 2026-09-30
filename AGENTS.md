@@ -134,6 +134,12 @@ After every feature commit:
    the mtime decides which result is latest. Several runs under one label go
    side by side as `journal.<area>.jsonl`, never in subdirectories.
 2. **Regenerate:** `zig build wpt-progress -j2 --cache-dir /tmp/crane-z16-cache`.
+   `wpt-progress` also regenerates Crane's public results site
+   (tools/wpt_site/generate.zig, published at https://zig-whatwg.github.io/crane/) into
+   `wpt-results/site/`, and when that is the `gh-pages` worktree it commits there as
+   "results: generation <n>, Crane <sha>". Push `gh-pages` with main
+   (`git push origin main gh-pages`). `zig build wpt-site -- --out=<dir> --no-commit` writes
+   a copy anywhere.
 3. **Report the headline** - blocking files and passing subtests from the page -
    in your summary.
 4. **Keep the roadmap current.** The same page renders the engine roadmap from
