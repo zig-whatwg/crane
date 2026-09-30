@@ -915,36 +915,190 @@ def _delta(cur, prev, key, good_when_down):
     return f'<span class="{cls}">{d:+,}</span>'
 
 
+# The chart is drawn at the column's own width (the page's .wrap is 1100px less
+# 16px padding each side), so its text renders at true size on a desktop and the
+# whole figure scales down, never up, on a narrow screen.
+CHART_W, CHART_H = 1068, 300
+PAGE_CSS_CHART = """
+  .chartbox { position: relative; margin: 8px 0 2px; }
+  .chart { width: 100%; height: auto; display: block; overflow: visible; }
+  .chart .lbl { font-size: 12px; fill: var(--dim); }
+  .chart .pt { stroke: var(--panel); stroke-width: 1.5; }
+  .chart .hit { fill: transparent; cursor: crosshair; }
+  .chart .guide { stroke: var(--dim); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; pointer-events: none; }
+  .chart .guide.on { opacity: .9; }
+  .tip { position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none; min-width: 190px;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 11px; font-size: 12px; line-height: 1.5; white-space: nowrap;
+    box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+  .tip .t { font-weight: 600; margin-bottom: 3px; }
+  .tip table { border: 0; border-collapse: collapse; background: none; width: 100%; }
+  .tip td { border: 0; padding: 1px 0; text-align: left; }
+  .tip td.v { text-align: right; padding-left: 14px; font-variant-numeric: tabular-nums; }
+  .tip i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .tip .mv { margin-top: 4px; color: var(--dim); white-space: normal; max-width: 240px; }
+  .tip .good { color: var(--ok); }
+  .tip .badtext { color: var(--bad); }
+  .chartscroll { overflow: visible; }
+  @media (max-width: 640px) {
+    .chartscroll { overflow-x: auto; }
+    .chart { min-width: 620px; }
+    .tip { position: static; margin-top: 8px; min-width: 0; box-shadow: none;
+      box-sizing: border-box; width: 100%; white-space: normal; }
+    .tip td.v { white-space: nowrap; }
+  }
+  .legend { font-size: 12px; color: var(--dim); margin-bottom: 10px; }
+  .legend span { margin-right: 14px; }
+  .legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 5px; }
+"""
+
+# Hover: one invisible band per generation; entering it lights that
+# generation's points and a guide line and fills the tooltip from the embedded
+# JSON. The bands' <title>s are the no-JavaScript fallback and are removed once
+# the script runs, so the native tooltip never doubles the custom one.
+_CHART_SCRIPT = """<script>
+(function () {
+  var box = document.currentScript.closest('.chartbox');
+  var svg = box.querySelector('svg'), tip = box.querySelector('.tip');
+  var guide = svg.querySelector('.guide');
+  var data = JSON.parse(box.querySelector('.histdata').textContent);
+  var W = +svg.getAttribute('viewBox').split(' ')[2], cur = -1;
+  var narrow = window.matchMedia('(max-width: 640px)');
+  svg.querySelectorAll('.hit title').forEach(function (t) { t.remove(); });
+  function fmt(v) { return v.toLocaleString('en-US'); }
+  function delta(v, goodDown) {
+    if (v === null || v === undefined) return '';
+    if (v === 0) return ' <span class="dim">&plusmn;0</span>';
+    return ' <span class="' + ((v < 0) === goodDown ? 'good' : 'badtext') + '">' + (v > 0 ? '+' : '') + fmt(v) + '</span>';
+  }
+  function row(color, name, v, d, goodDown) {
+    return '<tr><td><i style="background:' + color + '"></i>' + name + '</td><td class="v">' + fmt(v) + delta(d, goodDown) + '</td></tr>';
+  }
+  function show(i) {
+    var g = data[i];
+    if (i !== cur) {
+      svg.querySelectorAll('.pt.on').forEach(function (p) { p.classList.remove('on'); p.setAttribute('r', 3); });
+      svg.querySelectorAll('.pt[data-i="' + i + '"]').forEach(function (p) { p.classList.add('on'); p.setAttribute('r', 5.5); });
+      guide.setAttribute('x1', g.x); guide.setAttribute('x2', g.x); guide.classList.add('on');
+      tip.innerHTML = '<div class="t">Generation ' + g.n + ' <span class="dim">&middot; ' + g.at + '</span></div>' +
+        '<table>' + row('var(--dimline)', 'run', g.run, g.d_run, false) +
+        row('var(--bad)', 'blocking', g.blocking, g.d_blocking, true) +
+        row('var(--ok)', 'clean', g.clean, g.d_clean, false) +
+        (g.sub_passing === null ? '' : '<tr><td class="dim">subtests</td><td class="v">' + fmt(g.sub_passing) +
+          delta(g.d_sub, false) + ' <span class="dim">' + g.sub_pct + '%</span></td></tr>') +
+        '</table>' + (g.moves ? '<div class="mv">' + g.moves + '</div>' : '') +
+        '<div class="mv"><code>' + g.head + '</code></div>';
+      cur = i;
+    }
+    tip.hidden = false;
+    // On a narrow screen the tip is a static panel under the chart. Otherwise it
+    // sits beside the guide, flipped left near the right edge, inside the box.
+    if (narrow.matches) { tip.style.left = ''; tip.style.top = ''; return; }
+    var sr = svg.getBoundingClientRect(), br = box.getBoundingClientRect();
+    var scale = sr.width / W, px = sr.left - br.left + g.x * scale;
+    var tw = tip.offsetWidth, bw = box.clientWidth;
+    var left = px + 14;
+    if (left + tw > bw) left = px - 14 - tw;
+    tip.style.left = Math.min(Math.max(0, left), Math.max(0, bw - tw)) + 'px';
+    tip.style.top = (sr.top - br.top + g.ytop * scale + 4) + 'px';
+  }
+  function hide() {
+    tip.hidden = true; guide.classList.remove('on'); cur = -1;
+    svg.querySelectorAll('.pt.on').forEach(function (p) { p.classList.remove('on'); p.setAttribute('r', 3); });
+  }
+  svg.querySelectorAll('.hit').forEach(function (r) {
+    r.addEventListener('pointerenter', function () { show(+r.dataset.i); });
+  });
+  svg.addEventListener('pointerleave', hide);
+})();
+</script>"""
+
+
+def _render_history_chart(gens):
+    W, H = CHART_W, CHART_H
+    L, R, T, B = 16, 16, 30, 34          # plot area margins
+    n = len(gens)
+    top = max(g['total'] for g in gens) or 1
+    span = (W - L - R) / max(n - 1, 1)
+    def x(i): return L + i * span if n > 1 else W / 2
+    def y(v): return T + (1 - v / top) * (H - T - B)
+    series = (('run', 'var(--dimline)'), ('blocking', 'var(--bad)'), ('clean', 'var(--ok)'))
+
+    lines, points = [], []
+    for key, color in series:
+        pts = ' '.join(f'{x(i):.1f},{y(g[key]):.1f}' for i, g in enumerate(gens))
+        lines.append(f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="2" stroke-linejoin="round"/>')
+        points.extend(f'<circle class="pt {key}" data-i="{i}" cx="{x(i):.1f}" cy="{y(g[key]):.1f}" r="3" fill="{color}"/>'
+                      for i, g in enumerate(gens))
+
+    def moves_text(g):
+        mv = g.get('moves')
+        if mv is None:
+            return 'baseline - history starts here'
+        parts = [f'{mv[k]:,} {label}' for k, label in (('unblocked', 'unblocked'), ('regressed', 'regressed'),
+                                                       ('reshuffled', 'reshuffled'), ('dropped', 'dropped')) if mv.get(k)]
+        nr = mv.get('newly_run_ok', 0) + mv.get('newly_run_blocking', 0)
+        if nr:
+            parts.append(f'{nr:,} newly run')
+        return ', '.join(parts) or 'no file changed status'
+
+    data, hits = [], []
+    for i, g in enumerate(gens):
+        prev = gens[i - 1] if i > 0 else None
+        def d(key):
+            return None if prev is None or g.get(key) is None or prev.get(key) is None else g[key] - prev[key]
+        st, sp = g.get('sub_targeted'), g.get('sub_passing')
+        at = g['at'][:16].replace('T', ' ')
+        entry = {
+            'n': g['n'], 'at': html.escape(at), 'head': html.escape(str(g.get('head', ''))),
+            'x': round(x(i), 1), 'ytop': round(min(y(g[k]) for k, _ in series), 1),
+            'run': g['run'], 'blocking': g['blocking'], 'clean': g['clean'],
+            'd_run': d('run'), 'd_blocking': d('blocking'), 'd_clean': d('clean'),
+            'sub_passing': sp, 'd_sub': d('sub_passing'),
+            'sub_pct': f'{sp / st * 100:.2f}' if st else None,
+            'moves': html.escape(moves_text(g)),
+        }
+        data.append(entry)
+        lo = max(L, x(i) - span / 2) if n > 1 else L
+        hi = min(W - R, x(i) + span / 2) if n > 1 else W - R
+        title = (f"gen {g['n']} · {at} · run {g['run']:,} · blocking {g['blocking']:,} · clean {g['clean']:,}")
+        hits.append(f'<rect class="hit" data-i="{i}" x="{lo:.1f}" y="{T - 10}" width="{hi - lo:.1f}" '
+                    f'height="{H - T - B + 20}"><title>{html.escape(title)}</title></rect>')
+
+    blob = json.dumps(data, separators=(',', ':')).replace('</', '<\\/')
+    return f"""
+ <div class="chartbox">
+  <div class="chartscroll">
+  <svg class="chart" viewBox="0 0 {W} {H}" role="img" aria-label="run, blocking and clean files for each of {n} generations">
+    <line x1="{L}" y1="{y(0):.1f}" x2="{W-R}" y2="{y(0):.1f}" stroke="var(--line)"/>
+    <line x1="{L}" y1="{y(top):.1f}" x2="{W-R}" y2="{y(top):.1f}" stroke="var(--line)" stroke-dasharray="3 3"/>
+    <text x="{L}" y="{y(top)-8:.1f}" class="lbl">{top:,} = whole subset</text>
+    <line class="guide" x1="0" y1="{T - 10}" x2="0" y2="{H - B}"/>
+    {''.join(lines)}
+    {''.join(points)}
+    {''.join(hits)}
+    <text x="{L}" y="{H-8}" class="lbl">gen 1 &middot; {html.escape(gens[0]['at'][:16].replace('T',' '))}</text>
+    <text x="{W-R}" y="{H-8}" class="lbl" text-anchor="end">gen {n} &middot; {html.escape(gens[-1]['at'][:16].replace('T',' '))}</text>
+  </svg>
+  </div>
+  <div class="tip" hidden></div>
+  <script type="application/json" class="histdata">{blob}</script>
+  {_CHART_SCRIPT}
+  </div>
+  <div class="legend"><span><i style="background:var(--dimline)"></i>run</span>
+    <span><i style="background:var(--bad)"></i>blocking</span>
+    <span><i style="background:var(--ok)"></i>clean</span>
+    <span class="dim">hover a generation for its numbers</span></div>"""
+
+
 def render_history(history):
     gens = history.get('generations', [])
     if not gens:
         return ''
 
-    # --- chart: blocking, clean and run across every generation ---
-    W, H, PAD = 640, 170, 28
     n = len(gens)
-    top = max(g['total'] for g in gens) or 1
-    def x(i): return PAD + (i * (W - 2 * PAD) / max(n - 1, 1))
-    def y(v): return H - PAD - (v / top) * (H - 2 * PAD)
-    def line(key, color):
-        pts = ' '.join(f'{x(i):.1f},{y(g[key]):.1f}' for i, g in enumerate(gens))
-        dots = ''.join(f'<circle cx="{x(i):.1f}" cy="{y(g[key]):.1f}" r="2.5" fill="{color}"/>'
-                       for i, g in enumerate(gens)) if n <= 60 else ''
-        return (f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="2"/>' + dots)
-    chart = f"""
-  <svg class="chart" viewBox="0 0 {W} {H}" role="img" aria-label="blocking, clean and run files per generation">
-    <line x1="{PAD}" y1="{y(0):.1f}" x2="{W-PAD}" y2="{y(0):.1f}" stroke="var(--line)"/>
-    <line x1="{PAD}" y1="{y(top):.1f}" x2="{W-PAD}" y2="{y(top):.1f}" stroke="var(--line)" stroke-dasharray="3 3"/>
-    <text x="{PAD}" y="{y(top)-6:.1f}" class="lbl">{top:,} = whole subset</text>
-    {line('run', 'var(--dimline)')}
-    {line('blocking', 'var(--bad)')}
-    {line('clean', 'var(--ok)')}
-    <text x="{PAD}" y="{H-6}" class="lbl">gen 1 &middot; {html.escape(gens[0]['at'][:16].replace('T',' '))}</text>
-    <text x="{W-PAD}" y="{H-6}" class="lbl" text-anchor="end">gen {n} &middot; {html.escape(gens[-1]['at'][:16].replace('T',' '))}</text>
-  </svg>
-  <div class="legend"><span><i style="background:var(--dimline)"></i>run</span>
-    <span><i style="background:var(--bad)"></i>blocking</span>
-    <span><i style="background:var(--ok)"></i>clean</span></div>"""
+    # --- chart: run, blocking and clean for every generation, full column width ---
+    chart = _render_history_chart(gens)
 
     # --- table: newest first, with deltas against the previous generation ---
     rows = []
@@ -1209,11 +1363,7 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
 
   h2 {{ font-size: 15px; margin: 28px 0 6px; }}
   h2 small {{ font-weight: normal; }}
-  .chart {{ width: 100%; max-width: 640px; height: auto; display: block; margin: 8px 0 2px; }}
-  .chart .lbl {{ font-size: 10px; fill: var(--dim); }}
-  .legend {{ font-size: 12px; color: var(--dim); margin-bottom: 10px; }}
-  .legend span {{ margin-right: 14px; }}
-  .legend i {{ display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 5px; }}
+{PAGE_CSS_CHART}
   .history td.when {{ white-space: nowrap; font-size: 12px; }}
   .history td.moves {{ font-size: 12px; max-width: 320px; }}
   .history .good {{ color: var(--ok); }}
@@ -1381,9 +1531,34 @@ def main():
     print(f"\nwrote {out}\n  open {out}")
 
 
+def _check_history_chart():
+    """The history chart plots every generation as a point on each line, fills the
+    column, and carries each generation's data for the hover tooltip."""
+    def gen(i):
+        return {'n': i + 1, 'at': f'2026-09-{19 + i % 10:02d}T12:{i % 60:02d}:00', 'head': f'h{i:03d}',
+                'total': 4323, 'run': 4000 + i, 'unrun': 323 - i, 'blocking': 400 - i,
+                'crash': 1, 'timeout': 300 - i, 'error': 99, 'clean': 1800 + 3 * i,
+                'partial': 0, 'sub_targeted': 1116000, 'sub_passing': 750000 + 100 * i,
+                'moves': None if i == 0 else {'changed': 2, 'unblocked': 1, 'regressed': 1},
+                'regenerations': 0}
+    for count in (3, 80):   # 80: more generations than the old 60-point dot cutoff
+        gens = [gen(i) for i in range(count)]
+        out = render_history({'generations': gens})
+        assert out.count('class="pt ') == 3 * count, f'{count} gens: {out.count(chr(34) + "pt ")} points'
+        assert out.count('class="hit"') == count, 'one hover band per generation'
+        m = re.search(r'<script type="application/json" class="histdata">(.*?)</script>', out, re.S)
+        assert m, 'the tooltip data block is embedded'
+        data = json.loads(m.group(1))
+        assert len(data) == count and data[-1]['n'] == count
+        assert data[-1]['blocking'] == gens[-1]['blocking'] and data[-1]['d_blocking'] == -1
+        assert not re.search(r'(^|\n)\s*\.chart \{[^}]*max-width', PAGE_CSS_CHART), 'the chart fills the column'
+        assert '<title>' in out, 'each band carries a native tooltip without JavaScript'
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
         _check_declared_variants()
+        _check_history_chart()
         print('wpt_progress self-test: ok')
     else:
         main()
