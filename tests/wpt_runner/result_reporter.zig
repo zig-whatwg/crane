@@ -379,10 +379,8 @@ pub const RunInfo = struct {
 
     /// Run `argv`, returning its trimmed stdout (owned) or null on any failure.
     fn capture(allocator: std.mem.Allocator, argv: []const []const u8) ?[]u8 {
-        const r = std.process.Child.run(.{
-            .allocator = allocator,
+        const r = std.process.run(allocator, host.io(), .{
             .argv = argv,
-            .cwd = null,
             .expand_arg0 = .no_expand,
         }) catch return null;
         defer allocator.free(r.stdout);
