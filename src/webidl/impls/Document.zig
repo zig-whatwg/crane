@@ -3782,11 +3782,18 @@ fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadySt
     fireEvent(instance, instance, "readystatechange", false);
 }
 
-/// "The end" from step 3, once document.close()'s parse has stopped.
-/// Deviations, stated: no deferred scripts run (step 5), and load's legacy
-/// target override is not modelled.
+/// "The end" from step 3, once document.close()'s parse has stopped: step 5
+/// runs the scripts that will execute when the document has finished
+/// parsing - a defer script document.write() put in the stream - as the
+/// other parser drivers' "the end" does (HTMLParser.zig, a frame's parse).
+/// Deviation, stated: load's legacy target override is not modelled.
 fn theEnd(instance: *runtime.Instance) void {
     lifecycleParsingStopped(instance);
+    const internal = getInternal(instance);
+    const scripting = (get_defaultView(instance) catch null) != null;
+    if (internal != null and scripting) {
+        @import("html").script_execution.executeScriptsWhenParsingFinished(internal.?.allocator, instance);
+    }
     lifecycleFinishLoading(instance);
 }
 
