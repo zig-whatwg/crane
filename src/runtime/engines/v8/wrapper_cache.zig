@@ -153,6 +153,40 @@ fn shouldBeStrong(entry: *const CacheEntry) bool {
 /// The pointer-equality guard matters: instance addresses are recycled by the
 /// SlabAllocator, so the NodeBase reachable from `entry.instance` may already
 /// belong to a different object. Only an exact match is ours to clear.
+/// The realm is ending and `entry`'s instance is freed (or already was, or
+/// its slot went to another object): clear the wrapper's internal fields
+/// first - what severWindow does for a Window's global, for every wrapper.
+/// Script elsewhere - another realm, which is how a removed frame's objects
+/// are usually held - can outlive this realm and keep the wrapper; the next
+/// read through it then fails the binding's unwrap with a TypeError instead
+/// of reaching an impl with a freed instance (23 impls unwrap `_internal`
+/// unchecked; crane/fl-xhr-frame-removed-mid-request.html panicked in
+/// XMLHttpRequest.getXHRState). Blink clears a wrapper's native pointer when
+/// the object it names goes (V8DOMWrapper::ClearNativeInfo). Only a wrapper
+/// whose instance goes: a node its tree owns, or an instance another realm
+/// still wraps, keeps its fields.
+fn severWrapper(entry: *CacheEntry) void {
+    // A wrapper the collector already took has nothing to sever.
+    if (v8.v8_Global_IsEmpty(@ptrCast(entry.wrapper))) return;
+    const wrapper: *v8.Object = @ptrCast(@alignCast(entry.wrapper));
+    // A legacy platform object's wrapper is a proxy whose target holds the
+    // fields (the unwrap reads them through it): sever the target.
+    if (v8.v8_Value_IsProxy(@ptrCast(wrapper))) {
+        const target = v8.v8_Proxy_GetTarget(wrapper) orelse return;
+        defer v8.v8_Value_Dispose(target);
+        if (v8.v8_Value_IsObject(target)) clearFields(@ptrCast(target));
+        return;
+    }
+    clearFields(wrapper);
+}
+
+fn clearFields(object: *v8.Object) void {
+    const count = v8.v8_Object_InternalFieldCount(object);
+    if (count < 1) return;
+    v8.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
+    if (count >= 2) v8.v8_Object_SetAlignedPointerInInternalField(object, 1, null);
+}
+
 fn disposeEntryWrapper(entry: *CacheEntry) void {
     const instance_bridge = @import("dom").instance_bridge;
 
@@ -691,6 +725,7 @@ pub const WrapperCache = struct {
             const is_started = runtime.instance_lifecycle.isCleanupStarted(entry.instance);
             const is_reused = slotReissued(entry);
             if (entry.instance_already_cleaned) {
+                severWrapper(entry);
                 skipped_cleaned += 1;
                 if (is_iframe) {
                     log.debug("[wrapper_cache.deinit] SKIP_CLEANED iframe instance={*}", .{entry.instance});
@@ -703,9 +738,13 @@ pub const WrapperCache = struct {
                 // Its tree tore it down and left the storage: free that, and
                 // only that - deinit has run.
                 if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance)) {
+                    severWrapper(entry);
                     runtime.gc.releaseStorage(entry.instance);
                 }
             } else if (is_reused) {
+                // Its slot holds another object now: the wrapper must not
+                // reach it.
+                severWrapper(entry);
                 // Instance was reused for a different object - don't call onObjectFreed
                 // This can happen when:
                 // 1. Old instance X was cached
@@ -734,6 +773,9 @@ pub const WrapperCache = struct {
                 if (is_iframe) {
                     log.debug("[wrapper_cache.deinit] DEINIT iframe instance={*}", .{entry.instance});
                 }
+                // The wrapper may outlive this realm (script elsewhere holds
+                // it): it must not reach the instance freed next.
+                severWrapper(entry);
                 // Call GC integration to invoke type-specific deinit
                 // This is essential for cleanup since weak callbacks may not fire during shutdown
                 runtime.gc.onObjectFreed(entry.instance);
