@@ -705,6 +705,9 @@ pub const NavigateOptions = struct {
     /// A history traversal's navigation: the session history entry, by id,
     /// that the new document populates - no entry is added.
     traversal_entry: u64 = 0,
+    /// With it, the entry the navigable was on before the traversal (the
+    /// entry itself for a reload): the new document's activation names it.
+    traversal_from: u64 = 0,
     /// "sourceElement": the hyperlink or form submitter that navigates.
     source_element: ?*runtime.Instance = null,
     user_involvement: dom_module.navigation_api.UserInvolvement = .none,
@@ -728,6 +731,13 @@ const Navigation = struct {
     history_handling: navigate_steps.HistoryHandling,
     initial_insertion: bool,
     traversal_entry: u64 = 0,
+    traversal_from: u64 = 0,
+    /// What the commit decides before the active document unloads, for the
+    /// pageswap event and the new document's activation: the entry a push
+    /// or replace will make, and the new document's origin (serialized,
+    /// owned).
+    prepared: ?html_core.navigation.joint_history.Prepared = null,
+    target_origin: ?[]u8 = null,
     /// The user navigated from the browser's UI (userInvolvement "browser
     /// UI"), which no self-referential URL bound applies to.
     browser_initiated: bool = false,
@@ -758,6 +768,7 @@ const Navigation = struct {
         if (self.initiator_base_url) |u| self.allocator.free(u);
         if (self.post_body) |b| self.allocator.free(b);
         if (self.post_content_type) |t| self.allocator.free(t);
+        if (self.target_origin) |o| self.allocator.free(o);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
@@ -960,6 +971,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         .history_handling = history_handling,
         .initial_insertion = options.initial_insertion,
         .traversal_entry = options.traversal_entry,
+        .traversal_from = options.traversal_from,
         .browser_initiated = options.user_involvement == .browser_ui,
     };
     if (options.srcdoc) |html| {
@@ -1300,8 +1312,15 @@ fn runCommit(context: ?*anyopaque) void {
     // ongoing navigation is null - new navigations may start.
     integration.ongoing_navigation = .none;
 
+    // Step 5.1: the pageswap event the unload fires at the displayed
+    // document, naming targetEntry - which "finalize a cross-document
+    // navigation" has put in the session history by now, and Crane commits
+    // once the document is made: its id and keys are reserved here.
+    var swap = pageSwapOf(integration, record, response);
+    defer if (swap) |*step| step.deinit();
+
     // Step 5.3: "Unload a document and its descendants", in its realm.
-    if (!unloadActiveDocument(integration)) return endLoadDelay(integration);
+    if (!unloadActiveDocument(integration, if (swap) |*step| step else null)) return endLoadDelay(integration);
     if (integration.state == .discarded or integration.browsing_context == null) return;
 
     // "Create and initialize a Document object" steps 5-7: the realm the new
@@ -1340,15 +1359,91 @@ fn documentBaseUrl(document: *runtime.Instance, allocator: std.mem.Allocator) ?[
 }
 
 /// Unload the navigable's active document and its descendants, inside its
-/// realm - the unload handlers run from the event loop, not from script.
-/// False when the realm is gone.
-fn unloadActiveDocument(integration: *IFrameIntegration) bool {
+/// realm - the unload handlers run from the event loop, not from script -
+/// with the pageswap event `page_swap` names fired at it first. False when
+/// the realm is gone, or the pageswap event's listeners took the navigable
+/// or its document away.
+fn unloadActiveDocument(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
     const ctx = navigableContext(integration) orelse return false;
-    return inRealm(ctx, unloadActive, .{integration});
+    var unloaded = true;
+    if (!inRealm(ctx, unloadActive, .{ integration, page_swap, &unloaded })) return false;
+    return unloaded;
 }
 
-fn unloadActive(integration: *IFrameIntegration) void {
-    if (activeDocumentOf(integration)) |old| unloadDocumentAndDescendants(old, integration);
+fn unloadActive(integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, unloaded: *bool) void {
+    if (activeDocumentOf(integration)) |old| unloaded.* = unloadDocumentAndDescendantsSwapping(old, integration, page_swap);
+}
+
+/// "Deactivate a document for a cross-document navigation" step 5.1's
+/// firePageSwapBeforeUnload: "fire the pageswap event" given the displayed
+/// document, targetEntry, the navigation type, and a null viewTransition.
+const PageSwapStep = struct {
+    allocator: std.mem.Allocator,
+    /// targetEntry, owned.
+    target: html_core.navigation.joint_history.EntrySnapshot,
+    navigation_type: dom_module.navigation_api.Kind,
+    has_activation: bool,
+
+    fn deinit(self: *PageSwapStep) void {
+        self.target.deinit(self.allocator);
+    }
+};
+
+/// What `runCommit` fires pageswap with for `record`, deciding - before the
+/// displayed document unloads - the new document's origin, and the entry a
+/// push or replace will commit (kept on `record` for `recordInHistory`).
+/// Null when the navigable has no history to name an entry in.
+fn pageSwapOf(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) ?PageSwapStep {
+    const bc = integration.browsing_context orelse return null;
+    const history = bc.ensureHistoryEntries(&history_documents.infoOf) catch return null;
+    const allocator = history.allocator;
+    const final_url = if (response.final_url.len > 0) response.final_url else record.url;
+    const origin = navigationParamsOrigin(integration, final_url, integration.allocator) catch return null;
+    if (record.target_origin) |old| integration.allocator.free(old);
+    record.target_origin = origin;
+
+    const kind: dom_module.navigation_api.Kind = if (record.traversal_entry != 0)
+        (if (record.traversal_entry == record.traversal_from) .reload else .traverse)
+    else if (record.history_handling == .push) .push else .replace;
+    const target = if (record.traversal_entry != 0) blk: {
+        const entry = history.entryById(record.traversal_entry) orelse return null;
+        break :blk history.snapshot(entry) catch return null;
+    } else blk: {
+        const prepared = history.prepareDocument(bc.id, origin, jointHandling(record.history_handling));
+        record.prepared = prepared;
+        break :blk history.preparedSnapshot(bc.id, final_url, origin, prepared) catch return null;
+    };
+
+    // "Fire the pageswap event" step 4: "targetEntry's document's origin is
+    // same origin with displayedDocument's origin; and targetEntry's
+    // document's was created via cross-origin redirects is false, or its
+    // latest entry is not null" - never, with no bfcache.
+    const displayed_window: ?*runtime.Instance = if (bc.getActiveWindow()) |w| @ptrCast(@alignCast(w)) else null;
+    const displayed_origin = originOfWindow(displayed_window, integration.allocator) catch null;
+    defer if (displayed_origin) |o| integration.allocator.free(o);
+    const same_origin = if (displayed_origin) |o| !std.mem.eql(u8, o, "null") and std.mem.eql(u8, o, origin) else false;
+    return .{
+        .allocator = allocator,
+        .target = target,
+        .navigation_type = kind,
+        .has_activation = same_origin and !response.has_cross_origin_redirects,
+    };
+}
+
+/// The pageswap step of "unload a document and its descendants" (6.1), at
+/// `document` in its realm. False when its listeners took the navigable
+/// away, or the document is no longer the one it shows: the unload stops
+/// there, as the navigable's removal has unloaded it already.
+fn firePageSwapAt(document: *runtime.Instance, generation: u64, integration: *IFrameIntegration, step: *const PageSwapStep) bool {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return true;
+    dom_module.navigation_api.firePageSwap(window, .{
+        .navigation_type = step.navigation_type,
+        .target = &step.target,
+        .has_activation = step.has_activation,
+    });
+    if (integration.state == .discarded or integration.browsing_context == null) return false;
+    if (runtime.SlabAllocator.generationOf(document) != generation) return false;
+    return activeDocumentOf(integration) == document;
 }
 
 /// `runCommit`'s commit, inside the realm the document goes in.
@@ -1364,15 +1459,23 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     // location.reload() from an inline script reloads it, not the entry the
     // navigation left.
     const final_url = if (response.final_url.len > 0) response.final_url else record.url;
-    const origin = navigationParamsOrigin(integration, final_url, integration.allocator) catch null;
-    defer if (origin) |o| integration.allocator.free(o);
-    const document_state = recordInHistory(integration, record, final_url, origin orelse "null");
+    // The origin decided before the displayed document unloaded, as the
+    // pageswap event saw it.
+    const computed: ?[]u8 = if (record.target_origin == null) navigationParamsOrigin(integration, final_url, integration.allocator) catch null else null;
+    defer if (computed) |o| integration.allocator.free(o);
+    const origin: []const u8 = record.target_origin orelse computed orelse "null";
+    const document_state = recordInHistory(integration, record, final_url, origin);
     integration.commitResponse(record.url, response) catch |err| {
         log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
         endLoadDelay(integration);
         return;
     };
     attachDocument(integration, document_state);
+    // A push cleared the traversable's forward session history, other
+    // navigables' entries with it: their navigation APIs dispose of them.
+    if (record.traversal_entry == 0 and record.history_handling == .push) {
+        if (integration.browsing_context) |bc| dom_module.navigation_api.entriesRemoved(@ptrCast(bc.getTop()));
+    }
     loadEventStepsIfNothingWill(integration);
 }
 
@@ -1389,15 +1492,41 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
 fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []const u8, origin: []const u8) ?u64 {
     const bc = integration.browsing_context orelse return null;
     const history = bc.jointHistory() catch return null;
+    const joint_history = html_core.navigation.joint_history;
+    // "Apply the history step" 12.1: previousEntry - the navigable's active
+    // entry before this navigation changes it: the one a traversal leaves,
+    // or the current one, which a push leaves and a replace changes in place.
+    const previous_entry: ?*joint_history.Entry = if (record.traversal_entry != 0)
+        history.entryById(record.traversal_from)
+    else
+        history.currentEntry(bc.id);
+    var previous: ?joint_history.EntrySnapshot = if (previous_entry) |entry| history.snapshot(entry) catch null else null;
+    // recordActivation takes it; anything left here goes.
+    defer if (previous) |*p| p.deinit(history.allocator);
     if (record.traversal_entry != 0) {
         const entry = history.entryById(record.traversal_entry) orelse return null;
-        return entry.document_state;
+        const kind: joint_history.NavigationType = if (record.traversal_entry == record.traversal_from) .reload else .traverse;
+        const state = entry.document_state;
+        const taken = previous;
+        previous = null;
+        history.recordActivation(entry.id, kind, taken) catch {};
+        return state;
     }
-    history.commitDocument(bc.id, url, null, origin, jointHandling(record.history_handling)) catch return null;
+    const handling = jointHandling(record.history_handling);
+    const committed = if (record.prepared) |prepared|
+        history.commitPreparedDocument(bc.id, url, null, origin, handling, prepared)
+    else
+        history.commitDocument(bc.id, url, null, origin, handling);
+    committed catch return null;
     // Navigate step 24.4: the document state's resource is documentResource
     // - a srcdoc document's markup, which a traversal back loads again.
     if (record.srcdoc) |markup| history.setCurrentResource(bc.id, markup) catch {};
     const current = history.currentEntry(bc.id) orelse return null;
+    // "Update document for history step application" step 7's inputs, for
+    // navigation.activation, before any of the document's script runs.
+    const taken = previous;
+    previous = null;
+    history.recordActivation(current.id, if (handling == .push) .push else .replace, taken) catch {};
     return current.document_state;
 }
 
@@ -1465,7 +1594,7 @@ fn jointHandling(handling: navigate_steps.HistoryHandling) html_core.navigation.
 /// navigable to the entry it traverses to - from its document state's
 /// resource, when that is a srcdoc document's markup. The top-level page
 /// cannot be replaced, so only a frame or popup can.
-fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8) void {
+fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void {
     for (live_navigables.items) |integration| {
         const bc = integration.browsing_context orelse continue;
         if (@as(*anyopaque, @ptrCast(bc)) != browsing_context_ptr) continue;
@@ -1477,7 +1606,7 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
             break :blk @import("Node.zig").getOwnerDocument(element);
         } else null;
-        navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .srcdoc = resource });
+        navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource });
         return;
     }
 }
@@ -1497,6 +1626,14 @@ fn loadEventStepsIfNothingWill(integration: *IFrameIntegration) void {
 /// first, then `document`. Their navigations in flight end with them, and
 /// their windows' timers stop ("unloading document cleanup steps" 4.2).
 fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFrameIntegration) void {
+    _ = unloadDocumentAndDescendantsSwapping(document, integration, null);
+}
+
+/// `unloadDocumentAndDescendants` with firePageSwapSteps: the pageswap event
+/// `page_swap` names, fired at `document` after its descendants have
+/// unloaded and before it does (step 6.1). False when that event's
+/// listeners took the navigable or `document` away before it unloaded.
+fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
     var documents = collectInclusiveDescendantDocuments(document, integration.allocator);
     defer documents.deinit(integration.allocator);
     // Children first: the list is parents-first, so walk it backwards.
@@ -1508,6 +1645,9 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
         if (entry.integration) |child| {
             if (child != integration) abandonNavigationsOf(child);
         }
+        if (i == 0) if (page_swap) |step| {
+            if (!firePageSwapAt(entry.document, entry.generation, integration, step)) return false;
+        };
         document_lifecycle.unload(entry.document);
         // Not kept for traversal (no bfcache): an entry that held it will be
         // repopulated by a navigation.
@@ -1516,6 +1656,7 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
         }
     }
     if (integration.browsing_context) |bc| destroyWindowDocuments(bc);
+    return true;
 }
 
 const DocumentEntry = struct {

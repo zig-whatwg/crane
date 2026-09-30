@@ -64,7 +64,7 @@ pub const PostResource = struct {
 pub const Implementation = struct {
     navigate_by_target: *const fn (source_document: *runtime.Instance, request: Request) void,
     follow_hyperlink: *const fn (subject: *runtime.Instance) void,
-    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8) void,
+    traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void,
     find_by_name: *const fn (source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance,
 };
 
@@ -101,9 +101,13 @@ pub fn followHyperlink(subject: *runtime.Instance) void {
 /// `entry_id`, whose URL is `url`, without adding an entry - the entry takes
 /// the document the navigation makes. `resource` is the entry's document
 /// state's resource when it is a string (a srcdoc document's markup).
-pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8) void {
+/// `from_entry_id` is the entry the navigable is on before the traversal -
+/// the entry itself, for a reload - which the new document's
+/// navigation.activation names (HTML "apply the history step" 12.1's
+/// previousEntry).
+pub fn traverseNavigable(browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void {
     const impl = implementation orelse return;
-    impl.traverse_navigable(browsing_context, entry_id, url, resource);
+    impl.traverse_navigable(browsing_context, entry_id, url, resource, from_entry_id);
 }
 
 /// HTML "find a navigable by target name" among the frames of
@@ -123,6 +127,6 @@ test "without an installed implementation nothing navigates" {
     var element: runtime.Instance = undefined;
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
     followHyperlink(&element);
-    traverseNavigable(@ptrCast(&element), 1, "about:blank", null);
+    traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1);
     try std.testing.expect(findByName(&element, "name") == null);
 }

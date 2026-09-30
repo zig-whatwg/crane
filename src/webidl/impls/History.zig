@@ -271,7 +271,8 @@ fn reloadNavigable(window: *runtime.Instance, bc: *BrowsingContext) void {
         .navigation_api_state = api_state,
     })) return;
     const current = history.entryById(entry_id) orelse return;
-    @import("dom").navigables.traverseNavigable(@ptrCast(bc), current.id, current.url, current.resource);
+    // A reload's previousEntry is the entry it reloads.
+    @import("dom").navigables.traverseNavigable(@ptrCast(bc), current.id, current.url, current.resource, current.id);
 }
 
 /// dom.history_traversal: reload `window`'s navigable.
@@ -509,6 +510,9 @@ fn dropTraversal(context: ?*anyopaque) void {
 const Change = struct {
     navigable: *BrowsingContext,
     old_url: []u8,
+    /// The entry the navigable is on before the traversal (12.1's
+    /// previousEntry).
+    from_entry: u64,
     target_entry: u64,
     same_document: bool,
     /// The target entry's origin is the current entry's.
@@ -582,6 +586,7 @@ fn runTraversal(context: ?*anyopaque) void {
         changes.append(allocator, .{
             .navigable = bc,
             .old_url = old_url,
+            .from_entry = current.id,
             .target_entry = target_entry.id,
             .same_document = same_document,
             .same_origin = std.mem.eql(u8, current.origin, target_entry.origin),
@@ -608,7 +613,7 @@ fn runTraversal(context: ?*anyopaque) void {
         if (change.same_document) {
             sameDocumentTraversal(change.navigable, change.old_url, entry);
         } else {
-            @import("dom").navigables.traverseNavigable(@ptrCast(change.navigable), entry.id, entry.url, entry.resource);
+            @import("dom").navigables.traverseNavigable(@ptrCast(change.navigable), entry.id, entry.url, entry.resource, change.from_entry);
         }
     }
 }
