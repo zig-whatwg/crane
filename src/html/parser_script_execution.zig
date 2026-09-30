@@ -37,10 +37,6 @@ const Namespace = html_core.parser.Namespace;
 // Script execution
 const script_execution = @import("script_execution.zig");
 
-// DOM implementation access for internal state
-const impls = @import("impls");
-const DocumentImpl = impls.Document;
-
 // DOM internals for document_element setting
 const dom = @import("dom");
 const node_document = @import("dom").node_document;
@@ -360,10 +356,8 @@ pub const DomTreeAdapter = struct {
 
             // Belt: a node that somehow acquired a parent without going through
             // onChildAppended is attached, whatever this map says.
-            const NodeImpl = impls.Node;
-            if (NodeImpl.getParent(dom_node) == null) {
-                NodeImpl.deinitNodeByType(dom_node);
-            }
+            const parent = interfaces.Node.get_parentNode(dom_node) catch null;
+            if (parent == null) dom.node_creation.destroyUninserted(dom_node);
         }
 
         self.unattached_nodes.deinit();
@@ -450,25 +444,15 @@ pub const DomTreeAdapter = struct {
         else
             try createForeignElement(self.allocator, self.ctx, tree_node.namespace, local_name);
 
-        // Set up the element (local name, namespace, attributes)
-        const NodeImpl = impls.Node;
-        const ElementImpl = impls.Element;
-
-        // For non-HTML elements, set node type (HTML elements already have it from init chain)
-        if (!is_html) {
-            NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE) catch {};
-        }
-        ElementImpl.setLocalName(element, local_name) catch {};
-
-        // Set namespace
-        const ns_uri: ?[]const u8 = switch (tree_node.namespace) {
+        // Set up the element (local name, namespace, attributes). Its node
+        // type is Element.init's, HTML or not. DOM "create an element" sets
+        // the namespace and local name, which no IDL member does.
+        const ns_uri: []const u8 = switch (tree_node.namespace) {
             .html => "http://www.w3.org/1999/xhtml",
             .mathml => "http://www.w3.org/1998/Math/MathML",
             .svg => "http://www.w3.org/2000/svg",
         };
-        if (ns_uri) |uri| {
-            ElementImpl.setNamespaceURI(element, uri) catch {};
-        }
+        dom.node_creation.setElementNames(element, ns_uri, local_name) catch {};
 
         // Set owner document
         node_document.set(element, self.document) catch {};
@@ -511,32 +495,16 @@ pub const DomTreeAdapter = struct {
             webidl.Opt(runtime.DOMString).passed(dom_string),
         );
 
-        const NodeImpl = impls.Node;
-        NodeImpl.setNodeType(comment, NodeImpl.NodeType.COMMENT_NODE) catch {};
         node_document.set(comment, self.document) catch {};
 
         return comment;
     }
 
     fn createDoctypeNode(self: *DomTreeAdapter, tree_node: *TreeNode) !*runtime.Instance {
+        // Its node type is DocumentType.init's; its name, public ID and
+        // system ID are the token's, which no IDL member sets.
         const doctype = try interfaces.DocumentType.init(self.allocator, self.ctx);
-
-        const NodeImpl = impls.Node;
-        NodeImpl.setNodeType(doctype, NodeImpl.NodeType.DOCUMENT_TYPE_NODE) catch {};
-
-        // Set DocumentType-specific fields
-        const DocumentTypeImpl = impls.DocumentType;
-        if (DocumentTypeImpl.getInternal(doctype)) |dt_internal| {
-            if (tree_node.doctype_name) |name| {
-                dt_internal.name = self.allocator.dupe(u8, name) catch "";
-            }
-            if (tree_node.doctype_public_id) |pub_id| {
-                dt_internal.public_id = self.allocator.dupe(u8, pub_id) catch "";
-            }
-            if (tree_node.doctype_system_id) |sys_id| {
-                dt_internal.system_id = self.allocator.dupe(u8, sys_id) catch "";
-            }
-        }
+        dom.node_creation.setDoctypeIds(doctype, tree_node.doctype_name, tree_node.doctype_public_id, tree_node.doctype_system_id);
 
         node_document.set(doctype, self.document) catch {};
 

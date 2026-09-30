@@ -538,6 +538,8 @@ pub fn init(
         .change = &changeAttributeHook,
         .node_at = &attrNodeAtHook,
     });
+    // The parsers' "create an element" sets names through `dom.node_creation`.
+    dom.node_creation.installElement(.{ .set_names = &setNamesHook });
 
     // Initialize Element's own internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;
@@ -1540,6 +1542,16 @@ pub fn removeAttributeByName(instance: *runtime.Instance, qualified_name: []cons
     // Step 2: "If attr is non-null, then remove attr."
     const index = internal.indexOfQualifiedName(name.slice) orelse return;
     removeAttributeAt(instance, internal, index);
+}
+
+/// `dom.node_creation.setElementNames`: DOM "create an element" setting the
+/// element's local name and namespace, unvalidated. Both are set even when
+/// one fails; the first failure is reported.
+fn setNamesHook(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) dom.node_creation.Error!void {
+    const named = setLocalName(element, local_name);
+    const namespaced = setNamespaceURI(element, namespace);
+    try named;
+    try namespaced;
 }
 
 /// `dom.element_attributes.at`: the list read in place.

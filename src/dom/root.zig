@@ -110,6 +110,9 @@ pub const document_scripts = @import("document_scripts.zig");
 pub const document_modules = @import("document_modules.zig");
 /// A Document's browsing context's window, as a frame's parser sets it.
 pub const document_browsing_context = @import("document_browsing_context.zig");
+/// What the parsers' tree construction sets on the nodes it makes where no
+/// IDL member fits: an element's names, a doctype's identifiers.
+pub const node_creation = @import("node_creation.zig");
 
 // Re-export slot_helpers functions
 pub const isElement = slot_helpers.isElement;

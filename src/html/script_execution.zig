@@ -8,15 +8,16 @@
 //! This module provides the bridge between the HTML parser and the JavaScript
 //! engine (the `engine` protocol) for executing inline and external scripts.
 //!
-//! ## Architecture Note (Golden Rule #12)
+//! ## Reaching the objects it works on (AGENTS.md "The impls boundary")
 //!
-//! Per Golden Rule #12: External code must call through INTERFACES, not impls.
-//! This module uses interface delegate methods for all WebIDL type interactions:
-//! - HTMLScriptElement interface for script element state
-//! - Document interface for document-level script management
-//!
-//! Impls are only imported for type definitions (InternalState, ScriptType, etc.)
-//! that are re-exported through the interfaces.
+//! No impl is referenced here. IDL members go through their interfaces
+//! (`interfaces.Node`, `interfaces.Element`, ...). State with no IDL member
+//! goes through the hook its owner installs: a script element's
+//! processing-model state through `script_element.zig` (HTMLScriptElement), a
+//! Document's script lists, currentScript and the rest through
+//! `dom.document_scripts`, its module and import maps through
+//! `dom.document_modules` (Document), an element's attributes through
+//! `dom.element_attributes` (Element).
 
 const std = @import("std");
 
@@ -36,7 +37,7 @@ const script_request = @import("script_request.zig");
 // "Report an exception": where a script's uncaught exception goes.
 const report_exception = @import("report_exception.zig");
 
-// WebIDL interfaces - used for all WebIDL type interactions (Golden Rule #12)
+// WebIDL interfaces - every IDL member this module uses
 const interfaces = @import("interfaces");
 
 // Interface types used in this module
@@ -46,12 +47,6 @@ const Node = interfaces.Node;
 const Element = interfaces.Element;
 const Text = interfaces.Text;
 const CharacterData = interfaces.CharacterData;
-
-// Import impls ONLY for type definitions and internal state access
-// (Golden Rule #12 exception: accessing InternalState for direct field reads)
-const impls = @import("impls");
-const ElementImpl = impls.Element;
-const NodeImpl = impls.Node;
 
 // A script element's processing-model state - parser document, already
 // started, type, result - reached through the hook the HTMLScriptElement impl
@@ -1983,11 +1978,19 @@ fn getAttribute(element: *runtime.Instance, name: []const u8) ?[]const u8 {
 
 /// The value of `element`'s attribute with this namespace and local name.
 /// Borrowed from the element's attribute list: valid until it changes.
+/// (There is at most one such attribute; DOM "get an attribute by namespace
+/// and local name".)
 fn getAttributeNS(element: *runtime.Instance, namespace: ?[]const u8, name: []const u8) ?[]const u8 {
-    if (ElementImpl.getInternal(element)) |internal| {
-        if (internal.findAttribute(namespace, name)) |attr| {
-            return attr.value;
-        }
+    const count = dom.element_attributes.count(element);
+    var index: usize = 0;
+    while (index < count) : (index += 1) {
+        const attr = dom.element_attributes.at(element, index) orelse continue;
+        if (!std.mem.eql(u8, attr.local_name, name)) continue;
+        const same_namespace = if (namespace) |ns|
+            attr.namespace != null and std.mem.eql(u8, attr.namespace.?, ns)
+        else
+            attr.namespace == null;
+        if (same_namespace) return attr.value;
     }
     return null;
 }
@@ -2108,13 +2111,11 @@ fn isConnected(element: *runtime.Instance) bool {
     return interfaces.Node.get_isConnected(element) catch false;
 }
 
-/// Get the node's owner document
+/// An element's node document: for a node that is no Document, its
+/// ownerDocument (DOM: "return this's node document", null only for a
+/// Document).
 fn getNodeDocument(node: *runtime.Instance) ?*runtime.Instance {
-    const internal_state = NodeImpl.getInternalState(node);
-    if (internal_state) |internal| {
-        return internal.owner_document;
-    }
-    return null;
+    return interfaces.Node.get_ownerDocument(node) catch null;
 }
 
 /// The document's URL, for the realm `script_element` is in: an inline
@@ -2279,8 +2280,8 @@ fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance)
     var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
-    var child = NodeImpl.getFirstChild(element);
-    while (child) |c| : (child = NodeImpl.getNextSibling(c)) {
+    var child = interfaces.Node.get_firstChild(element) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
         if (isTextNode(c)) try appendCharacterData(c, &result);
     }
 
@@ -2294,9 +2295,9 @@ fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance)
 
 /// Text or CDATASection: the nodes whose data is child text content.
 fn isTextNode(node: *runtime.Instance) bool {
-    const node_type = NodeImpl.getNodeType(node) orelse return false;
-    return node_type == NodeImpl.NodeType.TEXT_NODE or
-        node_type == NodeImpl.NodeType.CDATA_SECTION_NODE;
+    const node_type = interfaces.Node.get_nodeType(node) catch return false;
+    return node_type == interfaces.Node.get_TEXT_NODE() or
+        node_type == interfaces.Node.get_CDATA_SECTION_NODE();
 }
 
 fn appendCharacterData(node: *runtime.Instance, result: *infra.List(u8)) !void {
