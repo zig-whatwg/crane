@@ -69,7 +69,7 @@ src/html/script_execution.zig Document.addImportMapping 1
 src/html/script_execution.zig Document.addPrefetchHint 2
 src/html/script_execution.zig Document.addScopedImportMapping 1
 src/html/script_execution.zig Document.addScriptToExecuteAsap 1
-src/html/script_execution.zig Document.addScriptToExecuteInOrderAsap 2
+src/html/script_execution.zig Document.addScriptToExecuteInOrderAsap 1
 src/html/script_execution.zig Document.addScriptToExecuteWhenParsingFinished 1
 src/html/script_execution.zig Document.clearScriptsToExecuteWhenParsingFinished 1
 src/html/script_execution.zig Document.decrementIgnoreDestructiveWritesCounter 1
