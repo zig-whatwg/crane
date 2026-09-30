@@ -255,11 +255,14 @@ pub const Tokenizer = struct {
         return switch (c) {
             'a'...'z', 'A'...'Z', '_' => true,
             '-' => {
-                // Identifier can start with - if followed by letter/underscore
+                // CSS Syntax 4.3.9 "would start an identifier": after "-",
+                // an ident-start code point or a second "-" (a dashed
+                // ident: `--foo`, as in :state(--foo)).
                 if (self.pos + 1 >= self.input.len) return false;
                 const next = self.input[self.pos + 1];
                 return switch (next) {
-                    'a'...'z', 'A'...'Z', '_' => true,
+                    'a'...'z', 'A'...'Z', '_', '-' => true,
+                    0x80...0xFF => true,
                     else => false,
                 };
             },
