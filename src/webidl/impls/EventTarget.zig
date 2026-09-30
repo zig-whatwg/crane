@@ -9,6 +9,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const abort_algorithms = @import("dom").abort_algorithms;
+const dom_module = @import("dom");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
@@ -1208,15 +1209,30 @@ fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, p
     // Step 5
     EventImpl.setCurrentTarget(event, s.invocation_target);
 
-    // Steps 6-8. Step 9's legacy webkitAnimation*/webkitTransitionEnd
-    // re-dispatch applies only to trusted events and is deliberately omitted.
+    // Steps 6-8.
     //
     // Event handler IDL attributes (onclick, onload, ...) run from inside
     // here too: HTML specifies them as ordinary event listeners in the same
     // list, and `activateEventHandler` puts one there, so a handler runs in
     // registration order among the addEventListener listeners - and, being
     // non-capturing, only in the bubbling pass.
+    const found = innerInvoke(event, s.invocation_target, phase);
+
+    // Step 9: "If found is false and event's isTrusted attribute is true:"
+    if (found or !(interfaces.Event.get_isTrusted(event) catch false)) return;
+    const event_type = interfaces.Event.get_type(event) catch return;
+    // Step 9.2: rename a legacy-mapped type, "and return otherwise".
+    const legacy = dom_module.event_dispatch.legacyEventType(event_type.asSlice()) orelse return;
+    // Step 9.1: "Let originalEventType be event's type attribute value" -
+    // the value the event held, handed back by the rename.
+    const original_event_type = dom_module.event_dispatch.swapType(event, runtime.DOMString.initInterned(legacy)) orelse return;
+    // Step 9.3: "Inner invoke with event, listeners, phase,
+    // invocationTargetInShadowTree, and legacyOutputDidListenersThrowFlag if
+    // given." found was false, so no listener ran and the list is still the
+    // one step 6 cloned; innerInvoke's own snapshot is that clone.
     _ = innerInvoke(event, s.invocation_target, phase);
+    // Step 9.4: "Set event's type attribute value to originalEventType."
+    _ = dom_module.event_dispatch.swapType(event, original_event_type);
 }
 
 /// DOM §2.9 - inner invoke

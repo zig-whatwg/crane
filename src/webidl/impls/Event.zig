@@ -99,7 +99,19 @@ pub fn init(
     // The constructing steps every subclass runs (dom.event_construction);
     // each subclass's init chains through this one.
     @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &getDispatchFlag });
+    // What dispatch does to an event that no IDL member does
+    // (dom.event_dispatch).
+    @import("dom").event_dispatch.install(.{ .swap_type = &swapTypeHook });
     return instance;
+}
+
+/// dom.event_dispatch: set `event`'s type attribute value to `event_type`
+/// and hand back the value it held - "invoke" step 9's rename and its undo.
+fn swapTypeHook(event: *runtime.Instance, event_type: runtime.DOMString) ?runtime.DOMString {
+    const state = event.stateAs(State) orelse return null;
+    const previous = state.own.type;
+    state.own.type = event_type;
+    return previous;
 }
 
 /// dom.event_construction's inner event creation steps.

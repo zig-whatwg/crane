@@ -154,6 +154,10 @@ pub const InternalState = struct {
     /// "The end" is waiting at step 8 - something delays the load event -
     /// and has not queued step 9's task yet.
     load_waiting_on_delay: bool = false,
+    /// HTML 7.4.6.4 "target element": what :target matches, set by "scroll
+    /// to the fragment"; initially null. A weak link - the element can be
+    /// removed and freed while it is the target (dom.target_element).
+    target_element: ?@import("same_object.zig").Link = null,
     /// HTML "will declaratively refresh": the shared declarative refresh
     /// steps have run to step 12 for this document.
     will_declaratively_refresh: bool = false,
@@ -644,6 +648,8 @@ pub fn init(
     // A clone of a Document keeps its mode. Installed here, before any
     // Document exists to be cloned.
     @import("dom").cloning_steps.install(&cloningSteps);
+    // The target element :target matches and "scroll to the fragment" sets.
+    @import("dom").target_element.install(.{ .get = &targetElement, .set = &setTargetElement });
 
     // User input (testdriver lane): the focusing steps designate a document's
     // focused area (src/html/focus.zig), and a top-level traversable's system
@@ -662,6 +668,20 @@ pub fn init(
     });
 
     return instance;
+}
+
+/// dom.target_element: `document`'s target element, or null once the
+/// element it names has been freed.
+fn targetElement(document: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(document) orelse return null;
+    const link = internal.target_element orelse return null;
+    return if (link.isLive()) link.instance else null;
+}
+
+/// dom.target_element: "set document's target element to" `element`.
+fn setTargetElement(document: *runtime.Instance, element: ?*runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    internal.target_element = if (element) |e| @import("same_object.zig").Link.to(e) else null;
 }
 
 /// dom.focused_area: `document`'s focused area, or null for its viewport.
@@ -3869,6 +3889,13 @@ fn becomeInteractive(data: ?*anyopaque) void {
 /// dom.document_lifecycle: step 6's task fires DOMContentLoaded; step 9's
 /// completes the load, once step 8 finds nothing delaying it.
 fn lifecycleFinishLoading(document: *runtime.Instance) void {
+    // HTML "try to scroll to the fragment" queues its scroll while the parser
+    // runs and gives up once it has stopped; Crane parses a document in one
+    // run, so that task would always give up. Scroll once parsing is done,
+    // before DOMContentLoaded, as WebKit (FrameLoader::finishedParsing ->
+    // scrollToFragment) and Blink (FragmentAnchor, from
+    // Document::FinishedParsing) do - :target then holds in load listeners.
+    @import("dom").fragment_scroll.scrollToTheFragment(document);
     queueLifecycleTask(document, .dom_content_loaded);
     // Step 7 - the scripts that execute as soon as possible, or in order as
     // soon as possible - run as their results arrive (script_execution); a

@@ -221,6 +221,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A stash poll hangs on a request nothing sends](testing-a-stash-poll-hangs-on-a-request-nothing-sends.md) - When a file polls the server for a stashed value, find what should send the request that fills the stash - a ping, a beacon, a report - before looking at what reads it.
 - [A test block in html_core never runs](testing-a-test-block-in-html-core-never-runs.md) - A test in src/html/** does not run: put html_core tests under tests/html/, and prove a new test is live by seeing it fail once.
 - [An unknown META global is dropped, and the file runs where it never asked to](testing-an-unknown-meta-global-is-dropped-not-skipped.md) - A global the runner does not know must be run or deliberately skipped, never dropped: an empty list is the defaults, so a file of unknown globals runs in contexts it never asked for.
+- [Pin an ordering helper on all four tree relations](testing-pin-an-ordering-helper-on-all-four-tree-relations.md) - A tree-order or position helper needs a test for each relation - same node, following, ancestor, descendant; one right for siblings can be exactly inverse for ancestors, and the WPT symptom is a hang somewhere else.
+- [In a Window realm, a test global named `event` is `window.event`](testing-a-window-realm-test-global-named-event-is-window-event.md) - Check a test global's name against Window's own attributes; a red run is only red if it fails at the assertion you wrote.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.

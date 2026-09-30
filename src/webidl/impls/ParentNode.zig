@@ -673,7 +673,41 @@ fn matchesPseudoClass(
         .Lang,
         .Scope,
         => false,
+
+        // :target - HTML's "target element" of the element's document.
+        .Target => isTargetElement(element),
+
+        // :state(ident) matches an element whose custom state set contains
+        // ident. A custom state set exists only for an element whose
+        // attachInternals() made an ElementInternals, and attachInternals
+        // is not implemented yet (the custom elements construction work), so
+        // no element has one.
+        .State => false,
     };
+}
+
+/// Selectors 4 8.2 / HTML: ":target" matches the document's target element
+/// (dom.target_element, which "scroll to the fragment" sets).
+fn isTargetElement(element: *runtime.Instance) bool {
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    return @import("dom").target_element.get(document) == element;
+}
+
+/// Selectors 4 14.4.1 ":nth-child(An+B of S)" / ":nth-last-child(An+B of
+/// S)": the element's index among its element siblings that match S -
+/// counted from the first (`from_end` false) or the last - or 0 when the
+/// element does not match S itself.
+fn indexAmongMatching(element: *runtime.Instance, selector_list: *const SelectorList, from_end: bool) u32 {
+    if (!elementMatchesSelectorList(element, selector_list)) return 0;
+    const parent = (interfaces.Node.get_parentNode(element) catch null) orelse return 0;
+    var index: u32 = 0;
+    var child = if (from_end) interfaces.Node.get_lastChild(parent) catch null else interfaces.Node.get_firstChild(parent) catch null;
+    while (child) |c| : (child = if (from_end) interfaces.Node.get_previousSibling(c) catch null else interfaces.Node.get_nextSibling(c) catch null) {
+        if ((interfaces.Node.get_nodeType(c) catch 0) != interfaces.Node.get_ELEMENT_NODE()) continue;
+        if (c == element) return index + 1;
+        if (elementMatchesSelectorList(c, selector_list)) index += 1;
+    }
+    return 0;
 }
 
 // =============================================================================
@@ -842,12 +876,13 @@ fn isOnlyOfType(element: *runtime.Instance) bool {
 }
 
 fn matchesNthChild(element: *runtime.Instance, nth: selector_mod.NthPattern) bool {
-    const index = getElementIndex(element);
+    // With "of S", only the siblings matching S are counted.
+    const index = if (nth.of) |selector_list| indexAmongMatching(element, selector_list, false) else getElementIndex(element);
     return matchesNthPattern(index, nth);
 }
 
 fn matchesNthLastChild(element: *runtime.Instance, nth: selector_mod.NthPattern) bool {
-    const index = getElementIndexFromEnd(element);
+    const index = if (nth.of) |selector_list| indexAmongMatching(element, selector_list, true) else getElementIndexFromEnd(element);
     return matchesNthPattern(index, nth);
 }
 

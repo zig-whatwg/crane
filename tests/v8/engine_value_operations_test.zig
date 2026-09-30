@@ -312,3 +312,37 @@ test "what the iteration throws propagates to the calling script" {
         \\})()
     ));
 }
+
+// ----------------------------------------------------------------------------
+// isConstructor
+// ----------------------------------------------------------------------------
+
+test "protocol: isConstructor is IsConstructor - [[Construct]], not callability" {
+    // customElements.define() step 1 asks it of its argument; a function
+    // that is callable but has no [[Construct]] (an arrow function, a method,
+    // an async function) must answer false, and a Proxy answers for its
+    // target even once revoked (IsConstructor never looks at [[ProxyHandler]]).
+    const ctx = try realm();
+    const cases = [_]struct { source: []const u8, expected: bool }{
+        .{ .source = "(class {})", .expected = true },
+        .{ .source = "(function () {})", .expected = true },
+        .{ .source = "(function () {}).bind(null)", .expected = true },
+        .{ .source = "new Proxy(class {}, {})", .expected = true },
+        .{ .source = "(() => { const r = Proxy.revocable(class {}, {}); r.revoke(); return r.proxy; })()", .expected = true },
+        .{ .source = "(() => {})", .expected = false },
+        .{ .source = "({ m() {} }).m", .expected = false },
+        .{ .source = "(async function () {})", .expected = false },
+        .{ .source = "({})", .expected = false },
+        .{ .source = "1", .expected = false },
+    };
+    for (cases) |case| {
+        const handle = try eval(case.source);
+        defer ffi.v8_Value_Dispose(handle);
+        const argument = try asArgument(handle);
+        const got = v8.protocol.isConstructor(ctx, argument);
+        if (got != case.expected) {
+            std.debug.print("isConstructor({s}) = {}, expected {}\n", .{ case.source, got, case.expected });
+            return error.TestUnexpectedResult;
+        }
+    }
+}

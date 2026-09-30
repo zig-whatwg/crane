@@ -599,12 +599,6 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
 
         std.log.debug("[MutationObserver] Processing observer {*}, records.len={}", .{ mo_instance, records.len });
 
-        // Skip if no records
-        if (records.len == 0) {
-            std.log.debug("[MutationObserver] No records for observer, skipping", .{});
-            continue;
-        }
-
         // Step 6.2: Empty mo's record queue
         // We need to take ownership of the records before clearing
         var records_copy = infra.List(*runtime.Instance).init(allocator);
@@ -614,9 +608,10 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
         }
         MutationObserverImpl.clearRecordQueue(mo_instance);
 
-        // Step 6.3: For each node of mo's node list, remove all transient registered observers
-        // whose observer is mo from node's registered observer list
-        // TODO: Implement transient observer removal
+        // Step 6.3: "For each node of mo's node list, remove all transient
+        // registered observers whose observer is mo from node's registered
+        // observer list."
+        @import("observer_registrations.zig").removeTransients(mo_instance);
 
         // Step 6.4: If records is not empty, then invoke mo's callback with « records, mo »
         if (records_copy.len > 0) {
@@ -636,20 +631,6 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
 
     // Step 7: For each slot of signalSet, fire an event named slotchange...
     // TODO: Implement slot change events when we have slots/shadow DOM
-}
-
-/// Remove transient registered observers for a specific MutationObserver from a node
-/// Spec: https://dom.spec.whatwg.org/#notify-mutation-observers step 6.3
-///
-/// TODO: Implement when we have proper registered observer tracking per node.
-/// This requires:
-/// 1. Node instances to track their list of registered observers
-/// 2. Each registered observer to track its source (the MutationObserver it came from)
-/// 3. Ability to identify transient observers (those added for ancestor observation)
-fn removeTransientObservers(node: *runtime.Instance, observer: *runtime.Instance) void {
-    // Stub implementation - no-op until we have registered observer infrastructure
-    _ = node;
-    _ = observer;
 }
 
 // Tests

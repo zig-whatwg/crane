@@ -21,6 +21,8 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const Range = interfaces.Range;
 const range_boundaries = @import("dom").range_boundaries;
+const boundary_points = @import("dom").boundary_points;
+const dom = @import("dom");
 const document_internals = @import("dom").document_internals;
 
 // Import related impls
@@ -254,30 +256,44 @@ pub fn get_commonAncestorContainer(instance: *runtime.Instance) anyerror!*runtim
 // Range Mutation Methods
 // =============================================================================
 
-/// Helper: Get the length of a node per DOM spec
-/// Per DOM §5.2: The length of a node is:
-/// - 0 for DocumentType or Attr nodes
-/// - data's length for CharacterData nodes
-/// - number of children for other nodes
+/// A node's length (DOM 4.2): 0 for a DocumentType or Attr node, the number
+/// of code units of a CharacterData node's data, and otherwise the number of
+/// its children.
 fn getNodeLength(node: *runtime.Instance) u32 {
-    const node_type = NodeImpl.getNodeType(node) orelse return 0;
-
-    if (node_type == NodeImpl.NodeType.DOCUMENT_TYPE_NODE or node_type == NodeImpl.NodeType.ATTRIBUTE_NODE) {
-        return 0;
-    }
-
-    if (node_type == NodeImpl.NodeType.TEXT_NODE or
-        node_type == NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE or
-        node_type == NodeImpl.NodeType.COMMENT_NODE)
-    {
-        // CharacterData nodes - get data length via CharacterData impl
-        const CharacterDataImpl = @import("CharacterData.zig");
-        return CharacterDataImpl.getDataLength(node);
-    }
-
-    // Element, Document, DocumentFragment, etc. - return number of children
-    return NodeImpl.getChildCount(node);
+    const node_type = interfaces.Node.get_nodeType(node) catch return 0;
+    if (node_type == interfaces.Node.get_DOCUMENT_TYPE_NODE() or node_type == interfaces.Node.get_ATTRIBUTE_NODE()) return 0;
+    if (isCharacterData(node)) return interfaces.CharacterData.get_length(node) catch 0;
+    var count: u32 = 0;
+    var child = interfaces.Node.get_firstChild(node) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) count += 1;
+    return count;
 }
+
+/// Is `node` a CharacterData node: Text, CDATASection, ProcessingInstruction
+/// or Comment?
+fn isCharacterData(node: *runtime.Instance) bool {
+    const node_type = interfaces.Node.get_nodeType(node) catch return false;
+    return node_type == interfaces.Node.get_TEXT_NODE() or
+        node_type == interfaces.Node.get_CDATA_SECTION_NODE() or
+        node_type == interfaces.Node.get_PROCESSING_INSTRUCTION_NODE() or
+        node_type == interfaces.Node.get_COMMENT_NODE();
+}
+
+/// The tree the boundary point algorithms walk (`dom.boundary_points`): a
+/// node's parent and its index, read through the Node interface. "The index
+/// of an object is its number of preceding siblings."
+const DomTree = struct {
+    pub const Node = *runtime.Instance;
+    pub fn parent(node: Node) ?Node {
+        return interfaces.Node.get_parentNode(node) catch null;
+    }
+    pub fn index(node: Node) u32 {
+        var i: u32 = 0;
+        var sibling = interfaces.Node.get_previousSibling(node) catch null;
+        while (sibling) |s| : (sibling = interfaces.Node.get_previousSibling(s) catch null) i += 1;
+        return i;
+    }
+};
 
 /// Helper: Get the index of a child node within its parent
 fn getChildIndex(parent: *runtime.Instance, child: *runtime.Instance) ?u32 {
@@ -295,161 +311,35 @@ fn getChildIndex(parent: *runtime.Instance, child: *runtime.Instance) ?u32 {
 
 /// Helper: Check if nodeA is an inclusive ancestor of nodeB
 fn isInclusiveAncestor(nodeA: *runtime.Instance, nodeB: *runtime.Instance) bool {
-    if (nodeA == nodeB) return true;
-
-    var current: ?*runtime.Instance = nodeB;
-    while (current) |node| {
-        if (node == nodeA) return true;
-        current = NodeImpl.getParent(node);
-    }
-    return false;
+    return nodeA == nodeB or boundary_points.isAncestor(DomTree, nodeA, nodeB);
 }
 
-/// Helper: Check if nodeA follows nodeB in tree order
-/// Per WHATWG DOM: A is following B if A comes after B in preorder depth-first traversal
-fn isFollowing(nodeA: *runtime.Instance, nodeB: *runtime.Instance) bool {
-    if (nodeA == nodeB) return false;
-
-    // Check if B is an ancestor of A (A would be following B)
-    if (isInclusiveAncestor(nodeB, nodeA)) return true;
-
-    // Check if A is an ancestor of B (A would be preceding B)
-    if (isInclusiveAncestor(nodeA, nodeB)) return false;
-
-    // Find common ancestor and compare sibling order
-    // Build ancestor chain for A
-    var ancestorsA: [256]*runtime.Instance = undefined;
-    var ancestorCountA: usize = 0;
-    var currentA: ?*runtime.Instance = nodeA;
-    while (currentA) |node| {
-        if (ancestorCountA < 256) {
-            ancestorsA[ancestorCountA] = node;
-            ancestorCountA += 1;
-        }
-        currentA = NodeImpl.getParent(node);
-    }
-
-    // Walk up from B to find common ancestor
-    var currentB: ?*runtime.Instance = nodeB;
-    while (currentB) |ancestorB| {
-        // Check if this B ancestor is in A's chain
-        for (0..ancestorCountA) |i| {
-            if (ancestorsA[i] == ancestorB) {
-                // Found common ancestor
-                // Now find which child branch of common ancestor each node is in
-                if (i == 0) return false; // nodeA itself is ancestor
-
-                const childOfCommonA = ancestorsA[i - 1];
-
-                // Find B's child of common ancestor
-                var childOfCommonB: *runtime.Instance = nodeB;
-                var parentOfB = NodeImpl.getParent(nodeB);
-                while (parentOfB != null and parentOfB != ancestorB) {
-                    childOfCommonB = parentOfB.?;
-                    parentOfB = NodeImpl.getParent(childOfCommonB);
-                }
-
-                // Compare child indices
-                const indexA = getChildIndex(ancestorB, childOfCommonA);
-                const indexB = getChildIndex(ancestorB, childOfCommonB);
-
-                if (indexA != null and indexB != null) {
-                    return indexA.? > indexB.?;
-                }
-                return false;
-            }
-        }
-        currentB = NodeImpl.getParent(ancestorB);
-    }
-
-    // No common ancestor found (different trees)
-    return false;
-}
-
-/// Helper: Check if boundary point A is after boundary point B
+/// "A boundary point is after another boundary point, if its position
+/// relative to it is after." Both nodes have the same root.
 fn isAfter(nodeA: *runtime.Instance, offsetA: u32, nodeB: *runtime.Instance, offsetB: u32) bool {
-    // Same node: compare offsets
-    if (nodeA == nodeB) {
-        return offsetA > offsetB;
-    }
-
-    // Different nodes: use tree order
-    return isFollowing(nodeA, nodeB);
+    return compareBoundaryPoints(nodeA, offsetA, nodeB, offsetB) == .after;
 }
 
-/// Helper: Get tree root of a node
+/// A node's root: "the object's parent's root if it has a parent, and the
+/// object itself otherwise."
 fn getRoot(node: *runtime.Instance) *runtime.Instance {
     var current = node;
-    while (NodeImpl.getParent(current)) |parent| {
-        current = parent;
-    }
+    while (DomTree.parent(current)) |parent| current = parent;
     return current;
 }
 
 /// Boundary point position comparison result
-const BoundaryPointPosition = enum { before, equal, after };
+const BoundaryPointPosition = boundary_points.Position;
 
-/// Helper: Compare position of boundary point (node, offset) relative to (otherNode, otherOffset)
-/// Per DOM §5.5 boundary point position algorithm
+/// DOM 5.2: the position of the boundary point (node, offset) relative to
+/// (otherNode, otherOffset). The nodes have the same root.
 fn compareBoundaryPoints(
     node: *runtime.Instance,
     offset: u32,
     otherNode: *runtime.Instance,
     otherOffset: u32,
 ) BoundaryPointPosition {
-    // Step 1: Assert nodes have same root (caller's responsibility)
-
-    // Step 2: If node is otherNode, compare offsets
-    if (node == otherNode) {
-        if (offset == otherOffset) return .equal;
-        if (offset < otherOffset) return .before;
-        return .after;
-    }
-
-    // Step 3: If otherNode is following node
-    if (isFollowing(otherNode, node)) {
-        // Recursively compare in reverse
-        const reversed = compareBoundaryPoints(otherNode, otherOffset, node, offset);
-        return switch (reversed) {
-            .before => .after,
-            .after => .before,
-            .equal => .equal,
-        };
-    }
-
-    // Step 4 & 5: Determine child of otherNode to compare
-    var child: *runtime.Instance = undefined;
-    if (isInclusiveAncestor(otherNode, node)) {
-        // Step 4: otherNode is ancestor of node
-        // Find ancestor of node whose parent is otherNode
-        child = node;
-        while (NodeImpl.getParent(child)) |parent| {
-            if (parent == otherNode) break;
-            child = parent;
-        }
-    } else {
-        // Step 5: Find ancestor of node whose parent is otherNode
-        var current = node;
-        while (NodeImpl.getParent(current)) |parent| {
-            if (parent == otherNode) {
-                child = current;
-                break;
-            }
-            current = parent;
-        } else {
-            // This shouldn't happen if nodes have same root
-            return .equal;
-        }
-    }
-
-    // Step 6: Compare child's index with otherOffset
-    const childIndex = getChildIndex(otherNode, child) orelse return .equal;
-    if (childIndex < otherOffset) {
-        return .after;
-    }
-
-    // Step 7: Return before
-    return .before;
+    return boundary_points.position(DomTree, node, offset, otherNode, otherOffset);
 }
 
 /// DOM §5.3 - Range.setStart(node, offset)
@@ -691,362 +581,602 @@ pub fn call_compareBoundaryPoints(instance: *runtime.Instance, how: u16, sourceR
 // Range Content Methods (DOM manipulation)
 // =============================================================================
 
+/// A range's boundary points, read once: the algorithms below take their
+/// "original" start and end before they mutate anything, and recurse over
+/// sub-ranges that need no Range object of their own.
+const Bounds = struct {
+    start_node: *runtime.Instance,
+    start_offset: u32,
+    end_node: *runtime.Instance,
+    end_offset: u32,
+
+    fn of(internal: *const InternalState) ?Bounds {
+        return .{
+            .start_node = internal.start_container orelse return null,
+            .start_offset = internal.start_offset,
+            .end_node = internal.end_container orelse return null,
+            .end_offset = internal.end_offset,
+        };
+    }
+
+    /// "A range is collapsed if its start node is its end node and its start
+    /// offset is its end offset."
+    fn collapsed(self: Bounds) bool {
+        return self.start_node == self.end_node and self.start_offset == self.end_offset;
+    }
+
+    /// "A node node is contained in a live range range if node's root is
+    /// range's root, and (node, 0) is after range's start, and (node, node's
+    /// length) is before range's end."
+    fn contains(self: Bounds, node: *runtime.Instance) bool {
+        if (getRoot(node) != getRoot(self.start_node)) return false;
+        if (compareBoundaryPoints(node, 0, self.start_node, self.start_offset) != .after) return false;
+        return compareBoundaryPoints(node, getNodeLength(node), self.end_node, self.end_offset) == .before;
+    }
+
+    /// "A node is partially contained in a live range if it's an inclusive
+    /// ancestor of the live range's start node but not its end node, or vice
+    /// versa."
+    fn partiallyContains(self: Bounds, node: *runtime.Instance) bool {
+        const of_start = isInclusiveAncestor(node, self.start_node);
+        const of_end = isInclusiveAncestor(node, self.end_node);
+        return of_start != of_end;
+    }
+};
+
 /// Helper: Check if a node is contained in this range
-/// Per DOM spec: A node is contained if:
-/// - node's root is range's root
-/// - (node, 0) is after range's start
-/// - (node, node's length) is before range's end
 fn isNodeContained(internal: *InternalState, node: *runtime.Instance) bool {
-    const start = internal.start_container orelse return false;
-    const end = internal.end_container orelse return false;
-
-    // Check same root
-    const nodeRoot = getRoot(node);
-    const rangeRoot = getRoot(start);
-    if (nodeRoot != rangeRoot) return false;
-
-    // Check (node, 0) is after start
-    const afterStart = compareBoundaryPoints(node, 0, start, internal.start_offset);
-    if (afterStart != .after) return false;
-
-    // Check (node, node's length) is before end
-    const nodeLength = getNodeLength(node);
-    const beforeEnd = compareBoundaryPoints(node, nodeLength, end, internal.end_offset);
-    if (beforeEnd != .before) return false;
-
-    return true;
+    const bounds = Bounds.of(internal) orelse return false;
+    return bounds.contains(node);
 }
 
-/// Helper: Check if a node is partially contained in this range
-/// Per DOM spec: A node is partially contained if it's an inclusive ancestor
-/// of the start node but not the end node, or vice versa
-fn isNodePartiallyContained(internal: *InternalState, node: *runtime.Instance) bool {
-    const start = internal.start_container orelse return false;
-    const end = internal.end_container orelse return false;
-
-    const isAncestorOfStart = isInclusiveAncestor(node, start);
-    const isAncestorOfEnd = isInclusiveAncestor(node, end);
-
-    // Partially contained if ancestor of one but not both
-    return (isAncestorOfStart and !isAncestorOfEnd) or (!isAncestorOfStart and isAncestorOfEnd);
+/// A new DocumentFragment "whose node document is range's start node's node
+/// document" - a document is its own node document.
+fn fragmentFor(start_node: *runtime.Instance) !*runtime.Instance {
+    const node_type = try interfaces.Node.get_nodeType(start_node);
+    const document = if (node_type == interfaces.Node.get_DOCUMENT_NODE())
+        start_node
+    else
+        (try interfaces.Node.get_ownerDocument(start_node)) orelse return error.InvalidStateError;
+    return interfaces.Document.call_createDocumentFragment(document);
 }
 
-/// DOM §5.4 - Range.deleteContents()
-/// Removes the contents of the range from the range's context tree
+/// "Replace data of node with offset, count, and the empty string."
+fn deleteData(node: *runtime.Instance, offset: u32, count: u32) !void {
+    try interfaces.CharacterData.call_replaceData(node, offset, count, runtime.DOMString.initEmpty());
+}
+
+/// A clone of the CharacterData node `node` whose data is "the result of
+/// substringing data of node with offset and count".
+fn cloneWithSubstring(node: *runtime.Instance, offset: u32, count: u32) !*runtime.Instance {
+    const clone = try interfaces.Node.call_cloneNode(node, webidl.Opt(bool).passed(false));
+    var substring = try interfaces.CharacterData.call_substringData(node, offset, count);
+    defer substring.deinit(node.ctx.allocator);
+    try interfaces.CharacterData.set_data(clone, substring);
+    return clone;
+}
+
+/// Steps shared by "extract" and "clone the contents" (5-11): the common
+/// ancestor, the first and last partially contained children, and the
+/// contained children.
+const Split = struct {
+    common_ancestor: *runtime.Instance,
+    first_partially_contained: ?*runtime.Instance,
+    last_partially_contained: ?*runtime.Instance,
+    contained_children: std.ArrayListUnmanaged(*runtime.Instance),
+
+    fn of(allocator: std.mem.Allocator, bounds: Bounds) !Split {
+        // Steps 5-6: "Let commonAncestor be originalStartNode. While
+        // commonAncestor is not an inclusive ancestor of originalEndNode:
+        // set commonAncestor to its own parent."
+        var common = bounds.start_node;
+        while (!isInclusiveAncestor(common, bounds.end_node)) {
+            common = DomTree.parent(common) orelse return error.InvalidStateError;
+        }
+
+        // Steps 7-8: "If originalStartNode is not an inclusive ancestor of
+        // originalEndNode, then set firstPartiallyContainedChild to the first
+        // child of commonAncestor that is partially contained in range."
+        var first: ?*runtime.Instance = null;
+        if (!isInclusiveAncestor(bounds.start_node, bounds.end_node)) {
+            var child = interfaces.Node.get_firstChild(common) catch null;
+            while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
+                if (bounds.partiallyContains(c)) {
+                    first = c;
+                    break;
+                }
+            }
+        }
+
+        // Steps 9-10: "If originalEndNode is not an inclusive ancestor of
+        // originalStartNode, then set lastPartiallyContainedChild to the last
+        // child of commonAncestor that is partially contained in range."
+        var last: ?*runtime.Instance = null;
+        if (!isInclusiveAncestor(bounds.end_node, bounds.start_node)) {
+            var child = interfaces.Node.get_lastChild(common) catch null;
+            while (child) |c| : (child = interfaces.Node.get_previousSibling(c) catch null) {
+                if (bounds.partiallyContains(c)) {
+                    last = c;
+                    break;
+                }
+            }
+        }
+
+        // Step 11: "Let containedChildren be a list of all children of
+        // commonAncestor that are contained in range, in tree order."
+        var contained: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+        errdefer contained.deinit(allocator);
+        var child = interfaces.Node.get_firstChild(common) catch null;
+        while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
+            if (bounds.contains(c)) try contained.append(allocator, c);
+        }
+
+        // Step 12: "If any member of containedChildren is a doctype, then
+        // throw a "HierarchyRequestError" DOMException."
+        for (contained.items) |c| {
+            if ((interfaces.Node.get_nodeType(c) catch 0) == interfaces.Node.get_DOCUMENT_TYPE_NODE()) {
+                return error.HierarchyRequestError;
+            }
+        }
+
+        return .{
+            .common_ancestor = common,
+            .first_partially_contained = first,
+            .last_partially_contained = last,
+            .contained_children = contained,
+        };
+    }
+
+    fn deinit(self: *Split, allocator: std.mem.Allocator) void {
+        self.contained_children.deinit(allocator);
+    }
+};
+
+/// Where "deleteContents" (steps 5-7) and "extract" (steps 13-15) collapse
+/// the range afterwards: originalStart itself when it is an inclusive
+/// ancestor of originalEndNode, else just after its ancestor that is a child
+/// of the common ancestor.
+fn collapsePoint(bounds: Bounds) struct { node: *runtime.Instance, offset: u32 } {
+    // "If originalStartNode is an inclusive ancestor of originalEndNode, then
+    // set newNode to originalStartNode and newOffset to originalStartOffset."
+    if (isInclusiveAncestor(bounds.start_node, bounds.end_node)) {
+        return .{ .node = bounds.start_node, .offset = bounds.start_offset };
+    }
+    // "Otherwise: let referenceNode be originalStartNode. While
+    // referenceNode's parent is non-null and is not an inclusive ancestor of
+    // originalEndNode: set referenceNode to its parent. Set newNode to the
+    // parent of referenceNode, and newOffset to referenceNode's index + 1."
+    var reference = bounds.start_node;
+    while (DomTree.parent(reference)) |parent| {
+        if (isInclusiveAncestor(parent, bounds.end_node)) break;
+        reference = parent;
+    }
+    // referenceNode's parent is not null: were it, referenceNode would be the
+    // range's root, an inclusive ancestor of originalEndNode.
+    return .{ .node = DomTree.parent(reference) orelse reference, .offset = DomTree.index(reference) + 1 };
+}
+
+/// DOM 5.5 "The deleteContents() method steps".
 pub fn call_deleteContents(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // Step 2: "Let originalStartNode, originalStartOffset, originalEndNode,
+    // and originalEndOffset be this's start node, start offset, end node, and
+    // end offset, respectively."
+    const bounds = Bounds.of(internal) orelse return error.InvalidStateError;
 
-    // Step 1: If range is collapsed, return
-    const start = internal.start_container orelse return error.InvalidStateError;
-    const end = internal.end_container orelse return error.InvalidStateError;
+    // Step 1: "If this is collapsed, then return."
+    if (bounds.collapsed()) return;
 
-    if (start == end and internal.start_offset == internal.end_offset) {
-        return; // Collapsed, nothing to delete
+    // Step 3: "If originalStartNode is originalEndNode and it is a
+    // CharacterData node: replace data of originalStartNode with
+    // originalStartOffset, originalEndOffset - originalStartOffset, and the
+    // empty string; return."
+    if (bounds.start_node == bounds.end_node and isCharacterData(bounds.start_node)) {
+        return deleteData(bounds.start_node, bounds.start_offset, bounds.end_offset - bounds.start_offset);
     }
 
-    // Step 2: Special case - same CharacterData node
-    const start_type = NodeImpl.getNodeType(start) orelse return error.InvalidStateError;
-    if (start == end and (start_type == NodeImpl.NodeType.TEXT_NODE or
-        start_type == NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE or
-        start_type == NodeImpl.NodeType.COMMENT_NODE))
+    // Step 4: "Let nodesToRemove be a list of all the nodes that are
+    // contained in this, in tree order, omitting any node whose parent is
+    // also contained in this." Every contained node is a descendant of the
+    // common ancestor of the start and end nodes, and a contained node's
+    // descendants are all contained: the walk takes a contained node and
+    // skips its subtree, and descends only into partially contained ones.
+    const allocator = instance.ctx.allocator;
+    var nodes_to_remove: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer nodes_to_remove.deinit(allocator);
     {
-        // Delete data within this CharacterData node
-        const CharacterDataImpl = @import("CharacterData.zig");
-        const count = internal.end_offset - internal.start_offset;
-        try CharacterDataImpl.deleteDataRange(start, internal.start_offset, count);
-        return;
-    }
-
-    // Step 3: Find common ancestor and collect contained children
-    const commonAncestor = (try get_commonAncestorContainer(instance));
-
-    // Step 4: Remove contained children
-    var child = NodeImpl.getFirstChild(commonAncestor);
-    while (child) |c| {
-        const next = NodeImpl.getNextSibling(c);
-        if (isNodeContained(internal, c)) {
-            // Remove this child from its parent
-            try NodeImpl.removeNodeFromParent(c, commonAncestor);
+        var root = bounds.start_node;
+        while (!isInclusiveAncestor(root, bounds.end_node)) {
+            root = DomTree.parent(root) orelse return error.InvalidStateError;
         }
-        child = next;
+        var node: ?*runtime.Instance = interfaces.Node.get_firstChild(root) catch null;
+        while (node) |n| {
+            if (bounds.contains(n)) {
+                try nodes_to_remove.append(allocator, n);
+                node = nextSkippingChildren(n, root);
+            } else if (bounds.partiallyContains(n)) {
+                node = (interfaces.Node.get_firstChild(n) catch null) orelse nextSkippingChildren(n, root);
+            } else {
+                node = nextSkippingChildren(n, root);
+            }
+        }
     }
 
-    // Step 5: Collapse range to start
-    internal.end_container = start;
-    internal.end_offset = internal.start_offset;
+    // Steps 5-7: newNode and newOffset.
+    const collapse_to = collapsePoint(bounds);
+
+    // Step 8: "If originalStartNode is a CharacterData node, then replace data
+    // of originalStartNode with originalStartOffset, originalStartNode's
+    // length - originalStartOffset, and the empty string."
+    if (isCharacterData(bounds.start_node)) {
+        try deleteData(bounds.start_node, bounds.start_offset, getNodeLength(bounds.start_node) - bounds.start_offset);
+    }
+
+    // Step 9: "For each node of nodesToRemove, in tree order: remove node."
+    for (nodes_to_remove.items) |node| {
+        const parent = DomTree.parent(node) orelse continue;
+        _ = try interfaces.Node.call_removeChild(parent, node);
+    }
+
+    // Step 10: "If originalEndNode is a CharacterData node, then replace data
+    // of originalEndNode with 0, originalEndOffset, and the empty string."
+    if (isCharacterData(bounds.end_node)) {
+        try deleteData(bounds.end_node, 0, bounds.end_offset);
+    }
+
+    // Step 11: "Set start and end to (newNode, newOffset)."
+    internal.start_container = collapse_to.node;
+    internal.start_offset = collapse_to.offset;
+    internal.end_container = collapse_to.node;
+    internal.end_offset = collapse_to.offset;
 }
 
-/// DOM §5.6 - Range.extractContents()
-/// Moves the contents of the range into a DocumentFragment
+/// The node after `node` in tree order, below `root`, that is not one of its
+/// descendants.
+fn nextSkippingChildren(node: *runtime.Instance, root: *runtime.Instance) ?*runtime.Instance {
+    var current = node;
+    while (current != root) {
+        if (interfaces.Node.get_nextSibling(current) catch null) |next| return next;
+        current = DomTree.parent(current) orelse return null;
+    }
+    return null;
+}
+
+/// What "extract" hands back: the fragment, and - except when it returned
+/// early - the point step 21 sets the range's start and end to.
+const Extracted = struct {
+    fragment: *runtime.Instance,
+    collapse_to: ?struct { node: *runtime.Instance, offset: u32 } = null,
+};
+
+/// DOM 5.5 "extract" a live range, given by its boundary points. The caller
+/// performs step 21 ("set range's start and end to (newNode, newOffset)")
+/// with what comes back; a sub-range's is dropped with the sub-range.
+fn extract(allocator: std.mem.Allocator, bounds: Bounds) anyerror!Extracted {
+    // Step 1: "Let fragment be a new DocumentFragment node whose node
+    // document is range's start node's node document."
+    const fragment = try fragmentFor(bounds.start_node);
+
+    // Step 2: "If range is collapsed, then return fragment."
+    if (bounds.collapsed()) return .{ .fragment = fragment };
+
+    // Step 3: originalStartNode, originalStartOffset, originalEndNode and
+    // originalEndOffset are `bounds`.
+
+    // Step 4: "If originalStartNode is originalEndNode and it is a
+    // CharacterData node:"
+    if (bounds.start_node == bounds.end_node and isCharacterData(bounds.start_node)) {
+        const count = bounds.end_offset - bounds.start_offset;
+        // Steps 4.1-4.3: a clone holding the substring, appended to fragment.
+        const clone = try cloneWithSubstring(bounds.start_node, bounds.start_offset, count);
+        _ = try interfaces.Node.call_appendChild(fragment, clone);
+        // Step 4.4: "Replace data of originalStartNode with
+        // originalStartOffset, originalEndOffset - originalStartOffset, and
+        // the empty string." Its live-range steps collapse range.
+        try deleteData(bounds.start_node, bounds.start_offset, count);
+        // Step 4.5
+        return .{ .fragment = fragment };
+    }
+
+    // Steps 5-12.
+    var split = try Split.of(allocator, bounds);
+    defer split.deinit(allocator);
+
+    // Steps 13-15: newNode and newOffset.
+    const collapse_to = collapsePoint(bounds);
+
+    if (split.first_partially_contained) |first| {
+        if (isCharacterData(first)) {
+            // Step 16: firstPartiallyContainedChild is originalStartNode.
+            // "Let clone be a clone of originalStartNode", holding the data
+            // from originalStartOffset to its end; append it to fragment,
+            // then replace that data with the empty string.
+            const count = getNodeLength(bounds.start_node) - bounds.start_offset;
+            const clone = try cloneWithSubstring(bounds.start_node, bounds.start_offset, count);
+            _ = try interfaces.Node.call_appendChild(fragment, clone);
+            try deleteData(bounds.start_node, bounds.start_offset, count);
+        } else {
+            // Step 17.1-17.2: "Let clone be a clone of
+            // firstPartiallyContainedChild. Append clone to fragment."
+            const clone = try interfaces.Node.call_cloneNode(first, webidl.Opt(bool).passed(false));
+            _ = try interfaces.Node.call_appendChild(fragment, clone);
+            // Steps 17.3-17.5: extract the subrange from (originalStartNode,
+            // originalStartOffset) to (firstPartiallyContainedChild, its
+            // length), and append that subfragment to clone.
+            const sub = try extract(allocator, .{
+                .start_node = bounds.start_node,
+                .start_offset = bounds.start_offset,
+                .end_node = first,
+                .end_offset = getNodeLength(first),
+            });
+            _ = try interfaces.Node.call_appendChild(clone, sub.fragment);
+        }
+    }
+
+    // Step 18: "For each contained child of containedChildren: append
+    // contained child to fragment."
+    for (split.contained_children.items) |child| {
+        _ = try interfaces.Node.call_appendChild(fragment, child);
+    }
+
+    if (split.last_partially_contained) |last| {
+        if (isCharacterData(last)) {
+            // Step 19: lastPartiallyContainedChild is originalEndNode. A clone
+            // holding its data up to originalEndOffset, appended to fragment;
+            // then that data replaced with the empty string.
+            const clone = try cloneWithSubstring(bounds.end_node, 0, bounds.end_offset);
+            _ = try interfaces.Node.call_appendChild(fragment, clone);
+            try deleteData(bounds.end_node, 0, bounds.end_offset);
+        } else {
+            // Steps 20.1-20.2
+            const clone = try interfaces.Node.call_cloneNode(last, webidl.Opt(bool).passed(false));
+            _ = try interfaces.Node.call_appendChild(fragment, clone);
+            // Steps 20.3-20.5: the subrange from (lastPartiallyContainedChild,
+            // 0) to (originalEndNode, originalEndOffset), extracted into
+            // clone.
+            const sub = try extract(allocator, .{
+                .start_node = last,
+                .start_offset = 0,
+                .end_node = bounds.end_node,
+                .end_offset = bounds.end_offset,
+            });
+            _ = try interfaces.Node.call_appendChild(clone, sub.fragment);
+        }
+    }
+
+    // Steps 21-22: the caller sets range's start and end; return fragment.
+    return .{ .fragment = fragment, .collapse_to = .{ .node = collapse_to.node, .offset = collapse_to.offset } };
+}
+
+/// Extract `instance` and perform extract's step 21 on it.
+fn extractThis(instance: *runtime.Instance, internal: *InternalState) anyerror!*runtime.Instance {
+    const bounds = Bounds.of(internal) orelse return error.InvalidStateError;
+    const extracted = try extract(instance.ctx.allocator, bounds);
+    // Step 21: "Set range's start and end to (newNode, newOffset)."
+    if (extracted.collapse_to) |point| {
+        internal.start_container = point.node;
+        internal.start_offset = point.offset;
+        internal.end_container = point.node;
+        internal.end_offset = point.offset;
+    }
+    return extracted.fragment;
+}
+
+/// DOM 5.5: "The extractContents() method steps are to return the result of
+/// extracting this."
 pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return extractThis(instance, internal);
+}
 
-    // Step 1: Create fragment (use interface per Golden Rule #13)
-    const fragment = interfaces.DocumentFragment.call_constructor(instance.ctx) catch return error.OutOfMemory;
+/// DOM 5.5 "clone the contents" of a live range, given by its boundary
+/// points.
+fn cloneTheContents(allocator: std.mem.Allocator, bounds: Bounds) anyerror!*runtime.Instance {
+    // Step 1: "Let fragment be a new DocumentFragment node whose node
+    // document is range's start node's node document."
+    const fragment = try fragmentFor(bounds.start_node);
 
-    // Step 2: If collapsed, return empty fragment
-    const start = internal.start_container orelse return error.InvalidStateError;
-    const end = internal.end_container orelse return error.InvalidStateError;
+    // Step 2: "If range is collapsed, then return fragment."
+    if (bounds.collapsed()) return fragment;
 
-    if (start == end and internal.start_offset == internal.end_offset) {
+    // Step 4: "If originalStartNode is originalEndNode and it is a
+    // CharacterData node": a clone holding the substring between the offsets,
+    // appended to fragment.
+    if (bounds.start_node == bounds.end_node and isCharacterData(bounds.start_node)) {
+        const clone = try cloneWithSubstring(bounds.start_node, bounds.start_offset, bounds.end_offset - bounds.start_offset);
+        _ = try interfaces.Node.call_appendChild(fragment, clone);
         return fragment;
     }
 
-    // Step 3: Store original boundary for resetting range
-    const originalStartNode = start;
-    const originalStartOffset = internal.start_offset;
+    // Steps 5-12.
+    var split = try Split.of(allocator, bounds);
+    defer split.deinit(allocator);
 
-    // Step 4: Special case - same CharacterData node
-    const start_type = NodeImpl.getNodeType(start) orelse return error.InvalidStateError;
-    if (start == end and (start_type == NodeImpl.NodeType.TEXT_NODE or
-        start_type == NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE or
-        start_type == NodeImpl.NodeType.COMMENT_NODE))
-    {
-        // Clone the node, set its data to the substring, append to fragment (use interface per Golden Rule #13)
-        const clone = interfaces.Node.call_cloneNode(start, webidl.Opt(bool).passed(false)) catch return error.OutOfMemory;
-        const CharacterDataImpl = @import("CharacterData.zig");
-
-        // Get substring and set on clone
-        const data = CharacterDataImpl.getData(start) orelse "";
-        if (internal.start_offset < data.len and internal.end_offset <= data.len) {
-            const substring = data[internal.start_offset..internal.end_offset];
-            CharacterDataImpl.setData(clone, substring) catch return error.OutOfMemory;
+    if (split.first_partially_contained) |first| {
+        if (isCharacterData(first)) {
+            // Step 13: a clone of originalStartNode holding its data from
+            // originalStartOffset to its end.
+            const clone = try cloneWithSubstring(bounds.start_node, bounds.start_offset, getNodeLength(bounds.start_node) - bounds.start_offset);
+            _ = try interfaces.Node.call_appendChild(fragment, clone);
+        } else {
+            // Step 14: a clone of firstPartiallyContainedChild, holding the
+            // cloned contents of the subrange from the start to its end.
+            const clone = try interfaces.Node.call_cloneNode(first, webidl.Opt(bool).passed(false));
+            _ = try interfaces.Node.call_appendChild(fragment, clone);
+            const sub = try cloneTheContents(allocator, .{
+                .start_node = bounds.start_node,
+                .start_offset = bounds.start_offset,
+                .end_node = first,
+                .end_offset = getNodeLength(first),
+            });
+            _ = try interfaces.Node.call_appendChild(clone, sub);
         }
-
-        // Append clone to fragment
-        _ = interfaces.Node.call_appendChild(fragment, clone) catch return error.HierarchyRequestError;
-
-        // Delete data from original
-        const count = internal.end_offset - internal.start_offset;
-        CharacterDataImpl.deleteDataRange(start, internal.start_offset, count) catch return error.InvalidStateError;
-
-        return fragment;
     }
 
-    // Step 5: Find common ancestor and move contained children to fragment
-    const commonAncestor = (try get_commonAncestorContainer(instance));
-
-    var child = NodeImpl.getFirstChild(commonAncestor);
-    while (child) |c| {
-        const next = NodeImpl.getNextSibling(c);
-        if (isNodeContained(internal, c)) {
-            // Check if doctype - throw HierarchyRequestError
-            const child_type = NodeImpl.getNodeType(c) orelse continue;
-            if (child_type == NodeImpl.NodeType.DOCUMENT_TYPE_NODE) {
-                return error.HierarchyRequestError;
-            }
-
-            // Remove from original parent and append to fragment (use interface per Golden Rule #13)
-            try NodeImpl.removeNodeFromParent(c, commonAncestor);
-            _ = try interfaces.Node.call_appendChild(fragment, c);
-        }
-        child = next;
+    // Step 15: "For each contained child of containedChildren: let clone be a
+    // clone of contained child with subtree set to true; append clone to
+    // fragment."
+    for (split.contained_children.items) |child| {
+        const clone = try interfaces.Node.call_cloneNode(child, webidl.Opt(bool).passed(true));
+        _ = try interfaces.Node.call_appendChild(fragment, clone);
     }
 
-    // Step 6: Collapse range to original start
-    internal.start_container = originalStartNode;
-    internal.start_offset = originalStartOffset;
-    internal.end_container = originalStartNode;
-    internal.end_offset = originalStartOffset;
+    if (split.last_partially_contained) |last| {
+        if (isCharacterData(last)) {
+            // Step 16: a clone of originalEndNode holding its data up to
+            // originalEndOffset.
+            const clone = try cloneWithSubstring(bounds.end_node, 0, bounds.end_offset);
+            _ = try interfaces.Node.call_appendChild(fragment, clone);
+        } else {
+            // Step 17: a clone of lastPartiallyContainedChild, holding the
+            // cloned contents of the subrange from its start to the end.
+            const clone = try interfaces.Node.call_cloneNode(last, webidl.Opt(bool).passed(false));
+            _ = try interfaces.Node.call_appendChild(fragment, clone);
+            const sub = try cloneTheContents(allocator, .{
+                .start_node = last,
+                .start_offset = 0,
+                .end_node = bounds.end_node,
+                .end_offset = bounds.end_offset,
+            });
+            _ = try interfaces.Node.call_appendChild(clone, sub);
+        }
+    }
 
+    // Step 18: "Return fragment."
     return fragment;
 }
 
-/// DOM §5.6 - Range.cloneContents()
-/// Returns a DocumentFragment that is a copy of the contents
+/// DOM 5.5: "The cloneContents() method steps are to return the result of
+/// cloning the contents of this."
 pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Step 1: Create fragment (use interface per Golden Rule #13)
-    const fragment = interfaces.DocumentFragment.call_constructor(instance.ctx) catch return error.OutOfMemory;
-
-    // Step 2: If collapsed, return empty fragment
-    const start = internal.start_container orelse return error.InvalidStateError;
-    const end = internal.end_container orelse return error.InvalidStateError;
-
-    if (start == end and internal.start_offset == internal.end_offset) {
-        return fragment;
-    }
-
-    // Step 4: Special case - same CharacterData node
-    const start_type = NodeImpl.getNodeType(start) orelse return error.InvalidStateError;
-    if (start == end and (start_type == NodeImpl.NodeType.TEXT_NODE or
-        start_type == NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE or
-        start_type == NodeImpl.NodeType.COMMENT_NODE))
-    {
-        // Clone the node, set its data to the substring, append to fragment (use interface per Golden Rule #13)
-        const clone = interfaces.Node.call_cloneNode(start, webidl.Opt(bool).passed(false)) catch return error.OutOfMemory;
-        const CharacterDataImpl = @import("CharacterData.zig");
-
-        // Get substring and set on clone
-        const data = CharacterDataImpl.getData(start) orelse "";
-        if (internal.start_offset < data.len and internal.end_offset <= data.len) {
-            const substring = data[internal.start_offset..internal.end_offset];
-            CharacterDataImpl.setData(clone, substring) catch return error.OutOfMemory;
-        }
-
-        // Append clone to fragment
-        _ = interfaces.Node.call_appendChild(fragment, clone) catch return error.HierarchyRequestError;
-
-        return fragment;
-    }
-
-    // Step 5: Find common ancestor and clone contained children to fragment
-    const commonAncestor = (try get_commonAncestorContainer(instance));
-
-    var child = NodeImpl.getFirstChild(commonAncestor);
-    while (child) |c| {
-        const next = NodeImpl.getNextSibling(c);
-        if (isNodeContained(internal, c)) {
-            // Check if doctype - throw HierarchyRequestError
-            const child_type = NodeImpl.getNodeType(c) orelse continue;
-            if (child_type == NodeImpl.NodeType.DOCUMENT_TYPE_NODE) {
-                return error.HierarchyRequestError;
-            }
-
-            // Deep clone and append to fragment (use interface per Golden Rule #13)
-            const clone = try interfaces.Node.call_cloneNode(c, webidl.Opt(bool).passed(true));
-            _ = try interfaces.Node.call_appendChild(fragment, clone);
-        }
-        child = next;
-    }
-
-    return fragment;
+    const bounds = Bounds.of(internal) orelse return error.InvalidStateError;
+    return cloneTheContents(instance.ctx.allocator, bounds);
 }
 
-/// DOM §5.4 - Range.insertNode(node)
-/// Inserts node into the range's context tree
+/// DOM 5.5 "insert" a node into a live range; insertNode(node)'s steps.
 pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
     const start = internal.start_container orelse return error.InvalidStateError;
-    const start_type = NodeImpl.getNodeType(start) orelse return error.InvalidStateError;
+    const start_offset = internal.start_offset;
+    const start_type = try interfaces.Node.get_nodeType(start);
+    // A CDATASection is a Text node too.
+    const start_is_text = start_type == interfaces.Node.get_TEXT_NODE() or start_type == interfaces.Node.get_CDATA_SECTION_NODE();
 
-    // Step 1: Validate start node
-    if (start_type == NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE or
-        start_type == NodeImpl.NodeType.COMMENT_NODE or
-        (start_type == NodeImpl.NodeType.TEXT_NODE and NodeImpl.getParent(start) == null) or
+    // Step 1: "If range's start node is a ProcessingInstruction or Comment
+    // node, is a Text node whose parent is null, or is node, then throw a
+    // "HierarchyRequestError" DOMException."
+    if (start_type == interfaces.Node.get_PROCESSING_INSTRUCTION_NODE() or
+        start_type == interfaces.Node.get_COMMENT_NODE() or
+        (start_is_text and DomTree.parent(start) == null) or
         start == node)
     {
         return error.HierarchyRequestError;
     }
 
-    // Step 2-4: Determine reference node and parent
-    var referenceNode: ?*runtime.Instance = null;
-    var parent: *runtime.Instance = undefined;
+    // Steps 2-4: referenceNode is the start node if it is a Text node,
+    // otherwise its child at the start offset, or null.
+    var reference: ?*runtime.Instance = if (start_is_text) start else childAt(start, start_offset);
 
-    if (start_type == NodeImpl.NodeType.TEXT_NODE) {
-        // Step 3: Start node is Text node - reference is start node
-        referenceNode = start;
-        parent = NodeImpl.getParent(start) orelse return error.HierarchyRequestError;
-    } else {
-        // Step 4: Get child at start offset
-        var idx: u32 = 0;
-        var child = NodeImpl.getFirstChild(start);
-        while (child != null and idx < internal.start_offset) : (idx += 1) {
-            child = NodeImpl.getNextSibling(child.?);
-        }
-        referenceNode = child;
-        parent = start;
-    }
+    // Step 5: "Let parent be range's start node if referenceNode is null;
+    // otherwise referenceNode's parent."
+    const parent = if (reference) |r| DomTree.parent(r) orelse return error.HierarchyRequestError else start;
 
-    // Step 5-6: Validate pre-insertion
-    // (simplified - full validation would need ensurePreInsertValidity)
-
-    // Step 7: If start node is Text, split it (use interface per Golden Rule #13)
-    if (start_type == NodeImpl.NodeType.TEXT_NODE and internal.start_offset > 0) {
-        const newText = try interfaces.Text.call_splitText(start, internal.start_offset);
-        referenceNode = newText;
-    }
-
-    // Step 8: If node is referenceNode, use its next sibling
-    if (referenceNode != null and node == referenceNode.?) {
-        referenceNode = NodeImpl.getNextSibling(referenceNode.?);
-    }
-
-    // Step 9: Remove node from its current parent if it has one
-    if (NodeImpl.getParent(node)) |oldParent| {
-        try NodeImpl.removeNodeFromParent(node, oldParent);
-    }
-
-    // Step 10-11: Calculate new offset
-    var newOffset: u32 = 0;
-    if (referenceNode) |refNode| {
-        newOffset = getChildIndex(parent, refNode) orelse 0;
-    } else {
-        newOffset = NodeImpl.getChildCount(parent);
-    }
-
-    // Increase by node's length
-    const node_type = NodeImpl.getNodeType(node) orelse return error.InvalidStateError;
-    if (node_type == NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE) {
-        newOffset += NodeImpl.getChildCount(node);
-    } else {
-        newOffset += 1;
-    }
-
-    // Step 12: Insert node before referenceNode (use interface per Golden Rule #13)
-    if (referenceNode) |refNode| {
-        _ = interfaces.Node.call_insertBefore(parent, node, refNode) catch return error.HierarchyRequestError;
-    } else {
-        _ = interfaces.Node.call_appendChild(parent, node) catch return error.HierarchyRequestError;
-    }
-
-    // Step 13: If range is collapsed, update end
-    if (internal.start_container == internal.end_container and
-        internal.start_offset == internal.end_offset)
+    // Step 6: "Ensure pre-insert validity of node into parent before
+    // referenceNode" - before step 7 splits anything.
     {
+        const node_base = dom.instance_bridge.getNodeBase(@ptrCast(node)) orelse return error.InvalidStateError;
+        const parent_base = dom.instance_bridge.getNodeBase(@ptrCast(parent)) orelse return error.InvalidStateError;
+        const reference_base: ?*dom.NodeBase = if (reference) |r| dom.instance_bridge.getNodeBase(@ptrCast(r)) else null;
+        try dom.mutation.ensurePreInsertValidity(node_base, parent_base, reference_base);
+    }
+
+    // Step 7: "If range's start node is a Text node, set referenceNode to
+    // the result of splitting it with offset range's start offset" - at
+    // offset 0 too, which leaves an empty Text node before the insertion.
+    if (start_is_text) reference = try interfaces.Text.call_splitText(start, start_offset);
+
+    // Step 8: "If node is referenceNode, set referenceNode to its next
+    // sibling."
+    if (reference == node) reference = interfaces.Node.get_nextSibling(node) catch null;
+
+    // Step 9: "If node's parent is non-null, then remove node."
+    if (DomTree.parent(node)) |old_parent| _ = try interfaces.Node.call_removeChild(old_parent, node);
+
+    // Step 10: "Let newOffset be parent's length if referenceNode is null;
+    // otherwise referenceNode's index."
+    var new_offset: u32 = if (reference) |r| DomTree.index(r) else getNodeLength(parent);
+
+    // Step 11: "Increase newOffset by node's length if node is a
+    // DocumentFragment node; otherwise 1."
+    new_offset += if ((try interfaces.Node.get_nodeType(node)) == interfaces.Node.get_DOCUMENT_FRAGMENT_NODE()) getNodeLength(node) else 1;
+
+    // Step 12: "Pre-insert node into parent before referenceNode."
+    _ = try interfaces.Node.call_insertBefore(parent, node, reference);
+
+    // Step 13: "If range is collapsed, then set range's end to (parent,
+    // newOffset)."
+    if (internal.start_container == internal.end_container and internal.start_offset == internal.end_offset) {
         internal.end_container = parent;
-        internal.end_offset = newOffset;
+        internal.end_offset = new_offset;
     }
 }
 
-/// DOM §5.4 - Range.surroundContents(newParent)
-/// Moves the contents of the range into newParent, then inserts newParent at range's start
+/// `node`'s child at `index`, or null.
+fn childAt(node: *runtime.Instance, index: u32) ?*runtime.Instance {
+    var i: u32 = 0;
+    var child = interfaces.Node.get_firstChild(node) catch null;
+    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
+        if (i == index) return c;
+        i += 1;
+    }
+    return null;
+}
+
+/// DOM 5.5 "The surroundContents(newParent) method steps".
 pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const bounds = Bounds.of(internal) orelse return error.InvalidStateError;
 
-    // Step 1: Check for partially contained non-Text nodes
-    const commonAncestor = (try get_commonAncestorContainer(instance));
-
-    var child = NodeImpl.getFirstChild(commonAncestor);
-    while (child) |c| {
-        if (isNodePartiallyContained(internal, c)) {
-            const child_type = NodeImpl.getNodeType(c) orelse continue;
-            if (child_type != NodeImpl.NodeType.TEXT_NODE) {
-                return error.InvalidStateError;
-            }
+    // Step 1: "If a non-Text node is partially contained in this, then throw
+    // an "InvalidStateError" DOMException." The partially contained nodes
+    // are the inclusive ancestors of either boundary node that are not
+    // inclusive ancestors of the other.
+    for ([_][2]*runtime.Instance{ .{ bounds.start_node, bounds.end_node }, .{ bounds.end_node, bounds.start_node } }) |pair| {
+        var node: ?*runtime.Instance = pair[0];
+        while (node) |n| : (node = DomTree.parent(n)) {
+            if (isInclusiveAncestor(n, pair[1])) break;
+            if ((interfaces.Node.get_nodeType(n) catch 0) != interfaces.Node.get_TEXT_NODE()) return error.InvalidStateError;
         }
-        child = NodeImpl.getNextSibling(c);
     }
 
-    // Step 2: Validate newParent type
-    const newParent_type = NodeImpl.getNodeType(newParent) orelse return error.InvalidStateError;
-    if (newParent_type == NodeImpl.NodeType.DOCUMENT_NODE or
-        newParent_type == NodeImpl.NodeType.DOCUMENT_TYPE_NODE or
-        newParent_type == NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE)
+    // Step 2: "If newParent is a Document, DocumentType, or DocumentFragment
+    // node, then throw an "InvalidNodeTypeError" DOMException."
+    const new_parent_type = try interfaces.Node.get_nodeType(newParent);
+    if (new_parent_type == interfaces.Node.get_DOCUMENT_NODE() or
+        new_parent_type == interfaces.Node.get_DOCUMENT_TYPE_NODE() or
+        new_parent_type == interfaces.Node.get_DOCUMENT_FRAGMENT_NODE())
     {
         return error.InvalidNodeTypeError;
     }
 
-    // Step 3: Extract range contents into a fragment
-    const fragment = try call_extractContents(instance);
+    // Step 3: "Let fragment be the result of extracting this."
+    const fragment = try extractThis(instance, internal);
 
-    // Step 4: Remove all children from newParent
-    var npChild = NodeImpl.getFirstChild(newParent);
-    while (npChild) |c| {
-        const next = NodeImpl.getNextSibling(c);
-        try NodeImpl.removeNodeFromParent(c, newParent);
-        npChild = next;
+    // Step 4: "If newParent has children, then replace all with null within
+    // newParent." One tree mutation record for all of them.
+    if (interfaces.Node.get_firstChild(newParent) catch null) |_| {
+        const new_parent_base = dom.instance_bridge.getNodeBase(@ptrCast(newParent)) orelse return error.InvalidStateError;
+        try dom.mutation.replaceAll(@as(?*dom.NodeBase, null), new_parent_base);
     }
 
-    // Step 5: Insert newParent into range
+    // Step 5: "Insert newParent into this."
     try call_insertNode(instance, newParent);
 
-    // Step 6: Append fragment to newParent (use interface per Golden Rule #13)
-    _ = interfaces.Node.call_appendChild(newParent, fragment) catch return error.HierarchyRequestError;
+    // Step 6: "Append fragment to newParent."
+    _ = try interfaces.Node.call_appendChild(newParent, fragment);
 
-    // Step 7: Select newParent within range
+    // Step 7: "Select newParent within this."
     try call_selectNode(instance, newParent);
 }
 

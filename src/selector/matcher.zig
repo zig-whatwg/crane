@@ -417,6 +417,10 @@ pub const Matcher = struct {
             .AnyLink, .Link, .Visited, .Hover, .Active, .Focus, .FocusVisible, .FocusWithin => false,
             // Input pseudo-classes - not supported without HTML library
             .Enabled, .Disabled, .ReadOnly, .ReadWrite, .Checked => false,
+            // The document's target element and custom states live in the
+            // DOM's own documents and elements, which this matcher (over
+            // ElementWithBase) does not see; ParentNode's matcher answers them.
+            .Target, .State => false,
         };
     }
 

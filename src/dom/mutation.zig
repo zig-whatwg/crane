@@ -337,37 +337,45 @@ fn setConnectedRecursive(node: anytype, connected: bool) void {
     }
 }
 
-/// Create transient registered observers for a removed node
-/// Spec: https://dom.spec.whatwg.org/#concept-node-remove step 15
+/// DOM "remove" step 15: "For each inclusive ancestor inclusiveAncestor of
+/// parent, and then for each registered of inclusiveAncestor's registered
+/// observer list, if
+/// registered's options["subtree"] is true, then append a new transient
+/// registered observer whose observer is registered's observer, options is
+/// registered's options, and source is registered to node's registered
+/// observer list."
+///
+/// Only `node` gets one: "queue a mutation record" walks the inclusive
+/// ancestors of its target, so a transient observer on the removed subtree's
+/// root sees every mutation inside it. The observer is told, so that notify
+/// step 6.3 can take the transient observers off again.
+/// Spec: https://dom.spec.whatwg.org/#concept-node-remove
 fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void {
-    // For each inclusive ancestor inclusiveAncestor of parent
+    const removed: *NodeBase = @ptrCast(node);
+    const removed_instance: ?*runtime.Instance = if (instance_bridge.getInstance(removed)) |opaque_ptr|
+        @ptrCast(@alignCast(opaque_ptr))
+    else
+        null;
     var current_ancestor: ?*NodeBase = @ptrCast(parent);
-    while (current_ancestor) |ancestor| {
-        // For each registered observer obs in inclusiveAncestor's registered observer list
+    while (current_ancestor) |ancestor| : (current_ancestor = ancestor.parent_node) {
+        // Appending below never touches this list: node is not an ancestor
+        // of its old parent.
         for (0..ancestor.registered_observers.len) |i| {
-            const source_obs = ancestor.registered_observers.get(i) orelse continue;
-            // If obs's options["subtree"] is true
-            if (source_obs.options.subtree) {
-                // For each node inclusiveDescendant of node's inclusive descendants
-                // (node itself and all its descendants)
-                try createTransientObserverForNodeAndDescendants(node, source_obs);
+            const registered = ancestor.registered_observers.get(i) orelse continue;
+            if (!registered.options.subtree) continue;
+            try removed.registered_observers.append(.{
+                .observer = registered.observer,
+                .observer_generation = registered.observer_generation,
+                .options = registered.options,
+                .transient_source = ancestor,
+            });
+            const observer_opaque = @import("handles.zig").mutationObserverToAnyopaque(registered.observer) orelse continue;
+            const observer: *runtime.Instance = @ptrCast(@alignCast(observer_opaque));
+            if (removed_instance) |instance| {
+                @import("observer_registrations.zig").transientAdded(observer, registered.observer_generation, instance);
             }
         }
-
-        // Move to next ancestor
-        current_ancestor = ancestor.parent_node;
     }
-}
-
-/// Helper: Create transient observer for a node and all its descendants
-/// TODO(Phase 6 - whatwg-9wkz8): Implement transient observers per DOM spec §4.3.3
-/// This requires adding is_transient, source_observer, source_options fields to RegisteredObserver
-fn createTransientObserverForNodeAndDescendants(node: anytype, source: RegisteredObserver) !void {
-    // Stub: Transient observers will be implemented in Phase 6 (MutationObserver integration)
-    // Per spec, transient observers are created when a node is removed while being observed
-    // with subtree: true, to continue observing the removed subtree.
-    _ = node;
-    _ = source;
 }
 
 /// Helper to get node type from any node-like type
@@ -1627,9 +1635,8 @@ pub fn remove(
         }
     }
 
-    // Step 15: Transient registered observers
-    // For each inclusive ancestor of parent that has registered observers with subtree=true,
-    // create transient observers on node and its inclusive descendants
+    // Step 15: transient registered observers on node, for every observer
+    // of an inclusive ancestor of parent that observes its subtree.
     try createTransientObserversForRemovedNode(node, parent);
 
     // Step 16: If suppress observers flag is unset, queue a tree mutation record
@@ -2057,6 +2064,113 @@ pub fn runLiveRangeSplitSteps(
             }
         }
     }
+}
+
+/// Where "replace data" steps 8-11 move a boundary offset `bp_offset` in
+/// the replaced node: into `offset` when it fell inside the replaced code
+/// units, shifted by what was inserted less what was removed when it lay
+/// after them, unchanged otherwise.
+pub fn replaceDataBoundaryOffset(bp_offset: u32, offset: u32, count: u32, data_length: u32) u32 {
+    // Steps 8 and 9: "greater than offset but less than or equal to offset
+    // + count: set its offset to offset."
+    if (bp_offset > offset and bp_offset <= offset + count) return offset;
+    // Steps 10 and 11: "greater than offset + count: increase its offset by
+    // data's length and decrease it by count."
+    if (bp_offset > offset + count) return bp_offset + data_length - count;
+    return bp_offset;
+}
+
+/// DOM "replace data" steps 8-11, for the live ranges of `node`'s node
+/// document: each boundary point in `node` follows the replaced code units.
+/// Run after steps 5-7 have changed the data, with `count` already clamped by
+/// step 3, so every new offset is within the node's new length.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-cd-replace
+///
+/// The boundary points are read through `range_boundaries` and written
+/// through Range's own setStart/setEnd. A start is written before its end;
+/// the offsets keep their order (the map above never reverses two offsets),
+/// so setStart's "bp is after the range's end" collapse, when an insertion
+/// carries the start past the old end, is undone by the setEnd that follows.
+pub fn runLiveRangeReplaceDataSteps(node: *runtime.Instance, offset: u32, count: u32, data_length: u32) void {
+    const doc = (interfaces.Node.get_ownerDocument(node) catch null) orelse return;
+    const internal = document_internals.getInternal(doc) orelse return;
+    for (internal.ranges.items) |range| {
+        const bp = range_boundaries.of(range) orelse continue;
+        if (bp.start_container == node) {
+            const moved = replaceDataBoundaryOffset(bp.start_offset, offset, count, data_length);
+            if (moved != bp.start_offset) interfaces.Range.call_setStart(range, node, moved) catch {};
+        }
+        if (bp.end_container == node) {
+            const moved = replaceDataBoundaryOffset(bp.end_offset, offset, count, data_length);
+            if (moved != bp.end_offset) interfaces.Range.call_setEnd(range, node, moved) catch {};
+        }
+    }
+}
+
+/// DOM normalize() steps 6.1-6.4, for `current`, one of `node`'s contiguous
+/// exclusive Text nodes whose data node now ends with, starting at `length`:
+/// every boundary point in current, or at current's place in its parent,
+/// moves into node. Run before current is removed (step 7), so the live
+/// range pre-remove steps then find nothing of these ranges left in it.
+///
+/// Spec: https://dom.spec.whatwg.org/#dom-node-normalize
+///
+/// A start moved into node is before any end still in current or at a later
+/// point of the parent, so setStart never collapses the range here.
+pub fn runLiveRangeNormalizeSteps(node: *runtime.Instance, current: *runtime.Instance, length: u32) void {
+    const doc = (interfaces.Node.get_ownerDocument(node) catch null) orelse return;
+    const internal = document_internals.getInternal(doc) orelse return;
+    if (internal.ranges.items.len == 0) return;
+
+    // currentNode's parent and index, for steps 6.3 and 6.4.
+    const parent = interfaces.Node.get_parentNode(current) catch null;
+    const index: ?u32 = blk: {
+        var i: u32 = 0;
+        var sibling = interfaces.Node.get_previousSibling(current) catch null;
+        while (sibling) |s| : (sibling = interfaces.Node.get_previousSibling(s) catch null) i += 1;
+        break :blk i;
+    };
+
+    for (internal.ranges.items) |range| {
+        const bp = range_boundaries.of(range) orelse continue;
+        // Step 6.1: "For each live range whose start node is currentNode: add
+        // length to its start offset and set its start node to node."
+        if (bp.start_container == current) {
+            interfaces.Range.call_setStart(range, node, bp.start_offset + length) catch {};
+        }
+        // Step 6.2: "For each live range whose end node is currentNode: add
+        // length to its end offset and set its end node to node."
+        if (bp.end_container == current) {
+            interfaces.Range.call_setEnd(range, node, bp.end_offset + length) catch {};
+        }
+        // Step 6.3: "For each live range whose start node is currentNode's
+        // parent and start offset is currentNode's index: set its start node
+        // to node and its start offset to length."
+        if (parent != null and bp.start_container == parent.? and bp.start_offset == index.?) {
+            interfaces.Range.call_setStart(range, node, length) catch {};
+        }
+        // Step 6.4: "For each live range whose end node is currentNode's
+        // parent and end offset is currentNode's index: set its end node to
+        // node and its end offset to length."
+        if (parent != null and bp.end_container == parent.? and bp.end_offset == index.?) {
+            interfaces.Range.call_setEnd(range, node, length) catch {};
+        }
+    }
+}
+
+test "replace data moves a boundary inside the replaced units to offset, and one after them by the difference" {
+    // "abcdef", replace 2 units at 1 with "XYZ" -> "aXYZdef".
+    try std.testing.expectEqual(@as(u32, 0), replaceDataBoundaryOffset(0, 1, 2, 3));
+    try std.testing.expectEqual(@as(u32, 1), replaceDataBoundaryOffset(1, 1, 2, 3));
+    try std.testing.expectEqual(@as(u32, 1), replaceDataBoundaryOffset(2, 1, 2, 3));
+    try std.testing.expectEqual(@as(u32, 1), replaceDataBoundaryOffset(3, 1, 2, 3));
+    try std.testing.expectEqual(@as(u32, 5), replaceDataBoundaryOffset(4, 1, 2, 3));
+    try std.testing.expectEqual(@as(u32, 7), replaceDataBoundaryOffset(6, 1, 2, 3));
+    // Deleting everything ("data = ''" on "abc"): every offset goes to 0.
+    try std.testing.expectEqual(@as(u32, 0), replaceDataBoundaryOffset(3, 0, 3, 0));
+    // Appending (offset = length, count 0): nothing moves.
+    try std.testing.expectEqual(@as(u32, 3), replaceDataBoundaryOffset(3, 3, 0, 5));
 }
 
 /// Helper: Run NodeIterator pre-remove steps for all iterators

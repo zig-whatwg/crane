@@ -25,6 +25,13 @@ pub const RegisteredObserver = struct {
     /// Options for observation
     options: Options,
 
+    /// Set for a transient registered observer (DOM 4.3): the node whose
+    /// registered observer this one was copied from when a node was removed
+    /// from under it - the spec's "source", named by the node that lists it,
+    /// since the observer is the same. Null for an ordinary registered
+    /// observer. Compared, never dereferenced: the source node may be gone.
+    transient_source: ?*const anyopaque = null,
+
     pub const Options = struct {
         child_list: bool = false,
         attributes: bool = false,

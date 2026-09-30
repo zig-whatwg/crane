@@ -2757,6 +2757,10 @@ pub fn build(b: *std.Build) void {
             // The impl helpers a tests/v8 test reaches through an impl's
             // re-export (Response.streams_js, for the Deferred lifetime test).
             .{ .name = "impls", .module = impls_mod },
+            // DOM's hooks, for a test that fires a trusted event
+            // (dom.fire_event) - the one module already in this graph
+            // through impls, not a second binding of it.
+            .{ .name = "dom", .module = dom_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});

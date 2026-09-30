@@ -853,6 +853,13 @@ pub inline fn isCallable(realm: Context, value: JSValue) bool {
     return impl.isCallable(realm, value);
 }
 
+/// ECMAScript IsConstructor(`value`) (7.2.4): whether `value` is an object
+/// with a [[Construct]] internal method - false for a non-object. A Proxy
+/// has one when its target does, revoked or not.
+pub inline fn isConstructor(realm: Context, value: JSValue) bool {
+    return impl.isConstructor(realm, value);
+}
+
 /// A callback-function argument as the binding hands it over, as a
 /// CallbackFunction (OWNED) whose context is the incumbent realm now - the
 /// operation being called is converting its arguments. TRANSITIONAL, until
