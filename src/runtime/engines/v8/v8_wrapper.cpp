@@ -3041,6 +3041,19 @@ bool v8_Value_IsFunction(Global<Value>* value) {
     return !val.IsEmpty() && val->IsFunction();
 }
 
+// ECMAScript IsConstructor(value): an object with a [[Construct]] internal
+// method (v8::Object::IsConstructor); false for a non-object.
+bool v8_Value_IsConstructor(Global<Value>* value) {
+    if (!value) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return false;
+    HandleScope handle_scope(isolate);
+    if (value->IsEmpty()) return false;
+    Local<Value> val = value->Get(isolate);
+    if (val.IsEmpty() || !val->IsObject()) return false;
+    return val.As<Object>()->IsConstructor();
+}
+
 // Version for Local handle internal pointers
 bool v8_Value_IsFunction_Local(void* value_ptr) {
     if (!value_ptr) return false;

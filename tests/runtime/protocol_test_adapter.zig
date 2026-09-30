@@ -156,6 +156,9 @@ pub fn callUserObjectOperation(_: Context, _: *const engine.CallbackInterface, _
 pub fn isCallable(_: Context, _: JSValue) bool {
     return false;
 }
+pub fn isConstructor(_: Context, _: JSValue) bool {
+    return false;
+}
 pub fn takeCallbackFunction(_: *const anyopaque) engine.CallbackFunction {
     return .{ .function = .{ .value = JSValue.jsUndefined }, .context = null };
 }

@@ -292,6 +292,13 @@ pub fn isCallable(realm: Context, value: JSValue) bool {
     return worker_realm.isCallable(value);
 }
 
+/// In `realm`'s agent, as isCallable.
+pub fn isConstructor(realm: Context, value: JSValue) bool {
+    const entered = enter(realm) catch return false;
+    defer entered.leave();
+    return worker_realm.isConstructor(value);
+}
+
 pub const takeCallbackFunction = protocol_callbacks.takeCallbackFunction;
 pub const takeCallbackInterface = protocol_callbacks.takeCallbackInterface;
 

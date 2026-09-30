@@ -803,6 +803,8 @@ pub extern fn v8_Symbol_Dispose(symbol: *Symbol) void;
 
 pub extern fn v8_Value_IsObject(value: *Value) bool;
 pub extern fn v8_Value_IsFunction(value: *Value) bool;
+/// ECMAScript IsConstructor: an object with [[Construct]]; false otherwise.
+pub extern fn v8_Value_IsConstructor(value: *Value) bool;
 
 pub extern fn v8_Value_IsArray(value: *Value) bool;
 pub extern fn v8_Value_IsArrayBuffer(value: *Value) bool;
