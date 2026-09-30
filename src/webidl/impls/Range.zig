@@ -715,7 +715,6 @@ const Split = struct {
         // throw a "HierarchyRequestError" DOMException."
         for (contained.items) |c| {
             if ((interfaces.Node.get_nodeType(c) catch 0) == interfaces.Node.get_DOCUMENT_TYPE_NODE()) {
-                contained.deinit(allocator);
                 return error.HierarchyRequestError;
             }
         }
