@@ -34,8 +34,15 @@ pub const ImplError = error{
 pub const InternalState = struct {
     pattern: URLPatternCore,
     allocator: std.mem.Allocator,
+    /// The strings of the last exec() result. The binding converts a returned
+    /// dictionary AFTER the operation returns - and after it has released the
+    /// call's converted arguments - so the result may borrow neither the
+    /// arguments nor anything freed on the way out. It lives here until the
+    /// next exec() on this pattern resets it, or the pattern goes.
+    result_arena: std.heap.ArenaAllocator,
 
     pub fn deinit(self: *InternalState) void {
+        self.result_arena.deinit();
         self.pattern.deinit(self.allocator);
         self.allocator.destroy(self);
     }
@@ -136,6 +143,7 @@ pub fn call_constructor(ctx: runtime.Context, args: interfaces.URLPattern.Constr
     internal.* = InternalState{
         .pattern = pattern,
         .allocator = ctx.allocator,
+        .result_arena = std.heap.ArenaAllocator.init(ctx.allocator),
     };
 
     state.own._internal = internal;
@@ -317,50 +325,55 @@ pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
     var result = core_result.?;
     defer result.deinit();
 
-    // Use arena allocator for result data that will be copied to V8
-    // The arena is reset during GC, so these allocations are cleaned up eventually
-    // Fall back to context allocator if arena not initialized
-    const arena = runtime.ArenaAllocator.tryGet() catch null;
+    // Everything the returned dictionary points at is copied into this
+    // pattern's result arena (see InternalState.result_arena): the previous
+    // result's strings, converted long ago, go now.
+    _ = internal.result_arena.reset(.retain_capacity);
+    const scratch = internal.result_arena.allocator();
 
-    // Build inputs array from the original input
-    // Spec: inputs is a sequence of URLPatternInput containing the original input(s)
-    var inputs_array = if (arena) |a|
-        try a.alloc(typedefs.URLPatternInput, 1)
-    else
-        try allocator.alloc(typedefs.URLPatternInput, 1);
-
-    // Convert the input to URLPatternInput format
+    // Steps 9-11: "Let inputs be an empty list", then append input - a copy:
+    // the argument is released before this result is converted.
+    var inputs: std.ArrayListUnmanaged(typedefs.URLPatternInput) = .empty;
     if (!input.was_passed) {
-        // No input was passed - use empty string
-        inputs_array[0] = .{ .usvstring = "" };
-    } else {
-        switch (input.value) {
-            .usvstring => |s| {
-                inputs_array[0] = .{ .usvstring = s };
-            },
-            .urlpattern_init => |webidl_init| {
-                inputs_array[0] = .{ .urlpattern_init = webidl_init };
-            },
-        }
+        try inputs.append(scratch, .{ .usvstring = "" });
+    } else switch (input.value) {
+        .usvstring => |s| {
+            try inputs.append(scratch, .{ .usvstring = try scratch.dupe(u8, s) });
+            // Step 13.2.2.3: a string input's baseURLString, when given (it
+            // parsed: the pattern matched), is appended to inputs too.
+            if (base_url_str) |b| try inputs.append(scratch, .{ .usvstring = try scratch.dupe(u8, b) });
+        },
+        .urlpattern_init => |webidl_init| {
+            try inputs.append(scratch, .{ .urlpattern_init = try copyInit(scratch, webidl_init) });
+        },
     }
 
-    // Convert internal URLPatternResult to WebIDL URLPatternResult dictionary
-    // IMPORTANT: We must clone the strings because result.deinit() will free them
-    // Use arena for cloned data - will be cleaned up during GC
-    const result_allocator = if (arena) |a| a else null;
+    // Convert internal URLPatternResult to WebIDL URLPatternResult dictionary,
+    // copying its strings: result.deinit() frees them on the way out.
     const webidl_result = dictionaries.URLPatternResult{
-        .inputs = inputs_array,
-        .protocol = try convertComponentResultArena(result_allocator, allocator, result.protocol),
-        .username = try convertComponentResultArena(result_allocator, allocator, result.username),
-        .password = try convertComponentResultArena(result_allocator, allocator, result.password),
-        .hostname = try convertComponentResultArena(result_allocator, allocator, result.hostname),
-        .port = try convertComponentResultArena(result_allocator, allocator, result.port),
-        .pathname = try convertComponentResultArena(result_allocator, allocator, result.pathname),
-        .search = try convertComponentResultArena(result_allocator, allocator, result.search),
-        .hash = try convertComponentResultArena(result_allocator, allocator, result.hash),
+        .inputs = inputs.items,
+        .protocol = try convertComponentResult(scratch, result.protocol),
+        .username = try convertComponentResult(scratch, result.username),
+        .password = try convertComponentResult(scratch, result.password),
+        .hostname = try convertComponentResult(scratch, result.hostname),
+        .port = try convertComponentResult(scratch, result.port),
+        .pathname = try convertComponentResult(scratch, result.pathname),
+        .search = try convertComponentResult(scratch, result.search),
+        .hash = try convertComponentResult(scratch, result.hash),
     };
 
     return webidl_result;
+}
+
+/// A URLPatternInit whose strings are copies in `scratch`.
+fn copyInit(scratch: std.mem.Allocator, given: dictionaries.URLPatternInit) !dictionaries.URLPatternInit {
+    var copy = given;
+    inline for (std.meta.fields(dictionaries.URLPatternInit)) |field| {
+        if (@field(given, field.name)) |value| {
+            @field(copy, field.name) = try scratch.dupe(u8, value);
+        }
+    }
+    return copy;
 }
 
 // Type alias for the groups entry to match the dictionary definition
@@ -369,45 +382,24 @@ pub fn call_exec(instance: *runtime.Instance, input: webidl.Opt(typedefs.URLPatt
 const GroupsSliceType = @typeInfo(std.meta.fieldInfo(dictionaries.URLPatternComponentResult, .groups).type).optional.child;
 const GroupsEntry = @typeInfo(GroupsSliceType).pointer.child;
 
-/// Convert internal URLPatternComponentResult to WebIDL dictionary
-/// Clones strings to ensure they remain valid after the core result is freed
-/// Uses arena allocator if available (cleaned up during GC), otherwise fallback allocator
-fn convertComponentResultArena(
-    arena: ?*runtime.ArenaAllocator,
-    fallback: std.mem.Allocator,
+/// Convert internal URLPatternComponentResult to WebIDL dictionary, its
+/// strings copied into `scratch` so they outlive the core result.
+fn convertComponentResult(
+    scratch: std.mem.Allocator,
     component: urlpattern.URLPatternComponentResult,
 ) !dictionaries.URLPatternComponentResult {
-    // Clone the input string so it survives after result.deinit()
-    const input_copy = if (arena) |a|
-        try a.dupe(u8, component.input)
-    else
-        try fallback.dupe(u8, component.input);
+    const input_copy = try scratch.dupe(u8, component.input);
 
     // Convert groups StringHashMap to WebIDL record format
     // Note: groups should ALWAYS be an object (empty {} if no named groups), never null
-    const group_count = component.groups.count();
-    const groups_array = if (arena) |a|
-        try a.alloc(GroupsEntry, group_count)
-    else
-        try fallback.alloc(GroupsEntry, group_count);
+    const groups_array = try scratch.alloc(GroupsEntry, component.groups.count());
 
     var idx: usize = 0;
     var iter = component.groups.iterator();
     while (iter.next()) |entry| {
-        // Clone the key
-        const key_copy = if (arena) |a|
-            try a.dupe(u8, entry.key_ptr.*)
-        else
-            try fallback.dupe(u8, entry.key_ptr.*);
-        // Clone the value string
-        const value_copy = if (arena) |a|
-            try a.dupe(u8, entry.value_ptr.*)
-        else
-            try fallback.dupe(u8, entry.value_ptr.*);
-
         groups_array[idx] = .{
-            .key = key_copy,
-            .value = runtime.JSValue.fromStringRef(value_copy),
+            .key = try scratch.dupe(u8, entry.key_ptr.*),
+            .value = runtime.JSValue.fromStringRef(try scratch.dupe(u8, entry.value_ptr.*)),
         };
         idx += 1;
     }
