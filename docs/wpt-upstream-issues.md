@@ -31,5 +31,6 @@ None yet.
 
 `html/browsers/browsing-the-web/history-traversal/pageswap/pageswap-push-navigation-hidden-document.html`
 also times out in Chrome, Firefox and Safari, but because `test_driver.minimize_window()` cannot hide a
-window in wpt.fyi's automated runs - an infrastructure limit, not a test bug. Crane can pass it once its
-test_driver implements `minimize_window` by marking the page hidden, so it stays in the worklist.
+window in wpt.fyi's automated runs - an infrastructure limit, not a test bug. Crane's test_driver
+implements `minimize_window` by marking the page hidden, and the file PASSES in Crane since the testdriver
+merge (822673be0, 2026-09-30) - the one file in the worklist all three shipping browsers time out on.

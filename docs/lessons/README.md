@@ -184,6 +184,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Deduplicating operations by name deleted every overload](codegen-deduplicating-operations-by-name-deleted-every.md) - Dedupe by signature, not by name, and read a hand-unrolled arity switch's `else` branch - it is an undocumented limit.
 - [Generated behaviour is only as complete as the IDL](codegen-generated-behaviour-is-only-as-complete-as-the-idl.md) - Before trusting generated behaviour, read the prose the IDL summarises.
 - [Regenerating specs/supplementary alone rewrites a typedef of an IDL interface](codegen-regenerating-supplementary-alone-rewrites-a-typedef-of-an-idl-interface.md) - After a regeneration, diff every generated directory, typedefs included; a one-source run resolves types against that source alone.
+- [A mixin's live member is its includer's impl until the mixin is inherited](codegen-a-mixin-s-live-member-is-its-includer-s-impl-until.md) - Before changing a mixin member, open the includer's generated interface and see which impl it calls: until the mixin is inherited, the includer's copy is the live one.
 
 ### Testing
 - [Regression-check handle changes with timers, not DOM](testing-regression-check-handle-changes-with-timers-not.md) - Pick the regression suite that exercises the lifetime you changed, not the one that touches the same file.
@@ -224,6 +225,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [An unknown META global is dropped, and the file runs where it never asked to](testing-an-unknown-meta-global-is-dropped-not-skipped.md) - A global the runner does not know must be run or deliberately skipped, never dropped: an empty list is the defaults, so a file of unknown globals runs in contexts it never asked for.
 - [Pin an ordering helper on all four tree relations](testing-pin-an-ordering-helper-on-all-four-tree-relations.md) - A tree-order or position helper needs a test for each relation - same node, following, ancestor, descendant; one right for siblings can be exactly inverse for ancestors, and the WPT symptom is a hang somewhere else.
 - [In a Window realm, a test global named `event` is `window.event`](testing-a-window-realm-test-global-named-event-is-window-event.md) - Check a test global's name against Window's own attributes; a red run is only red if it fails at the assertion you wrote.
+- [testdriver's click hit-tests with layout before the vendor ever sees it](testing-testdriver-click-hit-tests-with-layout-before-the.md) - Read what the upstream helper does before the vendor hook it calls: a check it makes in page script is one the vendor cannot reach, and without layout that check fails every time.
+- [The testdriver vendor file must reach frames and popups](testing-the-testdriver-vendor-file-must-reach-frames-and.md) - Automation hooks must reach every document a test loads, not only the one the runner navigated to; count the tests that call them from a frame or a popup before scoping the hook to the top level.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
