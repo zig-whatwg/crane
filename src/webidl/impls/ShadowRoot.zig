@@ -80,10 +80,13 @@ pub const InternalState = struct {
     /// StyleSheetList (from DocumentOrShadowRoot mixin)
     style_sheets: ?*runtime.Instance,
 
-    /// Adopted style sheets (from DocumentOrShadowRoot mixin)
-    /// Stored as runtime.JSValue with global handle scope for persistence
-    /// TODO: Proper FrozenArray<CSSStyleSheet> support
-    adopted_style_sheets: ?runtime.JSValue = null,
+    /// Adopted style sheets (from DocumentOrShadowRoot mixin): the value it
+    /// was last set to, HELD by the shadow root (engine.retainValue) and
+    /// released when it is set again and at deinit. The setter's argument is
+    /// the binding's - its handle, or its string bytes, freed when the setter
+    /// returns - so it is never stored as it came.
+    /// TODO: Proper ObservableArray<CSSStyleSheet> support
+    adopted_style_sheets: ?engine.Owned = null,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -115,9 +118,7 @@ pub const InternalState = struct {
         }
         self.onslotchange = null;
 
-        if (self.adopted_style_sheets) |*sheets| {
-            sheets.deinit(self.allocator);
-        }
+        if (self.adopted_style_sheets) |sheets| sheets.release();
         self.adopted_style_sheets = null;
     }
 };
@@ -356,12 +357,9 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
     if (internal.adopted_style_sheets) |sheets| {
-        // The shadow root keeps the value it was set to; a handle goes to the
-        // binding as a hold of its own.
-        return switch (sheets) {
-            .handle => (try engine.retainValue(instance.ctx, sheets)).take(),
-            else => sheets,
-        };
+        // The shadow root keeps its hold; the result is a hold of the
+        // binding's own.
+        return (try engine.retainValue(instance.ctx, sheets.value)).take();
     }
     // Return undefined if not set
     // TODO: Return empty V8 Array - need V8 array creation utility
@@ -372,14 +370,11 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSVa
 pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance);
 
-    // Dispose old value if present
-    if (internal.adopted_style_sheets) |*old| {
-        old.deinit(internal.allocator);
-    }
-
-    // Store the new value directly as JSValue: the argument's handle, which
-    // the binding does not release.
-    internal.adopted_style_sheets = value;
+    // The argument is the binding's, borrowed for this call: the shadow root
+    // keeps a hold of its own, and lets go of the value it held before.
+    const held = try engine.retainValue(instance.ctx, value);
+    if (internal.adopted_style_sheets) |old| old.release();
+    internal.adopted_style_sheets = held;
 }
 
 /// DocumentOrShadowRoot.activeElement getter

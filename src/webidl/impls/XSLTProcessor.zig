@@ -35,30 +35,45 @@ pub const ImplError = error{
 pub const InternalState = struct {
     /// The imported stylesheet (as a Node)
     stylesheet: ?*runtime.Instance,
-    /// Parameters set via setParameter
-    parameters: std.StringHashMap(Parameter),
+    /// Parameters set via setParameter, by `parameterKey` - the processor's
+    /// own copy of the namespace and local name - each value held by the
+    /// processor (engine.retainValue) until it is replaced, removed or
+    /// cleared, or the processor goes. The arguments are the binding's,
+    /// borrowed for the call: stored as they came, the names were freed bytes
+    /// once setParameter returned and the value was the argument's handle.
+    parameters: std.StringHashMapUnmanaged(engine.Owned) = .empty,
     /// Allocator for this instance
     allocator: std.mem.Allocator,
-
-    const Parameter = struct {
-        namespace_uri: ?[]const u8,
-        local_name: []const u8,
-        value: *const anyopaque,
-    };
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .stylesheet = null,
-            .parameters = std.StringHashMap(Parameter).init(allocator),
             .allocator = allocator,
         };
     }
 
+    /// Release every parameter: its key and its value.
+    fn clearParameters(self: *InternalState) void {
+        var it = self.parameters.iterator();
+        while (it.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            entry.value_ptr.release();
+        }
+        self.parameters.clearAndFree(self.allocator);
+    }
+
     pub fn deinit(self: *InternalState) void {
-        self.parameters.deinit();
+        self.clearParameters();
         self.allocator.destroy(self);
     }
 };
+
+/// A parameter's key: its namespace and local name, NUL-separated (neither
+/// can be told apart otherwise: a null namespace is the empty string, as
+/// XSLT's QName resolution treats it). OWNED by `allocator`.
+fn parameterKey(allocator: std.mem.Allocator, namespace_uri: runtime.DOMString, local_name: runtime.DOMString) ![]u8 {
+    return std.mem.concat(allocator, u8, &.{ namespace_uri.asSlice(), "\x00", local_name.asSlice() });
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -146,43 +161,38 @@ pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.In
 }
 
 /// Operation: setParameter
-/// Sets a parameter for the XSLT transformation
+/// Sets a parameter for the XSLT transformation: the processor keeps the
+/// value under (namespaceURI, localName), replacing any value there.
 pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString, value: runtime.JSValue) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    const ns_str = namespaceURI.asSlice();
-    const local_str = localName.asSlice();
+    // The value is the binding's, borrowed for this call: the processor
+    // keeps a hold of its own.
+    const held = try engine.retainValue(instance.ctx, value);
+    errdefer held.release();
+    const key = try parameterKey(internal.allocator, namespaceURI, localName);
+    errdefer internal.allocator.free(key);
 
-    // Create parameter key (namespace + local name)
-    const key = local_str;
-
-    // Convert JSValue to anyopaque for storage (we'll need to reconvert when getting)
-    // Only an engine handle: `toAnyopaque` gave a platform object's Instance
-    // pointer, which call_getParameter would read as a Global.
-    // TODO: a primitive or platform object parameter (XSLT's number, string,
-    // boolean and node-set values) needs a hold of its own.
-    const value_ptr: *const anyopaque = if (value == .handle) value.handle.ptr else return error.TypeError;
-    try internal.parameters.put(key, .{
-        .namespace_uri = if (ns_str.len > 0) ns_str else null,
-        .local_name = local_str,
-        .value = value_ptr,
-    });
+    if (internal.parameters.fetchRemove(key)) |old| {
+        internal.allocator.free(old.key);
+        old.value.release();
+    }
+    try internal.parameters.put(internal.allocator, key, held);
 }
 
 /// Operation: getParameter
-/// Gets a parameter value
+/// Gets a parameter value, or undefined when none is set.
 pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: runtime.DOMString, localName: runtime.DOMString) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    _ = namespaceURI;
-    const local_str = localName.asSlice();
-
-    if (internal.parameters.get(local_str)) |param| {
-        // param.value is a handle the processor keeps (setParameter): the
-        // result is a hold of the binding's own.
-        return (try engine.retainValue(instance.ctx, runtime.JSValue.fromHandle(@constCast(param.value)))).take();
+    const key = try parameterKey(internal.allocator, namespaceURI, localName);
+    defer internal.allocator.free(key);
+    if (internal.parameters.get(key)) |held| {
+        // The processor keeps its hold; the result is a hold of the
+        // binding's own.
+        return (try engine.retainValue(instance.ctx, held.value)).take();
     }
 
     // Return undefined if parameter not found
@@ -195,10 +205,12 @@ pub fn call_removeParameter(instance: *runtime.Instance, namespaceURI: runtime.D
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    _ = namespaceURI;
-    const local_str = localName.asSlice();
-
-    _ = internal.parameters.remove(local_str);
+    const key = try parameterKey(internal.allocator, namespaceURI, localName);
+    defer internal.allocator.free(key);
+    if (internal.parameters.fetchRemove(key)) |old| {
+        internal.allocator.free(old.key);
+        old.value.release();
+    }
 }
 
 /// Operation: clearParameters
@@ -207,7 +219,7 @@ pub fn call_clearParameters(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    internal.parameters.clearAndFree();
+    internal.clearParameters();
 }
 
 /// Operation: reset
@@ -217,5 +229,5 @@ pub fn call_reset(instance: *runtime.Instance) anyerror!void {
     const internal = state.own._internal orelse return error.InvalidState;
 
     internal.stylesheet = null;
-    internal.parameters.clearAndFree();
+    internal.clearParameters();
 }

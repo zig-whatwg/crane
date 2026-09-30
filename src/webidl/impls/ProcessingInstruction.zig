@@ -50,6 +50,46 @@ pub const InternalState = struct {
     }
 };
 
+/// The ProcessingInstructions alive, for the final teardown's sweep.
+///
+/// A PI still alive when the browser ends is never deinit'd one by one:
+/// cleanup sweeps the node registries wholesale (impls/cleanup.zig), and its
+/// target - the PI's own, outside those registries - then leaked (17 over
+/// dom/ranges/Range-surroundContents.html, the PIs in subtrees nothing tore
+/// down). So the PI keeps its own list, taken on init and given up on deinit,
+/// and installs a sweep (dom.teardown_sweeps) that frees what is left in it.
+/// Keyed by address: the entry goes in the PI's deinit, before the slab can
+/// reissue the address.
+threadlocal var live: ?std.AutoHashMap(*runtime.Instance, void) = null;
+threadlocal var live_guard: @import("webidl").utils.tombstones.TombstoneGuard = .{};
+
+fn trackLive(instance: *runtime.Instance) void {
+    if (live == null) live = .init(std.heap.c_allocator);
+    const map = &live.?;
+    live_guard.beforeInsert(map);
+    map.put(instance, {}) catch {};
+}
+
+fn untrackLive(instance: *runtime.Instance) void {
+    const map = if (live) |*m| m else return;
+    if (map.remove(instance)) live_guard.noteRemoval(map);
+}
+
+/// dom.teardown_sweeps: free the state of every PI still alive.
+fn sweepLive() void {
+    const map = if (live) |*m| m else return;
+    var it = map.keyIterator();
+    while (it.next()) |instance| {
+        if (getInternal(instance.*)) |internal| {
+            internal.deinit();
+            internal.target = "";
+        }
+    }
+    map.deinit();
+    live = null;
+    live_guard.reset();
+}
+
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
@@ -77,12 +117,15 @@ pub fn init(
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
+    @import("dom").teardown_sweeps.install(&sweepLive);
+    trackLive(instance);
 
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    untrackLive(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit();
@@ -96,6 +139,10 @@ pub fn deinit(instance: *runtime.Instance) void {
         if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
         state.own._internal = null;
     }
+    // And CharacterData's and Node's teardown: its data, its NodeBase and its
+    // registry entries. Stopping here left them behind for every PI torn down,
+    // with its tree or when its wrapper was collected.
+    interfaces.CharacterData.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 

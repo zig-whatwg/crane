@@ -137,6 +137,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [An element alive at teardown is swept, not deinit'd](architecture-an-element-alive-at-teardown-is-swept-not-deinitd.md) - Heap memory an element owns has two exits - its deinit and the teardown sweep - and a new side table must take both.
 - [A workaround outlives its premise](architecture-a-workaround-outlives-its-premise.md) - When a workaround answers from side data instead of the ordinary mechanism, re-measure its premise against the path that never had it.
 - [Move the state's type out of the impl, not the state](architecture-move-the-states-type-out-of-the-impl-not-the-state.md) - Move the state's type out of the impl, not the state: one typed of() hook replaces a facade of accessors, and ownership never moves.
+- [A teardown dispatched by name runs the wrong type's deinit](architecture-a-teardown-dispatched-by-name-runs-the-wrong-types-deinit.md) - Dispatch a teardown on the object's type (its vtable), never on a name another type can share - and when a type has two exits, count how many of its subclasses each one actually reaches.
+- [A token armed during its own turn belongs to that turn](architecture-a-token-armed-during-its-own-turn-belongs-to-that-turn.md) - An ownership rule with more than two states must be checked at every exit, not just the obvious ones; extract the rule into a type small enough to test with a fake timer.
+- [An `any` argument's value says whether its handle is still in use](architecture-an-any-arguments-value-says-whether-its-handle-is-still-in-use.md) - When a type-level ownership predicate must say "kept" for safety, look for a value-level proof before accepting the leak; before flipping a borrowed-argument rule, read every keeper.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -229,6 +232,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [The testdriver vendor file must reach frames and popups](testing-the-testdriver-vendor-file-must-reach-frames-and.md) - Automation hooks must reach every document a test loads, not only the one the runner navigated to; count the tests that call them from a frame or a popup before scoping the hook to the top level.
 - [A report written at exit dies with the process, and shards that share a name overwrite each other](testing-a-report-written-at-exit-dies-with-the-process.md) - An artifact written at exit is only as durable as the process: write what a crash-surviving run must deliver per unit of work, and count per-process outputs against the processes that should have written them.
 - [A headless Chrome `--screenshot` of a deep-linked, script-scrolled page can come back blank](testing-headless-chrome-screenshot-of-a-deep-link-can-be-blank.md) - Open every capture before it becomes evidence; for a page that works after load, capture over CDP when you choose.
+- [A single-path runner run has no stall watchdog](testing-a-single-path-runner-run-has-no-stall-watchdog.md) - A runner process with no supervisor has no watchdog: bound it yourself; and `CRANE_LEAK_TRACES=1` is for small files - count leaks untraced first.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
@@ -245,6 +249,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [The path production rarely takes keeps its leaks](debugging-the-path-production-rarely-takes-keeps-its-leaks.md) - A path production rarely takes keeps every leak it has; measure the no-snapshot path's handles as well as the snapshot's.
 - [When a member reads undefined, check what the identifier names](debugging-when-a-member-reads-undefined-check-what-the-identifier-names.md) - `undefined` from a member the interface has means the receiver is something else; print a control case beside the failing one first.
 - [A per-page slowdown with flat native contexts is a table, not a page](debugging-a-per-page-slowdown-with-flat-native-contexts-is-a-table-not-a-page.md) - Flat native contexts with a rising curve means the process keeps something per page that is not a page: sample the slow page before theorising, and diff snapshots by type - a process-wide table and a realm-less handle are both invisible to the realm count.
+- [An abort through panicExtra inside V8 code is UBSan, not a V8 CHECK](debugging-an-abort-through-panicextra-inside-v8-code-is-ubsan-not-a-check.md) - `panicExtra` under a C++ frame is UBSan: decode the handler's source location from the binary before theorising about V8's preconditions.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.

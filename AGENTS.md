@@ -108,6 +108,12 @@ missed two use-after-frees that shipped.
 ./zig-out/bin/wpt_runner html/webappapis/timers/ --parallel=3   # x3, count crashes
 ```
 
+**A sweep-only crash is fixed only when counts say so.** A plausible mechanism with a green unit test is
+not proof that it caused a crash seen only in sweeps. Claim it fixed with a same-list comparison: main's
+runner crashing k of N single-process runs of the list that preceded the crash, yours 0 of N, N at least 6.
+Otherwise it is unproven and stays open (2026-09-30: the WebSocket pump-token use-after-free was real, fixed,
+and not the sweep crash - main 1/6, the fixed tip 4/6).
+
 ### Keep the progress report current
 
 **The 0.1 gate: no file in the worklist blocks.** A file blocks when it times

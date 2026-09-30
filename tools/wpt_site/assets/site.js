@@ -88,7 +88,7 @@
   const notPassing = (t) => t.files - t.clean - t.empty;
 
   function meter(t, cls) {
-    const m = el("div", { class: cls, role: "img", "aria-label": `${n(t.clean)} passing every subtest, ${n(t.partial)} with some failing, ${n(t.blocking)} blocking, ${n(t.empty)} without subtests, ${n(t.unrun)} not run, of ${n(t.files)} files` });
+    const m = el("div", { class: cls, role: "img", "aria-label": `${n(t.clean)} clean, ${n(t.partial)} with failures, ${n(t.blocking)} blocking, ${n(t.empty)} without subtests, ${n(t.unrun)} not run, of ${n(t.files)} files` });
     const parts = [["m-clean", t.clean], ["m-partial", t.partial], ["m-empty", t.empty], ["m-blocking", t.blocking], ["m-unrun", t.unrun]];
     for (const [c, v] of parts) if (v > 0) m.append(el("span", { class: c, style: `width:${(v / t.files) * 100}%` }));
     return m;
@@ -120,6 +120,15 @@
     else if (w.kind === "fork") fill("wpt", el("a", { href: `${meta.links.wpt_fork}/tree/${w.revision}` }, el("code", { text: w.revision.slice(0, 10) })), " in Crane’s fork of WPT (the upstream revision it tracks is not recorded)");
     else fill("wpt", "not recorded for this generation");
 
+    fill("hl-pass", n(tot.sub_pass));
+    fill("hl-total", n(tot.sub_reported));
+    fill("hl-fail", n(tot.sub_fail));
+    fill("hl-timeout", n(tot.sub_timeout));
+    fill("hl-notrun", n(tot.sub_notrun));
+    fill("hl-files", n(tot.files));
+    fill("hl-blocking", n(tot.blocking));
+    fill("sub-pass", n(tot.sub_pass));
+    fill("sub-reported", n(tot.sub_reported));
     fill("n-files", n(tot.files));
     fill("n-suites", n(suites.suites.length));
     fill("n-blocking", plural(tot.blocking, "file"));
@@ -189,15 +198,14 @@
   // ---------------------------------------------------------------- suite sections
   function lede(s) {
     const t = s.totals;
-    const bits = [];
-    bits.push(`${plural(t.files, "test file")}${s.dirs ? ` in ${plural(s.dirs, "directory", "directories")}` : ""}${s.files_here && s.dirs ? `, ${n(s.files_here)} of them at the top` : ""}.`);
+    const head = `${n(t.sub_pass)} of ${n(t.sub_reported)} subtests passing, in ${plural(t.files, "test file")}${s.dirs ? ` across ${plural(s.dirs, "directory", "directories")}` : ""}`;
     const parts = [];
-    if (t.clean) parts.push(`${n(t.clean)} ${t.clean === 1 ? "passes" : "pass"} every subtest`);
-    if (t.partial) parts.push(`${n(t.partial)} ${t.partial === 1 ? "has" : "have"} some failing`);
-    if (t.blocking) parts.push(`${n(t.blocking)} ${t.blocking === 1 ? "blocks" : "block"} the gate`);
-    if (t.unrun) parts.push(`${n(t.unrun)} ${t.unrun === 1 ? "has" : "have"} not run`);
-    if (parts.length) bits.push(` ${parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1] : parts[0]}.`.replace(/^ (\w)/, (m, c) => " " + c.toUpperCase()));
-    return bits.join("");
+    if (t.clean) parts.push(`${n(t.clean)} clean`);
+    if (t.partial) parts.push(`${n(t.partial)} with failures`);
+    if (t.blocking) parts.push(`${n(t.blocking)} blocking`);
+    if (t.empty) parts.push(`${n(t.empty)} with no subtests`);
+    if (t.unrun) parts.push(`${n(t.unrun)} not run`);
+    return parts.length ? `${head}: ${parts.join(", ")}.` : `${head}.`;
   }
 
   function confBox(s) {
@@ -207,12 +215,12 @@
       dl.append(el("div", { class: cls }, el("dt", null, el("span", { class: `key key-${key}` }), label), el("dd", null, value)));
       if (extra) dl.append(extra);
     };
-    row("", "clean", "Passing every subtest", n(t.clean));
-    row("", "partial", "Some subtests failing", n(t.partial));
+    row("", "clean", "Clean", n(t.clean));
+    row("", "partial", "With failures", n(t.partial));
     const kinds = [["NONE-PASSED", t.none_passed], ["TIMEOUT", t.timeout], ["ERROR", t.error], ["CRASH", t.crash]].filter((k) => k[1] > 0);
     row(t.blocking ? "blk" : "", "blocking", "Blocking", n(t.blocking),
       kinds.length ? el("p", { class: "kinds" }, ...kinds.flatMap(([k, v], i) => [i ? ", " : "", el("b", { text: n(v) }), ` ${k}`])) : null);
-    if (t.empty) row("", "empty", "No subtests reported", n(t.empty));
+    if (t.empty) row("", "empty", "No subtests", n(t.empty));
     if (t.unrun) row("", "unrun", "Not run", n(t.unrun));
     const share = state.suites.totals.sub_reported ? t.sub_reported / state.suites.totals.sub_reported : 0;
     const subs = el("div", { class: "subs" },
@@ -220,7 +228,7 @@
       el("p", { class: "subs-note", text: `Reported subtests, those of blocking files included${share >= 0.25 ? `; this suite holds ${Math.round(share * 100)}% of all of them` : ""}.` }));
     return el("aside", { class: "box conf", "aria-label": `Conformance of ${s.name}/` },
       el("div", { class: "box-head" }, el("h3", { class: "box-title", text: "Conformance" }), el("span", { class: "box-sub", text: plural(t.files, "file") })),
-      el("div", { class: "conf-body" }, meter(t, "meter"), dl, subs));
+      el("div", { class: "conf-body" }, subs, meter(t, "meter"), dl));
   }
 
   function testsBox(s) {
@@ -550,7 +558,7 @@
   function historySummary(gens) {
     if (!gens.length) return "No history yet";
     const a = gens[0], b = gens[gens.length - 1];
-    return `Files by standing over ${gens.length} generations, ${longDate(a.at)} to ${longDate(b.at)}: blocking went from ${n(a.blocking)} to ${n(b.blocking)}, and files passing every subtest from ${n(a.clean)} to ${n(b.clean)}. The table below lists every generation.`;
+    return `Files by standing over ${gens.length} generations, ${longDate(a.at)} to ${longDate(b.at)}: blocking went from ${n(a.blocking)} to ${n(b.blocking)}, and clean files from ${n(a.clean)} to ${n(b.clean)}. The table below lists every generation.`;
   }
 
   function renderHistory() {
@@ -561,7 +569,7 @@
     const describe = (i) => {
       const g = gens[i];
       readout.replaceChildren(el("b", { text: `Generation ${g.n}` }), `, ${longDate(g.at)}${g.head && g.head !== "?" ? `, Crane ${g.head}` : ""}${g.reconstructed ? " (reconstructed)" : ""}: `,
-        `${n(g.clean)} passing every subtest, ${n(g.partial)} with some failing, `, el("span", { class: "st-issue", text: `${n(g.blocking)} blocking` }), g.unrun ? `, ${n(g.unrun)} not run` : "", ` of ${n(g.total)}.`);
+        `${n(g.clean)} clean, ${n(g.partial)} with failures, `, el("span", { class: "st-issue", text: `${n(g.blocking)} blocking` }), g.unrun ? `, ${n(g.unrun)} not run` : "", ` of ${n(g.total)}.`);
     };
     let geom = null;
     const draw = () => {
@@ -610,7 +618,7 @@
     void live;
 
     const table = el("table", null,
-      el("thead", null, el("tr", null, ...["Gen.", "Date", "Crane", "Passing every subtest", "Some failing", "Blocking", "NONE-PASSED", "TIMEOUT", "ERROR", "CRASH", "Not run"].map((h) => el("th", { scope: "col", text: h })))),
+      el("thead", null, el("tr", null, ...["Gen.", "Date", "Crane", "Clean", "With failures", "Blocking", "NONE-PASSED", "TIMEOUT", "ERROR", "CRASH", "Not run"].map((h) => el("th", { scope: "col", text: h })))),
       el("tbody", null, ...gens.slice().reverse().map((g) => el("tr", { class: g.reconstructed ? "recon" : null },
         el("td", { text: `${g.n}` }), el("td", { text: shortDateY(g.at) }), el("td", null, g.head && g.head !== "?" ? el("code", { text: g.head }) : "reconstructed"),
         el("td", { text: n(g.clean) }), el("td", { text: n(g.partial) }), el("td", { class: "blk", text: n(g.blocking) }),
