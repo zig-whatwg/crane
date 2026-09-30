@@ -140,6 +140,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A teardown dispatched by name runs the wrong type's deinit](architecture-a-teardown-dispatched-by-name-runs-the-wrong-types-deinit.md) - Dispatch a teardown on the object's type (its vtable), never on a name another type can share - and when a type has two exits, count how many of its subclasses each one actually reaches.
 - [A token armed during its own turn belongs to that turn](architecture-a-token-armed-during-its-own-turn-belongs-to-that-turn.md) - An ownership rule with more than two states must be checked at every exit, not just the obvious ones; extract the rule into a type small enough to test with a fake timer.
 - [An `any` argument's value says whether its handle is still in use](architecture-an-any-arguments-value-says-whether-its-handle-is-still-in-use.md) - When a type-level ownership predicate must say "kept" for safety, look for a value-level proof before accepting the leak; before flipping a borrowed-argument rule, read every keeper.
+- [What every page carries must not change with results](architecture-what-every-page-carries-must-not-change-with-results.md) - Keep results out of the shared frame; only the page a result belongs to may change.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -233,6 +234,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A report written at exit dies with the process, and shards that share a name overwrite each other](testing-a-report-written-at-exit-dies-with-the-process.md) - An artifact written at exit is only as durable as the process: write what a crash-surviving run must deliver per unit of work, and count per-process outputs against the processes that should have written them.
 - [A headless Chrome `--screenshot` of a deep-linked, script-scrolled page can come back blank](testing-headless-chrome-screenshot-of-a-deep-link-can-be-blank.md) - Open every capture before it becomes evidence; for a page that works after load, capture over CDP when you choose.
 - [A single-path runner run has no stall watchdog](testing-a-single-path-runner-run-has-no-stall-watchdog.md) - A runner process with no supervisor has no watchdog: bound it yourself; and `CRANE_LEAK_TRACES=1` is for small files - count leaks untraced first.
+- [Headless Chrome may never exit, and a reused profile caches a regenerated page](testing-headless-chrome-may-never-exit-and-caches-across-rounds.md) - Bound every headless call, and never reuse a profile across a regeneration.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.

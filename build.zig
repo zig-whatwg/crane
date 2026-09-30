@@ -3841,7 +3841,8 @@ pub fn build(b: *std.Build) void {
     // WPT: the public results site (tools/wpt_site/)
     // ========================================================================
     // tools/wpt_site/generate.zig writes Crane's static WPT results site -
-    // the hand-written assets plus deterministic JSON shards - from the state
+    // finished HTML for the index, every directory and every test file, the
+    // social card and the hand-written assets - from the state
     // and history the progress report keeps, the worklist, and the runner's
     // per-file result streams, into wpt-results/site/. `wpt-progress` runs it
     // after every regeneration of the report; when wpt-results/site is a

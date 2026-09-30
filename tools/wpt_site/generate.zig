@@ -3,28 +3,34 @@
 //!     zig build wpt-site [-- --out=<dir> --no-commit ...]
 //!
 //! Reads the progress report's accumulated state and history, the worklist,
-//! and any per-subtest wptreport streams, and writes a static site (the
-//! hand-written assets in tools/wpt_site/assets/ plus sharded JSON) to
-//! --out. See tools/wpt_site/DESIGN.md for the pages and model.zig for the
-//! rules.
+//! and any per-subtest wptreport streams, and writes the site to --out as
+//! finished HTML: index.html, one page per directory of the WPT tree, one per
+//! test file, the stylesheet and faces from tools/wpt_site/assets/, and the
+//! social card (card.png). No page needs script. See pages.zig for the pages,
+//! model.zig for the rules, card.zig for the card, and DESIGN.md.
 
 const std = @import("std");
 const model = @import("model.zig");
+const pages_mod = @import("pages.zig");
+const card = @import("card.zig");
+const png = @import("png.zig");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const Dir = std.Io.Dir;
 
 test {
     _ = model;
+    _ = png;
+    _ = @import("html.zig");
+    _ = @import("chart.zig");
+    _ = pages_mod;
+    _ = card;
 }
 
-pub const Revision = struct {
-    sha: []const u8 = "",
-    /// "upstream": the upstream WPT commit the fork's snapshot is based on
-    /// (tests/wpt/.crane-upstream-revision); "fork": the fork's own commit,
-    /// when no upstream revision is recorded; "unknown": neither.
-    kind: []const u8 = "unknown",
-};
+pub const Revision = pages_mod.Revision;
+const Generation = pages_mod.Generation;
+
+pub const default_site_url = "https://zig-whatwg.github.io/crane/";
 
 pub const Inputs = struct {
     state_json: []const u8,
@@ -33,18 +39,29 @@ pub const Inputs = struct {
     worklist_name: []const u8 = "tests/wpt_0_1_worklist.txt",
     /// wpt-results/: journals (to locate each record's run) and streams.
     results: Dir,
-    /// tools/wpt_site/assets/, copied verbatim; null writes data only.
+    /// tools/wpt_site/assets/ (the stylesheet and faces), copied verbatim;
+    /// null writes the pages and card only.
     assets: ?Dir,
     wpt: Revision = .{},
+    /// Where the site is published, with a trailing slash: the social tags
+    /// need absolute URLs.
+    site_url: []const u8 = default_site_url,
 };
 
 pub const Summary = struct {
     files: usize = 0,
     detail_files: usize = 0,
+    dir_pages: usize = 0,
+    file_pages: usize = 0,
     written: usize = 0,
     unchanged: usize = 0,
     removed: usize = 0,
+    /// Every file the site holds, and their bytes.
+    outputs: usize = 0,
     bytes: u64 = 0,
+    largest: u64 = 0,
+    largest_buf: [256]u8 = undefined,
+    largest_len: usize = 0,
     generation: u64 = 0,
     head_buf: [40]u8 = undefined,
     head_len: usize = 0,
@@ -52,6 +69,10 @@ pub const Summary = struct {
     /// The Crane commit the latest generation was recorded at.
     pub fn head(s: *const Summary) []const u8 {
         return s.head_buf[0..s.head_len];
+    }
+
+    pub fn largestPath(s: *const Summary) []const u8 {
+        return s.largest_buf[0..s.largest_len];
     }
 };
 
@@ -75,25 +96,6 @@ const Record = struct {
     fn counts(r: Record) model.Counts {
         return .{ .passed = r.passed, .failed = r.failed, .timed_out = r.timed_out, .notrun = r.notrun };
     }
-};
-
-/// One generation of wpt-results/progress-history.json.
-const Generation = struct {
-    n: u64 = 0,
-    at: []const u8 = "",
-    head: []const u8 = "?",
-    reconstructed: bool = false,
-    gate_rule: ?u64 = null,
-    total: u64 = 0,
-    run: u64 = 0,
-    unrun: u64 = 0,
-    blocking: u64 = 0,
-    crash: u64 = 0,
-    timeout: u64 = 0,
-    @"error": u64 = 0,
-    none_passed: ?u64 = null,
-    clean: u64 = 0,
-    partial: u64 = 0,
 };
 
 const History = struct {
@@ -184,14 +186,6 @@ fn locate(journals: []const Journal, rec: Record) ?usize {
     return null;
 }
 
-const Run = struct {
-    id: []const u8,
-    commit: ?[]const u8,
-    date: []const u8,
-    journal: []const u8,
-    files: u64 = 0,
-};
-
 fn runId(arena: Allocator, journals: []const Journal, located: ?usize, rec: Record) ![]const u8 {
     if (located) |i| {
         const j = journals[i];
@@ -276,13 +270,13 @@ fn collectStreams(
 
 const max_message = 4096;
 
-fn writeMessage(w: *Io.Writer, msg: []const u8) !void {
-    if (msg.len <= max_message) return std.json.Stringify.encodeJsonString(msg, .{}, w);
+/// A failure message as the page shows it: at most `max_message` bytes, cut
+/// on a UTF-8 boundary and saying so.
+fn clipMessage(a: Allocator, msg: []const u8) ![]const u8 {
+    if (msg.len <= max_message) return msg;
     var end: usize = max_message;
     while (end > 0 and (msg[end] & 0xC0) == 0x80) end -= 1;
-    const cut = try std.fmt.allocPrint(std.heap.page_allocator, "{s} [message truncated at {d} bytes]", .{ msg[0..end], max_message });
-    defer std.heap.page_allocator.free(cut);
-    try std.json.Stringify.encodeJsonString(cut, .{}, w);
+    return std.fmt.allocPrint(a, "{s} [message truncated at {d} bytes]", .{ msg[0..end], max_message });
 }
 
 fn strField(o: std.json.ObjectMap, key: []const u8) ?[]const u8 {
@@ -290,13 +284,10 @@ fn strField(o: std.json.ObjectMap, key: []const u8) ?[]const u8 {
     return if (v == .string) v.string else null;
 }
 
-/// data/files/<source>.json: every run of the file, its subtests in the
-/// harness's order. Past `model.detail_limit` subtests the passing ones are
-/// counted, not listed.
-fn writeDetail(gpa: Allocator, w: *Io.Writer, path: []const u8, lines: []const Line) !void {
-    var scratch: std.heap.ArenaAllocator = .init(gpa);
-    defer scratch.deinit();
-    const a = scratch.allocator();
+/// A file's stream lines as the page's runs, subtests in the harness's
+/// order. Past `model.detail_limit` subtests the passing ones are counted,
+/// not listed.
+fn parseDetail(a: Allocator, lines: []const Line) ![]pages_mod.SubtestRun {
     var parsed = try a.alloc(std.json.ObjectMap, lines.len);
     var total: usize = 0;
     for (lines, 0..) |l, i| {
@@ -307,52 +298,34 @@ fn writeDetail(gpa: Allocator, w: *Io.Writer, path: []const u8, lines: []const L
         }
     }
     const keep_passing = model.keepsPassing(total);
-
-    try w.writeAll("{\"detail_limit\":");
-    try w.print("{d},\"path\":", .{model.detail_limit});
-    try std.json.Stringify.encodeJsonString(path, .{}, w);
-    try w.writeAll(",\"runs\":[");
+    var runs = try a.alloc(pages_mod.SubtestRun, lines.len);
     for (parsed, lines, 0..) |o, l, i| {
-        if (i > 0) try w.writeByte(',');
         const subs: []const std.json.Value = if (o.get("subtests")) |s| (if (s == .array) s.array.items else &.{}) else &.{};
-        var c: struct { pass: u64 = 0, fail: u64 = 0, timeout: u64 = 0, notrun: u64 = 0, precondition_failed: u64 = 0 } = .{};
+        var list: std.ArrayList(pages_mod.Subtest) = .empty;
+        var pass: u64 = 0;
         for (subs) |sub| {
             if (sub != .object) continue;
             const st = strField(sub.object, "status") orelse "";
-            if (std.mem.eql(u8, st, "PASS")) c.pass += 1 else if (std.mem.eql(u8, st, "FAIL")) c.fail += 1 else if (std.mem.eql(u8, st, "TIMEOUT")) c.timeout += 1 else if (std.mem.eql(u8, st, "NOTRUN")) c.notrun += 1 else c.precondition_failed += 1;
+            const is_pass = std.mem.eql(u8, st, "PASS");
+            if (is_pass) pass += 1;
+            if (!keep_passing and is_pass) continue;
+            try list.append(a, .{
+                .name = strField(sub.object, "name") orelse "",
+                .status = st,
+                .message = if (strField(sub.object, "message")) |m| try clipMessage(a, m) else null,
+            });
         }
-        try w.print("{{\"counts\":{{\"fail\":{d},\"notrun\":{d},\"other\":{d},\"pass\":{d},\"timeout\":{d},\"total\":{d}}}", .{ c.fail, c.notrun, c.precondition_failed, c.pass, c.timeout, subs.len });
-        if (strField(o, "message")) |m| {
-            try w.writeAll(",\"message\":");
-            try writeMessage(w, m);
-        }
-        try w.print(",\"passing_omitted\":{d},\"status\":", .{if (keep_passing) 0 else c.pass});
-        try std.json.Stringify.encodeJsonString(strField(o, "status") orelse "ERROR", .{}, w);
-        try w.writeAll(",\"subtests\":[");
-        var first = true;
-        for (subs) |sub| {
-            if (sub != .object) continue;
-            const st = strField(sub.object, "status") orelse "";
-            if (!keep_passing and std.mem.eql(u8, st, "PASS")) continue;
-            if (!first) try w.writeByte(',');
-            first = false;
-            try w.writeByte('{');
-            if (strField(sub.object, "message")) |m| {
-                try w.writeAll("\"message\":");
-                try writeMessage(w, m);
-                try w.writeByte(',');
-            }
-            try w.writeAll("\"name\":");
-            try std.json.Stringify.encodeJsonString(strField(sub.object, "name") orelse "", .{}, w);
-            try w.writeAll(",\"status\":");
-            try std.json.Stringify.encodeJsonString(st, .{}, w);
-            try w.writeByte('}');
-        }
-        try w.writeAll("],\"test\":");
-        try std.json.Stringify.encodeJsonString(l.url, .{}, w);
-        try w.writeByte('}');
+        runs[i] = .{
+            .test_url = l.url,
+            .status = strField(o, "status") orelse "ERROR",
+            .message = if (strField(o, "message")) |m| try clipMessage(a, m) else null,
+            .subtests = list.items,
+            .total = subs.len,
+            .pass = pass,
+            .passing_omitted = if (keep_passing) 0 else pass,
+        };
     }
-    try w.writeAll("]}\n");
+    return runs;
 }
 
 // ============================================================================
@@ -370,7 +343,13 @@ const Output = struct {
     /// Write `bytes` at `rel` unless the file already holds exactly them.
     fn put(o: *Output, rel: []const u8, bytes: []const u8) !void {
         try o.written_paths.put(o.arena, try o.arena.dupe(u8, rel), {});
+        o.summary.outputs += 1;
         o.summary.bytes += bytes.len;
+        if (bytes.len > o.summary.largest) {
+            o.summary.largest = bytes.len;
+            o.summary.largest_len = @min(rel.len, o.summary.largest_buf.len);
+            @memcpy(o.summary.largest_buf[0..o.summary.largest_len], rel[0..o.summary.largest_len]);
+        }
         if (o.dir.readFileAlloc(o.io, rel, o.gpa, .limited(bytes.len + 1))) |old| {
             defer o.gpa.free(old);
             if (std.mem.eql(u8, old, bytes)) {
@@ -435,20 +414,6 @@ fn copyAssets(o: *Output, assets: Dir) !void {
 // The tree
 // ============================================================================
 
-const FileEntry = struct {
-    path: []const u8,
-    rec: ?Record,
-    gate: model.Gate,
-    run: ?[]const u8,
-    detail: bool,
-};
-
-const DirNode = struct {
-    totals: model.Totals = .{},
-    dirs: std.ArrayList([]const u8) = .empty,
-    files: std.ArrayList(usize) = .empty,
-};
-
 /// "dom/nodes/x.html" -> "dom/nodes/"; "dom/x.html" -> "dom/".
 fn parentDir(path: []const u8) []const u8 {
     const trimmed = if (std.mem.endsWith(u8, path, "/")) path[0 .. path.len - 1] else path;
@@ -456,40 +421,11 @@ fn parentDir(path: []const u8) []const u8 {
     return path[0 .. i + 1];
 }
 
-fn baseName(path: []const u8) []const u8 {
-    const trimmed = if (std.mem.endsWith(u8, path, "/")) path[0 .. path.len - 1] else path;
-    const i = std.mem.lastIndexOfScalar(u8, trimmed, '/') orelse return trimmed;
-    return trimmed[i + 1 ..];
-}
-
-/// data/dirs/dom.json for "dom/", data/dirs/dom/nodes.json for "dom/nodes/".
-fn dirShard(arena: Allocator, dir: []const u8) ![]const u8 {
-    return std.fmt.allocPrint(arena, "data/dirs/{s}.json", .{dir[0 .. dir.len - 1]});
-}
-
-fn writeFileEntry(w: *Io.Writer, f: FileEntry) !void {
-    const c: model.Counts = if (f.rec) |r| r.counts() else .{};
-    try w.print("{{\"counts\":{{\"fail\":{d},\"notrun\":{d},\"pass\":{d},\"timeout\":{d}}},\"detail\":{s},\"gate\":\"{s}\"", .{
-        c.failed, c.notrun, c.passed, c.timed_out, if (f.detail) "true" else "false", f.gate.word(),
-    });
-    if (f.rec) |r| if (r.message) |m| {
-        try w.writeAll(",\"message\":");
-        try writeMessage(w, m);
-    };
-    try w.writeAll(",\"name\":");
-    try std.json.Stringify.encodeJsonString(baseName(f.path), .{}, w);
-    try w.writeAll(",\"path\":");
-    try std.json.Stringify.encodeJsonString(f.path, .{}, w);
-    try w.writeAll(",\"run\":");
-    if (f.run) |r| try std.json.Stringify.encodeJsonString(r, .{}, w) else try w.writeAll("null");
-    try w.writeAll(",\"status\":");
-    if (f.rec) |r| try std.json.Stringify.encodeJsonString(r.status, .{}, w) else try w.writeAll("null");
-    try w.writeByte('}');
-}
-
-fn writeOptU(w: *Io.Writer, v: ?u64) !void {
-    if (v) |x| try w.print("{d}", .{x}) else try w.writeAll("null");
-}
+const DirBuild = struct {
+    totals: model.Totals = .{},
+    dirs: std.ArrayList([]const u8) = .empty,
+    files: std.ArrayList(usize) = .empty,
+};
 
 // ============================================================================
 // generate
@@ -510,14 +446,23 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     for (worklist) |p| try known.put(arena, p, {});
 
     // Each in-scope record's run.
-    var files = try arena.alloc(FileEntry, worklist.len);
+    var files = try arena.alloc(pages_mod.FileView, worklist.len);
     var used = try arena.alloc(bool, journals.len);
     @memset(used, false);
     var rec_journal: std.StringHashMapUnmanaged(usize) = .empty;
-    var runs: std.StringArrayHashMapUnmanaged(Run) = .empty;
+    var runs: std.StringArrayHashMapUnmanaged(pages_mod.RunInfo) = .empty;
     for (worklist, 0..) |p, i| {
         const rec = state.map.get(p);
-        files[i] = .{ .path = p, .rec = rec, .gate = model.gateOf(if (rec) |r| r.status else null, if (rec) |r| r.counts() else .{}), .run = null, .detail = false };
+        const c: model.Counts = if (rec) |r| r.counts() else .{};
+        files[i] = .{
+            .path = p,
+            .status = if (rec) |r| r.status else null,
+            .counts = c,
+            .message = if (rec) |r| (if (r.message) |m| try clipMessage(arena, m) else null) else null,
+            .gate = model.gateOf(if (rec) |r| r.status else null, c),
+            .run = null,
+            .has_detail = false,
+        };
         const r = rec orelse continue;
         const located = locate(journals, r);
         if (located) |ji| {
@@ -539,48 +484,43 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
         }
         gop.value_ptr.files += 1;
     }
+    // Runs in id order, so the page lists them the same way every time.
+    runs.sort(struct {
+        keys: []const []const u8,
+        pub fn lessThan(ctx: @This(), a: usize, b: usize) bool {
+            return std.mem.order(u8, ctx.keys[a], ctx.keys[b]) == .lt;
+        }
+    }{ .keys = runs.keys() });
 
-    var o: Output = .{ .gpa = gpa, .io = io, .dir = out, .arena = arena, .summary = &summary };
-    if (in.assets) |a| try copyAssets(&o, a);
-    try o.put(".nojekyll", "");
-
-    // Per-subtest detail shards.
     var streams = try collectStreams(arena, io, in.results, journals, used, &known, &rec_journal);
     for (files) |*f| {
         const lines = streams.getPtr(f.path) orelse continue;
         if (lines.items.len == 0) continue;
-        var aw: Io.Writer.Allocating = .init(gpa);
-        defer aw.deinit();
-        try writeDetail(gpa, &aw.writer, f.path, lines.items);
-        const rel = try std.fmt.allocPrint(arena, "data/files/{s}.json", .{f.path});
-        try o.put(rel, aw.written());
-        f.detail = true;
+        f.has_detail = true;
         summary.detail_files += 1;
     }
 
-    // Directory shards: every ancestor directory of every file.
-    var nodes: std.StringArrayHashMapUnmanaged(DirNode) = .empty;
-    try nodes.put(arena, "", .{});
+    // Every ancestor directory of every file.
+    var builds: std.StringArrayHashMapUnmanaged(DirBuild) = .empty;
+    try builds.put(arena, "", .{});
     for (files, 0..) |f, i| {
         var child: []const u8 = f.path;
         var dir = parentDir(f.path);
         var is_file = true;
         while (true) {
-            const gop = try nodes.getOrPut(arena, dir);
-            const fresh = !gop.found_existing;
-            if (fresh) gop.value_ptr.* = .{};
-            gop.value_ptr.totals.add(f.gate, if (f.rec) |r| r.counts() else .{});
-            if (is_file) try gop.value_ptr.files.append(arena, i);
-            if (!is_file) {
+            const gop = try builds.getOrPut(arena, dir);
+            if (!gop.found_existing) gop.value_ptr.* = .{};
+            gop.value_ptr.totals.add(f.gate, f.counts);
+            if (is_file) {
+                try gop.value_ptr.files.append(arena, i);
+            } else {
                 const list = &gop.value_ptr.dirs;
-                if (list.items.len == 0 or !std.mem.eql(u8, list.items[list.items.len - 1], child)) {
-                    var seen = false;
-                    for (list.items) |d| if (std.mem.eql(u8, d, child)) {
-                        seen = true;
-                        break;
-                    };
-                    if (!seen) try list.append(arena, child);
-                }
+                var seen = false;
+                for (list.items) |d| if (std.mem.eql(u8, d, child)) {
+                    seen = true;
+                    break;
+                };
+                if (!seen) try list.append(arena, child);
             }
             if (dir.len == 0) break;
             child = dir;
@@ -588,119 +528,78 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
             is_file = false;
         }
     }
-    const dir_keys = try arena.dupe([]const u8, nodes.keys());
+    var dirs: std.StringArrayHashMapUnmanaged(pages_mod.DirView) = .empty;
+    const dir_keys = try arena.dupe([]const u8, builds.keys());
     std.mem.sort([]const u8, dir_keys, {}, lessStr);
-    for (dir_keys) |dk| {
-        const node = nodes.getPtr(dk).?;
-        std.mem.sort([]const u8, node.dirs.items, {}, lessStr);
-        if (dk.len == 0) continue;
-        var aw: Io.Writer.Allocating = .init(gpa);
-        defer aw.deinit();
-        const w = &aw.writer;
-        try w.writeAll("{\"dirs\":[");
-        for (node.dirs.items, 0..) |d, i| {
-            if (i > 0) try w.writeByte(',');
-            const sub = nodes.getPtr(d).?;
-            try w.print("{{\"dirs\":{d},\"files_here\":{d},\"name\":", .{ sub.dirs.items.len, sub.files.items.len });
-            try std.json.Stringify.encodeJsonString(baseName(d), .{}, w);
-            try w.writeAll(",\"path\":");
-            try std.json.Stringify.encodeJsonString(d, .{}, w);
-            try w.writeAll(",\"totals\":");
-            try sub.totals.writeJson(w);
-            try w.writeByte('}');
-        }
-        try w.writeAll("],\"files\":[");
-        // files are appended in worklist (sorted) order already.
-        for (node.files.items, 0..) |fi, i| {
-            if (i > 0) try w.writeByte(',');
-            try writeFileEntry(w, files[fi]);
-        }
-        try w.writeAll("],\"path\":");
-        try std.json.Stringify.encodeJsonString(dk, .{}, w);
-        try w.writeAll(",\"totals\":");
-        try node.totals.writeJson(w);
-        try w.writeAll("}\n");
-        try o.put(try dirShard(arena, dk), aw.written());
+    for (dir_keys) |k| {
+        const b = builds.getPtr(k).?;
+        std.mem.sort([]const u8, b.dirs.items, {}, lessStr);
+        // Files were appended in worklist (sorted) order already.
+        try dirs.put(arena, k, .{ .path = k, .totals = b.totals, .dirs = b.dirs.items, .files = b.files.items });
+    }
+    const root_totals = dirs.getPtr("").?.totals;
+
+    // The card, and its cache-busting reference: it changes when the numbers do.
+    const card_figures: card.Figures = .{
+        .pass = root_totals.sub_pass,
+        .reported = root_totals.subReported(),
+        .failed = root_totals.sub_fail,
+        .timed_out = root_totals.sub_timeout,
+        .notrun = root_totals.sub_notrun,
+        .files = root_totals.files,
+        .blocking = root_totals.blocking(),
+    };
+    const card_png = try card.render(gpa, card_figures);
+    defer gpa.free(card_png);
+    const card_ref = try std.fmt.allocPrint(arena, "card.png?v={x:0>8}", .{@as(u32, @truncate(std.hash.Wyhash.hash(0, card_png)))});
+
+    const site: pages_mod.Site = .{
+        .files = files,
+        .dirs = &dirs,
+        .suites = dirs.getPtr("").?.dirs,
+        .runs = &runs,
+        .history = history.generations,
+        .wpt = in.wpt,
+        .worklist_name = in.worklist_name,
+        .detail_files = summary.detail_files,
+        .site_url = in.site_url,
+        .card_ref = card_ref,
+    };
+
+    var o: Output = .{ .gpa = gpa, .io = io, .dir = out, .arena = arena, .summary = &summary };
+    if (in.assets) |a| try copyAssets(&o, a);
+    try o.put(".nojekyll", "");
+    try o.put("card.png", card_png);
+
+    var aw: Io.Writer.Allocating = .init(gpa);
+    defer aw.deinit();
+    try pages_mod.writeIndex(&aw.writer, &site);
+    try o.put("index.html", aw.written());
+
+    for (dir_keys) |k| {
+        if (k.len == 0) continue;
+        aw.clearRetainingCapacity();
+        try pages_mod.writeDirPage(&aw.writer, &site, dirs.getPtr(k).?);
+        try o.put(try std.fmt.allocPrint(arena, "{s}index.html", .{k}), aw.written());
+        summary.dir_pages += 1;
     }
 
-    // The suites: the root's children.
-    const root = nodes.getPtr("").?;
-    {
-        var aw: Io.Writer.Allocating = .init(gpa);
-        defer aw.deinit();
-        const w = &aw.writer;
-        try w.writeAll("{\"suites\":[");
-        for (root.dirs.items, 0..) |d, i| {
-            if (i > 0) try w.writeByte(',');
-            const sub = nodes.getPtr(d).?;
-            try w.print("{{\"dirs\":{d},\"files_here\":{d},\"name\":", .{ sub.dirs.items.len, sub.files.items.len });
-            try std.json.Stringify.encodeJsonString(baseName(d), .{}, w);
-            try w.writeAll(",\"path\":");
-            try std.json.Stringify.encodeJsonString(d, .{}, w);
-            try w.writeAll(",\"totals\":");
-            try sub.totals.writeJson(w);
-            try w.writeByte('}');
-        }
-        try w.writeAll("],\"totals\":");
-        try root.totals.writeJson(w);
-        try w.writeAll("}\n");
-        try o.put("data/suites.json", aw.written());
-    }
-
-    // meta.json: the one file with timestamps - run identity and history.
-    const gens = history.generations;
-    const last: Generation = if (gens.len > 0) gens[gens.len - 1] else .{};
-    {
-        var aw: Io.Writer.Allocating = .init(gpa);
-        defer aw.deinit();
-        const w = &aw.writer;
-        try w.writeAll("{\"generation\":{\"at\":");
-        try std.json.Stringify.encodeJsonString(last.at, .{}, w);
-        try w.writeAll(",\"gate_rule\":");
-        try writeOptU(w, last.gate_rule);
-        try w.writeAll(",\"head\":");
-        try std.json.Stringify.encodeJsonString(last.head, .{}, w);
-        try w.print(",\"n\":{d}}},\"history\":[", .{last.n});
-        for (gens, 0..) |g, i| {
-            if (i > 0) try w.writeByte(',');
-            try w.writeAll("{\"at\":");
-            try std.json.Stringify.encodeJsonString(g.at, .{}, w);
-            try w.print(",\"blocking\":{d},\"clean\":{d},\"crash\":{d},\"error\":{d},\"gate_rule\":", .{ g.blocking, g.clean, g.crash, g.@"error" });
-            try writeOptU(w, g.gate_rule);
-            try w.writeAll(",\"head\":");
-            try std.json.Stringify.encodeJsonString(g.head, .{}, w);
-            try w.print(",\"n\":{d},\"none_passed\":", .{g.n});
-            try writeOptU(w, g.none_passed);
-            try w.print(",\"partial\":{d},\"reconstructed\":{s},\"run\":{d},\"timeout\":{d},\"total\":{d},\"unrun\":{d}}}", .{
-                g.partial, if (g.reconstructed) "true" else "false", g.run, g.timeout, g.total, g.unrun,
-            });
-        }
-        try w.writeAll("],\"links\":{\"crane\":\"https://github.com/zig-whatwg/crane\",\"wpt_fork\":\"https://github.com/zig-whatwg/wpt\",\"wpt_upstream\":\"https://github.com/web-platform-tests/wpt\"},\"runs\":{");
-        const run_keys = try arena.dupe([]const u8, runs.keys());
-        std.mem.sort([]const u8, run_keys, {}, lessStr);
-        for (run_keys, 0..) |k, i| {
-            if (i > 0) try w.writeByte(',');
-            const r = runs.get(k).?;
-            try std.json.Stringify.encodeJsonString(k, .{}, w);
-            try w.writeAll(":{\"commit\":");
-            if (r.commit) |c| try std.json.Stringify.encodeJsonString(c, .{}, w) else try w.writeAll("null");
-            try w.writeAll(",\"date\":");
-            try std.json.Stringify.encodeJsonString(r.date, .{}, w);
-            try w.print(",\"files\":{d},\"journal\":", .{r.files});
-            try std.json.Stringify.encodeJsonString(r.journal, .{}, w);
-            try w.writeByte('}');
-        }
-        try w.print("}},\"scope\":{{\"detail_files\":{d},\"detail_limit\":{d},\"files\":{d},\"worklist\":", .{ summary.detail_files, model.detail_limit, worklist.len });
-        try std.json.Stringify.encodeJsonString(in.worklist_name, .{}, w);
-        try w.writeAll("},\"wpt\":{\"kind\":");
-        try std.json.Stringify.encodeJsonString(in.wpt.kind, .{}, w);
-        try w.writeAll(",\"revision\":");
-        try std.json.Stringify.encodeJsonString(in.wpt.sha, .{}, w);
-        try w.writeAll("}}\n");
-        try o.put("data/meta.json", aw.written());
+    var detail_arena: std.heap.ArenaAllocator = .init(gpa);
+    defer detail_arena.deinit();
+    for (files) |*f| {
+        _ = detail_arena.reset(.retain_capacity);
+        const detail: []const pages_mod.SubtestRun = if (streams.getPtr(f.path)) |lines|
+            try parseDetail(detail_arena.allocator(), lines.items)
+        else
+            &.{};
+        aw.clearRetainingCapacity();
+        try pages_mod.writeFilePage(&aw.writer, &site, f, detail);
+        try o.put(try std.fmt.allocPrint(arena, "{s}/index.html", .{f.path}), aw.written());
+        summary.file_pages += 1;
     }
 
     try o.prune();
+    const last = site.latest();
     summary.files = worklist.len;
     summary.generation = last.n;
     summary.head_len = @min(last.head.len, summary.head_buf.len);
@@ -715,10 +614,11 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
 fn usage() noreturn {
     std.debug.print(
         \\usage: wpt_site [--state=<json>] [--history=<json>] [--worklist=<txt>] [--results=<dir>]
-        \\                [--assets=<dir>] [--out=<dir>] [--wpt-root=<dir>] [--no-commit]
+        \\                [--assets=<dir>] [--out=<dir>] [--wpt-root=<dir>] [--site-url=<url>] [--no-commit]
         \\
         \\Defaults are the repository's: tmp/wpt-progress-state.json, wpt-results/progress-history.json,
-        \\tests/wpt_0_1_worklist.txt, wpt-results/, tools/wpt_site/assets/, wpt-results/site/, tests/wpt/.
+        \\tests/wpt_0_1_worklist.txt, wpt-results/, tools/wpt_site/assets/, wpt-results/site/, tests/wpt/,
+        \\https://zig-whatwg.github.io/crane/ (the absolute URL the social tags name).
         \\When --out is a git worktree on the gh-pages branch and anything changed, the output is committed
         \\there ("results: generation <n>, Crane <sha>"). Nothing is ever pushed.
         \\
@@ -800,6 +700,7 @@ pub fn main(init: std.process.Init) !void {
     var assets_path: []const u8 = "tools/wpt_site/assets";
     var out_path: []const u8 = "wpt-results/site";
     var wpt_root: []const u8 = "tests/wpt";
+    var site_url: []const u8 = default_site_url;
     var commit = true;
 
     var args = try init.minimal.args.iterateAllocator(arena);
@@ -809,7 +710,7 @@ pub fn main(init: std.process.Init) !void {
         const eq = std.mem.indexOfScalar(u8, a, '=');
         const key = a[0 .. eq orelse a.len];
         const val = if (eq) |i| a[i + 1 ..] else "";
-        if (std.mem.eql(u8, key, "--no-commit")) commit = false else if (eq == null) usage() else if (std.mem.eql(u8, key, "--state")) state_path = val else if (std.mem.eql(u8, key, "--history")) history_path = val else if (std.mem.eql(u8, key, "--worklist")) worklist_path = val else if (std.mem.eql(u8, key, "--results")) results_path = val else if (std.mem.eql(u8, key, "--assets")) assets_path = val else if (std.mem.eql(u8, key, "--out")) out_path = val else if (std.mem.eql(u8, key, "--wpt-root")) wpt_root = val else usage();
+        if (std.mem.eql(u8, key, "--no-commit")) commit = false else if (eq == null) usage() else if (std.mem.eql(u8, key, "--state")) state_path = val else if (std.mem.eql(u8, key, "--history")) history_path = val else if (std.mem.eql(u8, key, "--worklist")) worklist_path = val else if (std.mem.eql(u8, key, "--results")) results_path = val else if (std.mem.eql(u8, key, "--assets")) assets_path = val else if (std.mem.eql(u8, key, "--out")) out_path = val else if (std.mem.eql(u8, key, "--wpt-root")) wpt_root = val else if (std.mem.eql(u8, key, "--site-url")) site_url = val else usage();
     }
 
     const cwd = Dir.cwd();
@@ -831,10 +732,16 @@ pub fn main(init: std.process.Init) !void {
         .results = results,
         .assets = assets,
         .wpt = detectRevision(arena, io, wpt_root),
+        .site_url = site_url,
     }, out);
     std.debug.print(
-        "wpt-site: generation {d} (Crane {s}): {d} files, {d} with subtest detail; {d} written, {d} unchanged, {d} removed; {d} bytes in {s}\n",
-        .{ summary.generation, summary.head(), summary.files, summary.detail_files, summary.written, summary.unchanged, summary.removed, summary.bytes, out_path },
+        "wpt-site: generation {d} (Crane {s}): {d} test files, {d} with subtest detail; {d} directory pages, {d} file pages; " ++
+            "{d} files in the site, {d} bytes (largest {s}, {d} bytes); {d} written, {d} unchanged, {d} removed, in {s}\n",
+        .{
+            summary.generation, summary.head(),    summary.files,   summary.detail_files,  summary.dir_pages,
+            summary.file_pages, summary.outputs,   summary.bytes,   summary.largestPath(), summary.largest,
+            summary.written,    summary.unchanged, summary.removed, out_path,
+        },
     );
     if (commit) try commitSite(arena, io, out_path, summary);
 }
@@ -901,6 +808,14 @@ const fixture_history =
     \\],"last_statuses":{}}
 ;
 
+const fixture_history_next =
+    \\{"gate_rule":2,"generations":[
+    \\{"n":1,"at":"2026-09-19T19:55:00","head":"?","reconstructed":true,"total":5,"run":2,"unrun":3,"blocking":1,"crash":0,"timeout":1,"error":0,"clean":1,"partial":0,"sub_pass":3,"sub_fail":0},
+    \\{"n":2,"at":"2026-09-30T11:21:23","head":"5c8dd64da","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3},
+    \\{"n":3,"at":"2026-10-01T09:00:00","head":"6d9ee75eb","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3}
+    \\],"last_statuses":{}}
+;
+
 const fixture_worklist =
     \\# a comment
     \\dom/b.html
@@ -912,7 +827,7 @@ const fixture_worklist =
 ;
 
 const fixture_stream =
-    \\{"test":"/dom/a.html","status":"OK","message":null,"duration":5,"subtests":[{"name":"one","status":"PASS","message":null},{"name":"two","status":"FAIL","message":"assert_equals: expected 1 but got 2"},{"name":"three","status":"PASS","message":null}]}
+    \\{"test":"/dom/a.html","status":"OK","message":null,"duration":5,"subtests":[{"name":"one","status":"PASS","message":null},{"name":"two <b>&","status":"FAIL","message":"assert_equals: expected 1 but got 2"},{"name":"three","status":"PASS","message":null}]}
     \\{"test":"/dom/nodes/c.any.worker.html","status":"OK","message":null,"subtests":[{"name":"w","status":"FAIL","message":"worker"}]}
     \\{"test":"/dom/nodes/c.any.html","status":"OK","message":null,"subtests":[{"name":"x","status":"FAIL","message":"window"}]}
     \\{"test":"/crane/ours.html","status":"OK","message":null,"subtests":[]}
@@ -930,15 +845,35 @@ fn runFixture(gpa: Allocator, f: *Fixture, out_name: []const u8, worklist: []con
         .worklist_text = worklist,
         .results = f.results,
         .assets = null,
-        .wpt = .{ .sha = "50d8c16fa8219824aad90ef0ec02328e7ecbc8e5", .kind = "fork" },
+        .wpt = fixture_wpt,
     }, out);
 }
+
+const fixture_wpt: Revision = .{ .sha = "50d8c16fa8219824aad90ef0ec02328e7ecbc8e5", .kind = "fork" };
 
 fn readOut(gpa: Allocator, f: *Fixture, path: []const u8) ![]u8 {
     return f.tmp.dir.readFileAlloc(testing.io, path, gpa, .limited(1 << 24));
 }
 
-test "site: directory shards roll totals up, sorted, with NONE-PASSED blocking" {
+fn exists(f: *Fixture, path: []const u8) bool {
+    _ = f.tmp.dir.statFile(testing.io, path, .{}) catch return false;
+    return true;
+}
+
+fn expectHas(hay: []const u8, needle: []const u8) !void {
+    if (std.mem.indexOf(u8, hay, needle) == null) {
+        std.debug.print("\nmissing: {s}\n", .{needle});
+        return error.TestExpectedSubstring;
+    }
+}
+
+fn expectBefore(hay: []const u8, a: []const u8, b: []const u8) !void {
+    const ia = std.mem.indexOf(u8, hay, a) orelse return error.TestExpectedSubstring;
+    const ib = std.mem.indexOf(u8, hay, b) orelse return error.TestExpectedSubstring;
+    try testing.expect(ia < ib);
+}
+
+test "site: index.html opens with the WPT subtest numbers, written into the markup" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
     defer f.deinit();
@@ -946,43 +881,78 @@ test "site: directory shards roll totals up, sorted, with NONE-PASSED blocking" 
     try testing.expectEqual(@as(usize, 5), s.files);
     try testing.expectEqual(@as(u64, 2), s.generation);
 
-    const dom = try readOut(gpa, &f, "out/data/dirs/dom.json");
-    defer gpa.free(dom);
-    const parsed = try std.json.parseFromSlice(std.json.Value, gpa, dom, .{});
-    defer parsed.deinit();
-    const o = parsed.value.object;
-    try testing.expectEqualStrings("dom/", o.get("path").?.string);
-    const t = o.get("totals").?.object;
-    try testing.expectEqual(@as(i64, 3), t.get("files").?.integer);
-    // b.html TIMEOUT + c.any.js OK-with-nothing-passing.
-    try testing.expectEqual(@as(i64, 2), t.get("blocking").?.integer);
-    try testing.expectEqual(@as(i64, 1), t.get("none_passed").?.integer);
-    try testing.expectEqual(@as(i64, 1), t.get("partial").?.integer);
-    // Files sorted by name: a.html before b.html.
-    const files = o.get("files").?.array.items;
-    try testing.expectEqual(@as(usize, 2), files.len);
-    try testing.expectEqualStrings("a.html", files[0].object.get("name").?.string);
-    try testing.expectEqualStrings("b.html", files[1].object.get("name").?.string);
-    try testing.expectEqualStrings("timeout", files[1].object.get("gate").?.string);
-    try testing.expectEqualStrings("took too long", files[1].object.get("message").?.string);
-    try testing.expectEqualStrings("sweep-abc1234", files[1].object.get("run").?.string);
-    const dirs = o.get("dirs").?.array.items;
-    try testing.expectEqual(@as(usize, 1), dirs.len);
-    try testing.expectEqualStrings("dom/nodes/", dirs[0].object.get("path").?.string);
-
-    // The suite index names both suites, in order, and the unrun file counts.
-    const suites = try readOut(gpa, &f, "out/data/suites.json");
-    defer gpa.free(suites);
-    const sp = try std.json.parseFromSlice(std.json.Value, gpa, suites, .{});
-    defer sp.deinit();
-    const list = sp.value.object.get("suites").?.array.items;
-    try testing.expectEqual(@as(usize, 2), list.len);
-    try testing.expectEqualStrings("dom", list[0].object.get("name").?.string);
-    try testing.expectEqualStrings("url", list[1].object.get("name").?.string);
-    try testing.expectEqual(@as(i64, 1), list[1].object.get("totals").?.object.get("unrun").?.integer);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    // 2+0+0+3 passed of 3+2+0+3 reported; 3 failed; b.html TIMEOUT and
+    // c.any.js NONE-PASSED block; url/never.html has not run.
+    try expectHas(index, "<span class=\"hl-pass\">5</span><span class=\"hl-of\"> / 8</span>");
+    try expectHas(index, "WPT subtests passing");
+    try expectHas(index, "<dt>Failed</dt><dd>3</dd>");
+    try expectHas(index, "<dt>Timed out</dt><dd>0</dd>");
+    try expectHas(index, "<dt>Not run</dt><dd>0</dd>");
+    try expectHas(index, "<dt>Test files</dt><dd>5</dd>");
+    try expectHas(index, "<div class=\"blk\"><dt>Blocking files</dt><dd>2</dd>");
+    // Numbers first: the headline, then the scope, the contents, the suites, the history.
+    try expectBefore(index, "hl-pass", "id=\"status\"");
+    try expectBefore(index, "id=\"status\"", "id=\"contents\"");
+    try expectBefore(index, "id=\"contents\"", "<section class=\"suite\" id=\"dom\"");
+    try expectBefore(index, "<section class=\"suite\" id=\"dom\"", "<section class=\"suite\" id=\"url\"");
+    try expectBefore(index, "<section class=\"suite\" id=\"url\"", "id=\"history\"");
+    // Each suite section opens with its own numbers: dom/ has 2 of 5.
+    try expectHas(index, "<span class=\"fg-pass\">2</span><span class=\"fg-of\"> / 5</span>");
+    // Its table links down to the directory and file pages.
+    try expectHas(index, "<a href=\"dom/nodes/\"><span class=\"dir-no\">1.1</span>");
+    try expectHas(index, "<a href=\"dom/a.html/\">");
+    // The revision history: a drawn chart and a table, no script.
+    try expectHas(index, "<svg class=\"chart-svg chart-wide\"");
+    try expectHas(index, "<td><code>5c8dd64da</code></td>");
+    // The phrase the user ruled out, and a pass percentage, are nowhere.
+    try testing.expect(std.mem.indexOf(u8, index, "passing every subtest") == null);
+    try testing.expect(std.mem.indexOf(u8, index, "% of subtests") == null);
 }
 
-test "site: per-subtest detail comes only from the record's own run's stream" {
+test "site: one page per directory and per test file, mirroring the WPT tree" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const s = try runFixture(gpa, &f, "out", fixture_worklist);
+    // dom/, dom/nodes/, url/ and five files.
+    try testing.expectEqual(@as(usize, 3), s.dir_pages);
+    try testing.expectEqual(@as(usize, 5), s.file_pages);
+    for ([_][]const u8{
+        "out/dom/index.html",        "out/dom/nodes/index.html",      "out/url/index.html",
+        "out/dom/a.html/index.html", "out/dom/b.html/index.html",     "out/dom/nodes/c.any.js/index.html",
+        "out/url/u.html/index.html", "out/url/never.html/index.html", "out/card.png",
+    }) |p| if (!exists(&f, p)) {
+        std.debug.print("\nmissing page {s}\n", .{p});
+        return error.TestExpectedPage;
+    };
+
+    const dom = try readOut(gpa, &f, "out/dom/index.html");
+    defer gpa.free(dom);
+    try expectHas(dom, "<h1 class=\"page-title\"><span class=\"secno\">1</span><code>dom/</code></h1>");
+    try expectHas(dom, "<span class=\"fg-pass\">2</span><span class=\"fg-of\"> / 5</span>");
+    try expectHas(dom, "<a href=\"../dom/nodes/\"><span class=\"dir-no\">1.1</span>");
+    try expectHas(dom, "<a href=\"../dom/a.html/\">");
+    try expectHas(dom, "<span class=\"gate gate-timeout g-block\">TIMEOUT</span>");
+    try expectHas(dom, "<span class=\"gate gate-partial\">With failures</span>");
+    try expectHas(dom, "<link rel=\"stylesheet\" href=\"../site.css\">");
+    // The rail marks the suite this page belongs to.
+    try expectHas(dom, "<a href=\"../dom/\" aria-current=\"page\">");
+
+    const nodes = try readOut(gpa, &f, "out/dom/nodes/index.html");
+    defer gpa.free(nodes);
+    try expectHas(nodes, "<li><a href=\"../../dom/\"><code>dom/</code></a></li><li aria-current=\"page\"><code>nodes/</code></li>");
+    try expectHas(nodes, "<span class=\"gate gate-none-passed g-block\">NONE-PASSED</span>");
+
+    const never = try readOut(gpa, &f, "out/url/never.html/index.html");
+    defer gpa.free(never);
+    try expectHas(never, "<span class=\"gate gate-unrun\">Not run</span>");
+    try expectHas(never, "It has no result yet.");
+    try expectHas(never, "<link rel=\"stylesheet\" href=\"../../site.css\">");
+}
+
+test "site: a test file's page lists its subtests, failures opening in place" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
     defer f.deinit();
@@ -991,23 +961,27 @@ test "site: per-subtest detail comes only from the record's own run's stream" {
     // stream from another run, which must not be used.
     try testing.expectEqual(@as(usize, 2), s.detail_files);
 
-    const a = try readOut(gpa, &f, "out/data/files/dom/a.html.json");
+    const a = try readOut(gpa, &f, "out/dom/a.html/index.html");
     defer gpa.free(a);
-    try testing.expect(std.mem.indexOf(u8, a, "assert_equals: expected 1 but got 2") != null);
-    try testing.expect(std.mem.indexOf(u8, a, "\"one\"") != null);
+    try expectHas(a, "<span class=\"fg-pass\">2</span><span class=\"fg-of\"> / 3</span>");
+    try expectHas(a, "<details><summary><span class=\"mark\">FAIL</span><span class=\"sub-name\">two &lt;b&gt;&amp;</span></summary><pre class=\"msg\">assert_equals: expected 1 but got 2</pre></details>");
+    try expectHas(a, "<div class=\"sub-line\"><span class=\"mark\">PASS</span><span class=\"sub-name\">one</span></div>");
+    try expectHas(a, "https://github.com/zig-whatwg/wpt/blob/50d8c16fa8219824aad90ef0ec02328e7ecbc8e5/dom/a.html");
+    try expectHas(a, "<code>sweep-abc1234</code>");
+    try expectHas(a, "/commit/abc1234\"><code>abc1234</code></a>");
+    try expectBefore(a, "\"sub-name\">one<", "\"sub-name\">two &lt;b&gt;&amp;<");
+    try expectBefore(a, "\"sub-name\">two &lt;b&gt;&amp;<", "\"sub-name\">three<");
 
-    // Two runs of c.any.js, sorted by test URL.
-    const c = try readOut(gpa, &f, "out/data/files/dom/nodes/c.any.js.json");
+    // Two runs of c.any.js, each under its test URL, sorted.
+    const c = try readOut(gpa, &f, "out/dom/nodes/c.any.js/index.html");
     defer gpa.free(c);
-    const i_win = std.mem.indexOf(u8, c, "/dom/nodes/c.any.html").?;
-    const i_wkr = std.mem.indexOf(u8, c, "/dom/nodes/c.any.worker.html").?;
-    try testing.expect(i_win < i_wkr);
+    try expectBefore(c, "<code>/dom/nodes/c.any.html</code>", "<code>/dom/nodes/c.any.worker.html</code>");
 
-    try testing.expectError(error.FileNotFound, f.tmp.dir.statFile(testing.io, "out/data/files/dom/b.html.json", .{}));
-    const dom = try readOut(gpa, &f, "out/data/dirs/dom.json");
-    defer gpa.free(dom);
-    try testing.expect(std.mem.indexOf(u8, dom, "\"detail\":true") != null);
-    try testing.expect(std.mem.indexOf(u8, dom, "\"detail\":false") != null);
+    const b = try readOut(gpa, &f, "out/dom/b.html/index.html");
+    defer gpa.free(b);
+    try expectHas(b, "No per-subtest data for this file.");
+    try testing.expect(std.mem.indexOf(u8, b, "stale") == null);
+    try expectHas(b, "<pre class=\"msg\">took too long</pre>");
 }
 
 test "site: a file past the detail limit keeps every non-passing subtest and counts the rest" {
@@ -1025,79 +999,142 @@ test "site: a file past the detail limit keeps every non-passing subtest and cou
     defer f.deinit();
     _ = try runFixture(gpa, &f, "out", fixture_worklist);
 
-    const a = try readOut(gpa, &f, "out/data/files/dom/a.html.json");
+    const a = try readOut(gpa, &f, "out/dom/a.html/index.html");
     defer gpa.free(a);
-    const p = try std.json.parseFromSlice(std.json.Value, gpa, a, .{});
-    defer p.deinit();
-    const run = p.value.object.get("runs").?.array.items[0].object;
-    try testing.expectEqual(@as(i64, 504), run.get("passing_omitted").?.integer);
-    const subs = run.get("subtests").?.array.items;
-    try testing.expectEqual(@as(usize, 6), subs.len);
-    for (subs) |sub| try testing.expectEqualStrings("FAIL", sub.object.get("status").?.string);
-    try testing.expectEqual(@as(i64, 510), run.get("counts").?.object.get("total").?.integer);
+    try testing.expectEqual(@as(usize, 6), std.mem.count(u8, a, "<li class=\"sub s-fail\""));
+    try testing.expectEqual(@as(usize, 0), std.mem.count(u8, a, "<li class=\"sub s-pass\""));
+    try expectHas(a, "504 passing subtests are not listed");
 }
 
-test "site: an unchanged input writes byte-identical files, and only meta.json carries timestamps" {
+test "site: no page needs script for any of its content" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
     defer f.deinit();
-    _ = try runFixture(gpa, &f, "one", fixture_worklist);
-    const again = try runFixture(gpa, &f, "one", fixture_worklist);
-    try testing.expectEqual(@as(usize, 0), again.written);
-    _ = try runFixture(gpa, &f, "two", fixture_worklist);
-
-    var one = try f.tmp.dir.openDir(testing.io, "one", .{ .iterate = true });
-    defer one.close(testing.io);
-    var walker = try one.walk(gpa);
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    var out = try f.tmp.dir.openDir(testing.io, "out", .{ .iterate = true });
+    defer out.close(testing.io);
+    var walker = try out.walk(gpa);
     defer walker.deinit();
-    var n: usize = 0;
+    var pages: usize = 0;
     while (try walker.next(testing.io)) |e| {
         if (e.kind != .file) continue;
-        n += 1;
-        const a = try one.readFileAlloc(testing.io, e.path, gpa, .limited(1 << 24));
-        defer gpa.free(a);
-        const other = try std.fmt.allocPrint(gpa, "two/{s}", .{e.path});
-        defer gpa.free(other);
-        const b = try readOut(gpa, &f, other);
-        defer gpa.free(b);
-        try testing.expectEqualStrings(a, b);
-        if (!std.mem.eql(u8, e.path, "data/meta.json")) {
-            try testing.expect(std.mem.indexOf(u8, a, "2026-") == null);
+        try testing.expect(!std.mem.endsWith(u8, e.path, ".js"));
+        try testing.expect(!std.mem.endsWith(u8, e.path, ".json"));
+        if (!std.mem.endsWith(u8, e.path, ".html")) continue;
+        pages += 1;
+        const page = try out.readFileAlloc(testing.io, e.path, gpa, .limited(1 << 24));
+        defer gpa.free(page);
+        if (pages_mod.needsScript(page)) |why| {
+            std.debug.print("\n{s} needs script: {s}\n", .{ e.path, why });
+            return error.TestPageNeedsScript;
         }
+        // Every page is a whole document with its numbers in it.
+        try testing.expect(std.mem.startsWith(u8, page, "<!doctype html>\n"));
+        try testing.expect(std.mem.endsWith(u8, page, "</html>\n"));
+        try expectHas(page, "WPT subtests passing");
     }
-    try testing.expect(n >= 6);
-    const meta = try readOut(gpa, &f, "one/data/meta.json");
-    defer gpa.free(meta);
-    try testing.expect(std.mem.indexOf(u8, meta, "\"sweep-abc1234\"") != null);
-    try testing.expect(std.mem.indexOf(u8, meta, "\"commit\":\"abc1234\"") != null);
-    try testing.expect(std.mem.indexOf(u8, meta, "50d8c16fa8219824aad90ef0ec02328e7ecbc8e5") != null);
+    try testing.expectEqual(@as(usize, 9), pages);
 }
 
-test "site: a file that leaves the worklist loses its shards; .git is never touched" {
+test "site: unchanged input writes byte-identical files; a new generation rewrites only index.html and the card" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const first = try runFixture(gpa, &f, "one", fixture_worklist);
+    try testing.expect(first.written > 0);
+    const again = try runFixture(gpa, &f, "one", fixture_worklist);
+    try testing.expectEqual(@as(usize, 0), again.written);
+    try testing.expectEqual(first.written, again.unchanged);
+
+    // A third generation with the same results: the history moves, nothing else.
+    const st = try f.state(gpa);
+    defer gpa.free(st);
+    var out = try f.tmp.dir.openDir(testing.io, "one", .{ .iterate = true });
+    defer out.close(testing.io);
+    const next = try generate(gpa, testing.io, .{
+        .state_json = st,
+        .history_json = fixture_history_next,
+        .worklist_text = fixture_worklist,
+        .results = f.results,
+        .assets = null,
+        .wpt = fixture_wpt,
+    }, out);
+    try testing.expectEqual(@as(usize, 1), next.written);
+    const index = try readOut(gpa, &f, "one/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "Generation 3, recorded at Crane");
+    // Only the index carries a generation or its date.
+    var walker = try out.walk(gpa);
+    defer walker.deinit();
+    while (try walker.next(testing.io)) |e| {
+        if (e.kind != .file or !std.mem.endsWith(u8, e.path, ".html") or std.mem.eql(u8, e.path, "index.html")) continue;
+        const page = try out.readFileAlloc(testing.io, e.path, gpa, .limited(1 << 24));
+        defer gpa.free(page);
+        try testing.expect(std.mem.indexOf(u8, page, "Generation") == null);
+        try testing.expect(std.mem.indexOf(u8, page, "last updated") == null);
+    }
+}
+
+test "site: a file that leaves the worklist loses its page; .git is never touched" {
     const gpa = testing.allocator;
     var f = try Fixture.init(fixture_stream);
     defer f.deinit();
     _ = try runFixture(gpa, &f, "out", fixture_worklist);
     try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "out/.git", .data = "gitdir: elsewhere\n" });
+    try f.tmp.dir.createDirPath(testing.io, "out/data/dirs");
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "out/data/dirs/dom.json", .data = "{}" });
+    try f.tmp.dir.writeFile(testing.io, .{ .sub_path = "out/site.js", .data = "old" });
     const smaller =
         \\dom/b.html
         \\url/u.html
         \\
     ;
     const s = try runFixture(gpa, &f, "out", smaller);
-    try testing.expect(s.removed >= 2);
-    try testing.expectError(error.FileNotFound, f.tmp.dir.statFile(testing.io, "out/data/files/dom/a.html.json", .{}));
-    try testing.expectError(error.FileNotFound, f.tmp.dir.statFile(testing.io, "out/data/dirs/dom/nodes.json", .{}));
-    _ = try f.tmp.dir.statFile(testing.io, "out/.git", .{});
-    _ = try f.tmp.dir.statFile(testing.io, "out/.nojekyll", .{});
+    try testing.expect(s.removed >= 5);
+    try testing.expect(!exists(&f, "out/dom/a.html/index.html"));
+    try testing.expect(!exists(&f, "out/dom/nodes/index.html"));
+    try testing.expect(!exists(&f, "out/dom/nodes"));
+    // The script-rendered site's leftovers go too.
+    try testing.expect(!exists(&f, "out/data/dirs/dom.json"));
+    try testing.expect(!exists(&f, "out/site.js"));
+    try testing.expect(exists(&f, "out/.git"));
+    try testing.expect(exists(&f, "out/.nojekyll"));
+    try testing.expect(exists(&f, "out/dom/b.html/index.html"));
 }
 
-test "assets: index.html opens its body with the direction contract, verbatim" {
-    const html = @embedFile("assets/index.html");
-    const body = std.mem.indexOf(u8, html, "<body") orelse return error.NoBody;
-    const after = std.mem.indexOfScalarPos(u8, html, body, '>').? + 1;
-    const rest = std.mem.trimStart(u8, html[after..], " \t\r\n");
+test "site: index.html carries the social card's tags, and the card is a 1200x630 PNG" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<meta property=\"og:title\" content=\"Crane WPT results: 5 / 8 WPT subtests passing\">");
+    try expectHas(index, "<meta property=\"og:url\" content=\"https://zig-whatwg.github.io/crane/\">");
+    try expectHas(index, "<meta property=\"og:image\" content=\"https://zig-whatwg.github.io/crane/card.png?v=");
+    try expectHas(index, "<meta name=\"twitter:card\" content=\"summary_large_image\">");
+    try expectHas(index, "<meta property=\"og:description\" content=\"3 failed, 0 timed out, 0 not run; 5 test files, 2 blocking.");
+    // The tags sit in the head, where crawlers read them.
+    try expectBefore(index, "og:image", "</head>");
+
+    const card_bytes = try readOut(gpa, &f, "out/card.png");
+    defer gpa.free(card_bytes);
+    var img = try png.decode(gpa, card_bytes);
+    defer img.deinit(gpa);
+    try testing.expectEqual(@as(u32, 1200), img.width);
+    try testing.expectEqual(@as(u32, 630), img.height);
+}
+
+test "site: index.html opens its body with the direction contract" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    const body = std.mem.indexOf(u8, index, "<body>\n") orelse return error.NoBody;
+    const rest = index[body + "<body>\n".len ..];
     try testing.expect(std.mem.startsWith(u8, rest, "<!--\nTHESIS: "));
-    try testing.expect(std.mem.indexOf(u8, rest, "seed a0daf20c") != null);
-    try testing.expect(std.mem.indexOf(u8, rest, "FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md\n-->") != null);
+    try expectHas(rest, "seed a0daf20c");
+    try expectHas(rest, "FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md\n-->");
 }
