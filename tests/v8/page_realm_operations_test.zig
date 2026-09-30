@@ -526,6 +526,112 @@ test "an attribute setter releases the handle of the value it converted" {
     }
 }
 
+/// A CustomEvent in the realm as `ce`: `initCustomEvent`'s `detail` and
+/// `CustomEventInit.detail` are `any`, and the event keeps a hold of its own
+/// on whatever it is given (CustomEvent.setDetail), so anything left over
+/// after a call is the binding's.
+fn customEventInRealm() !void {
+    try eventInRealm();
+    const context = context_once.?;
+    const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+    defer ffi.v8_Object_Dispose(global);
+    v8.interface_bindings.CustomEvent.registerGlobalFast(isolate_once.?, context, global, "CustomEvent");
+    const reports = try run("globalThis.ce = new CustomEvent('x');");
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+}
+
+/// The primitives an `any` converts to a Zig value of its own: a string (an
+/// owned copy), a number, a boolean, null and undefined.
+const primitive_details = "['Test cleanup', 'Test cleanup ' + i, i, i % 2 == 0, null, undefined][i % 6]";
+
+test "an `any` argument that converts to a primitive leaves no handle behind" {
+    try customEventInRealm();
+    const isolate = isolate_once.?;
+
+    // The control: the same values stored as an expando - no conversion.
+    var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    _ = try run("for (let i = 0; i < 64; i++) ce.expando = " ++ primitive_details ++ ";");
+    const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+
+    // testharness.js calls abortController.abort("Test cleanup") once per
+    // subtest: an `any` string, one argument handle kept per call.
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const reports = try run("for (let i = 0; i < 64; i++) ce.initCustomEvent('x', false, false, " ++ primitive_details ++ ");");
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+    const calls = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    if (calls > control) {
+        std.debug.print("64 initCustomEvent calls with a primitive detail: {d} bytes of global handles left, against {d} for 64 expando stores\n", .{ calls, control });
+        return error.HandlesLeaked;
+    }
+}
+
+test "an `any` dictionary member that converts to a primitive leaves no handle behind" {
+    try customEventInRealm();
+    const isolate = isolate_once.?;
+
+    // The control: 64 Events, whose EventInit has boolean members only - each
+    // converted and its handle released. Every event is wrapped (a weak
+    // Global per event either way), so what a CustomEvent loop leaves beyond
+    // this is its `detail` member: absent (undefined) or a primitive the
+    // event holds by value (retainValue keeps a number, a boolean or null
+    // without a Global).
+    var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    _ = try run("globalThis.kept = []; for (let i = 0; i < 64; i++) kept.push(new Event('x', {}));");
+    const control = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    var reports = try run("globalThis.kept2 = []; for (let i = 0; i < 64; i++) kept2.push(new CustomEvent('x', {}));");
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+    const absent = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    reports = try run("globalThis.kept3 = []; for (let i = 0; i < 64; i++) kept3.push(new CustomEvent('x', { detail: [i, i % 2 == 0, null, 0.5][i % 4] }));");
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+    const primitive = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+    _ = try run("delete globalThis.kept; delete globalThis.kept2; delete globalThis.kept3;");
+    if (absent > control or primitive > control) {
+        std.debug.print("64 CustomEvents: {d} bytes of global handles left with no detail, {d} with a primitive detail, against {d} for 64 Events\n", .{ absent, primitive, control });
+        return error.HandlesLeaked;
+    }
+}
+
+test "converting a sequence leaves no handle of its own behind" {
+    _ = try realm();
+    const isolate = isolate_once.?;
+    const context = context_once.?;
+    const array = try scriptValue("['a', 'bb', 'ccc', 'dddd', 1, true, null, 'eeeee']");
+    defer ffi.v8_Value_Dispose(array);
+
+    // sequence<DOMString>: every element copied out.
+    var start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    for (0..32) |_| {
+        const strings = try v8.conversions.fromV8Value([]const runtime.DOMString, std.testing.allocator, isolate, context, array);
+        for (strings) |s| switch (s) {
+            .owned => |bytes| std.testing.allocator.free(bytes),
+            else => {},
+        };
+        std.testing.allocator.free(strings);
+    }
+    const strings_left = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+
+    // sequence<any> of primitives: each converts to a value of its own.
+    start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    for (0..32) |_| {
+        const values = try v8.conversions.fromV8Value([]const runtime.JSValue, std.testing.allocator, isolate, context, array);
+        for (values) |value| switch (value) {
+            .string => |s| if (s.owned) std.testing.allocator.free(s.data),
+            else => {},
+        };
+        std.testing.allocator.free(values);
+    }
+    const anys_left = ffi.v8_Isolate_GetGlobalHandleBytes(isolate) -| start;
+
+    if (strings_left > 0 or anys_left > 0) {
+        std.debug.print("32 conversions of an 8-element array: {d} bytes of global handles left as sequence<DOMString>, {d} as sequence<any>\n", .{ strings_left, anys_left });
+        return error.HandlesLeaked;
+    }
+}
+
 test "a value assigned through an attribute setter does not keep its realm alive" {
     try eventInRealm();
     const isolate = isolate_once.?;

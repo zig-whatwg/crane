@@ -543,17 +543,65 @@ pub const non_owning_arg_types = struct {
 };
 
 /// `conv.fromV8Value`, releasing the argument handle afterwards when
-/// `argHandleIsCopied` can prove that is safe. The `defer` fires on the error
-/// path too, which is where the handle would otherwise be lost silently.
-fn convertArgReleasing(
+/// `argHandleIsCopied` can prove that is safe - or, for an `any`
+/// (`anyHandleIsKeptOnlyAsHandle`), when the value it converted to proves it
+/// (`anyConversionKeepsHandle`). The release fires on the error path too,
+/// which is where the handle would otherwise be lost silently.
+pub fn convertArgReleasing(
     comptime T: type,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
     context: *v8.Context,
     arg: *v8.Value,
 ) !T {
-    defer if (comptime argHandleIsCopied(T)) v8.v8_Value_Dispose(arg);
-    return conv.fromV8Value(T, allocator, isolate, context, arg);
+    if (comptime argHandleIsCopied(T)) {
+        defer v8.v8_Value_Dispose(arg);
+        return conv.fromV8Value(T, allocator, isolate, context, arg);
+    }
+    const value = conv.fromV8Value(T, allocator, isolate, context, arg) catch |err| {
+        // A failed `any` conversion made nothing that could refer to it.
+        if (comptime anyHandleIsKeptOnlyAsHandle(T)) v8.v8_Value_Dispose(arg);
+        return err;
+    };
+    if (comptime anyHandleIsKeptOnlyAsHandle(T)) {
+        if (!anyConversionKeepsHandle(T, value)) v8.v8_Value_Dispose(arg);
+    }
+    return value;
+}
+
+/// Is `T` an `any` - `runtime.JSValue`, nullable, or a `webidl.Opt` of
+/// either - whose conversion can keep its argument's handle in exactly one
+/// place: a `.handle` JSValue?
+///
+/// `conv.fromV8Value`'s JSValue branch makes undefined, null, a boolean or a
+/// number into a Zig value, a string into an owned copy (`.string`), and ONLY
+/// an object, function or symbol into `.handle` over the very handle it was
+/// given ("the argument's own handle ... which the impl borrows for the
+/// call"). A nullable one converts null and undefined to null; a `webidl.Opt`
+/// one converts undefined to "not passed". So for these shapes the value
+/// converted says whether the handle is still referred to - ownership read off
+/// the conversion, not the type (see `argConversionIsNonOwning`).
+///
+/// An ALLOWLIST of those four shapes: a union or dictionary that merely
+/// contains an `any` keeps the conservative answer (false: keep the handle).
+pub fn anyHandleIsKeptOnlyAsHandle(comptime T: type) bool {
+    if (T == runtime.JSValue or T == ?runtime.JSValue) return true;
+    if (@typeInfo(T) == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed")) {
+        const Inner = @FieldType(T, "value");
+        return Inner == runtime.JSValue or Inner == ?runtime.JSValue;
+    }
+    return false;
+}
+
+/// Whether `value`, converted from an argument handle as a `T` that
+/// `anyHandleIsKeptOnlyAsHandle` accepts, still refers to that handle: true
+/// exactly for a `.handle` JSValue.
+pub fn anyConversionKeepsHandle(comptime T: type, value: T) bool {
+    comptime std.debug.assert(anyHandleIsKeptOnlyAsHandle(T));
+    if (T == runtime.JSValue) return value == .handle;
+    if (T == ?runtime.JSValue) return if (value) |v| v == .handle else false;
+    if (!value.was_passed) return false;
+    return anyConversionKeepsHandle(@FieldType(T, "value"), value.value);
 }
 
 /// WebIDL [LegacyNullToEmptyString] (3.3.23): the arguments of `fn_name` -
@@ -4205,10 +4253,15 @@ pub fn V8Interface(comptime Interface: type) type {
                     log.debug("[CTOR_ARGS] MutationObserver single-param path, Param1Type={s}, js_arg_count={d}\n", .{ @typeName(Param1Type), js_arg_count });
                 }
 
-                // Check if this is a ConstructorArgs union (overloaded constructor)
-                const param_info = @typeInfo(Param1Type);
-                if (param_info == .@"union") {
-                    // This is a union - likely a ConstructorArgs for overloaded constructors
+                // An overloaded constructor takes its interface's generated
+                // ConstructorArgs. Any other union parameter - a DOMString
+                // (a union(enum) of its storage), CSSNumberish - is one
+                // argument, converted and freed like every other: taken for a
+                // ConstructorArgs, `new BroadcastChannel(name)` built its name
+                // as an "interned" arm the cleanup never frees, and leaked the
+                // argument's handle with it.
+                if (comptime @hasDecl(Interface, "ConstructorArgs") and Param1Type == Interface.ConstructorArgs) {
+                    // Overloaded: the resolver picks the variant.
                     // Use overload resolver to build the appropriate union variant
                     const args = try overload_resolver.resolveConstructorOverload(
                         Param1Type,

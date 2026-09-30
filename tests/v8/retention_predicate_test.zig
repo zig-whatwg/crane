@@ -339,3 +339,47 @@ test "getterValueIsOwned - an unknown type defaults to KEPT" {
     const Shape = union(enum) { node: *runtime.Instance, text: runtime.DOMString };
     try std.testing.expect(!resultOwned(Shape));
 }
+
+// ---------------------------------------------------------------------------
+// `anyHandleIsKeptOnlyAsHandle` / `anyConversionKeepsHandle` - may the
+// argument handle of an `any` go once it is converted? Only the value can
+// say: a primitive is copied out, an object stays a `.handle` over the very
+// Global the argument was. TRUE from the shape predicate lets the binding ask
+// the value, so its fallthrough must be FALSE.
+
+const anyShape = v8.interface_mod.anyHandleIsKeptOnlyAsHandle;
+const anyKeeps = v8.interface_mod.anyConversionKeepsHandle;
+
+test "anyHandleIsKeptOnlyAsHandle - an any, nullable or optional, is decided by its value" {
+    try std.testing.expect(anyShape(runtime.JSValue));
+    try std.testing.expect(anyShape(?runtime.JSValue));
+    const webidl = @import("webidl");
+    try std.testing.expect(anyShape(webidl.Opt(runtime.JSValue)));
+    try std.testing.expect(anyShape(webidl.Opt(?runtime.JSValue)));
+}
+
+test "anyHandleIsKeptOnlyAsHandle - an unknown type, or one that merely contains an any, defaults to NO" {
+    const SomethingNew = struct { a: u32, b: *anyopaque };
+    try std.testing.expect(!anyShape(SomethingNew));
+    try std.testing.expect(!anyShape([]const runtime.JSValue));
+    const Shape = union(enum) { value: runtime.JSValue, text: runtime.DOMString };
+    try std.testing.expect(!anyShape(Shape));
+    const Dictionary = struct { detail: ?runtime.JSValue = null };
+    try std.testing.expect(!anyShape(Dictionary));
+    try std.testing.expect(!anyShape(runtime.DOMString));
+}
+
+test "anyConversionKeepsHandle - only a .handle keeps the argument's handle" {
+    var dummy: u64 = 0;
+    const handle_value: runtime.JSValue = .{ .handle = .{ .ptr = @ptrCast(&dummy) } };
+    try std.testing.expect(anyKeeps(runtime.JSValue, handle_value));
+    try std.testing.expect(!anyKeeps(runtime.JSValue, runtime.JSValue.jsNull));
+    try std.testing.expect(!anyKeeps(runtime.JSValue, .{ .number = 1 }));
+    try std.testing.expect(!anyKeeps(runtime.JSValue, .{ .string = .{ .data = "x", .owned = false } }));
+    try std.testing.expect(anyKeeps(?runtime.JSValue, handle_value));
+    try std.testing.expect(!anyKeeps(?runtime.JSValue, null));
+    const webidl = @import("webidl");
+    try std.testing.expect(anyKeeps(webidl.Opt(runtime.JSValue), webidl.Opt(runtime.JSValue).passed(handle_value)));
+    try std.testing.expect(!anyKeeps(webidl.Opt(runtime.JSValue), webidl.Opt(runtime.JSValue).notPassed()));
+    try std.testing.expect(!anyKeeps(webidl.Opt(runtime.JSValue), webidl.Opt(runtime.JSValue).passed(runtime.JSValue.jsUndefined)));
+}

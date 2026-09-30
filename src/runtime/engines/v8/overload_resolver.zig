@@ -14,7 +14,7 @@
 
 const std = @import("std");
 const v8 = @import("ffi.zig");
-const conv = @import("conversions.zig");
+const interface_mod = @import("interface.zig");
 const webidl = @import("webidl");
 
 /// Resolve constructor overload by matching JavaScript arguments to union variant
@@ -173,8 +173,11 @@ fn buildVariant(
     // Case 1: Single-parameter variant
     if (type_info != .@"struct") {
         // Convert first JavaScript argument to variant type
+        // `info.get` makes a Global per call, and each variant tried asks
+        // again: released by the binding's argument rule
+        // (interface.convertArgReleasing), or every attempt leaked one.
         const v8_arg = info.get(0);
-        const arg_value = try conv.fromV8Value(
+        const arg_value = try interface_mod.convertArgReleasing(
             VariantType,
             allocator,
             isolate,
@@ -192,7 +195,7 @@ fn buildVariant(
     // Convert each JavaScript argument to corresponding struct field
     inline for (type_info.@"struct".fields, 0..) |struct_field, i| {
         const v8_arg = info.get(@intCast(i));
-        const field_value = try conv.fromV8Value(
+        const field_value = try interface_mod.convertArgReleasing(
             struct_field.type,
             allocator,
             isolate,
