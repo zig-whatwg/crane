@@ -11,7 +11,7 @@
 //!
 //! Spec: https://dom.spec.whatwg.org/#eventtarget-activation-behavior
 //!
-//! lint-impls: hook for HTMLAnchorElement, HTMLAreaElement
+//! lint-impls: hook for HTMLAnchorElement, HTMLAreaElement, HTMLButtonElement, HTMLInputElement, HTMLLabelElement
 
 const std = @import("std");
 const runtime = @import("runtime");

@@ -126,7 +126,16 @@ pub fn init(
     // Initialize length to 0
     state.own.length = 0;
 
+    // Other impls fill a static list they created (an element's labels).
+    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes });
+
     return instance;
+}
+
+/// dom.node_lists: make an empty list the static list of `nodes`.
+fn setStaticNodes(list: *runtime.Instance, nodes: []const *runtime.Instance) anyerror!void {
+    clear(list);
+    for (nodes) |node| try addNode(list, node);
 }
 
 /// Deinitialize instance

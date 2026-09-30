@@ -142,6 +142,10 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // The select element's reset algorithm is this file's, as the rest of
+    // the selection model is: installed before any option exists.
+    @import("dom").form_controls.install(.{ .is = &isSelectElement, .reset = &resetSelect });
+
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
@@ -289,6 +293,26 @@ pub fn ownerSelect(option: *runtime.Instance) ?*runtime.Instance {
 
 /// What an option says about itself, before the select's reset algorithm.
 pub const Explicit = enum { on, off, off_no_reset, absent };
+
+fn isSelectElement(element: *runtime.Instance) bool {
+    return element.stateAs(interfaces.HTMLSelectElement.State) != null;
+}
+
+/// dom.form_controls, for select elements: "The reset algorithm for a select
+/// element selectElement is: 1. Set selectElement's user validity to false.
+/// 2. For each optionElement of selectElement's list of options: if
+/// optionElement has a selected attribute, then set optionElement's
+/// selectedness to true; otherwise set it to false; and set optionElement's
+/// dirtiness to false. 3. Run the selectedness setting algorithm given
+/// selectElement." A clean option IS its selected attribute, and the
+/// selectedness setting algorithm runs whenever selectedness is read.
+fn resetSelect(select: *runtime.Instance) void {
+    const allocator = select.ctx.allocator;
+    var options = std.ArrayListUnmanaged(*runtime.Instance).empty;
+    defer options.deinit(allocator);
+    collectOptions(select, allocator, &options) catch return;
+    for (options.items) |option| _ = StateMap.remove(option);
+}
 
 /// The option's own selectedness, which never consults the owning select - that
 /// is what keeps `get_selected` from recursing through its siblings.
@@ -495,12 +519,16 @@ fn optionText(instance: *runtime.Instance) anyerror!runtime.DOMString {
 // IDL attributes
 // ---------------------------------------------------------------------------
 
-/// Getter for form
+/// Getter for form: "If the option element has a select element as its
+/// parent, or has an optgroup element as its parent and that optgroup element
+/// has a select element as its parent, then the form IDL attribute must
+/// return the same value as the form IDL attribute on that select element.
+/// Otherwise, it must return null."
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    // TODO: form association is not implemented anywhere yet; HTMLInputElement
-    // and HTMLSelectElement return null here for the same reason.
-    _ = instance;
-    return null;
+    var parent = NodeImpl.getParent(instance) orelse return null;
+    if (isElementNamed(parent, "optgroup")) parent = NodeImpl.getParent(parent) orelse return null;
+    if (parent.stateAs(interfaces.HTMLSelectElement.State) == null) return null;
+    return interfaces.HTMLSelectElement.get_form(parent);
 }
 
 /// Getter for label

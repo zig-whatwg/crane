@@ -17,6 +17,8 @@ const NodeImpl = @import("Node.zig");
 // text alike, so reading it yields "" for every textarea. Node.zig's own
 // collectTextContent goes through here for the same reason.
 const CharacterDataImpl = @import("CharacterData.zig");
+const form_associated = @import("form_associated.zig");
+const dom = @import("dom");
 
 pub const State = HTMLTextAreaElement.State;
 
@@ -84,7 +86,35 @@ const StateMap = struct {
         if (ensure().fetchRemove(@intFromPtr(instance))) |kv| return kv.value;
         return null;
     }
+
+    /// Free every entry's value and forget them all.
+    fn sweep() void {
+        const m = map orelse return;
+        var values = m.valueIterator();
+        while (values.next()) |state| state.deinit();
+        map.?.clearRetainingCapacity();
+    }
 };
+
+/// dom.teardown_sweeps: a textarea still alive when the browser ends is
+/// never deinit'd one by one, and its dirty raw value is its own
+/// allocation.
+pub fn cleanupAllRemainingInternal() void {
+    StateMap.sweep();
+}
+
+fn isTextArea(instance: *runtime.Instance) bool {
+    return form_associated.isTextArea(instance);
+}
+
+/// dom.form_controls: "The reset algorithm for textarea elements is to set
+/// the user validity and dirty value flag back to false, and set the raw
+/// value of element to its child text content."
+fn resetAlgorithm(instance: *runtime.Instance) void {
+    const internal = StateMap.get(instance) orelse return;
+    internal.deinit();
+    internal.raw_value = null;
+}
 
 /// https://html.spec.whatwg.org/multipage/form-elements.html#concept-textarea-raw-value
 ///
@@ -106,42 +136,38 @@ const StateMap = struct {
 /// `el.value = "a\r\nb"` reads back "a\nb", which
 /// `value-defaultValue-textContent.html` asserts in two places.
 pub const InternalState = struct {
-    /// Owned. Non-null means the dirty value flag is set.
+    /// Owned by `allocator`. Non-null means the dirty value flag is set.
     raw_value: ?[]u8 = null,
+    /// The allocator raw_value came from, recorded with it: final
+    /// teardown's sweep has no element to ask.
+    allocator: ?std.mem.Allocator = null,
 
-    /// The text entry cursor, in UTF-16 code units of the API value. Not a
-    /// reflection of anything; clamped on read because the value can shrink
+    /// The selection or text entry cursor, in UTF-16 code units of the API
+    /// value (§ 4.10.20); clamped on read because the value can shrink
     /// underneath it.
-    selection_start: u32 = 0,
-    selection_end: u32 = 0,
-    selection_direction: SelectionDirection = .none,
+    selection: form_associated.TextSelection = .{},
+    /// Select event tasks still queued (form_associated.queueSelectEvent).
+    pending_select_tasks: u32 = 0,
 
     /// Releases what the state OWNS. Deliberately does not null the field
     /// afterwards: the block is handed back to the arena immediately, so the
     /// write would be pointless, and a write through a registry pointer is the
     /// one thing worth not doing on a teardown path.
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        if (self.raw_value) |v| allocator.free(v);
-    }
-};
-
-pub const SelectionDirection = enum {
-    none,
-    forward,
-    backward,
-
-    fn keyword(self: SelectionDirection) []const u8 {
-        return switch (self) {
-            .none => "none",
-            .forward => "forward",
-            .backward => "backward",
-        };
+    pub fn deinit(self: *InternalState) void {
+        if (self.raw_value) |v| {
+            if (self.allocator) |a| a.free(v);
+        }
     }
 
-    fn parse(text: []const u8) SelectionDirection {
-        if (std.ascii.eqlIgnoreCase(text, "forward")) return .forward;
-        if (std.ascii.eqlIgnoreCase(text, "backward")) return .backward;
-        return .none;
+    fn setRawValue(self: *InternalState, allocator: std.mem.Allocator, value: []const u8) !void {
+        const copy = try allocator.dupe(u8, value);
+        // Free AFTER the new copy succeeds, so a failed allocation leaves the
+        // old value intact rather than clearing it.
+        if (self.raw_value) |old| {
+            if (self.allocator) |a| a.free(old);
+        }
+        self.raw_value = copy;
+        self.allocator = allocator;
     }
 };
 
@@ -153,6 +179,10 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
+    // The steps other code runs on textareas (each idempotent).
+    dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm });
+    dom.teardown_sweeps.install(&cleanupAllRemainingInternal);
+
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
@@ -171,7 +201,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     // already been reused.
     if (StateMap.remove(instance)) |taken| {
         var state = taken;
-        state.deinit(instance.ctx.allocator);
+        state.deinit();
     }
 
     const HTMLElementImpl = @import("HTMLElement.zig");
@@ -279,12 +309,9 @@ pub fn get_autocomplete(instance: *runtime.Instance) anyerror!runtime.DOMString 
     return runtime.DOMString.initEmpty();
 }
 
-/// Getter for form
+/// Getter for form: the element's form owner.
 pub fn get_form(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    // TODO: form association is not implemented; HTMLInputElement returns null
-    // here for the same reason.
-    _ = instance;
-    return null;
+    return form_associated.formOwner(instance);
 }
 
 /// Getter for type
@@ -350,8 +377,7 @@ pub fn get_validationMessage(instance: *runtime.Instance) anyerror!runtime.DOMSt
 
 /// Getter for labels
 pub fn get_labels(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return form_associated.labelsNodeList(instance);
 }
 
 /// The API value's length in UTF-16 code units, for clamping the cursor.
@@ -363,6 +389,25 @@ fn apiValueLength(instance: *runtime.Instance) u32 {
     return @intCast(units);
 }
 
+/// The selection as it reads now.
+fn currentSelection(instance: *runtime.Instance) form_associated.TextSelection {
+    const internal = StateMap.get(instance) orelse return .{};
+    return internal.selection.clamped(apiValueLength(instance));
+}
+
+fn pendingSelectTasks(instance: *runtime.Instance) ?*u32 {
+    const internal = StateMap.get(instance) orelse return null;
+    return &internal.pending_select_tasks;
+}
+
+/// "Set the selection range", and on a change, queue the select event.
+fn setSelectionRange(instance: *runtime.Instance, start: ?u32, end: ?u32, direction: ?[]const u8) !void {
+    const internal = try StateMap.getOrPut(instance);
+    if (internal.selection.setRange(start, end, direction, apiValueLength(instance))) {
+        form_associated.queueSelectEvent(instance, &pendingSelectTasks);
+    }
+}
+
 /// Getter for selectionStart
 pub fn get_selectionStart(instance: *runtime.Instance) anyerror!u32 {
     // There is no rendered text entry cursor here - no layout, no focus - so this
@@ -370,20 +415,17 @@ pub fn get_selectionStart(instance: *runtime.Instance) anyerror!u32 {
     // current value. React reads selectionStart/selectionEnd to restore the
     // caret after a controlled re-render, which is why this reports a position
     // rather than throwing.
-    const internal = StateMap.get(instance) orelse return 0;
-    return @min(internal.selection_start, apiValueLength(instance));
+    return currentSelection(instance).start;
 }
 
 /// Getter for selectionEnd
 pub fn get_selectionEnd(instance: *runtime.Instance) anyerror!u32 {
-    const internal = StateMap.get(instance) orelse return 0;
-    return @min(internal.selection_end, apiValueLength(instance));
+    return currentSelection(instance).end;
 }
 
 /// Getter for selectionDirection
 pub fn get_selectionDirection(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const internal = StateMap.get(instance) orelse return runtime.DOMString.initInterned("none");
-    return runtime.DOMString.initInterned(internal.selection_direction.keyword());
+    return runtime.DOMString.initInterned(currentSelection(instance).direction.keyword());
 }
 
 /// Setter for defaultValue
@@ -393,87 +435,85 @@ pub fn set_defaultValue(instance: *runtime.Instance, value: runtime.DOMString) a
     try interfaces.Node.set_textContent(instance, value);
 }
 
-/// Setter for value
+/// Setter for value: "1. Let oldAPIValue be this element's API value. 2.
+/// Set this element's raw value to the new value. 3. Set this element's dirty
+/// value flag to true. 4. If the new API value is different from
+/// oldAPIValue, then move the text entry cursor position to the end of the
+/// text control, unselecting any selected text and resetting the selection
+/// direction to "none"."
 pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = try StateMap.getOrPut(instance);
     const allocator = instance.ctx.allocator;
-
-    const copy = allocator.dupe(u8, value.asSlice()) catch return error.OutOfMemory;
-    // Free AFTER the new copy succeeds, so a failed allocation leaves the old
-    // value intact rather than clearing it.
-    if (internal.raw_value) |old| allocator.free(old);
-    internal.raw_value = copy;
-
-    // The spec moves the text entry cursor to the end of the new value when the
-    // API value actually changed. Collapsing it unconditionally is the same
-    // observable result for a value that did not change, since the cursor was
-    // already clamped to that length.
-    const length = apiValueLength(instance);
-    internal.selection_start = length;
-    internal.selection_end = length;
-    internal.selection_direction = .none;
+    const old = try currentApiValue(instance);
+    defer allocator.free(old);
+    const internal = try StateMap.getOrPut(instance);
+    try internal.setRawValue(allocator, value.asSlice());
+    const now = try currentApiValue(instance);
+    defer allocator.free(now);
+    if (!std.mem.eql(u8, old, now)) {
+        const end = form_associated.utf16Length(now);
+        internal.selection = .{ .start = end, .end = end, .direction = .none };
+    }
 }
 
-/// Setter for selectionStart
+/// Setter for selectionStart: "2. Let end be the value of this element's
+/// selectionEnd attribute. 3. If end is less than the given value, set end
+/// to the given value. 4. Set the selection range with the given value, end,
+/// and the value of this element's selectionDirection attribute."
 pub fn set_selectionStart(instance: *runtime.Instance, value: u32) anyerror!void {
-    const internal = try StateMap.getOrPut(instance);
-    const length = apiValueLength(instance);
-    internal.selection_start = @min(value, length);
-    // "If the end is less than the new start, set the end to the new start."
-    if (internal.selection_end < internal.selection_start) {
-        internal.selection_end = internal.selection_start;
-    }
+    const current = currentSelection(instance);
+    try setSelectionRange(instance, value, @max(current.end, value), current.direction.keyword());
 }
 
-/// Setter for selectionEnd
+/// Setter for selectionEnd: "Set the selection range with the value of this
+/// element's selectionStart attribute, the given value, and the value of
+/// this element's selectionDirection attribute."
 pub fn set_selectionEnd(instance: *runtime.Instance, value: u32) anyerror!void {
-    const internal = try StateMap.getOrPut(instance);
-    const length = apiValueLength(instance);
-    internal.selection_end = @min(value, length);
-    // "If the start is greater than the new end, set the start to the new end."
-    if (internal.selection_start > internal.selection_end) {
-        internal.selection_start = internal.selection_end;
-    }
+    const current = currentSelection(instance);
+    try setSelectionRange(instance, current.start, value, current.direction.keyword());
 }
 
-/// Setter for selectionDirection
+/// Setter for selectionDirection: "Set the selection range with the value of
+/// this element's selectionStart attribute, the value of this element's
+/// selectionEnd attribute, and the given value."
 pub fn set_selectionDirection(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const internal = try StateMap.getOrPut(instance);
-    internal.selection_direction = SelectionDirection.parse(value.asSlice());
+    const current = currentSelection(instance);
+    try setSelectionRange(instance, current.start, current.end, value.asSlice());
 }
 
-/// Operation: select
+/// Operation: select - "Set the selection range with 0 and infinity."
 pub fn call_select(instance: *runtime.Instance) anyerror!void {
-    const internal = try StateMap.getOrPut(instance);
-    internal.selection_start = 0;
-    internal.selection_end = apiValueLength(instance);
-    internal.selection_direction = .none;
+    try setSelectionRange(instance, 0, std.math.maxInt(u32), null);
 }
 
 /// Operation: setSelectionRange
 pub fn call_setSelectionRange(instance: *runtime.Instance, start: u32, end: u32, direction: webidl.Opt(runtime.DOMString)) anyerror!void {
-    const internal = try StateMap.getOrPut(instance);
-    const length = apiValueLength(instance);
-
-    const clamped_end = @min(end, length);
-    const clamped_start = @min(@min(start, length), clamped_end);
-
-    internal.selection_start = clamped_start;
-    internal.selection_end = clamped_end;
-    internal.selection_direction = if (direction.wasPassed())
-        SelectionDirection.parse(direction.getValue().asSlice())
-    else
-        .none;
+    try setSelectionRange(instance, start, end, if (direction.was_passed) direction.value.asSlice() else null);
 }
 
-/// Operation: setRangeText
+/// setRangeText() steps 2-14 over the API value (textarea: the relevant
+/// value), for both overloads.
+fn setRangeText(instance: *runtime.Instance, replacement: []const u8, range: ?[2]u32, mode: ?form_associated.SelectionMode) !void {
+    const allocator = instance.ctx.allocator;
+    const current = try currentApiValue(instance);
+    defer allocator.free(current);
+    // 3-13.
+    const result = try form_associated.setRangeText(allocator, current, currentSelection(instance), replacement, range, mode);
+    defer allocator.free(result.value);
+    // 2. Set the dirty value flag; 9-10 the relevant value changed.
+    const internal = try StateMap.getOrPut(instance);
+    try internal.setRawValue(allocator, result.value);
+    // 14. Set the selection range with selection start and selection end.
+    try setSelectionRange(instance, result.selection_start, result.selection_end, null);
+}
+
+/// Operation: setRangeText(replacement)
 pub fn call_setRangeText(instance: *runtime.Instance, replacement: runtime.DOMString) anyerror!void {
-    // TODO: the full algorithm also takes (start, end, selectMode); codegen emits
-    // only the 1-argument overload, and replacing "the selection" needs the text
-    // entry cursor semantics this element does not have yet.
-    _ = instance;
-    _ = replacement;
-    return error.NotImplemented;
+    try setRangeText(instance, replacement.asSlice(), null, null);
+}
+
+/// Operation: setRangeText(replacement, start, end, selectionMode)
+pub fn call_setRangeText__1(instance: *runtime.Instance, replacement: runtime.DOMString, start: u32, end: u32, selectionMode: webidl.Opt(enums.SelectionMode)) anyerror!void {
+    try setRangeText(instance, replacement.asSlice(), .{ start, end }, form_associated.selectionModeOf(selectionMode));
 }
 
 /// Operation: checkValidity

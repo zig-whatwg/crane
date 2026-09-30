@@ -79,15 +79,30 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
+///
+/// XHR: "The new FormData(form, submitter) constructor steps are: 1. If form
+/// is given, then: 1. If submitter is non-null, then: 1. If submitter is not
+/// a submit button, then throw a TypeError. 2. If submitter's form owner is
+/// not form, then throw a "NotFoundError" DOMException. 2. Let list be the
+/// result of constructing the entry list for form and submitter. 3. If list
+/// is null, then throw an "InvalidStateError" DOMException. 4. Set this's
+/// entry list to list." Steps 1.1-1.4 are the form's (dom.form_submission).
 pub fn call_constructor(ctx: runtime.Context, form: webidl.Opt(*runtime.Instance), submitter: webidl.Opt(?*runtime.Instance)) !*runtime.Instance {
-    _ = form;
-    _ = submitter;
-
-    // Create empty FormData
-    const form_data = try InternalFormData.init(ctx.allocator);
-    errdefer form_data.deinit();
-
-    return createFromInternal(ctx.allocator, ctx, form_data);
+    // An empty FormData, owned by its instance once made: the errdefer ends
+    // where the ownership moves.
+    const instance = blk: {
+        const form_data = try InternalFormData.init(ctx.allocator);
+        errdefer form_data.deinit();
+        break :blk try createFromInternal(ctx.allocator, ctx, form_data);
+    };
+    if (form.was_passed) {
+        const given_submitter: ?*runtime.Instance = if (submitter.was_passed) submitter.value else null;
+        @import("dom").form_submission.constructEntryList(form.value, given_submitter, instance) catch |err| {
+            instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+            return err;
+        };
+    }
+    return instance;
 }
 
 /// Create a FormData from internal FormData (internal helper)
