@@ -6,7 +6,7 @@
 const std = @import("std");
 const log = std.log.scoped(.ir);
 const types = @import("types.zig");
-const spec_priority_mod = @import("spec_priority.zig");
+const duplicates = @import("duplicates.zig");
 const type_registry_mod = @import("type_registry.zig");
 
 // Re-export TypeRegistry and TypeKind from type_registry module for backward compatibility
@@ -17,7 +17,67 @@ pub const UnionInfo = type_registry_mod.UnionInfo;
 pub const UnionMember = type_registry_mod.UnionMember;
 pub const TypeRegistryStats = type_registry_mod.TypeRegistryStats;
 
+/// One definition, or partial definition, of a name as it was added.
+pub const Definition = union(enum) {
+    interface: types.Interface,
+    dictionary: types.Dictionary,
+    typedef: types.Typedef,
+    enum_type: types.Enum,
+    callback: types.Callback,
+    namespace: types.Namespace,
+
+    pub fn isPartial(self: Definition) bool {
+        return switch (self) {
+            .interface => |d| d.partial,
+            .dictionary => |d| d.partial,
+            .namespace => |d| d.partial,
+            .typedef, .enum_type, .callback => false,
+        };
+    }
+};
+
+/// A definition of a name and where it came from.
+pub const Occurrence = struct {
+    definition: Definition,
+    /// The source file's name (owned by the name's source_map list).
+    file: []const u8,
+    /// Its position among the definitions added from that file.
+    position: u32,
+    /// Its index in the name's source_map list.
+    source_index: usize,
+
+    /// The stable key: (file name, position in the file).
+    fn lessThan(_: void, a: Occurrence, b: Occurrence) bool {
+        return switch (std.mem.order(u8, a.file, b.file)) {
+            .lt => true,
+            .gt => false,
+            .eq => a.position < b.position,
+        };
+    }
+};
+
 /// Complete IR for all parsed WebIDL specifications
+///
+/// Merging. The IR does not depend on the order definitions are added in
+/// (WebIDL: "the order of appearance of an interface definition and any of
+/// its partial interface definitions does not matter"). Every add records an
+/// Occurrence, and the name's merged definition is rebuilt from all of its
+/// occurrences, sorted by (file name, position in the file):
+///
+/// 1. Every partial definition - interface, interface mixin, dictionary,
+///    namespace - merges into its definition.
+/// 2. Members: the definition's, in declaration order, then each partial's,
+///    in declaration order, partials in the sorted order. A partial
+///    dictionary member replaces a same-named member (web-animations-2
+///    restates web-animations' members with new types). Extended
+///    attributes: the definition's, then a partial's where the definition
+///    has none of that name - so a partial's [Exposed] never widens the
+///    interface's. (An includer's mixin members: see processIncludes.)
+/// 3. Two or more non-partial definitions of a name resolve by
+///    duplicates.zig, or fail with error.DuplicateDefinition - never by
+///    order.
+/// 4. So overloads, numbered by the generator in member order, are numbered
+///    the same whatever order files were read in.
 pub const IR = struct {
     /// All interfaces (merged from partials)
     interfaces: std.StringHashMap(Interface),
@@ -40,14 +100,24 @@ pub const IR = struct {
     /// Type registry for resolving type references
     type_registry: TypeRegistry,
 
-    /// Source file mapping (which spec defines/extends each interface)
+    /// Source file mapping (which spec defines/extends each name). The map
+    /// owns the name keys every other map shares.
     source_map: std.StringHashMap(std.ArrayList([]const u8)),
 
-    /// Spec priority resolver for handling duplicates
-    spec_priority: spec_priority_mod.SpecPriority,
+    /// Every definition and partial definition of each name, as added.
+    occurrences: std.StringHashMap(std.ArrayList(Occurrence)),
 
-    /// Allocated dictionary member slices (need to be freed)
-    merged_dict_members: std.ArrayList([]types.DictionaryMember),
+    /// How many definitions each source file has added (owns its keys).
+    file_positions: std.StringHashMap(u32),
+
+    /// Names whose duplicate definitions no rule resolves with the
+    /// occurrences seen so far (the definer's file may come later); finish()
+    /// resolves them or fails.
+    unresolved: std.StringHashMap(void),
+
+    /// Merged dictionary and namespace members and extended attributes.
+    /// Rebuilt on every add; freed with the IR.
+    merged: std.heap.ArenaAllocator,
 
     allocator: std.mem.Allocator,
 
@@ -65,8 +135,10 @@ pub const IR = struct {
             .namespaces = std.StringHashMap(types.Namespace).init(allocator),
             .type_registry = type_registry,
             .source_map = std.StringHashMap(std.ArrayList([]const u8)).init(allocator),
-            .spec_priority = try spec_priority_mod.SpecPriority.initDefault(allocator),
-            .merged_dict_members = std.ArrayList([]types.DictionaryMember).empty,
+            .occurrences = std.StringHashMap(std.ArrayList(Occurrence)).init(allocator),
+            .file_positions = std.StringHashMap(u32).init(allocator),
+            .unresolved = std.StringHashMap(void).init(allocator),
+            .merged = std.heap.ArenaAllocator.init(allocator),
             .allocator = allocator,
         };
     }
@@ -80,26 +152,23 @@ pub const IR = struct {
         }
         self.interfaces.deinit();
 
-        // Free dictionaries (keys are owned by source_map, so don't free them)
+        // Keys are owned by source_map, so don't free them
         self.dictionaries.deinit();
-
-        // Free allocated dictionary member slices (from partial merging)
-        for (self.merged_dict_members.items) |members| {
-            self.allocator.free(members);
-        }
-        self.merged_dict_members.deinit(self.allocator);
-
-        // Free typedefs (keys are owned by source_map, so don't free them)
         self.typedefs.deinit();
-
-        // Free enums (keys are owned by source_map, so don't free them)
         self.enums.deinit();
-
-        // Free callbacks (keys are owned by source_map, so don't free them)
         self.callbacks.deinit();
-
-        // Free namespaces (keys are owned by source_map, so don't free them)
         self.namespaces.deinit();
+
+        var occurrence_iter = self.occurrences.valueIterator();
+        while (occurrence_iter.next()) |list| list.deinit(self.allocator);
+        self.occurrences.deinit();
+
+        var position_iter = self.file_positions.keyIterator();
+        while (position_iter.next()) |key| self.allocator.free(key.*);
+        self.file_positions.deinit();
+        self.unresolved.deinit();
+
+        self.merged.deinit();
 
         // Free type registry
         self.type_registry.deinit();
@@ -114,78 +183,248 @@ pub const IR = struct {
             entry.value_ptr.deinit(self.allocator);
         }
         self.source_map.deinit();
-
-        // Free spec priority
-        self.spec_priority.deinit();
     }
 
-    /// Add an interface from a parsed IDL file
+    /// Add an interface (or interface mixin, or callback interface), partial or not.
     pub fn addInterface(self: *IR, iface: types.Interface, source_file: []const u8) !void {
+        return self.add(iface.name, .{ .interface = iface }, source_file);
+    }
+
+    /// Add a dictionary, partial or not.
+    pub fn addDictionary(self: *IR, dict: types.Dictionary, source_file: []const u8) !void {
+        return self.add(dict.name, .{ .dictionary = dict }, source_file);
+    }
+
+    pub fn addTypedef(self: *IR, typedef: types.Typedef, source_file: []const u8) !void {
+        return self.add(typedef.name, .{ .typedef = typedef }, source_file);
+    }
+
+    pub fn addEnum(self: *IR, enum_type: types.Enum, source_file: []const u8) !void {
+        return self.add(enum_type.name, .{ .enum_type = enum_type }, source_file);
+    }
+
+    pub fn addCallback(self: *IR, callback: types.Callback, source_file: []const u8) !void {
+        return self.add(callback.name, .{ .callback = callback }, source_file);
+    }
+
+    /// Add a namespace, partial or not.
+    pub fn addNamespace(self: *IR, namespace: types.Namespace, source_file: []const u8) !void {
+        return self.add(namespace.name, .{ .namespace = namespace }, source_file);
+    }
+
+    /// Record one definition of `name` and rebuild the name's merged definition.
+    fn add(self: *IR, name: []const u8, definition: Definition, source_file: []const u8) !void {
         // Get or create source_map entry first (this owns the name key)
-        const source_gop = try self.source_map.getOrPut(iface.name);
+        const source_gop = try self.source_map.getOrPut(name);
         if (!source_gop.found_existing) {
-            // First time seeing this name - allocate the key
-            const name_copy = try self.allocator.dupe(u8, iface.name);
-            source_gop.key_ptr.* = name_copy;
+            source_gop.key_ptr.* = try self.allocator.dupe(u8, name);
             source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
         }
+        const key = source_gop.key_ptr.*;
 
-        // Track source file - once appended, ArrayList owns it (no errdefer after append)
+        // Track source file - once appended, the list owns it
         const source_copy = try self.allocator.dupe(u8, source_file);
-        const source_index = source_gop.value_ptr.items.len; // Index before appending
+        const source_index = source_gop.value_ptr.items.len;
         source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
-            // If append fails, we still own source_copy, so free it
             self.allocator.free(source_copy);
             return err;
         };
 
-        // Add or merge interface (use the key from source_map)
-        const shared_key = source_gop.key_ptr.*;
-        const iface_gop = try self.interfaces.getOrPut(shared_key);
-        if (!iface_gop.found_existing) {
-            // First time seeing this interface - add it (partial or not)
-            iface_gop.value_ptr.* = try Interface.fromTypes(self.allocator, iface, shared_key, source_index);
-            // Register interface type - distinguish callback interfaces and mixins
-            const type_kind: TypeKind = if (iface.callback) .callback_interface else if (iface.mixin) .mixin else .interface;
-            try self.type_registry.register(shared_key, type_kind);
-        } else if (iface.partial) {
-            // Partial interface - merge with existing (which might also be partial-only so far)
-            try iface_gop.value_ptr.mergePartial(self.allocator, iface);
-        } else {
-            // Non-partial interface
-            if (iface_gop.value_ptr.has_base) {
-                // Already have a non-partial base - check priority
-                const existing_source = source_gop.value_ptr.items[iface_gop.value_ptr.base_source_index];
+        const position_gop = try self.file_positions.getOrPut(source_file);
+        if (!position_gop.found_existing) {
+            position_gop.key_ptr.* = try self.allocator.dupe(u8, source_file);
+            position_gop.value_ptr.* = 0;
+        }
+        const position = position_gop.value_ptr.*;
+        position_gop.value_ptr.* += 1;
 
-                // Only print warnings if files are different (skip same-file duplicates from module blocks)
-                const same_file = std.mem.eql(u8, source_file, existing_source);
+        const occurrence_gop = try self.occurrences.getOrPut(key);
+        if (!occurrence_gop.found_existing) occurrence_gop.value_ptr.* = .empty;
+        try occurrence_gop.value_ptr.append(self.allocator, .{
+            .definition = definition,
+            .file = source_copy,
+            .position = position,
+            .source_index = source_index,
+        });
 
-                if (self.spec_priority.shouldPrefer(iface.name, source_file, existing_source)) {
-                    // New spec has higher priority - replace existing
-                    if (!same_file) {
-                        log.warn("  ⚠️  Duplicate '{s}': preferring {s} over {s}", .{ iface.name, source_file, existing_source });
-                    }
+        try self.rebuild(key, false);
+    }
 
-                    // Replace the base definition
-                    try iface_gop.value_ptr.mergeBase(self.allocator, iface);
-                    iface_gop.value_ptr.base_source_index = source_index;
-                } else {
-                    // Existing spec has higher priority - skip new one
-                    if (!same_file) {
-                        log.warn("  ⚠️  Duplicate '{s}': keeping {s}, skipping {s}", .{ iface.name, existing_source, source_file });
-                    }
-                    // Skip this duplicate (don't return error)
-                }
-            } else {
-                // Existing interface only has partials - this is the base, merge existing partials into it
-                try iface_gop.value_ptr.mergeBase(self.allocator, iface);
-                // Update base_source_index to point to the file with the non-partial definition
-                iface_gop.value_ptr.base_source_index = source_index;
+    /// After the last add: resolve every duplicate definition, or fail with
+    /// error.DuplicateDefinition and a message for each one no rule covers.
+    pub fn finish(self: *IR) !void {
+        var keys = std.ArrayList([]const u8).empty;
+        defer keys.deinit(self.allocator);
+        var iter = self.unresolved.keyIterator();
+        while (iter.next()) |key| try keys.append(self.allocator, key.*);
+        std.mem.sort([]const u8, keys.items, {}, struct {
+            fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.lessThan(u8, a, b);
             }
+        }.lessThan);
+
+        var failed = false;
+        for (keys.items) |key| {
+            self.rebuild(key, true) catch |err| switch (err) {
+                error.DuplicateDefinition => failed = true,
+                else => return err,
+            };
+        }
+        if (failed) return error.DuplicateDefinition;
+    }
+
+    /// Rebuild `key`'s merged definition from all of its occurrences (see
+    /// "Merging" above).
+    ///
+    /// Until `strict` (finish()), a duplicate no rule resolves yet is
+    /// provisionally its first definition and is remembered in `unresolved`.
+    fn rebuild(self: *IR, key: []const u8, strict: bool) !void {
+        const list = self.occurrences.getPtr(key).?;
+        std.mem.sort(Occurrence, list.items, {}, Occurrence.lessThan);
+        const occurrences = list.items;
+
+        // The definition: the one non-partial occurrence, or the one
+        // duplicates.zig names.
+        var base: ?usize = null;
+        var base_count: usize = 0;
+        for (occurrences, 0..) |occurrence, i| {
+            if (occurrence.definition.isPartial()) continue;
+            base_count += 1;
+            if (base == null) base = i;
+        }
+        if (base_count > 1) {
+            var candidates = std.ArrayList(duplicates.Candidate).empty;
+            defer candidates.deinit(self.allocator);
+            var indexes = std.ArrayList(usize).empty;
+            defer indexes.deinit(self.allocator);
+            for (occurrences, 0..) |occurrence, i| {
+                if (occurrence.definition.isPartial()) continue;
+                try candidates.append(self.allocator, .{ .file = occurrence.file, .position = occurrence.position });
+                try indexes.append(self.allocator, i);
+            }
+            if (duplicates.resolve(key, candidates.items, strict)) |chosen| {
+                base = indexes.items[chosen];
+                _ = self.unresolved.remove(key);
+            } else |err| {
+                if (strict) return err;
+                return self.defer_(key);
+            }
+        } else {
+            _ = self.unresolved.remove(key);
+        }
+
+        // What it is: the definition's kind, or with no definition yet, the
+        // first partial's. Partials of another kind do not belong to it.
+        const kind = std.meta.activeTag(occurrences[base orelse 0].definition);
+        for (occurrences) |occurrence| {
+            if (occurrence.definition.isPartial() and std.meta.activeTag(occurrence.definition) != kind) {
+                if (!strict) return self.defer_(key);
+                log.err("partial {s} {s} ({s}) is not a {s}", .{ @tagName(std.meta.activeTag(occurrence.definition)), key, occurrence.file, @tagName(kind) });
+                return error.PartialOfAnotherKind;
+            }
+        }
+
+        self.removeMerged(key);
+        const arena = self.merged.allocator();
+
+        switch (kind) {
+            .interface => {
+                const first = base orelse 0;
+                var merged = try Interface.fromTypes(self.allocator, occurrences[first].definition.interface, key, occurrences[first].source_index);
+                errdefer merged.deinit(self.allocator);
+                for (occurrences, 0..) |occurrence, i| {
+                    if (i == first or !occurrence.definition.isPartial()) continue;
+                    try merged.mergePartial(self.allocator, occurrence.definition.interface);
+                }
+                const def = occurrences[first].definition.interface;
+                const type_kind: TypeKind = if (def.callback) .callback_interface else if (def.mixin) .mixin else .interface;
+                try self.interfaces.put(key, merged);
+                try self.type_registry.register(key, type_kind);
+            },
+            .dictionary => {
+                const first = base orelse 0;
+                var merged = occurrences[first].definition.dictionary;
+                var members = std.ArrayList(types.DictionaryMember).empty;
+                try members.appendSlice(arena, merged.members);
+                var ext_attrs = std.ArrayList(types.ExtendedAttribute).empty;
+                try ext_attrs.appendSlice(arena, merged.extAttrs);
+                for (occurrences, 0..) |occurrence, i| {
+                    if (i == first or !occurrence.definition.isPartial()) continue;
+                    const partial = occurrence.definition.dictionary;
+                    // A partial member replaces a same-named member.
+                    var kept: usize = 0;
+                    for (members.items) |member| {
+                        if (dictionaryMemberNamed(partial.members, member.name)) continue;
+                        members.items[kept] = member;
+                        kept += 1;
+                    }
+                    members.shrinkRetainingCapacity(kept);
+                    try members.appendSlice(arena, partial.members);
+                    try appendMissingExtAttrs(arena, &ext_attrs, partial.extAttrs);
+                }
+                merged.members = members.items;
+                merged.extAttrs = ext_attrs.items;
+                merged.partial = base == null;
+                try self.dictionaries.put(key, merged);
+                try self.type_registry.register(key, .dictionary);
+            },
+            .namespace => {
+                const first = base orelse 0;
+                var merged = occurrences[first].definition.namespace;
+                var members = std.ArrayList(types.Member).empty;
+                try members.appendSlice(arena, merged.members);
+                var ext_attrs = std.ArrayList(types.ExtendedAttribute).empty;
+                try ext_attrs.appendSlice(arena, merged.extAttrs);
+                for (occurrences, 0..) |occurrence, i| {
+                    if (i == first or !occurrence.definition.isPartial()) continue;
+                    try members.appendSlice(arena, occurrence.definition.namespace.members);
+                    try appendMissingExtAttrs(arena, &ext_attrs, occurrence.definition.namespace.extAttrs);
+                }
+                merged.members = members.items;
+                merged.extAttrs = ext_attrs.items;
+                merged.partial = base == null;
+                try self.namespaces.put(key, merged);
+                try self.type_registry.register(key, .namespace);
+            },
+            .typedef => {
+                try self.typedefs.put(key, occurrences[base.?].definition.typedef);
+                try self.type_registry.register(key, .typedef);
+            },
+            .enum_type => {
+                try self.enums.put(key, occurrences[base.?].definition.enum_type);
+                try self.type_registry.register(key, .enum_type);
+            },
+            .callback => {
+                try self.callbacks.put(key, occurrences[base.?].definition.callback);
+                try self.type_registry.register(key, .callback);
+            },
         }
     }
 
-    /// Process includes statements to merge mixin members into target interfaces
+    /// Leave `key` without a merged definition until a later add or
+    /// finish() can resolve it.
+    fn defer_(self: *IR, key: []const u8) !void {
+        self.removeMerged(key);
+        try self.unresolved.put(key, {});
+    }
+
+    /// Forget `key`'s merged definition, whatever kind it was.
+    fn removeMerged(self: *IR, key: []const u8) void {
+        if (self.interfaces.fetchRemove(key)) |entry| {
+            var iface = entry.value;
+            iface.deinit(self.allocator);
+        }
+        _ = self.dictionaries.remove(key);
+        _ = self.typedefs.remove(key);
+        _ = self.enums.remove(key);
+        _ = self.callbacks.remove(key);
+        _ = self.namespaces.remove(key);
+    }
+
+    /// Process includes statements to merge mixin members into target
+    /// interfaces, in the order given (the pipeline orders them by file name,
+    /// then position in the file). Call it after every definition is added:
+    /// a later add rebuilds the name without its mixins.
     pub fn processIncludes(self: *IR, includes_list: []const types.Includes) !void {
         for (includes_list) |inc| {
             // Find the target interface
@@ -240,235 +479,21 @@ pub const IR = struct {
         // Then add this interface's own members
         try members_list.appendSlice(self.allocator, iface.members.items);
     }
-
-    /// Add a dictionary from a parsed IDL file
-    /// Handles partial dictionaries by merging members into existing dictionaries
-    pub fn addDictionary(self: *IR, dict: types.Dictionary, source_file: []const u8) !void {
-        // Get or create source_map entry first (this owns the name key)
-        const source_gop = try self.source_map.getOrPut(dict.name);
-        if (!source_gop.found_existing) {
-            // First time seeing this name - allocate the key
-            const name_copy = try self.allocator.dupe(u8, dict.name);
-            source_gop.key_ptr.* = name_copy;
-            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
-        }
-
-        // Track source file - once appended, ArrayList owns it (no errdefer after append)
-        const source_copy = try self.allocator.dupe(u8, source_file);
-        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
-            // If append fails, we still own source_copy, so free it
-            self.allocator.free(source_copy);
-            return err;
-        };
-
-        const shared_key = source_gop.key_ptr.*;
-
-        // Check if dictionary already exists
-        if (self.dictionaries.getPtr(shared_key)) |existing| {
-            if (dict.partial) {
-                // Partial dictionary - merge members into existing
-                // Partial members OVERRIDE existing members with the same name
-                // This is how WebIDL partial dictionaries work (e.g., web-animations-2.idl
-                // redefines members from web-animations.idl with different types)
-
-                // Build a set of member names from the partial
-                var partial_member_names = std.StringHashMap(void).init(self.allocator);
-                defer partial_member_names.deinit();
-                for (dict.members) |member| {
-                    try partial_member_names.put(member.name, {});
-                }
-
-                // Count how many existing members are NOT overridden by partial
-                var non_overridden_count: usize = 0;
-                for (existing.members) |member| {
-                    if (!partial_member_names.contains(member.name)) {
-                        non_overridden_count += 1;
-                    }
-                }
-
-                // Create new members slice: non-overridden existing + all partial members
-                const new_members = try self.allocator.alloc(types.DictionaryMember, non_overridden_count + dict.members.len);
-
-                // Copy non-overridden existing members first
-                var idx: usize = 0;
-                for (existing.members) |member| {
-                    if (!partial_member_names.contains(member.name)) {
-                        new_members[idx] = member;
-                        idx += 1;
-                    }
-                }
-
-                // Then copy all partial members (these override or add)
-                @memcpy(new_members[idx..], dict.members);
-
-                existing.members = new_members;
-                // Track allocation for cleanup
-                try self.merged_dict_members.append(self.allocator, new_members);
-            } else if (!existing.partial) {
-                // Both are non-partial - check priority
-                const existing_source = source_gop.value_ptr.items[0];
-                const same_file = std.mem.eql(u8, source_file, existing_source);
-
-                if (self.spec_priority.shouldPrefer(dict.name, source_file, existing_source)) {
-                    // New spec has higher priority - replace existing
-                    if (!same_file) {
-                        log.warn("  ⚠️  Duplicate dictionary '{s}': preferring {s} over {s}", .{ dict.name, source_file, existing_source });
-                    }
-                    existing.* = dict;
-                } else {
-                    // Existing spec has higher priority - skip new one
-                    if (!same_file) {
-                        log.warn("  ⚠️  Duplicate dictionary '{s}': keeping {s}, skipping {s}", .{ dict.name, existing_source, source_file });
-                    }
-                }
-            } else {
-                // Existing is partial-only, this is the base - merge existing partials into base
-                // Partial members OVERRIDE base members with the same name
-                const old_partial_members = existing.members;
-
-                // Build a set of member names from the partial
-                var partial_member_names = std.StringHashMap(void).init(self.allocator);
-                defer partial_member_names.deinit();
-                for (old_partial_members) |member| {
-                    try partial_member_names.put(member.name, {});
-                }
-
-                // Count how many base members are NOT overridden by partial
-                var non_overridden_count: usize = 0;
-                for (dict.members) |member| {
-                    if (!partial_member_names.contains(member.name)) {
-                        non_overridden_count += 1;
-                    }
-                }
-
-                // Create new members slice: non-overridden base + all partial members
-                const new_members = try self.allocator.alloc(types.DictionaryMember, non_overridden_count + old_partial_members.len);
-
-                // Copy non-overridden base members first
-                var idx: usize = 0;
-                for (dict.members) |member| {
-                    if (!partial_member_names.contains(member.name)) {
-                        new_members[idx] = member;
-                        idx += 1;
-                    }
-                }
-
-                // Then copy all partial members (these override or add)
-                @memcpy(new_members[idx..], old_partial_members);
-
-                var merged = dict;
-                merged.members = new_members;
-                merged.partial = false;
-                existing.* = merged;
-                // Track allocation for cleanup
-                try self.merged_dict_members.append(self.allocator, new_members);
-            }
-        } else {
-            // First time seeing this dictionary - add it
-            try self.dictionaries.put(shared_key, dict);
-            // Register dictionary type
-            try self.type_registry.register(shared_key, .dictionary);
-        }
-    }
-
-    /// Add a typedef from a parsed IDL file
-    pub fn addTypedef(self: *IR, typedef: types.Typedef, source_file: []const u8) !void {
-        // Get or create source_map entry first (this owns the name key)
-        const source_gop = try self.source_map.getOrPut(typedef.name);
-        if (!source_gop.found_existing) {
-            // First time seeing this name - allocate the key
-            const name_copy = try self.allocator.dupe(u8, typedef.name);
-            source_gop.key_ptr.* = name_copy;
-            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
-        }
-
-        // Track source file - once appended, ArrayList owns it (no errdefer after append)
-        const source_copy = try self.allocator.dupe(u8, source_file);
-        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
-            // If append fails, we still own source_copy, so free it
-            self.allocator.free(source_copy);
-            return err;
-        };
-
-        // Typedefs don't have partials, so just add (use the key from source_map)
-        const shared_key = source_gop.key_ptr.*;
-        try self.typedefs.put(shared_key, typedef);
-        // Register typedef type
-        try self.type_registry.register(shared_key, .typedef);
-    }
-
-    pub fn addEnum(self: *IR, enum_type: types.Enum, source_file: []const u8) !void {
-        // Get or create source_map entry first (this owns the name key)
-        const source_gop = try self.source_map.getOrPut(enum_type.name);
-        if (!source_gop.found_existing) {
-            // First time seeing this name - allocate the key
-            const name_copy = try self.allocator.dupe(u8, enum_type.name);
-            source_gop.key_ptr.* = name_copy;
-            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
-        }
-
-        // Track source file
-        const source_copy = try self.allocator.dupe(u8, source_file);
-        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
-            self.allocator.free(source_copy);
-            return err;
-        };
-
-        // Enums don't have partials, so just add
-        const shared_key = source_gop.key_ptr.*;
-        try self.enums.put(shared_key, enum_type);
-        // Register enum type
-        try self.type_registry.register(shared_key, .enum_type);
-    }
-
-    pub fn addCallback(self: *IR, callback: types.Callback, source_file: []const u8) !void {
-        // Get or create source_map entry first (this owns the name key)
-        const source_gop = try self.source_map.getOrPut(callback.name);
-        if (!source_gop.found_existing) {
-            // First time seeing this name - allocate the key
-            const name_copy = try self.allocator.dupe(u8, callback.name);
-            source_gop.key_ptr.* = name_copy;
-            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
-        }
-
-        // Track source file
-        const source_copy = try self.allocator.dupe(u8, source_file);
-        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
-            self.allocator.free(source_copy);
-            return err;
-        };
-
-        // Callbacks don't have partials, so just add
-        const shared_key = source_gop.key_ptr.*;
-        try self.callbacks.put(shared_key, callback);
-        // Register callback type
-        try self.type_registry.register(shared_key, .callback);
-    }
-
-    pub fn addNamespace(self: *IR, namespace: types.Namespace, source_file: []const u8) !void {
-        // Get or create source_map entry first (this owns the name key)
-        const source_gop = try self.source_map.getOrPut(namespace.name);
-        if (!source_gop.found_existing) {
-            // First time seeing this name - allocate the key
-            const name_copy = try self.allocator.dupe(u8, namespace.name);
-            source_gop.key_ptr.* = name_copy;
-            source_gop.value_ptr.* = std.ArrayList([]const u8).empty;
-        }
-
-        // Track source file
-        const source_copy = try self.allocator.dupe(u8, source_file);
-        source_gop.value_ptr.append(self.allocator, source_copy) catch |err| {
-            self.allocator.free(source_copy);
-            return err;
-        };
-
-        // Namespaces don't have partials, so just add
-        const shared_key = source_gop.key_ptr.*;
-        try self.namespaces.put(shared_key, namespace);
-        // Register namespace type
-        try self.type_registry.register(shared_key, .namespace);
-    }
 };
+
+fn dictionaryMemberNamed(members: []const types.DictionaryMember, name: []const u8) bool {
+    for (members) |member| if (std.mem.eql(u8, member.name, name)) return true;
+    return false;
+}
+
+/// Append each of `partial`'s extended attributes `ext_attrs` has none of that name of.
+fn appendMissingExtAttrs(allocator: std.mem.Allocator, ext_attrs: *std.ArrayList(types.ExtendedAttribute), partial: []const types.ExtendedAttribute) !void {
+    for (partial) |ext_attr| {
+        for (ext_attrs.items) |existing| {
+            if (std.mem.eql(u8, existing.name, ext_attr.name)) break;
+        } else try ext_attrs.append(allocator, ext_attr);
+    }
+}
 
 /// IR representation of an interface (after merging partials)
 pub const Interface = struct {

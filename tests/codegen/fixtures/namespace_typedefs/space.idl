@@ -1,0 +1,14 @@
+// Fixture for tests/codegen/namespace_typedefs_test.zig: a namespace whose
+// operations name typedefs (as CSSOM's CSS.escape names CSSOMString).
+typedef DOMString Ident;
+typedef Ident Alias;
+typedef (DOMString or long) Either;
+
+[Exposed=Window]
+namespace Space {
+  Ident escape(Ident ident);
+  boolean check(Alias property, optional Alias value);
+  undefined take(Either either);
+  boolean supports(Ident property, Ident value);
+  boolean supports(Ident conditionText);
+};

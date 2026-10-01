@@ -1,0 +1,13 @@
+// Fixture for tests/codegen/order_independence_test.zig. Sorts AFTER the
+// base definitions' file.
+partial interface Thing {
+  readonly attribute long fromZ;
+};
+
+partial namespace Space {
+  undefined fromZ();
+};
+
+partial interface mixin Mixy {
+  readonly attribute long mixedZ;
+};

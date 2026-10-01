@@ -1,0 +1,21 @@
+// Fixture for tests/codegen/order_independence_test.zig. Sorts BEFORE the
+// base definitions' file, so a reader that takes the first file it sees as
+// the base gets the member order wrong.
+partial interface Thing {
+  readonly attribute long fromA;
+  undefined act(long x);
+};
+
+partial dictionary ThingInit {
+  long fromA;
+  boolean shared = true;
+};
+
+partial namespace Space {
+  undefined fromA();
+};
+
+[Exposed=(Window,DedicatedWorker)]
+partial interface Thing {
+  readonly attribute long fromA2;
+};

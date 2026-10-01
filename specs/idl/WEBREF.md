@@ -35,8 +35,11 @@ them.
    ```
 
 2. Record the full SHA and its commit date above.
-3. Regenerate from both sources in one invocation (see AGENTS.md, "WebIDL codegen"), then
-   `zig fmt src/webidl/`.
+3. Regenerate from both sources in one invocation (see AGENTS.md, "WebIDL codegen"). If codegen
+   stops with "duplicate definition of X", a name is now defined in more than one file: find
+   webref's `curated` branch commit "Curated data generated from raw data at <sha>", read
+   `ed/idlnamesparsed/X.json` (`defined.href` names the defining spec) and add X to `definers` in
+   `src/webidl/codegen/duplicates.zig`; drop entries for names no longer duplicated.
 4. Diff `src/webidl/impls_tmp/` against `src/webidl/impls/` and merge signature changes into the
    impls by hand.
 5. Build, run `zig build test` (which runs the codegen drift check), and run a full WPT worklist

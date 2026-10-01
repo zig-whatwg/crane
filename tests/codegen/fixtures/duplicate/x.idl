@@ -1,0 +1,5 @@
+// Fixture: Unlisted is defined in two files and no rule says which defines it.
+[Exposed=Window]
+interface Unlisted {
+  readonly attribute long x;
+};

@@ -215,32 +215,39 @@ pub const TypeRegistry = struct {
     }
 
     /// Register all WebIDL primitive types (async version with allocation)
-    pub fn registerPrimitives(self: *TypeRegistry) !void {
-        const primitive_names = [_][]const u8{
-            "void",
-            "undefined",
-            "boolean",
-            "byte",
-            "octet",
-            "short",
-            "unsigned short",
-            "long",
-            "unsigned long",
-            "long long",
-            "unsigned long long",
-            "float",
-            "unrestricted float",
-            "double",
-            "unrestricted double",
-            "DOMString",
-            "ByteString",
-            "USVString",
-            "object",
-            "symbol",
-            "any",
-        };
+    /// Is `name` one of WebIDL's built-in types? (DOM-Style.idl's
+    /// module-scoped `typedef dom::DOMString DOMString;` names one.)
+    pub fn isPrimitiveName(name: []const u8) bool {
+        for (idl_primitive_names) |primitive| if (std.mem.eql(u8, primitive, name)) return true;
+        return false;
+    }
 
-        for (primitive_names) |name| {
+    const idl_primitive_names = [_][]const u8{
+        "void",
+        "undefined",
+        "boolean",
+        "byte",
+        "octet",
+        "short",
+        "unsigned short",
+        "long",
+        "unsigned long",
+        "long long",
+        "unsigned long long",
+        "float",
+        "unrestricted float",
+        "double",
+        "unrestricted double",
+        "DOMString",
+        "ByteString",
+        "USVString",
+        "object",
+        "symbol",
+        "any",
+    };
+
+    pub fn registerPrimitives(self: *TypeRegistry) !void {
+        for (idl_primitive_names) |name| {
             try self.register(name, .primitive);
         }
     }

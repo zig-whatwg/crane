@@ -18,8 +18,59 @@ const CodegenConfig = config_mod.CodegenConfig;
 /// The CodegenConfig getters of every directory a run writes.
 const output_dir_getters = .{ "getInterfacesPath", "getImplsPath", "getTypedefsPath", "getDictionariesPath", "getEnumsPath", "getCallbacksPath", "getNamespacesPath", "getMixinsPath" };
 
+/// `namespace` with every operation's argument and return types that name a
+/// typedef of a simple (non-union) type replaced by that type, through
+/// typedefs of typedefs - CSSOM's `CSSOMString escape(CSSOMString ident)`
+/// becomes DOMString in, DOMString out. A typedef of a union, a sequence or
+/// a record is left as it is (the namespace writer maps it to a JSValue).
+fn resolveNamespaceTypedefs(arena: std.mem.Allocator, namespace: types.Namespace, ir: *const ir_mod.IR) !types.Namespace {
+    var resolved = namespace;
+    const members = try arena.dupe(types.Member, namespace.members);
+    for (members) |*member| {
+        var operation = member.operation orelse continue;
+        operation.idlType = resolveSimpleTypedef(operation.idlType, ir);
+        const arguments = try arena.dupe(types.Argument, operation.arguments);
+        for (arguments) |*argument| argument.idlType = resolveSimpleTypedef(argument.idlType, ir);
+        operation.arguments = arguments;
+        member.operation = operation;
+    }
+    resolved.members = members;
+    return resolved;
+}
+
+fn resolveSimpleTypedef(idl_type: types.IDLType, ir: *const ir_mod.IR) types.IDLType {
+    var current = idl_type;
+    var depth: usize = 0;
+    while (depth < 16) : (depth += 1) {
+        if (current.unionTypes != null or current.sequence != null or current.record != null or current.generic != null) return current;
+        if (ir_mod.TypeRegistry.isPrimitiveName(current.type)) return current;
+        const typedef = ir.typedefs.get(current.type) orelse return current;
+        const target = typedef.idlType;
+        if (target.unionTypes != null or target.sequence != null or target.record != null or target.generic != null) return current;
+        const nullable = current.nullable or target.nullable;
+        current = target;
+        current.nullable = nullable;
+    }
+    return current;
+}
+
+/// An `includes` statement and where it is.
+const IncludesStatement = struct {
+    file: []const u8,
+    position: usize,
+    statement: types.Includes,
+
+    fn lessThan(_: void, a: IncludesStatement, b: IncludesStatement) bool {
+        return switch (std.mem.order(u8, a.file, b.file)) {
+            .lt => true,
+            .gt => false,
+            .eq => a.position < b.position,
+        };
+    }
+};
+
 /// One IDL file found in a source directory.
-const SourceFile = struct {
+pub const SourceFile = struct {
     /// The directory it was found in, as given.
     dir: []const u8,
     /// Its name in that directory; also its source key in the IR.
@@ -89,7 +140,23 @@ pub fn processSources(
     cfg: *CodegenConfig,
 ) !void {
     std.debug.print("Stage 1: Parsing all IDL files from {d} source(s)\n", .{source_dirs.len});
+    for (source_dirs) |source_dir| std.debug.print("    from {s}\n", .{source_dir});
 
+    const source_files = try collectSourceFiles(allocator, source_dirs);
+    defer {
+        freeSourceFiles(allocator, source_files);
+        allocator.free(source_files);
+    }
+    return processFiles(allocator, source_files, cfg);
+}
+
+/// Process these IDL files as ONE model. The model does not depend on the
+/// order they are given in (see ir.zig, "Merging").
+pub fn processFiles(
+    allocator: std.mem.Allocator,
+    source_files: []const SourceFile,
+    cfg: *CodegenConfig,
+) !void {
     // Stage 1: Parse all files into IR
     var ir = try ir_mod.IR.init(allocator);
     defer ir.deinit();
@@ -103,11 +170,8 @@ pub fn processSources(
         parsed_files.deinit(allocator);
     }
 
-    const source_files = try collectSourceFiles(allocator, source_dirs);
-    defer {
-        freeSourceFiles(allocator, source_files);
-        allocator.free(source_files);
-    }
+    var includes = std.ArrayList(IncludesStatement).empty;
+    defer includes.deinit(allocator);
 
     for (source_files) |source_file| {
         const file_path = try std.fs.path.join(allocator, &.{ source_file.dir, source_file.name });
@@ -115,22 +179,18 @@ pub fn processSources(
 
         // Parse the file
         const parsed_idl = parser.parseIDLFile(allocator, file_path) catch |err| {
-            std.debug.print("  ⚠️  Failed to parse {s}: {}\n", .{ file_path, err });
-            continue;
+            // A file left out would change the model without a trace.
+            std.debug.print("  error: failed to parse {s}: {}\n", .{ file_path, err });
+            return err;
         };
+        // Owned by parsed_files from here, whatever the adds below do.
+        try parsed_files.append(allocator, parsed_idl);
 
         const idl_file = parsed_idl.value;
 
         // Add to IR
         for (idl_file.interfaces) |iface| {
-            ir.addInterface(iface, source_file.name) catch |err| {
-                if (err == error.DuplicateInterface) {
-                    // Skip duplicate interfaces (some specs have errors)
-                    continue;
-                } else {
-                    return err;
-                }
-            };
+            try ir.addInterface(iface, source_file.name);
         }
 
         for (idl_file.dictionaries) |dict| {
@@ -153,20 +213,24 @@ pub fn processSources(
             try ir.addNamespace(namespace, source_file.name);
         }
 
-        // Keep parsed data alive
-        try parsed_files.append(allocator, parsed_idl);
+        for (idl_file.includes, 0..) |inc, position| {
+            try includes.append(allocator, .{ .file = source_file.name, .position = position, .statement = inc });
+        }
     }
 
+    // Every definition is in: resolve duplicate definitions, or fail.
+    try ir.finish();
+
     std.debug.print("  ✓ Parsed {d} IDL files\n", .{parsed_files.items.len});
-    for (source_dirs) |source_dir| std.debug.print("    from {s}\n", .{source_dir});
 
     // Stage 1.5: Process includes statements to merge mixins
     std.debug.print("\nStage 1.5: Processing mixin includes\n", .{});
 
-    // Process includes arrays from IDL files
-    for (parsed_files.items) |parsed_file| {
-        try ir.processIncludes(parsed_file.value.includes);
-    }
+    // An includer takes its mixins' members in the order of its `includes`
+    // statements, ordered by (file name, position in the file) - never by
+    // the order the files were read in.
+    std.mem.sort(IncludesStatement, includes.items, {}, IncludesStatement.lessThan);
+    for (includes.items) |inc| try ir.processIncludes(&.{inc.statement});
 
     // Stage 2: Report merging statistics
     std.debug.print("\nStage 2: Partial interface merging\n", .{});
@@ -355,7 +419,11 @@ pub fn processSources(
         var namespace_count: usize = 0;
 
         while (namespace_iter.next()) |entry| {
-            const namespace = entry.value_ptr.*;
+            // Namespaces do not import the typedefs module: their operations
+            // take a typedef of a simple type as that type.
+            var resolve_arena = std.heap.ArenaAllocator.init(allocator);
+            defer resolve_arena.deinit();
+            const namespace = try resolveNamespaceTypedefs(resolve_arena.allocator(), entry.value_ptr.*, &ir);
             try generator.generateNamespace(allocator, namespace, namespaces_path);
 
             // Generate impl stub if requested
