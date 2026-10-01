@@ -46,10 +46,17 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     return error.NotImplemented;
 }
 
-/// Operation: item
+/// Operation: item, which is also the legacy caller (`document.all(x)`).
+/// Spec: https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#dom-htmlallcollection-item
 pub fn call_item(instance: *runtime.Instance, nameOrIndex: webidl.Opt(runtime.DOMString)) anyerror!?runtime.JSValue {
     _ = instance;
-    _ = nameOrIndex;
+    // 1. If nameOrIndex was not provided, return null.
+    if (!nameOrIndex.wasPassed()) return null;
+    // 2. Return the result of getting the "all"-indexed or named element(s)
+    //    from this, given nameOrIndex.
+    // TODO(feature-queue: HTMLAllCollection): the collection has no root yet -
+    // Document.get_all makes it without telling it its document - so there
+    // are no elements to get.
     return error.NotImplemented;
 }
 

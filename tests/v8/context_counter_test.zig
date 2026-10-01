@@ -442,3 +442,35 @@ test "a named getter frees the string it returns" {
     try expectNothingLeftAnywhere("dataset.named", try leftBy("namedMap.named;"));
     try expectNothingLeftAnywhere("Object.getOwnPropertyDescriptor(dataset, 'named')", try leftBy("Object.getOwnPropertyDescriptor(namedMap, 'named');"));
 }
+
+// ---------------------------------------------------------------------------
+// document.all's legacy caller.
+
+test "document.all's legacy caller releases what it takes" {
+    try allInterfaces();
+    // Called as a function, document.all runs the binding's call handler:
+    // the current context, the argument and the result were Globals the
+    // handler made and kept, three a call.
+    // item() is not implemented past its step 1 yet (the collection has no
+    // root), so a call with an argument throws item()'s error - and must
+    // release what it made on that path too.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.allDoc = new Document().implementation.createHTMLDocument('');
+        \\globalThis.allOfDoc = allDoc.all;
+        \\(() => { try { allOfDoc('nothing-has-this-name'); return 1 } catch (e) { return 1 } })()
+    ));
+    try expectNothingLeft("document.all('x')", try leftBy("try { allOfDoc('x') } catch (e) {}"));
+    try expectNothingLeft("document.all(0)", try leftBy("try { allOfDoc(0) } catch (e) {}"));
+    try expectNothingLeft("document.all()", try leftBy("allOfDoc();"));
+}
+
+test "document.all() with no argument is null" {
+    try allInterfaces();
+    // WebIDL: the legacy caller is the operation `item(optional DOMString
+    // nameOrIndex)`; HTML's item() step 1: "If nameOrIndex was not provided,
+    // return null."
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.noArgDoc = new Document().implementation.createHTMLDocument('');
+        \\noArgDoc.all() === null ? 1 : 0
+    ));
+}

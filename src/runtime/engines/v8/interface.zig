@@ -4621,13 +4621,25 @@ pub fn V8Interface(comptime Interface: type) type {
             conv.throwTypeErrorFromContext(isolate, function_ctx, "Illegal constructor: " ++ name ++ " is not constructible");
         }
 
-        /// HTMLAllCollection call handler for document.all(nameOrIndex)
+        /// HTMLAllCollection's legacy caller: `document.all(nameOrIndex)`.
         ///
-        /// Per HTML spec, HTMLAllCollection has [[IsHTMLDDA]] internal slot making it undetectable.
-        /// V8 requires undetectable objects to be callable. When called as a function:
-        /// - document.all() with no args returns undefined
-        /// - document.all(index) calls item(index)
-        /// - document.all(name) calls namedItem(name)
+        /// HTML declares `legacycaller (HTMLCollection or Element)? item(optional
+        /// DOMString nameOrIndex)`, and WebIDL makes calling the object call that
+        /// operation: its argument converted as item()'s (undefined is "not
+        /// provided"; null is the string "null"), its result returned, its errors
+        /// thrown. HTML item() step 1: "If nameOrIndex was not provided, return
+        /// null" - the impl's, as every other step is.
+        ///
+        /// `info.getThis()` is the collection: V8 calls a non-function callable
+        /// with its receiver overwritten by the called object
+        /// (builtins-arm64.cc Generate_Call "Overwrite the original receiver with
+        /// the (original) target", then HandleApiCallAsFunctionDelegate), so
+        /// `document.all(x)` and `const a = document.all; a(x)` both arrive here
+        /// with document.all as `this`.
+        ///
+        /// Everything the handler makes is released: the current context, the
+        /// argument's handle, the converted string and the result. Kept, each
+        /// call left a Context Global, the argument and an Undefined behind.
         ///
         /// This is ONLY used for HTMLAllCollection (comptime check ensures interface_name matches)
         fn htmlAllCollectionCallHandler(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
@@ -4636,73 +4648,61 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Should never be called for other interfaces, but safety check
                 return;
             }
+            if (comptime !@hasDecl(Interface, "call_item")) return;
 
             const isolate = info.getIsolate();
-            const argc = info.length();
 
-            // If no arguments, return undefined per HTML spec
-            if (argc == 0) {
-                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-                return;
-            }
-
-            // Get the 'this' value - this should be the HTMLAllCollection instance
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj);
             const instance = getInstance(runtime.Instance, this_obj) orelse {
-                // If not a valid instance, return undefined
-                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+                conv.throwTypeError(isolate, "Illegal invocation");
                 return;
             };
 
-            // Get the first argument
-            const arg = info.get(0);
-
-            // Get V8 context and allocator for conversion
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-                return;
-            };
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call,
+            // and nothing converted below keeps it.
+            defer v8.v8_Context_Dispose(v8_context);
             const isolate_alloc = @import("isolate_allocator.zig");
             const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
-                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+                conv.throwError(isolate, "Out of memory");
                 return;
             };
 
-            // Per HTML spec: document.all(nameOrIndex) calls call_item with the argument
-            // call_item takes an Opt(DOMString) and handles both numeric and string cases
-            if (@hasDecl(Interface, "call_item")) {
-                // Convert argument to Opt(DOMString)
-                const webidl_mod = @import("webidl");
-                const DOMString = @import("typedefs").DOMString;
-                const name_or_index = conv.fromV8Value(webidl_mod.Opt(DOMString), allocator, isolate, v8_context, arg) catch {
-                    info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+            // item()'s one argument, as an operation's: missing (no argument,
+            // or undefined) is "not provided".
+            const NameOrIndex = @typeInfo(@TypeOf(Interface.call_item)).@"fn".params[1].type.?;
+            const name_or_index: NameOrIndex = if (info.length() == 0)
+                NameOrIndex.notPassed()
+            else
+                convertArgReleasing(NameOrIndex, allocator, isolate, v8_context, info.get(0)) catch |err| {
+                    if (err != conv.ConversionError.ExceptionPending) conv.throwTypeError(isolate, @errorName(err));
                     return;
                 };
+            defer freeArgument(NameOrIndex, allocator, name_or_index);
 
-                // Call call_item (it handles both numeric string indices and names)
-                const result = Interface.call_item(instance, name_or_index) catch {
-                    info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-                    return;
-                };
+            const result_allocator = instance.ctx.allocator;
+            const result = Interface.call_item(instance, name_or_index) catch |err| {
+                if (err == conv.ConversionError.ExceptionPending) return;
+                conv.throwWebIDLErrorFromContext(isolate, v8_context, @errorName(err));
+                return;
+            };
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
-                // Return the result
-                if (result) |js_value| {
-                    // Convert runtime.JSValue to v8.Value for return
-                    const v8_value = conv.toV8Value(runtime.JSValue, isolate, v8_context, js_value) catch {
-                        info.setReturnValue(@ptrCast(v8.v8_Null(isolate)));
-                        return;
-                    };
-                    info.setReturnValue(@ptrCast(v8_value));
-                    // The result is the binding's, as every impl result is;
-                    // only an instance's wrapper is the wrapper cache's.
-                    if (js_value != .instance) v8.v8_Global_Dispose(@ptrCast(v8_value));
-                } else {
-                    info.setReturnValue(@ptrCast(v8.v8_Null(isolate)));
-                }
-            } else {
-                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-            }
+            // (HTMLCollection or Element)?: null, or the impl's value. A
+            // wrapper is the wrapper cache's; anything else is made here.
+            const value = result orelse {
+                const null_value = v8.v8_Null(isolate) orelse return;
+                info.setReturnValue(@ptrCast(null_value));
+                v8.v8_Global_Dispose(null_value);
+                return;
+            };
+            const v8_value = conv.toV8Value(runtime.JSValue, isolate, v8_context, value) catch {
+                conv.throwError(isolate, "Failed to convert result");
+                return;
+            };
+            info.setReturnValue(@ptrCast(v8_value));
+            if (value != .instance) v8.v8_Global_Dispose(@ptrCast(v8_value));
         }
 
         /// Placeholder method callback
