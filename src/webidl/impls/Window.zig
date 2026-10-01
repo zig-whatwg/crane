@@ -33,7 +33,6 @@ const Window = interfaces.Window;
 // Import parent class impl for initialization chain
 // Window inherits from EventTarget per WebIDL
 const EventTargetImpl = @import("EventTarget.zig");
-const same_object = @import("same_object.zig");
 
 // Import WindowOrWorkerGlobalScope mixin impl for shared global methods
 
@@ -136,29 +135,30 @@ pub const InternalState = struct {
     /// Sub-interface instances (lazily created)
     location: ?*runtime.Instance = null,
     history: ?*runtime.Instance = null,
+    /// A Navigator this Window made itself (`get_navigator`) is kept by an
+    /// edge from the Window's global object (engine.traceChild), as
+    /// LocalDOMWindow::Trace visits navigator_ - so are the navigation API,
+    /// the CustomElementRegistry, the six BarProps and both Storage objects
+    /// below. Each pointer is a native one V8 cannot see; the edge is what
+    /// keeps the object it names alive, for exactly as long as the Window's
+    /// global object - never a root, so a removed frame's whole heap can go
+    /// once nothing else holds it (tmp/plans/frame-realm-tracing-design.md).
     navigator: ?*runtime.Instance = null,
-    /// Keeps a Navigator this Window made itself (`get_navigator`) alive for
-    /// the Window's life; see `same_object.zig`.
-    navigator_pin: same_object.Pin = .{},
     /// The navigation API ([SameObject]), made on first use and kept alive
     /// for the Window's life the same way.
     navigation: ?*runtime.Instance = null,
-    navigation_pin: same_object.Pin = .{},
     performance: ?*runtime.Instance = null,
-    custom_elements: ?*runtime.Instance = null,
-    /// Keeps the CustomElementRegistry alive for the Window's life, as
     /// LocalDOMWindow::Trace visits custom_elements_.
-    custom_elements_pin: same_object.Pin = .{},
+    custom_elements: ?*runtime.Instance = null,
 
-    /// The six BarProp objects, each made on first read and held for the
-    /// Window's life (a native pointer V8 cannot see needs the pin).
+    /// The six BarProp objects, each made on first read and kept for the
+    /// Window's life.
     locationbar: ?*runtime.Instance = null,
     menubar: ?*runtime.Instance = null,
     personalbar: ?*runtime.Instance = null,
     scrollbars: ?*runtime.Instance = null,
     statusbar: ?*runtime.Instance = null,
     toolbar: ?*runtime.Instance = null,
-    bar_pins: [6]same_object.Pin = @splat(.{}),
 
     /// Screen-related (lazily created)
     screen: ?*runtime.Instance = null,
@@ -172,14 +172,12 @@ pub const InternalState = struct {
     /// HTML Standard § 12.2.2 (sessionStorage), § 12.2.3 (localStorage)
     local_storage: ?*runtime.Instance = null,
     session_storage: ?*runtime.Instance = null,
-    /// Keep both Storage objects alive for the Window's life - they are its
+    /// Both Storage objects are kept for the Window's life - they are its
     /// Document's local and session storage holders - as Blink's
     /// DOMWindowStorage::Trace visits local_storage_ and session_storage_.
-    /// Unheld, a collection freed the Storage under these pointers and the
+    /// Unkept, a collection freed the Storage under these pointers and the
     /// next read wrapped whatever the slab had put there: `sessionStorage`
     /// read undefined.
-    local_storage_pin: same_object.Pin = .{},
-    session_storage_pin: same_object.Pin = .{},
     local_storage_backend: ?*WebStorage = null,
     session_storage_backend: ?*WebStorage = null,
 
@@ -250,12 +248,8 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        self.navigator_pin.release();
-        for (&self.bar_pins) |*pin| pin.release();
-        self.navigation_pin.release();
-        self.custom_elements_pin.release();
-        self.local_storage_pin.release();
-        self.session_storage_pin.release();
+        // The children traced from the global object need nothing here: the
+        // edges go with it, and the realm's end frees the children.
         // The popups first: each integration ends its navigable's realm (a
         // child of this window's, and already gone if this window's page is
         // being torn down - destroyWindowRealm ends a realm once).
@@ -969,14 +963,14 @@ pub fn get_history(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// object. Upon creation of the Window object, its navigation API must be set
 /// to a new Navigation object created in the Window object's relevant
 /// realm." Made on first use here - nothing can observe the difference -
-/// and held through the Window (`same_object.Pin`), as Blink traces
+/// and kept by the Window (an edge from its global object), as Blink traces
 /// navigation_ from LocalDOMWindow.
 pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.navigation) |navigation| return navigation;
     const navigation = try interfaces.Navigation.init(internal.allocator, instance.ctx);
     internal.navigation = navigation;
-    internal.navigation_pin.hold(navigation);
+    engine.traceChild(instance, navigation, .{ .name = "navigation" });
     return navigation;
 }
 
@@ -1010,7 +1004,7 @@ pub fn get_customElements(instance: *runtime.Instance) anyerror!*runtime.Instanc
     );
 
     internal.custom_elements = registry;
-    internal.custom_elements_pin.hold(registry);
+    engine.traceChild(instance, registry, .{ .name = "customElements" });
     return registry;
 }
 
@@ -1021,37 +1015,37 @@ pub fn get_customElements(instance: *runtime.Instance) anyerror!*runtime.Instanc
 /// HTML §7.2.2.2: "The locationbar attribute must return the location bar
 /// BarProp object" - and each of menubar, personalbar, scrollbars,
 /// statusbar and toolbar its own BarProp object - made on first read.
-fn barProp(instance: *runtime.Instance, comptime index: usize, comptime field: []const u8) !*runtime.Instance {
+fn barProp(instance: *runtime.Instance, comptime field: []const u8) !*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (@field(internal, field)) |bar| return bar;
     const bar = try interfaces.BarProp.init(instance.ctx.allocator, instance.ctx);
     @field(internal, field) = bar;
-    internal.bar_pins[index].hold(bar);
+    engine.traceChild(instance, bar, .{ .name = field });
     return bar;
 }
 
 pub fn get_locationbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return barProp(instance, 0, "locationbar");
+    return barProp(instance, "locationbar");
 }
 
 pub fn get_menubar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return barProp(instance, 1, "menubar");
+    return barProp(instance, "menubar");
 }
 
 pub fn get_personalbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return barProp(instance, 2, "personalbar");
+    return barProp(instance, "personalbar");
 }
 
 pub fn get_scrollbars(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return barProp(instance, 3, "scrollbars");
+    return barProp(instance, "scrollbars");
 }
 
 pub fn get_statusbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return barProp(instance, 4, "statusbar");
+    return barProp(instance, "statusbar");
 }
 
 pub fn get_toolbar(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    return barProp(instance, 5, "toolbar");
+    return barProp(instance, "toolbar");
 }
 
 /// Getter for status - The status bar text
@@ -1238,16 +1232,16 @@ fn containerOf(window: *runtime.Instance) ?*runtime.Instance {
 /// [SameObject]: the page's Window is given its Navigator by the browser
 /// context; a frame's or popup's Window - and the Window a navigation left
 /// behind, which script in its realm still reaches - makes its own on first
-/// use, in its own realm. The Window holds that one's wrapper strongly
-/// (`same_object.Pin`, released in deinit), as Blink traces navigator_ from
-/// LocalDOMWindow: a weak wrapper would let a collection free the Navigator
-/// under this pointer.
+/// use, in its own realm. The Window keeps that one by an edge from its
+/// global object (engine.traceChild), as Blink traces navigator_ from
+/// LocalDOMWindow: unkept, its weak wrapper would let a collection free the
+/// Navigator under this pointer.
 pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.navigator) |navigator| return navigator;
     const navigator = try interfaces.Navigator.init(internal.allocator, instance.ctx);
     internal.navigator = navigator;
-    internal.navigator_pin.hold(navigator);
+    engine.traceChild(instance, navigator, .{ .name = "navigator" });
     return navigator;
 }
 
@@ -1622,7 +1616,7 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     // Cache both
     internal.session_storage_backend = backend;
     internal.session_storage = storage_instance;
-    internal.session_storage_pin.hold(storage_instance);
+    engine.traceChild(instance, storage_instance, .{ .name = "sessionStorage" });
 
     return storage_instance;
 }
@@ -1666,7 +1660,7 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
     // Cache both
     internal.local_storage_backend = backend;
     internal.local_storage = storage_instance;
-    internal.local_storage_pin.hold(storage_instance);
+    engine.traceChild(instance, storage_instance, .{ .name = "localStorage" });
 
     return storage_instance;
 }
