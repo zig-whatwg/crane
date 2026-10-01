@@ -4480,11 +4480,12 @@ pub fn build(b: *std.Build) void {
         \\fi
         \\
         \\# ========================================
-        \\# W3C WebRef data (algorithms & IDL)
+        \\# W3C WebRef data (algorithms only: specs/idl is a committed, pinned
+        \\# snapshot - see specs/idl/WEBREF.md - and setup never overwrites it)
         \\# ========================================
         \\SPECS_DIR="specs"
         \\
-        \\if [ ! -d "$SPECS_DIR/algorithms" ] || [ ! -d "$SPECS_DIR/idl" ]; then
+        \\if [ ! -d "$SPECS_DIR/algorithms" ]; then
         \\    echo "==> Downloading W3C WebRef data..."
         \\    
         \\    # Download tarball (no auth required for public repos)
@@ -4493,9 +4494,8 @@ pub fn build(b: *std.Build) void {
         \\    
         \\    # Copy to specs directory (tarball extracts to webref-main/)
         \\    mkdir -p "$SPECS_DIR"
-        \\    rm -rf "$SPECS_DIR/algorithms" "$SPECS_DIR/idl"
+        \\    rm -rf "$SPECS_DIR/algorithms"
         \\    cp -r "$WEBREF_TMP/webref-main/ed/algorithms" "$SPECS_DIR/algorithms"
-        \\    cp -r "$WEBREF_TMP/webref-main/ed/idl" "$SPECS_DIR/idl"
         \\    rm -rf "$WEBREF_TMP"
         \\    
         \\    echo "    WebRef data downloaded successfully"
