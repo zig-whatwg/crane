@@ -17,6 +17,18 @@
 //! - dom/ - DOM Standard
 //! - html/ - HTML Standard (non-rendering only)
 //! - cookiestore/ - Cookie Store API
+//! - webidl/, custom-elements/, websockets/, navigation-api/
+//! - tier 1 (2026-10-01): shadow-dom/, IndexedDB/, WebCryptoAPI/, webstorage/,
+//!   domxpath/, domparsing/, selection/, cookies/, wasm/, FileAPI/, workers/
+//! - tier 2 (2026-10-01): referrer-policy/, content-security-policy/,
+//!   mixed-content/, cors/, subresource-integrity/, trusted-types/,
+//!   sanitizer-api/, upgrade-insecure-requests/, service-workers/,
+//!   user-timing/, resource-timing/, navigation-timing/,
+//!   performance-timeline/, hr-time/, beacon/, eventsource/, webmessaging/,
+//!   web-locks/, compression/, permissions/
+//!
+//! `in_scope_categories` below is the list; keep it in step with the INCLUDE
+//! table of tools/wpt_subset.py, which writes the 0.1 worklist.
 //!
 //! ## Out-of-Scope Categories
 //!
@@ -138,6 +150,41 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "custom-elements", .description = "Custom Elements (HTML)" },
     .{ .name = "websockets", .description = "WebSockets (HTML), via libcurl" },
     .{ .name = "navigation-api", .description = "Navigation API (HTML)" },
+    // Tier 1 of the 0.1 scope (the user, 2026-10-01): the core headless APIs
+    // real apps and agents use.
+    .{ .name = "shadow-dom", .description = "DOM Standard shadow trees, slots, retargeting" },
+    .{ .name = "IndexedDB", .description = "IndexedDB" },
+    .{ .name = "WebCryptoAPI", .description = "Web Crypto" },
+    .{ .name = "webstorage", .description = "localStorage / sessionStorage" },
+    .{ .name = "domxpath", .description = "document.evaluate / XPath" },
+    .{ .name = "domparsing", .description = "DOMParser, XMLSerializer, innerHTML" },
+    .{ .name = "selection", .description = "Selection API" },
+    .{ .name = "cookies", .description = "HTTP cookies, via libcurl" },
+    .{ .name = "wasm", .description = "WebAssembly JS and Web APIs" },
+    .{ .name = "FileAPI", .description = "Blob, File, FileReader, blob URLs" },
+    .{ .name = "workers", .description = "Dedicated and shared workers" },
+    // Tier 2 (the user, 2026-10-01): security, performance timing, service
+    // workers.
+    .{ .name = "referrer-policy", .description = "Referrer Policy" },
+    .{ .name = "content-security-policy", .description = "Content Security Policy" },
+    .{ .name = "mixed-content", .description = "Mixed Content" },
+    .{ .name = "cors", .description = "CORS" },
+    .{ .name = "subresource-integrity", .description = "Subresource Integrity" },
+    .{ .name = "trusted-types", .description = "Trusted Types" },
+    .{ .name = "sanitizer-api", .description = "HTML Sanitizer API" },
+    .{ .name = "upgrade-insecure-requests", .description = "Upgrade Insecure Requests" },
+    .{ .name = "service-workers", .description = "Service Workers and the Cache API" },
+    .{ .name = "user-timing", .description = "User Timing" },
+    .{ .name = "resource-timing", .description = "Resource Timing" },
+    .{ .name = "navigation-timing", .description = "Navigation Timing" },
+    .{ .name = "performance-timeline", .description = "Performance Timeline" },
+    .{ .name = "hr-time", .description = "High Resolution Time" },
+    .{ .name = "beacon", .description = "Beacon" },
+    .{ .name = "eventsource", .description = "Server-Sent Events" },
+    .{ .name = "webmessaging", .description = "MessageChannel, BroadcastChannel, postMessage" },
+    .{ .name = "web-locks", .description = "Web Locks" },
+    .{ .name = "compression", .description = "Compression Streams" },
+    .{ .name = "permissions", .description = "Permissions API" },
 };
 
 /// Exclusion patterns for paths that shouldn't be tested
@@ -379,15 +426,65 @@ test "isInScope" {
     try testing.expect(!isInScope("html/rendering/test.html"));
 }
 
+test "every tier 1 and tier 2 suite of the 0.1 worklist is in scope" {
+    const testing = std.testing;
+
+    // The 0.1 worklist grew by these suites (tools/wpt_subset.py, 2026-10-01).
+    // A worklist run (--from-file) does not ask isInScope, but a directory run
+    // does: without them, `wpt_runner shadow-dom/` ran nothing.
+    const one_path_per_suite = [_][]const u8{
+        // Tier 1
+        "shadow-dom/Document-prototype-adoptNode.html",
+        "IndexedDB/abort-in-initial-upgradeneeded.any.js",
+        "WebCryptoAPI/algorithm-discards-context.https.window.js",
+        "webstorage/defineProperty.window.js",
+        "domxpath/booleans.html",
+        "domparsing/Comment-serialization-double-hyphen.html",
+        "selection/Document-open.html",
+        "cookies/attributes/attributes-ctl.sub.html",
+        "wasm/core/address.wast.js.html",
+        "FileAPI/Blob-methods-from-detached-frame.html",
+        "workers/SharedWorker-MessageEvent-source.any.js",
+        // Tier 2
+        "referrer-policy/4K+1/gen/top.http-rp/no-referrer-when-downgrade/a-tag.http.html",
+        "content-security-policy/base-uri/base-uri-allow-leading-zero-port.sub.html",
+        "mixed-content/blob.https.sub.html",
+        "cors/304.htm",
+        "subresource-integrity/integrity-policy/parsing.html",
+        "trusted-types/DOMParser-parseFromString-regression.html",
+        "sanitizer-api/html5lib-basics.html",
+        "upgrade-insecure-requests/gen/iframe-blank-inherit.meta/unset/fetch.https.html",
+        "service-workers/cache-storage/cache-abort.https.any.js",
+        "user-timing/buffered-flag.any.js",
+        "resource-timing/304-response-recorded.html",
+        "navigation-timing/buffered-flag.window.js",
+        "performance-timeline/buffered-does-not-sync-invoke.html",
+        "hr-time/basic.any.js",
+        "beacon/beacon-basic.https.window.js",
+        "eventsource/dedicated-worker/eventsource-close.htm",
+        "webmessaging/Channel_postMessage_Blob.any.js",
+        "web-locks/acquire.https.any.js",
+        "compression/compression-bad-chunks.any.js",
+        "permissions/all-permissions.html",
+    };
+    for (one_path_per_suite) |path| {
+        testing.expect(isInScope(path)) catch |err| {
+            std.debug.print("not in scope: {s}\n", .{path});
+            return err;
+        };
+    }
+}
+
 test "isInScope matches whole path segments, not prefixes" {
     const testing = std.testing;
 
     // Several WPT top-level directories share a prefix with an in-scope
     // category. Matching on the prefix alone pulls them into the corpus and
     // inflates the denominator.
-    try testing.expect(!isInScope("domparsing/xmlserializer.html"));
-    try testing.expect(!isInScope("domxpath/evaluate.html"));
     try testing.expect(!isInScope("encoding-detection/bug-1547595.html"));
+    try testing.expect(!isInScope("permissions-policy/payment-default-feature-policy.https.sub.html"));
+    try testing.expect(!isInScope("permissions-request/navigator-permissions-request.https.html"));
+    try testing.expect(!isInScope("permissions-revoke/permissions-revoke-camera.https.html"));
     try testing.expect(!isInScope("html-aam/roles.html"));
     try testing.expect(!isInScope("html-longdesc/link-image.html"));
     try testing.expect(!isInScope("html-media-capture/capture_reflect.html"));
