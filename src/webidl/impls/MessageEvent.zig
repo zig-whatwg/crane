@@ -255,9 +255,11 @@ fn keepData(ctx: runtime.Context, instance: *runtime.Instance, data: runtime.JSV
 pub fn get_data(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     // The event keeps what it holds: a handle goes to the binding as a hold
-    // of its own.
+    // of its own, and a string as a reference - the binding frees a string
+    // result handed over owned, and this one is the event's (keepData's copy).
     return switch (state.own.data) {
         .handle => (try engine.retainValue(instance.ctx, state.own.data)).take(),
+        .string => |text| runtime.JSValue.fromStringRef(text.data),
         else => state.own.data,
     };
 }

@@ -343,3 +343,35 @@ test "getterValueIsOwned: the non-null value of an optional primitive is made fr
     try std.testing.expect(!owned(?*runtime.Instance));
     try std.testing.expect(!owned(?runtime.JSValue));
 }
+
+test "xhr.response frees the text it made" {
+    try allInterfaces();
+    // XMLHttpRequest response, step 1: for responseType "" the text
+    // response - a string the getter makes on each read and hands over
+    // owned, as an operation's result is.
+    try std.testing.expectEqual(@as(i32, 5), try scriptInt(
+        \\globalThis.doneXhr = new XMLHttpRequest();
+        \\doneXhr.open('GET', 'data:text/plain,hello', false);
+        \\doneXhr.send();
+        \\doneXhr.response.length
+    ));
+    try expectNothingLeftAnywhere("xhr.response", try leftBy("doneXhr.response;"));
+}
+
+test "a getter's kept string stays the object's: read twice, and 64 times, it is the same" {
+    try allInterfaces();
+    // MessageEvent.data and PopStateEvent.state keep a string they were
+    // initialized with. The getter path frees a string result handed over
+    // owned, so a kept one goes out as a reference - handed over owned,
+    // the first read freed the event's own copy and the second read it
+    // after the free.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.textEvent = new MessageEvent('message', { data: 'kept text' });
+        \\globalThis.stateEvent = new PopStateEvent('popstate', { state: 'kept state' });
+        \\textEvent.data === 'kept text' && textEvent.data === 'kept text' &&
+        \\    stateEvent.state === 'kept state' && stateEvent.state === 'kept state' ? 1 : 0
+    ));
+    try expectNothingLeftAnywhere("messageEvent.data", try leftBy("if (textEvent.data !== 'kept text') throw new Error(textEvent.data);"));
+    try expectNothingLeftAnywhere("popStateEvent.state", try leftBy("if (stateEvent.state !== 'kept state') throw new Error(stateEvent.state);"));
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt("textEvent.data === 'kept text' && stateEvent.state === 'kept state' ? 1 : 0"));
+}

@@ -479,6 +479,17 @@ pub fn getterValueIsOwned(comptime T: type) bool {
     return info == .@"enum";
 }
 
+/// Free the text of a JSValue string result an impl handed over owned
+/// (`owned` true) - the one arm whose memory is the impl's allocation rather
+/// than an engine handle. The same rule as the operation path: every result
+/// is the binding's, and a getter that keeps a string returns a reference to
+/// it (`JSValue.fromStringRef`), which this leaves alone.
+fn freeOwnedString(allocator: std.mem.Allocator, result: runtime.JSValue) void {
+    if (result != .string) return;
+    var text = result.string;
+    text.deinit(allocator);
+}
+
 /// Types `argHandleIsCopied` names by identity, re-exported so `tests/v8` can
 /// name them too.
 pub const copied_arg_types = struct {
@@ -2837,8 +2848,16 @@ pub fn V8Interface(comptime Interface: type) type {
                             v8.v8_Global_Dispose(v8_value);
                         } else if (comptime PayloadType == runtime.JSValue) {
                             if (result != .instance) v8.v8_Global_Dispose(v8_value);
+                            // A string the impl made for the result is the
+                            // binding's too, as an operation's is
+                            // (callMethodWithArgs): xhr.response's text
+                            // leaked on every read. A string the impl keeps
+                            // goes out as a reference (`owned` false), which
+                            // this leaves alone.
+                            freeOwnedString(cleanup_allocator, result);
                         } else if (comptime PayloadType == ?runtime.JSValue) {
                             if (result == null or result.? != .instance) v8.v8_Global_Dispose(v8_value);
+                            if (result) |value| freeOwnedString(cleanup_allocator, value);
                         } else if (comptime @typeInfo(PayloadType) == .optional) {
                             // Any other optional: a null result's value is made
                             // here, fresh - `v8.v8_Null(isolate_inner)` in the
