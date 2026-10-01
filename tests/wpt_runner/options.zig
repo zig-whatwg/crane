@@ -107,6 +107,14 @@ pub const Options = struct {
         return self.supervise or self.parallel != null;
     }
 
+    /// True when this process runs tests with nobody watching it - neither a
+    /// supervisor's child nor a supervisor - and so must bound itself
+    /// (stall_watchdog.SelfWatchdog) with the limit a supervisor would use.
+    /// `--stall-limit-ms=0` turns it off with the supervisor's.
+    pub fn wantsSelfDeadline(self: Options) bool {
+        return !self.isChild() and !self.wantsSupervisor() and self.stall_limit_ms != 0;
+    }
+
     /// The runner count to hand `selection.resolveShardCount`, where 0 means
     /// "one per core". A plain `--supervise` asks for exactly one, which is the
     /// serial behaviour it has always had.
@@ -658,4 +666,29 @@ test "the stall watchdog is on by default and can be turned off" {
     var typo = try parseArgs(testing.allocator, &.{ "wpt-runner", "--stall-limit-ms=soon" });
     defer typo.deinit();
     try testing.expectEqual(stall_watchdog.default_stall_limit_ms, typo.stall_limit_ms);
+}
+
+test "only a run with neither a supervisor nor a parent bounds itself" {
+    const testing = std.testing;
+    // `wpt_runner <path>` runs in this process with nobody watching it: it
+    // must carry its own deadline (stall_watchdog.SelfWatchdog).
+    var single = try parseArgs(testing.allocator, &.{ "wpt-runner", "dom/nodes/Node-cloneNode.html" });
+    defer single.deinit();
+    try testing.expect(single.wantsSelfDeadline());
+
+    // A supervised child is watched by its parent's journal watchdog; a second
+    // deadline inside it would race the parent's and record the hang twice.
+    var child = try parseArgs(testing.allocator, &.{ "wpt-runner", "--from-file=w.txt", "--journal=j.jsonl" });
+    defer child.deinit();
+    try testing.expect(!child.wantsSelfDeadline());
+
+    // A supervisor runs no tests itself.
+    var parent = try parseArgs(testing.allocator, &.{ "wpt-runner", "--parallel=2", "dom/" });
+    defer parent.deinit();
+    try testing.expect(!parent.wantsSelfDeadline());
+
+    // --stall-limit-ms=0 turns it off, as it does the supervisor's.
+    var off = try parseArgs(testing.allocator, &.{ "wpt-runner", "--stall-limit-ms=0", "dom/x.html" });
+    defer off.deinit();
+    try testing.expect(!off.wantsSelfDeadline());
 }
