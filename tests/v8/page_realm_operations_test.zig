@@ -1700,6 +1700,26 @@ test "protocol: edges waiting for an owner's wrapper leave no global handle behi
     try expectEval(w, "delete globalThis.child", "true");
 }
 
+test "a window's indexedDB, when making its IDBFactory fails at any allocation, frees what it made once" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    // Each allocation the getter makes fails in turn. The allocator under it
+    // reports a double free or an invalid free (a panic, or an error log,
+    // which fails the test); it is never deinit'd - a Window torn down
+    // unwrapped leaves state its realm's end would free, which this test does
+    // not measure.
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    var k: usize = 0;
+    while (k < 8) : (k += 1) {
+        var failing = std.testing.FailingAllocator.init(debug_allocator.allocator(), .{});
+        const window = try interfaces.Window.init(failing.allocator(), w);
+        failing.fail_index = failing.alloc_index + k;
+        _ = interfaces.Window.get_indexedDB(window) catch {};
+        runtime.Instance.releaseIfUnwrapped(window, runtime.SlabAllocator.generationOf(window));
+    }
+}
+
 test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whichever realm queued them" {
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);

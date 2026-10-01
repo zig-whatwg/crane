@@ -496,19 +496,19 @@ fn settingsIndexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return factory_instance;
     }
 
-    // Create the backend IDBFactory
+    // Create the backend IDBFactory. Until the factory takes it over below,
+    // it is this call's: the errdefers release it - once. (The factory's
+    // failure path used to free it too, and then the errdefer freed it again:
+    // a double free on every failed allocation of IDBFactory.init.)
     const backend = internal.allocator.create(IDBFactoryBackend) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
     backend.* = IDBFactoryBackend.init(internal.allocator);
+    errdefer backend.deinit();
     backend.setStorageKey(internal.origin);
 
     // Create the WebIDL IDBFactory instance
-    const factory_instance = interfaces.IDBFactory.init(internal.allocator, instance.ctx) catch {
-        backend.deinit();
-        internal.allocator.destroy(backend);
-        return error.OutOfMemory;
-    };
+    const factory_instance = interfaces.IDBFactory.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
 
     // Set the backend in the factory's internal state
     const factory_state = factory_instance.getState(interfaces.IDBFactory.State);
