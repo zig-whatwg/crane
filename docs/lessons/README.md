@@ -199,6 +199,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Generated behaviour is only as complete as the IDL](codegen-generated-behaviour-is-only-as-complete-as-the-idl.md) - Before trusting generated behaviour, read the prose the IDL summarises.
 - [Regenerating specs/supplementary alone rewrites a typedef of an IDL interface](codegen-regenerating-supplementary-alone-rewrites-a-typedef-of-an-idl-interface.md) - After a regeneration, diff every generated directory, typedefs included; a one-source run resolves types against that source alone.
 - [A mixin's live member is its includer's impl until the mixin is inherited](codegen-a-mixin-s-live-member-is-its-includer-s-impl-until.md) - Before changing a mixin member, open the includer's generated interface and see which impl it calls: until the mixin is inherited, the includer's copy is the live one.
+- [A committed generated tree needs committed, pinned inputs](codegen-a-generated-tree-needs-committed-pinned-inputs.md) - Before checking a generated tree, pin and commit everything that generates it; an unrecorded upstream revision can be recovered by matching blob hashes against the upstream's trees.
+- [The model must not depend on the order files are read in](codegen-the-model-must-not-depend-on-file-order.md) - If a generator's output can change when its inputs are only reordered, it is wrong - test it with shuffled input, and resolve every conflict by a rule, never by arrival order.
 
 ### Testing
 - [Regression-check handle changes with timers, not DOM](testing-regression-check-handle-changes-with-timers-not.md) - Pick the regression suite that exercises the lifetime you changed, not the one that touches the same file.
@@ -248,6 +250,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A count that moves between runs - diff the failure messages, not the totals](testing-a-count-that-moves-between-runs-diff-the-failure-messages.md) - Totals that move are a symptom; identical subtests failing differently between runs mean something freed is being read.
 - [A network test takes its timing from the server, not the clock](testing-a-network-test-takes-its-timing-from-the-server-not-the-clock.md) - When a test stages a race, let the peer it controls announce and gate each step; a sleep is a bet on the machine's load.
 - [Stamp the allocator's reports with the journal, and read every getter twice](testing-stamp-the-allocator-s-reports-and-read-every-getter-twice.md) - An allocator report you cannot attribute is a report you cannot fix: stamp it with the journal count. And a returned-alias bug waits for its second read - read every getter twice on purpose instead of waiting for a test to.
+- [A stand-in must reject what the real one rejects](testing-a-stand-in-must-reject-what-the-real-one-rejects.md) - A fake dependency must be at least as strict as the real one on the inputs your code can hand it - otherwise it certifies the bug.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
