@@ -1270,6 +1270,34 @@ test "protocol: a wrapper another realm still holds is severed when its realm en
     try expectEval(parent, "delete globalThis.heldHeaders", "true");
 }
 
+test "protocol: a namespace operation keeps neither its realm nor its result" {
+    _ = try realm();
+    // The first realm to call a namespace operation that takes a
+    // runtime.Context becomes the process-wide one (namespace.zig's
+    // global_context), kept for the process: one page, made here so that
+    // the realm under test is not it.
+    {
+        var first_host: WindowHost = .{};
+        const first = try windowRealm(&first_host, false, .new_window_proxy);
+        try expectEval(first, "typeof TestUtils.gc()", "object");
+        protocol.destroyWindowRealm(first, .global_detached);
+    }
+    const baseline = liveContexts();
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    // The result - a promise of `w` - and the current context the binding
+    // took for the call are each a Global into `w`: kept, either one keeps
+    // the page (every page that called TestUtils.gc() stayed for the
+    // process: crane/rl-frame-churn-dropped.html, +1 native context a page).
+    try expectEval(w, "for (let i = 0; i < 4; i++) TestUtils.gc(); typeof TestUtils.gc()", "object");
+    protocol.destroyWindowRealm(w, .global_detached);
+    const after = liveContexts();
+    if (after != baseline) {
+        std.debug.print("native contexts: {d} before the realm, {d} after it called TestUtils.gc() and ended\n", .{ baseline, after });
+        return error.RealmKeptAlive;
+    }
+}
+
 test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whichever realm queued them" {
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);

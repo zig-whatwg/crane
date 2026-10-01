@@ -64,6 +64,25 @@ pub fn clearGlobalContext() void {
     global_context = null;
 }
 
+/// Whether the Global `conv.toV8Value(T, ...)` made of `result` is the
+/// binding's to release once it is the call's return value: an error the
+/// conversion turned into an object, a value the interface binding's
+/// `getterValueIsOwned` says is made fresh, and a JSValue that is not a
+/// platform object (a handle the impl handed over, or a primitive made here).
+/// Anything else - a platform object, a type not named - is kept: releasing a
+/// handle the binding does not own is a use-after-free, keeping one a leak.
+fn resultIsOwned(comptime T: type, result: T) bool {
+    switch (@typeInfo(T)) {
+        .error_union => |eu| {
+            const payload = result catch return true;
+            return resultIsOwned(eu.payload, payload);
+        },
+        else => {},
+    }
+    if (T == runtime.JSValue) return result != .instance;
+    return @import("interface.zig").getterValueIsOwned(T);
+}
+
 /// Comptime V8 namespace binding generator
 ///
 /// Takes a WebIDL namespace struct and generates V8 bindings for all its operations.
@@ -260,10 +279,18 @@ pub fn V8Namespace(comptime Namespace: type) type {
             const Wrapper = struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
                     const isolate = info.getIsolate();
+                    // OWNED (every v8_* return is a Global the caller owns),
+                    // and a Global<Context> keeps its realm - the whole page -
+                    // alive: one left per call kept every page that called
+                    // TestUtils.gc() or console.log() to the end of the
+                    // process. Released on the way out, unless it became the
+                    // process-wide context below, which keeps it.
                     const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                         conv.throwTypeError(isolate, "Failed to get current context");
                         return;
                     };
+                    var context_kept = false;
+                    defer if (!context_kept) v8.v8_Context_Dispose(context);
 
                     // Calculate required params: count params before variadic slice
                     const argc = info.length();
@@ -328,6 +355,10 @@ pub fn V8Namespace(comptime Namespace: type) type {
                                     conv.throwTypeError(isolate, "Failed to initialize runtime context");
                                     return;
                                 };
+                                // TODO: the first calling realm's context is
+                                // kept for the process (one page, not one per
+                                // call); a per-realm context is the fix.
+                                context_kept = true;
                             }
 
                             args[i] = global_context.?;
@@ -428,9 +459,19 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     if (return_type == void) {
                         conv.setReturnUndefined(info);
                     } else {
-                        conv.setReturnValue(return_type, info, result) catch {
+                        const v8_value = conv.toV8Value(return_type, isolate, context, result) catch {
                             conv.throwError(isolate, "Failed to convert return value");
+                            return;
                         };
+                        info.setReturnValue(v8_value);
+                        // setReturnValue reads the handle into a Local. What
+                        // the conversion made, and what the impl returned as
+                        // its own (engine.Owned.take: the binding releases
+                        // every value an impl returns), is released here, as
+                        // the interface binding does: TestUtils.gc()'s promise
+                        // kept its page alive. A platform object's wrapper is
+                        // the wrapper cache's, and kept.
+                        if (resultIsOwned(return_type, result)) v8.v8_Global_Dispose(v8_value);
                     }
                 }
             };
