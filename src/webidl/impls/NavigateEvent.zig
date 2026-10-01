@@ -42,22 +42,23 @@ pub const ImplError = error{
 };
 
 /// The objects this event's attributes name are kept alive for as long as
-/// the event is: script can hold the event after its navigation has let
-/// them go (same_object.zig).
+/// the event's wrapper is: script can hold the event after its navigation
+/// has let them go. Edges, not roots (same_object.Traced).
 pub const InternalState = struct {
     allocator: Allocator,
-    destination_pin: same_object.Pin = .{},
-    signal_pin: same_object.Pin = .{},
-    form_data_pin: same_object.Pin = .{},
-    source_element_pin: same_object.Pin = .{},
-    /// `info`: undefined when null.
+    destination_edge: same_object.Traced = .{ .slot = .{ .name = "destination" } },
+    signal_edge: same_object.Traced = .{ .slot = .{ .name = "signal" } },
+    form_data_edge: same_object.Traced = .{ .slot = .{ .name = "formData" } },
+    source_element_edge: same_object.Traced = .{ .slot = .{ .name = "sourceElement" } },
+    /// `info`: undefined when null. Still a strong hold (a value, not a
+    /// platform object: traceChild cannot keep it).
     info: ?engine.Owned = null,
 
-    fn release(self: *InternalState) void {
-        self.destination_pin.release();
-        self.signal_pin.release();
-        self.form_data_pin.release();
-        self.source_element_pin.release();
+    fn release(self: *InternalState, event: *runtime.Instance) void {
+        self.destination_edge.release(event);
+        self.signal_edge.release(event);
+        self.form_data_edge.release(event);
+        self.source_element_edge.release(event);
         if (self.info) |value| value.release();
         self.info = null;
     }
@@ -85,7 +86,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.release();
+        internal.release(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
         if (state.own.downloadRequest) |*request| request.deinit(instance.ctx.allocator);
@@ -129,21 +130,21 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 
     state.own.navigationType = init_dict.navigationType orelse ._push_;
     state.own.destination = init_dict.destination;
-    internal.destination_pin.hold(init_dict.destination);
+    internal.destination_edge.hold(instance, init_dict.destination);
     state.own.canIntercept = init_dict.canIntercept orelse false;
     state.own.userInitiated = init_dict.userInitiated orelse false;
     state.own.hashChange = init_dict.hashChange orelse false;
     state.own.signal = init_dict.signal;
-    internal.signal_pin.hold(init_dict.signal);
+    internal.signal_edge.hold(instance, init_dict.signal);
     state.own.formData = init_dict.formData;
-    if (init_dict.formData) |form_data| internal.form_data_pin.hold(form_data);
+    if (init_dict.formData) |form_data| internal.form_data_edge.hold(instance, form_data);
     if (init_dict.downloadRequest) |request| state.own.downloadRequest = try request.clone(ctx.allocator);
     // `info` defaults to undefined: an absent member, and one present as
     // undefined, are the same for `any`.
     if (init_dict.info) |value| internal.info = try hold(ctx, value);
     state.own.hasUAVisualTransition = init_dict.hasUAVisualTransition orelse false;
     state.own.sourceElement = init_dict.sourceElement;
-    if (init_dict.sourceElement) |element| internal.source_element_pin.hold(element);
+    if (init_dict.sourceElement) |element| internal.source_element_edge.hold(instance, element);
 
     // The inherited Event internal state and its initialized flag: without
     // them dispatchEvent throws InvalidStateError.

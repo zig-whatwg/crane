@@ -30,15 +30,16 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// The pins that keep the attributes' objects alive with the event.
+/// The edges that keep the attributes' objects alive with the event's
+/// wrapper (same_object.Traced).
 pub const InternalState = struct {
     allocator: Allocator,
-    activation_pin: same_object.Pin = .{},
-    view_transition_pin: same_object.Pin = .{},
+    activation_edge: same_object.Traced = .{ .slot = .{ .name = "activation" } },
+    view_transition_edge: same_object.Traced = .{ .slot = .{ .name = "viewTransition" } },
 
-    fn release(self: *InternalState) void {
-        self.activation_pin.release();
-        self.view_transition_pin.release();
+    fn release(self: *InternalState, event: *runtime.Instance) void {
+        self.activation_edge.release(event);
+        self.view_transition_edge.release(event);
     }
 };
 
@@ -72,7 +73,7 @@ fn createPageSwap(realm: runtime.Context, activation: ?*runtime.Instance) anyerr
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.release();
+        internal.release(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -112,9 +113,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     internal.* = .{ .allocator = ctx.allocator };
     state.own._internal = internal;
     state.own.activation = init_dict.activation;
-    if (init_dict.activation) |activation| internal.activation_pin.hold(activation);
+    if (init_dict.activation) |activation| internal.activation_edge.hold(instance, activation);
     state.own.viewTransition = init_dict.viewTransition;
-    if (init_dict.viewTransition) |transition| internal.view_transition_pin.hold(transition);
+    if (init_dict.viewTransition) |transition| internal.view_transition_edge.hold(instance, transition);
 
     // The inherited Event internal state and its initialized flag: without
     // them dispatchEvent throws InvalidStateError.
