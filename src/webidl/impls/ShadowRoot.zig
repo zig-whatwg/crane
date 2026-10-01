@@ -127,13 +127,18 @@ pub const InternalState = struct {
 const utils = @import("webidl").utils;
 const Registry = utils.InstanceRegistry(InternalState);
 
-/// Helper to access internal state from instance using registry
-fn getInternal(instance: *runtime.Instance) *InternalState {
-    return Registry.get(instance) orelse {
-        // Fallback to direct state access for backwards compatibility
-        const state = instance.getState(State);
-        return @ptrCast(@alignCast(state.own._internal));
-    };
+/// This shadow root's state, or null once it has been torn down. Every member
+/// then answers InvalidStateError rather than read freed state.
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    return Registry.get(instance);
+}
+
+/// dom.shadow_hosts: `instance`'s host is being torn down (Element.deinit).
+/// The shadow root forgets it and stays a working DocumentFragment; see
+/// `get_host` for what that costs until wrappers are traced.
+fn hostDestroyed(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.host = null;
 }
 
 /// Public function to get internal state (for other impls that need it)
@@ -162,6 +167,9 @@ pub fn init(
         node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
     }
 
+    // A host's teardown reaches its shadow root through this hook.
+    @import("dom").shadow_hosts.install(.{ .host_destroyed = &hostDestroyed });
+
     // Initialize ShadowRoot's own internal state and register it
     const internal = try allocator.create(InternalState);
     internal.* = InternalState.init(allocator);
@@ -184,6 +192,12 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.allocator.destroy(internal);
     }
     Registry.remove(instance);
+    // Then what it is as a DocumentFragment: its Node state, its whole
+    // subtree (its children have a parent, so the wrapper cache never frees
+    // them - only this walk does) and its EventTarget state. This deinit
+    // stopped at its own state before, and every shadow root left all of
+    // that behind. Node.deinit's lifecycle guard makes a second call a no-op.
+    interfaces.DocumentFragment.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
@@ -206,7 +220,7 @@ pub fn create(
     const instance = try init(allocator, State, &ShadowRoot.vtable, ctx);
     errdefer deinit(instance);
 
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.host = host;
     internal.shadow_mode = mode;
     internal.delegates_focus_flag = delegates_focus;
@@ -224,43 +238,49 @@ pub fn create(
 /// DOM §4.8.1 - ShadowRoot.mode
 /// Returns the mode of this shadow root ("open" or "closed").
 pub fn get_mode(instance: *runtime.Instance) anyerror!enums.ShadowRootMode {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.shadow_mode;
 }
 
 /// DOM §4.8.1 - ShadowRoot.delegatesFocus
 /// Returns whether focus is delegated to the first focusable element.
 pub fn get_delegatesFocus(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.delegates_focus_flag;
 }
 
 /// DOM §4.8.1 - ShadowRoot.slotAssignment
 /// Returns how slottables are assigned to slots ("manual" or "named").
 pub fn get_slotAssignment(instance: *runtime.Instance) anyerror!enums.SlotAssignmentMode {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.slot_assignment_mode;
 }
 
 /// DOM §4.8.1 - ShadowRoot.clonable
 /// Returns whether this shadow root can be cloned.
 pub fn get_clonable(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.clonable_flag;
 }
 
 /// DOM §4.8.1 - ShadowRoot.serializable
 /// Returns whether this shadow root can be serialized.
 pub fn get_serializable(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.serializable_flag;
 }
 
 /// DOM §4.8.1 - ShadowRoot.host
-/// Returns the element that hosts this shadow root.
+/// "The host getter steps are to return this's host."
+///
+/// Stated deviation, until wrappers are traced: a shadow root does not keep
+/// its host alive (dom.shadow_hosts). Once script has dropped the host and
+/// it has been collected, the shadow root has forgotten it, and this answers
+/// InvalidStateError - never a pointer to freed memory. The spec's host lives
+/// as long as its shadow root (Blink and WebKit trace it).
 pub fn get_host(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance);
-    return internal.host orelse return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return internal.host orelse return error.InvalidStateError;
 }
 
 // ============================================================================
@@ -270,7 +290,7 @@ pub fn get_host(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// DOM §4.8.1 - ShadowRoot.onslotchange getter
 /// Event handler for the slotchange event.
 pub fn get_onslotchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.onslotchange) |handler| {
         _ = handler;
         // TODO: Convert to proper EventHandler typedef
@@ -280,7 +300,7 @@ pub fn get_onslotchange(instance: *runtime.Instance) anyerror!typedefs.EventHand
 
 /// DOM §4.8.1 - ShadowRoot.onslotchange setter
 pub fn set_onslotchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     // TODO: Proper event handler storage
     _ = value;
     internal.onslotchange = null;
@@ -313,28 +333,28 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anye
 /// DocumentOrShadowRoot.customElementRegistry getter
 /// Returns null if no custom element registry is associated
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.custom_element_registry;
 }
 
 /// DocumentOrShadowRoot.fullscreenElement getter
 /// Returns the element in this shadow tree that is currently in fullscreen mode, or null.
 pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.fullscreen_element;
 }
 
 /// DocumentOrShadowRoot.pictureInPictureElement getter
 /// Returns the element in this shadow tree that is currently in picture-in-picture mode, or null.
 pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.picture_in_picture_element;
 }
 
 /// DocumentOrShadowRoot.pointerLockElement getter
 /// Returns the element in this shadow tree that has pointer lock, or null.
 pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.pointer_lock_element;
 }
 
@@ -342,7 +362,7 @@ pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.In
 /// Returns the StyleSheetList of stylesheets associated with this shadow root.
 /// Lazily creates an empty StyleSheetList on first access.
 pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.style_sheets) |sheets| {
         return sheets;
     }
@@ -355,7 +375,7 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// DocumentOrShadowRoot.adoptedStyleSheets getter
 pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.adopted_style_sheets) |sheets| {
         // The shadow root keeps its hold; the result is a hold of the
         // binding's own.
@@ -368,7 +388,7 @@ pub fn get_adoptedStyleSheets(instance: *runtime.Instance) anyerror!runtime.JSVa
 
 /// DocumentOrShadowRoot.adoptedStyleSheets setter
 pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // The argument is the binding's, borrowed for this call: the shadow root
     // keeps a hold of its own, and lets go of the value it held before.
@@ -380,7 +400,7 @@ pub fn set_adoptedStyleSheets(instance: *runtime.Instance, value: runtime.JSValu
 /// DocumentOrShadowRoot.activeElement getter
 /// Returns the deepest element in this shadow tree that has focus, or null.
 pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.active_element;
 }
 
@@ -417,36 +437,36 @@ pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue 
 
 /// Get the mode as an enum value
 pub fn getMode(instance: *runtime.Instance) enums.ShadowRootMode {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return ._closed_;
     return internal.shadow_mode;
 }
 
 /// Get the slot assignment mode as an enum value
 pub fn getSlotAssignmentMode(instance: *runtime.Instance) enums.SlotAssignmentMode {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return ._named_;
     return internal.slot_assignment_mode;
 }
 
 /// Check if this shadow root is available to element internals
 pub fn isAvailableToElementInternals(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return false;
     return internal.available_to_element_internals;
 }
 
 /// Check if this shadow root is declarative
 pub fn isDeclarative(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return false;
     return internal.declarative_flag;
 }
 
 /// Set available to element internals
 pub fn setAvailableToElementInternals(instance: *runtime.Instance, value: bool) void {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return;
     internal.available_to_element_internals = value;
 }
 
 /// Set declarative flag
 pub fn setDeclarative(instance: *runtime.Instance, value: bool) void {
-    const internal = getInternal(instance);
+    const internal = getInternal(instance) orelse return;
     internal.declarative_flag = value;
 }

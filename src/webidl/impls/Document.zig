@@ -566,54 +566,11 @@ pub const InternalState = struct {
 };
 
 /// An object the document makes once, keeps in its own state and hands out as
-/// the same object for its whole life: getSelection()'s Selection ("each
-/// document ... has a unique selection associated with it"), document.all,
-/// document.fonts, document.styleSheets.
-///
-/// Kept as a bare pointer, such a child dangles as soon as script drops it.
-/// Its wrapper is weak, so a collection frees the instance
-/// (wrapper_cache.weakCallback -> gc.onObjectFreed) while the document still
-/// points at it, and the next read wraps whatever took the slot:
-/// Range-mutations.js runs `getSelection().removeAllRanges()` in every "with
-/// selected" subtest and got "removeAllRanges is not a function", or
-/// undefined, from wherever the collector happened to run - 236 to 339 of 564
-/// passing, by the files a sweep ran before it. The document's teardown then
-/// deinit'd that slot, whoever owned it by then.
-///
-/// Blink traces each of them from the document: TreeScope::Trace visits
-/// selection_ and style_sheet_list_, document.all is a collection cached in
-/// the document's traced node lists, and fonts is FontFaceSetDocument, a
-/// Supplement<Document>. Crane has no tracing, so the document holds the
-/// child's wrapper strongly from the first hand-out (`same_object.Pin`)
-/// until the document goes, as AbortController does for its signal.
-const KeptChild = struct {
-    pin: same_object.Pin = .{},
-    /// The child as it was when this document made it.
-    link: ?same_object.Link = null,
-
-    /// `child` was just made and stored in the document's state.
-    fn made(self: *KeptChild, child: *runtime.Instance) void {
-        self.link = same_object.Link.to(child);
-    }
-
-    /// `child` is going to script: keep its wrapper for as long as this
-    /// document lives. Idempotent.
-    fn handOut(self: *KeptChild, child: *runtime.Instance) void {
-        self.pin.hold(child);
-    }
-
-    /// The document is going. `child`, if it is still the object this
-    /// document made, is severed from it (`sever` is its interface's deinit,
-    /// which releases its state; script that still holds it gets
-    /// InvalidStateError, not a document that is gone). Then its wrapper is
-    /// let go, and the wrapper cache frees the instance once script drops it
-    /// too.
-    fn release(self: *KeptChild, child: *runtime.Instance, sever: *const fn (*runtime.Instance) void) void {
-        if (self.link) |link| if (link.isLive()) sever(child);
-        self.pin.release();
-        self.* = .{};
-    }
-};
+/// the same object for its whole life - getSelection()'s Selection,
+/// document.all, document.fonts, document.styleSheets - kept alive from the
+/// first hand-out until the document goes. One mechanism with Element's
+/// shadow root: see `same_object.KeptChild`.
+const KeptChild = same_object.KeptChild;
 
 /// Get the internal state from an instance
 /// Made public for use by HTMLParser, DOMParser, and other modules that need

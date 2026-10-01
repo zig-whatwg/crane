@@ -867,13 +867,10 @@ pub fn parseValidFloat(text: []const u8) ?f64 {
 }
 
 /// "The best representation of the number n as a floating-point number":
-/// JavaScript's Number::toString.
+/// JavaScript's Number::toString - "1e+21", not the 22 digits `{d}` prints.
 fn formatFloat(allocator: std.mem.Allocator, number: f64) ![]u8 {
-    if (number == 0) return allocator.dupe(u8, "0");
-    if (number == @trunc(number) and @abs(number) < 1e21) {
-        return std.fmt.allocPrint(allocator, "{d}", .{@as(i128, @intFromFloat(number))});
-    }
-    return std.fmt.allocPrint(allocator, "{d}", .{number});
+    var buffer: [32]u8 = undefined;
+    return allocator.dupe(u8, reflection.numberToString(&buffer, number));
 }
 
 fn parseDigits(text: []const u8) ?u32 {
@@ -1130,56 +1127,111 @@ fn formatLocalDateTime(allocator: std.mem.Allocator, value: LocalDateTime) ![]u8
     return out.toOwnedSlice(allocator);
 }
 
-/// "The algorithm to convert a number to a string" of `input_type`.
+/// The largest magnitude of an ECMAScript time value, in milliseconds either
+/// side of the epoch (ECMA-262 21.4.1.1, "Time Values and Time Range").
+const max_time_value: f64 = 8.64e15;
+
+/// The last date that time range reaches, +275760-09-13.
+const max_date: Date = .{ .year = 275760, .month = 9, .day = 13 };
+
+/// Whether a valid date string can represent `date`: its year is "four or
+/// more ASCII digits, representing year, where year > 0", and it lies within
+/// the time range - HTML leaves the upper limit to the implementation, and
+/// this is the one a Date (and Chromium's DateComponents) has.
+fn dateRepresentable(date: Date) bool {
+    if (date.year < 1) return false;
+    if (date.year != max_date.year) return date.year < max_date.year;
+    if (date.month != max_date.month) return date.month < max_date.month;
+    return date.day <= max_date.day;
+}
+
+/// The date `number` milliseconds after 1970-01-01T00:00Z, and the
+/// milliseconds into that day - or null when the number is outside the time
+/// range or its date has no valid date string. Range-checked as a float first:
+/// a number beyond the range of i64 is a safety panic in `@intFromFloat`
+/// (input-valueasnumber.html sets 2.7343337071894478e26).
+fn dateOfTimeValue(number: f64) ?struct { date: Date, day_ms: i64 } {
+    if (!std.math.isFinite(number) or @abs(number) > max_time_value) return null;
+    const total: i64 = @intFromFloat(@floor(number));
+    const date = civilFromDays(@divFloor(total, 86_400_000));
+    if (!dateRepresentable(date)) return null;
+    return .{ .date = date, .day_ms = @mod(total, 86_400_000) };
+}
+
+/// A time of day from a millisecond count in [0, 86 400 000).
+fn timeOfDay(ms: i64) Time {
+    return .{
+        .hour = @intCast(@divFloor(ms, 3_600_000)),
+        .minute = @intCast(@divFloor(@mod(ms, 3_600_000), 60_000)),
+        .millisecond = @intCast(@mod(ms, 60_000)),
+    };
+}
+
+/// "The algorithm to convert a number to a string" of `input_type`. Where no
+/// valid string represents the number (a date outside the representable
+/// range) the answer is the empty string: the value sanitization algorithm
+/// would make any invalid value that, and the valueAsNumber setter then sets
+/// the value to it, as browsers do.
 fn numberToString(allocator: std.mem.Allocator, input_type: InputType, number: f64) ![]u8 {
     switch (input_type) {
         .number, .range => return formatFloat(allocator, number),
         .date => {
+            // "a valid date string that represents the date that, in UTC, is
+            // current input milliseconds after midnight UTC on the morning of
+            // 1970-01-01".
+            const at = dateOfTimeValue(number) orelse return allocator.dupe(u8, "");
             var out: std.ArrayListUnmanaged(u8) = .empty;
             errdefer out.deinit(allocator);
-            try appendDate(&out, allocator, civilFromDays(@intFromFloat(@floor(number / ms_per_day))));
+            try appendDate(&out, allocator, at.date);
             return out.toOwnedSlice(allocator);
         },
         .month => {
-            const months: i64 = @intFromFloat(@floor(number));
+            // "a valid month string that represents the month that has input
+            // months between it and January 1970". Checked as a float, then
+            // against the representable years.
+            if (!std.math.isFinite(number)) return allocator.dupe(u8, "");
+            const months_f = @floor(number);
+            const max_months: f64 = @floatFromInt((@as(i64, max_date.year) - 1970) * 12 + max_date.month - 1);
+            const min_months: f64 = @floatFromInt((1 - 1970) * 12);
+            if (months_f < min_months or months_f > max_months) return allocator.dupe(u8, "");
+            const months: i64 = @intFromFloat(months_f);
             const year = 1970 + @divFloor(months, 12);
             const month = @mod(months, 12) + 1;
-            return std.fmt.allocPrint(allocator, "{d:0>4}-{d:0>2}", .{ @as(u64, @intCast(@max(year, 0))), @as(u64, @intCast(month)) });
+            return std.fmt.allocPrint(allocator, "{d:0>4}-{d:0>2}", .{ @as(u64, @intCast(year)), @as(u64, @intCast(month)) });
         },
         .week => {
-            const days: i64 = @intFromFloat(@floor(number / ms_per_day));
+            // "a valid week string that represents the week that, in UTC, is
+            // current input milliseconds after midnight UTC on the morning of
+            // 1970-01-01".
+            const at = dateOfTimeValue(number) orelse return allocator.dupe(u8, "");
+            const days = daysFromCivil(at.date.year, at.date.month, at.date.day);
             // The ISO week of the date: the week of its Thursday.
             const weekday: i64 = @mod(days + 3, 7);
             const thursday = civilFromDays(days - weekday + 3);
+            if (!dateRepresentable(thursday)) return allocator.dupe(u8, "");
             const jan4 = daysFromCivil(thursday.year, 1, 4);
             const week1_monday = jan4 - @as(i64, weekdayOf(thursday.year, 1, 4));
             const week = @divFloor(days - weekday - week1_monday, 7) + 1;
             return std.fmt.allocPrint(allocator, "{d:0>4}-W{d:0>2}", .{ thursday.year, @as(u64, @intCast(week)) });
         },
         .time => {
-            var ms: i64 = @intFromFloat(@floor(number));
-            ms = @mod(ms, 86_400_000);
+            // "a valid time string that represents the time that is input
+            // milliseconds after midnight on a day with no time changes": only
+            // the number modulo one day matters, however large. Reduced as a
+            // float - exact for the integer floor(number) - so it fits a u32.
+            if (!std.math.isFinite(number)) return allocator.dupe(u8, "");
+            const ms: i64 = @intFromFloat(@mod(@floor(number), ms_per_day));
             var out: std.ArrayListUnmanaged(u8) = .empty;
             errdefer out.deinit(allocator);
-            try appendTime(&out, allocator, .{
-                .hour = @intCast(@divFloor(ms, 3_600_000)),
-                .minute = @intCast(@divFloor(@mod(ms, 3_600_000), 60_000)),
-                .millisecond = @intCast(@mod(ms, 60_000)),
-            });
+            try appendTime(&out, allocator, timeOfDay(ms));
             return out.toOwnedSlice(allocator);
         },
         .@"datetime-local" => {
-            const total: i64 = @intFromFloat(@floor(number));
-            const days = @divFloor(total, 86_400_000);
-            const ms = @mod(total, 86_400_000);
-            return formatLocalDateTime(allocator, .{
-                .date = civilFromDays(days),
-                .time = .{
-                    .hour = @intCast(@divFloor(ms, 3_600_000)),
-                    .minute = @intCast(@divFloor(@mod(ms, 3_600_000), 60_000)),
-                    .millisecond = @intCast(@mod(ms, 60_000)),
-                },
-            });
+            // "a valid normalized local date and time string that represents
+            // the date and time that is input milliseconds after midnight on
+            // the morning of 1970-01-01".
+            const at = dateOfTimeValue(number) orelse return allocator.dupe(u8, "");
+            return formatLocalDateTime(allocator, .{ .date = at.date, .time = timeOfDay(at.day_ms) });
         },
         else => return allocator.dupe(u8, ""),
     }

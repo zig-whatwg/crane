@@ -71,3 +71,58 @@ pub const Link = struct {
         return runtime.SlabAllocator.generationOf(self.instance) == self.generation;
     }
 };
+
+/// An object an owner makes once, keeps in its own state and hands out as the
+/// same object for its whole life: a document's getSelection() Selection,
+/// document.all, document.fonts and document.styleSheets (Document.zig), and
+/// an element's shadow root (Element.zig).
+///
+/// Kept as a bare pointer, such a child dangles as soon as script drops it.
+/// Its wrapper is weak, so a collection frees the instance
+/// (wrapper_cache.weakCallback -> gc.onObjectFreed) while the owner still
+/// points at it, and the next read wraps whatever took the slot:
+/// Range-mutations.js runs `getSelection().removeAllRanges()` in every "with
+/// selected" subtest and got "removeAllRanges is not a function", or
+/// undefined, from wherever the collector happened to run; a host whose
+/// shadow root's wrapper was collected answered `host.shadowRoot` from a freed
+/// slot (scoped-registry-effective-global-registry.html, a safety panic in
+/// ShadowRoot.get_mode). The owner's teardown then deinit'd that slot,
+/// whoever owned it by then.
+///
+/// Blink traces each of them from the owner (TreeScope::Trace visits
+/// selection_ and style_sheet_list_; ElementRareData traces the shadow root).
+/// Crane has no tracing, so the owner holds the child's wrapper strongly from
+/// the first hand-out (`Pin`) until the owner goes, as AbortController does
+/// for its signal.
+///
+/// A child that points back at its owner (a shadow root's host) is safe here
+/// only because `release`'s `sever` step makes it stop: for a shadow root,
+/// dom.shadow_hosts tells it its host is gone.
+pub const KeptChild = struct {
+    pin: Pin = .{},
+    /// The child as it was when its owner made it.
+    link: ?Link = null,
+
+    /// `child` was just made and stored in the owner's state.
+    pub fn made(self: *KeptChild, child: *runtime.Instance) void {
+        self.link = Link.to(child);
+    }
+
+    /// `child` is going to script: keep its wrapper for as long as the owner
+    /// lives. Idempotent.
+    pub fn handOut(self: *KeptChild, child: *runtime.Instance) void {
+        self.pin.hold(child);
+    }
+
+    /// The owner is going. `child`, if it is still the object the owner made,
+    /// is severed from it (`sever`: its interface's deinit, which releases its
+    /// state, so script that still holds it gets InvalidStateError, not an
+    /// owner that is gone - or, for a shadow root, a step that only makes it
+    /// forget its host). Then its wrapper is let go, and the wrapper cache
+    /// frees the instance once script drops it too.
+    pub fn release(self: *KeptChild, child: *runtime.Instance, sever: *const fn (*runtime.Instance) void) void {
+        if (self.link) |link| if (link.isLive()) sever(child);
+        self.pin.release();
+        self.* = .{};
+    }
+};

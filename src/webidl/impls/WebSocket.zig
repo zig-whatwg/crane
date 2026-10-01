@@ -958,9 +958,17 @@ fn isHttpToken(value: []const u8) bool {
 /// Spec: https://websockets.spec.whatwg.org/#dom-websocket-url
 ///
 /// The url attribute must return this's url, serialized.
+///
+/// A copy: the binding frees the string a getter returns once it has
+/// converted it (interface.zig, the getter's cleanup). Returning the socket's
+/// own url_string had the first `ws.url` free it; every later read returned
+/// freed bytes, and InternalState.deinit freed it again - a double free whose
+/// poisoning memset landed in whatever owned that memory by then. That is the
+/// sweep-only SIGSEGV in WebSocket.InternalState.deinit under the realm's
+/// teardown (websockets/Create-http-urls.any.js reads ws.url).
 pub fn get_url(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
-    return state.own.url;
+    return try instance.ctx.allocator.dupe(u8, state.own.url);
 }
 
 /// Getter for readyState

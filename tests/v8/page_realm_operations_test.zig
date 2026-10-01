@@ -982,6 +982,95 @@ test "protocol: destroyWindowRealm retires the realm and lets its context go" {
     }
 }
 
+test "protocol: iterating a platform object from another realm leaves no Global<Context> and no extra native context" {
+    // A page reading its frame's objects: html5lib_write.html walks each
+    // frame's childNodes with for...of from the parent. The iterable callbacks
+    // run in the callee's realm - the frame's - and every one of them took
+    // that realm's Global<Context> and kept it, with a fresh iterator
+    // prototype (and its functions) a call, so every frame the page ever
+    // iterated stayed alive: 898 realms, 1.17 GB, for that one file.
+    _ = try realm();
+    const isolate = isolate_once.?;
+    const baseline = liveContexts();
+
+    var page_host: WindowHost = .{};
+    const page = try windowRealm(&page_host, false, .new_window_proxy);
+    var frame_host: WindowHost = .{};
+    const frame = try windowRealm(&frame_host, false, .new_window_proxy);
+
+    // A pair iterable of the frame's, handed to the page.
+    const params = try evalOwned(frame, "new URLSearchParams('a=1&b=2&c=3')");
+    try setGlobal(page, "fromFrame", params.value);
+    params.release();
+
+    // Every iteration method, and next() by hand, from the page.
+    const iterate =
+        \\(() => {
+        \\  let n = 0;
+        \\  for (const [k, v] of fromFrame) n++;
+        \\  for (const k of fromFrame.keys()) n++;
+        \\  for (const v of fromFrame.values()) n++;
+        \\  for (const e of fromFrame.entries()) n++;
+        \\  fromFrame.forEach(() => n++);
+        \\  const it = fromFrame[Symbol.iterator]();
+        \\  while (!it.next().done) n++;
+        \\  return n;
+        \\})()
+    ;
+    // The first round makes what every later one reuses. Each round's count
+    // is checked at the end, after the handle and realm counts are taken.
+    var counts_right = true;
+    {
+        const first = try evalString(page, iterate);
+        defer std.testing.allocator.free(first);
+        if (!std.mem.eql(u8, first, "18")) {
+            std.debug.print("a round of iteration counted {s}, not 18\n", .{first});
+            counts_right = false;
+        }
+    }
+
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    const rounds = 16;
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    for (0..rounds) |_| {
+        const count = try evalString(page, iterate);
+        defer std.testing.allocator.free(count);
+        if (!std.mem.eql(u8, count, "18")) counts_right = false;
+    }
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    // Before the fix: tens of handles a round (13 Global<Context> a cycle in
+    // gc_bench's NodeList loop alone).
+    const leaked = after -| before >= handle_bytes * rounds / 4;
+    if (leaked) std.debug.print("global handles {d} -> {d} bytes over {d} rounds of iteration ({d} bytes a handle)\n", .{ before, after, rounds, handle_bytes });
+
+    // WebIDL 3.7.10: one iterator prototype per interface per realm, with no
+    // constructor, tagged "<Interface> Iterator".
+    const shape = try evalString(page,
+        \\[Object.getPrototypeOf(fromFrame.keys()) === Object.getPrototypeOf(fromFrame.entries()),
+        \\ Object.prototype.hasOwnProperty.call(Object.getPrototypeOf(fromFrame.keys()), 'constructor'),
+        \\ Object.prototype.toString.call(fromFrame.keys())].join()
+    );
+    defer std.testing.allocator.free(shape);
+
+    // The page lets go of the frame's object, the frame ends, then the page.
+    try expectEval(page, "delete globalThis.fromFrame", "true");
+    protocol.destroyWindowRealm(frame, .global_detached);
+    protocol.destroyWindowRealm(page, .global_detached);
+    const contexts_after = liveContexts();
+    if (contexts_after != baseline) std.debug.print("native contexts: {d} before, {d} after both realms ended\n", .{ baseline, contexts_after });
+
+    try std.testing.expect(counts_right);
+    try std.testing.expectEqualStrings("true,false,[object URLSearchParams Iterator]", shape);
+    if (leaked) return error.HandlesLeaked;
+    if (contexts_after != baseline) return error.RealmKeptAlive;
+}
+
 test "protocol: a Window realm made and ended leaves no global handle behind" {
     _ = try realm();
     const isolate = isolate_once.?;

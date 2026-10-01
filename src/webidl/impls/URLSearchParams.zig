@@ -516,16 +516,77 @@ pub fn call_sort(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Sort tuples by name (stable sort)
+    // Step 1: "Sort all tuples in this's list, if any, by their names.
+    // Sorting must be done by comparison of code units. The relative order
+    // between tuples with equal names must be preserved." std.mem.sort is
+    // stable; the names are UTF-8, so they are compared as the UTF-16 code
+    // units they encode - a name outside the BMP starts with a high surrogate
+    // and sorts before one at or above U+E000, where comparing the UTF-8
+    // bytes (code point order) put it after.
     const items = internal.list.toSliceMut();
     std.mem.sort(Tuple, items, {}, struct {
         fn lessThan(_: void, a: Tuple, b: Tuple) bool {
-            return std.mem.order(u8, a.name, b.name) == .lt;
+            return orderByCodeUnits(a.name, b.name) == .lt;
         }
     }.lessThan);
 
     // Run update steps
     try updateSteps(instance);
+}
+
+/// The UTF-16 code units of a UTF-8 string, one at a time.
+const CodeUnits = struct {
+    bytes: []const u8,
+    index: usize = 0,
+    /// The low surrogate still owed for the last code point, if any.
+    pending: ?u16 = null,
+
+    fn next(self: *CodeUnits) ?u16 {
+        if (self.pending) |low| {
+            self.pending = null;
+            return low;
+        }
+        if (self.index >= self.bytes.len) return null;
+        const len = std.unicode.utf8ByteSequenceLength(self.bytes[self.index]) catch {
+            // Not UTF-8 (a USVString always is): order by the byte.
+            self.index += 1;
+            return self.bytes[self.index - 1];
+        };
+        const end = @min(self.index + len, self.bytes.len);
+        const code_point = std.unicode.utf8Decode(self.bytes[self.index..end]) catch {
+            self.index += 1;
+            return self.bytes[self.index - 1];
+        };
+        self.index = end;
+        if (code_point < 0x10000) return @intCast(code_point);
+        const offset = code_point - 0x10000;
+        self.pending = @intCast(0xDC00 + (offset & 0x3FF));
+        return @intCast(0xD800 + (offset >> 10));
+    }
+};
+
+/// The order of two UTF-8 strings by their UTF-16 code units (URL's "by
+/// comparison of code units").
+fn orderByCodeUnits(a: []const u8, b: []const u8) std.math.Order {
+    var left: CodeUnits = .{ .bytes = a };
+    var right: CodeUnits = .{ .bytes = b };
+    while (true) {
+        const x = left.next();
+        const y = right.next();
+        if (x == null and y == null) return .eq;
+        if (x == null) return .lt;
+        if (y == null) return .gt;
+        if (x.? != y.?) return std.math.order(x.?, y.?);
+    }
+}
+
+test "orderByCodeUnits: a name outside the BMP sorts before U+E000 and after U+D7FF" {
+    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{FB03}"));
+    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{E000}"));
+    try std.testing.expectEqual(std.math.Order.gt, orderByCodeUnits("\u{1F308}", "\u{D7FF}"));
+    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("a", "a\u{1F308}"));
+    try std.testing.expectEqual(std.math.Order.eq, orderByCodeUnits("a\u{1F308}", "a\u{1F308}"));
+    try std.testing.expectEqual(std.math.Order.lt, orderByCodeUnits("\u{1F308}", "\u{1F4A9}"));
 }
 
 /// forEach method
