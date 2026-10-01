@@ -464,7 +464,53 @@ pub fn getterValueIsOwned(comptime T: type) bool {
     inline for (owned) |O| {
         if (T == O) return true;
     }
-    return @typeInfo(T) == .@"enum";
+    const info = @typeInfo(T);
+    // An optional of one of them - `?f64`, `?bool`, `?u32`: conv.toV8Value
+    // converts a non-null one by converting its payload, as fresh as the
+    // payload's own conversion, and a null one to a fresh Null. Only these
+    // were listed before, so every non-null `?f64` read
+    // (writer.desiredSize) leaked its Number. The payload decides, so an
+    // optional of anything not listed - an Instance, a JSValue - stays kept.
+    if (info == .optional) {
+        const Payload = info.optional.child;
+        if (@typeInfo(Payload) == .optional) return false;
+        return getterValueIsOwned(Payload);
+    }
+    return info == .@"enum";
+}
+
+/// Free the text of a JSValue string result an impl handed over owned
+/// (`owned` true) - the one arm whose memory is the impl's allocation rather
+/// than an engine handle. The same rule as the operation path: every result
+/// is the binding's, and a getter that keeps a string returns a reference to
+/// it (`JSValue.fromStringRef`), which this leaves alone.
+fn freeOwnedString(allocator: std.mem.Allocator, result: runtime.JSValue) void {
+    if (result != .string) return;
+    var text = result.string;
+    text.deinit(allocator);
+}
+
+/// Free a string an indexed or named property interceptor's getter returned
+/// owned: a DOMString whose arm says `.owned` (DOMTokenList's item() copies
+/// its token), or a JSValue string flagged owned. Interned and empty strings,
+/// and a JSValue reference, are left alone - the union says whose memory it
+/// is. Each interceptor converted the result and dropped it: one leaked copy
+/// per `classList[0]` read, where `classList.item(0)` - an operation, which
+/// frees its result - leaked nothing.
+fn freeOwnedResult(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    if (T == runtime.DOMString) {
+        var text = value;
+        text.deinit(allocator);
+    } else if (T == ?runtime.DOMString) {
+        if (value) |present| {
+            var text = present;
+            text.deinit(allocator);
+        }
+    } else if (T == runtime.JSValue) {
+        freeOwnedString(allocator, value);
+    } else if (T == ?runtime.JSValue) {
+        if (value) |present| freeOwnedString(allocator, present);
+    }
 }
 
 /// Types `argHandleIsCopied` names by identity, re-exported so `tests/v8` can
@@ -2825,8 +2871,16 @@ pub fn V8Interface(comptime Interface: type) type {
                             v8.v8_Global_Dispose(v8_value);
                         } else if (comptime PayloadType == runtime.JSValue) {
                             if (result != .instance) v8.v8_Global_Dispose(v8_value);
+                            // A string the impl made for the result is the
+                            // binding's too, as an operation's is
+                            // (callMethodWithArgs): xhr.response's text
+                            // leaked on every read. A string the impl keeps
+                            // goes out as a reference (`owned` false), which
+                            // this leaves alone.
+                            freeOwnedString(cleanup_allocator, result);
                         } else if (comptime PayloadType == ?runtime.JSValue) {
                             if (result == null or result.? != .instance) v8.v8_Global_Dispose(v8_value);
+                            if (result) |value| freeOwnedString(cleanup_allocator, value);
                         } else if (comptime @typeInfo(PayloadType) == .optional) {
                             // Any other optional: a null result's value is made
                             // here, fresh - `v8.v8_Null(isolate_inner)` in the
@@ -4567,13 +4621,25 @@ pub fn V8Interface(comptime Interface: type) type {
             conv.throwTypeErrorFromContext(isolate, function_ctx, "Illegal constructor: " ++ name ++ " is not constructible");
         }
 
-        /// HTMLAllCollection call handler for document.all(nameOrIndex)
+        /// HTMLAllCollection's legacy caller: `document.all(nameOrIndex)`.
         ///
-        /// Per HTML spec, HTMLAllCollection has [[IsHTMLDDA]] internal slot making it undetectable.
-        /// V8 requires undetectable objects to be callable. When called as a function:
-        /// - document.all() with no args returns undefined
-        /// - document.all(index) calls item(index)
-        /// - document.all(name) calls namedItem(name)
+        /// HTML declares `legacycaller (HTMLCollection or Element)? item(optional
+        /// DOMString nameOrIndex)`, and WebIDL makes calling the object call that
+        /// operation: its argument converted as item()'s (undefined is "not
+        /// provided"; null is the string "null"), its result returned, its errors
+        /// thrown. HTML item() step 1: "If nameOrIndex was not provided, return
+        /// null" - the impl's, as every other step is.
+        ///
+        /// `info.getThis()` is the collection: V8 calls a non-function callable
+        /// with its receiver overwritten by the called object
+        /// (builtins-arm64.cc Generate_Call "Overwrite the original receiver with
+        /// the (original) target", then HandleApiCallAsFunctionDelegate), so
+        /// `document.all(x)` and `const a = document.all; a(x)` both arrive here
+        /// with document.all as `this`.
+        ///
+        /// Everything the handler makes is released: the current context, the
+        /// argument's handle, the converted string and the result. Kept, each
+        /// call left a Context Global, the argument and an Undefined behind.
         ///
         /// This is ONLY used for HTMLAllCollection (comptime check ensures interface_name matches)
         fn htmlAllCollectionCallHandler(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
@@ -4582,73 +4648,61 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Should never be called for other interfaces, but safety check
                 return;
             }
+            if (comptime !@hasDecl(Interface, "call_item")) return;
 
             const isolate = info.getIsolate();
-            const argc = info.length();
 
-            // If no arguments, return undefined per HTML spec
-            if (argc == 0) {
-                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-                return;
-            }
-
-            // Get the 'this' value - this should be the HTMLAllCollection instance
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj);
             const instance = getInstance(runtime.Instance, this_obj) orelse {
-                // If not a valid instance, return undefined
-                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+                conv.throwTypeError(isolate, "Illegal invocation");
                 return;
             };
 
-            // Get the first argument
-            const arg = info.get(0);
-
-            // Get V8 context and allocator for conversion
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-                return;
-            };
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call,
+            // and nothing converted below keeps it.
+            defer v8.v8_Context_Dispose(v8_context);
             const isolate_alloc = @import("isolate_allocator.zig");
             const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch {
-                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+                conv.throwError(isolate, "Out of memory");
                 return;
             };
 
-            // Per HTML spec: document.all(nameOrIndex) calls call_item with the argument
-            // call_item takes an Opt(DOMString) and handles both numeric and string cases
-            if (@hasDecl(Interface, "call_item")) {
-                // Convert argument to Opt(DOMString)
-                const webidl_mod = @import("webidl");
-                const DOMString = @import("typedefs").DOMString;
-                const name_or_index = conv.fromV8Value(webidl_mod.Opt(DOMString), allocator, isolate, v8_context, arg) catch {
-                    info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
+            // item()'s one argument, as an operation's: missing (no argument,
+            // or undefined) is "not provided".
+            const NameOrIndex = @typeInfo(@TypeOf(Interface.call_item)).@"fn".params[1].type.?;
+            const name_or_index: NameOrIndex = if (info.length() == 0)
+                NameOrIndex.notPassed()
+            else
+                convertArgReleasing(NameOrIndex, allocator, isolate, v8_context, info.get(0)) catch |err| {
+                    if (err != conv.ConversionError.ExceptionPending) conv.throwTypeError(isolate, @errorName(err));
                     return;
                 };
+            defer freeArgument(NameOrIndex, allocator, name_or_index);
 
-                // Call call_item (it handles both numeric string indices and names)
-                const result = Interface.call_item(instance, name_or_index) catch {
-                    info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-                    return;
-                };
+            const result_allocator = instance.ctx.allocator;
+            const result = Interface.call_item(instance, name_or_index) catch |err| {
+                if (err == conv.ConversionError.ExceptionPending) return;
+                conv.throwWebIDLErrorFromContext(isolate, v8_context, @errorName(err));
+                return;
+            };
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
-                // Return the result
-                if (result) |js_value| {
-                    // Convert runtime.JSValue to v8.Value for return
-                    const v8_value = conv.toV8Value(runtime.JSValue, isolate, v8_context, js_value) catch {
-                        info.setReturnValue(@ptrCast(v8.v8_Null(isolate)));
-                        return;
-                    };
-                    info.setReturnValue(@ptrCast(v8_value));
-                    // The result is the binding's, as every impl result is;
-                    // only an instance's wrapper is the wrapper cache's.
-                    if (js_value != .instance) v8.v8_Global_Dispose(@ptrCast(v8_value));
-                } else {
-                    info.setReturnValue(@ptrCast(v8.v8_Null(isolate)));
-                }
-            } else {
-                info.setReturnValue(@ptrCast(v8.v8_Undefined(isolate)));
-            }
+            // (HTMLCollection or Element)?: null, or the impl's value. A
+            // wrapper is the wrapper cache's; anything else is made here.
+            const value = result orelse {
+                const null_value = v8.v8_Null(isolate) orelse return;
+                info.setReturnValue(@ptrCast(null_value));
+                v8.v8_Global_Dispose(null_value);
+                return;
+            };
+            const v8_value = conv.toV8Value(runtime.JSValue, isolate, v8_context, value) catch {
+                conv.throwError(isolate, "Failed to convert result");
+                return;
+            };
+            info.setReturnValue(@ptrCast(v8_value));
+            if (value != .instance) v8.v8_Global_Dispose(@ptrCast(v8_value));
         }
 
         /// Placeholder method callback
@@ -4716,14 +4770,19 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Call the item() method
             std.log.debug("[indexedPropertyGetter] Calling {s}.call_item(instance={*}, index={})", .{ interface_name, instance, index });
+            const result_allocator = instance.ctx.allocator;
             const result = Interface.call_item(instance, index) catch |err| {
                 if (err == conv.ConversionError.ExceptionPending) {
                     return .kNo;
                 }
-                const creation_ctx = v8.v8_Object_GetCreationContext(this_obj) orelse v8_context;
-                conv.throwWebIDLErrorFromContext(isolate, creation_ctx, @errorName(err));
+                // Owned when V8 answers it - a fresh Global<Context>.
+                const creation_ctx = v8.v8_Object_GetCreationContext(this_obj);
+                defer if (creation_ctx) |made| v8.v8_Context_Dispose(made);
+                conv.throwWebIDLErrorFromContext(isolate, creation_ctx orelse v8_context, @errorName(err));
                 return .kNo;
             };
+            // A string item() made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value based on return type
             const ReturnType = @typeInfo(@TypeOf(Interface.call_item)).@"fn".return_type.?;
@@ -4895,6 +4954,9 @@ pub fn V8Interface(comptime Interface: type) type {
             const attributes: i32 = if (has_setter) 0 else 1; // 1 = ReadOnly
             const v8_attrs = v8.v8_Integer_New(isolate, attributes);
             info.setReturnValue(@ptrCast(v8_attrs));
+            // Made here, read into a Local by setReturnValue: ours (as the
+            // named query's is).
+            v8.v8_Global_Dispose(@ptrCast(v8_attrs));
             return .kYes;
         }
 
@@ -4946,14 +5008,25 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             // Get the value at this index
+            const result_allocator = instance.ctx.allocator;
             const result = Interface.call_item(instance, index) catch return .kNo;
+            // A string item() made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value
             const ReturnType = @typeInfo(@TypeOf(Interface.call_item)).@"fn".return_type.?;
             const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
             const type_info = @typeInfo(ActualReturnType);
 
+            // The descriptor and the value - unless it is a wrapper, the
+            // wrapper cache's - are made here and released once setReturnValue
+            // has read the descriptor into a Local. Built key by key and kept,
+            // the descriptor, its keys and its booleans were eight Globals per
+            // Object.getOwnPropertyDescriptor(collection, i) - and per
+            // Object.defineProperty on an indexed collection, which V8 asks
+            // for the current descriptor first.
             var v8_value: ?*v8.Value = null;
+            var value_owned = true;
             if (type_info == .optional) {
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
@@ -4966,8 +5039,10 @@ pub fn V8Interface(comptime Interface: type) type {
                             v8_context,
                         ) catch return .kNo;
                         v8_value = @ptrCast(wrapped);
+                        value_owned = false;
                     } else {
                         v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch return .kNo;
+                        value_owned = comptime getterValueIsOwned(ChildType);
                     }
                 } else {
                     // null value - use undefined
@@ -4975,9 +5050,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             } else {
                 v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch return .kNo;
+                value_owned = comptime getterValueIsOwned(ActualReturnType);
             }
 
             if (v8_value == null) return .kNo;
+            defer if (value_owned) v8.v8_Global_Dispose(v8_value.?);
 
             // Check if interface has an indexed setter (makes it writable)
             // Use same logic as indexedPropertyDefiner - prefer Meta.has_indexed_setter from codegen
@@ -4987,30 +5064,20 @@ pub fn V8Interface(comptime Interface: type) type {
             };
             const writable = has_setter;
 
-            // Create property descriptor object directly in Zig
-            // { value: v8_value, writable: bool, enumerable: true, configurable: true }
-            const desc = v8.v8_Object_NewInContext(v8_context) orelse return .kNo;
-
-            // Set the "value" property
-            const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return .kNo;
-            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(value_key), v8_value.?);
-
-            // Set the "writable" property
-            const writable_key = v8.v8_String_NewFromUtf8(isolate, "writable", 8) orelse return .kNo;
-            const writable_val = v8.v8_Boolean_New(isolate, writable);
-            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(writable_key), @ptrCast(writable_val));
-
-            // Set the "enumerable" property (always true for indexed properties)
-            const enumerable_key = v8.v8_String_NewFromUtf8(isolate, "enumerable", 10) orelse return .kNo;
-            const enumerable_val = v8.v8_Boolean_New(isolate, true);
-            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(enumerable_key), @ptrCast(enumerable_val));
-
-            // Set the "configurable" property (always true for WebIDL properties)
-            const configurable_key = v8.v8_String_NewFromUtf8(isolate, "configurable", 12) orelse return .kNo;
-            const configurable_val = v8.v8_Boolean_New(isolate, true);
-            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(configurable_key), @ptrCast(configurable_val));
+            // { value: v8_value, writable, enumerable: true, configurable: true },
+            // made in one call (as the named descriptor's is).
+            const desc = v8.v8_CreateDataPropertyDescriptor(
+                v8_context,
+                v8_value.?,
+                writable,
+                true, // enumerable: always, for indexed properties
+                true, // configurable: always, for WebIDL properties
+            ) orelse return .kNo;
 
             info.setReturnValue(@ptrCast(desc));
+            // The descriptor is made for this call, and setReturnValue reads
+            // it into a Local.
+            v8.v8_Global_Dispose(@ptrCast(desc));
             return .kYes;
         }
 
@@ -5201,9 +5268,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 // No indexed property setter - reject all define operations per WebIDL §3.9.3
                 // Return false from internal method = throw TypeError in Object.defineProperty
                 if (info.shouldThrowOnError()) {
+                    // The message and the error are made here, and thrown -
+                    // V8 keeps the exception it throws, not these handles.
                     const msg = "Cannot define property on read-only indexed collection";
                     const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    defer v8.v8_String_Dispose(msg_str);
                     const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    defer v8.v8_Global_Dispose(exception);
                     v8.v8_Isolate_ThrowException(isolate, exception);
                 }
                 return .kYes;
@@ -5228,6 +5299,11 @@ pub fn V8Interface(comptime Interface: type) type {
             if (instance_ptr) |ptr| {
                 const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
                 if (v8.v8_PropertyDescriptor_GetValue(desc)) |value| {
+                    // A fresh Global the wrapper made for the descriptor's
+                    // value: ours. The setter's conversion reads it; nothing
+                    // keeps this handle (a value it keeps, it keeps through
+                    // its own).
+                    defer v8.v8_Global_Dispose(value);
                     // Call the setter (set_item or call_setter)
                     if (@hasDecl(Interface, "set_item")) {
                         // Get value type from set_item signature
@@ -5403,9 +5479,12 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 Interface.call_getter;
 
+            const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
             };
+            // A string the named getter made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Acquired HERE, not at entry. `v8_Isolate_GetCurrentContext` heap-
             // allocates a Global<Context> where V8 hands back a borrowed Local, and
@@ -5798,9 +5877,12 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 Interface.call_getter;
 
+            const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
             };
+            // A string the named getter made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Check if result is non-null (property exists)
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
@@ -6057,10 +6139,13 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 Interface.call_getter;
 
+            const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
                 // Error calling getter - allow fallthrough
                 return .kNo;
             };
+            // A string the named getter made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Check if result is non-null (property exists as supported name)
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
@@ -6169,9 +6254,12 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 Interface.call_getter;
 
+            const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
             };
+            // A string the named getter made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;

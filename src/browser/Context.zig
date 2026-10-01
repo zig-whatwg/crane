@@ -292,6 +292,10 @@ const window_operations = runtime.WindowOperations{
 /// removed frame's timers kept firing, and a destroyed one's fired into a
 /// window whose state was freed.
 fn clearWindowState(realm: runtime.Context) void {
+    // The unloading document cleanup steps other specifications define (the
+    // File API's: the window's blob URL entries leave the store).
+    dom_mod.unloading_cleanup.run(realm);
+
     if (timer_contexts) |*map| {
         var doomed: std.ArrayListUnmanaged(TimerId) = .empty;
         defer if (current_allocator) |alloc| doomed.deinit(alloc);
@@ -1396,8 +1400,11 @@ pub const Context = struct {
         // The end of the page's realm (engine.destroyWindowRealm): its
         // Window, document and frames torn down, its WindowProxy detached,
         // its context released - Blink's LocalWindowProxy::DisposeContext
-        // order.
+        // order. Its document is destroyed first: the unloading document
+        // cleanup steps other specifications define run for it (its frames'
+        // run as their realms end, clearWindowState).
         if (self.realm) |realm| {
+            dom_mod.unloading_cleanup.run(realm);
             engine.destroyWindowRealm(realm, .global_detached);
             self.realm = null;
         }
