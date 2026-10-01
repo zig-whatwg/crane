@@ -141,6 +141,10 @@ A lane brief now carries the lessons chosen for its batch.
 - [A token armed during its own turn belongs to that turn](architecture-a-token-armed-during-its-own-turn-belongs-to-that-turn.md) - An ownership rule with more than two states must be checked at every exit, not just the obvious ones; extract the rule into a type small enough to test with a fake timer.
 - [An `any` argument's value says whether its handle is still in use](architecture-an-any-arguments-value-says-whether-its-handle-is-still-in-use.md) - When a type-level ownership predicate must say "kept" for safety, look for a value-level proof before accepting the leak; before flipping a borrowed-argument rule, read every keeper.
 - [What every page carries must not change with results](architecture-what-every-page-carries-must-not-change-with-results.md) - Keep results out of the shared frame; only the page a result belongs to may change.
+- [A realm that ends when something is collected ends at a random time](architecture-a-realm-that-ends-when-something-is-collected-ends-at-a-random-time.md) - Tie every script-observable lifetime to a spec step, not to a collection.
+- [A deferred read defers the peer too - Nagle and the delayed ACK](architecture-a-deferred-read-defers-the-peer-nagle-and-delayed-ack.md) - "Give the network one step" is not enough after a long task: the step itself releases the rest.
+- [A wrapper outlives its realm - sever it when its instance goes](architecture-a-wrapper-outlives-its-realm-sever-it-when-its-instance-goes.md) - Whoever frees an instance must sever every wrapper that can outlive the free.
+- [A task that runs script frees its object after the script, never during it](architecture-a-task-that-runs-script-frees-its-object-after-the-script.md) - Count the running task as a holder, and grep sweep logs for "Double free detected".
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -235,6 +239,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A headless Chrome `--screenshot` of a deep-linked, script-scrolled page can come back blank](testing-headless-chrome-screenshot-of-a-deep-link-can-be-blank.md) - Open every capture before it becomes evidence; for a page that works after load, capture over CDP when you choose.
 - [A single-path runner run has no stall watchdog](testing-a-single-path-runner-run-has-no-stall-watchdog.md) - A runner process with no supervisor has no watchdog: bound it yourself; and `CRANE_LEAK_TRACES=1` is for small files - count leaks untraced first.
 - [Headless Chrome may never exit, and a reused profile caches a regenerated page](testing-headless-chrome-may-never-exit-and-caches-across-rounds.md) - Bound every headless call, and never reuse a profile across a regeneration.
+- [A count that moves between runs - diff the failure messages, not the totals](testing-a-count-that-moves-between-runs-diff-the-failure-messages.md) - Totals that move are a symptom; identical subtests failing differently between runs mean something freed is being read.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
@@ -252,6 +257,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [When a member reads undefined, check what the identifier names](debugging-when-a-member-reads-undefined-check-what-the-identifier-names.md) - `undefined` from a member the interface has means the receiver is something else; print a control case beside the failing one first.
 - [A per-page slowdown with flat native contexts is a table, not a page](debugging-a-per-page-slowdown-with-flat-native-contexts-is-a-table-not-a-page.md) - Flat native contexts with a rising curve means the process keeps something per page that is not a page: sample the slow page before theorising, and diff snapshots by type - a process-wide table and a realm-less handle are both invisible to the realm count.
 - [An abort through panicExtra inside V8 code is UBSan, not a V8 CHECK](debugging-an-abort-through-panicextra-inside-v8-code-is-ubsan-not-a-check.md) - `panicExtra` under a C++ frame is UBSan: decode the handler's source location from the binary before theorising about V8's preconditions.
+- [The runner writes its log positionally - trace through a pipe](debugging-the-runner-writes-its-log-positionally-trace-through-a-pipe.md) - If a trace in the runner's log is missing or cut, suspect the log: pipe it.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.
