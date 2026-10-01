@@ -19,7 +19,6 @@ const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
@@ -39,8 +38,8 @@ const Node = @import("interfaces").Node;
 const TextTrackList = @import("interfaces").TextTrackList;
 const TimeRanges = @import("interfaces").TimeRanges;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
 const Range = @import("interfaces").Range;
+const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const DOMRectList = @import("interfaces").DOMRectList;
@@ -48,12 +47,12 @@ const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOption
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
-const DOMString = @import("typedefs").DOMString;
-const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
-const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
+const ScrollToOptions = @import("dictionaries").ScrollToOptions;
+const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const DOMQuad = @import("interfaces").DOMQuad;
+const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const DOMString = @import("typedefs").DOMString;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
@@ -68,8 +67,8 @@ const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const EventHandler = @import("typedefs").EventHandler;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const RemotePlayback = @import("interfaces").RemotePlayback;
 const MediaKeys = @import("interfaces").MediaKeys;
+const RemotePlayback = @import("interfaces").RemotePlayback;
 const AudioTrackList = @import("interfaces").AudioTrackList;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
 const StylePropertyMap = @import("interfaces").StylePropertyMap;
@@ -134,11 +133,11 @@ pub const HTMLMediaElement = struct {
             .{ "videoTracks", "get_videoTracks", null },
             .{ "textTracks", "get_textTracks", null },
             .{ "sinkId", "get_sinkId", null },
-            .{ "remote", "get_remote", null },
-            .{ "disableRemotePlayback", "get_disableRemotePlayback", "set_disableRemotePlayback" },
             .{ "mediaKeys", "get_mediaKeys", null },
             .{ "onencrypted", "get_onencrypted", "set_onencrypted" },
             .{ "onwaitingforkey", "get_onwaitingforkey", "set_onwaitingforkey" },
+            .{ "remote", "get_remote", null },
+            .{ "disableRemotePlayback", "get_disableRemotePlayback", "set_disableRemotePlayback" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -231,17 +230,9 @@ pub const HTMLMediaElement = struct {
             "getSpatialNavigationContainer",
             "focusableAreas",
             "spatialNavigationSearch",
-            "requestFullscreen",
-            "requestPointerLock",
-            "setPointerCapture",
-            "releasePointerCapture",
-            "hasPointerCapture",
-            "computedStyleMap",
             "pseudo",
+            "computedStyleMap",
             "startViewTransition",
-            "setHTMLUnsafe",
-            "getHTML",
-            "insertAdjacentHTML",
             "getClientRects",
             "getBoundingClientRect",
             "checkVisibility",
@@ -252,9 +243,19 @@ pub const HTMLMediaElement = struct {
             "scrollTo",
             "scrollBy",
             "scrollBy",
-            "animate",
-            "getAnimations",
+            "requestFullscreen",
+            "setHTMLUnsafe",
+            "getHTML",
+            "insertAdjacentHTML",
+            "setPointerCapture",
+            "releasePointerCapture",
+            "hasPointerCapture",
+            "requestPointerLock",
             "getRegionFlowRanges",
+            "getBoxQuads",
+            "convertQuadFromNode",
+            "convertRectFromNode",
+            "convertPointFromNode",
             "prepend",
             "append",
             "replaceChildren",
@@ -265,10 +266,8 @@ pub const HTMLMediaElement = struct {
             "after",
             "replaceWith",
             "remove",
-            "getBoxQuads",
-            "convertQuadFromNode",
-            "convertRectFromNode",
-            "convertPointFromNode",
+            "animate",
+            "getAnimations",
             "click",
             "attachInternals",
             "showPopover",
@@ -309,11 +308,11 @@ pub const HTMLMediaElement = struct {
             .{ "videoTracks", "get_videoTracks", null },
             .{ "textTracks", "get_textTracks", null },
             .{ "sinkId", "get_sinkId", null },
-            .{ "remote", "get_remote", null },
-            .{ "disableRemotePlayback", "get_disableRemotePlayback", "set_disableRemotePlayback" },
             .{ "mediaKeys", "get_mediaKeys", null },
             .{ "onencrypted", "get_onencrypted", "set_onencrypted" },
             .{ "onwaitingforkey", "get_onwaitingforkey", "set_onwaitingforkey" },
+            .{ "remote", "get_remote", null },
+            .{ "disableRemotePlayback", "get_disableRemotePlayback", "set_disableRemotePlayback" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -355,11 +354,11 @@ pub const HTMLMediaElement = struct {
             videoTracks: *runtime.Instance = undefined,
             textTracks: *runtime.Instance = undefined,
             sinkId: typedefs.DOMString = undefined,
-            remote: *runtime.Instance = undefined,
-            disableRemotePlayback: bool = undefined,
             mediaKeys: ?*runtime.Instance = null,
             onencrypted: typedefs.EventHandler = undefined,
             onwaitingforkey: typedefs.EventHandler = undefined,
+            remote: *runtime.Instance = undefined,
+            disableRemotePlayback: bool = undefined,
             cached_audioTracks: ?*runtime.Instance = null,
             cached_videoTracks: ?*runtime.Instance = null,
             cached_textTracks: ?*runtime.Instance = null,
@@ -767,6 +766,27 @@ pub const HTMLMediaElement = struct {
         return try HTMLMediaElementImpl.get_sinkId(instance);
     }
 
+    /// Extended attributes: [SecureContext]
+    pub fn get_mediaKeys(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try HTMLMediaElementImpl.get_mediaKeys(instance);
+    }
+
+    pub fn get_onencrypted(instance: *runtime.Instance) anyerror!EventHandler {
+        return try HTMLMediaElementImpl.get_onencrypted(instance);
+    }
+
+    pub fn set_onencrypted(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try HTMLMediaElementImpl.set_onencrypted(instance, value);
+    }
+
+    pub fn get_onwaitingforkey(instance: *runtime.Instance) anyerror!EventHandler {
+        return try HTMLMediaElementImpl.get_onwaitingforkey(instance);
+    }
+
+    pub fn set_onwaitingforkey(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try HTMLMediaElementImpl.set_onwaitingforkey(instance, value);
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_remote(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -791,27 +811,6 @@ pub const HTMLMediaElement = struct {
         defer runtime.CEReactions.end();
 
         try HTMLMediaElementImpl.set_disableRemotePlayback(instance, value);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn get_mediaKeys(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try HTMLMediaElementImpl.get_mediaKeys(instance);
-    }
-
-    pub fn get_onencrypted(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLMediaElementImpl.get_onencrypted(instance);
-    }
-
-    pub fn set_onencrypted(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLMediaElementImpl.set_onencrypted(instance, value);
-    }
-
-    pub fn get_onwaitingforkey(instance: *runtime.Instance) anyerror!EventHandler {
-        return try HTMLMediaElementImpl.get_onwaitingforkey(instance);
-    }
-
-    pub fn set_onwaitingforkey(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try HTMLMediaElementImpl.set_onwaitingforkey(instance, value);
     }
 
     pub fn call_canPlayType(instance: *runtime.Instance, @"type": DOMString) anyerror!CanPlayTypeResult {

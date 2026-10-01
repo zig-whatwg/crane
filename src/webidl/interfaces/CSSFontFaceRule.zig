@@ -12,10 +12,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("typedefs").CSSOMString;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const CSSFontFaceDescriptors = @import("interfaces").CSSFontFaceDescriptors;
-const DOMString = @import("typedefs").DOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 
 pub const CSSFontFaceRule = struct {
     pub const Meta = struct {

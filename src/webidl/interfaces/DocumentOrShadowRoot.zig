@@ -13,8 +13,8 @@ const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const StyleSheetList = @import("interfaces").StyleSheetList;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
+const Animation = @import("interfaces").Animation;
 
 pub const DocumentOrShadowRoot = struct {
     pub const Meta = struct {
@@ -29,12 +29,12 @@ pub const DocumentOrShadowRoot = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "customElementRegistry", "get_customElementRegistry", null },
-            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
-            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
-            .{ "pointerLockElement", "get_pointerLockElement", null },
             .{ "styleSheets", "get_styleSheets", null },
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
+            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
             .{ "activeElement", "get_activeElement", null },
+            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
+            .{ "pointerLockElement", "get_pointerLockElement", null },
         };
 
         /// [LegacyLenientSetter] attributes: readonly with no-op setters
@@ -59,12 +59,12 @@ pub const DocumentOrShadowRoot = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "customElementRegistry", "get_customElementRegistry", null },
-            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
-            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
-            .{ "pointerLockElement", "get_pointerLockElement", null },
             .{ "styleSheets", "get_styleSheets", null },
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
+            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
             .{ "activeElement", "get_activeElement", null },
+            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
+            .{ "pointerLockElement", "get_pointerLockElement", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -78,12 +78,12 @@ pub const DocumentOrShadowRoot = struct {
         Meta.MixinTypes,
         struct {
             customElementRegistry: ?*runtime.Instance = null,
-            fullscreenElement: ?*runtime.Instance = null,
-            pictureInPictureElement: ?*runtime.Instance = null,
-            pointerLockElement: ?*runtime.Instance = null,
             styleSheets: *runtime.Instance = undefined,
             adoptedStyleSheets: runtime.JSValue = undefined,
+            fullscreenElement: ?*runtime.Instance = null,
             activeElement: ?*runtime.Instance = null,
+            pictureInPictureElement: ?*runtime.Instance = null,
+            pointerLockElement: ?*runtime.Instance = null,
             cached_styleSheets: ?*runtime.Instance = null,
             _internal: ?*DocumentOrShadowRootImpl.InternalState = null,
         },
@@ -132,27 +132,6 @@ pub const DocumentOrShadowRoot = struct {
         return try DocumentOrShadowRootImpl.get_customElementRegistry(instance);
     }
 
-    /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentOrShadowRootImpl.get_fullscreenElement(instance);
-    }
-
-    /// Extended attributes: [LegacyLenientSetter]
-    pub fn set_fullscreenElement(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
-        // Per WebIDL §4.3.10: The setter steps are to return.
-        _ = instance;
-        _ = value;
-    }
-
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentOrShadowRootImpl.get_pictureInPictureElement(instance);
-    }
-
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentOrShadowRootImpl.get_pointerLockElement(instance);
-    }
-
     /// Extended attributes: [SameObject]
     pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -173,8 +152,29 @@ pub const DocumentOrShadowRoot = struct {
         try DocumentOrShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 
+    /// Extended attributes: [LegacyLenientSetter]
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DocumentOrShadowRootImpl.get_fullscreenElement(instance);
+    }
+
+    /// Extended attributes: [LegacyLenientSetter]
+    pub fn set_fullscreenElement(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
+        // Per WebIDL §4.3.10: The setter steps are to return.
+        _ = instance;
+        _ = value;
+    }
+
     pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentOrShadowRootImpl.get_activeElement(instance);
+    }
+
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DocumentOrShadowRootImpl.get_pictureInPictureElement(instance);
+    }
+
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DocumentOrShadowRootImpl.get_pointerLockElement(instance);
     }
 
     pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {

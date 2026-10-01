@@ -16,7 +16,6 @@ const CSSOMString = @import("typedefs").CSSOMString;
 const FunctionParameter = @import("dictionaries").FunctionParameter;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSRuleList = @import("interfaces").CSSRuleList;
-const DOMString = @import("typedefs").DOMString;
 
 pub const CSSFunctionRule = struct {
     pub const Meta = struct {

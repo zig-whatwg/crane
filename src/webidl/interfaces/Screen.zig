@@ -36,9 +36,9 @@ pub const Screen = struct {
             .{ "height", "get_height", null },
             .{ "colorDepth", "get_colorDepth", null },
             .{ "pixelDepth", "get_pixelDepth", null },
+            .{ "orientation", "get_orientation", null },
             .{ "isExtended", "get_isExtended", null },
             .{ "onchange", "get_onchange", "set_onchange" },
-            .{ "orientation", "get_orientation", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -58,9 +58,9 @@ pub const Screen = struct {
             .{ "height", "get_height", null },
             .{ "colorDepth", "get_colorDepth", null },
             .{ "pixelDepth", "get_pixelDepth", null },
+            .{ "orientation", "get_orientation", null },
             .{ "isExtended", "get_isExtended", null },
             .{ "onchange", "get_onchange", "set_onchange" },
-            .{ "orientation", "get_orientation", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -79,9 +79,9 @@ pub const Screen = struct {
             height: i32 = undefined,
             colorDepth: u32 = undefined,
             pixelDepth: u32 = undefined,
+            orientation: *runtime.Instance = undefined,
             isExtended: bool = undefined,
             onchange: typedefs.EventHandler = undefined,
-            orientation: *runtime.Instance = undefined,
             cached_orientation: ?*runtime.Instance = null,
             _internal: ?*ScreenImpl.InternalState = null,
         },
@@ -149,6 +149,18 @@ pub const Screen = struct {
         return try ScreenImpl.get_pixelDepth(instance);
     }
 
+    /// Extended attributes: [SameObject]
+    pub fn get_orientation(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_orientation) |cached| {
+            return cached;
+        }
+        const value = try ScreenImpl.get_orientation(instance);
+        state.own.cached_orientation = value;
+        return value;
+    }
+
     /// Extended attributes: [SecureContext]
     pub fn get_isExtended(instance: *runtime.Instance) anyerror!bool {
         return try ScreenImpl.get_isExtended(instance);
@@ -162,17 +174,5 @@ pub const Screen = struct {
     /// Extended attributes: [SecureContext]
     pub fn set_onchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try ScreenImpl.set_onchange(instance, value);
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_orientation(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_orientation) |cached| {
-            return cached;
-        }
-        const value = try ScreenImpl.get_orientation(instance);
-        state.own.cached_orientation = value;
-        return value;
     }
 };

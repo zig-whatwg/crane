@@ -16,9 +16,9 @@ const MediaStream = @import("interfaces").MediaStream;
 const RTCRtpSendParameters = @import("dictionaries").RTCRtpSendParameters;
 const RTCStatsReport = @import("interfaces").RTCStatsReport;
 const RTCDtlsTransport = @import("interfaces").RTCDtlsTransport;
-const RTCDTMFSender = @import("interfaces").RTCDTMFSender;
-const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const RTCRtpTransform = @import("typedefs").RTCRtpTransform;
+const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
+const RTCDTMFSender = @import("interfaces").RTCDTMFSender;
 const DOMString = @import("typedefs").DOMString;
 
 pub const RTCRtpSender = struct {
@@ -40,8 +40,8 @@ pub const RTCRtpSender = struct {
         pub const properties = .{
             .{ "track", "get_track", null },
             .{ "transport", "get_transport", null },
-            .{ "dtmf", "get_dtmf", null },
             .{ "transform", "get_transform", "set_transform" },
+            .{ "dtmf", "get_dtmf", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -75,8 +75,8 @@ pub const RTCRtpSender = struct {
         pub const eager_properties = .{
             .{ "track", "get_track", null },
             .{ "transport", "get_transport", null },
-            .{ "dtmf", "get_dtmf", null },
             .{ "transform", "get_transform", "set_transform" },
+            .{ "dtmf", "get_dtmf", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -91,8 +91,8 @@ pub const RTCRtpSender = struct {
         struct {
             track: ?*runtime.Instance = null,
             transport: ?*runtime.Instance = null,
-            dtmf: ?*runtime.Instance = null,
             transform: ?typedefs.RTCRtpTransform = null,
+            dtmf: ?*runtime.Instance = null,
             _internal: ?*RTCRtpSenderImpl.InternalState = null,
         },
     );
@@ -144,16 +144,16 @@ pub const RTCRtpSender = struct {
         return try RTCRtpSenderImpl.get_transport(instance);
     }
 
-    pub fn get_dtmf(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try RTCRtpSenderImpl.get_dtmf(instance);
-    }
-
     pub fn get_transform(instance: *runtime.Instance) anyerror!?RTCRtpTransform {
         return try RTCRtpSenderImpl.get_transform(instance);
     }
 
     pub fn set_transform(instance: *runtime.Instance, value: ?RTCRtpTransform) anyerror!void {
         try RTCRtpSenderImpl.set_transform(instance, value);
+    }
+
+    pub fn get_dtmf(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try RTCRtpSenderImpl.get_dtmf(instance);
     }
 
     pub fn call_getParameters(instance: *runtime.Instance) anyerror!RTCRtpSendParameters {

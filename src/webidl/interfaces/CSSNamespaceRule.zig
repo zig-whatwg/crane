@@ -13,7 +13,6 @@ const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const DOMString = @import("typedefs").DOMString;
 
 pub const CSSNamespaceRule = struct {
     pub const Meta = struct {

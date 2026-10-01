@@ -58,33 +58,3 @@ pub fn call_getManagedConfiguration(instance: *runtime.Instance, keys: runtime.J
     _ = keys;
     return error.NotImplemented;
 }
-
-/// Operation: getHostname
-pub fn call_getHostname(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: getAnnotatedAssetId
-pub fn call_getAnnotatedAssetId(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: getDirectoryId
-pub fn call_getDirectoryId(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: getAnnotatedLocation
-pub fn call_getAnnotatedLocation(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Operation: getSerialNumber
-pub fn call_getSerialNumber(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}

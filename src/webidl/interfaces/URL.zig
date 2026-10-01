@@ -25,16 +25,12 @@ pub const URL = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
-            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker", "SharedWorker" } } },
+            .{ .name = "Exposed", .value = .{ .identifier = "*" } },
             .{ .name = "LegacyWindowAlias", .value = .{ .identifier = "webkitURL" } },
         };
 
         /// Global contexts where this interface is exposed
-        pub const exposed_in = .{
-            .Window = true,
-            .DedicatedWorker = true,
-            .SharedWorker = true,
-        };
+        pub const exposed_in_all_contexts = true;
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{

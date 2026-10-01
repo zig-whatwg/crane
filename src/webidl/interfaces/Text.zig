@@ -11,8 +11,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CharacterData = @import("interfaces").CharacterData;
-const Slottable = @import("mixins").Slottable;
 const GeometryUtils = @import("mixins").GeometryUtils;
+const Slottable = @import("mixins").Slottable;
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
@@ -45,8 +45,8 @@ pub const Text = struct {
         pub const BaseType = CharacterData.State;
         pub const ParentInterface = CharacterData;
         pub const MixinTypes = &.{
-            Slottable,
             GeometryUtils,
+            Slottable,
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },

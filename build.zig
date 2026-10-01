@@ -1275,6 +1275,8 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("mixins", mixins_mod);
     // Add selector to impls (for ParentNode querySelector/querySelectorAll)
     impls_mod.addImport("selector", selector_mod);
+    // Add css to impls (the CSS namespace: CSS.supports, CSS.escape)
+    impls_mod.addImport("css", css_mod);
 
     // Add mixins to interfaces (for ParentNode.NodeOrString and other mixin types)
     interfaces_mod.addImport("mixins", mixins_mod);

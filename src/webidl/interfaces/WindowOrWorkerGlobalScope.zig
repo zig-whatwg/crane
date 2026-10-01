@@ -11,17 +11,17 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ByteString = @import("typedefs").ByteString;
+const RequestInfo = @import("typedefs").RequestInfo;
 const Performance = @import("interfaces").Performance;
-const CacheStorage = @import("interfaces").CacheStorage;
 const VoidFunction = @import("callbacks").VoidFunction;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
 const IDBFactory = @import("interfaces").IDBFactory;
 const ImageBitmapSource = @import("typedefs").ImageBitmapSource;
-const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
+const RequestInit = @import("dictionaries").RequestInit;
 const TimerHandler = @import("typedefs").TimerHandler;
 const USVString = @import("typedefs").USVString;
-const RequestInfo = @import("typedefs").RequestInfo;
-const RequestInit = @import("dictionaries").RequestInit;
+const CacheStorage = @import("interfaces").CacheStorage;
+const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
 const Scheduler = @import("interfaces").Scheduler;
 const Crypto = @import("interfaces").Crypto;
 const ImageBitmapOptions = @import("dictionaries").ImageBitmapOptions;
@@ -45,10 +45,10 @@ pub const WindowOrWorkerGlobalScope = struct {
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
             .{ "indexedDB", "get_indexedDB", null },
-            .{ "trustedTypes", "get_trustedTypes", null },
             .{ "performance", "get_performance", "set_performance" },
-            .{ "caches", "get_caches", null },
             .{ "scheduler", "get_scheduler", "set_scheduler" },
+            .{ "caches", "get_caches", null },
+            .{ "trustedTypes", "get_trustedTypes", null },
             .{ "crypto", "get_crypto", null },
         };
 
@@ -91,10 +91,10 @@ pub const WindowOrWorkerGlobalScope = struct {
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
             .{ "indexedDB", "get_indexedDB", null },
-            .{ "trustedTypes", "get_trustedTypes", null },
             .{ "performance", "get_performance", "set_performance" },
-            .{ "caches", "get_caches", null },
             .{ "scheduler", "get_scheduler", "set_scheduler" },
+            .{ "caches", "get_caches", null },
+            .{ "trustedTypes", "get_trustedTypes", null },
             .{ "crypto", "get_crypto", null },
         };
 
@@ -112,10 +112,10 @@ pub const WindowOrWorkerGlobalScope = struct {
             isSecureContext: bool = undefined,
             crossOriginIsolated: bool = undefined,
             indexedDB: *runtime.Instance = undefined,
-            trustedTypes: *runtime.Instance = undefined,
             performance: *runtime.Instance = undefined,
-            caches: *runtime.Instance = undefined,
             scheduler: *runtime.Instance = undefined,
+            caches: *runtime.Instance = undefined,
+            trustedTypes: *runtime.Instance = undefined,
             crypto: *runtime.Instance = undefined,
             cached_indexedDB: ?*runtime.Instance = null,
             cached_caches: ?*runtime.Instance = null,
@@ -209,10 +209,6 @@ pub const WindowOrWorkerGlobalScope = struct {
         return value;
     }
 
-    pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WindowOrWorkerGlobalScopeImpl.get_trustedTypes(instance);
-    }
-
     /// Extended attributes: [Replaceable]
     pub fn get_performance(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WindowOrWorkerGlobalScopeImpl.get_performance(instance);
@@ -224,6 +220,19 @@ pub const WindowOrWorkerGlobalScope = struct {
         // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
         //                                     [[Enumerable]]: true, [[Configurable]]: true}
         try runtime.defineOwnProperty(instance, "performance", value);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try WindowOrWorkerGlobalScopeImpl.get_scheduler(instance);
+    }
+
+    /// Extended attributes: [Replaceable]
+    pub fn set_scheduler(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
+        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
+        //                                     [[Enumerable]]: true, [[Configurable]]: true}
+        try runtime.defineOwnProperty(instance, "scheduler", value);
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
@@ -238,17 +247,8 @@ pub const WindowOrWorkerGlobalScope = struct {
         return value;
     }
 
-    /// Extended attributes: [Replaceable]
-    pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try WindowOrWorkerGlobalScopeImpl.get_scheduler(instance);
-    }
-
-    /// Extended attributes: [Replaceable]
-    pub fn set_scheduler(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        // [Replaceable] - Create own property on the object using [[DefineOwnProperty]]
-        // Per WebIDL spec: PropertyDescriptor{[[Value]]: V, [[Writable]]: true,
-        //                                     [[Enumerable]]: true, [[Configurable]]: true}
-        try runtime.defineOwnProperty(instance, "scheduler", value);
+    pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try WindowOrWorkerGlobalScopeImpl.get_trustedTypes(instance);
     }
 
     /// Extended attributes: [SameObject]

@@ -19,7 +19,6 @@ const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
@@ -35,22 +34,22 @@ const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
 const Range = @import("interfaces").Range;
+const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const PermissionsPolicy = @import("interfaces").PermissionsPolicy;
-const DOMRectList = @import("interfaces").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
+const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
-const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
+const DOMQuad = @import("interfaces").DOMQuad;
+const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
@@ -110,18 +109,18 @@ pub const HTMLIFrameElement = struct {
             .{ "loading", "get_loading", "set_loading" },
             .{ "contentDocument", "get_contentDocument", null },
             .{ "contentWindow", "get_contentWindow", null },
-            .{ "browsingTopics", "get_browsingTopics", "set_browsingTopics" },
-            .{ "csp", "get_csp", "set_csp" },
             .{ "credentialless", "get_credentialless", "set_credentialless" },
-            .{ "adAuctionHeaders", "get_adAuctionHeaders", "set_adAuctionHeaders" },
+            .{ "csp", "get_csp", "set_csp" },
             .{ "align", "get_align", "set_align" },
             .{ "scrolling", "get_scrolling", "set_scrolling" },
             .{ "frameBorder", "get_frameBorder", "set_frameBorder" },
             .{ "longDesc", "get_longDesc", "set_longDesc" },
             .{ "marginHeight", "get_marginHeight", "set_marginHeight" },
             .{ "marginWidth", "get_marginWidth", "set_marginWidth" },
-            .{ "privateToken", "get_privateToken", "set_privateToken" },
             .{ "permissionsPolicy", "get_permissionsPolicy", null },
+            .{ "browsingTopics", "get_browsingTopics", "set_browsingTopics" },
+            .{ "privateToken", "get_privateToken", "set_privateToken" },
+            .{ "adAuctionHeaders", "get_adAuctionHeaders", "set_adAuctionHeaders" },
             .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
 
@@ -190,17 +189,9 @@ pub const HTMLIFrameElement = struct {
             "getSpatialNavigationContainer",
             "focusableAreas",
             "spatialNavigationSearch",
-            "requestFullscreen",
-            "requestPointerLock",
-            "setPointerCapture",
-            "releasePointerCapture",
-            "hasPointerCapture",
-            "computedStyleMap",
             "pseudo",
+            "computedStyleMap",
             "startViewTransition",
-            "setHTMLUnsafe",
-            "getHTML",
-            "insertAdjacentHTML",
             "getClientRects",
             "getBoundingClientRect",
             "checkVisibility",
@@ -211,9 +202,19 @@ pub const HTMLIFrameElement = struct {
             "scrollTo",
             "scrollBy",
             "scrollBy",
-            "animate",
-            "getAnimations",
+            "requestFullscreen",
+            "setHTMLUnsafe",
+            "getHTML",
+            "insertAdjacentHTML",
+            "setPointerCapture",
+            "releasePointerCapture",
+            "hasPointerCapture",
+            "requestPointerLock",
             "getRegionFlowRanges",
+            "getBoxQuads",
+            "convertQuadFromNode",
+            "convertRectFromNode",
+            "convertPointFromNode",
             "prepend",
             "append",
             "replaceChildren",
@@ -224,10 +225,8 @@ pub const HTMLIFrameElement = struct {
             "after",
             "replaceWith",
             "remove",
-            "getBoxQuads",
-            "convertQuadFromNode",
-            "convertRectFromNode",
-            "convertPointFromNode",
+            "animate",
+            "getAnimations",
             "click",
             "attachInternals",
             "showPopover",
@@ -251,18 +250,18 @@ pub const HTMLIFrameElement = struct {
             .{ "loading", "get_loading", "set_loading" },
             .{ "contentDocument", "get_contentDocument", null },
             .{ "contentWindow", "get_contentWindow", null },
-            .{ "browsingTopics", "get_browsingTopics", "set_browsingTopics" },
-            .{ "csp", "get_csp", "set_csp" },
             .{ "credentialless", "get_credentialless", "set_credentialless" },
-            .{ "adAuctionHeaders", "get_adAuctionHeaders", "set_adAuctionHeaders" },
+            .{ "csp", "get_csp", "set_csp" },
             .{ "align", "get_align", "set_align" },
             .{ "scrolling", "get_scrolling", "set_scrolling" },
             .{ "frameBorder", "get_frameBorder", "set_frameBorder" },
             .{ "longDesc", "get_longDesc", "set_longDesc" },
             .{ "marginHeight", "get_marginHeight", "set_marginHeight" },
             .{ "marginWidth", "get_marginWidth", "set_marginWidth" },
-            .{ "privateToken", "get_privateToken", "set_privateToken" },
             .{ "permissionsPolicy", "get_permissionsPolicy", null },
+            .{ "browsingTopics", "get_browsingTopics", "set_browsingTopics" },
+            .{ "privateToken", "get_privateToken", "set_privateToken" },
+            .{ "adAuctionHeaders", "get_adAuctionHeaders", "set_adAuctionHeaders" },
             .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
 
@@ -291,18 +290,18 @@ pub const HTMLIFrameElement = struct {
             loading: typedefs.DOMString = undefined,
             contentDocument: ?*runtime.Instance = null,
             contentWindow: ?typedefs.WindowProxy = null,
-            browsingTopics: bool = undefined,
-            csp: typedefs.DOMString = undefined,
             credentialless: bool = undefined,
-            adAuctionHeaders: bool = undefined,
+            csp: typedefs.DOMString = undefined,
             @"align": typedefs.DOMString = undefined,
             scrolling: typedefs.DOMString = undefined,
             frameBorder: typedefs.DOMString = undefined,
             longDesc: runtime.USVString = undefined,
             marginHeight: typedefs.DOMString = undefined,
             marginWidth: typedefs.DOMString = undefined,
-            privateToken: typedefs.DOMString = undefined,
             permissionsPolicy: *runtime.Instance = undefined,
+            browsingTopics: bool = undefined,
+            privateToken: typedefs.DOMString = undefined,
+            adAuctionHeaders: bool = undefined,
             sharedStorageWritable: bool = undefined,
             cached_sandbox: ?*runtime.Instance = null,
             cached_permissionsPolicy: ?*runtime.Instance = null,
@@ -566,18 +565,12 @@ pub const HTMLIFrameElement = struct {
         return try HTMLIFrameElementImpl.get_contentWindow(instance);
     }
 
-    /// Extended attributes: [CEReactions]
-    pub fn get_browsingTopics(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLIFrameElementImpl.get_browsingTopics(instance);
+    pub fn get_credentialless(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLIFrameElementImpl.get_credentialless(instance);
     }
 
-    /// Extended attributes: [CEReactions]
-    pub fn set_browsingTopics(instance: *runtime.Instance, value: bool) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try HTMLIFrameElementImpl.set_browsingTopics(instance, value);
+    pub fn set_credentialless(instance: *runtime.Instance, value: bool) anyerror!void {
+        try HTMLIFrameElementImpl.set_credentialless(instance, value);
     }
 
     /// Extended attributes: [CEReactions]
@@ -592,28 +585,6 @@ pub const HTMLIFrameElement = struct {
         defer runtime.CEReactions.end();
 
         try HTMLIFrameElementImpl.set_csp(instance, value);
-    }
-
-    pub fn get_credentialless(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLIFrameElementImpl.get_credentialless(instance);
-    }
-
-    pub fn set_credentialless(instance: *runtime.Instance, value: bool) anyerror!void {
-        try HTMLIFrameElementImpl.set_credentialless(instance, value);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn get_adAuctionHeaders(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLIFrameElementImpl.get_adAuctionHeaders(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_adAuctionHeaders(instance: *runtime.Instance, value: bool) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try HTMLIFrameElementImpl.set_adAuctionHeaders(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -712,16 +683,6 @@ pub const HTMLIFrameElement = struct {
         try reflection.set(DOMString, instance, .{ .name = "marginwidth" }, value);
     }
 
-    /// Extended attributes: [SecureContext]
-    pub fn get_privateToken(instance: *runtime.Instance) anyerror!DOMString {
-        return try HTMLIFrameElementImpl.get_privateToken(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn set_privateToken(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try HTMLIFrameElementImpl.set_privateToken(instance, value);
-    }
-
     /// Extended attributes: [SameObject]
     pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -732,6 +693,44 @@ pub const HTMLIFrameElement = struct {
         const value = try HTMLIFrameElementImpl.get_permissionsPolicy(instance);
         state.own.cached_permissionsPolicy = value;
         return value;
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn get_browsingTopics(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLIFrameElementImpl.get_browsingTopics(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn set_browsingTopics(instance: *runtime.Instance, value: bool) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        try HTMLIFrameElementImpl.set_browsingTopics(instance, value);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn get_privateToken(instance: *runtime.Instance) anyerror!DOMString {
+        return try HTMLIFrameElementImpl.get_privateToken(instance);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn set_privateToken(instance: *runtime.Instance, value: DOMString) anyerror!void {
+        try HTMLIFrameElementImpl.set_privateToken(instance, value);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn get_adAuctionHeaders(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLIFrameElementImpl.get_adAuctionHeaders(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn set_adAuctionHeaders(instance: *runtime.Instance, value: bool) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        try HTMLIFrameElementImpl.set_adAuctionHeaders(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [SecureContext]

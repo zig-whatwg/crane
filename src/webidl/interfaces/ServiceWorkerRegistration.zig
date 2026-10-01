@@ -46,8 +46,8 @@ pub const ServiceWorkerRegistration = struct {
             PushManagerAttribute,
         };
         pub const extended_attributes = .{
-            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
             .{ .name = "SecureContext" },
+            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "Worker" } } },
         };
 
         /// Global contexts where this interface is exposed
@@ -65,12 +65,12 @@ pub const ServiceWorkerRegistration = struct {
             .{ "scope", "get_scope", null },
             .{ "updateViaCache", "get_updateViaCache", null },
             .{ "onupdatefound", "get_onupdatefound", "set_onupdatefound" },
-            .{ "periodicSync", "get_periodicSync", null },
-            .{ "cookies", "get_cookies", null },
+            .{ "backgroundFetch", "get_backgroundFetch", null },
             .{ "sync", "get_sync", null },
             .{ "index", "get_index", null },
-            .{ "backgroundFetch", "get_backgroundFetch", null },
+            .{ "cookies", "get_cookies", null },
             .{ "paymentManager", "get_paymentManager", null },
+            .{ "periodicSync", "get_periodicSync", null },
             .{ "pushManager", "get_pushManager", null },
         };
 
@@ -107,12 +107,12 @@ pub const ServiceWorkerRegistration = struct {
             .{ "scope", "get_scope", null },
             .{ "updateViaCache", "get_updateViaCache", null },
             .{ "onupdatefound", "get_onupdatefound", "set_onupdatefound" },
-            .{ "periodicSync", "get_periodicSync", null },
-            .{ "cookies", "get_cookies", null },
+            .{ "backgroundFetch", "get_backgroundFetch", null },
             .{ "sync", "get_sync", null },
             .{ "index", "get_index", null },
-            .{ "backgroundFetch", "get_backgroundFetch", null },
+            .{ "cookies", "get_cookies", null },
             .{ "paymentManager", "get_paymentManager", null },
+            .{ "periodicSync", "get_periodicSync", null },
             .{ "pushManager", "get_pushManager", null },
         };
 
@@ -133,16 +133,16 @@ pub const ServiceWorkerRegistration = struct {
             scope: runtime.USVString = undefined,
             updateViaCache: enums.ServiceWorkerUpdateViaCache = undefined,
             onupdatefound: typedefs.EventHandler = undefined,
-            periodicSync: *runtime.Instance = undefined,
-            cookies: *runtime.Instance = undefined,
+            backgroundFetch: *runtime.Instance = undefined,
             sync: *runtime.Instance = undefined,
             index: *runtime.Instance = undefined,
-            backgroundFetch: *runtime.Instance = undefined,
+            cookies: *runtime.Instance = undefined,
             paymentManager: *runtime.Instance = undefined,
+            periodicSync: *runtime.Instance = undefined,
             pushManager: *runtime.Instance = undefined,
             cached_navigationPreload: ?*runtime.Instance = null,
-            cached_cookies: ?*runtime.Instance = null,
             cached_index: ?*runtime.Instance = null,
+            cached_cookies: ?*runtime.Instance = null,
             cached_paymentManager: ?*runtime.Instance = null,
             _internal: ?*ServiceWorkerRegistrationImpl.InternalState = null,
         },
@@ -236,20 +236,8 @@ pub const ServiceWorkerRegistration = struct {
         try ServiceWorkerRegistrationImpl.set_onupdatefound(instance, value);
     }
 
-    pub fn get_periodicSync(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try ServiceWorkerRegistrationImpl.get_periodicSync(instance);
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_cookies(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_cookies) |cached| {
-            return cached;
-        }
-        const value = try ServiceWorkerRegistrationImpl.get_cookies(instance);
-        state.own.cached_cookies = value;
-        return value;
+    pub fn get_backgroundFetch(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try ServiceWorkerRegistrationImpl.get_backgroundFetch(instance);
     }
 
     pub fn get_sync(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -268,8 +256,16 @@ pub const ServiceWorkerRegistration = struct {
         return value;
     }
 
-    pub fn get_backgroundFetch(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try ServiceWorkerRegistrationImpl.get_backgroundFetch(instance);
+    /// Extended attributes: [SameObject]
+    pub fn get_cookies(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_cookies) |cached| {
+            return cached;
+        }
+        const value = try ServiceWorkerRegistrationImpl.get_cookies(instance);
+        state.own.cached_cookies = value;
+        return value;
     }
 
     /// Extended attributes: [SameObject]
@@ -282,6 +278,10 @@ pub const ServiceWorkerRegistration = struct {
         const value = try ServiceWorkerRegistrationImpl.get_paymentManager(instance);
         state.own.cached_paymentManager = value;
         return value;
+    }
+
+    pub fn get_periodicSync(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try ServiceWorkerRegistrationImpl.get_periodicSync(instance);
     }
 
     pub const get_pushManager = mixins.PushManagerAttribute.get_pushManager;

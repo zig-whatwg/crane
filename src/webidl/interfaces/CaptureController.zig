@@ -41,9 +41,9 @@ pub const CaptureController = struct {
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
+            .{ "oncapturedmousechange", "get_oncapturedmousechange", "set_oncapturedmousechange" },
             .{ "zoomLevel", "get_zoomLevel", null },
             .{ "onzoomlevelchange", "get_onzoomlevelchange", "set_onzoomlevelchange" },
-            .{ "oncapturedmousechange", "get_oncapturedmousechange", "set_oncapturedmousechange" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -76,9 +76,9 @@ pub const CaptureController = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
+            .{ "oncapturedmousechange", "get_oncapturedmousechange", "set_oncapturedmousechange" },
             .{ "zoomLevel", "get_zoomLevel", null },
             .{ "onzoomlevelchange", "get_onzoomlevelchange", "set_onzoomlevelchange" },
-            .{ "oncapturedmousechange", "get_oncapturedmousechange", "set_oncapturedmousechange" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -91,9 +91,9 @@ pub const CaptureController = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
+            oncapturedmousechange: typedefs.EventHandler = undefined,
             zoomLevel: ?i32 = null,
             onzoomlevelchange: typedefs.EventHandler = undefined,
-            oncapturedmousechange: typedefs.EventHandler = undefined,
             _internal: ?*CaptureControllerImpl.InternalState = null,
         },
     );
@@ -146,6 +146,14 @@ pub const CaptureController = struct {
         return try CaptureControllerImpl.call_constructor(ctx);
     }
 
+    pub fn get_oncapturedmousechange(instance: *runtime.Instance) anyerror!EventHandler {
+        return try CaptureControllerImpl.get_oncapturedmousechange(instance);
+    }
+
+    pub fn set_oncapturedmousechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try CaptureControllerImpl.set_oncapturedmousechange(instance, value);
+    }
+
     pub fn get_zoomLevel(instance: *runtime.Instance) anyerror!?i32 {
         return try CaptureControllerImpl.get_zoomLevel(instance);
     }
@@ -156,14 +164,6 @@ pub const CaptureController = struct {
 
     pub fn set_onzoomlevelchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try CaptureControllerImpl.set_onzoomlevelchange(instance, value);
-    }
-
-    pub fn get_oncapturedmousechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try CaptureControllerImpl.get_oncapturedmousechange(instance);
-    }
-
-    pub fn set_oncapturedmousechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try CaptureControllerImpl.set_oncapturedmousechange(instance, value);
     }
 
     pub fn call_forwardWheel(instance: *runtime.Instance, element: ?*runtime.Instance) anyerror!runtime.JSValue {

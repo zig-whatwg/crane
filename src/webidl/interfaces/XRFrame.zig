@@ -11,25 +11,25 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const XRTransientInputHitTestSource = @import("interfaces").XRTransientInputHitTestSource;
-const XRHitTestSource = @import("interfaces").XRHitTestSource;
-const XRReferenceSpace = @import("interfaces").XRReferenceSpace;
 const XRView = @import("interfaces").XRView;
-const XRTransientInputHitTestResult = @import("interfaces").XRTransientInputHitTestResult;
+const XRReferenceSpace = @import("interfaces").XRReferenceSpace;
+const XRHitTestSource = @import("interfaces").XRHitTestSource;
+const XRJointPose = @import("interfaces").XRJointPose;
 const XRSession = @import("interfaces").XRSession;
 const DOMHighResTimeStamp = @import("typedefs").DOMHighResTimeStamp;
 const XRPose = @import("interfaces").XRPose;
-const XRCPUDepthInformation = @import("interfaces").XRCPUDepthInformation;
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
-const XRJointPose = @import("interfaces").XRJointPose;
+const XRCPUDepthInformation = @import("interfaces").XRCPUDepthInformation;
+const XRTransientInputHitTestResult = @import("interfaces").XRTransientInputHitTestResult;
 const XRBody = @import("interfaces").XRBody;
-const XRHitTestResult = @import("interfaces").XRHitTestResult;
 const XRAnchorSet = @import("interfaces").XRAnchorSet;
+const XRMeshSet = @import("interfaces").XRMeshSet;
 const XRSpace = @import("interfaces").XRSpace;
 const XRViewerPose = @import("interfaces").XRViewerPose;
-const XRLightProbe = @import("interfaces").XRLightProbe;
+const XRHitTestResult = @import("interfaces").XRHitTestResult;
 const XRAnchor = @import("interfaces").XRAnchor;
-const XRMeshSet = @import("interfaces").XRMeshSet;
 const XRJointSpace = @import("interfaces").XRJointSpace;
+const XRLightProbe = @import("interfaces").XRLightProbe;
 const XRLightEstimate = @import("interfaces").XRLightEstimate;
 const XRPlaneSet = @import("interfaces").XRPlaneSet;
 
@@ -53,38 +53,38 @@ pub const XRFrame = struct {
         pub const properties = .{
             .{ "session", "get_session", null },
             .{ "predictedDisplayTime", "get_predictedDisplayTime", null },
-            .{ "body", "get_body", null },
             .{ "trackedAnchors", "get_trackedAnchors", null },
-            .{ "detectedPlanes", "get_detectedPlanes", null },
+            .{ "body", "get_body", null },
             .{ "detectedMeshes", "get_detectedMeshes", null },
+            .{ "detectedPlanes", "get_detectedPlanes", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getViewerPose", "call_getViewerPose", 1 },
             .{ "getPose", "call_getPose", 2 },
-            .{ "getHitTestResults", "call_getHitTestResults", 1 },
-            .{ "getHitTestResultsForTransientInput", "call_getHitTestResultsForTransientInput", 1 },
-            .{ "getDepthInformation", "call_getDepthInformation", 1 },
             .{ "createAnchor", "call_createAnchor", 2 },
-            .{ "getLightEstimate", "call_getLightEstimate", 1 },
+            .{ "getDepthInformation", "call_getDepthInformation", 1 },
             .{ "getJointPose", "call_getJointPose", 2 },
             .{ "fillJointRadii", "call_fillJointRadii", 2 },
             .{ "fillPoses", "call_fillPoses", 3 },
+            .{ "getHitTestResults", "call_getHitTestResults", 1 },
+            .{ "getHitTestResultsForTransientInput", "call_getHitTestResultsForTransientInput", 1 },
+            .{ "getLightEstimate", "call_getLightEstimate", 1 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getViewerPose",
             "getPose",
-            "getHitTestResults",
-            "getHitTestResultsForTransientInput",
-            "getDepthInformation",
             "createAnchor",
-            "getLightEstimate",
+            "getDepthInformation",
             "getJointPose",
             "fillJointRadii",
             "fillPoses",
+            "getHitTestResults",
+            "getHitTestResultsForTransientInput",
+            "getLightEstimate",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -94,10 +94,10 @@ pub const XRFrame = struct {
         pub const eager_properties = .{
             .{ "session", "get_session", null },
             .{ "predictedDisplayTime", "get_predictedDisplayTime", null },
-            .{ "body", "get_body", null },
             .{ "trackedAnchors", "get_trackedAnchors", null },
-            .{ "detectedPlanes", "get_detectedPlanes", null },
+            .{ "body", "get_body", null },
             .{ "detectedMeshes", "get_detectedMeshes", null },
+            .{ "detectedPlanes", "get_detectedPlanes", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -112,13 +112,13 @@ pub const XRFrame = struct {
         struct {
             session: *runtime.Instance = undefined,
             predictedDisplayTime: typedefs.DOMHighResTimeStamp = undefined,
-            body: ?*runtime.Instance = null,
             trackedAnchors: *runtime.Instance = undefined,
-            detectedPlanes: *runtime.Instance = undefined,
+            body: ?*runtime.Instance = null,
             detectedMeshes: *runtime.Instance = undefined,
+            detectedPlanes: *runtime.Instance = undefined,
             cached_session: ?*runtime.Instance = null,
-            cached_body: ?*runtime.Instance = null,
             cached_trackedAnchors: ?*runtime.Instance = null,
+            cached_body: ?*runtime.Instance = null,
             _internal: ?*XRFrameImpl.InternalState = null,
         },
     );
@@ -184,18 +184,6 @@ pub const XRFrame = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_body) |cached| {
-            return cached;
-        }
-        const value = try XRFrameImpl.get_body(instance);
-        state.own.cached_body = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
     pub fn get_trackedAnchors(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -207,24 +195,36 @@ pub const XRFrame = struct {
         return value;
     }
 
-    pub fn get_detectedPlanes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try XRFrameImpl.get_detectedPlanes(instance);
+    /// Extended attributes: [SameObject]
+    pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_body) |cached| {
+            return cached;
+        }
+        const value = try XRFrameImpl.get_body(instance);
+        state.own.cached_body = value;
+        return value;
     }
 
     pub fn get_detectedMeshes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRFrameImpl.get_detectedMeshes(instance);
     }
 
-    pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try XRFrameImpl.call_getJointPose(instance, joint, baseSpace);
+    pub fn get_detectedPlanes(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try XRFrameImpl.get_detectedPlanes(instance);
     }
 
     pub fn call_fillJointRadii(instance: *runtime.Instance, jointSpaces: runtime.JSValue, radii: runtime.JSValue) anyerror!bool {
         return try XRFrameImpl.call_fillJointRadii(instance, jointSpaces, radii);
     }
 
-    pub fn call_fillPoses(instance: *runtime.Instance, spaces: runtime.JSValue, baseSpace: *runtime.Instance, transforms: runtime.JSValue) anyerror!bool {
-        return try XRFrameImpl.call_fillPoses(instance, spaces, baseSpace, transforms);
+    pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!runtime.JSValue {
+        return try XRFrameImpl.call_getHitTestResultsForTransientInput(instance, hitTestSource);
+    }
+
+    pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try XRFrameImpl.call_getLightEstimate(instance, lightProbe);
     }
 
     pub fn call_createAnchor(instance: *runtime.Instance, pose: *runtime.Instance, space: *runtime.Instance) anyerror!runtime.JSValue {
@@ -243,16 +243,16 @@ pub const XRFrame = struct {
         return try XRFrameImpl.call_getPose(instance, space, baseSpace);
     }
 
-    pub fn call_getHitTestResultsForTransientInput(instance: *runtime.Instance, hitTestSource: *runtime.Instance) anyerror!runtime.JSValue {
-        return try XRFrameImpl.call_getHitTestResultsForTransientInput(instance, hitTestSource);
+    pub fn call_fillPoses(instance: *runtime.Instance, spaces: runtime.JSValue, baseSpace: *runtime.Instance, transforms: runtime.JSValue) anyerror!bool {
+        return try XRFrameImpl.call_fillPoses(instance, spaces, baseSpace, transforms);
     }
 
     pub fn call_getViewerPose(instance: *runtime.Instance, referenceSpace: *runtime.Instance) anyerror!?*runtime.Instance {
         return try XRFrameImpl.call_getViewerPose(instance, referenceSpace);
     }
 
-    pub fn call_getLightEstimate(instance: *runtime.Instance, lightProbe: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try XRFrameImpl.call_getLightEstimate(instance, lightProbe);
+    pub fn call_getJointPose(instance: *runtime.Instance, joint: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try XRFrameImpl.call_getJointPose(instance, joint, baseSpace);
     }
 
     /// WebIDL: operations whose return type is a promise - an exception in

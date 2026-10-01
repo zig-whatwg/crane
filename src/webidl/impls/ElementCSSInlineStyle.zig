@@ -38,15 +38,3 @@ pub fn deinit(instance: *runtime.Instance) void {
     // TODO: Clean up your instance resources here
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
-
-/// Getter for style
-pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for attributeStyleMap
-pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
-}

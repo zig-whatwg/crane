@@ -13,8 +13,6 @@ const dictionaries = @import("dictionaries");
 const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
-const DOMString = @import("typedefs").DOMString;
-const CSSValue = @import("interfaces").CSSValue;
 
 pub const CSSFontFaceDescriptors = struct {
     pub const Meta = struct {
@@ -90,12 +88,6 @@ pub const CSSFontFaceDescriptors = struct {
             "getPropertyPriority",
             "setProperty",
             "removeProperty",
-            "getPropertyValue",
-            "getPropertyCSSValue",
-            "removeProperty",
-            "getPropertyPriority",
-            "setProperty",
-            "item",
         };
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties

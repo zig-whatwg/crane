@@ -10,8 +10,8 @@ const VideoEncoderEncodeOptionsForVp9 = @import("VideoEncoderEncodeOptionsForVp9
 
 pub const VideoEncoderEncodeOptions = struct {
     keyFrame: ?bool = null,
-    hevc: ?VideoEncoderEncodeOptionsForHevc = null,
     av1: ?VideoEncoderEncodeOptionsForAv1 = null,
     avc: ?VideoEncoderEncodeOptionsForAvc = null,
+    hevc: ?VideoEncoderEncodeOptionsForHevc = null,
     vp9: ?VideoEncoderEncodeOptionsForVp9 = null,
 };

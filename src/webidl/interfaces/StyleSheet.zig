@@ -14,7 +14,6 @@ const Element = @import("interfaces").Element;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const ProcessingInstruction = @import("interfaces").ProcessingInstruction;
-const Node = @import("interfaces").Node;
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 const MediaList = @import("interfaces").MediaList;
