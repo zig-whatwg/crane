@@ -1608,8 +1608,9 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
         false, // Window owns the backend, not the Storage instance
         instance.ctx,
     ) catch {
+        // The errdefer above destroys the block; freed here too, it was
+        // freed twice.
         backend.deinit();
-        internal.allocator.destroy(backend);
         return error.OutOfMemory;
     };
 
@@ -1637,7 +1638,9 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
     errdefer internal.allocator.destroy(backend);
 
     backend.* = getLocalStorageBackend(internal.allocator, internal.origin) catch |err| {
-        internal.allocator.destroy(backend);
+        // The errdefer above destroys the block. Destroyed here as well, every
+        // read in an opaque origin (SecurityError: a sandboxed frame without
+        // allow-same-origin) freed it twice.
         return switch (err) {
             web_storage.StorageError.SecurityError => error.SecurityError,
             web_storage.StorageError.OutOfMemory => error.OutOfMemory,
@@ -1652,8 +1655,8 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
         false, // Window owns the backend, not the Storage instance
         instance.ctx,
     ) catch {
+        // The errdefer above destroys the block.
         backend.deinit();
-        internal.allocator.destroy(backend);
         return error.OutOfMemory;
     };
 
