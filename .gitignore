@@ -55,7 +55,6 @@ data/
 
 # Specification files (downloaded by zig build setup)
 /specs/algorithms/
-/specs/idl/
 /specs/whatwg/
 
 # WPT run output (journals, per-shard worklists, per-child reports)
