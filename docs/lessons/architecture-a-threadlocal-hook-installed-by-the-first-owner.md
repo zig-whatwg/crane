@@ -10,3 +10,5 @@
 **Fix**: when nothing is installed, `createDependent` makes a signal through `interfaces.AbortSignal.init`, which installs the implementation, and lets it go (`releaseIfUnwrapped`). `tests/wpt/crane/request-before-any-abortsignal.html` pins it, and it goes red only in a fresh process.
 
 **Takeaway**: **Before trusting a lazily installed hook, ask whether its consumer can run before any owner exists.** A test that passes in a sweep and fails alone is often one where a previous page did the setup.
+
+**Seen again (2026-10-01)**: scheme fetch "blob" reaches the blob URL store through a resolver that only `fetch()` and `send()` installed, so a module fetch of a blob URL (`import()`, a worker's `import()`) in a process that had called neither was a network error: `blob-url.any.js` read 4 of 24 alone and 20 of 24 after other files. `URL.createObjectURL` now installs it - the store, and so any URL that can resolve, exists only from there. Install a hook where the thing it serves comes into existence, not where one of its consumers happens to run first.
