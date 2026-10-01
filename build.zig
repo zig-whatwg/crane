@@ -3652,6 +3652,7 @@ pub fn build(b: *std.Build) void {
             "tests/wpt_runner/stall_watchdog.zig",
             "tests/wpt_runner/wpt_test_ids.zig",
             "tests/wpt_runner/result_reporter.zig",
+            "tests/wpt_runner/script_deadline.zig",
         };
         for (harness_sources) |src| {
             const harness_tests = b.addTest(.{
