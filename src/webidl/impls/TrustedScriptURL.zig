@@ -67,7 +67,8 @@ pub fn stringify(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return "";
     if (internal.inner) |inner| {
-        return inner.toString();
+        // A copy: the data is the object's own.
+        return instance.ctx.allocator.dupe(u8, inner.toString());
     }
     return "";
 }
@@ -79,7 +80,9 @@ pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.USVString {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return "";
     if (internal.inner) |inner| {
-        return inner.toJSON();
+        // A copy: the binding frees a returned USVString, and the data is
+        // the object's own.
+        return instance.ctx.allocator.dupe(u8, inner.toJSON());
     }
     return "";
 }
@@ -103,6 +106,12 @@ pub fn isValid(instance: *runtime.Instance) bool {
 
 /// Stringifier - serialize method for toString
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return "[object]";
+    // "The stringification behavior is to return the value of this's [[Data]]
+    // internal slot" - as a copy: the binding frees the string toString()
+    // returns. It returned the literal "[object]", which the binding's free
+    // faulted on.
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return "";
+    const inner = internal.inner orelse return "";
+    return instance.ctx.allocator.dupe(u8, inner.toString());
 }

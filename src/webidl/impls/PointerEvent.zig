@@ -38,6 +38,9 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // The event's own copy of pointerType (empty unless the init dictionary
+    // gave one).
+    instance.getState(State).own.pointerType.deinit(instance.ctx.allocator);
     // Clean up inherited Event state (frees the type DOMString)
     interfaces.Event.deinit(instance);
 }
@@ -144,7 +147,10 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.own.twist = event_init.twist orelse 0;
     state.own.altitudeAngle = event_init.altitudeAngle orelse (std.math.pi / 2.0);
     state.own.azimuthAngle = event_init.azimuthAngle orelse 0.0;
-    state.own.pointerType = if (event_init.pointerType) |pt| pt else runtime.DOMString.initInterned("");
+    // The dictionary's string is the binding's, freed when the constructor
+    // returns: the event keeps a copy. Storing it made every read of
+    // pointerType a read of freed memory.
+    state.own.pointerType = if (event_init.pointerType) |pt| try pt.clone(ctx.allocator) else runtime.DOMString.initEmpty();
     state.own.isPrimary = event_init.isPrimary orelse false;
     state.own.persistentDeviceId = event_init.persistentDeviceId orelse 0;
 
@@ -214,7 +220,9 @@ pub fn get_azimuthAngle(instance: *runtime.Instance) anyerror!f64 {
 /// Getter for pointerType
 pub fn get_pointerType(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const state = instance.getState(State);
-    return state.own.pointerType;
+    // A view of the event's own copy: the binding frees an owned DOMString
+    // it is handed, and the event keeps this one.
+    return runtime.DOMString.initInterned(state.own.pointerType.asSlice());
 }
 
 /// Getter for isPrimary
