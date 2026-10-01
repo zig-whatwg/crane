@@ -67,6 +67,8 @@ pub fn get_body(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
 /// Stringifier - serialize method for toString
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return "[object]";
+    // TODO: CSS Parser API stringification of CSSParserBlock (https://wicg.github.io/css-parser-api/). Until then, the placeholder - as a copy: the binding frees
+    // the string toString() returns, and freeing a literal faulted in
+    // Allocator.free's memset.
+    return instance.ctx.allocator.dupe(u8, "[object]");
 }

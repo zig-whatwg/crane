@@ -1160,7 +1160,27 @@ fn createRangeFromSelection(internal: *InternalState) !*runtime.Instance {
 }
 
 /// Stringifier - serialize method for toString
+/// Spec: https://w3c.github.io/selection-api/#dom-selection-stringifier
+///
+/// "The stringification must return the string, which is the concatenation
+/// of the rendered text if there is a range associated with this." Crane has
+/// no layout, so the range's own stringification stands in for its rendered
+/// text (a stated deviation: Blink and Gecko serialize what is rendered);
+/// with no range, the empty string. The selected substring of a textarea or
+/// input value is not done (TODO). The result is the binding's to free - toString() is
+/// bound as an operation - so it is a copy in this selection's allocator. It
+/// returned the literal "[object]", and `String(getSelection())` died in
+/// Allocator.free's memset on the literal's read-only page.
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return "[object]";
+    const internal = getInternal(instance) orelse return "";
+    if (internal.anchor_node == null or internal.focus_node == null) return "";
+    const range = if (internal.range) |r| r else blk: {
+        const r = try createRangeFromSelection(internal);
+        internal.setRange(r);
+        break :blk r;
+    };
+    const text = try Range.serialize(range);
+    defer if (text.len > 0) range.ctx.allocator.free(text);
+    if (text.len == 0) return "";
+    return instance.ctx.allocator.dupe(u8, text);
 }
