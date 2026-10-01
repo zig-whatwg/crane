@@ -19,6 +19,43 @@ const ffi = v8.ffi;
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 
+/// The page allocator, counting the bytes live through it: the realm's
+/// allocator, so that what an impl allocates for a result - a string a
+/// getter returns - and the binding never frees shows up as bytes left.
+/// `std.testing.allocator` does not see it: the realm outlives every test.
+const CountingAllocator = struct {
+    live: i64 = 0,
+
+    fn allocator(self: *CountingAllocator) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &.{ .alloc = alloc, .resize = resize, .remap = remap, .free = free } };
+    }
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        const memory = std.heap.page_allocator.rawAlloc(len, alignment, ret_addr) orelse return null;
+        self.live += @intCast(len);
+        return memory;
+    }
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        if (!std.heap.page_allocator.rawResize(memory, alignment, new_len, ret_addr)) return false;
+        self.live += @as(i64, @intCast(new_len)) - @as(i64, @intCast(memory.len));
+        return true;
+    }
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        const moved = std.heap.page_allocator.rawRemap(memory, alignment, new_len, ret_addr) orelse return null;
+        self.live += @as(i64, @intCast(new_len)) - @as(i64, @intCast(memory.len));
+        return moved;
+    }
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        self.live -= @intCast(memory.len);
+        std.heap.page_allocator.rawFree(memory, alignment, ret_addr);
+    }
+};
+
+var realm_allocator: CountingAllocator = .{};
+
 /// One isolate and realm for the file, registered with the context manager
 /// as a page's is; V8 is never torn down here.
 fn realm() !void {
@@ -29,7 +66,7 @@ fn realm() !void {
     const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
     ffi.v8_Context_Enter(context);
     v8.context_manager.init(std.heap.page_allocator) catch {};
-    _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+    _ = try v8.context_manager.getOrCreate(context, realm_allocator.allocator());
     runtime.SlabAllocator.init(std.heap.page_allocator);
     runtime.ArenaAllocator.init(std.heap.page_allocator);
     isolate_once = i;
@@ -112,11 +149,14 @@ fn allInterfaces() !void {
 const Left = struct {
     context_globals: i64,
     handle_bytes: i64,
+    /// Bytes still live through the realm's allocator.
+    realm_bytes: i64 = 0,
 };
 
-/// What 64 runs of `body` leave behind: live Context Globals, and V8's global
-/// handle bytes after a collection. Two runs first, so that what the first
-/// call makes and later ones reuse is not counted.
+/// What 64 runs of `body` leave behind: live Context Globals, V8's global
+/// handle bytes after a collection, and bytes of the realm's allocator. Two
+/// runs first, so that what the first call makes and later ones reuse is not
+/// counted.
 fn leftBy(comptime body: []const u8) !Left {
     const isolate = isolate_once.?;
     const loop = "(() => { for (let i = 0; i < {N}; i++) { " ++ body ++ " } return 0 })()";
@@ -124,11 +164,13 @@ fn leftBy(comptime body: []const u8) !Left {
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     const contexts_before = ffi.v8_Debug_LiveContextGlobals();
     const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
+    const realm_before = realm_allocator.live;
     _ = try scriptInt(comptime replaceN(loop, "64"));
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     return .{
         .context_globals = ffi.v8_Debug_LiveContextGlobals() - contexts_before,
         .handle_bytes = @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate))) - bytes_before,
+        .realm_bytes = realm_allocator.live - realm_before,
     };
 }
 
@@ -140,6 +182,16 @@ fn replaceN(comptime loop: []const u8, comptime n: []const u8) []const u8 {
 fn expectNothingLeft(comptime what: []const u8, left: Left) !void {
     if (left.context_globals != 0 or left.handle_bytes > 0) {
         std.debug.print("64 runs of {s} left {d} Context Globals and {d} bytes of global handles\n", .{ what, left.context_globals, left.handle_bytes });
+        return error.HandlesLeaked;
+    }
+}
+
+/// Nothing left at all: no Context Global, no global handle bytes, and no
+/// bytes of the realm's allocator - what an impl allocated for a result is
+/// the binding's to free.
+fn expectNothingLeftAnywhere(comptime what: []const u8, left: Left) !void {
+    if (left.context_globals != 0 or left.handle_bytes > 0 or left.realm_bytes > 0) {
+        std.debug.print("64 runs of {s} left {d} Context Globals, {d} bytes of global handles and {d} bytes of the realm's allocator\n", .{ what, left.context_globals, left.handle_bytes, left.realm_bytes });
         return error.HandlesLeaked;
     }
 }
@@ -251,4 +303,43 @@ test "a getter's wrapper result stays the wrapper cache's" {
     try expectNothingLeft("dispatched.target", try leftBy("if (dispatched.target !== kept) throw new Error('not the same wrapper');"));
     ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
     try std.testing.expectEqual(@as(i32, 42), try scriptInt("dispatched.target === kept ? dispatched.target.marker : -1"));
+}
+
+// ---------------------------------------------------------------------------
+// A getter's result is the binding's: a value the conversion makes, and memory
+// the impl allocated for it.
+
+test "a getter's non-null optional number is released" {
+    try allInterfaces();
+    // WritableStreamDefaultWriter.desiredSize is `unrestricted double?`
+    // (?f64): non-null on a writable stream, a fresh Number each read.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.sizedWriter = new WritableStream().getWriter();
+        \\sizedWriter.desiredSize
+    ));
+    try expectNothingLeft("writer.desiredSize", try leftBy("sizedWriter.desiredSize;"));
+}
+
+test "getterValueIsOwned: the non-null value of an optional primitive is made fresh" {
+    // conv.toV8Value converts `?T` by converting its payload, so a non-null
+    // `?f64`, `?bool` or `?u32` is a fresh Number or Boolean exactly as an
+    // `f64`, `bool` or `u32` is. No impl returns a non-null `?bool` or `?u32`
+    // today (RTCPeerConnection.canTrickleIceCandidates, RTCError's alerts are
+    // stubs), so the predicate is pinned here.
+    const owned = v8.interface_mod.getterValueIsOwned;
+    try std.testing.expect(owned(?f64));
+    try std.testing.expect(owned(?f32));
+    try std.testing.expect(owned(?bool));
+    try std.testing.expect(owned(?u32));
+    try std.testing.expect(owned(?u16));
+    try std.testing.expect(owned(?u8));
+    try std.testing.expect(owned(?i32));
+    try std.testing.expect(owned(?i16));
+    try std.testing.expect(owned(?i8));
+    try std.testing.expect(owned(?runtime.USVString));
+    const Direction = enum { forward, backward };
+    try std.testing.expect(owned(?Direction));
+    // The default is unchanged: an optional of a kept value stays kept.
+    try std.testing.expect(!owned(?*runtime.Instance));
+    try std.testing.expect(!owned(?runtime.JSValue));
 }

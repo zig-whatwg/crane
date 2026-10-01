@@ -464,7 +464,19 @@ pub fn getterValueIsOwned(comptime T: type) bool {
     inline for (owned) |O| {
         if (T == O) return true;
     }
-    return @typeInfo(T) == .@"enum";
+    const info = @typeInfo(T);
+    // An optional of one of them - `?f64`, `?bool`, `?u32`: conv.toV8Value
+    // converts a non-null one by converting its payload, as fresh as the
+    // payload's own conversion, and a null one to a fresh Null. Only these
+    // were listed before, so every non-null `?f64` read
+    // (writer.desiredSize) leaked its Number. The payload decides, so an
+    // optional of anything not listed - an Instance, a JSValue - stays kept.
+    if (info == .optional) {
+        const Payload = info.optional.child;
+        if (@typeInfo(Payload) == .optional) return false;
+        return getterValueIsOwned(Payload);
+    }
+    return info == .@"enum";
 }
 
 /// Types `argHandleIsCopied` names by identity, re-exported so `tests/v8` can
