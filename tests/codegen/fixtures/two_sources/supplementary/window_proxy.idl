@@ -1,0 +1,7 @@
+// Fixture for tests/codegen/merged_model_test.zig: the "supplementary" source,
+// shaped like specs/supplementary/WindowProxy.idl.
+typedef Window WindowProxy;
+
+dictionary ExtraOptions : Options {
+  boolean more = false;
+};

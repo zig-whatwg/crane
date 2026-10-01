@@ -3330,6 +3330,21 @@ pub fn build(b: *std.Build) void {
     const codegen_step = b.step("codegen", "Run WebIDL code generator (use -- to pass args)");
     codegen_step.dependOn(&run_codegen.step);
 
+    // The codegen drift check: regenerate the whole tree from scratch, from
+    // specs/idl and specs/supplementary in one invocation, into a temporary
+    // directory, and compare it byte for byte with the committed generated
+    // directories under src/webidl/. A hand-edited generated file, an IDL or
+    // codegen change committed without its regeneration, or a stale generated
+    // file all fail it.
+    const codegen_check = b.addRunArtifact(codegen_exe);
+    // It reads specs/ and src/webidl/, which the build graph does not track.
+    codegen_check.has_side_effects = true;
+    codegen_check.setCwd(b.path("."));
+    codegen_check.addArgs(&.{ "--check", "--dest-root", "src/webidl", "--scratch" });
+    codegen_check.addDirectoryArg(b.tmpPath().path(b, "tree"));
+    const codegen_check_step = b.step("codegen-check", "Fail if the committed generated WebIDL tree differs from a from-scratch regeneration");
+    codegen_check_step.dependOn(&codegen_check.step);
+
     // IDL scanner tool
     const idl_scanner_exe = b.addExecutable(.{
         .name = "idl-scanner",

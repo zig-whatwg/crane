@@ -704,7 +704,9 @@ pub fn generateMixin(
     const type_registry = &model.type_registry;
     const mixin_name = mixin.name;
 
-    const file_path = try std.fs.path.join(allocator, &.{ mixins_path, try std.fmt.allocPrint(allocator, "{s}.zig", .{mixin_name}) });
+    const file_name = try std.fmt.allocPrint(allocator, "{s}.zig", .{mixin_name});
+    defer allocator.free(file_name);
+    const file_path = try std.fs.path.join(allocator, &.{ mixins_path, file_name });
     defer allocator.free(file_path);
 
     // Ensure the mixins directory exists
@@ -770,6 +772,74 @@ pub fn generateMixin(
 
 /// Check if a typedef has a special hand-written implementation that should not be generated
 /// These typedefs are in webidl/types/buffer_sources.zig with proper union types and methods
+/// The typedef files of the buffer source types, which re-export the
+/// hand-written unions in webidl/types/buffer_sources.zig instead of being
+/// generated from their IDL.
+const special_typedef_files = std.StaticStringMap([]const u8).initComptime(.{
+    .{
+        "ArrayBufferView",
+        \\//! WebIDL typedef: ArrayBufferView
+        \\//!
+        \\//! Spec: Union of all typed array types (Int8Array, Uint8Array, etc.) and DataView
+        \\//!
+        \\//! This file is AUTO-GENERATED. Do not edit manually.
+        \\//!
+        \\//! Uses the rich implementation from webidl/types/buffer_sources.zig
+        \\//! which provides proper union type with 14 typed array variants and full API:
+        \\//! - getViewedArrayBuffer(), getByteOffset(), getByteLength()
+        \\//! - getTypedArrayName(), getElementSize(), getArrayLength()
+        \\//! - isDetached(), asBytes(), and more
+        \\
+        \\const webidl = @import("webidl");
+        \\
+        \\pub const ArrayBufferView = webidl.buffer_sources.ArrayBufferView;
+        \\
+    },
+    .{
+        "BufferSource",
+        \\//! WebIDL typedef: BufferSource
+        \\//!
+        \\//! Spec: typedef (ArrayBufferView or ArrayBuffer) BufferSource;
+        \\//!
+        \\//! This file is AUTO-GENERATED. Do not edit manually.
+        \\//!
+        \\//! Uses the rich implementation from webidl/types/buffer_sources.zig
+        \\//! which provides proper union type with asBytes() method and type safety.
+        \\
+        \\const webidl = @import("webidl");
+        \\
+        \\pub const BufferSource = webidl.buffer_sources.BufferSource;
+        \\
+    },
+    .{
+        "AllowSharedBufferSource",
+        \\//! WebIDL typedef: AllowSharedBufferSource
+        \\//!
+        \\//! Spec: typedef (ArrayBuffer or SharedArrayBuffer or [AllowShared] ArrayBufferView) AllowSharedBufferSource;
+        \\//!
+        \\//! This file is AUTO-GENERATED. Do not edit manually.
+        \\//!
+        \\//! Uses the rich implementation from webidl/types/buffer_sources.zig
+        \\//! which provides proper union type with SharedArrayBuffer support and asBytes() method.
+        \\
+        \\const webidl = @import("webidl");
+        \\
+        \\pub const AllowSharedBufferSource = webidl.buffer_sources.AllowSharedBufferSource;
+        \\
+    },
+});
+
+/// Write a buffer source typedef's file (see special_typedef_files).
+pub fn generateSpecialTypedef(name: []const u8, typedefs_path: []const u8) !void {
+    const content = special_typedef_files.get(name) orelse return error.NotASpecialTypedef;
+    const io = host.io();
+    var dir = try host.cwd().createDirPathOpen(io, typedefs_path, .{});
+    defer dir.close(io);
+    var file_name_buf: [128]u8 = undefined;
+    const file_name = try std.fmt.bufPrint(&file_name_buf, "{s}.zig", .{name});
+    try dir.writeFile(io, .{ .sub_path = file_name, .data = content });
+}
+
 pub fn isSpecialTypedef(name: []const u8) bool {
     const special_typedefs = [_][]const u8{
         // Buffer source types with rich implementations in buffer_sources.zig
@@ -1870,9 +1940,11 @@ pub fn generateFromFile(
         var typedef_iter = ir.typedefs.iterator();
         while (typedef_iter.next()) |entry| {
             const typedef = entry.value_ptr.*;
-            // Skip typedefs that have special hand-written implementations
-            // These are in webidl/types/buffer_sources.zig with proper union types and methods
-            if (isSpecialTypedef(typedef.name)) continue;
+            // The buffer source typedefs re-export webidl/types/buffer_sources.zig.
+            if (isSpecialTypedef(typedef.name)) {
+                try generateSpecialTypedef(typedef.name, typedefs_path);
+                continue;
+            }
             try generateTypedef(allocator, typedef, typedefs_path, &ir);
         }
     }
@@ -2415,6 +2487,12 @@ fn sanitizeTypeName(allocator: std.mem.Allocator, type_name: []const u8) ![]cons
 }
 
 /// Parse an inline type string like "sequence<ByteString>" or "ByteString" into an IDLType
+/// Free what parseInlineType allocated (it sets only `type` and `generic`).
+fn freeInlineType(allocator: std.mem.Allocator, idl_type: types.IDLType) void {
+    allocator.free(idl_type.type);
+    if (idl_type.generic) |generic| allocator.free(generic);
+}
+
 fn parseInlineType(allocator: std.mem.Allocator, type_str: []const u8) !types.IDLType {
     const trimmed = std.mem.trim(u8, type_str, " \t\n");
 
@@ -2492,6 +2570,7 @@ fn writeTypeForTypedefWithRegistry(allocator: std.mem.Allocator, w: anytype, idl
         const inner_type_str = idl_type.generic.?;
         try w.writeAll("[]const ");
         const inner_idl_type = try parseInlineType(allocator, inner_type_str);
+        defer freeInlineType(allocator, inner_idl_type);
         try writeTypeForTypedefWithRegistry(allocator, w, inner_idl_type, typedefs_path, type_registry);
         return;
     }
@@ -2514,9 +2593,11 @@ fn writeTypeForTypedefWithRegistry(allocator: std.mem.Allocator, w: anytype, idl
             const val_str = std.mem.trim(u8, generic_str[comma_idx + 1 ..], " \t");
             try w.writeAll("[]const struct { key: ");
             const key_idl = try parseInlineType(allocator, key_str);
+            defer freeInlineType(allocator, key_idl);
             try writeTypeForTypedefWithRegistry(allocator, w, key_idl, typedefs_path, type_registry);
             try w.writeAll(", value: ");
             const val_idl = try parseInlineType(allocator, val_str);
+            defer freeInlineType(allocator, val_idl);
             try writeTypeForTypedefWithRegistry(allocator, w, val_idl, typedefs_path, type_registry);
             try w.writeAll(" }");
             return;
@@ -2659,6 +2740,7 @@ fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type:
         const inner_type_str = idl_type.generic.?;
         try w.writeAll("[]const ");
         const inner_idl_type = try parseInlineType(allocator, inner_type_str);
+        defer freeInlineType(allocator, inner_idl_type);
         try writeDictionaryMemberType(allocator, w, inner_idl_type, type_registry);
         return;
     }
@@ -2681,9 +2763,11 @@ fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type:
             const val_str = std.mem.trim(u8, generic_str[comma_idx + 1 ..], " \t");
             try w.writeAll("[]const struct { key: ");
             const key_idl = try parseInlineType(allocator, key_str);
+            defer freeInlineType(allocator, key_idl);
             try writeDictionaryMemberType(allocator, w, key_idl, type_registry);
             try w.writeAll(", value: ");
             const val_idl = try parseInlineType(allocator, val_str);
+            defer freeInlineType(allocator, val_idl);
             try writeDictionaryMemberType(allocator, w, val_idl, type_registry);
             try w.writeAll(" }");
             return;

@@ -3,6 +3,9 @@
 //! This module exports all code generation functionality.
 
 pub const config = @import("config.zig");
+pub const cli = @import("cli.zig");
+pub const drift = @import("drift.zig");
+pub const format = @import("format.zig");
 pub const types = @import("types.zig");
 pub const parser = @import("parser.zig");
 pub const idl_parser = @import("idl_parser.zig");
@@ -31,6 +34,7 @@ pub const generateFromDirectory = generator.generateFromDirectory;
 
 // Multi-stage pipeline
 pub const processDirectory = pipeline.processDirectory;
+pub const processSources = pipeline.processSources;
 
 test {
     const std = @import("std");

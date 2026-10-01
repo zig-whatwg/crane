@@ -1,0 +1,11 @@
+// Fixture for tests/codegen/merged_model_test.zig: the "webref" source.
+[Exposed=Window]
+interface Window {
+  readonly attribute WindowProxy? parent;
+};
+
+typedef DOMString Label;
+
+dictionary Options {
+  boolean flag = false;
+};

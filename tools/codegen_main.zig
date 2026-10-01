@@ -1,11 +1,18 @@
 //! WebIDL Code Generator CLI
 //!
 //! Usage:
-//!   webidl-codegen <source> --dest-root <path> [--force]
+//!   codegen [<source-dir>...] --dest-root <path> [--force]
+//!   codegen [<source-dir>...] --dest-root <path> --check [--scratch <dir>]
 //!
-//! Where:
-//!   <source> is either a .idl file or directory of .idl files
-//!   --dest-root <path> is the root directory for organized output
+//! Every source directory is read into ONE model, so a name in one resolves
+//! against the definitions of all of them. With no source, the default sources
+//! (specs/idl and specs/supplementary) - which is how the committed tree is made:
+//!
+//!   zig build codegen -- --dest-root src/webidl/
+//!
+//! --check regenerates from scratch into --scratch (default tmp/codegen-check)
+//! and compares it byte for byte with the generated directories under
+//! --dest-root; any difference fails. `zig build codegen-check` runs it.
 //!
 //! Implementation stubs are always generated to impls_tmp/ (gitignored).
 //! These stubs are for REFERENCE ONLY and must be manually migrated to impls/.
@@ -21,86 +28,41 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const io = init.io;
 
+    var arg_list = std.ArrayList([]const u8).empty;
+    defer arg_list.deinit(allocator);
     var args = try init.minimal.args.iterateAllocator(allocator);
     defer args.deinit();
+    _ = args.next(); // program name
+    while (args.next()) |arg| try arg_list.append(allocator, arg);
 
-    // Skip program name
-    _ = args.next();
-
-    // Parse arguments
-    var source_path: ?[]const u8 = null;
-    var dest_root: ?[]const u8 = null;
-    var force_clean: bool = false;
-
-    while (args.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--dest-root")) {
-            dest_root = args.next() orelse {
-                try printUsage(io);
-                return error.MissingDestRoot;
-            };
-        } else if (std.mem.eql(u8, arg, "--force")) {
-            force_clean = true;
-        } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            try printUsage(io);
-            return;
-        } else {
-            // First positional argument is source path
-            if (source_path == null) {
-                source_path = arg;
-            } else {
-                std.debug.print("Unknown argument: {s}\n", .{arg});
-                try printUsage(io);
-                return error.UnknownArgument;
-            }
-        }
-    }
-
-    // Validate required arguments
-    if (source_path == null) {
-        std.debug.print("Error: Missing source path\n\n", .{});
+    var options = codegen.cli.parseArgs(allocator, arg_list.items) catch |err| {
+        std.debug.print("Error: {s}\n\n", .{@errorName(err)});
         try printUsage(io);
-        return error.MissingSourcePath;
-    }
+        return err;
+    };
+    defer options.deinit(allocator);
 
-    if (dest_root == null) {
-        std.debug.print("Error: --dest-root must be specified\n\n", .{});
+    if (options.help) {
         try printUsage(io);
-        return error.MissingDestRoot;
+        return;
     }
+    const dest_root = options.dest_root.?;
 
-    // Determine if source is a file or directory
-    const source = source_path.?;
-
-    // Try to open as directory first, then fall back to file
-    var is_directory = false;
-    if (std.Io.Dir.cwd().openDir(io, source, .{})) |dir_result| {
-        const dir = dir_result;
-        dir.close(io);
-        is_directory = true;
-    } else |_| {
-        // Not a directory, verify it's a valid file
-        const stat = std.Io.Dir.cwd().statFile(io, source, .{}) catch |err| {
-            std.debug.print("Error: Cannot access source path '{s}': {}\n", .{ source, err });
+    for (options.sources) |source| {
+        var dir = std.Io.Dir.cwd().openDir(io, source, .{}) catch |err| {
+            std.debug.print("Error: source '{s}' is not a readable directory: {}\n", .{ source, err });
             return err;
         };
-        is_directory = stat.kind == .directory;
+        dir.close(io);
     }
 
+    if (options.check) return check(allocator, io, options.sources, dest_root, options.scratch orelse "tmp/codegen-check");
+
     // If --force is specified, delete generated directories (but NEVER impls/)
-    if (force_clean) {
+    if (options.force) {
         std.debug.print("Force clean: removing generated directories (preserving impls/)\n", .{});
-        const generated_dirs = [_][]const u8{
-            "interfaces",
-            "typedefs",
-            "dictionaries",
-            "enums",
-            "callbacks",
-            "namespaces",
-            "mixins",
-            "impls_tmp", // Only delete the tmp stubs, never impls/
-        };
-        for (generated_dirs) |dir| {
-            const path = try std.fs.path.join(allocator, &.{ dest_root.?, dir });
+        for (codegen.drift.generated_dirs ++ [_][]const u8{"impls_tmp"}) |dir| {
+            const path = try std.fs.path.join(allocator, &.{ dest_root, dir });
             defer allocator.free(path);
             std.Io.Dir.cwd().deleteTree(io, path) catch |err| {
                 if (err != error.FileNotFound) {
@@ -110,37 +72,50 @@ pub fn main(init: std.process.Init) !void {
         }
     }
 
-    // Print configuration
     std.debug.print("WebIDL Code Generator\n", .{});
     std.debug.print("=====================\n", .{});
-    std.debug.print("Source:      {s} ({s})\n", .{ source, if (is_directory) "directory" else "file" });
-    std.debug.print("Dest Root:   {s}\n", .{dest_root.?});
-    std.debug.print("  - interfaces/\n", .{});
-    std.debug.print("  - typedefs/\n", .{});
-    std.debug.print("  - dictionaries/\n", .{});
-    std.debug.print("  - enums/\n", .{});
-    std.debug.print("  - callbacks/\n", .{});
-    std.debug.print("  - namespaces/\n", .{});
-    std.debug.print("  - impls_tmp/ (reference stubs - NOT compiled)\n", .{});
-    std.debug.print("\n", .{});
+    for (options.sources) |source| std.debug.print("Source:      {s}\n", .{source});
+    std.debug.print("Dest Root:   {s}\n\n", .{dest_root});
 
-    // Create configuration
     var config = CodegenConfig{
         .allocator = allocator,
         .dest_root = dest_root,
     };
     defer config.deinit();
 
-    // Process based on source type
-    if (is_directory) {
-        // Process all .idl files in directory (pipeline mode)
-        try codegen.processDirectory(allocator, source, &config);
-    } else {
-        // Process single .idl file
-        try codegen.generateFromFile(allocator, source, &config);
-    }
+    try codegen.processSources(allocator, options.sources, &config);
 
     std.debug.print("\n✅ Code generation complete!\n", .{});
+}
+
+fn check(allocator: std.mem.Allocator, io: std.Io, sources: []const []const u8, committed_root: []const u8, scratch: []const u8) !void {
+    var report = try codegen.drift.check(allocator, io, sources, committed_root, scratch);
+    defer report.deinit(allocator);
+
+    if (report.clean()) {
+        std.debug.print("\ncodegen-check: the committed generated tree matches a from-scratch regeneration ({d} files)\n", .{report.files_compared});
+        return;
+    }
+
+    std.debug.print("\ncodegen-check: the committed generated tree under {s} does not match a from-scratch regeneration ({d} files differ):\n", .{ committed_root, report.entries.items.len });
+    const shown = @min(report.entries.items.len, 40);
+    for (report.entries.items[0..shown]) |entry| {
+        const what = switch (entry.kind) {
+            .differs => "differs from codegen's output",
+            .missing => "is generated but not committed",
+            .extra => "is committed but codegen no longer writes it",
+        };
+        std.debug.print("  {s} {s}\n", .{ entry.path, what });
+    }
+    if (shown < report.entries.items.len) std.debug.print("  ... and {d} more\n", .{report.entries.items.len - shown});
+    std.debug.print(
+        \\
+        \\Generated files are never edited by hand. Fix src/webidl/codegen/ or the IDL
+        \\(specs/idl, specs/supplementary), then regenerate and commit the result:
+        \\  zig build codegen -- --dest-root src/webidl/
+        \\
+    , .{});
+    std.process.exit(1);
 }
 
 fn printUsage(io: std.Io) !void {
@@ -149,44 +124,39 @@ fn printUsage(io: std.Io) !void {
     var stdout_writer = stdout_file.writer(io, &buffer);
     const stdout = &stdout_writer.interface;
 
-    try stdout.print("WebIDL-to-Zig Code Generator\n\n", .{});
-    try stdout.print("Usage:\n", .{});
-    try stdout.print("  webidl-codegen <source> --dest-root <path> [--force]\n\n", .{});
-
-    try stdout.print("Arguments:\n", .{});
-    try stdout.print("  <source>              Path to .idl file or directory of .idl files\n\n", .{});
-
-    try stdout.print("Options:\n", .{});
-    try stdout.print("  --dest-root <path>    Root directory for organized output\n", .{});
-    try stdout.print("                        Creates: interfaces/, typedefs/, dictionaries/,\n", .{});
-    try stdout.print("                        enums/, callbacks/, namespaces/, impls_tmp/\n", .{});
-    try stdout.print("  --force               Delete entire dest-root directory before generating\n", .{});
-    try stdout.print("                        Use this to ensure clean regeneration of all files\n", .{});
-    try stdout.print("  --help, -h            Show this help message\n\n", .{});
-
-    try stdout.print("Behavior:\n", .{});
-    try stdout.print("  - If source is a file: generates code for that single .idl file\n", .{});
-    try stdout.print("  - If source is a directory: processes all .idl files (pipeline mode)\n", .{});
-    try stdout.print("    - Merges partial interfaces and mixins\n", .{});
-    try stdout.print("    - Resolves cross-file dependencies\n", .{});
-    try stdout.print("  - Creates organized directory structure under dest-root\n", .{});
-    try stdout.print("  - With --force, everything is regenerated fresh\n\n", .{});
-
-    try stdout.print("Implementation Stubs (impls_tmp/):\n", .{});
-    try stdout.print("  - Always generated to impls_tmp/ directory (gitignored)\n", .{});
-    try stdout.print("  - These are REFERENCE ONLY - DO NOT COMPILE\n", .{});
-    try stdout.print("  - Manually migrate stubs to impls/ for actual implementations\n", .{});
-    try stdout.print("  - The impls/ directory contains canonical implementations\n\n", .{});
-
-    try stdout.print("Examples:\n", .{});
-    try stdout.print("  # Generate organized directory structure\n", .{});
-    try stdout.print("  webidl-codegen /path/to/webref/ed/idl --dest-root ./generated\n\n", .{});
-
-    try stdout.print("  # Force clean regeneration\n", .{});
-    try stdout.print("  webidl-codegen /path/to/webref/ed/idl --dest-root ./generated --force\n\n", .{});
-
-    try stdout.print("  # Generate from a single file\n", .{});
-    try stdout.print("  webidl-codegen dom.idl --dest-root ./generated\n", .{});
-
+    try stdout.writeAll(
+        \\WebIDL-to-Zig Code Generator
+        \\
+        \\Usage:
+        \\  codegen [<source-dir>...] --dest-root <path> [--force]
+        \\  codegen [<source-dir>...] --dest-root <path> --check [--scratch <dir>]
+        \\
+        \\Arguments:
+        \\  <source-dir>...       Directories of .idl files, read together as ONE model:
+        \\                        a name in any of them resolves against all of them.
+        \\                        Default: specs/idl specs/supplementary
+        \\
+        \\Options:
+        \\  --dest-root <path>    Root of the generated tree: interfaces/, typedefs/,
+        \\                        dictionaries/, enums/, callbacks/, namespaces/, mixins/,
+        \\                        and impls_tmp/ (reference stubs, gitignored, never built)
+        \\  --force               Delete the generated directories first (never impls/)
+        \\  --check               Regenerate from scratch into --scratch and compare it
+        \\                        byte for byte with the generated directories under
+        \\                        --dest-root; exit 1 on any difference
+        \\  --scratch <dir>       Where --check regenerates (default tmp/codegen-check);
+        \\                        emptied before and removed after
+        \\  --help, -h            Show this help message
+        \\
+        \\Output is zig fmt-clean, so it diffs cleanly against the committed tree.
+        \\
+        \\Examples:
+        \\  # Regenerate the committed tree (both sources, one model)
+        \\  zig build codegen -- --dest-root src/webidl/
+        \\
+        \\  # Check the committed tree against a from-scratch regeneration
+        \\  zig build codegen-check
+        \\
+    );
     try stdout.flush();
 }

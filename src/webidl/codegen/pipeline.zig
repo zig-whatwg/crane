@@ -9,18 +9,86 @@ const std = @import("std");
 const parser = @import("parser.zig");
 const ir_mod = @import("ir.zig");
 const generator = @import("generator.zig");
+const format = @import("format.zig");
 const types = @import("types.zig");
 const config_mod = @import("config.zig");
 const host = @import("host");
 const CodegenConfig = config_mod.CodegenConfig;
 
-/// Process a directory of IDL files through the complete pipeline
+/// The CodegenConfig getters of every directory a run writes.
+const output_dir_getters = .{ "getInterfacesPath", "getImplsPath", "getTypedefsPath", "getDictionariesPath", "getEnumsPath", "getCallbacksPath", "getNamespacesPath", "getMixinsPath" };
+
+/// One IDL file found in a source directory.
+const SourceFile = struct {
+    /// The directory it was found in, as given.
+    dir: []const u8,
+    /// Its name in that directory; also its source key in the IR.
+    name: []const u8,
+
+    fn lessThan(_: void, a: SourceFile, b: SourceFile) bool {
+        return std.mem.lessThan(u8, a.name, b.name);
+    }
+};
+
+/// List every `.idl` file in `sources`, sorted by file name: the stable key
+/// the IR orders partial definitions by, so that nothing depends on
+/// directory enumeration order or on the order the sources are named in.
+/// Names are owned by `allocator`; free them with `freeSourceFiles`.
+fn collectSourceFiles(allocator: std.mem.Allocator, sources: []const []const u8) ![]SourceFile {
+    const io = host.io();
+    var files = std.ArrayList(SourceFile).empty;
+    errdefer freeSourceFiles(allocator, files.items);
+    errdefer files.deinit(allocator);
+
+    for (sources) |source_dir| {
+        var dir = try host.cwd().openDir(io, source_dir, .{ .iterate = true });
+        defer dir.close(io);
+        var iter = dir.iterate();
+        while (try iter.next(io)) |entry| {
+            if (entry.kind != .file) continue;
+            if (!std.mem.endsWith(u8, entry.name, ".idl")) continue;
+            const name = try allocator.dupe(u8, entry.name);
+            errdefer allocator.free(name);
+            try files.append(allocator, .{ .dir = source_dir, .name = name });
+        }
+    }
+
+    std.mem.sort(SourceFile, files.items, {}, SourceFile.lessThan);
+
+    // A file name is the source key of everything it defines, so two sources
+    // may not both carry one: the second copy would define every name twice.
+    for (files.items[0..files.items.len -| 1], files.items[@min(1, files.items.len)..]) |a, b| {
+        if (std.mem.eql(u8, a.name, b.name)) {
+            std.debug.print("  error: {s} is in both {s} and {s}\n", .{ a.name, a.dir, b.dir });
+            return error.DuplicateSourceFile;
+        }
+    }
+
+    return files.toOwnedSlice(allocator);
+}
+
+fn freeSourceFiles(allocator: std.mem.Allocator, files: []const SourceFile) void {
+    for (files) |file| allocator.free(file.name);
+}
+
+/// Process a directory of IDL files through the complete pipeline.
 pub fn processDirectory(
     allocator: std.mem.Allocator,
     input_dir: []const u8,
     cfg: *CodegenConfig,
 ) !void {
-    std.debug.print("Stage 1: Parsing all IDL files from {s}\n", .{input_dir});
+    return processSources(allocator, &.{input_dir}, cfg);
+}
+
+/// Process every IDL file in `sources` (e.g. specs/idl and specs/supplementary)
+/// as ONE model: a name in any source resolves against the definitions of all
+/// of them, and every root.zig lists every source's entries.
+pub fn processSources(
+    allocator: std.mem.Allocator,
+    source_dirs: []const []const u8,
+    cfg: *CodegenConfig,
+) !void {
+    std.debug.print("Stage 1: Parsing all IDL files from {d} source(s)\n", .{source_dirs.len});
 
     // Stage 1: Parse all files into IR
     var ir = try ir_mod.IR.init(allocator);
@@ -35,23 +103,19 @@ pub fn processDirectory(
         parsed_files.deinit(allocator);
     }
 
-    const io = host.io();
-    var dir = try host.cwd().openDir(io, input_dir, .{ .iterate = true });
-    defer dir.close(io);
+    const source_files = try collectSourceFiles(allocator, source_dirs);
+    defer {
+        freeSourceFiles(allocator, source_files);
+        allocator.free(source_files);
+    }
 
-    var iter = dir.iterate();
-    var file_count: usize = 0;
-
-    while (try iter.next(io)) |entry| {
-        if (entry.kind != .file) continue;
-        if (!std.mem.endsWith(u8, entry.name, ".idl")) continue;
-
-        const file_path = try std.fs.path.join(allocator, &.{ input_dir, entry.name });
+    for (source_files) |source_file| {
+        const file_path = try std.fs.path.join(allocator, &.{ source_file.dir, source_file.name });
         defer allocator.free(file_path);
 
         // Parse the file
         const parsed_idl = parser.parseIDLFile(allocator, file_path) catch |err| {
-            std.debug.print("  ⚠️  Failed to parse {s}: {}\n", .{ entry.name, err });
+            std.debug.print("  ⚠️  Failed to parse {s}: {}\n", .{ file_path, err });
             continue;
         };
 
@@ -59,7 +123,7 @@ pub fn processDirectory(
 
         // Add to IR
         for (idl_file.interfaces) |iface| {
-            ir.addInterface(iface, entry.name) catch |err| {
+            ir.addInterface(iface, source_file.name) catch |err| {
                 if (err == error.DuplicateInterface) {
                     // Skip duplicate interfaces (some specs have errors)
                     continue;
@@ -70,102 +134,31 @@ pub fn processDirectory(
         }
 
         for (idl_file.dictionaries) |dict| {
-            try ir.addDictionary(dict, entry.name);
+            try ir.addDictionary(dict, source_file.name);
         }
 
         for (idl_file.typedefs) |typedef| {
-            try ir.addTypedef(typedef, entry.name);
+            try ir.addTypedef(typedef, source_file.name);
         }
 
         for (idl_file.enums) |enum_type| {
-            try ir.addEnum(enum_type, entry.name);
+            try ir.addEnum(enum_type, source_file.name);
         }
 
         for (idl_file.callbacks) |callback| {
-            try ir.addCallback(callback, entry.name);
+            try ir.addCallback(callback, source_file.name);
         }
 
         for (idl_file.namespaces) |namespace| {
-            try ir.addNamespace(namespace, entry.name);
+            try ir.addNamespace(namespace, source_file.name);
         }
 
         // Keep parsed data alive
         try parsed_files.append(allocator, parsed_idl);
-        file_count += 1;
     }
 
-    std.debug.print("  ✓ Parsed {d} IDL files from source directory\n", .{file_count});
-
-    // Also parse supplementary IDL files from supplementary/ directory (for missing types)
-    blk: {
-        const supplementary_dir = "supplementary";
-        var supplementary_count: usize = 0;
-
-        var supp_dir = host.cwd().openDir(io, supplementary_dir, .{ .iterate = true }) catch |err| {
-            // supplementary/ directory doesn't exist, that's OK - skip supplementary parsing
-            if (err == error.FileNotFound) {
-                break :blk;
-            }
-            return err;
-        };
-        defer supp_dir.close(io);
-
-        var supp_iter = supp_dir.iterate();
-        while (try supp_iter.next(io)) |entry| {
-            if (entry.kind != .file) continue;
-            if (!std.mem.endsWith(u8, entry.name, ".idl")) continue;
-
-            const file_path = try std.fs.path.join(allocator, &.{ supplementary_dir, entry.name });
-            defer allocator.free(file_path);
-
-            // Parse the file
-            const parsed_idl = parser.parseIDLFile(allocator, file_path) catch |err| {
-                std.debug.print("  ⚠️  Failed to parse supplementary {s}: {}\n", .{ entry.name, err });
-                continue;
-            };
-
-            const idl_file = parsed_idl.value;
-
-            // Add to IR
-            for (idl_file.interfaces) |iface| {
-                ir.addInterface(iface, entry.name) catch |err| {
-                    if (err == error.DuplicateInterface) {
-                        continue;
-                    } else {
-                        return err;
-                    }
-                };
-            }
-
-            for (idl_file.dictionaries) |dict| {
-                try ir.addDictionary(dict, entry.name);
-            }
-
-            for (idl_file.typedefs) |typedef| {
-                try ir.addTypedef(typedef, entry.name);
-            }
-
-            for (idl_file.enums) |enum_type| {
-                try ir.addEnum(enum_type, entry.name);
-            }
-
-            for (idl_file.callbacks) |callback| {
-                try ir.addCallback(callback, entry.name);
-            }
-
-            for (idl_file.namespaces) |namespace| {
-                try ir.addNamespace(namespace, entry.name);
-            }
-
-            // Keep parsed data alive
-            try parsed_files.append(allocator, parsed_idl);
-            supplementary_count += 1;
-        }
-
-        if (supplementary_count > 0) {
-            std.debug.print("  ✓ Parsed {d} supplementary IDL files from {s}\n", .{ supplementary_count, supplementary_dir });
-        }
-    }
+    std.debug.print("  ✓ Parsed {d} IDL files\n", .{parsed_files.items.len});
+    for (source_dirs) |source_dir| std.debug.print("    from {s}\n", .{source_dir});
 
     // Stage 1.5: Process includes statements to merge mixins
     std.debug.print("\nStage 1.5: Processing mixin includes\n", .{});
@@ -261,10 +254,14 @@ pub fn processDirectory(
             const name_copy = try allocator.dupe(u8, typedef.name);
             try typedef_names.append(allocator, name_copy);
 
-            // Skip generating typedefs that have special hand-written implementations
-            // These are in webidl/types/buffer_sources.zig with proper union types and methods
-            // But we still add them to typedef_names so they're exported from root.zig
-            if (generator.isSpecialTypedef(typedef.name)) continue;
+            // The buffer source typedefs re-export the hand-written unions in
+            // webidl/types/buffer_sources.zig instead of being generated from
+            // their IDL; their files are still written here, so that a
+            // from-scratch regeneration produces every file root.zig imports.
+            if (generator.isSpecialTypedef(typedef.name)) {
+                try generator.generateSpecialTypedef(typedef.name, typedefs_path);
+                continue;
+            }
 
             try generator.generateTypedef(allocator, typedef, typedefs_path, &ir);
 
@@ -409,6 +406,11 @@ pub fn processDirectory(
     // Stage 4: Generate root.zig files
     std.debug.print("\nStage 4: Generating root.zig files\n", .{});
 
+    // Every root is written, even for a directory no definition went into.
+    inline for (output_dir_getters) |getter| {
+        if (try @field(CodegenConfig, getter)(cfg)) |path| try host.cwd().createDirPath(host.io(), path);
+    }
+
     if (try cfg.getInterfacesPath()) |interfaces_path| {
         try generator.generateInterfacesRoot(allocator, interfaces_path, interface_names.items);
         std.debug.print("  ✓ Generated {s}/root.zig\n", .{interfaces_path});
@@ -476,6 +478,13 @@ pub fn processDirectory(
 
     // Note: V8 bindings are generated at comptime (no files generated)
     // See src/v8/interface.zig - V8Interface() function for comptime binding generation
+
+    // Stage 5: format everything written, so it is byte for byte what is
+    // committed (the writers' raw output is not zig fmt-clean).
+    std.debug.print("\nStage 5: Formatting generated files\n", .{});
+    inline for (output_dir_getters) |getter| {
+        if (try @field(CodegenConfig, getter)(cfg)) |path| try format.formatDir(allocator, host.io(), path);
+    }
 
     std.debug.print("\n✨ Pipeline complete!\n", .{});
 }
