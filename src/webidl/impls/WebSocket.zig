@@ -296,8 +296,69 @@ fn releasePendingActivity(instance: *runtime.Instance) void {
     engine.releasePlatformObject(instance);
 }
 
+// Analysed until its install lands (the unloading document cleanup steps
+// and "destroy a document" hooks - realms2 step 5, wired after crashes3's
+// dom.unloading_cleanup merges).
+comptime {
+    _ = &makeDisappearIn;
+}
+
+/// Every WebSocket on this thread, from its constructor to its deinit: the
+/// sockets "make disappear" reaches (`makeDisappearIn`).
+threadlocal var live_sockets: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+
+fn forgetSocket(instance: *runtime.Instance) void {
+    for (live_sockets.items, 0..) |socket, i| {
+        if (socket != instance) continue;
+        _ = live_sockets.swapRemove(i);
+        return;
+    }
+}
+
+/// HTML "unloading document cleanup steps" step 2: "For each WebSocket object
+/// webSocket whose relevant global object is window, make disappear
+/// webSocket" - for the sockets of `realm`, whose document is going (a frame
+/// removed, a page navigated away from). Installed into the unloading
+/// document cleanup steps (dom.unloading_cleanup).
+pub fn makeDisappearIn(realm: runtime.Context) void {
+    // Backwards: nothing here frees a socket, but stay safe if it did.
+    var i = live_sockets.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (i >= live_sockets.items.len) continue;
+        const socket = live_sockets.items[i];
+        if (socket.ctx != realm) continue;
+        makeDisappear(socket);
+    }
+}
+
+/// WebSockets "make disappear" (§ 9): a connection not yet established is
+/// failed; one whose closing handshake has not started starts it with 1001
+/// ("going away"); otherwise nothing. Its document is gone, so no event is
+/// fired for it any more: the pump stops, and with it the socket's pending
+/// activity - the hold that kept its wrapper, and through it its realm, while
+/// the connection lived (Blink: WebSocket::ContextDestroyed closes the
+/// channel and HasPendingActivity turns false).
+fn makeDisappear(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    if (internal.connection) |connection| {
+        // close() runs exactly the first two cases: fail a connection still
+        // CONNECTING, else queue the Close frame (1001) and flush it; a
+        // CLOSING or CLOSED one does nothing.
+        if (!internal.pump_done) connection.close(1001, null) catch connection.fail();
+    }
+    internal.pump_done = true;
+    if (internal.poll) |token| {
+        token.detach();
+        internal.poll = null;
+    }
+    syncState(instance);
+    releasePendingActivity(instance);
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    forgetSocket(instance);
     // Whatever pending-activity hold is left on it goes with it.
     releasePendingActivity(instance);
     const state = instance.getState(State);
@@ -801,6 +862,7 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // first ~20 of websockets/Create-blocked-port.any.js's sockets in a
     // worker.) Released by the close task, and by deinit.
     engine.keepPlatformObjectAlive(instance);
+    live_sockets.append(std.heap.page_allocator, instance) catch {};
 
     return instance;
 }

@@ -331,6 +331,8 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         signal_pin: same_object.Pin = .{},
         /// Step 9's locallyAborted.
         locally_aborted: bool = false,
+        /// "Abort a document" canceled this call's fetch (`abortIn`).
+        document_aborted: bool = false,
         /// p is settled (or never will be), and its resolver released.
         settled: bool = false,
         /// The fetch holds this call, until it lets go.
@@ -639,7 +641,70 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
                 if (result) |*r| r.deinit();
             }
             self.settleResolver();
+            self.untrack();
             self.allocator.destroy(self);
+        }
+
+        /// Every call on this thread whose fetch is under way, for "abort a
+        /// document" (`abortIn`).
+        threadlocal var live: std.ArrayListUnmanaged(*Self) = .empty;
+
+        fn track(self: *Self) void {
+            live.append(std.heap.page_allocator, self) catch {};
+        }
+
+        fn untrack(self: *Self) void {
+            for (live.items, 0..) |c, i| {
+                if (c != self) continue;
+                _ = live.swapRemove(i);
+                return;
+            }
+        }
+
+        /// HTML "abort a document" step 2, for the fetches fetch() started in
+        /// `realm` (dom.document_fetches): "cancel any instances of the fetch
+        /// algorithm in the context of document, discarding any tasks queued
+        /// for them, and discarding any further data received from the
+        /// network for them". p never settles, and its capability - which
+        /// kept the realm - goes. Blink: FetchManager::ContextDestroyed.
+        fn abortIn(realm: runtime.Context) void {
+            // Backwards: a cancel frees its call, which swapRemove replaces
+            // with one already visited.
+            var i = live.items.len;
+            while (i > 0) {
+                i -= 1;
+                if (i >= live.items.len) continue;
+                const call = live.items[i];
+                if (call.ctx != realm or call.document_aborted) continue;
+                call.cancelForDocument();
+            }
+        }
+
+        fn cancelForDocument(self: *Self) void {
+            self.document_aborted = true;
+            // A settle task still queued does nothing when it runs (or is
+            // dropped): processResponse step 1's locallyAborted check.
+            self.locally_aborted = true;
+            // The body being read to be sent: its stream is canceled.
+            if (self.upload) |u| {
+                self.upload = null;
+                if (self.pending_request) |r| r.deinit();
+                self.pending_request = null;
+                if (streams_js.Realm.ofContext(self.ctx) catch null) |r| {
+                    if (r.undefinedValue() catch null) |v| {
+                        defer streams_js.dispose(v);
+                        u.cancel(v);
+                    }
+                }
+                self.fetch_holds = false;
+            }
+            if (self.in_flight) |f| {
+                self.in_flight = null;
+                f.terminate();
+                self.fetch_holds = false;
+            }
+            self.settleResolver();
+            self.maybeRelease();
         }
     };
 
@@ -746,6 +811,9 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         };
     }
     capability_taken = true;
+    // "Abort a document" reaches the call from here (dom.document_fetches).
+    call.track();
+    @import("dom").document_fetches.install(&Call.abortIn);
 
     // Step 11: Add the abort steps to requestObject's signal. Without them
     // the call still settles; it just cannot be aborted.
