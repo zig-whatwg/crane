@@ -281,15 +281,37 @@ fn iframeContextCleanup(integration: *IFrameIntegration) void {
 /// browsing context is discarded), `document` answers - as the spec says and
 /// Chrome, Edge and Firefox do (crane/fl-removed-frame-window-survives-gc.html).
 /// The engine ends it once the collector takes it, or with its page.
+///
+/// The navigable's RETIRED realms - Windows its earlier navigations replaced
+/// (IFrameIntegration.retired_realms) - end from tasks queued here too: the
+/// whole navigable is destroyed. Left to the integration, they ended with the
+/// element, which a removed element meets when the collector frees it - inside
+/// V8's first-pass weak callback, where no engine call may be made: a wrapper
+/// of the retired realm that died in the same collection had been zapped,
+/// and the realm's end read it (fetch/origin/assorted.window.js, SIGSEGV in
+/// v8::Value::IsProxy; crane/c4-removed-frame-retired-realm-gc.html).
 fn queueRemovedFrameRealmEnd(element: *runtime.Instance, integration: *IFrameIntegration) void {
-    const data = integration.context_cleanup_data orelse return;
     const loop = element.ctx.getOptionalEventLoop() orelse return;
+    // Every retired realm here was retired with `destroyRetiredRealm` as its
+    // end (`retired_realm_destroy`), whose only input is the realm.
+    for (integration.retired_realms.items) |retired| {
+        loop.queueTask(.{ .callback = endRetiredRealm, .context = retired.data, .drop = null });
+    }
+    integration.retired_realms.clearRetainingCapacity();
+    const data = integration.context_cleanup_data orelse return;
     integration.context_cleanup_data = null;
     loop.queueTask(.{ .callback = endRemovedFrameRealm, .context = data, .drop = null });
 }
 
 fn endRemovedFrameRealm(data: ?*anyopaque) void {
     engine.destroyWindowRealm(@ptrCast(@alignCast(data.?)), .navigable_destroyed);
+}
+
+/// A retired realm of a destroyed navigable: its WindowProxy went on to a
+/// later realm, so nothing reaches its Window through it any more - it ends
+/// as a navigation's old realm does (`destroyRetiredRealm`).
+fn endRetiredRealm(data: ?*anyopaque) void {
+    engine.destroyWindowRealm(@ptrCast(@alignCast(data.?)), .global_detached);
 }
 
 /// HTML "destroy a child navigable", for the documents: the active
