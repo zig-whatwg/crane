@@ -243,6 +243,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A single-path runner run has no stall watchdog](testing-a-single-path-runner-run-has-no-stall-watchdog.md) - A runner process with no supervisor has no watchdog: bound it yourself; and `CRANE_LEAK_TRACES=1` is for small files - count leaks untraced first.
 - [Headless Chrome may never exit, and a reused profile caches a regenerated page](testing-headless-chrome-may-never-exit-and-caches-across-rounds.md) - Bound every headless call, and never reuse a profile across a regeneration.
 - [A count that moves between runs - diff the failure messages, not the totals](testing-a-count-that-moves-between-runs-diff-the-failure-messages.md) - Totals that move are a symptom; identical subtests failing differently between runs mean something freed is being read.
+- [A network test takes its timing from the server, not the clock](testing-a-network-test-takes-its-timing-from-the-server-not-the-clock.md) - When a test stages a race, let the peer it controls announce and gate each step; a sleep is a bet on the machine's load.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
