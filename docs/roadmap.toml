@@ -460,6 +460,10 @@ progress = [
   name = "Optional persistent profile directory (in-memory by default)"
   status = "todo"
 
+  [[infra.items]]
+  name = "Every worker (dedicated, shared, service) runs on its own thread with its own agent; cross-thread messaging through the Browser's thread-safe task queues; termination aborts the running script"
+  status = "todo"
+
 # ---------------------------------------------------------------------------
 # Prerequisites for parallel work
 # ---------------------------------------------------------------------------
