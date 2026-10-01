@@ -1,0 +1,12 @@
+# Architecture: A threadlocal is per thread, which is neither per instance nor per tab
+
+**Date**: 2026-10-01
+**Lesson**: Of the 145 `threadlocal` variables in src/, 74 hold nothing but function pointers (hooks: process constants that happen to be installed late), and the few that hold a page's state are reset for every page on the thread when ONE page ends. The keyword said nothing about either; only the variables' readers and writers did.
+
+**Why**: `threadlocal` was used to mean "not shared", at a time when one thread ran one page. Once a thread runs several tabs, or a process runs several instances on several threads, it means two wrong things at once. A hook installed by the first owner on the main thread is null on every other thread, so a second instance on its own thread starts with no hooks at all. And per-page state on a thread is shared by every tab on it, so `Context.deinit` - one page's end - clears every tab's timers, animation frames, custom element reactions and mutation observers. Plain container-level `var`s are worse: 70 of them are written from any thread that runs a Browser, unlocked.
+
+**What Happened**: The instances design lane (2026-10-01) inventoried every container-level `var` in src/ with a `std.zig.Ast` scan (364 found; 311 outside test blocks) plus the 34 statics of `v8_wrapper.cpp`. Each was then classified by reading its users, not its declaration: 104 hooks, 106 belonging to an instance (the runtime slab and arena, the DOM state registries, the engine adapter's per-isolate caches, the storage shed, the blob URL store, the curl share handle), 11 per agent, 4 per tab, 15 per realm, 20 set around a call, 15 diagnostics, 24 test instrumentation, 46 genuinely process-wide; 28 were dead code. A grep for `threadlocal` would have filed the 74 hooks as "per-instance state to move" and missed the 70 process globals that actually block two instances.
+
+**Fix**: Classify by use. A function table identical for everyone is process state, written once at process start (Blink's CoreInitializer installs core's hooks once, before any frame). Shared web state belongs to the instance object, per-tab state to the tab object, and both are reached through the realm the code runs in. A ratchet that counts container-level `var`s keeps new ones from appearing.
+
+**Takeaway**: **A threadlocal is per thread, not per instance and not per tab: a hook installed on one thread is null on the next, and page state on it is shared by every page the thread runs. Read a variable's writers and readers before choosing its owner.**
