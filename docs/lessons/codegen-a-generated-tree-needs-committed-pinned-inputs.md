@@ -13,3 +13,10 @@
 3. Only then add the check (`zig build codegen-check`, in `zig build test`).
 
 **Takeaway**: **Before checking a generated tree, pin and commit everything that generates it; an unrecorded upstream revision can be recovered by matching blob hashes against the upstream's trees.**
+
+**Seen again (2026-10-01, integrator)**: committing a directory that used to be gitignored does not clean
+it. The main checkout's specs/idl kept 7 untracked files from the old downloaded snapshot (the copies of
+Crane's supplementary definitions that the lane had moved out), git showed them as `??`, the sync to the
+build machine copied them, and the post-merge gate's merged-model test aborted on the duplicates while
+every lane worktree (made from git) was clean. After un-ignoring a path, run `git status --short <path>` in
+every long-lived checkout and delete what is untracked there.
