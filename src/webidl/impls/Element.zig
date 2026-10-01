@@ -573,12 +573,11 @@ pub fn deinit(instance: *runtime.Instance) void {
         // cleanupAllRemainingInternal's exit sweep also runs, after the
         // engine is gone.
         //
-        // Not torn down: a shadow root routinely outlives script's hold on
-        // its host (`document.createElement("div").attachShadow(...)` keeps
-        // nothing of the host), and it must go on working. Stated deviation,
-        // until wrappers are traced: it does not keep its host alive, so its
-        // `host` answers InvalidStateError once the host has been collected,
-        // where the spec keeps the host (Blink and WebKit trace it).
+        // Not torn down: a shadow root keeps its host while script holds it
+        // (its edge, drawn in attachShadow), but a host can still go first -
+        // a node its tree's teardown frees, or at the realm's end - and the
+        // shadow root must go on working as a DocumentFragment. Its `host`
+        // then answers InvalidStateError (ShadowRoot.get_host).
         if (internal.shadow_root) |shadow| {
             internal.shadow_root_kept.release(shadow, forgetHost);
             internal.shadow_root = null;
@@ -3303,6 +3302,15 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
     internal.shadow_root = shadow_root;
     internal.shadow_root_kept.made(shadow_root);
     internal.shadow_root_kept.handOut(instance, shadow_root, .{ .name = "shadowRoot" });
+    // And the shadow root keeps its host, whose `host` it answers for its
+    // whole life: script routinely holds only the shadow root
+    // (`document.createElement("div").attachShadow(...)`). Blink traces it
+    // (Node::Trace visits parent_or_shadow_host_node_), WebKit's shadow root
+    // keeps its host. An edge each way, so the pair keep each other while
+    // script holds either and go together once it holds neither. Drawn
+    // second: until the host's edge above, nothing kept the shadow root's
+    // new wrapper.
+    engine.traceChild(shadow_root, instance, .{ .name = "host" });
 
     return shadow_root;
 }
