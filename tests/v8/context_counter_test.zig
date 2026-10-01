@@ -375,3 +375,30 @@ test "a getter's kept string stays the object's: read twice, and 64 times, it is
     try expectNothingLeftAnywhere("popStateEvent.state", try leftBy("if (stateEvent.state !== 'kept state') throw new Error(stateEvent.state);"));
     try std.testing.expectEqual(@as(i32, 1), try scriptInt("textEvent.data === 'kept text' && stateEvent.state === 'kept state' ? 1 : 0"));
 }
+
+test "an indexed getter frees the string it returns" {
+    try allInterfaces();
+    // DOMTokenList's indexed getter is item(): a copy of the token, owned by
+    // the caller. classList.item(0), an operation, frees it; classList[0]
+    // did not.
+    try std.testing.expectEqual(@as(i32, 3), try scriptInt(
+        \\globalThis.tokenOwner = new Document().implementation.createHTMLDocument('').createElement('div');
+        \\tokenOwner.className = 'abc def';
+        \\globalThis.tokens = tokenOwner.classList;
+        \\tokens[0].length
+    ));
+    try expectNothingLeftAnywhere("classList[0]", try leftBy("tokens[0];"));
+}
+
+test "a named getter frees the string it returns" {
+    try allInterfaces();
+    // DOMStringMap's named getter answers the data-* attribute's value.
+    try std.testing.expectEqual(@as(i32, 6), try scriptInt(
+        \\globalThis.namedOwner = new Document().implementation.createHTMLDocument('').createElement('div');
+        \\namedOwner.setAttribute('data-named', 'xyzzy!');
+        \\globalThis.namedMap = namedOwner.dataset;
+        \\namedMap.named.length
+    ));
+    try expectNothingLeftAnywhere("dataset.named", try leftBy("namedMap.named;"));
+    try expectNothingLeftAnywhere("Object.getOwnPropertyDescriptor(dataset, 'named')", try leftBy("Object.getOwnPropertyDescriptor(namedMap, 'named');"));
+}

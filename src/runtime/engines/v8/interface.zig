@@ -490,6 +490,29 @@ fn freeOwnedString(allocator: std.mem.Allocator, result: runtime.JSValue) void {
     text.deinit(allocator);
 }
 
+/// Free a string an indexed or named property interceptor's getter returned
+/// owned: a DOMString whose arm says `.owned` (DOMTokenList's item() copies
+/// its token), or a JSValue string flagged owned. Interned and empty strings,
+/// and a JSValue reference, are left alone - the union says whose memory it
+/// is. Each interceptor converted the result and dropped it: one leaked copy
+/// per `classList[0]` read, where `classList.item(0)` - an operation, which
+/// frees its result - leaked nothing.
+fn freeOwnedResult(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    if (T == runtime.DOMString) {
+        var text = value;
+        text.deinit(allocator);
+    } else if (T == ?runtime.DOMString) {
+        if (value) |present| {
+            var text = present;
+            text.deinit(allocator);
+        }
+    } else if (T == runtime.JSValue) {
+        freeOwnedString(allocator, value);
+    } else if (T == ?runtime.JSValue) {
+        if (value) |present| freeOwnedString(allocator, present);
+    }
+}
+
 /// Types `argHandleIsCopied` names by identity, re-exported so `tests/v8` can
 /// name them too.
 pub const copied_arg_types = struct {
@@ -4747,14 +4770,19 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Call the item() method
             std.log.debug("[indexedPropertyGetter] Calling {s}.call_item(instance={*}, index={})", .{ interface_name, instance, index });
+            const result_allocator = instance.ctx.allocator;
             const result = Interface.call_item(instance, index) catch |err| {
                 if (err == conv.ConversionError.ExceptionPending) {
                     return .kNo;
                 }
-                const creation_ctx = v8.v8_Object_GetCreationContext(this_obj) orelse v8_context;
-                conv.throwWebIDLErrorFromContext(isolate, creation_ctx, @errorName(err));
+                // Owned when V8 answers it - a fresh Global<Context>.
+                const creation_ctx = v8.v8_Object_GetCreationContext(this_obj);
+                defer if (creation_ctx) |made| v8.v8_Context_Dispose(made);
+                conv.throwWebIDLErrorFromContext(isolate, creation_ctx orelse v8_context, @errorName(err));
                 return .kNo;
             };
+            // A string item() made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value based on return type
             const ReturnType = @typeInfo(@TypeOf(Interface.call_item)).@"fn".return_type.?;
@@ -4977,7 +5005,10 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             // Get the value at this index
+            const result_allocator = instance.ctx.allocator;
             const result = Interface.call_item(instance, index) catch return .kNo;
+            // A string item() made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value
             const ReturnType = @typeInfo(@TypeOf(Interface.call_item)).@"fn".return_type.?;
@@ -5434,9 +5465,12 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 Interface.call_getter;
 
+            const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
             };
+            // A string the named getter made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Acquired HERE, not at entry. `v8_Isolate_GetCurrentContext` heap-
             // allocates a Global<Context> where V8 hands back a borrowed Local, and
@@ -5829,9 +5863,12 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 Interface.call_getter;
 
+            const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
             };
+            // A string the named getter made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Check if result is non-null (property exists)
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
@@ -6088,10 +6125,13 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 Interface.call_getter;
 
+            const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
                 // Error calling getter - allow fallthrough
                 return .kNo;
             };
+            // A string the named getter made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Check if result is non-null (property exists as supported name)
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
@@ -6200,9 +6240,12 @@ pub fn V8Interface(comptime Interface: type) type {
             else
                 Interface.call_getter;
 
+            const result_allocator = instance.ctx.allocator;
             const result = getter_fn(instance, dom_str) catch {
                 return .kNo;
             };
+            // A string the named getter made for the result is the binding's.
+            defer freeOwnedResult(@TypeOf(result), result_allocator, result);
 
             // Convert result to V8 value
             const ReturnType = @typeInfo(@TypeOf(getter_fn)).@"fn".return_type.?;
