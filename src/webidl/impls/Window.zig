@@ -737,6 +737,15 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
 /// needs to access the document to find iframe elements.
 pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
+    // The document this one replaces - the initial about:blank, when a
+    // navigation reuses its Window (HTML "create and initialize a Document
+    // object" step 6) - loses the window's edge to its successor
+    // (Document.setDefaultView draws it), but still names this window as its
+    // default view, so its wrapper is never what frees it: kept as it was
+    // before the edge, until the realm ends. Blink lets the collector take
+    // it; that needs a document whose window has moved on to stop counting
+    // as the window's (wrapper_cache.engineOwns).
+    if (internal.document) |previous| if (previous != document) engine.keepPlatformObjectAlive(previous);
     internal.document = document;
     // A Window's associated Document is its browsing context's active
     // document while the Window is that context's active window.

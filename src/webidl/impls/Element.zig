@@ -113,10 +113,10 @@ pub const InternalState = struct {
 
     /// Shadow root attached to this element (null if not a shadow host)
     shadow_root: ?*runtime.Instance = null,
-    /// `shadow_root` and its wrapper, for as long as this element lives - "an
+    /// `shadow_root`, kept for as long as this element's wrapper lives - "an
     /// element has an associated shadow root", and a shadow root has no
-    /// parent, so nothing else keeps it (see `same_object.KeptChild`).
-    /// Released, and the shadow root severed, in `deinit`.
+    /// parent, so nothing else keeps it - by an edge from this element's
+    /// wrapper (see `same_object.KeptChild`). Severed from it in `deinit`.
     shadow_root_kept: same_object.KeptChild = .{},
 
     /// Custom element state per HTML spec
@@ -567,10 +567,11 @@ pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
         // The host lets its shadow root go: the shadow root forgets its host
-        // (dom.shadow_hosts), and its wrapper is released, so the wrapper
-        // cache frees it - and its subtree - once script drops it too. Here
-        // and not in InternalState.deinit, which cleanupAllRemainingInternal's
-        // exit sweep also runs, after the engine is gone.
+        // (dom.shadow_hosts); the host's edge to it goes with the host's
+        // wrapper, so the wrapper cache frees it - and its subtree - once
+        // script drops it too. Here and not in InternalState.deinit, which
+        // cleanupAllRemainingInternal's exit sweep also runs, after the
+        // engine is gone.
         //
         // Not torn down: a shadow root routinely outlives script's hold on
         // its host (`document.createElement("div").attachShadow(...)` keeps
@@ -3296,11 +3297,12 @@ pub fn call_attachShadow(instance: *runtime.Instance, init_data: dictionaries.Sh
         init_data.serializable orelse false,
     ) catch return error.OutOfMemory;
 
-    // Step 13: "Set element's shadow root to shadow." The element keeps it,
-    // and its wrapper, for its whole life: nothing else does.
+    // Step 13: "Set element's shadow root to shadow." The element keeps it
+    // for its whole life - nothing else does - by an edge from its wrapper,
+    // which script holds: it is calling this.
     internal.shadow_root = shadow_root;
     internal.shadow_root_kept.made(shadow_root);
-    internal.shadow_root_kept.handOut(shadow_root);
+    internal.shadow_root_kept.handOut(instance, shadow_root, .{ .name = "shadowRoot" });
 
     return shadow_root;
 }
