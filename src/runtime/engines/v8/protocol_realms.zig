@@ -300,8 +300,12 @@ pub const TracedEdgeHolder = union(enum) {
 };
 
 pub fn tracedEdgeHolderOfWindow(window: *engine.Instance) TracedEdgeHolder {
-    const state = window_realms.get(window.ctx) orelse return .not_a_realm_window;
-    if (state.window != window) return .not_a_realm_window;
+    // A Window with no realm made here (its realm not finished, or ended):
+    // never wrap it as an ordinary object - its wrapper is a global object
+    // or nothing.
+    const is_window = std.mem.eql(u8, window.vtable.name, "Window");
+    const state = window_realms.get(window.ctx) orelse return if (is_window) .gone else .not_a_realm_window;
+    if (state.window != window) return if (is_window) .gone else .not_a_realm_window;
     // Its WindowProxy went on to a later realm: the global object it had is
     // the one createWindowRealm kept (weakly) as `retired_global`.
     if (state.window_proxy_handed_on) {
