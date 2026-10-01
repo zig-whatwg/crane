@@ -199,17 +199,8 @@ pub const exclusion_patterns: []const []const u8 = &.{
     "html/webappapis/animation-frames/",
     // Visual/interactive tests
     "/visual/",
-    "-manual.html",
-    "-manual.htm",
-    // Support files (not tests themselves)
-    "/support/",
-    "/resources/",
     // WPT infrastructure tests (excluded from regular runs, run with `zig build wpt -- infrastructure/`)
     "/infrastructure/",
-    "/.well-known/",
-    // Reference tests (visual comparison)
-    "-ref.html",
-    "-ref.htm",
     // Print tests
     "/print/",
     // Tentative/experimental tests (proposed features not yet in specs)
@@ -226,7 +217,10 @@ pub const exclusion_patterns: []const []const u8 = &.{
     // BiDi requires WebSocket-based bidirectional browser automation protocol
     // (~5000+ LOC) for features like real-time subscriptions, emulation, bluetooth.
     // Spec: https://w3c.github.io/webdriver-bidi/
-    "bidi/",
+    //
+    // Anchored where BiDi lives. The bare `bidi/` this used to be also hid
+    // selection/bidi/ - the same substring flaw as `browsers/` below.
+    "infrastructure/testdriver/bidi/",
     "webdriver/bidi/",
 
     // HTTP/3 (QUIC) / WebTransport tests (2 failures)
@@ -278,6 +272,36 @@ pub fn isExcluded(path: []const u8) bool {
         if (std.mem.indexOf(u8, path, pattern) != null) {
             return true;
         }
+    }
+    return false;
+}
+
+/// Path shapes that are usually not tests: support files, manual tests,
+/// reftest references.
+///
+/// For the legacy filesystem walk (`--legacy-scan`) ONLY, which has nothing
+/// else to tell a test from a helper. Everything else selects from
+/// MANIFEST.json, which says what each file is, so these guesses must not
+/// filter it: `-ref.html` hid custom-elements/state/custom-state-set-strong-ref.html,
+/// a testharness test in the 0.1 worklist, from every directory run. Against
+/// the manifest's testharness sources the others match nothing.
+pub const non_test_patterns: []const []const u8 = &.{
+    // Manual tests
+    "-manual.html",
+    "-manual.htm",
+    // Support files (not tests themselves)
+    "/support/",
+    "/resources/",
+    "/.well-known/",
+    // Reference files (reftests' visual comparison)
+    "-ref.html",
+    "-ref.htm",
+};
+
+/// Whether the legacy scan should skip `path` as a non-test (`non_test_patterns`).
+pub fn isNonTestFile(path: []const u8) bool {
+    for (non_test_patterns) |pattern| {
+        if (std.mem.indexOf(u8, path, pattern) != null) return true;
     }
     return false;
 }
@@ -343,10 +367,42 @@ test "isExcluded" {
 
     try testing.expect(isExcluded("html/rendering/foo.html"));
     try testing.expect(isExcluded("html/canvas/test.html"));
-    try testing.expect(isExcluded("url/support/helper.js"));
-    try testing.expect(isExcluded("test-manual.html"));
     try testing.expect(!isExcluded("url/url-constructor.any.js"));
     try testing.expect(!isExcluded("dom/events/Event.html"));
+}
+
+test "isNonTestFile: the legacy scan's guesses at what is not a test" {
+    const testing = std.testing;
+
+    try testing.expect(isNonTestFile("url/support/helper.js"));
+    try testing.expect(isNonTestFile("url/resources/helper.any.js"));
+    try testing.expect(isNonTestFile("test-manual.html"));
+    try testing.expect(isNonTestFile("dom/nodes/Node-cloneNode-ref.html"));
+    try testing.expect(!isNonTestFile("dom/events/Event.html"));
+}
+
+test "a testharness test whose name looks like a reference is in scope" {
+    const testing = std.testing;
+
+    // MANIFEST.json says what a file is, and it lists this one as testharness.
+    // The '-ref.html' guess, meant for reftest references during the legacy
+    // filesystem walk, kept it out of every directory run of custom-elements/
+    // although the 0.1 worklist names it. The guesses no longer apply to what
+    // the manifest selected (`isNonTestFile` is the legacy scan's alone).
+    try testing.expect(isInScope("custom-elements/state/custom-state-set-strong-ref.html"));
+    try testing.expect(!isExcluded("custom-elements/state/custom-state-set-strong-ref.html"));
+}
+
+test "the bidi/ exclusion names WebDriver BiDi, not selection/bidi" {
+    const testing = std.testing;
+
+    // The same flaw as the bare `browsers/` rule below: the WebDriver BiDi rule
+    // was the bare substring `bidi/`, which also hid selection/bidi/ (three
+    // testharness sources, in scope). It names where BiDi lives instead.
+    try testing.expect(isInScope("selection/bidi/modify-extend-by-character.html"));
+    try testing.expect(isInScope("selection/bidi/modify-move-by-character.html"));
+    try testing.expect(isExcluded("infrastructure/testdriver/bidi/subscription.html"));
+    try testing.expect(isExcluded("webdriver/bidi/session/new.py"));
 }
 
 test "only a budget beyond the harness default takes an explicit timeout" {
