@@ -3301,34 +3301,6 @@ pub fn build(b: *std.Build) void {
     crane_step.dependOn(&install_crane_exe.step);
 
     // ========================================================================
-    // IDL PARSER TOOL
-    // ========================================================================
-
-    const parse_idls_exe = b.addExecutable(.{
-        .name = "parse-idls",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/webidl/parser/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "infra", .module = infra_mod },
-                .{ .name = "host", .module = host_mod },
-            },
-        }),
-    });
-
-    const install_parse_idls = b.addInstallArtifact(parse_idls_exe, .{});
-    const parse_idls_cmd = b.addRunArtifact(parse_idls_exe);
-    parse_idls_cmd.step.dependOn(&install_parse_idls.step);
-
-    // Add arguments to parse webref IDLs
-    parse_idls_cmd.addArg("/Users/bcardarella/projects/webref/ed/idl/");
-    parse_idls_cmd.addArg("webidl/idls/");
-
-    const parse_idls_step = b.step("parse-idls", "Parse WebIDL files from webref");
-    parse_idls_step.dependOn(&parse_idls_cmd.step);
-
-    // ========================================================================
     // WEBIDL TOOLS
     // ========================================================================
 
