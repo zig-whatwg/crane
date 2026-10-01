@@ -275,16 +275,12 @@ fn iframeContextCleanup(integration: *IFrameIntegration) void {
 /// again. A task its loop drops needs nothing: the loop goes as its page
 /// ends, and the page's realm ends its frames' realms first.
 ///
-/// Deviation, stated: the realm's end frees its Window, so after this task a
-/// removed frame's WindowProxy answers only its self-references (`self`,
-/// `frames`, `globalThis`, `window`); every other Window member throws a
-/// TypeError. The spec keeps the Window for as long as script holds its
-/// WindowProxy - `closed` reads true (its browsing context is discarded),
-/// `document` answers - as Chrome, Edge and Firefox do.
-/// crane/fl-removed-frame-window-survives-gc.html pins the deviation. Lifting
-/// it needs the Window kept while its WindowProxy is held, and so the Window's
-/// and Document's children traced from their wrappers rather than pinned
-/// (same_object.Pin), or the pins would keep the frame's context forever.
+/// The realm does not end with this task (engine.WindowRealmEnd
+/// .navigable_destroyed): its script activity stops, and its Window lives on
+/// for as long as script holds its WindowProxy - `closed` reads true (its
+/// browsing context is discarded), `document` answers - as the spec says and
+/// Chrome, Edge and Firefox do (crane/fl-removed-frame-window-survives-gc.html).
+/// The engine ends it once the collector takes it, or with its page.
 fn queueRemovedFrameRealmEnd(element: *runtime.Instance, integration: *IFrameIntegration) void {
     const data = integration.context_cleanup_data orelse return;
     const loop = element.ctx.getOptionalEventLoop() orelse return;

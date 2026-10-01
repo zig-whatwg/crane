@@ -1210,7 +1210,7 @@ test "protocol: a frame's realm whose WindowProxy went on is severed from its Wi
     try expectEval(parent, "delete globalThis.reader", "true");
 }
 
-test "protocol: a destroyed navigable's realm keeps its global attached, severed from its Window" {
+test "protocol: a destroyed navigable's realm keeps its Window while script holds its WindowProxy, and ends when it is collected" {
     _ = try realm();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
@@ -1218,33 +1218,71 @@ test "protocol: a destroyed navigable's realm keeps its global attached, severed
     const baseline = liveContexts();
     var frame_realm: FrameRealm = .{ .parent = parent };
     const frame = try frame_realm.make();
+    const window = Watched.of(try platformObjectIn(frame, "globalThis"));
     {
-        const frame_global = try evalOwned(frame, "globalThis");
+        const frame_global = try evalOwned(frame, "globalThis.kept = new Headers([['a', '1']]); globalThis");
         defer frame_global.release();
         try setGlobal(parent, "frameWindow", frame_global.value);
     }
 
     // HTML "destroy a child navigable" (an iframe removed): Blink's
-    // DisposeContext(kFrameIsDetached) leaves the global attached.
+    // DisposeContext(kFrameIsDetached) leaves the global attached, and the
+    // Window lives on with its WindowProxy.
     protocol.destroyWindowRealm(frame, .navigable_destroyed);
-    try std.testing.expect(frame.engine_ctx == null);
+    collectTwice();
+    try std.testing.expect(frame.engine_ctx != null);
+    try std.testing.expect(window.alive());
 
-    // The WindowProxy script held still answers its self-references - own
-    // data properties, and `window`, which needs no Window
-    // (self-et-al.window.js). Detached, each read threw "no access".
+    // Its self-references, and every member that needs the Window: the
+    // Window is the one it was, with what its realm's script kept on it.
     try expectEval(parent, "[frameWindow.self, frameWindow.frames, frameWindow.globalThis, frameWindow.window].every(w => w === frameWindow)", "true");
-    // A member that needs the Window finds none: a TypeError, not a read of
-    // the Window the host freed.
-    try expectEval(parent, "(() => { try { return String(frameWindow.name); } catch (e) { return e.name; } })()", "TypeError");
+    try expectEval(parent, "typeof frameWindow.name", "string");
+    try expectEval(parent, "frameWindow.kept.get('a')", "1");
 
     // Crane holds nothing of the frame's context: once script lets its
-    // WindowProxy go, the collector takes the context.
+    // WindowProxy go, the collector takes the context, and the realm reads
+    // ended from then on.
     try expectEval(parent, "delete globalThis.frameWindow", "true");
     const after = liveContexts();
     if (after != baseline) {
-        std.debug.print("native contexts: {d} before the frame, {d} after its realm ended and its WindowProxy was dropped\n", .{ baseline, after });
+        std.debug.print("native contexts: {d} before the frame, {d} after its navigable was destroyed and its WindowProxy dropped\n", .{ baseline, after });
         return error.RealmKeptAlive;
     }
+    try std.testing.expect(frame.engine_ctx == null);
+    // This test's realms have no event loop to end it from a task: its
+    // page's end does, which frees its Window.
+}
+
+test "protocol: a destroyed navigable's realm that its page outlives is not run, and its page's end frees its Window" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    const window = Watched.of(try platformObjectIn(frame, "globalThis"));
+    {
+        const frame_global = try evalOwned(frame, "globalThis");
+        defer frame_global.release();
+        try setGlobal(parent, "frameWindow", frame_global.value);
+    }
+    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+
+    // HTML "destroy a document" step 7: its tasks are not run.
+    const Steps = struct {
+        var ran = false;
+        fn steps(_: ?*anyopaque) void {
+            ran = true;
+        }
+    };
+    Steps.ran = false;
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(frame, Steps.steps, null));
+    try std.testing.expect(!Steps.ran);
+
+    // The page ends while script still holds the frame's WindowProxy: the
+    // frame's realm ends with it - retired, its wrapper cache gone.
+    try std.testing.expect(window.alive());
+    protocol.destroyWindowRealm(parent, .global_detached);
+    try std.testing.expect(frame.engine_ctx == null);
+    try std.testing.expect(frame.getV8WrapperCacheStorage() == null);
 }
 
 test "protocol: a wrapper another realm still holds is severed when its realm ends" {
@@ -1260,12 +1298,12 @@ test "protocol: a wrapper another realm still holds is severed when its realm en
     }
     try expectEval(parent, "heldHeaders.get('a')", "1");
 
-    // The frame's realm ends: its wrapper cache frees the Headers, and the
-    // parent still holds the wrapper. Reading through it is a TypeError - the
-    // wrapper names no instance any more - never a read of the freed one
-    // (Headers.call_get unwraps its `_internal` unchecked: a panic, or worse
-    // once the slot is reissued).
-    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    // The frame's realm ends (a navigation's end): its wrapper cache frees
+    // the Headers, and the parent still holds the wrapper. Reading through it
+    // is a TypeError - the wrapper names no instance any more - never a read
+    // of the freed one (Headers.call_get unwraps its `_internal` unchecked: a
+    // panic, or worse once the slot is reissued).
+    protocol.destroyWindowRealm(frame, .global_detached);
     try expectEval(parent, "(() => { try { return String(heldHeaders.get('a')); } catch (e) { return e.name; } })()", "TypeError");
     try expectEval(parent, "delete globalThis.heldHeaders", "true");
 }

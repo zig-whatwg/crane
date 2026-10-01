@@ -12482,5 +12482,45 @@ void v8_Object_DeletePrivateRef(Global<Object>* holder, const char* key, int key
     (void)holder->Get(isolate)->DeletePrivate(context, priv);
 }
 
+/// Keep `value` alive for exactly as long as `context`'s global object: it is
+/// appended to an array held in a private property of the HIDDEN global
+/// object (behind the global proxy), made on first use. An edge, never a
+/// root - what a realm whose navigable was destroyed holds its wrappers by,
+/// so the collector can take the realm once script lets its WindowProxy go
+/// (the engine protocol's Window realm end, `.navigable_destroyed`). A no-op
+/// for a context already collected.
+void v8_Context_RetainOnGlobal(Global<Context>* context, const char* key, int key_len, Global<Value>* value) {
+    if (!context || context->IsEmpty() || !value || value->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    // V1 GetPrototype on a global proxy answers the hidden global object.
+    Local<Value> hidden = ctx->Global()->GetPrototype();
+    if (hidden.IsEmpty() || !hidden->IsObject()) return;
+    Local<Object> global = hidden.As<Object>();
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
+    Local<Private> priv = Private::ForApi(isolate, name);
+    Local<Value> existing;
+    Local<Array> list;
+    if (global->GetPrivate(ctx, priv).ToLocal(&existing) && existing->IsArray()) {
+        list = existing.As<Array>();
+    } else {
+        list = Array::New(isolate);
+        if (global->SetPrivate(ctx, priv, list).IsNothing()) return;
+    }
+    (void)list->Set(ctx, list->Length(), value->Get(isolate));
+}
+
+/// Make `context`'s handle weak: `callback(user_data)` runs (first pass,
+/// after V8 reset the handle) once the collector takes the context. The
+/// handle stays the caller's to dispose (v8_Context_Dispose ends the arm).
+void v8_Context_SetWeak(Global<Context>* context, void* user_data, ZigWeakCallbackFn callback) {
+    if (!context || context->IsEmpty()) return;
+    v8_Global_SetWeak(static_cast<void*>(context), user_data, callback);
+}
+
 } // extern "C"
 // ---- end lane: realms ----

@@ -367,6 +367,7 @@ const ReadOperation = struct {
         // steps run now, which is better than never.
         self.allocator.destroy(task);
         self.runStep(step);
+        self.maybeFree();
     }
 
     /// abort() step 3-4, the reader going, or the operation's end: its
@@ -386,11 +387,23 @@ const ReadOperation = struct {
     }
 
     /// A task from the event loop: enter the reader's realm and run `step`,
-    /// ending as a task there does.
+    /// ending as a task there does. A realm whose tasks are not run any more
+    /// - its document was destroyed (HTML "destroy a document" step 7) or its
+    /// realm ended - never sees the read finish: the operation ends here, and
+    /// with it the hold on the reader's wrapper (Blink: FileReader's
+    /// ContextDestroyed terminates it). The caller frees it (`maybeFree`).
     fn runStep(self: *ReadOperation, step: Step) void {
         if (self.terminated) return;
         var run: StepRun = .{ .op = self, .step = step };
-        engine.runTaskInRealm(self.reader.ctx, StepRun.steps, &run) catch {};
+        engine.runTaskInRealm(self.reader.ctx, StepRun.steps, &run) catch {
+            // The reader - held until here - must not name an operation that
+            // is about to be freed.
+            if (getInternal(self.reader)) |internal| {
+                if (internal.operation == self) internal.operation = null;
+            }
+            self.terminated = true;
+            self.keep.release();
+        };
     }
 
     const Task = struct {

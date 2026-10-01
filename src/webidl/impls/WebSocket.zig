@@ -125,14 +125,16 @@ fn pumpCallback(user_data: ?*anyopaque) void {
 /// host loop ends its own.
 ///
 /// A realm that has ended (retired: no engine context) never comes back, so
-/// the pump stops; one that cannot be entered this turn is tried again.
+/// the pump stops - and so does one whose tasks are no longer run (its
+/// navigable was destroyed: HTML "destroy a document" removes its tasks):
+/// the realm cannot be entered for a task, and nothing more is fired.
 fn pumpInScope(token: *PollToken, instance: *runtime.Instance) bool {
     // `pump` may run script that frees the WebSocket, so nothing after it
     // reads `instance`: the realm is its own object.
     const realm = instance.ctx;
     if (realm.engine_ctx == null) return false;
     var turn = PumpTurn{ .token = token, .instance = instance };
-    engine.runTaskInRealm(realm, PumpTurn.steps, &turn) catch return true;
+    engine.runTaskInRealm(realm, PumpTurn.steps, &turn) catch return false;
     return turn.live;
 }
 

@@ -93,6 +93,11 @@ const CacheEntry = struct {
     /// Reasons to hold the wrapper that only a caller can state - see `Holds`.
     holds: Holds = .{},
 
+    /// Kept by an edge from its realm's global object instead of a strong
+    /// handle, since the realm's navigable was destroyed
+    /// (`WrapperCache.detach`).
+    retained: bool = false,
+
     /// Set to true when the cache is being destroyed. This allows pending
     /// weak callbacks to detect that they should skip cleanup because:
     /// 1. The cache is no longer valid
@@ -243,6 +248,11 @@ fn engineOwns(instance: *runtime.Instance) bool {
         if (doc_internal.default_view != null) return true;
     }
     return false;
+}
+
+/// A realm's Window: its realm's end frees it (protocol_realms).
+fn isRealmWindow(instance: *runtime.Instance) bool {
+    return std.mem.eql(u8, instance.vtable.name, "Window");
 }
 
 /// True for a node with a parent: its tree holds it - the parent's child list
@@ -399,7 +409,23 @@ fn entryOf(instance: *runtime.Instance) ?*CacheEntry {
 
 /// Arm or disarm `entry`'s weak callback to match `shouldBeStrong` - the one
 /// path by which a wrapper's strength changes after it is made.
+///
+/// In a detached cache (`WrapperCache.detach`) no wrapper is strong: one that
+/// should be is kept by an edge from the realm's global object instead,
+/// drawn once and never withdrawn - the realm is going, and what it kept goes
+/// with it.
 fn syncEntry(entry: *CacheEntry) void {
+    if (entry.cache.detached_context) |context| {
+        if (shouldBeStrong(entry) and !entry.retained) {
+            retainOnGlobal(context, @ptrCast(entry.wrapper));
+            entry.retained = true;
+        }
+        if (entry.strong) {
+            v8.v8_Global_SetWeak(@ptrCast(entry.wrapper), @ptrCast(entry), weakCallback);
+            entry.strong = false;
+        }
+        return;
+    }
     const strong = shouldBeStrong(entry);
     if (entry.strong == strong) return;
     if (strong) {
@@ -409,6 +435,18 @@ fn syncEntry(entry: *CacheEntry) void {
     }
     entry.strong = strong;
 }
+
+/// The private key of the array on a detached realm's global object that
+/// keeps what its cache would otherwise hold strongly.
+const retained_key = "crane:retained";
+
+fn retainOnGlobal(context: *v8.Context, value: *v8.Value) void {
+    v8.v8_Context_RetainOnGlobal(context, retained_key.ptr, retained_key.len, value);
+}
+
+/// A deferred edge's child, made weak at a realm's detach once it is kept
+/// from the global object: nothing to do when it is collected.
+fn deferredChildCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
 
 /// Every live WrapperCache on this thread - one per realm. A node has one
 /// wrapper whatever realm reads it (its bound wrapper), but any other platform
@@ -574,7 +612,18 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
         // freed memory. Only the wrapper goes; a later wrap makes a fresh one,
         // and the instance is freed when its tree is torn down, or once it is
         // removed from the tree and its next wrapper is collected.
-        if (engineOwns(entry.instance)) {
+        // A realm's Window is freed by its realm's end, never by its
+        // wrapper's death: the global proxy of a realm whose navigable was
+        // destroyed is collected with the realm, before the task that ends it
+        // runs (protocol_realms).
+        //
+        // And a streams object of a detached realm is not kept: its graph
+        // was held for the realm's life by the global object, which is gone
+        // now with every wrapper of the graph, and the realm's end no longer
+        // finds this entry to free it (the teardown of these classes touches
+        // only their own slots, so any order is safe).
+        const detached_streams = entry.cache.detached_context != null and isStreamsGraphObject(entry.instance.vtable.name);
+        if (isRealmWindow(entry.instance) or (engineOwns(entry.instance) and !detached_streams)) {
             log.debug("[weakCallback] ENGINE-OWNED: instance={*} - wrapper released, instance kept", .{entry.instance});
             disposeEntryWrapper(entry);
             entry.cache.allocator.destroy(entry);
@@ -636,7 +685,35 @@ pub const WrapperCache = struct {
     /// address reissued leaves nothing to a newcomer.
     edges_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, DeferredEdges) = .empty,
 
+    /// Its realm's navigable was destroyed (`detach`): the realm's context,
+    /// BORROWED - the realm's own handle, weak from then on and empty once
+    /// collected. Every wrapper that would be held strongly is kept by an
+    /// edge from the realm's global object instead (`syncEntry`).
+    detached_context: ?*v8.Context = null,
+
     const Self = @This();
+
+    /// The realm's navigable was destroyed, and its realm lives on only for
+    /// as long as script holds its WindowProxy (protocol_realms, HTML
+    /// "destroy a child navigable"). A strong handle here would keep it
+    /// forever, so each wrapper held strongly - a node in a tree, a window's
+    /// Location, a streams object, pending activity - is kept from the
+    /// global object instead, and so is each child waiting for its owner's
+    /// wrapper (`edges_before_wrap`). `context` is the realm's own handle,
+    /// borrowed for the cache's life. Needs the context entered.
+    pub fn detach(self: *Self, context: *v8.Context) void {
+        if (self.detached_context != null) return;
+        self.detached_context = context;
+        var iter = self.cache.valueIterator();
+        while (iter.next()) |entry_ptr| syncEntry(entry_ptr.*);
+        var deferred_iter = self.edges_before_wrap.valueIterator();
+        while (deferred_iter.next()) |deferred| {
+            for (deferred.edges.items) |edge| {
+                retainOnGlobal(context, edge.child);
+                v8.v8_Global_SetWeak(@ptrCast(edge.child), null, deferredChildCollected);
+            }
+        }
+    }
 
     /// One owner's edges waiting for its wrapper.
     pub const DeferredEdges = struct {
@@ -706,6 +783,8 @@ pub const WrapperCache = struct {
         defer kv.value.dispose(self.allocator);
         if (kv.value.generation != generation) return;
         for (kv.value.edges.items) |edge| {
+            // A child a detached realm let go weak may be gone.
+            if (v8.v8_Global_IsEmpty(edge.child)) continue;
             v8.v8_Object_SetPrivateRef(wrapper, edge.key.ptr, @intCast(edge.key.len), edge.child);
         }
     }
@@ -1073,7 +1152,7 @@ pub const WrapperCache = struct {
         }
         // Edges traced from the instance before script saw it.
         self.drawDeferredEdges(instance, entry.original_generation, wrapper);
-        if (shouldBeStrong(entry)) {
+        if (shouldBeStrong(entry) and self.detached_context == null) {
             entry.strong = true;
         } else {
             v8.v8_Global_SetWeak(
@@ -1081,6 +1160,7 @@ pub const WrapperCache = struct {
                 @ptrCast(entry),
                 weakCallback,
             );
+            if (self.detached_context != null) syncEntry(entry);
         }
     }
 
