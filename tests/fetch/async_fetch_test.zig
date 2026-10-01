@@ -570,18 +570,39 @@ test "catchUp reads out a response that had started arriving during a long task"
 
     var held: HeldFetch = .{};
     defer held.deinit();
-    held.fetch = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/split-head/150"), .{}, &scheduler, held.client());
+    held.fetch = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/split-head"), .{}, &scheduler, held.client());
 
-    // The long task: nothing reads the socket while the status line waits in
-    // it and the rest of the header block is still to come.
-    clock.sleep(40 * std.time.ns_per_ms);
-    // The timeout's one network step: the header block is not complete.
-    _ = async_fetch.pumpWith(&scheduler);
+    // The long task, and the timeout's network step after it. Each moment is
+    // the server's, not the clock's: this used to sleep 40 ms and pump once,
+    // and under load the request (the kick's few rounds of connect) or the
+    // server's first write came later than that, so nothing had started
+    // arriving and catchUp, rightly, did not wait.
+    //
+    // The status line goes out; the rest of the header block is held until
+    // the test releases it. Pumping meanwhile only puts the request on the
+    // wire and reads the status line - the header block stays incomplete
+    // whatever the timing.
+    const Until = struct {
+        fn started(ctx: *anyopaque) bool {
+            const h: *HeldFetch = @ptrCast(@alignCast(ctx));
+            const f = h.fetch orelse return true;
+            return f.isArriving();
+        }
+    };
+    turnUntil(&scheduler, 10_000, Until.started, &held);
+    try testing.expect(server.headStarted());
+    // The timeout's view: a response has started arriving, and it has no
+    // header block yet.
+    try testing.expect(held.fetch != null and held.fetch.?.isArriving());
     try testing.expect(held.reader.response == null);
 
     // What a network thread would have read meanwhile: the rest of the
-    // response, as it arrives, within the budget.
-    async_fetch.catchUpWith(&scheduler, &held.fetch, 500);
+    // response, as it arrives - here, released now and written a moment later,
+    // while catchUp waits. The budget only has to outlast the server's
+    // thread; catchUp returns as soon as the fetch is over. That it never
+    // runs past its budget is the third test below.
+    server.releaseHead();
+    async_fetch.catchUpWith(&scheduler, &held.fetch, 10_000);
     const response = held.reader.response orelse return error.TestUnexpectedResult;
     try testing.expectEqual(@as(u16, 200), response.status);
     // The whole response: its body ended too, and the fetch is over.

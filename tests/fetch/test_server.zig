@@ -23,8 +23,11 @@
 //!   GET  /trickle/{n}      - n chunks of "chunk\n", 100ms apart, chunked
 //!   GET  /bad-chunk        - one good chunk, then a malformed one
 //!   GET  /big/{kib}        - kib KiB of "x", as fast as the peer reads
-//!   GET  /split-head/{ms}  - the status line now, the rest of the header
-//!                            block and a 5-byte body {ms} ms later
+//!   GET  /split-head       - the status line now; the rest of the header
+//!                            block and a 5-byte body once the test calls
+//!                            `releaseHead` (`headStarted` says the first
+//!                            part is out), so the test, not the clock,
+//!                            decides when each part arrives
 //!
 //! WebSocket Endpoints:
 //!   /ws/echo               - Echo all messages back
@@ -55,6 +58,30 @@ pub const TestServer = struct {
     thread: ?Thread = null,
     should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
     port: u16,
+    /// The `/split-head` exchange's two moments.
+    split_head: SplitHead = .{},
+
+    /// `/split-head` writes its response in two parts, and the test moves it
+    /// from one to the next. A wall-clock gap between the parts made the
+    /// catchUp test a race against machine load: under load the server, or
+    /// the client's connect, ran late, and the "long task" ended before the
+    /// first part had arrived.
+    pub const SplitHead = struct {
+        /// Set by the server once the status line is written.
+        started: std.atomic.Value(bool) = .init(false),
+        /// Set by the test: write the rest.
+        released: std.atomic.Value(bool) = .init(false),
+    };
+
+    /// Whether `/split-head` has written its status line.
+    pub fn headStarted(self: *TestServer) bool {
+        return self.split_head.started.load(.acquire);
+    }
+
+    /// Let `/split-head` write the rest of its response.
+    pub fn releaseHead(self: *TestServer) void {
+        self.split_head.released.store(true, .release);
+    }
 
     pub fn start(allocator: Allocator) !*TestServer {
         const self = try allocator.create(TestServer);
@@ -119,7 +146,7 @@ pub const TestServer = struct {
 
             // Handle connection in the same thread for simplicity
             // (for production, spawn a thread per connection)
-            handleConnection(self.allocator, io, stream, &self.should_stop) catch |err| {
+            handleConnection(self.allocator, io, stream, &self.should_stop, &self.split_head) catch |err| {
                 std.debug.print("Test server error: {}\n", .{err});
             };
             stream.close(io);
@@ -161,7 +188,7 @@ pub const TestServer = struct {
         return n;
     }
 
-    fn handleConnection(allocator: Allocator, io: Io, stream: net.Stream, should_stop: *std.atomic.Value(bool)) !void {
+    fn handleConnection(allocator: Allocator, io: Io, stream: net.Stream, should_stop: *std.atomic.Value(bool), split_head: *SplitHead) !void {
         // 0.16 reads through a buffered `Io.Reader` whose buffer the caller owns.
         // `fillMore` performs exactly one underlying read - the true analogue of
         // 0.15's `read(&buf)` - and reports a closed peer as `error.EndOfStream`
@@ -204,12 +231,23 @@ pub const TestServer = struct {
         }
         // What a peer behind Nagle does when its header block goes out in
         // many small writes: the first segment now, the rest once the first
-        // is acknowledged - here, `ms` later.
-        if (std.mem.startsWith(u8, path, "/split-head/")) {
-            const ms = std.fmt.parseInt(u64, path["/split-head/".len..], 10) catch 50;
+        // is acknowledged - here, once the test releases it (TestServer.
+        // releaseHead). The wait is bounded so a test that fails before
+        // releasing cannot hold `stop` forever.
+        if (std.mem.eql(u8, path, "/split-head")) {
             try writeAllToStream(io, stream, "HTTP/1.1 200 OK\r\n");
-            const wait_ms: u64 = @min(ms, 2_000);
-            clock.sleep(wait_ms * std.time.ns_per_ms);
+            split_head.started.store(true, .release);
+            const give_up = clock.monotonicMillis() + 30_000;
+            while (!split_head.released.load(.acquire) and !should_stop.load(.acquire) and
+                clock.monotonicMillis() < give_up)
+            {
+                clock.sleep(std.time.ns_per_ms);
+            }
+            // A moment more, so the rest arrives while the client is
+            // waiting for it rather than before it starts to. Arriving
+            // earlier is the easier case and passes too: no outcome
+            // depends on this sleep.
+            clock.sleep(30 * std.time.ns_per_ms);
             return writeAllToStream(io, stream, "Content-Type: text/plain\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello");
         }
         if (std.mem.eql(u8, path, "/bad-chunk")) {
