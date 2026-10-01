@@ -1,0 +1,69 @@
+// Crane supplementary IDL - not in webref.
+// Origin: written for Crane in 5d14aa855 ("feat(shadowrealm): implement ShadowRealm
+// support for TC39 proposal", 2026-01-13), and kept in specs/idl until 2026-10-01.
+// It is Crane's own approximation of the global scope of a ShadowRealm, modelled on
+// the TC39 ShadowRealm proposal (https://tc39.es/proposal-shadowrealm/) and the open
+// HTML integration PR whatwg/html#9893; it is not copied from either, and its members
+// differ from the PR's. Webref has no ShadowRealmGlobalScope until that PR lands.
+// Why Crane carries it: the [Exposed=ShadowRealm] bindings need a global interface.
+//
+// ShadowRealmGlobalScope WebIDL Definition
+//
+// Spec: WHATWG HTML Standard - ShadowRealmGlobalScope
+// https://html.spec.whatwg.org/multipage/webappapis.html#shadowrealmglobalscope
+//
+// TC39 ShadowRealm Proposal:
+// https://tc39.es/proposal-shadowrealm/
+//
+// ShadowRealmGlobalScope provides a minimal, sandboxed JavaScript environment.
+// It exposes only computational APIs - no DOM, no network, no storage.
+// This makes it suitable for running untrusted code in isolation.
+//
+// APIs exposed to ShadowRealm contexts are those with [Exposed=ShadowRealm]:
+// - Base64 utilities (atob, btoa)
+// - Text encoding (TextEncoder, TextDecoder)
+// - URL handling (URL, URLSearchParams)
+// - Structured cloning (structuredClone)
+// - Abort handling (AbortController, AbortSignal)
+// - Microtask queuing (queueMicrotask)
+//
+// NOT exposed to ShadowRealm:
+// - DOM APIs (Document, Element, etc.)
+// - Network APIs (fetch, XMLHttpRequest)
+// - Storage APIs (localStorage, IndexedDB)
+// - Timer APIs (setTimeout, setInterval) - per spec discussion
+
+[Global=ShadowRealm,
+ Exposed=ShadowRealm,
+ LegacyNoInterfaceObject]
+interface ShadowRealmGlobalScope : EventTarget {
+    // Base64 encoding/decoding
+    // Spec: HTML Standard § 8.3 Base64 utility methods
+    DOMString btoa(DOMString data);
+    ByteString atob(DOMString data);
+
+    // Structured cloning
+    // Spec: HTML Standard § 2.7.9 structuredClone(value, options)
+    any structuredClone(any value, optional StructuredSerializeOptions options = {});
+
+    // Microtask queuing
+    // Spec: HTML Standard § 8.6 Microtask queuing
+    undefined queueMicrotask(VoidFunction callback);
+
+    // Report errors
+    // Spec: HTML Standard § 8.9 Error reporting
+    undefined reportError(any e);
+
+    // Self reference
+    [Replaceable] readonly attribute ShadowRealmGlobalScope self;
+
+    // Global object name for debugging
+    readonly attribute DOMString name;
+
+    // Origin info
+    readonly attribute USVString origin;
+
+    // Security context
+    readonly attribute boolean isSecureContext;
+    readonly attribute boolean crossOriginIsolated;
+};

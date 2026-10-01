@@ -1,0 +1,13 @@
+// Crane supplementary IDL - not in webref.
+// Origin: added to Crane's specs/idl by hand, moved here 2026-10-01.
+// Why Crane carries it: codegen does not yet generate setlike<FontFace>'s members,
+// so FontFaceSet's `size` is declared explicitly. Drop it when codegen expands setlike.
+//
+// Supplementary IDL for FontFaceSet setlike members
+// The main IDL has "setlike<FontFace>" but codegen doesn't generate these members
+// This explicitly adds the size property that setlike should provide
+
+partial interface FontFaceSet {
+  // From setlike<FontFace>
+  readonly attribute unsigned long size;
+};

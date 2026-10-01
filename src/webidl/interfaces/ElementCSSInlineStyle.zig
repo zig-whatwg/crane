@@ -11,13 +11,12 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const StylePropertyMap = @import("interfaces").StylePropertyMap;
 
 pub const ElementCSSInlineStyle = struct {
     pub const Meta = struct {
         pub const name = "ElementCSSInlineStyle";
-        pub const is_mixin = false;
+        pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = null;

@@ -12,12 +12,12 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Node = @import("interfaces").Node;
 const FontFaceSource = @import("mixins").FontFaceSource;
+const GeometryUtils = @import("mixins").GeometryUtils;
 const NonElementParentNode = @import("mixins").NonElementParentNode;
 const DocumentOrShadowRoot = @import("mixins").DocumentOrShadowRoot;
 const ParentNode = @import("mixins").ParentNode;
 const XPathEvaluatorBase = @import("mixins").XPathEvaluatorBase;
 const GlobalEventHandlers = @import("mixins").GlobalEventHandlers;
-const GeometryUtils = @import("mixins").GeometryUtils;
 const HTMLOrSVGScriptElement = @import("typedefs").HTMLOrSVGScriptElement;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const HTMLHeadElement = @import("interfaces").HTMLHeadElement;
@@ -51,9 +51,9 @@ const PermissionsPolicy = @import("interfaces").PermissionsPolicy;
 const XPathNSResolver = @import("interfaces").XPathNSResolver;
 const DocumentType = @import("interfaces").DocumentType;
 const HTMLAllCollection = @import("interfaces").HTMLAllCollection;
-const DOMString = @import("typedefs").DOMString;
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
+const DOMString = @import("typedefs").DOMString;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const FontFaceSet = @import("interfaces").FontFaceSet;
 const BrowsingTopicsOptions = @import("dictionaries").BrowsingTopicsOptions;
@@ -70,10 +70,10 @@ const DocumentReadyState = @import("enums").DocumentReadyState;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const HTMLElement = @import("interfaces").HTMLElement;
-const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
+const WindowProxy = @import("typedefs").WindowProxy;
 const Attr = @import("interfaces").Attr;
 const TrustedHTML = @import("interfaces").TrustedHTML;
-const WindowProxy = @import("typedefs").WindowProxy;
+const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
 const NodeList = @import("interfaces").NodeList;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const ElementCreationOptions = @import("dictionaries").ElementCreationOptions;
@@ -84,9 +84,9 @@ const CaretPositionFromPointOptions = @import("dictionaries").CaretPositionFromP
 const ProcessingInstruction = @import("interfaces").ProcessingInstruction;
 const SVGSVGElement = @import("interfaces").SVGSVGElement;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
-const Selection = @import("interfaces").Selection;
-const NodeFilter = @import("interfaces").NodeFilter;
 const DocumentVisibilityState = @import("enums").DocumentVisibilityState;
+const NodeFilter = @import("interfaces").NodeFilter;
+const Selection = @import("interfaces").Selection;
 
 pub const Document = struct {
     pub const Meta = struct {
@@ -98,12 +98,12 @@ pub const Document = struct {
         pub const ParentInterface = Node;
         pub const MixinTypes = &.{
             FontFaceSource,
+            GeometryUtils,
             NonElementParentNode,
             DocumentOrShadowRoot,
             ParentNode,
             XPathEvaluatorBase,
             GlobalEventHandlers,
-            GeometryUtils,
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -125,23 +125,14 @@ pub const Document = struct {
             .{ "contentType", "get_contentType", null },
             .{ "doctype", "get_doctype", null },
             .{ "documentElement", "get_documentElement", null },
-            .{ "fragmentDirective", "get_fragmentDirective", null },
-            .{ "prerendering", "get_prerendering", null },
-            .{ "onprerenderingchange", "get_onprerenderingchange", "set_onprerenderingchange" },
+            .{ "rootElement", "get_rootElement", null },
+            .{ "namedFlows", "get_namedFlows", null },
+            .{ "activeViewTransition", "get_activeViewTransition", null },
+            .{ "scrollingElement", "get_scrollingElement", null },
             .{ "fullscreenEnabled", "get_fullscreenEnabled", "set_fullscreenEnabled" },
             .{ "fullscreen", "get_fullscreen", "set_fullscreen" },
             .{ "onfullscreenchange", "get_onfullscreenchange", "set_onfullscreenchange" },
             .{ "onfullscreenerror", "get_onfullscreenerror", "set_onfullscreenerror" },
-            .{ "timeline", "get_timeline", null },
-            .{ "pictureInPictureEnabled", "get_pictureInPictureEnabled", null },
-            .{ "onpointerlockchange", "get_onpointerlockchange", "set_onpointerlockchange" },
-            .{ "onpointerlockerror", "get_onpointerlockerror", "set_onpointerlockerror" },
-            .{ "onfreeze", "get_onfreeze", "set_onfreeze" },
-            .{ "onresume", "get_onresume", "set_onresume" },
-            .{ "wasDiscarded", "get_wasDiscarded", null },
-            .{ "namedFlows", "get_namedFlows", null },
-            .{ "rootElement", "get_rootElement", null },
-            .{ "activeViewTransition", "get_activeViewTransition", null },
             .{ "location", "get_location", "set_location" },
             .{ "domain", "get_domain", "set_domain" },
             .{ "referrer", "get_referrer", null },
@@ -173,16 +164,25 @@ pub const Document = struct {
             .{ "anchors", "get_anchors", null },
             .{ "applets", "get_applets", null },
             .{ "all", "get_all", null },
-            .{ "scrollingElement", "get_scrollingElement", null },
+            .{ "onfreeze", "get_onfreeze", "set_onfreeze" },
+            .{ "onresume", "get_onresume", "set_onresume" },
+            .{ "wasDiscarded", "get_wasDiscarded", null },
             .{ "permissionsPolicy", "get_permissionsPolicy", null },
+            .{ "pictureInPictureEnabled", "get_pictureInPictureEnabled", null },
+            .{ "onpointerlockchange", "get_onpointerlockchange", "set_onpointerlockchange" },
+            .{ "onpointerlockerror", "get_onpointerlockerror", "set_onpointerlockerror" },
+            .{ "prerendering", "get_prerendering", null },
+            .{ "onprerenderingchange", "get_onprerenderingchange", "set_onprerenderingchange" },
+            .{ "fragmentDirective", "get_fragmentDirective", null },
+            .{ "timeline", "get_timeline", null },
             .{ "fonts", "get_fonts", null },
             .{ "customElementRegistry", "get_customElementRegistry", null },
-            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
-            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
-            .{ "pointerLockElement", "get_pointerLockElement", null },
             .{ "styleSheets", "get_styleSheets", null },
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
+            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
             .{ "activeElement", "get_activeElement", null },
+            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
+            .{ "pointerLockElement", "get_pointerLockElement", null },
             .{ "children", "get_children", null },
             .{ "firstElementChild", "get_firstElementChild", null },
             .{ "lastElementChild", "get_lastElementChild", null },
@@ -263,17 +263,17 @@ pub const Document = struct {
             .{ "onwebkitanimationstart", "get_onwebkitanimationstart", "set_onwebkitanimationstart" },
             .{ "onwebkittransitionend", "get_onwebkittransitionend", "set_onwebkittransitionend" },
             .{ "onwheel", "get_onwheel", "set_onwheel" },
-            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
-            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "onanimationstart", "get_onanimationstart", "set_onanimationstart" },
             .{ "onanimationiteration", "get_onanimationiteration", "set_onanimationiteration" },
             .{ "onanimationend", "get_onanimationend", "set_onanimationend" },
             .{ "onanimationcancel", "get_onanimationcancel", "set_onanimationcancel" },
+            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
+            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
             .{ "ontransitionrun", "get_ontransitionrun", "set_ontransitionrun" },
             .{ "ontransitionstart", "get_ontransitionstart", "set_ontransitionstart" },
             .{ "ontransitionend", "get_ontransitionend", "set_ontransitionend" },
             .{ "ontransitioncancel", "get_ontransitioncancel", "set_ontransitioncancel" },
-            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
+            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
             .{ "onpointerover", "get_onpointerover", "set_onpointerover" },
             .{ "onpointerenter", "get_onpointerenter", "set_onpointerenter" },
             .{ "onpointerdown", "get_onpointerdown", "set_onpointerdown" },
@@ -285,13 +285,13 @@ pub const Document = struct {
             .{ "onpointerleave", "get_onpointerleave", "set_onpointerleave" },
             .{ "ongotpointercapture", "get_ongotpointercapture", "set_ongotpointercapture" },
             .{ "onlostpointercapture", "get_onlostpointercapture", "set_onlostpointercapture" },
+            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
+            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "ontouchstart", "get_ontouchstart", "set_ontouchstart" },
             .{ "ontouchend", "get_ontouchend", "set_ontouchend" },
             .{ "ontouchmove", "get_ontouchmove", "set_ontouchmove" },
             .{ "ontouchcancel", "get_ontouchcancel", "set_ontouchcancel" },
-            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
-            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
-            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
+            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
         };
 
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -336,18 +336,13 @@ pub const Document = struct {
             .{ "createRange", "call_createRange", 0 },
             .{ "createNodeIterator", "call_createNodeIterator", 1 },
             .{ "createTreeWalker", "call_createTreeWalker", 1 },
-            .{ "exitFullscreen", "call_exitFullscreen", 0 },
-            .{ "getSelection", "call_getSelection", 0 },
-            .{ "exitPictureInPicture", "call_exitPictureInPicture", 0 },
-            .{ "browsingTopics", "call_browsingTopics", 0 },
-            .{ "exitPointerLock", "call_exitPointerLock", 0 },
-            .{ "requestStorageAccessFor", "call_requestStorageAccessFor", 1 },
-            .{ "hasStorageAccess", "call_hasStorageAccess", 0 },
-            .{ "requestStorageAccess", "call_requestStorageAccess", 0 },
             .{ "startViewTransition", "call_startViewTransition", 0 },
+            .{ "elementFromPoint", "call_elementFromPoint", 2 },
+            .{ "elementsFromPoint", "call_elementsFromPoint", 2 },
+            .{ "caretPositionFromPoint", "call_caretPositionFromPoint", 2 },
             .{ "measureElement", "call_measureElement", 1 },
             .{ "measureText", "call_measureText", 2 },
-            .{ "hasUnpartitionedCookieAccess", "call_hasUnpartitionedCookieAccess", 0 },
+            .{ "exitFullscreen", "call_exitFullscreen", 0 },
             .{ "getElementsByName", "call_getElementsByName", 1 },
             .{ "open", "call_open", 0 },
             .{ "close", "call_close", 0 },
@@ -363,11 +358,20 @@ pub const Document = struct {
             .{ "clear", "call_clear", 0 },
             .{ "captureEvents", "call_captureEvents", 0 },
             .{ "releaseEvents", "call_releaseEvents", 0 },
+            .{ "exitPictureInPicture", "call_exitPictureInPicture", 0 },
+            .{ "exitPointerLock", "call_exitPointerLock", 0 },
+            .{ "requestStorageAccessFor", "call_requestStorageAccessFor", 1 },
+            .{ "hasUnpartitionedCookieAccess", "call_hasUnpartitionedCookieAccess", 0 },
+            .{ "requestStorageAccess", "call_requestStorageAccess", 0 },
+            .{ "getSelection", "call_getSelection", 0 },
+            .{ "hasStorageAccess", "call_hasStorageAccess", 0 },
+            .{ "browsingTopics", "call_browsingTopics", 0 },
             .{ "hasPrivateToken", "call_hasPrivateToken", 1 },
             .{ "hasRedemptionRecord", "call_hasRedemptionRecord", 1 },
-            .{ "elementFromPoint", "call_elementFromPoint", 2 },
-            .{ "elementsFromPoint", "call_elementsFromPoint", 2 },
-            .{ "caretPositionFromPoint", "call_caretPositionFromPoint", 2 },
+            .{ "getBoxQuads", "call_getBoxQuads", 0 },
+            .{ "convertQuadFromNode", "call_convertQuadFromNode", 2 },
+            .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
+            .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
             .{ "getElementById", "call_getElementById", 1 },
             .{ "getAnimations", "call_getAnimations", 0 },
             .{ "prepend", "call_prepend", 0 },
@@ -379,10 +383,6 @@ pub const Document = struct {
             .{ "createExpression", "call_createExpression", 1 },
             .{ "createNSResolver", "call_createNSResolver", 1 },
             .{ "evaluate", "call_evaluate", 2 },
-            .{ "getBoxQuads", "call_getBoxQuads", 0 },
-            .{ "convertQuadFromNode", "call_convertQuadFromNode", 2 },
-            .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
-            .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
         };
 
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
@@ -410,18 +410,13 @@ pub const Document = struct {
             "createRange",
             "createNodeIterator",
             "createTreeWalker",
-            "exitFullscreen",
-            "getSelection",
-            "exitPictureInPicture",
-            "browsingTopics",
-            "exitPointerLock",
-            "requestStorageAccessFor",
-            "hasStorageAccess",
-            "requestStorageAccess",
             "startViewTransition",
+            "elementFromPoint",
+            "elementsFromPoint",
+            "caretPositionFromPoint",
             "measureElement",
             "measureText",
-            "hasUnpartitionedCookieAccess",
+            "exitFullscreen",
             "parseHTMLUnsafe",
             "getElementsByName",
             "open",
@@ -438,11 +433,20 @@ pub const Document = struct {
             "clear",
             "captureEvents",
             "releaseEvents",
+            "exitPictureInPicture",
+            "exitPointerLock",
+            "requestStorageAccessFor",
+            "hasUnpartitionedCookieAccess",
+            "requestStorageAccess",
+            "getSelection",
+            "hasStorageAccess",
+            "browsingTopics",
             "hasPrivateToken",
             "hasRedemptionRecord",
-            "elementFromPoint",
-            "elementsFromPoint",
-            "caretPositionFromPoint",
+            "getBoxQuads",
+            "convertQuadFromNode",
+            "convertRectFromNode",
+            "convertPointFromNode",
             "getElementById",
             "getAnimations",
             "prepend",
@@ -454,10 +458,6 @@ pub const Document = struct {
             "createExpression",
             "createNSResolver",
             "evaluate",
-            "getBoxQuads",
-            "convertQuadFromNode",
-            "convertRectFromNode",
-            "convertPointFromNode",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -495,23 +495,14 @@ pub const Document = struct {
             .{ "contentType", "get_contentType", null },
             .{ "doctype", "get_doctype", null },
             .{ "documentElement", "get_documentElement", null },
-            .{ "fragmentDirective", "get_fragmentDirective", null },
-            .{ "prerendering", "get_prerendering", null },
-            .{ "onprerenderingchange", "get_onprerenderingchange", "set_onprerenderingchange" },
+            .{ "rootElement", "get_rootElement", null },
+            .{ "namedFlows", "get_namedFlows", null },
+            .{ "activeViewTransition", "get_activeViewTransition", null },
+            .{ "scrollingElement", "get_scrollingElement", null },
             .{ "fullscreenEnabled", "get_fullscreenEnabled", "set_fullscreenEnabled" },
             .{ "fullscreen", "get_fullscreen", "set_fullscreen" },
             .{ "onfullscreenchange", "get_onfullscreenchange", "set_onfullscreenchange" },
             .{ "onfullscreenerror", "get_onfullscreenerror", "set_onfullscreenerror" },
-            .{ "timeline", "get_timeline", null },
-            .{ "pictureInPictureEnabled", "get_pictureInPictureEnabled", null },
-            .{ "onpointerlockchange", "get_onpointerlockchange", "set_onpointerlockchange" },
-            .{ "onpointerlockerror", "get_onpointerlockerror", "set_onpointerlockerror" },
-            .{ "onfreeze", "get_onfreeze", "set_onfreeze" },
-            .{ "onresume", "get_onresume", "set_onresume" },
-            .{ "wasDiscarded", "get_wasDiscarded", null },
-            .{ "namedFlows", "get_namedFlows", null },
-            .{ "rootElement", "get_rootElement", null },
-            .{ "activeViewTransition", "get_activeViewTransition", null },
             .{ "location", "get_location", "set_location" },
             .{ "domain", "get_domain", "set_domain" },
             .{ "referrer", "get_referrer", null },
@@ -543,16 +534,25 @@ pub const Document = struct {
             .{ "anchors", "get_anchors", null },
             .{ "applets", "get_applets", null },
             .{ "all", "get_all", null },
-            .{ "scrollingElement", "get_scrollingElement", null },
+            .{ "onfreeze", "get_onfreeze", "set_onfreeze" },
+            .{ "onresume", "get_onresume", "set_onresume" },
+            .{ "wasDiscarded", "get_wasDiscarded", null },
             .{ "permissionsPolicy", "get_permissionsPolicy", null },
+            .{ "pictureInPictureEnabled", "get_pictureInPictureEnabled", null },
+            .{ "onpointerlockchange", "get_onpointerlockchange", "set_onpointerlockchange" },
+            .{ "onpointerlockerror", "get_onpointerlockerror", "set_onpointerlockerror" },
+            .{ "prerendering", "get_prerendering", null },
+            .{ "onprerenderingchange", "get_onprerenderingchange", "set_onprerenderingchange" },
+            .{ "fragmentDirective", "get_fragmentDirective", null },
+            .{ "timeline", "get_timeline", null },
             .{ "fonts", "get_fonts", null },
             .{ "customElementRegistry", "get_customElementRegistry", null },
-            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
-            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
-            .{ "pointerLockElement", "get_pointerLockElement", null },
             .{ "styleSheets", "get_styleSheets", null },
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
+            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
             .{ "activeElement", "get_activeElement", null },
+            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
+            .{ "pointerLockElement", "get_pointerLockElement", null },
             .{ "children", "get_children", null },
             .{ "firstElementChild", "get_firstElementChild", null },
             .{ "lastElementChild", "get_lastElementChild", null },
@@ -633,17 +633,17 @@ pub const Document = struct {
             .{ "onwebkitanimationstart", "get_onwebkitanimationstart", "set_onwebkitanimationstart" },
             .{ "onwebkittransitionend", "get_onwebkittransitionend", "set_onwebkittransitionend" },
             .{ "onwheel", "get_onwheel", "set_onwheel" },
-            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
-            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "onanimationstart", "get_onanimationstart", "set_onanimationstart" },
             .{ "onanimationiteration", "get_onanimationiteration", "set_onanimationiteration" },
             .{ "onanimationend", "get_onanimationend", "set_onanimationend" },
             .{ "onanimationcancel", "get_onanimationcancel", "set_onanimationcancel" },
+            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
+            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
             .{ "ontransitionrun", "get_ontransitionrun", "set_ontransitionrun" },
             .{ "ontransitionstart", "get_ontransitionstart", "set_ontransitionstart" },
             .{ "ontransitionend", "get_ontransitionend", "set_ontransitionend" },
             .{ "ontransitioncancel", "get_ontransitioncancel", "set_ontransitioncancel" },
-            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
+            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
             .{ "onpointerover", "get_onpointerover", "set_onpointerover" },
             .{ "onpointerenter", "get_onpointerenter", "set_onpointerenter" },
             .{ "onpointerdown", "get_onpointerdown", "set_onpointerdown" },
@@ -655,13 +655,13 @@ pub const Document = struct {
             .{ "onpointerleave", "get_onpointerleave", "set_onpointerleave" },
             .{ "ongotpointercapture", "get_ongotpointercapture", "set_ongotpointercapture" },
             .{ "onlostpointercapture", "get_onlostpointercapture", "set_onlostpointercapture" },
+            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
+            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "ontouchstart", "get_ontouchstart", "set_ontouchstart" },
             .{ "ontouchend", "get_ontouchend", "set_ontouchend" },
             .{ "ontouchmove", "get_ontouchmove", "set_ontouchmove" },
             .{ "ontouchcancel", "get_ontouchcancel", "set_ontouchcancel" },
-            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
-            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
-            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
+            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -692,16 +692,12 @@ pub const Document = struct {
             contentType: typedefs.DOMString = undefined,
             doctype: ?*runtime.Instance = null,
             documentElement: ?*runtime.Instance = null,
-            fragmentDirective: *runtime.Instance = undefined,
-            prerendering: bool = undefined,
+            rootElement: ?*runtime.Instance = null,
+            namedFlows: *runtime.Instance = undefined,
+            activeViewTransition: ?*runtime.Instance = null,
+            scrollingElement: ?*runtime.Instance = null,
             fullscreenEnabled: bool = undefined,
             fullscreen: bool = undefined,
-            timeline: *runtime.Instance = undefined,
-            pictureInPictureEnabled: bool = undefined,
-            wasDiscarded: bool = undefined,
-            namedFlows: *runtime.Instance = undefined,
-            rootElement: ?*runtime.Instance = null,
-            activeViewTransition: ?*runtime.Instance = null,
             location: ?*runtime.Instance = null,
             domain: runtime.USVString = undefined,
             referrer: runtime.USVString = undefined,
@@ -731,23 +727,26 @@ pub const Document = struct {
             anchors: *runtime.Instance = undefined,
             applets: *runtime.Instance = undefined,
             all: *runtime.Instance = undefined,
-            scrollingElement: ?*runtime.Instance = null,
+            wasDiscarded: bool = undefined,
             permissionsPolicy: *runtime.Instance = undefined,
+            pictureInPictureEnabled: bool = undefined,
+            prerendering: bool = undefined,
+            fragmentDirective: *runtime.Instance = undefined,
+            timeline: *runtime.Instance = undefined,
             fonts: *runtime.Instance = undefined,
             customElementRegistry: ?*runtime.Instance = null,
-            fullscreenElement: ?*runtime.Instance = null,
-            pictureInPictureElement: ?*runtime.Instance = null,
-            pointerLockElement: ?*runtime.Instance = null,
             styleSheets: *runtime.Instance = undefined,
             adoptedStyleSheets: runtime.JSValue = undefined,
+            fullscreenElement: ?*runtime.Instance = null,
             activeElement: ?*runtime.Instance = null,
+            pictureInPictureElement: ?*runtime.Instance = null,
+            pointerLockElement: ?*runtime.Instance = null,
             children: *runtime.Instance = undefined,
             firstElementChild: ?*runtime.Instance = null,
             lastElementChild: ?*runtime.Instance = null,
             childElementCount: u32 = undefined,
             onerror: typedefs.OnErrorEventHandler = undefined,
             cached_implementation: ?*runtime.Instance = null,
-            cached_fragmentDirective: ?*runtime.Instance = null,
             cached_images: ?*runtime.Instance = null,
             cached_embeds: ?*runtime.Instance = null,
             cached_plugins: ?*runtime.Instance = null,
@@ -758,6 +757,7 @@ pub const Document = struct {
             cached_applets: ?*runtime.Instance = null,
             cached_all: ?*runtime.Instance = null,
             cached_permissionsPolicy: ?*runtime.Instance = null,
+            cached_fragmentDirective: ?*runtime.Instance = null,
             cached_styleSheets: ?*runtime.Instance = null,
             cached_children: ?*runtime.Instance = null,
             _internal: ?*DocumentImpl.InternalState = null,
@@ -1221,28 +1221,20 @@ pub const Document = struct {
         return try DocumentImpl.get_documentElement(instance);
     }
 
-    /// Extended attributes: [SameObject]
-    pub fn get_fragmentDirective(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_fragmentDirective) |cached| {
-            return cached;
-        }
-        const value = try DocumentImpl.get_fragmentDirective(instance);
-        state.own.cached_fragmentDirective = value;
-        return value;
+    pub fn get_rootElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DocumentImpl.get_rootElement(instance);
     }
 
-    pub fn get_prerendering(instance: *runtime.Instance) anyerror!bool {
-        return try DocumentImpl.get_prerendering(instance);
+    pub fn get_namedFlows(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try DocumentImpl.get_namedFlows(instance);
     }
 
-    pub fn get_onprerenderingchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onprerenderingchange(instance);
+    pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DocumentImpl.get_activeViewTransition(instance);
     }
 
-    pub fn set_onprerenderingchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onprerenderingchange(instance, value);
+    pub fn get_scrollingElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DocumentImpl.get_scrollingElement(instance);
     }
 
     /// Extended attributes: [LegacyLenientSetter]
@@ -1285,62 +1277,6 @@ pub const Document = struct {
 
     pub fn set_onfullscreenerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try DocumentImpl.set_onfullscreenerror(instance, value);
-    }
-
-    pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try DocumentImpl.get_timeline(instance);
-    }
-
-    pub fn get_pictureInPictureEnabled(instance: *runtime.Instance) anyerror!bool {
-        return try DocumentImpl.get_pictureInPictureEnabled(instance);
-    }
-
-    pub fn get_onpointerlockchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onpointerlockchange(instance);
-    }
-
-    pub fn set_onpointerlockchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onpointerlockchange(instance, value);
-    }
-
-    pub fn get_onpointerlockerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onpointerlockerror(instance);
-    }
-
-    pub fn set_onpointerlockerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onpointerlockerror(instance, value);
-    }
-
-    pub fn get_onfreeze(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onfreeze(instance);
-    }
-
-    pub fn set_onfreeze(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onfreeze(instance, value);
-    }
-
-    pub fn get_onresume(instance: *runtime.Instance) anyerror!EventHandler {
-        return try DocumentImpl.get_onresume(instance);
-    }
-
-    pub fn set_onresume(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try DocumentImpl.set_onresume(instance, value);
-    }
-
-    pub fn get_wasDiscarded(instance: *runtime.Instance) anyerror!bool {
-        return try DocumentImpl.get_wasDiscarded(instance);
-    }
-
-    pub fn get_namedFlows(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try DocumentImpl.get_namedFlows(instance);
-    }
-
-    pub fn get_rootElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_rootElement(instance);
-    }
-
-    pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_activeViewTransition(instance);
     }
 
     /// Extended attributes: [PutForwards=href], [LegacyUnforgeable]
@@ -1661,8 +1597,24 @@ pub const Document = struct {
         return value;
     }
 
-    pub fn get_scrollingElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_scrollingElement(instance);
+    pub fn get_onfreeze(instance: *runtime.Instance) anyerror!EventHandler {
+        return try DocumentImpl.get_onfreeze(instance);
+    }
+
+    pub fn set_onfreeze(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try DocumentImpl.set_onfreeze(instance, value);
+    }
+
+    pub fn get_onresume(instance: *runtime.Instance) anyerror!EventHandler {
+        return try DocumentImpl.get_onresume(instance);
+    }
+
+    pub fn set_onresume(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try DocumentImpl.set_onresume(instance, value);
+    }
+
+    pub fn get_wasDiscarded(instance: *runtime.Instance) anyerror!bool {
+        return try DocumentImpl.get_wasDiscarded(instance);
     }
 
     /// Extended attributes: [SameObject]
@@ -1677,33 +1629,60 @@ pub const Document = struct {
         return value;
     }
 
+    pub fn get_pictureInPictureEnabled(instance: *runtime.Instance) anyerror!bool {
+        return try DocumentImpl.get_pictureInPictureEnabled(instance);
+    }
+
+    pub fn get_onpointerlockchange(instance: *runtime.Instance) anyerror!EventHandler {
+        return try DocumentImpl.get_onpointerlockchange(instance);
+    }
+
+    pub fn set_onpointerlockchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try DocumentImpl.set_onpointerlockchange(instance, value);
+    }
+
+    pub fn get_onpointerlockerror(instance: *runtime.Instance) anyerror!EventHandler {
+        return try DocumentImpl.get_onpointerlockerror(instance);
+    }
+
+    pub fn set_onpointerlockerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try DocumentImpl.set_onpointerlockerror(instance, value);
+    }
+
+    pub fn get_prerendering(instance: *runtime.Instance) anyerror!bool {
+        return try DocumentImpl.get_prerendering(instance);
+    }
+
+    pub fn get_onprerenderingchange(instance: *runtime.Instance) anyerror!EventHandler {
+        return try DocumentImpl.get_onprerenderingchange(instance);
+    }
+
+    pub fn set_onprerenderingchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try DocumentImpl.set_onprerenderingchange(instance, value);
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_fragmentDirective(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_fragmentDirective) |cached| {
+            return cached;
+        }
+        const value = try DocumentImpl.get_fragmentDirective(instance);
+        state.own.cached_fragmentDirective = value;
+        return value;
+    }
+
+    pub fn get_timeline(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try DocumentImpl.get_timeline(instance);
+    }
+
     pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentImpl.get_fonts(instance);
     }
 
     pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_customElementRegistry(instance);
-    }
-
-    /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_fullscreenElement(instance);
-    }
-
-    /// Extended attributes: [LegacyLenientSetter]
-    pub fn set_fullscreenElement(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
-        // Per WebIDL §4.3.10: The setter steps are to return.
-        _ = instance;
-        _ = value;
-    }
-
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_pictureInPictureElement(instance);
-    }
-
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DocumentImpl.get_pointerLockElement(instance);
     }
 
     /// Extended attributes: [SameObject]
@@ -1726,8 +1705,29 @@ pub const Document = struct {
         try DocumentImpl.set_adoptedStyleSheets(instance, value);
     }
 
+    /// Extended attributes: [LegacyLenientSetter]
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DocumentImpl.get_fullscreenElement(instance);
+    }
+
+    /// Extended attributes: [LegacyLenientSetter]
+    pub fn set_fullscreenElement(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
+        // Per WebIDL §4.3.10: The setter steps are to return.
+        _ = instance;
+        _ = value;
+    }
+
     pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.get_activeElement(instance);
+    }
+
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DocumentImpl.get_pictureInPictureElement(instance);
+    }
+
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DocumentImpl.get_pointerLockElement(instance);
     }
 
     /// Extended attributes: [SameObject]
@@ -1978,12 +1978,6 @@ pub const Document = struct {
     pub const get_onwheel = mixins.GlobalEventHandlers.get_onwheel;
     pub const set_onwheel = mixins.GlobalEventHandlers.set_onwheel;
 
-    pub const get_onselectstart = mixins.GlobalEventHandlers.get_onselectstart;
-    pub const set_onselectstart = mixins.GlobalEventHandlers.set_onselectstart;
-
-    pub const get_onselectionchange = mixins.GlobalEventHandlers.get_onselectionchange;
-    pub const set_onselectionchange = mixins.GlobalEventHandlers.set_onselectionchange;
-
     pub const get_onanimationstart = mixins.GlobalEventHandlers.get_onanimationstart;
     pub const set_onanimationstart = mixins.GlobalEventHandlers.set_onanimationstart;
 
@@ -1995,6 +1989,12 @@ pub const Document = struct {
 
     pub const get_onanimationcancel = mixins.GlobalEventHandlers.get_onanimationcancel;
     pub const set_onanimationcancel = mixins.GlobalEventHandlers.set_onanimationcancel;
+
+    pub const get_onsnapchanged = mixins.GlobalEventHandlers.get_onsnapchanged;
+    pub const set_onsnapchanged = mixins.GlobalEventHandlers.set_onsnapchanged;
+
+    pub const get_onsnapchanging = mixins.GlobalEventHandlers.get_onsnapchanging;
+    pub const set_onsnapchanging = mixins.GlobalEventHandlers.set_onsnapchanging;
 
     pub const get_ontransitionrun = mixins.GlobalEventHandlers.get_ontransitionrun;
     pub const set_ontransitionrun = mixins.GlobalEventHandlers.set_ontransitionrun;
@@ -2008,8 +2008,8 @@ pub const Document = struct {
     pub const get_ontransitioncancel = mixins.GlobalEventHandlers.get_ontransitioncancel;
     pub const set_ontransitioncancel = mixins.GlobalEventHandlers.set_ontransitioncancel;
 
-    pub const get_onbeforexrselect = mixins.GlobalEventHandlers.get_onbeforexrselect;
-    pub const set_onbeforexrselect = mixins.GlobalEventHandlers.set_onbeforexrselect;
+    pub const get_onfencedtreeclick = mixins.GlobalEventHandlers.get_onfencedtreeclick;
+    pub const set_onfencedtreeclick = mixins.GlobalEventHandlers.set_onfencedtreeclick;
 
     pub const get_onpointerover = mixins.GlobalEventHandlers.get_onpointerover;
     pub const set_onpointerover = mixins.GlobalEventHandlers.set_onpointerover;
@@ -2045,6 +2045,12 @@ pub const Document = struct {
     pub const get_onlostpointercapture = mixins.GlobalEventHandlers.get_onlostpointercapture;
     pub const set_onlostpointercapture = mixins.GlobalEventHandlers.set_onlostpointercapture;
 
+    pub const get_onselectstart = mixins.GlobalEventHandlers.get_onselectstart;
+    pub const set_onselectstart = mixins.GlobalEventHandlers.set_onselectstart;
+
+    pub const get_onselectionchange = mixins.GlobalEventHandlers.get_onselectionchange;
+    pub const set_onselectionchange = mixins.GlobalEventHandlers.set_onselectionchange;
+
     pub const get_ontouchstart = mixins.GlobalEventHandlers.get_ontouchstart;
     pub const set_ontouchstart = mixins.GlobalEventHandlers.set_ontouchstart;
 
@@ -2057,14 +2063,8 @@ pub const Document = struct {
     pub const get_ontouchcancel = mixins.GlobalEventHandlers.get_ontouchcancel;
     pub const set_ontouchcancel = mixins.GlobalEventHandlers.set_ontouchcancel;
 
-    pub const get_onfencedtreeclick = mixins.GlobalEventHandlers.get_onfencedtreeclick;
-    pub const set_onfencedtreeclick = mixins.GlobalEventHandlers.set_onfencedtreeclick;
-
-    pub const get_onsnapchanged = mixins.GlobalEventHandlers.get_onsnapchanged;
-    pub const set_onsnapchanged = mixins.GlobalEventHandlers.set_onsnapchanged;
-
-    pub const get_onsnapchanging = mixins.GlobalEventHandlers.get_onsnapchanging;
-    pub const set_onsnapchanging = mixins.GlobalEventHandlers.set_onsnapchanging;
+    pub const get_onbeforexrselect = mixins.GlobalEventHandlers.get_onbeforexrselect;
+    pub const set_onbeforexrselect = mixins.GlobalEventHandlers.set_onbeforexrselect;
 
     pub fn call_clear(instance: *runtime.Instance) anyerror!void {
         return try DocumentImpl.call_clear(instance);
@@ -2229,12 +2229,12 @@ pub const Document = struct {
 
     pub const call_querySelectorAll = mixins.ParentNode.call_querySelectorAll;
 
-    pub fn call_queryCommandState(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
-        return try DocumentImpl.call_queryCommandState(instance, commandId);
-    }
-
     pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!?*runtime.Instance {
         return try DocumentImpl.call_elementFromPoint(instance, x, y);
+    }
+
+    pub fn call_queryCommandState(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
+        return try DocumentImpl.call_queryCommandState(instance, commandId);
     }
 
     /// Extended attributes: [NewObject]
@@ -2284,6 +2284,10 @@ pub const Document = struct {
         return try DocumentImpl.call_hasStorageAccess(instance);
     }
 
+    pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: webidl.Opt(CaretPositionFromPointOptions)) anyerror!?*runtime.Instance {
+        return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options);
+    }
+
     /// Extended attributes: [CEReactions]
     pub fn call_execCommand(instance: *runtime.Instance, commandId: DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(DOMString)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -2293,10 +2297,6 @@ pub const Document = struct {
         return try DocumentImpl.call_execCommand(instance, commandId, showUI, value);
     }
 
-    pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
-        return try DocumentImpl.call_captureEvents(instance);
-    }
-
     /// Extended attributes: [NewObject]
     pub fn call_createNodeIterator(instance: *runtime.Instance, root: *runtime.Instance, whatToShow: webidl.Opt(u32), filter: webidl.Opt(??*runtime.CallbackWrapper)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
@@ -2304,16 +2304,16 @@ pub const Document = struct {
         return try DocumentImpl.call_createNodeIterator(instance, root, whatToShow, filter);
     }
 
-    pub fn call_hasPrivateToken(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!runtime.JSValue {
-        return try DocumentImpl.call_hasPrivateToken(instance, issuer);
-    }
-
-    pub fn call_requestStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try DocumentImpl.call_requestStorageAccess(instance);
+    pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
+        return try DocumentImpl.call_captureEvents(instance);
     }
 
     pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
         return try DocumentImpl.call_releaseEvents(instance);
+    }
+
+    pub fn call_requestStorageAccess(instance: *runtime.Instance, types: webidl.Opt(StorageAccessTypes)) anyerror!runtime.JSValue {
+        return try DocumentImpl.call_requestStorageAccess(instance, types);
     }
 
     pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!runtime.JSValue {
@@ -2328,16 +2328,16 @@ pub const Document = struct {
         return try DocumentImpl.call_getElementsByName(instance, elementName);
     }
 
-    pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: webidl.Opt(CaretPositionFromPointOptions)) anyerror!?*runtime.Instance {
-        return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options);
+    pub fn call_hasPrivateToken(instance: *runtime.Instance, issuer: runtime.USVString) anyerror!runtime.JSValue {
+        return try DocumentImpl.call_hasPrivateToken(instance, issuer);
     }
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         return try DocumentImpl.call_convertRectFromNode(instance, rect, from, options);
     }
 
-    pub fn call_hasUnpartitionedCookieAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try DocumentImpl.call_hasUnpartitionedCookieAccess(instance);
+    pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
+        return try DocumentImpl.call_queryCommandIndeterm(instance, commandId);
     }
 
     /// Extended attributes: [NewObject]
@@ -2347,11 +2347,13 @@ pub const Document = struct {
         return try DocumentImpl.call_createCDATASection(instance, data);
     }
 
-    pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: DOMString) anyerror!bool {
-        return try DocumentImpl.call_queryCommandIndeterm(instance, commandId);
+    pub fn call_hasUnpartitionedCookieAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try DocumentImpl.call_hasUnpartitionedCookieAccess(instance);
     }
 
-    pub const call_replaceChildren = mixins.ParentNode.call_replaceChildren;
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
+        return try DocumentImpl.call_convertPointFromNode(instance, point, from, options);
+    }
 
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
@@ -2364,9 +2366,7 @@ pub const Document = struct {
         return try DocumentImpl.call_importNode(instance, node, options);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try DocumentImpl.call_convertPointFromNode(instance, point, from, options);
-    }
+    pub const call_replaceChildren = mixins.ParentNode.call_replaceChildren;
 
     pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DocumentImpl.call_getSelection(instance);
@@ -2416,9 +2416,9 @@ pub const Document = struct {
         }
     }
 
-    pub fn call_requestStorageAccess__1(instance: *runtime.Instance, types: webidl.Opt(StorageAccessTypes)) anyerror!runtime.JSValue {
+    pub fn call_requestStorageAccess__1(instance: *runtime.Instance) anyerror!runtime.JSValue {
         if (comptime @hasDecl(DocumentImpl, "call_requestStorageAccess__1")) {
-            return try DocumentImpl.call_requestStorageAccess__1(instance, types);
+            return try DocumentImpl.call_requestStorageAccess__1(instance);
         } else {
             return error.NotImplemented;
         }
@@ -2434,8 +2434,8 @@ pub const Document = struct {
             .{ .function = "call_open__1", .implemented = @hasDecl(DocumentImpl, "call_open__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.string} } } },
         } },
         .{ "requestStorageAccess", &[_]webidl.overload_resolution.Overload{
-            .{ .function = "call_requestStorageAccess", .args = &.{} },
-            .{ .function = "call_requestStorageAccess__1", .implemented = @hasDecl(DocumentImpl, "call_requestStorageAccess__1"), .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_requestStorageAccess", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_requestStorageAccess__1", .implemented = @hasDecl(DocumentImpl, "call_requestStorageAccess__1"), .args = &.{} },
         } },
     };
 
@@ -2466,10 +2466,10 @@ pub const Document = struct {
         "call_hasRedemptionRecord",
         "call_requestStorageAccessFor",
         "call_hasStorageAccess",
-        "call_hasPrivateToken",
         "call_requestStorageAccess",
         "call_requestStorageAccess__1",
         "call_exitFullscreen",
+        "call_hasPrivateToken",
         "call_hasUnpartitionedCookieAccess",
     };
 

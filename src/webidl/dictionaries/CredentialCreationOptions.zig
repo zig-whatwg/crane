@@ -12,8 +12,8 @@ const FederatedCredentialInit = @import("FederatedCredentialInit.zig").Federated
 pub const CredentialCreationOptions = struct {
     mediation: ?enums.CredentialMediationRequirement = null,
     signal: ?*runtime.Instance = null,
-    digital: ?DigitalCredentialCreationOptions = null,
-    publicKey: ?PublicKeyCredentialCreationOptions = null,
     password: ?typedefs.PasswordCredentialInit = null,
     federated: ?FederatedCredentialInit = null,
+    digital: ?DigitalCredentialCreationOptions = null,
+    publicKey: ?PublicKeyCredentialCreationOptions = null,
 };

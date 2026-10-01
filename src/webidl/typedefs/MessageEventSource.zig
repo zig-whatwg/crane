@@ -9,6 +9,4 @@ pub const MessageEventSource = union(enum) {
     window_proxy: typedefs.WindowProxy,
     message_port: *runtime.Instance,
     service_worker: *runtime.Instance,
-    htmlportal_element: *runtime.Instance,
-    portal_host: *runtime.Instance,
 };

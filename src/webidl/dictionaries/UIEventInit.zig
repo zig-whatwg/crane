@@ -11,6 +11,6 @@ pub const UIEventInit = struct {
 
     view: ?*runtime.Instance = null,
     detail: ?i32 = null,
-    which: ?u32 = null,
     sourceCapabilities: ?*runtime.Instance = null,
+    which: ?u32 = null,
 };

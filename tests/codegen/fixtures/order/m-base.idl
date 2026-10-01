@@ -1,0 +1,22 @@
+// Fixture for tests/codegen/order_independence_test.zig: the base definitions.
+[Exposed=Window]
+interface Thing {
+  readonly attribute long base;
+  undefined act();
+};
+
+dictionary ThingInit {
+  long base;
+  boolean shared = false;
+};
+
+namespace Space {
+  undefined base();
+};
+
+[Exposed=Window]
+interface mixin Mixy {
+  readonly attribute long mixed;
+};
+
+Thing includes Mixy;

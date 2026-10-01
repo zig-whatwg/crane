@@ -45,21 +45,11 @@ pub const NavigatorManagedData = struct {
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getManagedConfiguration", "call_getManagedConfiguration", 1 },
-            .{ "getAnnotatedAssetId", "call_getAnnotatedAssetId", 0 },
-            .{ "getAnnotatedLocation", "call_getAnnotatedLocation", 0 },
-            .{ "getDirectoryId", "call_getDirectoryId", 0 },
-            .{ "getHostname", "call_getHostname", 0 },
-            .{ "getSerialNumber", "call_getSerialNumber", 0 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getManagedConfiguration",
-            "getAnnotatedAssetId",
-            "getAnnotatedLocation",
-            "getDirectoryId",
-            "getHostname",
-            "getSerialNumber",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -95,12 +85,7 @@ pub const NavigatorManagedData = struct {
 
         .set_onmanagedconfigurationchange = &set_onmanagedconfigurationchange,
 
-        .call_getAnnotatedAssetId = &call_getAnnotatedAssetId,
-        .call_getAnnotatedLocation = &call_getAnnotatedLocation,
-        .call_getDirectoryId = &call_getDirectoryId,
-        .call_getHostname = &call_getHostname,
         .call_getManagedConfiguration = &call_getManagedConfiguration,
-        .call_getSerialNumber = &call_getSerialNumber,
 
         .deinit = &deinit,
     };
@@ -139,34 +124,9 @@ pub const NavigatorManagedData = struct {
         return try NavigatorManagedDataImpl.call_getManagedConfiguration(instance, keys);
     }
 
-    pub fn call_getAnnotatedLocation(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try NavigatorManagedDataImpl.call_getAnnotatedLocation(instance);
-    }
-
-    pub fn call_getAnnotatedAssetId(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try NavigatorManagedDataImpl.call_getAnnotatedAssetId(instance);
-    }
-
-    pub fn call_getDirectoryId(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try NavigatorManagedDataImpl.call_getDirectoryId(instance);
-    }
-
-    pub fn call_getHostname(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try NavigatorManagedDataImpl.call_getHostname(instance);
-    }
-
-    pub fn call_getSerialNumber(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try NavigatorManagedDataImpl.call_getSerialNumber(instance);
-    }
-
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
         "call_getManagedConfiguration",
-        "call_getAnnotatedLocation",
-        "call_getAnnotatedAssetId",
-        "call_getDirectoryId",
-        "call_getHostname",
-        "call_getSerialNumber",
     };
 };

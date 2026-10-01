@@ -1,0 +1,6 @@
+// Fixture: Lock is defined in web-locks.idl and again in shared-storage.idl.
+// webref's curated idlnames names web-locks as the definer.
+[Exposed=(Window,Worker)]
+interface Lock {
+  readonly attribute DOMString name;
+};

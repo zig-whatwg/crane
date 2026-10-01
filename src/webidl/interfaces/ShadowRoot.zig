@@ -65,12 +65,12 @@ pub const ShadowRoot = struct {
             .{ "onslotchange", "get_onslotchange", "set_onslotchange" },
             .{ "innerHTML", "get_innerHTML", "set_innerHTML" },
             .{ "customElementRegistry", "get_customElementRegistry", null },
-            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
-            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
-            .{ "pointerLockElement", "get_pointerLockElement", null },
             .{ "styleSheets", "get_styleSheets", null },
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
+            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
             .{ "activeElement", "get_activeElement", null },
+            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
+            .{ "pointerLockElement", "get_pointerLockElement", null },
         };
 
         /// [LegacyLenientSetter] attributes: readonly with no-op setters
@@ -134,12 +134,12 @@ pub const ShadowRoot = struct {
             .{ "onslotchange", "get_onslotchange", "set_onslotchange" },
             .{ "innerHTML", "get_innerHTML", "set_innerHTML" },
             .{ "customElementRegistry", "get_customElementRegistry", null },
-            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
-            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
-            .{ "pointerLockElement", "get_pointerLockElement", null },
             .{ "styleSheets", "get_styleSheets", null },
             .{ "adoptedStyleSheets", "get_adoptedStyleSheets", "set_adoptedStyleSheets" },
+            .{ "fullscreenElement", "get_fullscreenElement", "set_fullscreenElement" },
             .{ "activeElement", "get_activeElement", null },
+            .{ "pictureInPictureElement", "get_pictureInPictureElement", null },
+            .{ "pointerLockElement", "get_pointerLockElement", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -164,12 +164,12 @@ pub const ShadowRoot = struct {
                 DOMString: runtime.DOMString,
             } = undefined,
             customElementRegistry: ?*runtime.Instance = null,
-            fullscreenElement: ?*runtime.Instance = null,
-            pictureInPictureElement: ?*runtime.Instance = null,
-            pointerLockElement: ?*runtime.Instance = null,
             styleSheets: *runtime.Instance = undefined,
             adoptedStyleSheets: runtime.JSValue = undefined,
+            fullscreenElement: ?*runtime.Instance = null,
             activeElement: ?*runtime.Instance = null,
+            pictureInPictureElement: ?*runtime.Instance = null,
+            pointerLockElement: ?*runtime.Instance = null,
             cached_styleSheets: ?*runtime.Instance = null,
             _internal: ?*ShadowRootImpl.InternalState = null,
         },
@@ -276,27 +276,6 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.get_customElementRegistry(instance);
     }
 
-    /// Extended attributes: [LegacyLenientSetter]
-    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ShadowRootImpl.get_fullscreenElement(instance);
-    }
-
-    /// Extended attributes: [LegacyLenientSetter]
-    pub fn set_fullscreenElement(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
-        // Per WebIDL §4.3.10: The setter steps are to return.
-        _ = instance;
-        _ = value;
-    }
-
-    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ShadowRootImpl.get_pictureInPictureElement(instance);
-    }
-
-    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ShadowRootImpl.get_pointerLockElement(instance);
-    }
-
     /// Extended attributes: [SameObject]
     pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -317,8 +296,29 @@ pub const ShadowRoot = struct {
         try ShadowRootImpl.set_adoptedStyleSheets(instance, value);
     }
 
+    /// Extended attributes: [LegacyLenientSetter]
+    pub fn get_fullscreenElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try ShadowRootImpl.get_fullscreenElement(instance);
+    }
+
+    /// Extended attributes: [LegacyLenientSetter]
+    pub fn set_fullscreenElement(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
+        // [LegacyLenientSetter] - Silently do nothing (no-op setter)
+        // Per WebIDL §4.3.10: The setter steps are to return.
+        _ = instance;
+        _ = value;
+    }
+
     pub fn get_activeElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ShadowRootImpl.get_activeElement(instance);
+    }
+
+    pub fn get_pictureInPictureElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try ShadowRootImpl.get_pictureInPictureElement(instance);
+    }
+
+    pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try ShadowRootImpl.get_pointerLockElement(instance);
     }
 
     pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {

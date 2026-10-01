@@ -54,24 +54,24 @@ pub const MediaDevices = struct {
         pub const methods = .{
             .{ "enumerateDevices", "call_enumerateDevices", 0 },
             .{ "selectAudioOutput", "call_selectAudioOutput", 0 },
-            .{ "setSupportedCaptureActions", "call_setSupportedCaptureActions", 1 },
-            .{ "getDisplayMedia", "call_getDisplayMedia", 0 },
             .{ "setCaptureHandleConfig", "call_setCaptureHandleConfig", 0 },
-            .{ "getViewportMedia", "call_getViewportMedia", 0 },
+            .{ "setSupportedCaptureActions", "call_setSupportedCaptureActions", 1 },
             .{ "getSupportedConstraints", "call_getSupportedConstraints", 0 },
             .{ "getUserMedia", "call_getUserMedia", 0 },
+            .{ "getViewportMedia", "call_getViewportMedia", 0 },
+            .{ "getDisplayMedia", "call_getDisplayMedia", 0 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "enumerateDevices",
             "selectAudioOutput",
-            "setSupportedCaptureActions",
-            "getDisplayMedia",
             "setCaptureHandleConfig",
-            "getViewportMedia",
+            "setSupportedCaptureActions",
             "getSupportedConstraints",
             "getUserMedia",
+            "getViewportMedia",
+            "getDisplayMedia",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)

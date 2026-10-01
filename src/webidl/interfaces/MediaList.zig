@@ -11,7 +11,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSOMString = @import("typedefs").CSSOMString;
-const DOMString = @import("typedefs").DOMString;
 
 pub const MediaList = struct {
     pub const Meta = struct {

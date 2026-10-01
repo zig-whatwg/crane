@@ -11,4 +11,8 @@ pub const KeyUsage = enum {
     _deriveBits_,
     _wrapKey_,
     _unwrapKey_,
+    _encapsulateKey_,
+    _encapsulateBits_,
+    _decapsulateKey_,
+    _decapsulateBits_,
 };

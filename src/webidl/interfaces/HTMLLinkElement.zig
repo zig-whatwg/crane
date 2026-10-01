@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const HTMLElement = @import("interfaces").HTMLElement;
-const LinkStyle = @import("interfaces").LinkStyle;
+const LinkStyle = @import("mixins").LinkStyle;
 const DOMStringMap = @import("interfaces").DOMStringMap;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
@@ -19,7 +19,6 @@ const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
@@ -36,21 +35,21 @@ const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
 const Range = @import("interfaces").Range;
+const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
-const DOMRectList = @import("interfaces").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
+const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
-const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
+const DOMQuad = @import("interfaces").DOMQuad;
+const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
@@ -58,7 +57,6 @@ const EditContext = @import("interfaces").EditContext;
 const DOMRect = @import("interfaces").DOMRect;
 const ElementInternals = @import("interfaces").ElementInternals;
 const ViewTransition = @import("interfaces").ViewTransition;
-const StyleSheet = @import("interfaces").StyleSheet;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const EventHandler = @import("typedefs").EventHandler;
@@ -183,17 +181,9 @@ pub const HTMLLinkElement = struct {
             "getSpatialNavigationContainer",
             "focusableAreas",
             "spatialNavigationSearch",
-            "requestFullscreen",
-            "requestPointerLock",
-            "setPointerCapture",
-            "releasePointerCapture",
-            "hasPointerCapture",
-            "computedStyleMap",
             "pseudo",
+            "computedStyleMap",
             "startViewTransition",
-            "setHTMLUnsafe",
-            "getHTML",
-            "insertAdjacentHTML",
             "getClientRects",
             "getBoundingClientRect",
             "checkVisibility",
@@ -204,9 +194,19 @@ pub const HTMLLinkElement = struct {
             "scrollTo",
             "scrollBy",
             "scrollBy",
-            "animate",
-            "getAnimations",
+            "requestFullscreen",
+            "setHTMLUnsafe",
+            "getHTML",
+            "insertAdjacentHTML",
+            "setPointerCapture",
+            "releasePointerCapture",
+            "hasPointerCapture",
+            "requestPointerLock",
             "getRegionFlowRanges",
+            "getBoxQuads",
+            "convertQuadFromNode",
+            "convertRectFromNode",
+            "convertPointFromNode",
             "prepend",
             "append",
             "replaceChildren",
@@ -217,10 +217,8 @@ pub const HTMLLinkElement = struct {
             "after",
             "replaceWith",
             "remove",
-            "getBoxQuads",
-            "convertQuadFromNode",
-            "convertRectFromNode",
-            "convertPointFromNode",
+            "animate",
+            "getAnimations",
             "click",
             "attachInternals",
             "showPopover",

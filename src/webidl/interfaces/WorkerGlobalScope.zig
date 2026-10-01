@@ -33,12 +33,12 @@ const EventHandler = @import("typedefs").EventHandler;
 const ImageBitmap = @import("interfaces").ImageBitmap;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const VoidFunction = @import("callbacks").VoidFunction;
-const Performance = @import("interfaces").Performance;
-const IDBFactory = @import("interfaces").IDBFactory;
-const CacheStorage = @import("interfaces").CacheStorage;
 const RequestInfo = @import("typedefs").RequestInfo;
-const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
+const IDBFactory = @import("interfaces").IDBFactory;
+const Performance = @import("interfaces").Performance;
+const CacheStorage = @import("interfaces").CacheStorage;
 const RequestInit = @import("dictionaries").RequestInit;
+const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const Response = @import("interfaces").Response;
@@ -79,10 +79,10 @@ pub const WorkerGlobalScope = struct {
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
             .{ "indexedDB", "get_indexedDB", null },
-            .{ "trustedTypes", "get_trustedTypes", null },
             .{ "performance", "get_performance", "set_performance" },
-            .{ "caches", "get_caches", null },
             .{ "scheduler", "get_scheduler", "set_scheduler" },
+            .{ "caches", "get_caches", null },
+            .{ "trustedTypes", "get_trustedTypes", null },
             .{ "crypto", "get_crypto", null },
         };
 
@@ -142,10 +142,10 @@ pub const WorkerGlobalScope = struct {
             .{ "isSecureContext", "get_isSecureContext", null },
             .{ "crossOriginIsolated", "get_crossOriginIsolated", null },
             .{ "indexedDB", "get_indexedDB", null },
-            .{ "trustedTypes", "get_trustedTypes", null },
             .{ "performance", "get_performance", "set_performance" },
-            .{ "caches", "get_caches", null },
             .{ "scheduler", "get_scheduler", "set_scheduler" },
+            .{ "caches", "get_caches", null },
+            .{ "trustedTypes", "get_trustedTypes", null },
             .{ "crypto", "get_crypto", null },
         };
 
@@ -173,10 +173,10 @@ pub const WorkerGlobalScope = struct {
             isSecureContext: bool = undefined,
             crossOriginIsolated: bool = undefined,
             indexedDB: *runtime.Instance = undefined,
-            trustedTypes: *runtime.Instance = undefined,
             performance: *runtime.Instance = undefined,
-            caches: *runtime.Instance = undefined,
             scheduler: *runtime.Instance = undefined,
+            caches: *runtime.Instance = undefined,
+            trustedTypes: *runtime.Instance = undefined,
             crypto: *runtime.Instance = undefined,
             cached_indexedDB: ?*runtime.Instance = null,
             cached_caches: ?*runtime.Instance = null,
@@ -338,11 +338,13 @@ pub const WorkerGlobalScope = struct {
         return value;
     }
 
-    pub const get_trustedTypes = mixins.WindowOrWorkerGlobalScope.get_trustedTypes;
-
     /// Extended attributes: [Replaceable]
     pub const get_performance = mixins.WindowOrWorkerGlobalScope.get_performance;
     pub const set_performance = mixins.WindowOrWorkerGlobalScope.set_performance;
+
+    /// Extended attributes: [Replaceable]
+    pub const get_scheduler = mixins.WindowOrWorkerGlobalScope.get_scheduler;
+    pub const set_scheduler = mixins.WindowOrWorkerGlobalScope.set_scheduler;
 
     /// Extended attributes: [SecureContext], [SameObject]
     pub fn get_caches(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -356,9 +358,7 @@ pub const WorkerGlobalScope = struct {
         return value;
     }
 
-    /// Extended attributes: [Replaceable]
-    pub const get_scheduler = mixins.WindowOrWorkerGlobalScope.get_scheduler;
-    pub const set_scheduler = mixins.WindowOrWorkerGlobalScope.set_scheduler;
+    pub const get_trustedTypes = mixins.WindowOrWorkerGlobalScope.get_trustedTypes;
 
     /// Extended attributes: [SameObject]
     pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {

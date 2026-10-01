@@ -16,8 +16,6 @@ const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
 const CSSPageDescriptors = @import("interfaces").CSSPageDescriptors;
 const CSSRuleList = @import("interfaces").CSSRuleList;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const DOMString = @import("typedefs").DOMString;
 
 pub const CSSPageRule = struct {
     pub const Meta = struct {

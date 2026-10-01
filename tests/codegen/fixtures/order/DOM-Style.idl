@@ -1,0 +1,11 @@
+// Fixture: DOM-Style.idl repeats its own definitions (reffy extracted DOM
+// Level 2 Style's IDL inline and again in its module-scoped appendix); the
+// first occurrence is the one used.
+interface Counter {
+  readonly attribute DOMString identifier;
+};
+
+interface Counter {
+  readonly attribute DOMString identifier;
+  readonly attribute DOMString fromSecondCopy;
+};

@@ -39,8 +39,8 @@ pub const UIEvent = struct {
         pub const properties = .{
             .{ "view", "get_view", null },
             .{ "detail", "get_detail", null },
-            .{ "which", "get_which", null },
             .{ "sourceCapabilities", "get_sourceCapabilities", null },
+            .{ "which", "get_which", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -66,8 +66,8 @@ pub const UIEvent = struct {
         pub const eager_properties = .{
             .{ "view", "get_view", null },
             .{ "detail", "get_detail", null },
-            .{ "which", "get_which", null },
             .{ "sourceCapabilities", "get_sourceCapabilities", null },
+            .{ "which", "get_which", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -82,8 +82,8 @@ pub const UIEvent = struct {
         struct {
             view: ?*runtime.Instance = null,
             detail: i32 = undefined,
-            which: u32 = undefined,
             sourceCapabilities: ?*runtime.Instance = null,
+            which: u32 = undefined,
             _internal: ?*UIEventImpl.InternalState = null,
         },
     );
@@ -137,12 +137,12 @@ pub const UIEvent = struct {
         return try UIEventImpl.get_detail(instance);
     }
 
-    pub fn get_which(instance: *runtime.Instance) anyerror!u32 {
-        return try UIEventImpl.get_which(instance);
-    }
-
     pub fn get_sourceCapabilities(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try UIEventImpl.get_sourceCapabilities(instance);
+    }
+
+    pub fn get_which(instance: *runtime.Instance) anyerror!u32 {
+        return try UIEventImpl.get_which(instance);
     }
 
     pub fn call_initUIEvent(instance: *runtime.Instance, typeArg: DOMString, bubblesArg: webidl.Opt(bool), cancelableArg: webidl.Opt(bool), viewArg: webidl.Opt(?*runtime.Instance), detailArg: webidl.Opt(i32)) anyerror!void {

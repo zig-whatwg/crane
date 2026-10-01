@@ -14,7 +14,6 @@ const CSSRule = @import("interfaces").CSSRule;
 const CSSFontFeatureValuesMap = @import("interfaces").CSSFontFeatureValuesMap;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const DOMString = @import("typedefs").DOMString;
 
 pub const CSSFontFeatureValuesRule = struct {
     pub const Meta = struct {

@@ -11,7 +11,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
-const DOMString = @import("typedefs").DOMString;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const CSSKeyframeRule = @import("interfaces").CSSKeyframeRule;

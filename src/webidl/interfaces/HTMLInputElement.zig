@@ -19,7 +19,6 @@ const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
@@ -36,23 +35,23 @@ const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCa
 const FileList = @import("interfaces").FileList;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
 const Range = @import("interfaces").Range;
+const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const ValidityState = @import("interfaces").ValidityState;
-const DOMRectList = @import("interfaces").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
+const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const DOMQuad = @import("interfaces").DOMQuad;
+const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 const SelectionMode = @import("enums").SelectionMode;
-const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
+const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
@@ -147,9 +146,9 @@ pub const HTMLInputElement = struct {
             .{ "selectionStart", "get_selectionStart", "set_selectionStart" },
             .{ "selectionEnd", "get_selectionEnd", "set_selectionEnd" },
             .{ "selectionDirection", "get_selectionDirection", "set_selectionDirection" },
-            .{ "capture", "get_capture", "set_capture" },
             .{ "webkitdirectory", "get_webkitdirectory", "set_webkitdirectory" },
             .{ "webkitEntries", "get_webkitEntries", null },
+            .{ "capture", "get_capture", "set_capture" },
             .{ "align", "get_align", "set_align" },
             .{ "useMap", "get_useMap", "set_useMap" },
             .{ "popoverTargetElement", "get_popoverTargetElement", "set_popoverTargetElement" },
@@ -231,17 +230,9 @@ pub const HTMLInputElement = struct {
             "getSpatialNavigationContainer",
             "focusableAreas",
             "spatialNavigationSearch",
-            "requestFullscreen",
-            "requestPointerLock",
-            "setPointerCapture",
-            "releasePointerCapture",
-            "hasPointerCapture",
-            "computedStyleMap",
             "pseudo",
+            "computedStyleMap",
             "startViewTransition",
-            "setHTMLUnsafe",
-            "getHTML",
-            "insertAdjacentHTML",
             "getClientRects",
             "getBoundingClientRect",
             "checkVisibility",
@@ -252,9 +243,19 @@ pub const HTMLInputElement = struct {
             "scrollTo",
             "scrollBy",
             "scrollBy",
-            "animate",
-            "getAnimations",
+            "requestFullscreen",
+            "setHTMLUnsafe",
+            "getHTML",
+            "insertAdjacentHTML",
+            "setPointerCapture",
+            "releasePointerCapture",
+            "hasPointerCapture",
+            "requestPointerLock",
             "getRegionFlowRanges",
+            "getBoxQuads",
+            "convertQuadFromNode",
+            "convertRectFromNode",
+            "convertPointFromNode",
             "prepend",
             "append",
             "replaceChildren",
@@ -265,10 +266,8 @@ pub const HTMLInputElement = struct {
             "after",
             "replaceWith",
             "remove",
-            "getBoxQuads",
-            "convertQuadFromNode",
-            "convertRectFromNode",
-            "convertPointFromNode",
+            "animate",
+            "getAnimations",
             "click",
             "attachInternals",
             "showPopover",
@@ -325,9 +324,9 @@ pub const HTMLInputElement = struct {
             .{ "selectionStart", "get_selectionStart", "set_selectionStart" },
             .{ "selectionEnd", "get_selectionEnd", "set_selectionEnd" },
             .{ "selectionDirection", "get_selectionDirection", "set_selectionDirection" },
-            .{ "capture", "get_capture", "set_capture" },
             .{ "webkitdirectory", "get_webkitdirectory", "set_webkitdirectory" },
             .{ "webkitEntries", "get_webkitEntries", null },
+            .{ "capture", "get_capture", "set_capture" },
             .{ "align", "get_align", "set_align" },
             .{ "useMap", "get_useMap", "set_useMap" },
             .{ "popoverTargetElement", "get_popoverTargetElement", "set_popoverTargetElement" },
@@ -389,9 +388,9 @@ pub const HTMLInputElement = struct {
             selectionStart: ?u32 = null,
             selectionEnd: ?u32 = null,
             selectionDirection: ?typedefs.DOMString = null,
-            capture: typedefs.DOMString = undefined,
             webkitdirectory: bool = undefined,
             webkitEntries: runtime.JSValue = undefined,
+            capture: typedefs.DOMString = undefined,
             @"align": typedefs.DOMString = undefined,
             useMap: typedefs.DOMString = undefined,
             popoverTargetElement: ?*runtime.Instance = null,
@@ -1115,6 +1114,18 @@ pub const HTMLInputElement = struct {
         try HTMLInputElementImpl.set_selectionDirection(instance, value);
     }
 
+    pub fn get_webkitdirectory(instance: *runtime.Instance) anyerror!bool {
+        return try HTMLInputElementImpl.get_webkitdirectory(instance);
+    }
+
+    pub fn set_webkitdirectory(instance: *runtime.Instance, value: bool) anyerror!void {
+        try HTMLInputElementImpl.set_webkitdirectory(instance, value);
+    }
+
+    pub fn get_webkitEntries(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try HTMLInputElementImpl.get_webkitEntries(instance);
+    }
+
     /// Extended attributes: [CEReactions]
     pub fn get_capture(instance: *runtime.Instance) anyerror!DOMString {
         return try HTMLInputElementImpl.get_capture(instance);
@@ -1127,18 +1138,6 @@ pub const HTMLInputElement = struct {
         defer runtime.CEReactions.end();
 
         try HTMLInputElementImpl.set_capture(instance, value);
-    }
-
-    pub fn get_webkitdirectory(instance: *runtime.Instance) anyerror!bool {
-        return try HTMLInputElementImpl.get_webkitdirectory(instance);
-    }
-
-    pub fn set_webkitdirectory(instance: *runtime.Instance, value: bool) anyerror!void {
-        try HTMLInputElementImpl.set_webkitdirectory(instance, value);
-    }
-
-    pub fn get_webkitEntries(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try HTMLInputElementImpl.get_webkitEntries(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]

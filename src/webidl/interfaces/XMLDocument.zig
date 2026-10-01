@@ -44,8 +44,8 @@ const Event = @import("interfaces").Event;
 const PermissionsPolicy = @import("interfaces").PermissionsPolicy;
 const XPathNSResolver = @import("interfaces").XPathNSResolver;
 const DocumentType = @import("interfaces").DocumentType;
-const DOMString = @import("typedefs").DOMString;
 const HTMLAllCollection = @import("interfaces").HTMLAllCollection;
+const DOMString = @import("typedefs").DOMString;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
@@ -64,8 +64,8 @@ const DocumentReadyState = @import("enums").DocumentReadyState;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const HTMLElement = @import("interfaces").HTMLElement;
-const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
 const WindowProxy = @import("typedefs").WindowProxy;
+const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
 const Attr = @import("interfaces").Attr;
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
@@ -146,19 +146,13 @@ pub const XMLDocument = struct {
             "createRange",
             "createNodeIterator",
             "createTreeWalker",
-            "exitFullscreen",
-            "getSelection",
-            "exitPictureInPicture",
-            "browsingTopics",
-            "exitPointerLock",
-            "requestStorageAccessFor",
-            "hasStorageAccess",
-            "requestStorageAccess",
             "startViewTransition",
+            "elementFromPoint",
+            "elementsFromPoint",
+            "caretPositionFromPoint",
             "measureElement",
             "measureText",
-            "hasUnpartitionedCookieAccess",
-            "requestStorageAccess",
+            "exitFullscreen",
             "parseHTMLUnsafe",
             "getElementsByName",
             "open",
@@ -176,11 +170,21 @@ pub const XMLDocument = struct {
             "clear",
             "captureEvents",
             "releaseEvents",
+            "exitPictureInPicture",
+            "exitPointerLock",
+            "requestStorageAccessFor",
+            "hasUnpartitionedCookieAccess",
+            "requestStorageAccess",
+            "getSelection",
+            "hasStorageAccess",
+            "requestStorageAccess",
+            "browsingTopics",
             "hasPrivateToken",
             "hasRedemptionRecord",
-            "elementFromPoint",
-            "elementsFromPoint",
-            "caretPositionFromPoint",
+            "getBoxQuads",
+            "convertQuadFromNode",
+            "convertRectFromNode",
+            "convertPointFromNode",
             "getElementById",
             "getAnimations",
             "prepend",
@@ -192,10 +196,6 @@ pub const XMLDocument = struct {
             "createExpression",
             "createNSResolver",
             "evaluate",
-            "getBoxQuads",
-            "convertQuadFromNode",
-            "convertRectFromNode",
-            "convertPointFromNode",
         };
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties

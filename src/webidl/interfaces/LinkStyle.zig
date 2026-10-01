@@ -10,13 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const StyleSheet = @import("interfaces").StyleSheet;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 
 pub const LinkStyle = struct {
     pub const Meta = struct {
         pub const name = "LinkStyle";
-        pub const is_mixin = false;
+        pub const is_mixin = true;
         pub const is_callback_interface = false;
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = null;

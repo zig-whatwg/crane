@@ -101,17 +101,17 @@ pub const GlobalEventHandlers = struct {
             .{ "onwebkitanimationstart", "get_onwebkitanimationstart", "set_onwebkitanimationstart" },
             .{ "onwebkittransitionend", "get_onwebkittransitionend", "set_onwebkittransitionend" },
             .{ "onwheel", "get_onwheel", "set_onwheel" },
-            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
-            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "onanimationstart", "get_onanimationstart", "set_onanimationstart" },
             .{ "onanimationiteration", "get_onanimationiteration", "set_onanimationiteration" },
             .{ "onanimationend", "get_onanimationend", "set_onanimationend" },
             .{ "onanimationcancel", "get_onanimationcancel", "set_onanimationcancel" },
+            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
+            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
             .{ "ontransitionrun", "get_ontransitionrun", "set_ontransitionrun" },
             .{ "ontransitionstart", "get_ontransitionstart", "set_ontransitionstart" },
             .{ "ontransitionend", "get_ontransitionend", "set_ontransitionend" },
             .{ "ontransitioncancel", "get_ontransitioncancel", "set_ontransitioncancel" },
-            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
+            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
             .{ "onpointerover", "get_onpointerover", "set_onpointerover" },
             .{ "onpointerenter", "get_onpointerenter", "set_onpointerenter" },
             .{ "onpointerdown", "get_onpointerdown", "set_onpointerdown" },
@@ -123,13 +123,13 @@ pub const GlobalEventHandlers = struct {
             .{ "onpointerleave", "get_onpointerleave", "set_onpointerleave" },
             .{ "ongotpointercapture", "get_ongotpointercapture", "set_ongotpointercapture" },
             .{ "onlostpointercapture", "get_onlostpointercapture", "set_onlostpointercapture" },
+            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
+            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "ontouchstart", "get_ontouchstart", "set_ontouchstart" },
             .{ "ontouchend", "get_ontouchend", "set_ontouchend" },
             .{ "ontouchmove", "get_ontouchmove", "set_ontouchmove" },
             .{ "ontouchcancel", "get_ontouchcancel", "set_ontouchcancel" },
-            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
-            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
-            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
+            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
         };
 
         /// [LegacyLenientThis] attributes: do NOT throw TypeError on invalid this
@@ -226,17 +226,17 @@ pub const GlobalEventHandlers = struct {
             .{ "onwebkitanimationstart", "get_onwebkitanimationstart", "set_onwebkitanimationstart" },
             .{ "onwebkittransitionend", "get_onwebkittransitionend", "set_onwebkittransitionend" },
             .{ "onwheel", "get_onwheel", "set_onwheel" },
-            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
-            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "onanimationstart", "get_onanimationstart", "set_onanimationstart" },
             .{ "onanimationiteration", "get_onanimationiteration", "set_onanimationiteration" },
             .{ "onanimationend", "get_onanimationend", "set_onanimationend" },
             .{ "onanimationcancel", "get_onanimationcancel", "set_onanimationcancel" },
+            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
+            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
             .{ "ontransitionrun", "get_ontransitionrun", "set_ontransitionrun" },
             .{ "ontransitionstart", "get_ontransitionstart", "set_ontransitionstart" },
             .{ "ontransitionend", "get_ontransitionend", "set_ontransitionend" },
             .{ "ontransitioncancel", "get_ontransitioncancel", "set_ontransitioncancel" },
-            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
+            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
             .{ "onpointerover", "get_onpointerover", "set_onpointerover" },
             .{ "onpointerenter", "get_onpointerenter", "set_onpointerenter" },
             .{ "onpointerdown", "get_onpointerdown", "set_onpointerdown" },
@@ -248,13 +248,13 @@ pub const GlobalEventHandlers = struct {
             .{ "onpointerleave", "get_onpointerleave", "set_onpointerleave" },
             .{ "ongotpointercapture", "get_ongotpointercapture", "set_ongotpointercapture" },
             .{ "onlostpointercapture", "get_onlostpointercapture", "set_onlostpointercapture" },
+            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
+            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "ontouchstart", "get_ontouchstart", "set_ontouchstart" },
             .{ "ontouchend", "get_ontouchend", "set_ontouchend" },
             .{ "ontouchmove", "get_ontouchmove", "set_ontouchmove" },
             .{ "ontouchcancel", "get_ontouchcancel", "set_ontouchcancel" },
-            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
-            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
-            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
+            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -343,17 +343,17 @@ pub const GlobalEventHandlers = struct {
             onwebkitanimationstart: typedefs.EventHandler = undefined,
             onwebkittransitionend: typedefs.EventHandler = undefined,
             onwheel: typedefs.EventHandler = undefined,
-            onselectstart: typedefs.EventHandler = undefined,
-            onselectionchange: typedefs.EventHandler = undefined,
             onanimationstart: typedefs.EventHandler = undefined,
             onanimationiteration: typedefs.EventHandler = undefined,
             onanimationend: typedefs.EventHandler = undefined,
             onanimationcancel: typedefs.EventHandler = undefined,
+            onsnapchanged: typedefs.EventHandler = undefined,
+            onsnapchanging: typedefs.EventHandler = undefined,
             ontransitionrun: typedefs.EventHandler = undefined,
             ontransitionstart: typedefs.EventHandler = undefined,
             ontransitionend: typedefs.EventHandler = undefined,
             ontransitioncancel: typedefs.EventHandler = undefined,
-            onbeforexrselect: typedefs.EventHandler = undefined,
+            onfencedtreeclick: typedefs.EventHandler = undefined,
             onpointerover: typedefs.EventHandler = undefined,
             onpointerenter: typedefs.EventHandler = undefined,
             onpointerdown: typedefs.EventHandler = undefined,
@@ -365,13 +365,13 @@ pub const GlobalEventHandlers = struct {
             onpointerleave: typedefs.EventHandler = undefined,
             ongotpointercapture: typedefs.EventHandler = undefined,
             onlostpointercapture: typedefs.EventHandler = undefined,
+            onselectstart: typedefs.EventHandler = undefined,
+            onselectionchange: typedefs.EventHandler = undefined,
             ontouchstart: typedefs.EventHandler = undefined,
             ontouchend: typedefs.EventHandler = undefined,
             ontouchmove: typedefs.EventHandler = undefined,
             ontouchcancel: typedefs.EventHandler = undefined,
-            onfencedtreeclick: typedefs.EventHandler = undefined,
-            onsnapchanged: typedefs.EventHandler = undefined,
-            onsnapchanging: typedefs.EventHandler = undefined,
+            onbeforexrselect: typedefs.EventHandler = undefined,
             _internal: ?*GlobalEventHandlersImpl.InternalState = null,
         },
     );
@@ -1226,22 +1226,6 @@ pub const GlobalEventHandlers = struct {
         try GlobalEventHandlersImpl.set_onwheel(instance, value);
     }
 
-    pub fn get_onselectstart(instance: *runtime.Instance) anyerror!EventHandler {
-        return try GlobalEventHandlersImpl.get_onselectstart(instance);
-    }
-
-    pub fn set_onselectstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try GlobalEventHandlersImpl.set_onselectstart(instance, value);
-    }
-
-    pub fn get_onselectionchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try GlobalEventHandlersImpl.get_onselectionchange(instance);
-    }
-
-    pub fn set_onselectionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try GlobalEventHandlersImpl.set_onselectionchange(instance, value);
-    }
-
     pub fn get_onanimationstart(instance: *runtime.Instance) anyerror!EventHandler {
         return try GlobalEventHandlersImpl.get_onanimationstart(instance);
     }
@@ -1272,6 +1256,22 @@ pub const GlobalEventHandlers = struct {
 
     pub fn set_onanimationcancel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try GlobalEventHandlersImpl.set_onanimationcancel(instance, value);
+    }
+
+    pub fn get_onsnapchanged(instance: *runtime.Instance) anyerror!EventHandler {
+        return try GlobalEventHandlersImpl.get_onsnapchanged(instance);
+    }
+
+    pub fn set_onsnapchanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try GlobalEventHandlersImpl.set_onsnapchanged(instance, value);
+    }
+
+    pub fn get_onsnapchanging(instance: *runtime.Instance) anyerror!EventHandler {
+        return try GlobalEventHandlersImpl.get_onsnapchanging(instance);
+    }
+
+    pub fn set_onsnapchanging(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try GlobalEventHandlersImpl.set_onsnapchanging(instance, value);
     }
 
     pub fn get_ontransitionrun(instance: *runtime.Instance) anyerror!EventHandler {
@@ -1306,12 +1306,12 @@ pub const GlobalEventHandlers = struct {
         try GlobalEventHandlersImpl.set_ontransitioncancel(instance, value);
     }
 
-    pub fn get_onbeforexrselect(instance: *runtime.Instance) anyerror!EventHandler {
-        return try GlobalEventHandlersImpl.get_onbeforexrselect(instance);
+    pub fn get_onfencedtreeclick(instance: *runtime.Instance) anyerror!EventHandler {
+        return try GlobalEventHandlersImpl.get_onfencedtreeclick(instance);
     }
 
-    pub fn set_onbeforexrselect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try GlobalEventHandlersImpl.set_onbeforexrselect(instance, value);
+    pub fn set_onfencedtreeclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try GlobalEventHandlersImpl.set_onfencedtreeclick(instance, value);
     }
 
     pub fn get_onpointerover(instance: *runtime.Instance) anyerror!EventHandler {
@@ -1404,6 +1404,22 @@ pub const GlobalEventHandlers = struct {
         try GlobalEventHandlersImpl.set_onlostpointercapture(instance, value);
     }
 
+    pub fn get_onselectstart(instance: *runtime.Instance) anyerror!EventHandler {
+        return try GlobalEventHandlersImpl.get_onselectstart(instance);
+    }
+
+    pub fn set_onselectstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try GlobalEventHandlersImpl.set_onselectstart(instance, value);
+    }
+
+    pub fn get_onselectionchange(instance: *runtime.Instance) anyerror!EventHandler {
+        return try GlobalEventHandlersImpl.get_onselectionchange(instance);
+    }
+
+    pub fn set_onselectionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try GlobalEventHandlersImpl.set_onselectionchange(instance, value);
+    }
+
     pub fn get_ontouchstart(instance: *runtime.Instance) anyerror!EventHandler {
         return try GlobalEventHandlersImpl.get_ontouchstart(instance);
     }
@@ -1436,27 +1452,11 @@ pub const GlobalEventHandlers = struct {
         try GlobalEventHandlersImpl.set_ontouchcancel(instance, value);
     }
 
-    pub fn get_onfencedtreeclick(instance: *runtime.Instance) anyerror!EventHandler {
-        return try GlobalEventHandlersImpl.get_onfencedtreeclick(instance);
+    pub fn get_onbeforexrselect(instance: *runtime.Instance) anyerror!EventHandler {
+        return try GlobalEventHandlersImpl.get_onbeforexrselect(instance);
     }
 
-    pub fn set_onfencedtreeclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try GlobalEventHandlersImpl.set_onfencedtreeclick(instance, value);
-    }
-
-    pub fn get_onsnapchanged(instance: *runtime.Instance) anyerror!EventHandler {
-        return try GlobalEventHandlersImpl.get_onsnapchanged(instance);
-    }
-
-    pub fn set_onsnapchanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try GlobalEventHandlersImpl.set_onsnapchanged(instance, value);
-    }
-
-    pub fn get_onsnapchanging(instance: *runtime.Instance) anyerror!EventHandler {
-        return try GlobalEventHandlersImpl.get_onsnapchanging(instance);
-    }
-
-    pub fn set_onsnapchanging(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try GlobalEventHandlersImpl.set_onsnapchanging(instance, value);
+    pub fn set_onbeforexrselect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try GlobalEventHandlersImpl.set_onbeforexrselect(instance, value);
     }
 };

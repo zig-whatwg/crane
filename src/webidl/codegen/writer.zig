@@ -3307,7 +3307,7 @@ fn isResolvableOverloadSet(set: overload.OverloadSet) bool {
 }
 
 /// `.{ .kinds = &.{ ... }, .nullable = .., .optionality = .. }` for one argument.
-fn writeOverloadArg(
+pub fn writeOverloadArg(
     writer: anytype,
     arg: types.Argument,
     type_registry: ?*const @import("ir.zig").TypeRegistry,

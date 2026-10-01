@@ -11,11 +11,10 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSConditionRule = @import("interfaces").CSSConditionRule;
+const CSSRuleList = @import("interfaces").CSSRuleList;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
-const CSSRuleList = @import("interfaces").CSSRuleList;
-const DOMString = @import("typedefs").DOMString;
 const MediaList = @import("interfaces").MediaList;
 
 pub const CSSMediaRule = struct {
@@ -38,7 +37,6 @@ pub const CSSMediaRule = struct {
         pub const properties = .{
             .{ "media", "get_media", "set_media" },
             .{ "matches", "get_matches", null },
-            .{ "cssRules", "get_cssRules", null },
         };
 
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -48,25 +46,21 @@ pub const CSSMediaRule = struct {
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
-        pub const methods = .{
-            .{ "insertRule", "call_insertRule", 2 },
-            .{ "deleteRule", "call_deleteRule", 1 },
-        };
+        pub const methods = .{};
 
         /// Methods defined/overridden by this interface
-        pub const own_methods = .{
+        pub const own_methods = .{};
+
+        /// Methods inherited from parent/mixins (rely on V8 prototype chain)
+        pub const inherited_methods = .{
             "insertRule",
             "deleteRule",
         };
-
-        /// Methods inherited from parent/mixins (rely on V8 prototype chain)
-        pub const inherited_methods = .{};
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "media", "get_media", "set_media" },
             .{ "matches", "get_matches", null },
-            .{ "cssRules", "get_cssRules", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -81,21 +75,16 @@ pub const CSSMediaRule = struct {
         struct {
             media: *runtime.Instance = undefined,
             matches: bool = undefined,
-            cssRules: *runtime.Instance = undefined,
             cached_media: ?*runtime.Instance = null,
             _internal: ?*CSSMediaRuleImpl.InternalState = null,
         },
     );
 
     const delegates = .{
-        .get_cssRules = &get_cssRules,
         .get_matches = &get_matches,
         .get_media = &get_media,
 
         .set_media = &set_media,
-
-        .call_deleteRule = &call_deleteRule,
-        .call_insertRule = &call_insertRule,
 
         .deinit = &deinit,
     };
@@ -147,17 +136,5 @@ pub const CSSMediaRule = struct {
 
     pub fn get_matches(instance: *runtime.Instance) anyerror!bool {
         return try CSSMediaRuleImpl.get_matches(instance);
-    }
-
-    pub fn get_cssRules(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try CSSMediaRuleImpl.get_cssRules(instance);
-    }
-
-    pub fn call_insertRule(instance: *runtime.Instance, rule: DOMString, index: u32) anyerror!u32 {
-        return try CSSMediaRuleImpl.call_insertRule(instance, rule, index);
-    }
-
-    pub fn call_deleteRule(instance: *runtime.Instance, index: u32) anyerror!void {
-        return try CSSMediaRuleImpl.call_deleteRule(instance, index);
     }
 };

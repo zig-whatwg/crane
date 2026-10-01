@@ -24,10 +24,10 @@ const USVString = @import("typedefs").USVString;
 const RTCSignalingState = @import("enums").RTCSignalingState;
 const RTCPeerConnectionState = @import("enums").RTCPeerConnectionState;
 const RTCDataChannel = @import("interfaces").RTCDataChannel;
+const RTCIdentityProviderOptions = @import("dictionaries").RTCIdentityProviderOptions;
 const RTCCertificate = @import("interfaces").RTCCertificate;
 const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
 const MediaStream = @import("interfaces").MediaStream;
-const RTCIdentityProviderOptions = @import("dictionaries").RTCIdentityProviderOptions;
 const RTCSctpTransport = @import("interfaces").RTCSctpTransport;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
@@ -85,12 +85,12 @@ pub const RTCPeerConnection = struct {
             .{ "oniceconnectionstatechange", "get_oniceconnectionstatechange", "set_oniceconnectionstatechange" },
             .{ "onicegatheringstatechange", "get_onicegatheringstatechange", "set_onicegatheringstatechange" },
             .{ "onconnectionstatechange", "get_onconnectionstatechange", "set_onconnectionstatechange" },
-            .{ "ontrack", "get_ontrack", "set_ontrack" },
-            .{ "sctp", "get_sctp", null },
-            .{ "ondatachannel", "get_ondatachannel", "set_ondatachannel" },
             .{ "peerIdentity", "get_peerIdentity", null },
             .{ "idpLoginUrl", "get_idpLoginUrl", null },
             .{ "idpErrorInfo", "get_idpErrorInfo", null },
+            .{ "ontrack", "get_ontrack", "set_ontrack" },
+            .{ "sctp", "get_sctp", null },
+            .{ "ondatachannel", "get_ondatachannel", "set_ondatachannel" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -104,6 +104,8 @@ pub const RTCPeerConnection = struct {
             .{ "getConfiguration", "call_getConfiguration", 0 },
             .{ "setConfiguration", "call_setConfiguration", 0 },
             .{ "close", "call_close", 0 },
+            .{ "setIdentityProvider", "call_setIdentityProvider", 1 },
+            .{ "getIdentityAssertion", "call_getIdentityAssertion", 0 },
             .{ "getSenders", "call_getSenders", 0 },
             .{ "getReceivers", "call_getReceivers", 0 },
             .{ "getTransceivers", "call_getTransceivers", 0 },
@@ -112,8 +114,6 @@ pub const RTCPeerConnection = struct {
             .{ "addTransceiver", "call_addTransceiver", 1 },
             .{ "createDataChannel", "call_createDataChannel", 1 },
             .{ "getStats", "call_getStats", 0 },
-            .{ "setIdentityProvider", "call_setIdentityProvider", 1 },
-            .{ "getIdentityAssertion", "call_getIdentityAssertion", 0 },
         };
 
         /// Static method binding hints for V8Interface (JS name, Zig function name, arity)
@@ -132,6 +132,8 @@ pub const RTCPeerConnection = struct {
             "getConfiguration",
             "setConfiguration",
             "close",
+            "setIdentityProvider",
+            "getIdentityAssertion",
             "generateCertificate",
             "getSenders",
             "getReceivers",
@@ -141,8 +143,6 @@ pub const RTCPeerConnection = struct {
             "addTransceiver",
             "createDataChannel",
             "getStats",
-            "setIdentityProvider",
-            "getIdentityAssertion",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -173,12 +173,12 @@ pub const RTCPeerConnection = struct {
             .{ "oniceconnectionstatechange", "get_oniceconnectionstatechange", "set_oniceconnectionstatechange" },
             .{ "onicegatheringstatechange", "get_onicegatheringstatechange", "set_onicegatheringstatechange" },
             .{ "onconnectionstatechange", "get_onconnectionstatechange", "set_onconnectionstatechange" },
-            .{ "ontrack", "get_ontrack", "set_ontrack" },
-            .{ "sctp", "get_sctp", null },
-            .{ "ondatachannel", "get_ondatachannel", "set_ondatachannel" },
             .{ "peerIdentity", "get_peerIdentity", null },
             .{ "idpLoginUrl", "get_idpLoginUrl", null },
             .{ "idpErrorInfo", "get_idpErrorInfo", null },
+            .{ "ontrack", "get_ontrack", "set_ontrack" },
+            .{ "sctp", "get_sctp", null },
+            .{ "ondatachannel", "get_ondatachannel", "set_ondatachannel" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -209,12 +209,12 @@ pub const RTCPeerConnection = struct {
             oniceconnectionstatechange: typedefs.EventHandler = undefined,
             onicegatheringstatechange: typedefs.EventHandler = undefined,
             onconnectionstatechange: typedefs.EventHandler = undefined,
-            ontrack: typedefs.EventHandler = undefined,
-            sctp: ?*runtime.Instance = null,
-            ondatachannel: typedefs.EventHandler = undefined,
             peerIdentity: runtime.JSValue = undefined,
             idpLoginUrl: ?typedefs.DOMString = null,
             idpErrorInfo: ?typedefs.DOMString = null,
+            ontrack: typedefs.EventHandler = undefined,
+            sctp: ?*runtime.Instance = null,
+            ondatachannel: typedefs.EventHandler = undefined,
             _internal: ?*RTCPeerConnectionImpl.InternalState = null,
         },
     );
@@ -408,6 +408,18 @@ pub const RTCPeerConnection = struct {
         try RTCPeerConnectionImpl.set_onconnectionstatechange(instance, value);
     }
 
+    pub fn get_peerIdentity(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try RTCPeerConnectionImpl.get_peerIdentity(instance);
+    }
+
+    pub fn get_idpLoginUrl(instance: *runtime.Instance) anyerror!?DOMString {
+        return try RTCPeerConnectionImpl.get_idpLoginUrl(instance);
+    }
+
+    pub fn get_idpErrorInfo(instance: *runtime.Instance) anyerror!?DOMString {
+        return try RTCPeerConnectionImpl.get_idpErrorInfo(instance);
+    }
+
     pub fn get_ontrack(instance: *runtime.Instance) anyerror!EventHandler {
         return try RTCPeerConnectionImpl.get_ontrack(instance);
     }
@@ -426,18 +438,6 @@ pub const RTCPeerConnection = struct {
 
     pub fn set_ondatachannel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try RTCPeerConnectionImpl.set_ondatachannel(instance, value);
-    }
-
-    pub fn get_peerIdentity(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try RTCPeerConnectionImpl.get_peerIdentity(instance);
-    }
-
-    pub fn get_idpLoginUrl(instance: *runtime.Instance) anyerror!?DOMString {
-        return try RTCPeerConnectionImpl.get_idpLoginUrl(instance);
-    }
-
-    pub fn get_idpErrorInfo(instance: *runtime.Instance) anyerror!?DOMString {
-        return try RTCPeerConnectionImpl.get_idpErrorInfo(instance);
     }
 
     pub fn call_getConfiguration(instance: *runtime.Instance) anyerror!RTCConfiguration {
@@ -464,12 +464,12 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_addIceCandidate(instance, candidate);
     }
 
-    pub fn call_setConfiguration(instance: *runtime.Instance, configuration: webidl.Opt(RTCConfiguration)) anyerror!void {
-        return try RTCPeerConnectionImpl.call_setConfiguration(instance, configuration);
-    }
-
     pub fn call_getIdentityAssertion(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try RTCPeerConnectionImpl.call_getIdentityAssertion(instance);
+    }
+
+    pub fn call_setConfiguration(instance: *runtime.Instance, configuration: webidl.Opt(RTCConfiguration)) anyerror!void {
+        return try RTCPeerConnectionImpl.call_setConfiguration(instance, configuration);
     }
 
     pub fn call_setIdentityProvider(instance: *runtime.Instance, provider: DOMString, options: webidl.Opt(RTCIdentityProviderOptions)) anyerror!void {

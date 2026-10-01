@@ -12,11 +12,11 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const AbstractRange = @import("interfaces").AbstractRange;
 const DocumentFragment = @import("interfaces").DocumentFragment;
+const DOMString = @import("typedefs").DOMString;
 const DOMRect = @import("interfaces").DOMRect;
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const Node = @import("interfaces").Node;
 const DOMRectList = @import("interfaces").DOMRectList;
-const DOMString = @import("typedefs").DOMString;
 
 pub const Range = struct {
     pub const Meta = struct {
@@ -61,9 +61,9 @@ pub const Range = struct {
             .{ "isPointInRange", "call_isPointInRange", 2 },
             .{ "comparePoint", "call_comparePoint", 2 },
             .{ "intersectsNode", "call_intersectsNode", 1 },
-            .{ "createContextualFragment", "call_createContextualFragment", 1 },
             .{ "getClientRects", "call_getClientRects", 0 },
             .{ "getBoundingClientRect", "call_getBoundingClientRect", 0 },
+            .{ "createContextualFragment", "call_createContextualFragment", 1 },
             .{ "toString", "serialize", 0 },
         };
 
@@ -97,9 +97,9 @@ pub const Range = struct {
             "isPointInRange",
             "comparePoint",
             "intersectsNode",
-            "createContextualFragment",
             "getClientRects",
             "getBoundingClientRect",
+            "createContextualFragment",
             "toString",
         };
 

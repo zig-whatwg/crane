@@ -12,8 +12,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
-const DOMString = @import("typedefs").DOMString;
-const CSSValue = @import("interfaces").CSSValue;
 
 pub const CSSStyleDeclaration = struct {
     pub const Meta = struct {
@@ -44,7 +42,6 @@ pub const CSSStyleDeclaration = struct {
             .{ "getPropertyPriority", "call_getPropertyPriority", 1 },
             .{ "setProperty", "call_setProperty", 2 },
             .{ "removeProperty", "call_removeProperty", 1 },
-            .{ "getPropertyCSSValue", "call_getPropertyCSSValue", 1 },
         };
 
         /// Methods defined/overridden by this interface
@@ -54,7 +51,6 @@ pub const CSSStyleDeclaration = struct {
             "getPropertyPriority",
             "setProperty",
             "removeProperty",
-            "getPropertyCSSValue",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -91,7 +87,6 @@ pub const CSSStyleDeclaration = struct {
 
         .set_cssText = &set_cssText,
 
-        .call_getPropertyCSSValue = &call_getPropertyCSSValue,
         .call_getPropertyPriority = &call_getPropertyPriority,
         .call_getPropertyValue = &call_getPropertyValue,
         .call_item = &call_item,
@@ -146,10 +141,6 @@ pub const CSSStyleDeclaration = struct {
 
     pub fn get_parentRule(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try CSSStyleDeclarationImpl.get_parentRule(instance);
-    }
-
-    pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: DOMString) anyerror!*runtime.Instance {
-        return try CSSStyleDeclarationImpl.call_getPropertyCSSValue(instance, propertyName);
     }
 
     pub fn call_getPropertyPriority(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {
