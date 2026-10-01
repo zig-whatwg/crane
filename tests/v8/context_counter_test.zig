@@ -19,6 +19,43 @@ const ffi = v8.ffi;
 var isolate_once: ?*ffi.Isolate = null;
 var context_once: ?*ffi.Context = null;
 
+/// The page allocator, counting the bytes live through it: the realm's
+/// allocator, so that what an impl allocates for a result - a string a
+/// getter returns - and the binding never frees shows up as bytes left.
+/// `std.testing.allocator` does not see it: the realm outlives every test.
+const CountingAllocator = struct {
+    live: i64 = 0,
+
+    fn allocator(self: *CountingAllocator) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &.{ .alloc = alloc, .resize = resize, .remap = remap, .free = free } };
+    }
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        const memory = std.heap.page_allocator.rawAlloc(len, alignment, ret_addr) orelse return null;
+        self.live += @intCast(len);
+        return memory;
+    }
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        if (!std.heap.page_allocator.rawResize(memory, alignment, new_len, ret_addr)) return false;
+        self.live += @as(i64, @intCast(new_len)) - @as(i64, @intCast(memory.len));
+        return true;
+    }
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        const moved = std.heap.page_allocator.rawRemap(memory, alignment, new_len, ret_addr) orelse return null;
+        self.live += @as(i64, @intCast(new_len)) - @as(i64, @intCast(memory.len));
+        return moved;
+    }
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
+        const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
+        self.live -= @intCast(memory.len);
+        std.heap.page_allocator.rawFree(memory, alignment, ret_addr);
+    }
+};
+
+var realm_allocator: CountingAllocator = .{};
+
 /// One isolate and realm for the file, registered with the context manager
 /// as a page's is; V8 is never torn down here.
 fn realm() !void {
@@ -29,7 +66,7 @@ fn realm() !void {
     const context = ffi.v8_Context_New(i) orelse return error.ContextCreationFailed;
     ffi.v8_Context_Enter(context);
     v8.context_manager.init(std.heap.page_allocator) catch {};
-    _ = try v8.context_manager.getOrCreate(context, std.heap.page_allocator);
+    _ = try v8.context_manager.getOrCreate(context, realm_allocator.allocator());
     runtime.SlabAllocator.init(std.heap.page_allocator);
     runtime.ArenaAllocator.init(std.heap.page_allocator);
     isolate_once = i;
@@ -112,11 +149,14 @@ fn allInterfaces() !void {
 const Left = struct {
     context_globals: i64,
     handle_bytes: i64,
+    /// Bytes still live through the realm's allocator.
+    realm_bytes: i64 = 0,
 };
 
-/// What 64 runs of `body` leave behind: live Context Globals, and V8's global
-/// handle bytes after a collection. Two runs first, so that what the first
-/// call makes and later ones reuse is not counted.
+/// What 64 runs of `body` leave behind: live Context Globals, V8's global
+/// handle bytes after a collection, and bytes of the realm's allocator. Two
+/// runs first, so that what the first call makes and later ones reuse is not
+/// counted.
 fn leftBy(comptime body: []const u8) !Left {
     const isolate = isolate_once.?;
     const loop = "(() => { for (let i = 0; i < {N}; i++) { " ++ body ++ " } return 0 })()";
@@ -124,11 +164,13 @@ fn leftBy(comptime body: []const u8) !Left {
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     const contexts_before = ffi.v8_Debug_LiveContextGlobals();
     const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
+    const realm_before = realm_allocator.live;
     _ = try scriptInt(comptime replaceN(loop, "64"));
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     return .{
         .context_globals = ffi.v8_Debug_LiveContextGlobals() - contexts_before,
         .handle_bytes = @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate))) - bytes_before,
+        .realm_bytes = realm_allocator.live - realm_before,
     };
 }
 
@@ -140,6 +182,16 @@ fn replaceN(comptime loop: []const u8, comptime n: []const u8) []const u8 {
 fn expectNothingLeft(comptime what: []const u8, left: Left) !void {
     if (left.context_globals != 0 or left.handle_bytes > 0) {
         std.debug.print("64 runs of {s} left {d} Context Globals and {d} bytes of global handles\n", .{ what, left.context_globals, left.handle_bytes });
+        return error.HandlesLeaked;
+    }
+}
+
+/// Nothing left at all: no Context Global, no global handle bytes, and no
+/// bytes of the realm's allocator - what an impl allocated for a result is
+/// the binding's to free.
+fn expectNothingLeftAnywhere(comptime what: []const u8, left: Left) !void {
+    if (left.context_globals != 0 or left.handle_bytes > 0 or left.realm_bytes > 0) {
+        std.debug.print("64 runs of {s} left {d} Context Globals, {d} bytes of global handles and {d} bytes of the realm's allocator\n", .{ what, left.context_globals, left.handle_bytes, left.realm_bytes });
         return error.HandlesLeaked;
     }
 }
@@ -188,11 +240,33 @@ test "the indexed property definer releases the current context" {
         \\Object.defineProperty(definedSelect, '0', { value: definedOption, configurable: true, enumerable: true, writable: true });
         \\definedSelect.length
     ));
-    // Context Globals only: the definer's other handles (the descriptor's
-    // value, v8_PropertyDescriptor_GetValue, among them) are outside this
-    // case, and still leak.
     try expectNoContextLeft("Object.defineProperty(select, '0', ...)", try leftBy("Object.defineProperty(definedSelect, '0', { value: definedOption, configurable: true, enumerable: true, writable: true });"));
     try expectNoContextLeft("Object.defineProperty(nodeList, '0', ...)", try leftBy("try { Object.defineProperty(children, '0', { value: 1 }) } catch (e) {}"));
+}
+
+test "the indexed property definer releases every handle it takes" {
+    try allInterfaces();
+    // Besides the current context: the descriptor's value
+    // (v8_PropertyDescriptor_GetValue hands out a Global the caller owns) and
+    // whatever else one Object.defineProperty on a select takes - nine
+    // handles a call, 288 bytes, before this.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.allDefinedDoc = new Document().implementation.createHTMLDocument('');
+        \\globalThis.allDefinedSelect = allDefinedDoc.createElement('select');
+        \\globalThis.allDefinedOption = allDefinedDoc.createElement('option');
+        \\Object.defineProperty(allDefinedSelect, '0', { value: allDefinedOption, configurable: true, enumerable: true, writable: true });
+        \\globalThis.readOnlyCollection = allDefinedDoc.getElementsByTagName('select');
+        \\allDefinedDoc.body.appendChild(allDefinedSelect);
+        \\(() => { 'use strict'; try { readOnlyCollection[0] = 1; return 0 } catch (e) { return e instanceof TypeError ? allDefinedSelect.length : 2 } })()
+    ));
+    try expectNothingLeft("Object.defineProperty(select, '0', ...)", try leftBy("Object.defineProperty(allDefinedSelect, '0', { value: allDefinedOption, configurable: true, enumerable: true, writable: true });"));
+    try expectNothingLeft("Object.defineProperty(nodeList, '0', ...)", try leftBy("try { Object.defineProperty(children, '0', { value: 1 }) } catch (e) {}"));
+    // An HTMLCollection has no indexed setter: a strict-mode assignment to
+    // an index reaches the definer, which throws a TypeError whose message
+    // and error it made. (Object.defineProperty on it does not throw today,
+    // where WebIDL's [[DefineOwnProperty]] returns false - a conformance
+    // gap, queued.)
+    try expectNothingLeft("'use strict'; htmlCollection[0] = 1", try leftBy("(() => { 'use strict'; try { readOnlyCollection[0] = 1 } catch (e) {} })();"));
 }
 
 test "the named property setter releases the current context" {
@@ -251,4 +325,152 @@ test "a getter's wrapper result stays the wrapper cache's" {
     try expectNothingLeft("dispatched.target", try leftBy("if (dispatched.target !== kept) throw new Error('not the same wrapper');"));
     ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
     try std.testing.expectEqual(@as(i32, 42), try scriptInt("dispatched.target === kept ? dispatched.target.marker : -1"));
+}
+
+// ---------------------------------------------------------------------------
+// A getter's result is the binding's: a value the conversion makes, and memory
+// the impl allocated for it.
+
+test "a getter's non-null optional number is released" {
+    try allInterfaces();
+    // WritableStreamDefaultWriter.desiredSize is `unrestricted double?`
+    // (?f64): non-null on a writable stream, a fresh Number each read.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.sizedWriter = new WritableStream().getWriter();
+        \\sizedWriter.desiredSize
+    ));
+    try expectNothingLeft("writer.desiredSize", try leftBy("sizedWriter.desiredSize;"));
+}
+
+test "getterValueIsOwned: the non-null value of an optional primitive is made fresh" {
+    // conv.toV8Value converts `?T` by converting its payload, so a non-null
+    // `?f64`, `?bool` or `?u32` is a fresh Number or Boolean exactly as an
+    // `f64`, `bool` or `u32` is. No impl returns a non-null `?bool` or `?u32`
+    // today (RTCPeerConnection.canTrickleIceCandidates, RTCError's alerts are
+    // stubs), so the predicate is pinned here.
+    const owned = v8.interface_mod.getterValueIsOwned;
+    try std.testing.expect(owned(?f64));
+    try std.testing.expect(owned(?f32));
+    try std.testing.expect(owned(?bool));
+    try std.testing.expect(owned(?u32));
+    try std.testing.expect(owned(?u16));
+    try std.testing.expect(owned(?u8));
+    try std.testing.expect(owned(?i32));
+    try std.testing.expect(owned(?i16));
+    try std.testing.expect(owned(?i8));
+    try std.testing.expect(owned(?runtime.USVString));
+    const Direction = enum { forward, backward };
+    try std.testing.expect(owned(?Direction));
+    // The default is unchanged: an optional of a kept value stays kept.
+    try std.testing.expect(!owned(?*runtime.Instance));
+    try std.testing.expect(!owned(?runtime.JSValue));
+}
+
+test "xhr.response frees the text it made" {
+    try allInterfaces();
+    // XMLHttpRequest response, step 1: for responseType "" the text
+    // response - a string the getter makes on each read and hands over
+    // owned, as an operation's result is.
+    try std.testing.expectEqual(@as(i32, 5), try scriptInt(
+        \\globalThis.doneXhr = new XMLHttpRequest();
+        \\doneXhr.open('GET', 'data:text/plain,hello', false);
+        \\doneXhr.send();
+        \\doneXhr.response.length
+    ));
+    try expectNothingLeftAnywhere("xhr.response", try leftBy("doneXhr.response;"));
+}
+
+test "a getter's kept string stays the object's: read twice, and 64 times, it is the same" {
+    try allInterfaces();
+    // MessageEvent.data and PopStateEvent.state keep a string they were
+    // initialized with. The getter path frees a string result handed over
+    // owned, so a kept one goes out as a reference - handed over owned,
+    // the first read freed the event's own copy and the second read it
+    // after the free.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.textEvent = new MessageEvent('message', { data: 'kept text' });
+        \\globalThis.stateEvent = new PopStateEvent('popstate', { state: 'kept state' });
+        \\textEvent.data === 'kept text' && textEvent.data === 'kept text' &&
+        \\    stateEvent.state === 'kept state' && stateEvent.state === 'kept state' ? 1 : 0
+    ));
+    try expectNothingLeftAnywhere("messageEvent.data", try leftBy("if (textEvent.data !== 'kept text') throw new Error(textEvent.data);"));
+    try expectNothingLeftAnywhere("popStateEvent.state", try leftBy("if (stateEvent.state !== 'kept state') throw new Error(stateEvent.state);"));
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt("textEvent.data === 'kept text' && stateEvent.state === 'kept state' ? 1 : 0"));
+}
+
+test "the indexed descriptor and query release what they make" {
+    try allInterfaces();
+    // V8 asks a legacy platform object for an index's descriptor
+    // (Object.getOwnPropertyDescriptor) and attributes (`in`); each answer
+    // is made for the call.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.describedDoc = new Document().implementation.createHTMLDocument('');
+        \\globalThis.describedSelect = describedDoc.createElement('select');
+        \\describedSelect.appendChild(describedDoc.createElement('option'));
+        \\globalThis.describedTokens = describedDoc.createElement('div').classList;
+        \\describedTokens.add('tok');
+        \\Object.getOwnPropertyDescriptor(describedSelect, 0).value === describedSelect[0] && (0 in describedTokens) ? 1 : 0
+    ));
+    try expectNothingLeft("Object.getOwnPropertyDescriptor(select, 0)", try leftBy("Object.getOwnPropertyDescriptor(describedSelect, 0);"));
+    try expectNothingLeftAnywhere("Object.getOwnPropertyDescriptor(classList, 0)", try leftBy("Object.getOwnPropertyDescriptor(describedTokens, 0);"));
+    try expectNothingLeft("0 in select", try leftBy("0 in describedSelect;"));
+}
+
+test "an indexed getter frees the string it returns" {
+    try allInterfaces();
+    // DOMTokenList's indexed getter is item(): a copy of the token, owned by
+    // the caller. classList.item(0), an operation, frees it; classList[0]
+    // did not.
+    try std.testing.expectEqual(@as(i32, 3), try scriptInt(
+        \\globalThis.tokenOwner = new Document().implementation.createHTMLDocument('').createElement('div');
+        \\tokenOwner.className = 'abc def';
+        \\globalThis.tokens = tokenOwner.classList;
+        \\tokens[0].length
+    ));
+    try expectNothingLeftAnywhere("classList[0]", try leftBy("tokens[0];"));
+}
+
+test "a named getter frees the string it returns" {
+    try allInterfaces();
+    // DOMStringMap's named getter answers the data-* attribute's value.
+    try std.testing.expectEqual(@as(i32, 6), try scriptInt(
+        \\globalThis.namedOwner = new Document().implementation.createHTMLDocument('').createElement('div');
+        \\namedOwner.setAttribute('data-named', 'xyzzy!');
+        \\globalThis.namedMap = namedOwner.dataset;
+        \\namedMap.named.length
+    ));
+    try expectNothingLeftAnywhere("dataset.named", try leftBy("namedMap.named;"));
+    try expectNothingLeftAnywhere("Object.getOwnPropertyDescriptor(dataset, 'named')", try leftBy("Object.getOwnPropertyDescriptor(namedMap, 'named');"));
+}
+
+// ---------------------------------------------------------------------------
+// document.all's legacy caller.
+
+test "document.all's legacy caller releases what it takes" {
+    try allInterfaces();
+    // Called as a function, document.all runs the binding's call handler:
+    // the current context, the argument and the result were Globals the
+    // handler made and kept, three a call.
+    // item() is not implemented past its step 1 yet (the collection has no
+    // root), so a call with an argument throws item()'s error - and must
+    // release what it made on that path too.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.allDoc = new Document().implementation.createHTMLDocument('');
+        \\globalThis.allOfDoc = allDoc.all;
+        \\(() => { try { allOfDoc('nothing-has-this-name'); return 1 } catch (e) { return 1 } })()
+    ));
+    try expectNothingLeft("document.all('x')", try leftBy("try { allOfDoc('x') } catch (e) {}"));
+    try expectNothingLeft("document.all(0)", try leftBy("try { allOfDoc(0) } catch (e) {}"));
+    try expectNothingLeft("document.all()", try leftBy("allOfDoc();"));
+}
+
+test "document.all() with no argument is null" {
+    try allInterfaces();
+    // WebIDL: the legacy caller is the operation `item(optional DOMString
+    // nameOrIndex)`; HTML's item() step 1: "If nameOrIndex was not provided,
+    // return null."
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.noArgDoc = new Document().implementation.createHTMLDocument('');
+        \\noArgDoc.all() === null ? 1 : 0
+    ));
 }

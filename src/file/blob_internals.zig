@@ -46,6 +46,17 @@ pub const BlobData = struct {
     /// Whether this BlobData owns its bytes (vs. borrowed for slices)
     owns_bytes: bool,
 
+    /// The references held on this data: the Blob object's (the one `init`
+    /// makes), and one for each blob URL entry that names it. File API: a
+    /// blob URL entry's object IS the Blob, and the entry holds it for as long
+    /// as the entry is in the blob URL store - while script may long since
+    /// have dropped the Blob and kept only the URL. The bytes are immutable,
+    /// so sharing them is the Blob staying alive in every way script can
+    /// observe. Blink's BlobDataHandle, WebKit's RefPtr<BlobData> in its blob
+    /// registry and Gecko's BlobImpl in BlobURLProtocolHandler are the same
+    /// shape. `deinit` drops one.
+    ref_count: u32 = 1,
+
     /// Initialize a new BlobData with the given bytes and MIME type.
     ///
     /// The bytes are copied, and the MIME type is validated and normalized.
@@ -89,8 +100,18 @@ pub const BlobData = struct {
         return self;
     }
 
-    /// Clean up resources.
+    /// Take another reference: the data stays until each holder has called
+    /// `deinit`. Returns `self`, for the holder to keep.
+    pub fn retain(self: *BlobData) *BlobData {
+        self.ref_count += 1;
+        return self;
+    }
+
+    /// Drop one reference; the last one frees the data.
     pub fn deinit(self: *BlobData) void {
+        std.debug.assert(self.ref_count > 0);
+        self.ref_count -= 1;
+        if (self.ref_count > 0) return;
         if (self.owns_bytes) {
             self.allocator.free(@constCast(self.bytes));
         }

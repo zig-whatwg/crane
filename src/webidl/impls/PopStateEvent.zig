@@ -85,11 +85,14 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 }
 
 /// Getter for state. The event keeps the value it was initialized to; a
-/// handle goes to the binding as a hold of its own.
+/// handle goes to the binding as a hold of its own, and a string as a
+/// reference - the binding frees a string result handed over owned, and this
+/// one is the event's (the constructor's clone).
 pub fn get_state(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const kept = instance.getState(State).own.state;
     return switch (kept) {
         .handle => (try engine.retainValue(instance.ctx, kept)).take(),
+        .string => |text| runtime.JSValue.fromStringRef(text.data),
         else => kept,
     };
 }
