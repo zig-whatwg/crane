@@ -73,7 +73,9 @@ const column_step = 212;
 
 const ink = [3]u8{ 0x20, 0x21, 0x24 };
 const ink_2 = [3]u8{ 0x5a, 0x5e, 0x63 };
-const issue = [3]u8{ 0xb3, 0x26, 0x1e };
+/// Red is failure; grey is blocking (the user, 2026-09-30).
+const fail = [3]u8{ 0xb3, 0x26, 0x1e };
+const block = [3]u8{ 0x6b, 0x70, 0x76 };
 
 /// `n` with thousands separators into `buf`.
 fn grouped(buf: []u8, n: u64) []const u8 {
@@ -135,7 +137,11 @@ pub fn render(gpa: Allocator, f: Figures) ![]u8 {
 
     const counts = [_]u64{ f.failed, f.timed_out, f.notrun, f.files, f.blocking };
     for (counts, 0..) |n, i| {
-        const color = if (i == 4 and n > 0) issue else ink;
+        const color = if (n == 0) ink else switch (i) {
+            0 => fail,
+            4 => block,
+            else => ink,
+        };
         _ = draw(&img, &atlas, small, grouped(&buf, n), @floatFromInt(left + i * column_step), counts_baseline, color);
     }
 
@@ -200,14 +206,18 @@ test "card: the numbers are drawn where the labels expect them, and the rest sta
         const x: u32 = @intCast(left + i * column_step);
         try testing.expect(darkIn(img, x, counts_baseline - 30, x + 80, counts_baseline) > 60);
     }
-    // Blocking files, when there are any, in issue red.
-    const bx: u32 = left + 4 * column_step;
-    var red = false;
-    for (counts_baseline - 30..counts_baseline) |y| for (bx..bx + 80) |x| {
-        const p = img.at(@intCast(x), @intCast(y));
-        if (p[0] > 150 and p[1] < 80 and p[2] < 80) red = true;
+    // Failed subtests, when there are any, in red; blocking files in grey, never red.
+    const Tint = struct {
+        fn red(im: png.Image, x0: u32) bool {
+            for (counts_baseline - 30..counts_baseline) |y| for (x0..x0 + 80) |x| {
+                const p = im.at(@intCast(x), @intCast(y));
+                if (p[0] > 150 and p[1] < 80 and p[2] < 80) return true;
+            };
+            return false;
+        }
     };
-    try testing.expect(red);
+    try testing.expect(Tint.red(img, left));
+    try testing.expect(!Tint.red(img, left + 4 * column_step));
     // The title is the base's, untouched.
     var base = try png.decode(gpa, base_png);
     defer base.deinit(gpa);

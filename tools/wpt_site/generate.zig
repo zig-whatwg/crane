@@ -6,7 +6,8 @@
 //! and any per-subtest wptreport streams, and writes the site to --out as
 //! finished HTML: index.html, one page per directory of the WPT tree, one per
 //! test file, the stylesheet and faces from tools/wpt_site/assets/, and the
-//! social card (card.png). No page needs script. See pages.zig for the pages,
+//! social card (card.png), and paths.json for the search. No page needs
+//! script for its content; site.js (an asset) enhances every page. See pages.zig for the pages,
 //! model.zig for the rules, card.zig for the card, and DESIGN.md.
 
 const std = @import("std");
@@ -427,6 +428,20 @@ const DirBuild = struct {
     files: std.ArrayList(usize) = .empty,
 };
 
+/// paths.json: every directory ("dom/nodes/") and test file of the tree,
+/// sorted, for the search site.js offers. It changes only when the worklist
+/// does, so a regeneration that moves results leaves it alone.
+fn searchPaths(arena: Allocator, dir_keys: []const []const u8, files: []const pages_mod.FileView) ![]const u8 {
+    var all: std.ArrayList([]const u8) = .empty;
+    for (dir_keys) |k| if (k.len > 0) try all.append(arena, k);
+    for (files) |f| try all.append(arena, f.path);
+    std.mem.sort([]const u8, all.items, {}, lessStr);
+    var aw: Io.Writer.Allocating = .init(arena);
+    try std.json.Stringify.value(all.items, .{}, &aw.writer);
+    try aw.writer.writeByte('\n');
+    return aw.written();
+}
+
 // ============================================================================
 // generate
 // ============================================================================
@@ -570,6 +585,7 @@ pub fn generate(gpa: Allocator, io: Io, in: Inputs, out: Dir) !Summary {
     if (in.assets) |a| try copyAssets(&o, a);
     try o.put(".nojekyll", "");
     try o.put("card.png", card_png);
+    try o.put("paths.json", try searchPaths(arena, dir_keys, files));
 
     var aw: Io.Writer.Allocating = .init(gpa);
     defer aw.deinit();
@@ -803,16 +819,16 @@ const Fixture = struct {
 
 const fixture_history =
     \\{"gate_rule":2,"generations":[
-    \\{"n":1,"at":"2026-09-19T19:55:00","head":"?","reconstructed":true,"total":5,"run":2,"unrun":3,"blocking":1,"crash":0,"timeout":1,"error":0,"clean":1,"partial":0,"sub_pass":3,"sub_fail":0},
-    \\{"n":2,"at":"2026-09-30T11:21:23","head":"5c8dd64da","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3}
+    \\{"n":1,"at":"2026-09-19T19:55:00","head":"?","reconstructed":true,"total":5,"run":2,"unrun":3,"blocking":1,"crash":0,"timeout":1,"error":0,"clean":1,"partial":0,"sub_pass":3,"sub_fail":0,"sub_passing":3,"sub_targeted":6},
+    \\{"n":2,"at":"2026-09-30T11:21:23","head":"5c8dd64da","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3,"sub_passing":5,"sub_targeted":8,"subs":{"passed":5,"failed":3,"timed_out":0,"notrun":0}}
     \\],"last_statuses":{}}
 ;
 
 const fixture_history_next =
     \\{"gate_rule":2,"generations":[
-    \\{"n":1,"at":"2026-09-19T19:55:00","head":"?","reconstructed":true,"total":5,"run":2,"unrun":3,"blocking":1,"crash":0,"timeout":1,"error":0,"clean":1,"partial":0,"sub_pass":3,"sub_fail":0},
-    \\{"n":2,"at":"2026-09-30T11:21:23","head":"5c8dd64da","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3},
-    \\{"n":3,"at":"2026-10-01T09:00:00","head":"6d9ee75eb","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3}
+    \\{"n":1,"at":"2026-09-19T19:55:00","head":"?","reconstructed":true,"total":5,"run":2,"unrun":3,"blocking":1,"crash":0,"timeout":1,"error":0,"clean":1,"partial":0,"sub_pass":3,"sub_fail":0,"sub_passing":3,"sub_targeted":6},
+    \\{"n":2,"at":"2026-09-30T11:21:23","head":"5c8dd64da","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3,"sub_passing":5,"sub_targeted":8,"subs":{"passed":5,"failed":3,"timed_out":0,"notrun":0}},
+    \\{"n":3,"at":"2026-10-01T09:00:00","head":"6d9ee75eb","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3,"sub_passing":5,"sub_targeted":8,"subs":{"passed":5,"failed":3,"timed_out":0,"notrun":0}}
     \\],"last_statuses":{}}
 ;
 
@@ -887,7 +903,7 @@ test "site: index.html opens with the WPT subtest numbers, written into the mark
     // c.any.js NONE-PASSED block; url/never.html has not run.
     try expectHas(index, "<span class=\"hl-pass\">5</span><span class=\"hl-of\"> / 8</span>");
     try expectHas(index, "WPT subtests passing");
-    try expectHas(index, "<dt>Failed</dt><dd>3</dd>");
+    try expectHas(index, "<div class=\"fail\"><dt>Failed</dt><dd>3</dd>");
     try expectHas(index, "<dt>Timed out</dt><dd>0</dd>");
     try expectHas(index, "<dt>Not run</dt><dd>0</dd>");
     try expectHas(index, "<dt>Test files</dt><dd>5</dd>");
@@ -1018,8 +1034,10 @@ test "site: no page needs script for any of its content" {
     var pages: usize = 0;
     while (try walker.next(testing.io)) |e| {
         if (e.kind != .file) continue;
+        // No script comes from the generator itself (site.js is an asset), and
+        // the one data file is the search's list of paths.
         try testing.expect(!std.mem.endsWith(u8, e.path, ".js"));
-        try testing.expect(!std.mem.endsWith(u8, e.path, ".json"));
+        if (std.mem.endsWith(u8, e.path, ".json")) try testing.expectEqualStrings("paths.json", e.path);
         if (!std.mem.endsWith(u8, e.path, ".html")) continue;
         pages += 1;
         const page = try out.readFileAlloc(testing.io, e.path, gpa, .limited(1 << 24));
@@ -1034,6 +1052,77 @@ test "site: no page needs script for any of its content" {
         try expectHas(page, "WPT subtests passing");
     }
     try testing.expectEqual(@as(usize, 9), pages);
+}
+
+test "site: every page loads site.js once, deferred, to enhance what its markup already says" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    const cases = [_]struct { []const u8, []const u8 }{
+        .{ "out/index.html", "<script src=\"site.js\" defer></script>" },
+        .{ "out/dom/index.html", "<script src=\"../site.js\" defer></script>" },
+        .{ "out/dom/nodes/index.html", "<script src=\"../../site.js\" defer></script>" },
+        .{ "out/dom/a.html/index.html", "<script src=\"../../site.js\" defer></script>" },
+    };
+    for (cases) |c| {
+        const page = try readOut(gpa, &f, c[0]);
+        defer gpa.free(page);
+        try expectHas(page, c[1]);
+        try expectBefore(page, c[1], "</head>");
+        try testing.expectEqual(@as(usize, 1), std.mem.count(u8, page, "<script"));
+    }
+}
+
+test "site: the revision history charts WPT subtests, not files" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    const index = try readOut(gpa, &f, "out/index.html");
+    defer gpa.free(index);
+    // The drawing (the chart script redraws it from the table) is subtests passing
+    // and not passing, up to the total.
+    try expectHas(index, "band-pass");
+    try expectHas(index, "band-fail");
+    try testing.expect(std.mem.indexOf(u8, index, "band-clean") == null);
+    try testing.expect(std.mem.indexOf(u8, index, "Files by standing") == null);
+    // The table leads with subtests, and each row carries what the chart reads.
+    try expectHas(index, "<th scope=\"col\">Subtests passing</th><th scope=\"col\">Total subtests</th>");
+    try expectHas(index, "<tr data-n=\"2\" data-at=\"2026-09-30T11:21:23\" data-head=\"5c8dd64da\" data-pass=\"5\" data-total=\"8\" data-fail=\"3\" data-timeout=\"0\" data-notrun=\"0\" data-blocking=\"2\" data-files=\"5\">");
+    // Before a generation recorded its subtests exactly, the total is the
+    // progress report's count of subtests known to exist, marked as such.
+    try expectHas(index, "<tr class=\"recon\" data-n=\"1\" data-at=\"2026-09-19T19:55:00\" data-pass=\"3\" data-total=\"6\" data-est=\"1\" data-blocking=\"1\" data-files=\"5\" data-recon=\"1\">");
+    try expectHas(index, "<td>3</td><td class=\"est\">6</td><td class=\"est fail\">3</td>");
+    try expectHas(index, "<td>5</td><td>8</td><td class=\"fail\">3</td><td class=\"blk\">2</td>");
+}
+
+test "site: listing rows carry the keys sorting and filtering read" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    const dom = try readOut(gpa, &f, "out/dom/index.html");
+    defer gpa.free(dom);
+    try expectHas(dom, "<tr data-gate=\"timeout\"><th scope=\"row\"><a href=\"../dom/b.html/\">");
+    try expectHas(dom, "<tr data-gate=\"partial\"><th scope=\"row\"><a href=\"../dom/a.html/\">");
+    // a.html: 2 of 3 passing, 1 failed.
+    try expectHas(dom, "<td class=\"n\" data-v=\"2\" data-of=\"3\"><b>2</b> / 3</td><td class=\"n\" data-v=\"1\"><span class=\"fail\">1</span></td>");
+    // dom/nodes/: 0 of 2 passing, one file, one blocking.
+    try expectHas(dom, "<td class=\"n\" data-v=\"0\" data-of=\"2\"><b>0</b> / 2</td><td class=\"n\" data-v=\"1\">1</td><td data-v=\"1\">");
+}
+
+test "site: paths.json lists every directory and test file, for the search" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    _ = try runFixture(gpa, &f, "out", fixture_worklist);
+    const paths = try readOut(gpa, &f, "out/paths.json");
+    defer gpa.free(paths);
+    try testing.expectEqualStrings(
+        \\["dom/","dom/a.html","dom/b.html","dom/nodes/","dom/nodes/c.any.js","url/","url/never.html","url/u.html"]
+        \\
+    , paths);
 }
 
 test "site: unchanged input writes byte-identical files; a new generation rewrites only index.html and the card" {
