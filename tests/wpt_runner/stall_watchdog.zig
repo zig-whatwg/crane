@@ -77,6 +77,54 @@ pub fn journalSize(path: []const u8) u64 {
     return stat.size;
 }
 
+/// The child's per-run heartbeat: `<journal>.heartbeat`. Caller owns the path.
+///
+/// A file is `globals x variants` runs, each under its own ceiling (the
+/// per-URL timeout wptrunner gives every test URL), and the journal gains a
+/// record only when the last run of a file ends. The child appends to the
+/// heartbeat as each run starts, so a watchdog that counts it sees a legal
+/// many-variant file make progress; a run that hangs still makes none.
+pub fn heartbeatPath(allocator: std.mem.Allocator, journal_path: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}.heartbeat", .{journal_path});
+}
+
+/// What the supervisor's watchdog watches: the journal's size plus the
+/// heartbeat's. Either growing is progress.
+pub fn watchedSize(journal_path: []const u8, heartbeat_path: ?[]const u8) u64 {
+    const beats = if (heartbeat_path) |p| journalSize(p) else 0;
+    return journalSize(journal_path) + beats;
+}
+
+/// The child's side of the heartbeat: one byte appended per run, straight to
+/// the descriptor (no buffer to flush, nothing to lose to a crash).
+///
+/// Best effort. A heartbeat that cannot be opened beats nothing: the run goes
+/// on, watched by its journal alone as before.
+pub const Heartbeat = struct {
+    fd: ?std.c.fd_t = null,
+
+    pub fn open(path: []const u8) Heartbeat {
+        if (!builtin.link_libc) return .{};
+        var buf: [std.fs.max_path_bytes]u8 = undefined;
+        if (path.len >= buf.len) return .{};
+        @memcpy(buf[0..path.len], path);
+        buf[path.len] = 0;
+        const flags: std.c.O = .{ .ACCMODE = .WRONLY, .CREAT = true, .APPEND = true };
+        const fd = std.c.open(@ptrCast(&buf), flags, @as(std.c.mode_t, 0o644));
+        if (fd < 0) return .{};
+        return .{ .fd = fd };
+    }
+
+    pub fn beat(self: *const Heartbeat) void {
+        if (self.fd) |fd| writeAllFd(fd, ".");
+    }
+
+    pub fn close(self: *Heartbeat) void {
+        if (self.fd) |fd| _ = std.c.close(fd);
+        self.fd = null;
+    }
+};
+
 /// How long a child may make no progress before it is killed, in milliseconds.
 ///
 /// The longest legal per-file budget is `config.Timeout.long` at 60s, plus the
@@ -92,8 +140,13 @@ pub const default_stall_limit_ms: u64 = 150_000;
 /// outlive the pid it holds.
 pub const Watchdog = struct {
     journal_path: []const u8,
+    /// The child's per-run heartbeat (`heartbeatPath`), counted with the
+    /// journal; null watches the journal alone.
+    heartbeat_path: ?[]const u8 = null,
     child_id: std.posix.pid_t,
     stall_limit_ms: u64,
+    /// What a stall does. SIGKILL the child; the tests replace it.
+    on_stall: *const fn (*Watchdog) void = killChild,
     /// Set by the owner once the child has been reaped. The thread checks it
     /// every poll, so the window in which it could signal a pid the kernel has
     /// already recycled is one poll interval - and it only signals at all
@@ -107,7 +160,8 @@ pub const Watchdog = struct {
 
     /// How often to stat the journal. Small enough that `stop` returns
     /// promptly, large enough that the stat is free next to the test run.
-    const poll_ms: u64 = 1_000;
+    /// The tests shorten it.
+    poll_ms: u64 = 1_000,
 
     pub fn start(self: *Watchdog) !void {
         if (self.stall_limit_ms == 0) return;
@@ -130,23 +184,28 @@ pub const Watchdog = struct {
 
     fn loop(self: *Watchdog) void {
         var progress: Progress = .{
-            .size = journalSize(self.journal_path),
+            .size = watchedSize(self.journal_path, self.heartbeat_path),
             .at_ms = clock.monotonicMillis(),
         };
 
         while (!self.done.load(.acquire)) {
-            clock.sleep(poll_ms * std.time.ns_per_ms);
+            clock.sleep(self.poll_ms * std.time.ns_per_ms);
             if (self.done.load(.acquire)) return;
 
-            progress = observe(progress, journalSize(self.journal_path), clock.monotonicMillis());
+            progress = observe(progress, watchedSize(self.journal_path, self.heartbeat_path), clock.monotonicMillis());
             if (!stalled(progress, clock.monotonicMillis(), self.stall_limit_ms)) continue;
 
             // Order matters: claim the kill before making it, so the owner
             // never reaps a killed child and reads `fired` as false.
             self.fired.store(true, .release);
-            std.posix.kill(self.child_id, std.posix.SIG.KILL) catch {};
+            self.on_stall(self);
             return;
         }
+    }
+
+    /// The default stall action.
+    pub fn killChild(self: *Watchdog) void {
+        std.posix.kill(self.child_id, std.posix.SIG.KILL) catch {};
     }
 };
 
@@ -444,4 +503,135 @@ test "a label longer than the slot is truncated, not overflowed" {
     try std.testing.expectEqual(@as(usize, 3), w.currentIndex());
     try std.testing.expectEqual(w.label_buf.len, w.currentLabel().len);
     try std.testing.expectEqualStrings(long[0..w.label_buf.len], w.currentLabel());
+}
+
+// ----------------------------------------------------------------------------
+// The per-run heartbeat
+// ----------------------------------------------------------------------------
+
+test "the heartbeat lives beside the journal" {
+    const allocator = std.testing.allocator;
+    const p = try heartbeatPath(allocator, "out/chunks/aaa/journal.shard0.jsonl");
+    defer allocator.free(p);
+    // Not *.jsonl: the sweep folds journal.shard*.jsonl into its journal, and
+    // the progress page reads *.jsonl.
+    try std.testing.expectEqualStrings("out/chunks/aaa/journal.shard0.jsonl.heartbeat", p);
+}
+
+test "a run that starts between journal records is progress" {
+    // A file is `globals x variants` runs, each with its own ceiling - the
+    // per-URL timeout wptrunner gives every test URL. Four 60 s variants are a
+    // legal 240 s with no journal record until the last ends, and the
+    // supervisor killed such files at 150 s and lost every result in them
+    // (15 of the full corpus's 19 stall kills, 2026-10-01). The child beats
+    // once per run; the watchdog counts the beats with the journal.
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(dir_path);
+    const journal = try std.fs.path.join(allocator, &.{ dir_path, "journal.jsonl" });
+    defer allocator.free(journal);
+    const beat_path = try heartbeatPath(allocator, journal);
+    defer allocator.free(beat_path);
+
+    try std.testing.expectEqual(@as(u64, 0), watchedSize(journal, beat_path));
+
+    var beat = Heartbeat.open(beat_path);
+    defer beat.close();
+    beat.beat();
+    const after_one = watchedSize(journal, beat_path);
+    try std.testing.expect(after_one > 0);
+    beat.beat();
+    try std.testing.expect(watchedSize(journal, beat_path) > after_one);
+
+    // And the clock restarts on it, as on a journal record.
+    const before: Progress = .{ .size = after_one, .at_ms = 1_000 };
+    const now = observe(before, watchedSize(journal, beat_path), 140_000);
+    try std.testing.expectEqual(@as(i64, 140_000), now.at_ms);
+}
+
+test "a heartbeat that cannot be opened beats nothing and fails nothing" {
+    // The watchdog is a backstop: a missing directory must not stop a run.
+    var beat = Heartbeat.open("tmp/debug/no-such-dir-9f8e7d/journal.jsonl.heartbeat");
+    defer beat.close();
+    beat.beat();
+    try std.testing.expect(beat.fd == null);
+}
+
+/// What a test's supervisor-watchdog action saw.
+const SeenKill = struct {
+    var calls: std.atomic.Value(u32) = .init(0);
+    fn action(_: *Watchdog) void {
+        _ = calls.fetchAdd(1, .release);
+    }
+};
+
+test "a four-variant file whose runs each fit their ceiling is not killed; a stalled run is" {
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(dir_path);
+    const journal = try std.fs.path.join(allocator, &.{ dir_path, "journal.shard0.jsonl" });
+    defer allocator.free(journal);
+    const beat_path = try heartbeatPath(allocator, journal);
+    defer allocator.free(beat_path);
+
+    // Scaled down: a 250 ms limit stands for 150 s, a 100 ms run for a 60 s
+    // variant. Four runs are 400 ms with no journal record - past the limit
+    // as a whole, inside it run by run (with room for a loaded machine's
+    // late wake-ups).
+    SeenKill.calls.store(0, .release);
+    var w: Watchdog = .{
+        .journal_path = journal,
+        .heartbeat_path = beat_path,
+        .child_id = 0,
+        .stall_limit_ms = 250,
+        .poll_ms = 5,
+        .on_stall = SeenKill.action,
+    };
+    try w.start();
+    var beat = Heartbeat.open(beat_path);
+    defer beat.close();
+    try std.testing.expect(beat.fd != null);
+    var run: usize = 0;
+    while (run < 4) : (run += 1) {
+        beat.beat();
+        clock.sleep(100 * std.time.ns_per_ms);
+    }
+    try std.testing.expectEqual(@as(u32, 0), SeenKill.calls.load(.acquire));
+    try std.testing.expect(!w.killedChild());
+
+    // The fifth run hangs: no beat, no record. The limit still ends it.
+    clock.sleep(1_000 * std.time.ns_per_ms);
+    w.stop();
+    try std.testing.expectEqual(@as(u32, 1), SeenKill.calls.load(.acquire));
+    try std.testing.expect(w.killedChild());
+}
+
+test "without a heartbeat the same four runs are killed (the defect this fixes)" {
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
+    defer allocator.free(dir_path);
+    const journal = try std.fs.path.join(allocator, &.{ dir_path, "journal.shard0.jsonl" });
+    defer allocator.free(journal);
+
+    SeenKill.calls.store(0, .release);
+    var w: Watchdog = .{
+        .journal_path = journal,
+        .child_id = 0,
+        .stall_limit_ms = 250,
+        .poll_ms = 5,
+        .on_stall = SeenKill.action,
+    };
+    try w.start();
+    clock.sleep(400 * std.time.ns_per_ms);
+    w.stop();
+    try std.testing.expectEqual(@as(u32, 1), SeenKill.calls.load(.acquire));
 }

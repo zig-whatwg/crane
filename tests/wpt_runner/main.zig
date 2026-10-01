@@ -48,6 +48,8 @@
 //! - `--from-file=path` - Run the paths in this worklist instead of discovering
 //! - `--start-index=N` - Begin at this worklist index
 //! - `--journal=path` - Append a JSONL record per completed test file
+//! - `--heartbeat=path` - Append a byte as each run starts; the supervisor's
+//!   stall watchdog counts it with the journal (stall_watchdog.Heartbeat)
 
 const std = @import("std");
 const config = @import("config.zig");
@@ -692,6 +694,13 @@ pub fn executeTests(
         null;
     defer if (run_journal) |*j| j.deinit();
 
+    // A supervised child beats once per run (stall_watchdog.Heartbeat) into the
+    // file its supervisor names: a file is `globals x variants` runs, each
+    // under its own ceiling, and the supervisor's watchdog counts the beats
+    // with the journal, so a legal many-variant file is not taken for a hang.
+    var heartbeat: stall_watchdog.Heartbeat = if (options.heartbeat_path) |p| stall_watchdog.Heartbeat.open(p) else .{};
+    defer heartbeat.close();
+
     // Beside the journal, each finished file's results as JSON lines
     // (result_reporter.ResultStream): the report below is written only when
     // this process finishes, so a crash or a stall kill would lose every
@@ -777,6 +786,11 @@ pub fn executeTests(
             // in the same unit as the scoreboard's denominator. A file with no
             // variants iterates exactly once, over a single empty string.
             for (parsed.metadata.variantsOrDefault()) |variant| {
+                // Each run is progress, for both deadlines: the supervisor's
+                // (the heartbeat) and this process's own (`deadline`).
+                heartbeat.beat();
+                deadline.mark(tally.index, test_file.path);
+
                 // How this run is named in the results. Owned rather than
                 // borrowed: a run told apart by both axes at once has no static
                 // string to point at.
@@ -1646,6 +1660,13 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
     const options = shard.options;
     var attempt: usize = 0;
 
+    // The child's per-run heartbeat, which the watchdog counts with the
+    // journal. Started empty, removed with the shard.
+    const heartbeat_path = try stall_watchdog.heartbeatPath(allocator, shard.journal_path);
+    defer allocator.free(heartbeat_path);
+    host.cwd().deleteFile(shard.io, heartbeat_path) catch {};
+    defer host.cwd().deleteFile(shard.io, heartbeat_path) catch {};
+
     while (true) {
         // Each restart consumes exactly one worklist entry, so this can only
         // spin as many times as there are tests. The bound is a backstop
@@ -1672,10 +1693,12 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         defer allocator.free(root_arg);
         const out_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{options.output_dir});
         defer allocator.free(out_arg);
+        const beat_arg = try std.fmt.allocPrint(allocator, "--heartbeat={s}", .{heartbeat_path});
+        defer allocator.free(beat_arg);
 
         var argv: std.ArrayList([]const u8) = .empty;
         defer argv.deinit(allocator);
-        try argv.appendSlice(allocator, &.{ shard.self_exe, from_arg, start_arg, journal_arg, root_arg, out_arg });
+        try argv.appendSlice(allocator, &.{ shard.self_exe, from_arg, start_arg, journal_arg, root_arg, out_arg, beat_arg });
         if (!options.verbose) try argv.append(allocator, "--quiet");
 
         print("{s}running tests {d}..{d}\n", .{ shard.label orelse "--> ", next, total });
@@ -1697,6 +1720,7 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         // is the only place left that can end it. See stall_watchdog.zig.
         var watchdog: stall_watchdog.Watchdog = .{
             .journal_path = shard.journal_path,
+            .heartbeat_path = heartbeat_path,
             // A spawned child always has an id; a null one means there is
             // nothing to watch, and a zero pid would name our own group.
             .child_id = child.id orelse 0,

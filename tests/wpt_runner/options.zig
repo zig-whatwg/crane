@@ -72,6 +72,10 @@ pub const Options = struct {
     /// scripts the parser runs, and `fetch()` is synchronous, so a polling page
     /// can hold the process indefinitely. See stall_watchdog.zig.
     stall_limit_ms: u64 = stall_watchdog.default_stall_limit_ms,
+    /// Append one byte here as each run starts (`stall_watchdog.Heartbeat`).
+    /// The supervisor passes it to its children and counts it with their
+    /// journal, so a file of many runs, each inside its ceiling, is progress.
+    heartbeat_path: ?[]const u8 = null,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -295,6 +299,8 @@ pub fn parseArgsDiagnosed(allocator: std.mem.Allocator, args: []const []const u8
             const value = arg["--stall-limit-ms=".len..];
             options.stall_limit_ms = std.fmt.parseInt(u64, value, 10) catch
                 stall_watchdog.default_stall_limit_ms;
+        } else if (std.mem.startsWith(u8, arg, "--heartbeat=")) {
+            options.heartbeat_path = arg["--heartbeat=".len..];
         } else if (std.mem.startsWith(u8, arg, "-")) {
             diag.unknown_option = arg;
             return error.UnknownOption;
@@ -349,6 +355,17 @@ test "parseArgs: --verbose, which zig build wpt passes, is an option" {
     var options = try parseArgs(testing.allocator, &.{ "--quiet", "--verbose" });
     defer options.deinit();
     try testing.expect(options.verbose);
+}
+
+test "parseArgs: --heartbeat, which the supervisor gives its children" {
+    const testing = std.testing;
+    var options = try parseArgs(testing.allocator, &.{ "--from-file=w.txt", "--heartbeat=out/journal.shard0.jsonl.heartbeat" });
+    defer options.deinit();
+    try testing.expectEqualStrings("out/journal.shard0.jsonl.heartbeat", options.heartbeat_path.?);
+
+    var plain = try parseArgs(testing.allocator, &.{"--from-file=w.txt"});
+    defer plain.deinit();
+    try testing.expect(plain.heartbeat_path == null);
 }
 
 test "parseArgs collects directory filters and scalar options" {
