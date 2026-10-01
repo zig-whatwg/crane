@@ -26,7 +26,7 @@
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>crashes3-e39d31983</code>, <span class="nowrap">1 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/e39d31983"><code>e39d31983</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-815bc4793</code>, <span class="nowrap">1 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/815bc4793"><code>815bc4793</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/custom-elements/registries/Document-createElementNS.html"><code>custom-<wbr>elements/<wbr>registries/<wbr>Document-<wbr>createElementNS.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -43,22 +43,53 @@
 <ol class="toc-list">
 <li class="toc-front"><a href="../../../"><span class="secno"></span><span class="toc-name">Subtest totals</span></a></li>
 <li class="toc-front"><a href="../../../#status"><span class="secno"></span><span class="toc-name">Status of this document</span></a></li>
-<li class="toc-suite"><a href="../../../console/"><span class="secno">1</span><span class="toc-name">console/</span><span class="toc-count" title="11 test files">11</span></a></li>
-<li class="toc-suite"><a href="../../../cookiestore/"><span class="secno">2</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
-<li class="toc-suite"><a href="../../../custom-elements/" aria-current="page"><span class="secno">3</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
-<li class="toc-suite"><a href="../../../dom/"><span class="secno">4</span><span class="toc-name">dom/</span><span class="toc-count" title="481 test files">481</span></a></li>
-<li class="toc-suite"><a href="../../../encoding/"><span class="secno">5</span><span class="toc-name">encoding/</span><span class="toc-count" title="152 test files">152</span></a></li>
-<li class="toc-suite"><a href="../../../fetch/"><span class="secno">6</span><span class="toc-name">fetch/</span><span class="toc-count" title="185 test files">185</span></a></li>
-<li class="toc-suite"><a href="../../../html/"><span class="secno">7</span><span class="toc-name">html/</span><span class="toc-count" title="2,507 test files">2,507</span></a></li>
-<li class="toc-suite"><a href="../../../mimesniff/"><span class="secno">8</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
-<li class="toc-suite"><a href="../../../navigation-api/"><span class="secno">9</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="439 test files">439</span></a></li>
-<li class="toc-suite"><a href="../../../streams/"><span class="secno">10</span><span class="toc-name">streams/</span><span class="toc-count" title="84 test files">84</span></a></li>
-<li class="toc-suite"><a href="../../../url/"><span class="secno">11</span><span class="toc-name">url/</span><span class="toc-count" title="32 test files">32</span></a></li>
-<li class="toc-suite"><a href="../../../urlpattern/"><span class="secno">12</span><span class="toc-name">urlpattern/</span><span class="toc-count" title="6 test files">6</span></a></li>
-<li class="toc-suite"><a href="../../../webidl/"><span class="secno">13</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
-<li class="toc-suite"><a href="../../../websockets/"><span class="secno">14</span><span class="toc-name">websockets/</span><span class="toc-count" title="204 test files">204</span></a></li>
-<li class="toc-suite"><a href="../../../xhr/"><span class="secno">15</span><span class="toc-name">xhr/</span><span class="toc-count" title="327 test files">327</span></a></li>
-<li class="toc-back"><a href="../../../#history"><span class="secno">16</span><span class="toc-name">Revision history</span></a></li>
+<li class="toc-suite"><a href="../../../FileAPI/"><span class="secno">1</span><span class="toc-name">FileAPI/</span><span class="toc-count" title="73 test files">73</span></a></li>
+<li class="toc-suite"><a href="../../../IndexedDB/"><span class="secno">2</span><span class="toc-name">IndexedDB/</span><span class="toc-count" title="229 test files">229</span></a></li>
+<li class="toc-suite"><a href="../../../WebCryptoAPI/"><span class="secno">3</span><span class="toc-name">WebCryptoAPI/</span><span class="toc-count" title="78 test files">78</span></a></li>
+<li class="toc-suite"><a href="../../../beacon/"><span class="secno">4</span><span class="toc-name">beacon/</span><span class="toc-count" title="16 test files">16</span></a></li>
+<li class="toc-suite"><a href="../../../compression/"><span class="secno">5</span><span class="toc-name">compression/</span><span class="toc-count" title="19 test files">19</span></a></li>
+<li class="toc-suite"><a href="../../../console/"><span class="secno">6</span><span class="toc-name">console/</span><span class="toc-count" title="11 test files">11</span></a></li>
+<li class="toc-suite"><a href="../../../content-security-policy/"><span class="secno">7</span><span class="toc-name">content-security-policy/</span><span class="toc-count" title="854 test files">854</span></a></li>
+<li class="toc-suite"><a href="../../../cookies/"><span class="secno">8</span><span class="toc-name">cookies/</span><span class="toc-count" title="76 test files">76</span></a></li>
+<li class="toc-suite"><a href="../../../cookiestore/"><span class="secno">9</span><span class="toc-name">cookiestore/</span><span class="toc-count" title="55 test files">55</span></a></li>
+<li class="toc-suite"><a href="../../../cors/"><span class="secno">10</span><span class="toc-name">cors/</span><span class="toc-count" title="24 test files">24</span></a></li>
+<li class="toc-suite"><a href="../../../custom-elements/" aria-current="page"><span class="secno">11</span><span class="toc-name">custom-elements/</span><span class="toc-count" title="180 test files">180</span></a></li>
+<li class="toc-suite"><a href="../../../dom/"><span class="secno">12</span><span class="toc-name">dom/</span><span class="toc-count" title="481 test files">481</span></a></li>
+<li class="toc-suite"><a href="../../../domparsing/"><span class="secno">13</span><span class="toc-name">domparsing/</span><span class="toc-count" title="38 test files">38</span></a></li>
+<li class="toc-suite"><a href="../../../domxpath/"><span class="secno">14</span><span class="toc-name">domxpath/</span><span class="toc-count" title="28 test files">28</span></a></li>
+<li class="toc-suite"><a href="../../../encoding/"><span class="secno">15</span><span class="toc-name">encoding/</span><span class="toc-count" title="152 test files">152</span></a></li>
+<li class="toc-suite"><a href="../../../eventsource/"><span class="secno">16</span><span class="toc-name">eventsource/</span><span class="toc-count" title="63 test files">63</span></a></li>
+<li class="toc-suite"><a href="../../../fetch/"><span class="secno">17</span><span class="toc-name">fetch/</span><span class="toc-count" title="185 test files">185</span></a></li>
+<li class="toc-suite"><a href="../../../hr-time/"><span class="secno">18</span><span class="toc-name">hr-time/</span><span class="toc-count" title="13 test files">13</span></a></li>
+<li class="toc-suite"><a href="../../../html/"><span class="secno">19</span><span class="toc-name">html/</span><span class="toc-count" title="2,507 test files">2,507</span></a></li>
+<li class="toc-suite"><a href="../../../mimesniff/"><span class="secno">20</span><span class="toc-name">mimesniff/</span><span class="toc-count" title="4 test files">4</span></a></li>
+<li class="toc-suite"><a href="../../../mixed-content/"><span class="secno">21</span><span class="toc-name">mixed-content/</span><span class="toc-count" title="384 test files">384</span></a></li>
+<li class="toc-suite"><a href="../../../navigation-api/"><span class="secno">22</span><span class="toc-name">navigation-api/</span><span class="toc-count" title="439 test files">439</span></a></li>
+<li class="toc-suite"><a href="../../../navigation-timing/"><span class="secno">23</span><span class="toc-name">navigation-timing/</span><span class="toc-count" title="58 test files">58</span></a></li>
+<li class="toc-suite"><a href="../../../performance-timeline/"><span class="secno">24</span><span class="toc-name">performance-timeline/</span><span class="toc-count" title="30 test files">30</span></a></li>
+<li class="toc-suite"><a href="../../../permissions/"><span class="secno">25</span><span class="toc-name">permissions/</span><span class="toc-count" title="14 test files">14</span></a></li>
+<li class="toc-suite"><a href="../../../referrer-policy/"><span class="secno">26</span><span class="toc-name">referrer-policy/</span><span class="toc-count" title="1,387 test files">1,387</span></a></li>
+<li class="toc-suite"><a href="../../../resource-timing/"><span class="secno">27</span><span class="toc-name">resource-timing/</span><span class="toc-count" title="117 test files">117</span></a></li>
+<li class="toc-suite"><a href="../../../sanitizer-api/"><span class="secno">28</span><span class="toc-name">sanitizer-api/</span><span class="toc-count" title="23 test files">23</span></a></li>
+<li class="toc-suite"><a href="../../../selection/"><span class="secno">29</span><span class="toc-name">selection/</span><span class="toc-count" title="85 test files">85</span></a></li>
+<li class="toc-suite"><a href="../../../service-workers/"><span class="secno">30</span><span class="toc-name">service-workers/</span><span class="toc-count" title="283 test files">283</span></a></li>
+<li class="toc-suite"><a href="../../../shadow-dom/"><span class="secno">31</span><span class="toc-name">shadow-dom/</span><span class="toc-count" title="140 test files">140</span></a></li>
+<li class="toc-suite"><a href="../../../streams/"><span class="secno">32</span><span class="toc-name">streams/</span><span class="toc-count" title="84 test files">84</span></a></li>
+<li class="toc-suite"><a href="../../../subresource-integrity/"><span class="secno">33</span><span class="toc-name">subresource-integrity/</span><span class="toc-count" title="5 test files">5</span></a></li>
+<li class="toc-suite"><a href="../../../trusted-types/"><span class="secno">34</span><span class="toc-name">trusted-types/</span><span class="toc-count" title="218 test files">218</span></a></li>
+<li class="toc-suite"><a href="../../../upgrade-insecure-requests/"><span class="secno">35</span><span class="toc-name">upgrade-insecure-requests/</span><span class="toc-count" title="197 test files">197</span></a></li>
+<li class="toc-suite"><a href="../../../url/"><span class="secno">36</span><span class="toc-name">url/</span><span class="toc-count" title="32 test files">32</span></a></li>
+<li class="toc-suite"><a href="../../../urlpattern/"><span class="secno">37</span><span class="toc-name">urlpattern/</span><span class="toc-count" title="6 test files">6</span></a></li>
+<li class="toc-suite"><a href="../../../user-timing/"><span class="secno">38</span><span class="toc-name">user-timing/</span><span class="toc-count" title="38 test files">38</span></a></li>
+<li class="toc-suite"><a href="../../../wasm/"><span class="secno">39</span><span class="toc-name">wasm/</span><span class="toc-count" title="338 test files">338</span></a></li>
+<li class="toc-suite"><a href="../../../web-locks/"><span class="secno">40</span><span class="toc-name">web-locks/</span><span class="toc-count" title="23 test files">23</span></a></li>
+<li class="toc-suite"><a href="../../../webidl/"><span class="secno">41</span><span class="toc-name">webidl/</span><span class="toc-count" title="45 test files">45</span></a></li>
+<li class="toc-suite"><a href="../../../webmessaging/"><span class="secno">42</span><span class="toc-name">webmessaging/</span><span class="toc-count" title="130 test files">130</span></a></li>
+<li class="toc-suite"><a href="../../../websockets/"><span class="secno">43</span><span class="toc-name">websockets/</span><span class="toc-count" title="204 test files">204</span></a></li>
+<li class="toc-suite"><a href="../../../webstorage/"><span class="secno">44</span><span class="toc-name">webstorage/</span><span class="toc-count" title="54 test files">54</span></a></li>
+<li class="toc-suite"><a href="../../../workers/"><span class="secno">45</span><span class="toc-name">workers/</span><span class="toc-count" title="288 test files">288</span></a></li>
+<li class="toc-suite"><a href="../../../xhr/"><span class="secno">46</span><span class="toc-name">xhr/</span><span class="toc-count" title="327 test files">327</span></a></li>
+<li class="toc-back"><a href="../../../#history"><span class="secno">47</span><span class="toc-name">Revision history</span></a></li>
 </ol>
 </nav>
 </div>
