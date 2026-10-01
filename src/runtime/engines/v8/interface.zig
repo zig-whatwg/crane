@@ -2827,6 +2827,18 @@ pub fn V8Interface(comptime Interface: type) type {
                             if (result != .instance) v8.v8_Global_Dispose(v8_value);
                         } else if (comptime PayloadType == ?runtime.JSValue) {
                             if (result == null or result.? != .instance) v8.v8_Global_Dispose(v8_value);
+                        } else if (comptime @typeInfo(PayloadType) == .optional) {
+                            // Any other optional: a null result's value is made
+                            // here, fresh - `v8.v8_Null(isolate_inner)` in the
+                            // instance and callback branches, `toV8Null` in
+                            // conv.toV8Value's optional branch, and the
+                            // wrapper's v8_Null news a Global per call - so it
+                            // is ours. A non-null one stays: it may be a
+                            // wrapper the cache owns or a stored callback. Kept,
+                            // every `event.target` read before dispatch, every
+                            // `messageEvent.source` of a WebSocket message,
+                            // leaked a Null Global.
+                            if (result == null) v8.v8_Global_Dispose(v8_value);
                         }
                     }
                 }

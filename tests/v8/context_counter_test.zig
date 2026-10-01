@@ -218,3 +218,37 @@ test "values(options) on a ReadableStream releases the context and the handles i
     ));
     try expectNothingLeft("stream.values({ preventCancel: true })", try leftBy("try { lockedStream.values({ preventCancel: true }) } catch (e) {}"));
 }
+
+// ---------------------------------------------------------------------------
+// A getter's null result is the binding's; a wrapper it returns is not.
+
+test "a getter that answers null releases the null it made" {
+    try allInterfaces();
+    // Event.target before dispatch (?*runtime.Instance) and
+    // MessageEvent.source (?MessageEventSource, a union of wrappers): each
+    // null is a fresh v8_Null the binding hands to setReturnValue.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.undispatched = new Event('x');
+        \\globalThis.sourceless = new MessageEvent('m');
+        \\undispatched.target === null && sourceless.source === null ? 1 : 0
+    ));
+    try expectNothingLeft("new Event('x').target", try leftBy("undispatched.target;"));
+    try expectNothingLeft("new MessageEvent('m').source", try leftBy("sourceless.source;"));
+}
+
+test "a getter's wrapper result stays the wrapper cache's" {
+    try allInterfaces();
+    // A dispatched event keeps its target: the getter returns the target's
+    // cached wrapper, which the binding must never release - the next read
+    // would then wrap the target anew, without the property set on it.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.kept = new EventTarget();
+        \\kept.marker = 42;
+        \\globalThis.dispatched = new Event('ping');
+        \\kept.dispatchEvent(dispatched);
+        \\dispatched.target === kept ? 1 : 0
+    ));
+    try expectNothingLeft("dispatched.target", try leftBy("if (dispatched.target !== kept) throw new Error('not the same wrapper');"));
+    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    try std.testing.expectEqual(@as(i32, 42), try scriptInt("dispatched.target === kept ? dispatched.target.marker : -1"));
+}
