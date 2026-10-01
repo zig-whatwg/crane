@@ -1046,6 +1046,11 @@ const PendingFetch = struct {
     complete: bool = false,
     fetch_holds: bool = true,
     task_queued: bool = false,
+    /// A task of this request is on the stack (`run`, `timedOut`): it frees
+    /// this when it returns. Script it runs can end the request - abort(),
+    /// open(), or removing the frame whose document owns it
+    /// (`abortFetchesIn`) - and `cancel` must not free it under the task.
+    running: bool = false,
     /// When the fetch began, which is what `timeout` counts from.
     started_ms: i64,
     /// The XMLHttpRequest's wrapper, held strongly while this exists. XHR
@@ -1134,7 +1139,9 @@ const PendingFetch = struct {
         // A task runs from the event loop, not from script: it enters the
         // realm itself (a worker's, whose agent is not the page's) and ends
         // as a task there does.
+        self.running = true;
         engine.runTaskInRealm(self.instance.ctx, taskSteps, self) catch {};
+        self.running = false;
         self.maybeFree();
     }
 
@@ -1270,6 +1277,8 @@ const PendingFetch = struct {
         }
         defer self.maybeFree();
         // The timer's task: in the XHR's realm, ended as a task there is.
+        self.running = true;
+        defer self.running = false;
         engine.runTaskInRealm(instance.ctx, timeoutSteps, instance) catch {};
     }
 
@@ -1309,7 +1318,7 @@ const PendingFetch = struct {
     /// Free once nothing holds this: the fetch has let go, no task is
     /// queued, and there is nothing more to read.
     fn maybeFree(self: *PendingFetch) void {
-        if (self.fetch_holds or self.task_queued) return;
+        if (self.fetch_holds or self.task_queued or self.running) return;
         if (!self.cancelled and !self.complete) return;
         for (live_pending.items, 0..) |p, i| {
             if (p != self) continue;
