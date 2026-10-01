@@ -7914,7 +7914,7 @@ pub fn V8Interface(comptime Interface: type) type {
 ///
 /// `FunctionCallbackInfo.get` allocates a Global per call, and the caller owns
 /// it: `at` keeps the one argument it fetched until `release`.
-const OverloadArgs = struct {
+pub const OverloadArgs = struct {
     info: *const v8.FunctionCallbackInfo,
     isolate: *v8.Isolate,
     held: ?*v8.Value = null,
@@ -7936,7 +7936,7 @@ const OverloadArgs = struct {
 /// One JavaScript argument, answering the questions of the overload
 /// resolution algorithm's step 12. `value` is null for an argument that was
 /// not passed, which reads as undefined.
-const OverloadArg = struct {
+pub const OverloadArg = struct {
     value: ?*v8.Value,
     isolate: *v8.Isolate,
 
