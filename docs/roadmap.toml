@@ -428,11 +428,13 @@ state, see each other's storage events and BroadcastChannel messages, and keep t
 own sessionStorage; the host API creates, lists, activates and closes tabs and \
 reports tabs script opens or closes; a ratchet counts process-global and \
 thread-local mutable state and only goes down."""
-progress = []
+progress = [
+  "6a2f249a9 - design: instance/tab model, 345-variable inventory, host API, BiDi map, ratchet, batches B0-B9 (instances lane); docs/instances.md",
+]
 
   [[infra.items]]
   name = "Design: every process-global and threadlocal classified (instance, tab, realm, truly process-wide); the instance and tab objects; the host API; the migration order"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "The storage shed, cookie jar, HTTP cache and blob URL store belong to the instance"
