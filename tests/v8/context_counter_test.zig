@@ -240,11 +240,33 @@ test "the indexed property definer releases the current context" {
         \\Object.defineProperty(definedSelect, '0', { value: definedOption, configurable: true, enumerable: true, writable: true });
         \\definedSelect.length
     ));
-    // Context Globals only: the definer's other handles (the descriptor's
-    // value, v8_PropertyDescriptor_GetValue, among them) are outside this
-    // case, and still leak.
     try expectNoContextLeft("Object.defineProperty(select, '0', ...)", try leftBy("Object.defineProperty(definedSelect, '0', { value: definedOption, configurable: true, enumerable: true, writable: true });"));
     try expectNoContextLeft("Object.defineProperty(nodeList, '0', ...)", try leftBy("try { Object.defineProperty(children, '0', { value: 1 }) } catch (e) {}"));
+}
+
+test "the indexed property definer releases every handle it takes" {
+    try allInterfaces();
+    // Besides the current context: the descriptor's value
+    // (v8_PropertyDescriptor_GetValue hands out a Global the caller owns) and
+    // whatever else one Object.defineProperty on a select takes - nine
+    // handles a call, 288 bytes, before this.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.allDefinedDoc = new Document().implementation.createHTMLDocument('');
+        \\globalThis.allDefinedSelect = allDefinedDoc.createElement('select');
+        \\globalThis.allDefinedOption = allDefinedDoc.createElement('option');
+        \\Object.defineProperty(allDefinedSelect, '0', { value: allDefinedOption, configurable: true, enumerable: true, writable: true });
+        \\globalThis.readOnlyCollection = allDefinedDoc.getElementsByTagName('select');
+        \\allDefinedDoc.body.appendChild(allDefinedSelect);
+        \\(() => { 'use strict'; try { readOnlyCollection[0] = 1; return 0 } catch (e) { return e instanceof TypeError ? allDefinedSelect.length : 2 } })()
+    ));
+    try expectNothingLeft("Object.defineProperty(select, '0', ...)", try leftBy("Object.defineProperty(allDefinedSelect, '0', { value: allDefinedOption, configurable: true, enumerable: true, writable: true });"));
+    try expectNothingLeft("Object.defineProperty(nodeList, '0', ...)", try leftBy("try { Object.defineProperty(children, '0', { value: 1 }) } catch (e) {}"));
+    // An HTMLCollection has no indexed setter: a strict-mode assignment to
+    // an index reaches the definer, which throws a TypeError whose message
+    // and error it made. (Object.defineProperty on it does not throw today,
+    // where WebIDL's [[DefineOwnProperty]] returns false - a conformance
+    // gap, queued.)
+    try expectNothingLeft("'use strict'; htmlCollection[0] = 1", try leftBy("(() => { 'use strict'; try { readOnlyCollection[0] = 1 } catch (e) {} })();"));
 }
 
 test "the named property setter releases the current context" {
@@ -374,6 +396,24 @@ test "a getter's kept string stays the object's: read twice, and 64 times, it is
     try expectNothingLeftAnywhere("messageEvent.data", try leftBy("if (textEvent.data !== 'kept text') throw new Error(textEvent.data);"));
     try expectNothingLeftAnywhere("popStateEvent.state", try leftBy("if (stateEvent.state !== 'kept state') throw new Error(stateEvent.state);"));
     try std.testing.expectEqual(@as(i32, 1), try scriptInt("textEvent.data === 'kept text' && stateEvent.state === 'kept state' ? 1 : 0"));
+}
+
+test "the indexed descriptor and query release what they make" {
+    try allInterfaces();
+    // V8 asks a legacy platform object for an index's descriptor
+    // (Object.getOwnPropertyDescriptor) and attributes (`in`); each answer
+    // is made for the call.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.describedDoc = new Document().implementation.createHTMLDocument('');
+        \\globalThis.describedSelect = describedDoc.createElement('select');
+        \\describedSelect.appendChild(describedDoc.createElement('option'));
+        \\globalThis.describedTokens = describedDoc.createElement('div').classList;
+        \\describedTokens.add('tok');
+        \\Object.getOwnPropertyDescriptor(describedSelect, 0).value === describedSelect[0] && (0 in describedTokens) ? 1 : 0
+    ));
+    try expectNothingLeft("Object.getOwnPropertyDescriptor(select, 0)", try leftBy("Object.getOwnPropertyDescriptor(describedSelect, 0);"));
+    try expectNothingLeftAnywhere("Object.getOwnPropertyDescriptor(classList, 0)", try leftBy("Object.getOwnPropertyDescriptor(describedTokens, 0);"));
+    try expectNothingLeft("0 in select", try leftBy("0 in describedSelect;"));
 }
 
 test "an indexed getter frees the string it returns" {

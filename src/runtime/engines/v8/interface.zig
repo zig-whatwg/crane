@@ -4954,6 +4954,9 @@ pub fn V8Interface(comptime Interface: type) type {
             const attributes: i32 = if (has_setter) 0 else 1; // 1 = ReadOnly
             const v8_attrs = v8.v8_Integer_New(isolate, attributes);
             info.setReturnValue(@ptrCast(v8_attrs));
+            // Made here, read into a Local by setReturnValue: ours (as the
+            // named query's is).
+            v8.v8_Global_Dispose(@ptrCast(v8_attrs));
             return .kYes;
         }
 
@@ -5015,7 +5018,15 @@ pub fn V8Interface(comptime Interface: type) type {
             const ActualReturnType = @typeInfo(ReturnType).error_union.payload;
             const type_info = @typeInfo(ActualReturnType);
 
+            // The descriptor and the value - unless it is a wrapper, the
+            // wrapper cache's - are made here and released once setReturnValue
+            // has read the descriptor into a Local. Built key by key and kept,
+            // the descriptor, its keys and its booleans were eight Globals per
+            // Object.getOwnPropertyDescriptor(collection, i) - and per
+            // Object.defineProperty on an indexed collection, which V8 asks
+            // for the current descriptor first.
             var v8_value: ?*v8.Value = null;
+            var value_owned = true;
             if (type_info == .optional) {
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
@@ -5028,8 +5039,10 @@ pub fn V8Interface(comptime Interface: type) type {
                             v8_context,
                         ) catch return .kNo;
                         v8_value = @ptrCast(wrapped);
+                        value_owned = false;
                     } else {
                         v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch return .kNo;
+                        value_owned = comptime getterValueIsOwned(ChildType);
                     }
                 } else {
                     // null value - use undefined
@@ -5037,9 +5050,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             } else {
                 v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch return .kNo;
+                value_owned = comptime getterValueIsOwned(ActualReturnType);
             }
 
             if (v8_value == null) return .kNo;
+            defer if (value_owned) v8.v8_Global_Dispose(v8_value.?);
 
             // Check if interface has an indexed setter (makes it writable)
             // Use same logic as indexedPropertyDefiner - prefer Meta.has_indexed_setter from codegen
@@ -5049,30 +5064,20 @@ pub fn V8Interface(comptime Interface: type) type {
             };
             const writable = has_setter;
 
-            // Create property descriptor object directly in Zig
-            // { value: v8_value, writable: bool, enumerable: true, configurable: true }
-            const desc = v8.v8_Object_NewInContext(v8_context) orelse return .kNo;
-
-            // Set the "value" property
-            const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return .kNo;
-            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(value_key), v8_value.?);
-
-            // Set the "writable" property
-            const writable_key = v8.v8_String_NewFromUtf8(isolate, "writable", 8) orelse return .kNo;
-            const writable_val = v8.v8_Boolean_New(isolate, writable);
-            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(writable_key), @ptrCast(writable_val));
-
-            // Set the "enumerable" property (always true for indexed properties)
-            const enumerable_key = v8.v8_String_NewFromUtf8(isolate, "enumerable", 10) orelse return .kNo;
-            const enumerable_val = v8.v8_Boolean_New(isolate, true);
-            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(enumerable_key), @ptrCast(enumerable_val));
-
-            // Set the "configurable" property (always true for WebIDL properties)
-            const configurable_key = v8.v8_String_NewFromUtf8(isolate, "configurable", 12) orelse return .kNo;
-            const configurable_val = v8.v8_Boolean_New(isolate, true);
-            _ = v8.v8_Object_Set(desc, v8_context, @ptrCast(configurable_key), @ptrCast(configurable_val));
+            // { value: v8_value, writable, enumerable: true, configurable: true },
+            // made in one call (as the named descriptor's is).
+            const desc = v8.v8_CreateDataPropertyDescriptor(
+                v8_context,
+                v8_value.?,
+                writable,
+                true, // enumerable: always, for indexed properties
+                true, // configurable: always, for WebIDL properties
+            ) orelse return .kNo;
 
             info.setReturnValue(@ptrCast(desc));
+            // The descriptor is made for this call, and setReturnValue reads
+            // it into a Local.
+            v8.v8_Global_Dispose(@ptrCast(desc));
             return .kYes;
         }
 
@@ -5263,9 +5268,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 // No indexed property setter - reject all define operations per WebIDL §3.9.3
                 // Return false from internal method = throw TypeError in Object.defineProperty
                 if (info.shouldThrowOnError()) {
+                    // The message and the error are made here, and thrown -
+                    // V8 keeps the exception it throws, not these handles.
                     const msg = "Cannot define property on read-only indexed collection";
                     const msg_str = v8.v8_String_NewFromUtf8(isolate, msg.ptr, @intCast(msg.len)) orelse return .kYes;
+                    defer v8.v8_String_Dispose(msg_str);
                     const exception = v8.v8_Exception_TypeError(msg_str) orelse return .kYes;
+                    defer v8.v8_Global_Dispose(exception);
                     v8.v8_Isolate_ThrowException(isolate, exception);
                 }
                 return .kYes;
@@ -5290,6 +5299,11 @@ pub fn V8Interface(comptime Interface: type) type {
             if (instance_ptr) |ptr| {
                 const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
                 if (v8.v8_PropertyDescriptor_GetValue(desc)) |value| {
+                    // A fresh Global the wrapper made for the descriptor's
+                    // value: ours. The setter's conversion reads it; nothing
+                    // keeps this handle (a value it keeps, it keeps through
+                    // its own).
+                    defer v8.v8_Global_Dispose(value);
                     // Call the setter (set_item or call_setter)
                     if (@hasDecl(Interface, "set_item")) {
                         // Get value type from set_item signature
