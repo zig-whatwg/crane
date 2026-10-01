@@ -413,6 +413,51 @@ progress = [
   name = "SharedWorker: a shared worker agent whose port is entangled with the creator's (workers/constructors/SharedWorker/ and data-url-shared wait on a reply that an unentangled port now drops, per spec)"
   status = "todo"
 
+[[infra]]
+id = "instances"
+title = "Isolated engine instances with tabs (0.1 scope)"
+why = """The user, 2026-10-01: each Crane instance is an isolated engine, and within it \
+the host creates tabs that share browser-wide state the way a commercial browser's \
+profile does - cookies, localStorage, IndexedDB, the Cache API, BroadcastChannel, \
+SharedWorker, Web Locks, service workers - while sessionStorage, session history and \
+timers stay per tab. Today the storage shed is a process global and 146 threadlocals \
+scope state to a thread, not to an instance or a tab."""
+done_when = """Two instances on two threads in one process share nothing (cookies, \
+localStorage, IndexedDB, blob URLs); two tabs of one instance share browser-wide \
+state, see each other's storage events and BroadcastChannel messages, and keep their \
+own sessionStorage; the host API creates, lists, activates and closes tabs and \
+reports tabs script opens or closes; a ratchet counts process-global and \
+thread-local mutable state and only goes down."""
+progress = []
+
+  [[infra.items]]
+  name = "Design: every process-global and threadlocal classified (instance, tab, realm, truly process-wide); the instance and tab objects; the host API; the migration order"
+  status = "doing"
+
+  [[infra.items]]
+  name = "The storage shed, cookie jar, HTTP cache and blob URL store belong to the instance"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Cross-tab registries (BroadcastChannel, SharedWorker, Web Locks, service worker registrations and clients, permissions) belong to the instance"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Tab state (session history, sessionStorage per top-level traversable, timers, animation frames, visibility and focus) belongs to the tab"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Host API (Zig and C ABI): instance create/destroy with profile options; tab create, list, activate, navigate, evaluate, close; events for tabs script opens and closes"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Isolation tests across instances and sharing tests across tabs; the process-global/threadlocal ratchet"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Optional persistent profile directory (in-memory by default)"
+  status = "todo"
+
 # ---------------------------------------------------------------------------
 # Prerequisites for parallel work
 # ---------------------------------------------------------------------------
