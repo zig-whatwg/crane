@@ -98,6 +98,41 @@ INCLUDE = [
     ('url/', 'URL'), ('urlpattern/', 'URLPattern'), ('encoding/', 'Encoding'),
     ('console/', 'Console'), ('mimesniff/', 'MIME Sniffing'), ('streams/', 'Streams'),
     ('webidl/', 'WebIDL'),
+
+    # --- Tier 1: core headless APIs real apps and agents use (the user, 2026-10-01). ---
+    ('shadow-dom/',    'DOM Standard shadow trees, slots, retargeting'),
+    ('IndexedDB/',     'IndexedDB'),
+    ('WebCryptoAPI/',  'Web Crypto (crypto.subtle, getRandomValues)'),
+    ('webstorage/',    'localStorage / sessionStorage and storage events'),
+    ('domxpath/',      'document.evaluate / XPath'),
+    ('domparsing/',    'DOMParser, XMLSerializer, innerHTML/outerHTML, insertAdjacentHTML'),
+    ('selection/',     'Selection API'),
+    ('cookies/',       'HTTP cookie semantics through libcurl'),
+    ('wasm/',          'WebAssembly JS and Web APIs'),
+    ('FileAPI/',       'Blob, File, FileReader, blob URLs'),
+    ('workers/',       'dedicated and shared workers'),
+
+    # --- Tier 2: security, performance timing, service workers (the user, 2026-10-01). ---
+    ('referrer-policy/',           'Referrer Policy'),
+    ('content-security-policy/',   'Content Security Policy'),
+    ('mixed-content/',             'Mixed Content'),
+    ('cors/',                      'CORS'),
+    ('subresource-integrity/',     'Subresource Integrity'),
+    ('trusted-types/',             'Trusted Types'),
+    ('sanitizer-api/',             'HTML Sanitizer API'),
+    ('upgrade-insecure-requests/', 'Upgrade Insecure Requests'),
+    ('service-workers/',           'Service Workers and the Cache API'),
+    ('user-timing/',               'User Timing'),
+    ('resource-timing/',           'Resource Timing'),
+    ('navigation-timing/',         'Navigation Timing'),
+    ('performance-timeline/',      'Performance Timeline'),
+    ('hr-time/',                   'High Resolution Time'),
+    ('beacon/',                    'Beacon'),
+    ('eventsource/',               'Server-Sent Events'),
+    ('webmessaging/',              'MessageChannel, BroadcastChannel, postMessage'),
+    ('web-locks/',                 'Web Locks'),
+    ('compression/',               'Compression Streams'),
+    ('permissions/',               'Permissions API'),
 ]
 
 # Substring or prefix -> why it is out. Applied before INCLUDE.
@@ -171,6 +206,18 @@ EXCLUDE = [
      'expects document.open() to add a history entry and fire pageshow, removed by whatwg/html#3946 - wpt#63099'),
     ('html/browsers/history/the-location-interface/location_replace_session_history.html',
      'only completes if an iframe document is restored from session history without reloading (optional bfcache; times out in Servo too) - wpt#63100'),
+
+    # Inside the tier 1 and tier 2 suites: what needs layout, a feature excluded
+    # elsewhere, or a human.
+    ('shadow-dom/focus/',            'focus traversal needs layout (as html/interaction/)'),
+    ('shadow-dom/focus-navigation/', 'focus navigation needs layout'),
+    ('selection/caret/',             'caret position needs layout'),
+    ('selection/bidi/',              'bidi selection needs layout'),
+    ('wasm/proposals/',              'WebAssembly proposals, not shipping'),
+    ('content-security-policy/webrtc/', 'WebRTC is out of scope'),
+    ('content-security-policy/xslt/',   'XSLT is out of scope (as dom/xslt/)'),
+    ('content-security-policy/plugin-types/', 'plugins do not exist'),
+    ('workers/non-automated/',       'requires a human'),
 
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
