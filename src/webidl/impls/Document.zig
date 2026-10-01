@@ -1703,6 +1703,21 @@ pub fn setDefaultView(instance: *runtime.Instance, window: *runtime.Instance) vo
     engine.traceChild(window, instance, .{ .name = "document" });
 }
 
+/// dom.document_browsing_context: this document was destroyed. HTML
+/// "destroy a document" step 8: "Set document's browsing context to null" -
+/// its defaultView answers null from now on, and its window no longer keeps
+/// it (the window's `document` edge is its successor's). Script that holds
+/// it still has a working node tree; once script drops it, the collector
+/// takes it - its wrapper no longer reads as the window's (a document with a
+/// default view is never freed by its wrapper), which the pending-activity
+/// hold and release below makes the wrapper cache read again.
+fn clearDefaultView(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    internal.default_view = null;
+    engine.keepPlatformObjectAlive(instance);
+    engine.releasePlatformObject(instance);
+}
+
 /// Getter for designMode
 /// HTML §6.5.1 - Returns "on" or "off" depending on design mode state
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-designmode
@@ -4613,7 +4628,7 @@ fn installScriptHooks() void {
         .add_prefetch_hint = &addPrefetchHintStep,
         .url = &recordedUrl,
     });
-    dom_document_browsing_context.install(.{ .set_window = &setDefaultView });
+    dom_document_browsing_context.install(.{ .set_window = &setDefaultView, .clear_window = &clearDefaultView });
     dom_document_modules.install(.{
         .allocator = &moduleAllocator,
         .get_module = &getModule,
