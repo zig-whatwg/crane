@@ -1060,8 +1060,8 @@ test "protocol: iterating a platform object from another realm leaves no Global<
 
     // The page lets go of the frame's object, the frame ends, then the page.
     try expectEval(page, "delete globalThis.fromFrame", "true");
-    protocol.destroyWindowRealm(frame);
-    protocol.destroyWindowRealm(page);
+    protocol.destroyWindowRealm(frame, .global_detached);
+    protocol.destroyWindowRealm(page, .global_detached);
     const contexts_after = liveContexts();
     if (contexts_after != baseline) std.debug.print("native contexts: {d} before, {d} after both realms ended\n", .{ baseline, contexts_after });
 
