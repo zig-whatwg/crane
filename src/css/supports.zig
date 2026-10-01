@@ -80,7 +80,9 @@ fn isDeclarationValue(value: []const u8) bool {
             .bad_string, .bad_url => return false,
             .semicolon => if (depth == 0) return false,
             .delim => if (depth == 0 and std.mem.eql(u8, t.value, "!")) return false,
-            .left_paren, .function, .left_bracket, .left_brace => {
+            // A function token's "(" is the next token (tokenizer.zig), so
+            // the function itself opens nothing.
+            .left_paren, .left_bracket, .left_brace => {
                 if (depth == closers.len) return false;
                 closers[depth] = closerOf(t.token_type);
                 depth += 1;
@@ -164,6 +166,8 @@ const Evaluator = struct {
                 return false;
             },
             .function => {
+                // The function token's "(" is the next token.
+                if (tok.next().token_type != .left_paren) return null;
                 const inner = block(tok) orelse return null;
                 if (tokenizer_mod.nameEql(open.value, "selector")) {
                     const check = self.selector_check orelse return false;
@@ -192,8 +196,8 @@ const Evaluator = struct {
     }
 };
 
-/// The text between an opening token (already consumed) and its matching
-/// `)`, consuming that too. Null if the block holds a bad string, a bad url
+/// The text between a `(` (already consumed) and its matching `)`,
+/// consuming that too. Null if the block holds a bad string, a bad url
 /// or an unmatched closer; EOF closes every open block, as CSS Syntax's
 /// "consume a simple block" does.
 fn block(tok: *Tokenizer) ?[]const u8 {
@@ -207,7 +211,7 @@ fn block(tok: *Tokenizer) ?[]const u8 {
         switch (t.token_type) {
             .eof => return tok.input[start..],
             .bad_string, .bad_url => return null,
-            .left_paren, .function, .left_bracket, .left_brace => {
+            .left_paren, .left_bracket, .left_brace => {
                 if (depth == closers.len) return null;
                 closers[depth] = closerOf(t.token_type);
                 depth += 1;
@@ -260,11 +264,15 @@ fn cond(text: []const u8) bool {
 }
 
 /// A stand-in for src/selector: `div`, `.a`, `a > b` parse; anything with
-/// `:unknown` or a comma does not.
+/// `:unknown`, a comma or a parenthesis does not - so a test fails if the
+/// function's own "(" reaches the check.
 fn testSelectorCheck(allocator: std.mem.Allocator, text: []const u8) bool {
     _ = allocator;
     if (text.len == 0) return false;
-    return std.mem.indexOf(u8, text, ":unknown") == null and std.mem.indexOfScalar(u8, text, ',') == null;
+    for ([_][]const u8{ ":unknown", ",", "(", ")" }) |bad| {
+        if (std.mem.indexOf(u8, text, bad) != null) return false;
+    }
+    return true;
 }
 
 test "supports(property, value): a property Crane parses, with a value that parses for it" {
@@ -293,6 +301,8 @@ test "supports(property, value): false for values that do not parse, unknown pro
 }
 
 test "supports(property, value): a custom property takes any valid <declaration-value>" {
+    try testing.expect(decl("--foo", "calc(1px + 2px) var(--x)"));
+    try testing.expect(!decl("--foo", "calc(1px) ; x"));
     try testing.expect(decl("--foo", "bar"));
     try testing.expect(decl("--foo", "{ a b c } [ 1 ] ( 2 )"));
     try testing.expect(decl("--foo", ""));
@@ -341,6 +351,8 @@ test "supports(conditionText): white space is required after not, and, or" {
 }
 
 test "supports(conditionText): general-enclosed is false, and not of it is true" {
+    try testing.expect(!cond("font-tech(color-COLRv1)"));
+    try testing.expect(cond("not font-tech(color-COLRv1)"));
     try testing.expect(!cond("(unknown stuff)"));
     try testing.expect(!cond("foo(bar)"));
     try testing.expect(cond("not (unknown stuff)"));
