@@ -93,6 +93,10 @@ const Detached = struct {
     }
 };
 
+/// The private key of the array on a detached realm's global object that
+/// keeps its callbacks (WrapperCache.detach keeps its wrappers in the same).
+const retained_key = "crane:retained";
+
 /// Whether `realm`'s navigable was destroyed, so its tasks are not run any
 /// more (HTML "destroy a document" step 7: they are removed from the task
 /// queues without running).
@@ -605,6 +609,12 @@ fn detach(realm: Context, state: *WindowRealmState) void {
         cache.detach(context);
     }
     if (realm.realm) |record_of_realm| realm_v8.weakenIntrinsics(record_of_realm);
+    // The callbacks this realm's objects store - its targets' listeners and
+    // event handlers, whatever realm their functions are of - are kept from
+    // the global object too: a listener a parent registered on a frame's
+    // object, closing over the frame, would otherwise keep it forever. Blink
+    // traces each listener from its target.
+    _ = ffi.v8_Context_WeakenTaggedHandles(context, key, retained_key.ptr, retained_key.len);
     ffi.v8_Context_SetWeak(context, record, realmCollected);
     state.detached = record;
 }

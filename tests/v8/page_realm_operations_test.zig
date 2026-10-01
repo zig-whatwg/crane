@@ -1253,6 +1253,38 @@ test "protocol: a destroyed navigable's realm keeps its Window while script hold
     // page's end does, which frees its Window.
 }
 
+test "protocol: a listener stored on a destroyed navigable's object, closing over the frame, does not keep it" {
+    _ = try realm();
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    const baseline = liveContexts();
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    {
+        const frame_global = try evalOwned(frame, "globalThis.target = new EventTarget(); globalThis");
+        defer frame_global.release();
+        try setGlobal(parent, "frameWindow", frame_global.value);
+    }
+    // The parent stores, on the frame's object, callbacks whose closures
+    // reach the frame: a listener and an event handler's worth.
+    try expectEval(parent, "(() => { const w = frameWindow; w.target.addEventListener('x', () => w.heard = (w.heard || 0) + 1); return 'ok'; })()", "ok");
+    try expectEval(parent, "frameWindow.target.dispatchEvent(new frameWindow.Event('x')); frameWindow.heard", "1");
+
+    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    collectTwice();
+    // Script that holds the frame still reaches the listener.
+    try expectEval(parent, "frameWindow.target.dispatchEvent(new frameWindow.Event('x')); frameWindow.heard", "2");
+
+    // Once script lets the frame go, the listener is no root that keeps it.
+    try expectEval(parent, "delete globalThis.frameWindow", "true");
+    const after = liveContexts();
+    if (after != baseline) {
+        std.debug.print("native contexts: {d} before the frame, {d} after it was detached and dropped with a listener closing over it\n", .{ baseline, after });
+        return error.RealmKeptAlive;
+    }
+}
+
 test "protocol: a destroyed navigable's realm that its page outlives is not run, and its page's end frees its Window" {
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);

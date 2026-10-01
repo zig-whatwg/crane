@@ -3416,4 +3416,11 @@ pub extern fn v8_Context_RetainOnGlobal(context: *Context, key: [*]const u8, key
 /// collector takes the context (first pass: the handle is reset by then).
 /// v8_Context_Dispose ends the arm.
 pub extern fn v8_Context_SetWeak(context: *Context, user_data: ?*anyopaque, callback: WeakCallbackFn) void;
+/// Tag `global` with the key of the realm whose API stored it (a listener, an
+/// event handler); a dispose untags it.
+pub extern fn v8_Global_TagRealm(global: *Value, realm_key: usize) void;
+/// A detached realm (`realm_key`): every handle tagged with it is kept from
+/// its global object (an array in private `key`) and made weak. Returns how
+/// many.
+pub extern fn v8_Context_WeakenTaggedHandles(context: *Context, realm_key: usize, key: [*]const u8, key_len: c_int) c_int;
 // ---- end lane: realms ----
