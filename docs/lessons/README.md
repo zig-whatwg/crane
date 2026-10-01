@@ -145,6 +145,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A deferred read defers the peer too - Nagle and the delayed ACK](architecture-a-deferred-read-defers-the-peer-nagle-and-delayed-ack.md) - "Give the network one step" is not enough after a long task: the step itself releases the rest.
 - [A wrapper outlives its realm - sever it when its instance goes](architecture-a-wrapper-outlives-its-realm-sever-it-when-its-instance-goes.md) - Whoever frees an instance must sever every wrapper that can outlive the free.
 - [A task that runs script frees its object after the script, never during it](architecture-a-task-that-runs-script-frees-its-object-after-the-script.md) - Count the running task as a holder, and grep sweep logs for "Double free detected".
+- [An API callback's current context is the callee's realm, and a Global of it pins that realm](architecture-an-api-callback-s-current-context-is-the-callee-s-realm.md) - A Global of the current context taken in an API callback is a Global of the callee's realm: release it, and when V8 dies of OOM between pages, count live native contexts after a forced GC first.
+- [A shadow root outlives script's hold on its host, so the host's death must not tear it down](architecture-a-shadow-root-outlives-script-s-hold-on-its-host.md) - Before severing a kept child at its owner's death, ask whether script can hold the child without the owner; if it can, detach instead.
+- [The binding frees an operation's arguments before it converts its result](architecture-the-binding-frees-an-operation-s-arguments-before-it-converts-its-result.md) - An impl's return value must not point into its arguments.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -258,6 +261,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A per-page slowdown with flat native contexts is a table, not a page](debugging-a-per-page-slowdown-with-flat-native-contexts-is-a-table-not-a-page.md) - Flat native contexts with a rising curve means the process keeps something per page that is not a page: sample the slow page before theorising, and diff snapshots by type - a process-wide table and a realm-less handle are both invisible to the realm count.
 - [An abort through panicExtra inside V8 code is UBSan, not a V8 CHECK](debugging-an-abort-through-panicextra-inside-v8-code-is-ubsan-not-a-check.md) - `panicExtra` under a C++ frame is UBSan: decode the handler's source location from the binary before theorising about V8's preconditions.
 - [The runner writes its log positionally - trace through a pipe](debugging-the-runner-writes-its-log-positionally-trace-through-a-pipe.md) - If a trace in the runner's log is missing or cut, suspect the log: pipe it.
+- [A fault in Allocator.free's memset is a double free, and the allocator said so first](debugging-a-fault-in-allocator-free-s-memset-is-a-double-free.md) - Grep the run log for the allocator's own reports above a fault in free; a constant page offset means a slot in a returned page.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.
