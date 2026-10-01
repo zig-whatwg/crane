@@ -95,16 +95,18 @@ fn toInternalRedirect(redirect: enums.RequestRedirect) fetch.internal.RedirectMo
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     request: *InternalRequest,
-    /// Keeps `this.body`'s stream alive for as long as this object - see
-    /// `same_object.zig`. (`headers` works the other way round: the Headers
-    /// object keeps its owner alive, because its list lives in the owner.)
-    body_pin: same_object.Pin = .{},
-    /// Keeps `this.signal` alive for as long as this object: the getter
-    /// returns this's signal, one object for the Request's whole life, and
-    /// `state.own.signal` is a pointer V8 cannot see (Blink's Request traces
-    /// its signal_). Unpinned when this object goes, the signal is the wrapper
-    /// cache's - a fetch() still using it holds its own pin.
-    signal_pin: same_object.Pin = .{},
+    /// Keeps `this.body`'s stream alive for as long as this object's wrapper
+    /// (an edge: same_object.Traced). (`headers` works the other way round:
+    /// the Headers object keeps its owner alive, because its list lives in
+    /// the owner.)
+    body_pin: same_object.Traced = .{ .slot = .{ .name = "body" } },
+    /// Keeps `this.signal` alive for as long as this object's wrapper: the
+    /// getter returns this's signal, one object for the Request's whole life,
+    /// and `state.own.signal` is a pointer V8 cannot see (Blink's Request
+    /// traces its signal_; so does this, an edge). When this object goes, the
+    /// signal is the wrapper cache's - a fetch() still using it holds its own
+    /// pin.
+    signal_pin: same_object.Traced = .{ .slot = .{ .name = "signal" } },
 };
 
 /// Initialize instance
@@ -161,8 +163,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         // because its list is `request.header_list` below (Headers.zig,
         // InternalState.Owner). At context teardown the order is arbitrary,
         // which is what that object's generation check is for.
-        internal.body_pin.release();
-        internal.signal_pin.release();
+        internal.body_pin.release(instance);
+        internal.signal_pin.release(instance);
 
         internal.request.deinit();
         allocator.destroy(internal);
@@ -534,7 +536,7 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     const signals: []const *runtime.Instance = if (signal) |s| &.{s} else &.{};
     // Step 30: this's signal is a dependent abort signal from signals.
     state.own.signal = try abort_algorithms.createDependent(ctx, signals);
-    internal.signal_pin.hold(state.own.signal);
+    internal.signal_pin.hold(instance, state.own.signal);
 
     // Steps 36-37: If init["body"] exists and is non-null, initBody is the
     // body of extracting it, with keepalive set to request's keepalive, and
@@ -555,7 +557,7 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
             internal.request.use_cors_preflight = true;
             // The body's stream is the object itself.
             state.own.body = stream;
-            internal.body_pin.hold(stream);
+            internal.body_pin.hold(instance, stream);
         }
 
         // Step 42: Set this's request's body to finalBody. (Replacing the
@@ -933,7 +935,7 @@ pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Steps 3-4: clonedRequestObject's signal is a dependent abort signal
     // from « this's signal ».
     cloned_state.own.signal = try abort_algorithms.createDependent(instance.ctx, &.{state.own.signal});
-    cloned_internal.signal_pin.hold(cloned_state.own.signal);
+    cloned_internal.signal_pin.hold(cloned_instance, cloned_state.own.signal);
 
     // "Clone a request" step 2 - "clone a body": a body already in its
     // stream is teed, this request reading one branch and the clone the

@@ -49,17 +49,18 @@ pub const InternalState = struct {
     /// The guard of this object's Headers: "response" for a Response script
     /// constructs, "immutable" for one fetch() creates.
     headers_guard: fetch.internal.HeaderGuard = .response,
-    /// Keeps `this.body`'s stream alive for as long as this object - see
-    /// `same_object.zig`. (`headers` works the other way round: the Headers
-    /// object keeps its owner alive, because its list lives in the owner.)
-    body_pin: same_object.Pin = .{},
+    /// Keeps `this.body`'s stream alive for as long as this object's wrapper
+    /// (an edge: same_object.Traced). (`headers` works the other way round:
+    /// the Headers object keeps its owner alive, because its list lives in
+    /// the owner.)
+    body_pin: same_object.Traced = .{ .slot = .{ .name = "body" } },
     /// The signal of the fetch() call that made this response, which it
-    /// follows (`followSignal`), as (address, slab generation), and held
-    /// alive for as long as this object: an abort after the response
+    /// follows (`followSignal`), as (address, slab generation), and kept
+    /// alive by this object's wrapper (an edge): an abort after the response
     /// errors its body, however long after.
     signal: ?*runtime.Instance = null,
     signal_generation: u64 = 0,
-    signal_pin: same_object.Pin = .{},
+    signal_pin: same_object.Traced = .{ .slot = .{ .name = "signal" } },
 
     /// The followed signal, if it is still the one followed.
     fn liveSignal(self: *const InternalState) ?*runtime.Instance {
@@ -154,10 +155,10 @@ pub fn deinit(instance: *runtime.Instance) void {
         // because its list is `response.header_list` below (Headers.zig,
         // InternalState.Owner). At context teardown the order is arbitrary,
         // which is what that object's generation check is for.
-        internal.body_pin.release();
+        internal.body_pin.release(instance);
         if (internal.liveSignal()) |signal| abort_algorithms.remove(signal, instance);
         internal.signal = null;
-        internal.signal_pin.release();
+        internal.signal_pin.release(instance);
 
         internal.response.deinit();
         allocator.destroy(internal);
@@ -183,7 +184,7 @@ fn followSignal(response_object: *runtime.Instance, signal: *runtime.Instance) v
     abort_algorithms.add(signal, .{ .ctx = response_object, .run = signalAborted }) catch return;
     internal.signal = signal;
     internal.signal_generation = runtime.SlabAllocator.generationOf(signal);
-    internal.signal_pin.hold(signal);
+    internal.signal_pin.hold(response_object, signal);
 }
 
 /// The followed signal is aborted: error the body's stream, if it is
@@ -303,7 +304,7 @@ fn initializeResponse(instance: *runtime.Instance, init_dict: dictionaries.Respo
     if (b.stream) |stream| {
         // A ReadableStream is the body's stream itself.
         state.own.body = stream;
-        internal.body_pin.hold(stream);
+        internal.body_pin.hold(instance, stream);
     }
     // 6.3. If body's type is non-null and response's header list does not
     //      contain `Content-Type`, then append (`Content-Type`, body's type).

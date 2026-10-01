@@ -78,11 +78,25 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// A NavigationHistoryEntry handed out, and the pin that keeps its wrapper.
+/// A NavigationHistoryEntry handed out, and the edge from the navigation's
+/// wrapper that keeps its wrapper (same_object.Traced: one slot per entry,
+/// named by its id).
 const Handed = struct {
     instance: *runtime.Instance,
-    pin: same_object.Pin = .{},
+    edge: same_object.Traced = .{ .slot = .{ .name = "" } },
+    slot_name: [40]u8 = undefined,
+
+    /// `navigation` keeps this entry, in a slot of the entry's own.
+    fn hold(self: *Handed, navigation: *runtime.Instance, id: u64) void {
+        self.edge.slot = .{ .name = std.fmt.bufPrint(&self.slot_name, "entry:{d}", .{id}) catch return };
+        self.edge.hold(navigation, self.instance);
+    }
 };
+
+/// The name of a per-record slot ("event:3", "controller:3").
+fn recordSlot(buffer: []u8, kind: []const u8, id: u64) engine.TracedSlot {
+    return .{ .name = std.fmt.bufPrint(buffer, "{s}:{d}", .{ kind, id }) catch kind };
+}
 
 /// A navigation API method tracker (HTML 7.2.6.8).
 const Tracker = struct {
@@ -123,8 +137,12 @@ const InterceptionState = enum { none, intercepted, committed, scrolled, finishe
 /// navigate event, and while its handlers' promises are awaited.
 const EventRecord = struct {
     id: u64,
+    /// The Navigation that fired the event, whose wrapper keeps the event
+    /// and its abort controller (edges, not roots: same_object.Traced).
+    navigation: *runtime.Instance,
     event: *runtime.Instance,
-    event_pin: same_object.Pin = .{},
+    event_edge: same_object.Traced = .{ .slot = .{ .name = "" } },
+    event_slot: [40]u8 = undefined,
     navigation_type: Kind,
     destination: *runtime.Instance,
     interception_state: InterceptionState = .none,
@@ -133,7 +151,8 @@ const EventRecord = struct {
     focus_reset: ?dom.navigation_api.FocusReset = null,
     scroll_behavior: ?dom.navigation_api.ScrollBehavior = null,
     controller: *runtime.Instance,
-    controller_pin: same_object.Pin = .{},
+    controller_edge: same_object.Traced = .{ .slot = .{ .name = "" } },
+    controller_slot: [40]u8 = undefined,
     classic_state: ?joint_history.SerializedState = null,
     tracker: ?*Tracker = null,
     user_involvement: dom.navigation_api.UserInvolvement = .none,
@@ -148,22 +167,24 @@ const EventRecord = struct {
         for (self.handlers.items) |h| h.release();
         self.handlers.deinit(allocator);
         if (self.classic_state) |*s| s.deinit(allocator);
-        self.event_pin.release();
-        self.controller_pin.release();
+        self.event_edge.release(self.navigation);
+        self.controller_edge.release(self.navigation);
         allocator.destroy(self);
     }
 };
 
-/// "navigation's transition": its NavigationTransition, held, and the
-/// capabilities of the promises it hands out.
+/// "navigation's transition": its NavigationTransition, kept by the
+/// navigation's wrapper (an edge), and the capabilities of the promises it
+/// hands out.
 const Transition = struct {
+    navigation: *runtime.Instance,
     instance: *runtime.Instance,
-    pin: same_object.Pin = .{},
+    edge: same_object.Traced = .{ .slot = .{ .name = "transition" } },
     committed: engine.PromiseCapability,
     finished: engine.PromiseCapability,
 
     fn destroy(self: *Transition, allocator: Allocator) void {
-        self.pin.release();
+        self.edge.release(self.navigation);
         engine.releasePromiseCapability(&self.committed);
         engine.releasePromiseCapability(&self.finished);
         allocator.destroy(self);
@@ -172,6 +193,8 @@ const Transition = struct {
 
 pub const InternalState = struct {
     allocator: Allocator,
+    /// The Navigation this state is: the owner of every edge below.
+    navigation: *runtime.Instance,
     /// The relevant global object and its slab generation, found from the
     /// realm on first use.
     window: ?*runtime.Instance = null,
@@ -198,16 +221,18 @@ pub const InternalState = struct {
     trackers: std.ArrayListUnmanaged(*Tracker) = .empty,
     records: std.ArrayListUnmanaged(*EventRecord) = .empty,
     next_record_id: u64 = 1,
-    /// "Navigation's activation", once made, held.
+    /// "Navigation's activation", once made, kept by this object's wrapper.
     activation: ?*runtime.Instance = null,
-    activation_pin: same_object.Pin = .{},
+    activation_edge: same_object.Traced = .{ .slot = .{ .name = "activation" } },
 
+    /// Its teardown, the collector's too: each edge goes (same_object.Traced),
+    /// and no child is touched - the collector may have freed it first.
     fn deinit(self: *InternalState) void {
-        self.activation_pin.release();
+        self.activation_edge.release(self.navigation);
         self.activation = null;
         var it = self.handed.valueIterator();
         while (it.next()) |handed| {
-            handed.*.pin.release();
+            handed.*.edge.release(self.navigation);
             self.allocator.destroy(handed.*);
         }
         self.handed.deinit(self.allocator);
@@ -242,7 +267,7 @@ pub fn init(
     const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
     errdefer EventTargetImpl.deinit(instance);
     const internal = try allocator.create(InternalState);
-    internal.* = .{ .allocator = allocator };
+    internal.* = .{ .allocator = allocator, .navigation = instance };
     instance.getState(StateType).own._internal = internal;
     try live.append(std.heap.c_allocator, instance);
     dom.navigation_api.install(.{
@@ -324,7 +349,7 @@ fn entryObject(internal: *InternalState, window: *runtime.Instance, entry: *cons
         internal.allocator.destroy(handed);
         return err;
     };
-    handed.pin.hold(instance);
+    handed.hold(internal.navigation, entry.id);
     return instance;
 }
 
@@ -873,7 +898,7 @@ fn activationObject(instance: *runtime.Instance, internal: *InternalState) ?*run
     else
         hostActivation(internal, s, current)) orelse return null;
     internal.activation = made;
-    internal.activation_pin.hold(made);
+    internal.activation_edge.hold(internal.navigation, made);
     return made;
 }
 
@@ -1293,6 +1318,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     };
     record.* = .{
         .id = internal.next_record_id,
+        .navigation = internal.navigation,
         .event = event,
         .navigation_type = firing.navigation_type,
         .destination = firing.destination,
@@ -1302,8 +1328,10 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     };
     internal.next_record_id += 1;
     if (firing.classic_state) |state| record.classic_state = state.clone(allocator) catch null;
-    record.event_pin.hold(event);
-    record.controller_pin.hold(controller);
+    record.event_edge.slot = recordSlot(&record.event_slot, "event", record.id);
+    record.event_edge.hold(record.navigation, event);
+    record.controller_edge.slot = recordSlot(&record.controller_slot, "controller", record.id);
+    record.controller_edge.hold(record.navigation, controller);
     internal.records.append(allocator, record) catch {
         record.destroy(allocator);
         return true;
@@ -1429,8 +1457,8 @@ fn setTransition(instance: *runtime.Instance, internal: *InternalState, record: 
         transition_instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(transition_instance));
         return;
     };
-    transition.* = .{ .instance = transition_instance, .committed = committed, .finished = finished };
-    transition.pin.hold(transition_instance);
+    transition.* = .{ .navigation = internal.navigation, .instance = transition_instance, .committed = committed, .finished = finished };
+    transition.edge.hold(internal.navigation, transition_instance);
     internal.transition = transition;
 }
 
@@ -2067,7 +2095,7 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
     // dispose at disposedNHE." Then let each go.
     for (disposed.items) |handed| {
         fireSimple(handed.instance, "dispose");
-        handed.pin.release();
+        handed.edge.release(internal.navigation);
         internal.allocator.destroy(handed);
     }
 
@@ -2152,7 +2180,7 @@ fn disposeEntriesForSessionHistoryRemoval(navigation: *runtime.Instance) void {
     }
     for (disposed.items) |handed| {
         fireSimple(handed.instance, "dispose");
-        handed.pin.release();
+        handed.edge.release(internal.navigation);
         internal.allocator.destroy(handed);
     }
 }

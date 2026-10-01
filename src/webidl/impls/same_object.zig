@@ -25,7 +25,14 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 
-/// A strong reference to one Instance's JavaScript wrapper.
+/// A strong reference to one Instance's JavaScript wrapper - a root - for
+/// PENDING ACTIVITY only: an object that must outlive whatever script holds
+/// of it while work it started is under way (an XHR's fetch, a FileReader's
+/// read, a body being read, a fetch() call's signal). Ended when the work
+/// ends - and the work ends when its document does ("abort a document",
+/// dom.document_fetches; the unloading document cleanup steps). A child an
+/// owner keeps for the owner's life is `Traced` or `KeptChild`, never a Pin:
+/// a root keeps the child's realm, and through it the owner, forever.
 pub const Pin = struct {
     held: ?engine.Owned = null,
 

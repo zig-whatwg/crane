@@ -53,13 +53,16 @@ pub const InternalState = struct {
     /// Spec: https://dom.spec.whatwg.org/#mutationobserver-node-list
     node_list: std.ArrayListUnmanaged(same_object.Link),
 
-    /// The observer's own wrapper, held while any node lists it. A node's
-    /// registered observers are strong references in the spec; nothing else
-    /// here would keep an observer alive that script no longer names, and a
-    /// collected observer left every node that listed it pointing into the
-    /// slab - `enqueueRecord` then wrote into freed memory on the next
-    /// mutation, a crash charged to whichever file ran next.
-    self_pin: same_object.Pin = .{},
+    // The observer's own wrapper is held while any node lists it - its
+    // pending activity (engine.keepPlatformObjectAlive). A node's registered
+    // observers are strong references in the spec; nothing else here would
+    // keep an observer alive that script no longer names, and a collected
+    // observer left every node that listed it pointing into the slab -
+    // `enqueueRecord` then wrote into freed memory on the next mutation, a
+    // crash charged to whichever file ran next. Held by the wrapper cache,
+    // not a Global of its own: a removed frame's realm turns the cache's
+    // holds into edges from its global object, so a frame whose script
+    // observes its own nodes is still collected once script drops it.
 
     /// The nodes that list a transient registered observer of this observer
     /// (DOM "remove" step 15), weak like the node list. Notify step 6.3 takes
@@ -139,7 +142,6 @@ pub const InternalState = struct {
         // Clear node list (don't free nodes, we don't own them)
         self.node_list.deinit(self.allocator);
         self.transient_nodes.deinit(self.allocator);
-        self.self_pin.release();
 
         // Free MutationRecord instances we own
         for (self.record_queue.items) |record| {
@@ -198,6 +200,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         // registered on, not the agent's pending mutation observers.
         unregisterFromNodes(instance, internal);
         dom_module.mutation_observer_algorithms.forgetObserver(instance);
+        // Whatever pending-activity hold is left goes with it.
+        engine.releasePlatformObject(instance);
         internal.deinit();
         // Note: Internal state memory is managed by arena allocator - do NOT destroy
         // Return the block itself, not just what it points to. The comment this
@@ -379,7 +383,7 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
     }
 
     // Registered: stay alive for as long as a node lists this observer.
-    internal.self_pin.hold(instance);
+    engine.keepPlatformObjectAlive(instance);
 }
 
 /// Remove every registration whose observer is `instance` from the nodes in
@@ -486,7 +490,7 @@ fn nodeReleasedHook(observer: *runtime.Instance, generation: u64, node: *runtime
         }
         i += 1;
     }
-    if (internal.node_list.items.len == 0) internal.self_pin.release();
+    if (internal.node_list.items.len == 0) engine.releasePlatformObject(observer);
 }
 
 /// DOM §7.1 - MutationObserver.disconnect()
@@ -511,7 +515,7 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
 
     // No registration is left to use a filter, or to keep this alive.
     internal.releaseAllFilters();
-    internal.self_pin.release();
+    engine.releasePlatformObject(instance);
 }
 
 /// DOM §7.1 - MutationObserver.takeRecords()
