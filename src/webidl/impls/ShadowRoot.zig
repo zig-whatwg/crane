@@ -135,7 +135,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 
 /// dom.shadow_hosts: `instance`'s host is being torn down (Element.deinit).
 /// The shadow root forgets it and stays a working DocumentFragment; see
-/// `get_host` for what that costs until wrappers are traced.
+/// `get_host` for when that can happen.
 fn hostDestroyed(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.host = null;
@@ -273,11 +273,13 @@ pub fn get_serializable(instance: *runtime.Instance) anyerror!bool {
 /// DOM §4.8.1 - ShadowRoot.host
 /// "The host getter steps are to return this's host."
 ///
-/// Stated deviation, until wrappers are traced: a shadow root does not keep
-/// its host alive (dom.shadow_hosts). Once script has dropped the host and
-/// it has been collected, the shadow root has forgotten it, and this answers
-/// InvalidStateError - never a pointer to freed memory. The spec's host lives
-/// as long as its shadow root (Blink and WebKit trace it).
+/// The shadow root keeps its host: an edge from its wrapper to the host's
+/// (Element.attachShadow), so script that holds only the shadow root still
+/// reaches its host after a collection. Stated deviation, narrower than it
+/// was: a host freed by something other than the collector - its tree's
+/// teardown, when a detached ancestor of it is collected (a node does not
+/// keep its tree root), or its realm's end - is forgotten (dom.shadow_hosts),
+/// and this answers InvalidStateError, never a pointer to freed memory.
 pub fn get_host(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.host orelse return error.InvalidStateError;

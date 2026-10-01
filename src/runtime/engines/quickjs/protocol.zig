@@ -398,6 +398,11 @@ pub fn hasWrapper(_: *Instance) bool {
 pub fn keepPlatformObjectAlive(_: *Instance) void {}
 pub fn releasePlatformObject(_: *Instance) void {}
 pub fn platformObjectDestroyed(_: *Instance) void {}
+/// Nothing is wrapped, so nothing is collected: there is no edge to draw.
+/// With QuickJS linked this is the owner class's `gc_mark` marking the
+/// child's object (JS_MarkValue) - QuickJS traces.
+pub fn traceChild(_: *Instance, _: *Instance, _: engine.TracedSlot) void {}
+pub fn forgetTracedChild(_: *Instance, _: engine.TracedSlot) void {}
 
 // 4.13 Diagnostics tier
 pub fn heapStatistics(_: *Agent) engine.HeapStatistics {

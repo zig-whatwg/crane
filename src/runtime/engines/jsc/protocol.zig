@@ -415,6 +415,13 @@ pub fn hasWrapper(_: *Instance) bool {
 pub fn keepPlatformObjectAlive(_: *Instance) void {}
 pub fn releasePlatformObject(_: *Instance) void {}
 pub fn platformObjectDestroyed(_: *Instance) void {}
+/// Nothing is wrapped, so nothing is collected: there is no edge to draw.
+/// With JavaScriptCore linked this is the owner relation of a managed
+/// reference (`-[JSVirtualMachine addManagedReference:withOwner:]`, the public
+/// API built for exactly this: the value lives while its owner's wrapper is
+/// reachable).
+pub fn traceChild(_: *Instance, _: *Instance, _: engine.TracedSlot) void {}
+pub fn forgetTracedChild(_: *Instance, _: engine.TracedSlot) void {}
 
 // 4.13 Diagnostics tier
 pub fn heapStatistics(_: *Agent) engine.HeapStatistics {

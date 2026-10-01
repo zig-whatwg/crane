@@ -1,21 +1,22 @@
 //! A shadow root's host is gone: the hook its host's teardown reaches.
 //!
-//! An element keeps its shadow root alive for as long as the element lives
-//! (Element.zig's `shadow_root_kept`, a `same_object.KeptChild`). A shadow
-//! root does not keep its host: there is no traced edge from the shadow
-//! root's wrapper to the host's, so V8 may collect the host while script
-//! still holds the shadow root - `document.createElement("div")
-//! .attachShadow({mode: "open"})` keeps nothing of the host. The host's
+//! An element keeps its shadow root alive for as long as the element's
+//! wrapper lives, and the shadow root keeps its host the same way: an edge
+//! each way between their wrappers (engine.traceChild, drawn in
+//! Element.attachShadow; Element.zig's `shadow_root_kept`). Script that holds
+//! either keeps both, and the collector takes the pair once it holds neither.
+//!
+//! A host can still be freed while its shadow root lives on: its tree's
+//! teardown frees it when a detached ancestor is collected (a node does not
+//! keep its tree's root alive), and its realm's end frees it. The host's
 //! teardown (Element.deinit) then tells the shadow root, through this hook,
 //! and the shadow root forgets its host rather than keep a pointer to freed
 //! memory. The shadow root itself stays a working DocumentFragment, freed
 //! with its subtree when its own wrapper is collected.
 //!
-//! Stated deviation: the spec's host always exists - a shadow root's host is
-//! its host for its whole life, and Blink and WebKit keep the host alive
-//! through the shadow root. Until wrappers are traced (the host <-> shadow
-//! root edge of the tracing redesign), such a shadow root answers
-//! InvalidStateError for `host`.
+//! Stated deviation, for those cases only: the spec's host always exists - a
+//! shadow root's host is its host for its whole life. Such a shadow root
+//! answers InvalidStateError for `host`.
 //!
 //! The ShadowRoot impl installs the implementation in its `init`, which runs
 //! before any element can have a shadow root.
