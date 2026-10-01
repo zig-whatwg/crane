@@ -76,6 +76,11 @@ pub const Options = struct {
     /// The supervisor passes it to its children and counts it with their
     /// journal, so a file of many runs, each inside its ceiling, is progress.
     heartbeat_path: ?[]const u8 = null,
+    /// Seed one double free and one leak in a private instance of the sweep
+    /// allocator, report whether DebugAllocator caught both, and exit
+    /// (`runner_allocator.selfCheck`). The proof that a runner's build mode
+    /// kept the checks every sweep log is grepped for.
+    allocator_self_check: bool = false,
 
     pub fn init(allocator: std.mem.Allocator) Options {
         return Options{
@@ -301,6 +306,8 @@ pub fn parseArgsDiagnosed(allocator: std.mem.Allocator, args: []const []const u8
                 stall_watchdog.default_stall_limit_ms;
         } else if (std.mem.startsWith(u8, arg, "--heartbeat=")) {
             options.heartbeat_path = arg["--heartbeat=".len..];
+        } else if (std.mem.eql(u8, arg, "--allocator-self-check")) {
+            options.allocator_self_check = true;
         } else if (std.mem.startsWith(u8, arg, "-")) {
             diag.unknown_option = arg;
             return error.UnknownOption;
@@ -336,6 +343,7 @@ test "parseArgs defaults" {
     try testing.expectEqual(@as(usize, 0), options.limit);
     try testing.expect(!options.supervise);
     try testing.expect(!options.isChild());
+    try testing.expect(!options.allocator_self_check);
 }
 
 test "parseArgs rejects an option it does not know, and names it" {
@@ -366,6 +374,14 @@ test "parseArgs: --heartbeat, which the supervisor gives its children" {
     var plain = try parseArgs(testing.allocator, &.{"--from-file=w.txt"});
     defer plain.deinit();
     try testing.expect(plain.heartbeat_path == null);
+}
+
+test "parseArgs: --allocator-self-check" {
+    const testing = std.testing;
+    var options = try parseArgs(testing.allocator, &.{"--allocator-self-check"});
+    defer options.deinit();
+    try testing.expect(options.allocator_self_check);
+    try testing.expect(!options.wantsSupervisor());
 }
 
 test "parseArgs collects directory filters and scalar options" {
