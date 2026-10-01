@@ -914,14 +914,12 @@ fn submit(form: *runtime.Instance, submitter: *runtime.Instance, options: Submit
         // by enctype, planned to the parsed action as it is. The entry list
         // goes with it, as a FormData, for the navigate event (navigate's
         // formDataEntryList).
-        const form_data = entryListFormData(form, entries.items) catch |err| {
-            allocator.free(target);
-            return err;
-        };
+        // The target goes with the errdefer above on every error return:
+        // freed here as well, a failed step freed it twice.
+        const form_data = try entryListFormData(form, entries.items);
         const form_data_generation = runtime.SlabAllocator.generationOf(form_data);
         var post = entityBody(allocator, enctype, form_data, entries.items, encoding) catch |err| {
             form_data.releaseIfUnwrapped(form_data_generation);
-            allocator.free(target);
             return err;
         };
         errdefer post.deinit(allocator);
