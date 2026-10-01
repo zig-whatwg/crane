@@ -181,7 +181,6 @@ src/webidl/impls/Document.zig Range.call_insertNode 1
 src/webidl/impls/Document.zig Range.call_surroundContents 2
 src/webidl/impls/Document.zig Selection.call_collapseToEnd 1
 src/webidl/impls/Document.zig Selection.call_getRangeAt 3
-src/webidl/impls/Document.zig Selection.createSelection 1
 src/webidl/impls/Document.zig Selection.get_isCollapsed 3
 src/webidl/impls/DocumentFragment.zig Node.InternalState 1
 src/webidl/impls/DocumentFragment.zig Node.NodeType 3
