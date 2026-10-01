@@ -34,7 +34,9 @@ const BlobData = @import("blob_internals.zig").BlobData;
 
 /// Entry in the blob URL store.
 pub const BlobURLEntry = struct {
-    /// The blob data (owned reference)
+    /// The blob's data: a reference of the entry's own (`BlobData.retain`),
+    /// released when the entry leaves the store. The Blob object script made
+    /// may be collected first.
     blob: *BlobData,
 
     /// The origin that created this URL
@@ -95,7 +97,8 @@ pub const BlobURLStore = struct {
             if (entry.value_ptr.origin.len > 0) {
                 self.allocator.free(@constCast(entry.value_ptr.origin));
             }
-            // Note: We don't deinit the blob here as it may be referenced elsewhere
+            // The entry's reference to its blob's data.
+            entry.value_ptr.blob.deinit();
         }
         self.entries.deinit();
     }
@@ -125,9 +128,12 @@ pub const BlobURLStore = struct {
         const owned_origin = try self.allocator.dupe(u8, origin);
         errdefer self.allocator.free(owned_origin);
 
-        // Store the entry
-        try self.entries.put(uuid, .{
-            .blob = blob,
+        // Store the entry. It holds the blob for as long as it is in the
+        // store: a reference of its own, which revoking releases - taken
+        // only once nothing below can fail.
+        try self.entries.ensureUnusedCapacity(1);
+        self.entries.putAssumeCapacity(uuid, .{
+            .blob = blob.retain(),
             .origin = owned_origin,
             .valid = true,
         });
@@ -152,6 +158,9 @@ pub const BlobURLStore = struct {
             if (kv.value.origin.len > 0) {
                 self.allocator.free(@constCast(kv.value.origin));
             }
+            // The entry's reference to its blob's data: the last one frees it
+            // when the Blob object has already been collected.
+            kv.value.blob.deinit();
         }
     }
 
@@ -285,6 +294,104 @@ test "BlobURLStore - revokeObjectURL" {
 
     // Should not resolve after revocation
     try std.testing.expect(store.resolve(url, "https://example.com") == null);
+}
+
+/// std.testing.allocator, except that freed memory reads back as 0xAA in
+/// every build mode - so a test that reads through a dangling pointer sees
+/// garbage rather than the bytes that happened to stay behind.
+const PoisoningAllocator = struct {
+    child: std.mem.Allocator,
+
+    fn allocator(self: *PoisoningAllocator) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &.{ .alloc = alloc, .resize = resize, .remap = remap, .free = free } };
+    }
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+        const self: *PoisoningAllocator = @ptrCast(@alignCast(ctx));
+        return self.child.rawAlloc(len, alignment, ret_addr);
+    }
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
+        const self: *PoisoningAllocator = @ptrCast(@alignCast(ctx));
+        return self.child.rawResize(memory, alignment, new_len, ret_addr);
+    }
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        const self: *PoisoningAllocator = @ptrCast(@alignCast(ctx));
+        return self.child.rawRemap(memory, alignment, new_len, ret_addr);
+    }
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
+        const self: *PoisoningAllocator = @ptrCast(@alignCast(ctx));
+        @memset(memory, 0xAA);
+        self.child.rawFree(memory, alignment, ret_addr);
+    }
+};
+
+test "BlobURLStore - an entry holds its blob after the Blob lets go of it" {
+    // File API "blob URL entry": its object is the Blob, held by the entry for
+    // as long as the entry is in the store. Script routinely drops the Blob
+    // and keeps only the URL (URL.createObjectURL(new Blob([...]))), so the
+    // collector frees the Blob object - and with it the Blob's reference to
+    // its data - while the URL can still be fetched or imported. The entry's
+    // own reference is what the fetch reads then (a worker's import() of such
+    // a URL read freed memory in scheme fetch "blob" before the entry held
+    // one).
+    var poisoning: PoisoningAllocator = .{ .child = std.testing.allocator };
+    const allocator = poisoning.allocator();
+
+    var store = BlobURLStore.init(allocator);
+    defer store.deinit();
+
+    const source = "export const foo = \"bar\";";
+    const blob = try BlobData.init(allocator, source, "text/javascript");
+    const url = try store.createObjectURL(blob, "https://example.com");
+    defer allocator.free(url);
+
+    // The Blob object is collected: its reference goes.
+    blob.deinit();
+
+    const resolved = store.resolve(url, "https://example.com") orelse return error.TestExpectedEntry;
+    try std.testing.expectEqual(source.len, resolved.bytes.len);
+    try std.testing.expectEqualStrings(source, resolved.bytes);
+    try std.testing.expectEqualStrings("text/javascript", resolved.mime_type);
+
+    // Revoking drops the entry's reference, the last one: the data is freed
+    // (std.testing.allocator fails the test on a leak).
+    store.revokeObjectURL(url);
+    try std.testing.expect(store.resolve(url, "https://example.com") == null);
+}
+
+test "BlobURLStore - deinit releases the entries it still holds" {
+    var poisoning: PoisoningAllocator = .{ .child = std.testing.allocator };
+    const allocator = poisoning.allocator();
+
+    var store = BlobURLStore.init(allocator);
+    const blob = try BlobData.init(allocator, "kept", "text/plain");
+    const url = try store.createObjectURL(blob, "https://example.com");
+    defer allocator.free(url);
+    blob.deinit();
+
+    // Never revoked: the store's teardown releases the last reference
+    // (std.testing.allocator fails the test on a leak).
+    store.deinit();
+}
+
+test "BlobURLStore - two URLs for one blob hold it independently" {
+    var poisoning: PoisoningAllocator = .{ .child = std.testing.allocator };
+    const allocator = poisoning.allocator();
+
+    var store = BlobURLStore.init(allocator);
+    defer store.deinit();
+
+    const blob = try BlobData.init(allocator, "shared", "text/plain");
+    const url1 = try store.createObjectURL(blob, "https://example.com");
+    defer allocator.free(url1);
+    const url2 = try store.createObjectURL(blob, "https://example.com");
+    defer allocator.free(url2);
+    blob.deinit();
+
+    store.revokeObjectURL(url1);
+    const resolved = store.resolve(url2, "https://example.com") orelse return error.TestExpectedEntry;
+    try std.testing.expectEqual(@as(usize, 6), resolved.bytes.len);
+    try std.testing.expectEqualStrings("shared", resolved.bytes);
+    store.revokeObjectURL(url2);
 }
 
 test "BlobURLStore - invalid URL" {
