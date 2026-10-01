@@ -81,6 +81,8 @@ pub const events = [_]Event{
     .{ .n = 75, .label = "each variant counted as a test" },
     // The WPT snapshot moved to upstream afe89a5df4: 4,319 files to 4,712.
     .{ .n = 85, .label = "new WPT snapshot" },
+    // The 0.1 scope adds tier 1 and tier 2 suites (the user, 2026-10-01): 4,712 files to 10,035.
+    .{ .n = 96, .label = "0.1 scope: 10,035 files" },
 };
 
 pub fn eventAt(list: []const Event, n: u64) ?[]const u8 {
