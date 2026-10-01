@@ -90,39 +90,47 @@ pub const Link = struct {
 /// whoever owned it by then.
 ///
 /// Blink traces each of them from the owner (TreeScope::Trace visits
-/// selection_ and style_sheet_list_; ElementRareData traces the shadow root).
-/// Crane has no tracing, so the owner holds the child's wrapper strongly from
-/// the first hand-out (`Pin`) until the owner goes, as AbortController does
-/// for its signal.
+/// selection_ and style_sheet_list_; ElementRareData traces the shadow root),
+/// and so does Crane now: from the first hand-out, the owner's wrapper keeps
+/// the child's (engine.traceChild) - an edge, not the strong root a `Pin`
+/// was, so a removed frame's document no longer keeps its children, and they
+/// it, alive whatever becomes of the frame. The edge lives as long as the
+/// owner's wrapper, which for each owner here lives as long as the owner: a
+/// document's is kept by its window's global object (Window.setDocument) or
+/// by script; an element's by its tree or by script.
 ///
 /// A child that points back at its owner (a shadow root's host) is safe here
 /// only because `release`'s `sever` step makes it stop: for a shadow root,
 /// dom.shadow_hosts tells it its host is gone.
 pub const KeptChild = struct {
-    pin: Pin = .{},
     /// The child as it was when its owner made it.
     link: ?Link = null,
+    /// Whether the owner's edge to it is drawn.
+    traced: bool = false,
 
     /// `child` was just made and stored in the owner's state.
     pub fn made(self: *KeptChild, child: *runtime.Instance) void {
-        self.link = Link.to(child);
+        self.* = .{ .link = Link.to(child) };
     }
 
-    /// `child` is going to script: keep its wrapper for as long as the owner
-    /// lives. Idempotent.
-    pub fn handOut(self: *KeptChild, child: *runtime.Instance) void {
-        self.pin.hold(child);
+    /// `child` is going to script: `owner` keeps it, in its member `slot`,
+    /// for as long as `owner`'s wrapper lives. Once per child made.
+    pub fn handOut(self: *KeptChild, owner: *runtime.Instance, child: *runtime.Instance, slot: engine.TracedSlot) void {
+        if (self.traced) return;
+        engine.traceChild(owner, child, slot);
+        self.traced = true;
     }
 
     /// The owner is going. `child`, if it is still the object the owner made,
     /// is severed from it (`sever`: its interface's deinit, which releases its
     /// state, so script that still holds it gets InvalidStateError, not an
     /// owner that is gone - or, for a shadow root, a step that only makes it
-    /// forget its host). Then its wrapper is let go, and the wrapper cache
-    /// frees the instance once script drops it too.
+    /// forget its host). The edge needs nothing: it goes with the owner's
+    /// wrapper - and this may run while the collector does, when no engine
+    /// call may (engine.forgetTracedChild). The wrapper cache frees the child
+    /// once its own wrapper is collected.
     pub fn release(self: *KeptChild, child: *runtime.Instance, sever: *const fn (*runtime.Instance) void) void {
         if (self.link) |link| if (link.isLive()) sever(child);
-        self.pin.release();
         self.* = .{};
     }
 };

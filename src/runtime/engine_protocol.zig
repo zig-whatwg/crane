@@ -1283,6 +1283,45 @@ pub inline fn platformObjectDestroyed(instance: *Instance) void {
     impl.platformObjectDestroyed(instance);
 }
 
+/// Which of its children an owner keeps through `traceChild`: the member that
+/// holds it, by name ("selection", "navigator") - Blink's `Member<>` field that
+/// the owner's `Trace` visits. A key, never a property: script cannot see or
+/// reach it. One child per (owner, slot); a name is unique within its owner's
+/// interface, not across interfaces.
+pub const TracedSlot = struct { name: []const u8 };
+
+/// `owner` keeps `child` alive: `child`'s wrapper lives for exactly as long as
+/// `owner`'s wrapper does - an edge the collector traces, never a root, so an
+/// owner and a child that keep each other (a shadow root and its host) still
+/// go together once script holds neither. Blink: `owner`'s `Trace` visiting a
+/// `Member<>`; WebKit: `visitChildren`; V8: a private property on `owner`'s
+/// wrapper; JavaScriptCore: an opaque root / `JSManagedValue` owner.
+///
+/// Makes either wrapper if script has not seen it yet, each in its own
+/// relevant realm. Tracing a new child into an occupied slot replaces the
+/// edge. Does nothing when `owner`'s realm has no engine realm left.
+///
+/// The edge keeps `child` only while `owner`'s wrapper lives, so that wrapper
+/// must live as long as `owner` does: true of a Window (its global object),
+/// of an owner script holds, and of anything a traced edge itself keeps. Not
+/// of an owner the host keeps while the collector may take its wrapper, and
+/// not of one script has never seen - the wrapper made for it here would be
+/// the only thing keeping it, and the collector would free it. Never call it
+/// while the collector runs (from a finalizer, or a teardown one starts).
+/// OWNED: nothing - the edge dies with `owner`'s wrapper.
+pub inline fn traceChild(owner: *Instance, child: *Instance, slot: TracedSlot) void {
+    impl.traceChild(owner, child, slot);
+}
+
+/// End the edge `traceChild` drew from `owner` in `slot` (the member was
+/// cleared: Selection's range removed). A no-op when there is none, or when
+/// `owner` has no wrapper; never makes one. Teardown need not call it: the
+/// edge dies with the wrapper - and, like `traceChild`, it must not run while
+/// the collector does.
+pub inline fn forgetTracedChild(owner: *Instance, slot: TracedSlot) void {
+    impl.forgetTracedChild(owner, slot);
+}
+
 // ============================================================================
 // 4.13 Diagnostics tier (tools only; never spec code)
 // ============================================================================

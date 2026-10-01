@@ -25,7 +25,7 @@ const Selection = interfaces.Selection;
 // Import related implementations
 const NodeImpl = @import("Node.zig");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
-const same_object = @import("same_object.zig");
+const engine = @import("engine");
 
 // Import interfaces for calling spec methods (per Golden Rule #13: impls call interfaces, not other impls)
 const Range = interfaces.Range;
@@ -81,16 +81,18 @@ pub const InternalState = struct {
 
     /// The associated range (lazily created, may be null if empty selection)
     /// Per spec, most browsers only support a single range per selection
-    /// Written only through `setRange`, which holds it.
-    range: ?*runtime.Instance = null,
-    /// `range`'s wrapper, held while it is this selection's range. addRange()
+    /// Written only through `setRange`, which keeps it.
+    ///
+    /// Kept while it is this selection's range by an edge from the
+    /// selection's wrapper (engine.traceChild, member "range"). addRange()
     /// step 3: "Set this's range to range by a strong reference (not by making
     /// a copy)" - script need not keep it (`getSelection().addRange(
     /// document.createRange())`), and getRangeAt(0) must still return that
     /// object after a collection. A bare pointer let the collector free the
-    /// Range under the selection. Blink: DOMSelection keeps its range through
-    /// the traced FrameSelection/cached_range_ members.
-    range_pin: same_object.Pin = .{},
+    /// Range under the selection. Blink: SelectionEditor::Trace visits
+    /// cached_range_. The selection's own wrapper lives as long as the
+    /// selection: its document keeps it (Document's `selection_kept`).
+    range: ?*runtime.Instance = null,
 
     /// The document this selection belongs to
     document: ?*runtime.Instance = null,
@@ -102,21 +104,28 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
-        // Don't free the range - its wrapper owns it; let go of the wrapper.
-        self.setRange(null);
+        // Don't free the range - its wrapper owns it. The edge to it goes
+        // with this selection's wrapper; nothing to end here, which may run
+        // while the collector does (engine.forgetTracedChild must not).
+        self.range = null;
         self.anchor_node = null;
         self.focus_node = null;
     }
 
-    /// Make `range` this selection's range, or clear it, holding the range's
-    /// wrapper while it is one (see `range_pin`).
-    fn setRange(self: *InternalState, range: ?*runtime.Instance) void {
-        if (self.range == range and (range == null or self.range_pin.isHeld())) return;
-        self.range_pin.release();
+    /// Make `range` the range of `selection` (whose state this is), or clear
+    /// it, keeping the range while it is one (see `range`).
+    fn setRange(self: *InternalState, selection: *runtime.Instance, range: ?*runtime.Instance) void {
+        if (self.range == range) return;
         self.range = range;
-        if (range) |r| self.range_pin.hold(r);
+        if (range) |r|
+            engine.traceChild(selection, r, range_slot)
+        else
+            engine.forgetTracedChild(selection, range_slot);
     }
 };
+
+/// The member a selection keeps its range in (engine.traceChild).
+const range_slot: engine.TracedSlot = .{ .name = "range" };
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
@@ -299,7 +308,7 @@ pub fn call_getRangeAt(instance: *runtime.Instance, index: u32) anyerror!*runtim
 
     // Create a new range representing the selection
     const range = try createRangeFromSelection(internal);
-    internal.setRange(range);
+    internal.setRange(instance, range);
     return range;
 }
 
@@ -322,7 +331,7 @@ pub fn call_addRange(instance: *runtime.Instance, range: *runtime.Instance) anye
     internal.focus_node = end_container;
     internal.focus_offset = end_offset;
     internal.direction = .forward;
-    internal.setRange(range);
+    internal.setRange(instance, range);
 }
 
 /// Selection API - removeRange(range)
@@ -338,7 +347,7 @@ pub fn call_removeRange(instance: *runtime.Instance, range: *runtime.Instance) a
         internal.focus_node = null;
         internal.focus_offset = 0;
         internal.direction = .none;
-        internal.setRange(null);
+        internal.setRange(instance, null);
     }
     // If not our range, do nothing (per spec)
 }
@@ -353,7 +362,7 @@ pub fn call_removeAllRanges(instance: *runtime.Instance) anyerror!void {
     internal.focus_node = null;
     internal.focus_offset = 0;
     internal.direction = .none;
-    internal.setRange(null);
+    internal.setRange(instance, null);
 }
 
 /// Selection API - empty()
@@ -377,7 +386,7 @@ pub fn call_collapse(instance: *runtime.Instance, node: ?*runtime.Instance, offs
     internal.focus_node = node;
     internal.focus_offset = if (offset.was_passed) offset.value else 0;
     internal.direction = .none;
-    internal.setRange(null); // Invalidate cached range
+    internal.setRange(instance, null); // Invalidate cached range
 }
 
 /// Selection API - setPosition(node, offset)
@@ -413,7 +422,7 @@ pub fn call_collapseToStart(instance: *runtime.Instance) anyerror!void {
     internal.focus_node = start_node;
     internal.focus_offset = start_offset;
     internal.direction = .none;
-    internal.setRange(null);
+    internal.setRange(instance, null);
 }
 
 /// Selection API - collapseToEnd()
@@ -443,7 +452,7 @@ pub fn call_collapseToEnd(instance: *runtime.Instance) anyerror!void {
     internal.focus_node = end_node;
     internal.focus_offset = end_offset;
     internal.direction = .none;
-    internal.setRange(null);
+    internal.setRange(instance, null);
 }
 
 /// Selection API - extend(node, offset)
@@ -465,7 +474,7 @@ pub fn call_extend(instance: *runtime.Instance, node: *runtime.Instance, offset:
     // TODO: Implement proper document position comparison
     // For now, assume forward if focus comes after anchor
     internal.direction = .forward;
-    internal.setRange(null);
+    internal.setRange(instance, null);
 }
 
 /// Selection API - setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
@@ -493,7 +502,7 @@ pub fn call_setBaseAndExtent(instance: *runtime.Instance, anchorNode: *runtime.I
         internal.direction = .forward;
     }
 
-    internal.setRange(null);
+    internal.setRange(instance, null);
 }
 
 /// Selection API - selectAllChildren(node)
@@ -517,7 +526,7 @@ pub fn call_selectAllChildren(instance: *runtime.Instance, node: *runtime.Instan
     internal.focus_node = node;
     internal.focus_offset = child_count;
     internal.direction = .forward;
-    internal.setRange(null);
+    internal.setRange(instance, null);
 }
 
 /// Selection API - modify(alter, direction, granularity)
@@ -620,7 +629,7 @@ pub fn call_modify(instance: *runtime.Instance, alter: webidl.Opt(runtime.DOMStr
     }
 
     // Invalidate cached range
-    internal.setRange(null);
+    internal.setRange(instance, null);
 }
 
 /// Result of a position calculation
@@ -922,7 +931,7 @@ pub fn call_deleteFromDocument(instance: *runtime.Instance) anyerror!void {
 
     // Get or create the range
     const range = if (internal.range) |r| r else try createRangeFromSelection(internal);
-    internal.setRange(range);
+    internal.setRange(instance, range);
 
     // Delete the range contents (use interface per Golden Rule #13)
     interfaces.Range.call_deleteContents(range) catch return error.InvalidStateError;
@@ -944,7 +953,7 @@ pub fn call_containsNode(instance: *runtime.Instance, node: *runtime.Instance, a
     // Get or create the range for containment check
     const range = if (internal.range) |r| r else blk: {
         const r = try createRangeFromSelection(internal);
-        internal.setRange(r);
+        internal.setRange(instance, r);
         break :blk r;
     };
 
@@ -1176,7 +1185,7 @@ pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
     if (internal.anchor_node == null or internal.focus_node == null) return "";
     const range = if (internal.range) |r| r else blk: {
         const r = try createRangeFromSelection(internal);
-        internal.setRange(r);
+        internal.setRange(instance, r);
         break :blk r;
     };
     const text = try Range.serialize(range);

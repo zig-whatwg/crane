@@ -3403,3 +3403,9 @@ pub extern fn v8_Object_GetCatchingWithSite(context: *Context, object: *Value, k
 /// terminating).
 pub extern fn v8_JSON_StringifyValue(context: *Context, value: *Value, no_representation: *bool) ?*Value;
 // ---- end lane: networking ----
+// ---- lane: realms ----
+/// End the edge `v8_Object_SetPrivateRef` drew from `holder` under `key`: the
+/// private property is deleted (the engine protocol's forgetTracedChild). A
+/// no-op when there is none; needs an entered context.
+pub extern fn v8_Object_DeletePrivateRef(holder: *Object, key: [*]const u8, key_len: c_int) void;
+// ---- end lane: realms ----

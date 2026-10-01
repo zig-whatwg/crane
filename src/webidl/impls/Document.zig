@@ -557,7 +557,7 @@ pub const InternalState = struct {
         self.stylesheet_tracker.deinit();
 
         // The objects this document handed out as the same object for its
-        // whole life: each lets go of its wrapper here (see `KeptChild`).
+        // whole life: each is severed from it here (see `KeptChild`).
         if (self.all_collection) |all| self.all_collection_kept.release(all, interfaces.HTMLAllCollection.deinit);
         if (self.fonts) |fonts_inst| self.fonts_kept.release(fonts_inst, interfaces.FontFaceSet.deinit);
         if (self.selection) |sel| self.selection_kept.release(sel, interfaces.Selection.deinit);
@@ -1687,15 +1687,20 @@ pub fn get_defaultView(instance: *runtime.Instance) anyerror!?typedefs.WindowPro
 /// Set the default view (window) associated with this document.
 /// Called when the document is associated with a window (e.g., during iframe setup).
 /// This establishes the bidirectional Document <-> Window relationship.
+///
+/// The window keeps this document's wrapper from then on - WebKit's
+/// `document` is a strong reference, Blink traces document_ from
+/// LocalDOMWindow - by an edge from its global object, its member
+/// `document`: the wrapper lives as long as the window's realm, and the
+/// children the document keeps (`KeptChild`) with it. A document whose
+/// wrapper was collected under its window died on the next `document` access
+/// (custom-elements/connected-callbacks.html, SIGTRAP). Every caller has made
+/// this document the window's (Window.setDocument), which keeps a document it
+/// replaces.
 pub fn setDefaultView(instance: *runtime.Instance, window: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.default_view = window;
-    // The window aliases this document's wrapper from here on - WebKit's
-    // `document` is a strong reference - so it is kept whatever script holds,
-    // until its realm ends. A document whose wrapper was collected under its
-    // window died on the next `document` access
-    // (custom-elements/connected-callbacks.html, SIGTRAP).
-    engine.keepPlatformObjectAlive(instance);
+    engine.traceChild(window, instance, .{ .name = "document" });
 }
 
 /// Getter for designMode
@@ -1812,7 +1817,7 @@ pub fn get_all(instance: *runtime.Instance) anyerror!*runtime.Instance {
         internal.all_collection_kept.made(made);
         break :blk made;
     };
-    internal.all_collection_kept.handOut(all);
+    internal.all_collection_kept.handOut(instance, all, .{ .name = "all" });
     return all;
 }
 
@@ -1843,7 +1848,7 @@ pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         internal.fonts_kept.made(made);
         break :blk made;
     };
-    internal.fonts_kept.handOut(fonts);
+    internal.fonts_kept.handOut(instance, fonts, .{ .name = "fonts" });
     return fonts;
 }
 
@@ -1890,7 +1895,7 @@ pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         internal.style_sheets_kept.made(made);
         break :blk made;
     };
-    internal.style_sheets_kept.handOut(sheets);
+    internal.style_sheets_kept.handOut(instance, sheets, .{ .name = "styleSheets" });
     return sheets;
 }
 
@@ -3774,7 +3779,7 @@ pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     };
     // It is this document's for the document's whole life, whatever script
     // keeps of it (`KeptChild`).
-    internal.selection_kept.handOut(selection);
+    internal.selection_kept.handOut(instance, selection, .{ .name = "selection" });
     return selection;
 }
 

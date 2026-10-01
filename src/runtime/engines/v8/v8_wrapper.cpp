@@ -12462,3 +12462,25 @@ Global<Value>* v8_JSON_StringifyValue(Global<Context>* context, Global<Value>* v
 
 } // extern "C"
 // ---- end lane: networking ----
+// ---- lane: realms ----
+extern "C" {
+
+/// End the edge `v8_Object_SetPrivateRef` drew from `holder` under `key`: the
+/// private property is deleted, so the collector no longer reaches the value
+/// through `holder` (the engine protocol's forgetTracedChild). A no-op when
+/// there is none. Needs an entered context, as SetPrivateRef does.
+void v8_Object_DeletePrivateRef(Global<Object>* holder, const char* key, int key_len) {
+    if (!holder || holder->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return;
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
+    Local<Private> priv = Private::ForApi(isolate, name);
+    (void)holder->Get(isolate)->DeletePrivate(context, priv);
+}
+
+} // extern "C"
+// ---- end lane: realms ----

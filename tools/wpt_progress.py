@@ -260,6 +260,10 @@ def load_results():
                 continue
             if 'path' in rec:
                 rec['_journal'] = os.path.basename(fn)
+                # The run's label: the directory under wpt-results/ ('' for a
+                # journal at its top), which by convention ends in the commit
+                # the run measured (`ab-<sha>`, `sweep-<sha>`, `<lane>-<sha>`).
+                rec['_label'] = label_of_journal(fn)
                 rec['_mtime'] = os.path.getmtime(fn)
                 prev = records.get(rec['path'])
                 # The high-water marks rise on ANY journal line, superseding or
@@ -786,6 +790,56 @@ def git_head():
         return '?'
 
 
+def label_of_journal(fn):
+    """The label of a journal under RESULTS: its directory there, '' at the top."""
+    rel = os.path.relpath(os.path.dirname(os.path.abspath(fn)), os.path.abspath(RESULTS))
+    return '' if rel == '.' else rel
+
+
+def commit_of_label(label):
+    """The commit a run label names - its trailing `-<hex>` (7 to 40 digits) - or None."""
+    m = re.search(r'(?:^|-)([0-9a-f]{7,40})$', label or '')
+    return m.group(1) if m else None
+
+
+def record_identity(rec):
+    """Which measurement a state record is: its journal and that journal's mtime. A
+    regeneration that re-reads the same journal gives the same identity."""
+    return f"{rec.get('_label', '?')}/{rec.get('_journal', '?')}@{rec.get('_mtime', 0)}"
+
+
+def generation_sources(worklist, records, cur, prev, last_idents, idents):
+    """The journals that moved this generation, most-moving first.
+
+    A worklist file counts toward the journal its record now comes from when that record
+    is a new measurement since the last generation (its identity changed). A history kept
+    before identities were recorded has none: then only the files whose status changed
+    count. `moved` is how many of a journal's files changed status; `commit` is the
+    label's, or - for a journal at the top of wpt-results/, which the main checkout's
+    runner writes - the checkout's HEAD."""
+    by = {}
+    for path in worklist:
+        rec = records.get(path)
+        if rec is None:
+            continue
+        changed = prev is not None and prev.get(path, 'UNRUN') != cur.get(path)
+        if last_idents is not None:
+            if last_idents.get(path) == idents.get(path):
+                continue
+        elif not changed and prev is not None:
+            continue
+        key = (rec.get('_label', '?'), rec.get('_journal', '?'))
+        src = by.get(key)
+        if src is None:
+            label = key[0]
+            commit = commit_of_label(label) if label else git_head()
+            src = by[key] = {'label': label, 'journal': key[1], 'commit': commit, 'files': 0, 'moved': 0}
+        src['files'] += 1
+        if changed:
+            src['moved'] += 1
+    return sorted(by.values(), key=lambda s_: (-s_['moved'], -s_['files'], s_['label']))
+
+
 def status_of(rec):
     """One word per file for the history diff: OK, UNRUN, or the gating status."""
     if rec is None:
@@ -826,6 +880,14 @@ def record_generation(worklist, records, areas):
     prev = history.get('last_statuses')
     # `prev` was computed under the rule the history records (1 if it records none).
     rule_changed = prev is not None and history.get('gate_rule', 1) != GATE_RULE
+    # Where this generation's results came from. `head` is the commit whose results
+    # moved it - the leading source's - and `checkout` the main checkout's HEAD when
+    # the report was made, which is not the same thing when a lane's journal moved it
+    # (generations 88-89 named cef789b3a for results from another branch).
+    idents = {p: record_identity(records[p]) for p in worklist if p in records}
+    sources = generation_sources(worklist, records, cur, prev, history.get('last_sources'), idents)
+    checkout = git_head()
+    head = next((s_['commit'] for s_ in sources if s_['commit']), None) if sources else None
 
     tot = collections.Counter()
     for c in areas.values():
@@ -834,7 +896,9 @@ def record_generation(worklist, records, areas):
     snap = {
         'n': len(history['generations']) + 1,
         'at': datetime.datetime.now().isoformat(timespec='seconds'),
-        'head': git_head(),
+        'head': head or checkout,
+        'checkout': checkout,
+        'sources': sources,
         'total': len(worklist), 'run': tot['run'], 'unrun': tot['unrun'],
         'blocking': tot['gating'], 'crash': tot['crash'], 'timeout': tot['timeout'],
         'error': tot['gating'] - tot['crash'] - tot['timeout'] - tot['none-passed'],
@@ -886,6 +950,7 @@ def record_generation(worklist, records, areas):
                 last['regenerations'] = last.get('regenerations', 0) + 1
                 last['regenerated_at'] = snap['at']
             history['last_statuses'] = cur
+            history['last_sources'] = idents
             history['gate_rule'] = GATE_RULE
             _save_history(history)
             return history
@@ -895,6 +960,7 @@ def record_generation(worklist, records, areas):
     snap['gate_rule'] = GATE_RULE
     history['generations'].append(snap)
     history['last_statuses'] = cur
+    history['last_sources'] = idents
     history['gate_rule'] = GATE_RULE
     _save_history(history)
     return history
@@ -967,6 +1033,7 @@ def rebuild_history(worklist, records, shape=None):
             snap['moves'] = dict(moves); snap['samples'] = dict(samples)
         history['generations'].append(snap)
         history['last_statuses'] = cur
+    history['last_sources'] = {p: record_identity(records[p]) for p in worklist if p in records}
     _save_history(history)
     return history
 
@@ -1165,6 +1232,26 @@ def _render_history_chart(gens):
     <span class="dim">hover a generation for its numbers</span></div>"""
 
 
+def _render_sources(g):
+    """Under a generation's commit: the run labels whose journals moved it, and the
+    checkout's HEAD when it differs from the commit shown."""
+    srcs = g.get('sources') or []
+    parts = []
+    for s_ in srcs[:3]:
+        label = s_['label'] or 'wpt-results/'
+        parts.append(f'<span title="{html.escape(s_["journal"])}: {s_["files"]:,} files measured, '
+                     f'{s_["moved"]:,} changed status">{html.escape(label)}</span>')
+    if len(srcs) > 3:
+        parts.append(f'+{len(srcs) - 3} more')
+    out = ''
+    if parts:
+        out += '<br><span class="dim">from ' + ', '.join(parts) + '</span>'
+    co = g.get('checkout')
+    if co and co != g.get('head'):
+        out += f'<br><span class="dim">checkout {html.escape(co)}</span>'
+    return out
+
+
 def render_history(history):
     gens = history.get('generations', [])
     if not gens:
@@ -1215,7 +1302,7 @@ def render_history(history):
         rows.append(f"""
       <tr>
         <td class="num">{g['n']}</td>
-        <td class="when">{when}<br><code class="dim">{html.escape(g['head'])}</code></td>
+        <td class="when">{when}<br><code class="dim">{html.escape(g['head'])}</code>{_render_sources(g)}</td>
         <td class="num">{g['run']:,} {_delta(g, prev, 'run', False)}</td>
         <td class="num gate">{g['blocking']:,} {_delta(g, prev, 'blocking', True)}</td>
         <td class="num">{g['crash']:,} {_delta(g, prev, 'crash', True)}</td>
@@ -1691,12 +1778,87 @@ def _check_history_chart():
         assert '<title>' in out, 'each band carries a native tooltip without JavaScript'
 
 
+def _check_history_sources():
+    """Each generation names the journals that moved it - label (the directory under
+    wpt-results/) and commit - not the checkout's HEAD: a lane's sweep journal dropped
+    into wpt-results/<lane>-<sha>/ is that lane's commit's result. A record re-read from
+    the same journal moves nothing and names nothing."""
+    import tempfile
+    global HISTORY, RESULTS, STATE, git_head
+    saved = (HISTORY, RESULTS, STATE, git_head)
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            HISTORY = os.path.join(d, 'h.json')
+            RESULTS = os.path.join(d, 'wpt-results')
+            STATE = os.path.join(d, 'state.json')
+            git_head = lambda: 'cef789b3a'
+            os.makedirs(os.path.join(RESULTS, 'flakes-3d0cf4ef0'))
+            wl = ['a.html', 'b.html', 'c.html']
+
+            def write(rel, recs, mtime):
+                fn = os.path.join(RESULTS, rel)
+                with open(fn, 'w') as f:
+                    for r in recs:
+                        f.write(json.dumps(r) + '\n')
+                os.utime(fn, (mtime, mtime))
+
+            # Generation 1: the main checkout's own run, written to wpt-results/.
+            write('journal.jsonl', [{'path': p, 'status': 'OK', 'passed': 1} for p in wl], 1_000)
+            records, _ = load_results()
+            assert records['a.html']['_label'] == '' and records['a.html']['_journal'] == 'journal.jsonl'
+            h = record_generation(wl, records, {})
+            g = h['generations'][-1]
+            assert g['head'] == 'cef789b3a' and g['checkout'] == 'cef789b3a', g
+            assert [s_['label'] for s_ in g['sources']] == [''], g['sources']
+            assert g['sources'][0]['files'] == 3 and g['sources'][0]['commit'] == 'cef789b3a'
+
+            # Generation 2: a lane's sweep journal moves a.html; the checkout is
+            # still at cef789b3a, but the result is 3d0cf4ef0's.
+            write('flakes-3d0cf4ef0/journal.jsonl', [{'path': 'a.html', 'status': 'TIMEOUT', 'passed': 0}], 2_000)
+            records, _ = load_results()
+            assert records['a.html']['_label'] == 'flakes-3d0cf4ef0'
+            h = record_generation(wl, records, {})
+            g = h['generations'][-1]
+            assert g['n'] == 2 and g['head'] == '3d0cf4ef0', g
+            assert g['checkout'] == 'cef789b3a'
+            assert g['sources'] == [{'label': 'flakes-3d0cf4ef0', 'journal': 'journal.jsonl',
+                                     'commit': '3d0cf4ef0', 'files': 1, 'moved': 1}], g['sources']
+
+            # Regenerating with nothing new: no generation, and nothing is attributed
+            # to the next one that was not new by then.
+            records, _ = load_results()
+            h = record_generation(wl, records, {})
+            assert len(h['generations']) == 2 and h['generations'][-1]['regenerations'] == 1
+            os.makedirs(os.path.join(RESULTS, 'ab-1a2b3c4d5'))
+            write('ab-1a2b3c4d5/journal.jsonl', [{'path': 'b.html', 'status': 'OK', 'passed': 7}], 3_000)
+            records, _ = load_results()
+            h = record_generation(wl, records, {})
+            g = h['generations'][-1]
+            assert g['n'] == 3 and [s_['label'] for s_ in g['sources']] == ['ab-1a2b3c4d5'], g['sources']
+            assert g['sources'][0]['moved'] == 0 and g['sources'][0]['files'] == 1, 'subtests moved, status did not'
+            assert g['head'] == '1a2b3c4d5'
+
+            # A label with no commit in it names no commit, and the head falls back
+            # to the checkout.
+            assert commit_of_label('scratch') is None
+            assert commit_of_label('sweep-21edba80f') == '21edba80f'
+            assert commit_of_label('main-d86955400') == 'd86955400'
+            assert commit_of_label('') is None
+
+            # The table shows where a generation's results came from.
+            out = render_history(h)
+            assert 'ab-1a2b3c4d5' in out and 'flakes-3d0cf4ef0' in out
+    finally:
+        HISTORY, RESULTS, STATE, git_head = saved
+
+
 if __name__ == '__main__':
     if sys.argv[1:] == ['--self-test']:
         _check_declared_variants()
         _check_history_chart()
         _check_gate_rule()
         _check_history_subs()
+        _check_history_sources()
         print('wpt_progress self-test: ok')
     else:
         main()

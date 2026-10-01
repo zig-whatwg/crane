@@ -148,6 +148,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [An API callback's current context is the callee's realm, and a Global of it pins that realm](architecture-an-api-callback-s-current-context-is-the-callee-s-realm.md) - A Global of the current context taken in an API callback is a Global of the callee's realm: release it, and when V8 dies of OOM between pages, count live native contexts after a forced GC first.
 - [A shadow root outlives script's hold on its host, so the host's death must not tear it down](architecture-a-shadow-root-outlives-script-s-hold-on-its-host.md) - Before severing a kept child at its owner's death, ask whether script can hold the child without the owner; if it can, detach instead.
 - [The binding frees an operation's arguments before it converts its result](architecture-the-binding-frees-an-operation-s-arguments-before-it-converts-its-result.md) - An impl's return value must not point into its arguments.
+- [A traced edge lives only as long as its owner's wrapper - and a Window's wrapper is its global object, not its WindowProxy](architecture-a-traced-edge-lives-only-as-long-as-its-owner-s-wrapper.md) - Before swapping a root for a traced edge, prove the owner's wrapper lives as long as the owner, hang a Window's edges on its global object, and never touch the engine from a teardown the collector can start.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -243,6 +244,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A single-path runner run has no stall watchdog](testing-a-single-path-runner-run-has-no-stall-watchdog.md) - A runner process with no supervisor has no watchdog: bound it yourself; and `CRANE_LEAK_TRACES=1` is for small files - count leaks untraced first.
 - [Headless Chrome may never exit, and a reused profile caches a regenerated page](testing-headless-chrome-may-never-exit-and-caches-across-rounds.md) - Bound every headless call, and never reuse a profile across a regeneration.
 - [A count that moves between runs - diff the failure messages, not the totals](testing-a-count-that-moves-between-runs-diff-the-failure-messages.md) - Totals that move are a symptom; identical subtests failing differently between runs mean something freed is being read.
+- [A network test takes its timing from the server, not the clock](testing-a-network-test-takes-its-timing-from-the-server-not-the-clock.md) - When a test stages a race, let the peer it controls announce and gate each step; a sleep is a bet on the machine's load.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
