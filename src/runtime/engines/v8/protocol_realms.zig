@@ -284,6 +284,43 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     return realm;
 }
 
+/// Where `window`'s traced edges hang (protocol_tracing.zig): its realm's
+/// global object - never the WindowProxy, which a navigation hands to the
+/// next Window.
+pub const TracedEdgeHolder = union(enum) {
+    /// `window` is no Window of a realm made here: its wrapper is an
+    /// ordinary one.
+    not_a_realm_window,
+    /// Its global object is gone (collected after its WindowProxy went on)
+    /// or unreachable: no edge.
+    gone,
+    /// The global object, as a Global the caller releases
+    /// (v8_Global_Dispose).
+    global_object: *ffi.Value,
+};
+
+pub fn tracedEdgeHolderOfWindow(window: *engine.Instance) TracedEdgeHolder {
+    const state = window_realms.get(window.ctx) orelse return .not_a_realm_window;
+    if (state.window != window) return .not_a_realm_window;
+    // Its WindowProxy went on to a later realm: the global object it had is
+    // the one createWindowRealm kept (weakly) as `retired_global`.
+    if (state.window_proxy_handed_on) {
+        const retired = state.retired_global orelse return .gone;
+        if (ffi.v8_Global_IsEmpty(retired) or !ffi.v8_Value_IsObject(retired)) return .gone;
+        return .{ .global_object = ffi.v8_Global_Clone(retired) orelse return .gone };
+    }
+    const context = contextOf(window.ctx) orelse return .gone;
+    const proxy = ffi.v8_Context_Global(context) orelse return .gone;
+    defer ffi.v8_Object_Dispose(proxy);
+    // V8's V1 GetPrototype on a global proxy answers the hidden global object.
+    const global = ffi.v8_Object_GetPrototype(proxy) orelse return .gone;
+    if (!ffi.v8_Value_IsObject(global)) {
+        ffi.v8_Global_Dispose(global);
+        return .gone;
+    }
+    return .{ .global_object = global };
+}
+
 /// `proxy`'s hidden global object, as a weak handle (empty once collected).
 fn retiredGlobalOf(proxy: *ffi.Object) ?*ffi.Value {
     const value = ffi.v8_Object_GetPrototype(proxy) orelse return null;

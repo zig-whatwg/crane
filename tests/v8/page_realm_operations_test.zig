@@ -1298,6 +1298,203 @@ test "protocol: a namespace operation keeps neither its realm nor its result" {
     }
 }
 
+// ============================================================================
+// traceChild / forgetTracedChild: an owner keeps a child for as long as the
+// owner's wrapper lives - the edge Blink draws by tracing a Member<> field
+// (tmp/plans/frame-realm-tracing-design.md, step 1)
+// ============================================================================
+
+/// The platform object `expression` evaluates to in `r`, made the way script
+/// makes one. The handle script handed back is released here, so only what
+/// `r` keeps of the object - a global property, an edge - keeps it alive.
+fn platformObjectIn(r: runtime.Context, expression: []const u8) !*runtime.Instance {
+    const made = try evalOwned(r, expression);
+    defer made.release();
+    return protocol.convertToPlatformObject(r, made.value) orelse error.NotAPlatformObject;
+}
+
+/// An instance, and whether it is still the object it was when watched: the
+/// slab stamps a slot's generation on every alloc and reads it dead after a
+/// free, so a freed - or freed and reissued - slot answers false. Never
+/// dereferences the instance.
+const Watched = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+
+    fn of(instance: *runtime.Instance) Watched {
+        return .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
+    }
+
+    fn alive(self: Watched) bool {
+        return runtime.SlabAllocator.generationOf(self.instance) == self.generation;
+    }
+};
+
+/// Two full collections, as the Crane tests' collectTwice() runs: a wrapper
+/// the first one finds unreachable has its weak callback - which frees its
+/// instance - run by then.
+fn collectTwice() void {
+    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+}
+
+test "protocol: a traced child lives as long as its owner's wrapper, and goes with it" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // Script keeps the owner, and nothing of either child.
+    const owner = Watched.of(try platformObjectIn(w, "globalThis.owner = new Headers()"));
+    const traced = Watched.of(try platformObjectIn(w, "new Headers([['traced', '1']])"));
+    const untraced = Watched.of(try platformObjectIn(w, "new Headers([['untraced', '1']])"));
+    protocol.traceChild(owner.instance, traced.instance, .{ .name = "child" });
+
+    collectTwice();
+    // The collections were real: what nothing kept is gone.
+    try std.testing.expect(!untraced.alive());
+    try std.testing.expect(owner.alive());
+    try std.testing.expect(traced.alive());
+    try std.testing.expect(protocol.hasWrapper(traced.instance));
+
+    // Script lets the owner go, and the child goes with it: an edge, not a root.
+    try expectEval(w, "delete globalThis.owner", "true");
+    collectTwice();
+    try std.testing.expect(!owner.alive());
+    try std.testing.expect(!traced.alive());
+}
+
+test "protocol: a slot holds one child; forgetTracedChild lets it go and leaves the other slots" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    const owner = Watched.of(try platformObjectIn(w, "globalThis.owner = new Headers()"));
+    const first = Watched.of(try platformObjectIn(w, "new Headers()"));
+    const second = Watched.of(try platformObjectIn(w, "new Headers()"));
+    const other = Watched.of(try platformObjectIn(w, "new Headers()"));
+    protocol.traceChild(owner.instance, first.instance, .{ .name = "child" });
+    protocol.traceChild(owner.instance, other.instance, .{ .name = "other" });
+    // Tracing again into the same slot replaces the edge (Selection's range,
+    // set anew by addRange after removeAllRanges).
+    protocol.traceChild(owner.instance, second.instance, .{ .name = "child" });
+    collectTwice();
+    try std.testing.expect(!first.alive());
+    try std.testing.expect(second.alive());
+    try std.testing.expect(other.alive());
+
+    protocol.forgetTracedChild(owner.instance, .{ .name = "child" });
+    // Forgetting an empty slot, or one never traced, is a no-op.
+    protocol.forgetTracedChild(owner.instance, .{ .name = "child" });
+    protocol.forgetTracedChild(owner.instance, .{ .name = "never" });
+    collectTwice();
+    try std.testing.expect(!second.alive());
+    try std.testing.expect(other.alive());
+    try std.testing.expect(owner.alive());
+    try expectEval(w, "delete globalThis.owner", "true");
+}
+
+test "protocol: an owner and a child that trace each other keep each other, and go together" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // A shadow root and its host: either keeps the other while script holds
+    // it - here script holds only the child.
+    const owner = Watched.of(try platformObjectIn(w, "new Headers()"));
+    const child = Watched.of(try platformObjectIn(w, "globalThis.child = new Headers()"));
+    protocol.traceChild(owner.instance, child.instance, .{ .name = "child" });
+    protocol.traceChild(child.instance, owner.instance, .{ .name = "owner" });
+    collectTwice();
+    try std.testing.expect(owner.alive());
+    try std.testing.expect(child.alive());
+
+    // Neither held: the cycle is the collector's, so both go.
+    try expectEval(w, "delete globalThis.child", "true");
+    collectTwice();
+    try std.testing.expect(!owner.alive());
+    try std.testing.expect(!child.alive());
+}
+
+test "protocol: a child traced from a Window lives as long as its realm" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // A Window's wrapper is its global object: it lives with the realm.
+    const window = try platformObjectIn(w, "globalThis");
+    const child = Watched.of(try platformObjectIn(w, "new Headers()"));
+    protocol.traceChild(window, child.instance, .{ .name = "child" });
+    collectTwice();
+    try std.testing.expect(child.alive());
+}
+
+test "protocol: a Window whose WindowProxy went on to a new realm traces from its own global object" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    var old_realm: FrameRealm = .{ .parent = parent };
+    const old = try old_realm.make();
+    const old_window = try platformObjectIn(old, "globalThis");
+
+    // A navigation: the new Window behind the same WindowProxy. The old realm
+    // lives on (a retired realm, until its page ends), and script that still
+    // runs in it can make its Window draw an edge.
+    var new_realm: FrameRealm = .{ .parent = parent, .global_this = .{ .window_proxy_of = old } };
+    const new = try new_realm.make();
+    // The old realm ends first, as a navigation's page would end it.
+    defer protocol.destroyWindowRealm(new, .global_detached);
+    defer protocol.destroyWindowRealm(old, .global_detached);
+    const new_window = try platformObjectIn(new, "globalThis");
+    try std.testing.expect(new_window != old_window);
+
+    // The same slot, one child each. Drawn through the shared WindowProxy,
+    // the old Window's edge would land on the NEW global object and replace
+    // the new Window's: its child freed under it.
+    const for_new = Watched.of(try platformObjectIn(new, "new Headers()"));
+    protocol.traceChild(new_window, for_new.instance, .{ .name = "child" });
+    const for_old = Watched.of(try platformObjectIn(old, "new Headers()"));
+    protocol.traceChild(old_window, for_old.instance, .{ .name = "child" });
+    collectTwice();
+    try std.testing.expect(for_new.alive());
+    try std.testing.expect(for_old.alive());
+}
+
+test "protocol: traceChild and forgetTracedChild leave no global handle behind" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    const isolate = isolate_once.?;
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    const window = try platformObjectIn(w, "globalThis");
+    const owner = try platformObjectIn(w, "globalThis.owner = new Headers()");
+    const child = try platformObjectIn(w, "globalThis.child = new Headers()");
+    // The first round makes what every later one reuses.
+    protocol.traceChild(owner, child, .{ .name = "child" });
+    protocol.traceChild(window, child, .{ .name = "child" });
+    collectTwice();
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const rounds = 32;
+    for (0..rounds) |_| {
+        protocol.traceChild(owner, child, .{ .name = "child" });
+        protocol.traceChild(window, child, .{ .name = "child" });
+        protocol.forgetTracedChild(owner, .{ .name = "child" });
+        protocol.forgetTracedChild(window, .{ .name = "child" });
+    }
+    collectTwice();
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    if (after -| before >= handle_bytes) {
+        std.debug.print("global handles {d} -> {d} bytes over {d} rounds ({d} bytes a handle)\n", .{ before, after, rounds, handle_bytes });
+        return error.HandlesLeaked;
+    }
+    try expectEval(w, "delete globalThis.owner && delete globalThis.child", "true");
+}
+
 test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whichever realm queued them" {
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);

@@ -694,6 +694,10 @@ pub fn platformObjectDestroyed(instance: *Instance) void {
     context_manager.markInstanceCleanedUp(instance);
 }
 
+const protocol_tracing = @import("protocol_tracing.zig");
+pub const traceChild = protocol_tracing.traceChild;
+pub const forgetTracedChild = protocol_tracing.forgetTracedChild;
+
 // ============================================================================
 // 4.13 Diagnostics tier
 // ============================================================================

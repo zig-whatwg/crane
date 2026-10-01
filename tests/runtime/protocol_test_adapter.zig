@@ -393,6 +393,9 @@ pub fn hasWrapper(_: *Instance) bool {
 pub fn keepPlatformObjectAlive(_: *Instance) void {}
 pub fn releasePlatformObject(_: *Instance) void {}
 pub fn platformObjectDestroyed(_: *Instance) void {}
+/// No engine, no collector: nothing to keep.
+pub fn traceChild(_: *Instance, _: *Instance, _: engine.TracedSlot) void {}
+pub fn forgetTracedChild(_: *Instance, _: engine.TracedSlot) void {}
 
 // 4.13 Diagnostics tier
 pub fn heapStatistics(_: *Agent) engine.HeapStatistics {
