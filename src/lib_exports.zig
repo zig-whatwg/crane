@@ -134,21 +134,25 @@ pub const WhatwgBrowser = browser.Browser;
 ///
 /// @return Pointer to browser instance, or null on failure
 pub export fn whatwg_browser_create() callconv(.c) ?*WhatwgBrowser {
-    const allocator = std.heap.c_allocator;
-    // Browser.init() already returns *Browser (a pointer)
+    return createBrowser(std.heap.c_allocator);
+}
+
+/// A browser made from `allocator`, or null on failure. The browser records
+/// its allocator, and `Browser.deinit` frees it with that allocator - which
+/// is all `whatwg_browser_destroy` has to do.
+fn createBrowser(allocator: std.mem.Allocator) ?*WhatwgBrowser {
     return browser.Browser.init(allocator, .{}) catch null;
 }
 
 /// Destroy a browser instance and free all resources.
 ///
 /// This also destroys the V8 isolate and all associated contexts.
+/// `Browser.deinit` frees the browser itself, with the allocator it was
+/// made from; freeing it again here was a double free on every destroy.
 ///
 /// @param b Pointer to browser instance to destroy
 pub export fn whatwg_browser_destroy(b: ?*WhatwgBrowser) callconv(.c) void {
-    if (b) |ptr| {
-        ptr.deinit();
-        std.heap.c_allocator.destroy(ptr);
-    }
+    if (b) |ptr| ptr.deinit();
 }
 
 /// Navigate the browser to a URL.
@@ -278,4 +282,23 @@ test "lib_exports - version" {
 
 test "lib_exports - module compilation" {
     forceModuleCompilation();
+}
+
+// An embedder that destroys a browser: Browser.deinit ends with its own
+// `allocator.destroy(self)`, and whatwg_browser_destroy then freed the same
+// pointer again with the C heap - a double free on every destroy. Under
+// std.testing.allocator the second free reaches a pointer the C heap never
+// handed out.
+test "whatwg_browser_destroy frees a browser once" {
+    const b = createBrowser(std.testing.allocator) orelse return error.BrowserCreateFailed;
+    whatwg_browser_destroy(b);
+}
+
+test "whatwg_browser_create and whatwg_browser_destroy pair up on the C heap" {
+    const b = whatwg_browser_create() orelse return error.BrowserCreateFailed;
+    whatwg_browser_destroy(b);
+}
+
+test "whatwg_browser_destroy takes null" {
+    whatwg_browser_destroy(null);
 }
