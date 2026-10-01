@@ -3337,7 +3337,7 @@ pub fn build(b: *std.Build) void {
     // directory, and compare it byte for byte with the committed generated
     // directories under src/webidl/. A hand-edited generated file, an IDL or
     // codegen change committed without its regeneration, or a stale generated
-    // file all fail it.
+    // file all fail it. `zig build test` runs it.
     const codegen_check = b.addRunArtifact(codegen_exe);
     // It reads specs/ and src/webidl/, which the build graph does not track.
     codegen_check.has_side_effects = true;
@@ -3346,6 +3346,10 @@ pub fn build(b: *std.Build) void {
     codegen_check.addDirectoryArg(b.tmpPath().path(b, "tree"));
     const codegen_check_step = b.step("codegen-check", "Fail if the committed generated WebIDL tree differs from a from-scratch regeneration");
     codegen_check_step.dependOn(&codegen_check.step);
+    // ~45 s on chat (a full regeneration and a byte compare of ~2,900 files).
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {
+        test_step.dependOn(&codegen_check.step);
+    }
 
     // IDL scanner tool
     const idl_scanner_exe = b.addExecutable(.{
