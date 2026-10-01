@@ -298,13 +298,6 @@ fn releasePendingActivity(instance: *runtime.Instance) void {
     engine.releasePlatformObject(instance);
 }
 
-// Analysed until its install lands (the unloading document cleanup steps
-// and "destroy a document" hooks - realms2 step 5, wired after crashes3's
-// dom.unloading_cleanup merges).
-comptime {
-    _ = &makeDisappearIn;
-}
-
 /// Every WebSocket on this thread, from its constructor to its deinit: the
 /// sockets "make disappear" reaches (`makeDisappearIn`).
 threadlocal var live_sockets: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
@@ -320,8 +313,9 @@ fn forgetSocket(instance: *runtime.Instance) void {
 /// HTML "unloading document cleanup steps" step 2: "For each WebSocket object
 /// webSocket whose relevant global object is window, make disappear
 /// webSocket" - for the sockets of `realm`, whose document is going (a frame
-/// removed, a page navigated away from). Installed into the unloading
-/// document cleanup steps (dom.unloading_cleanup).
+/// removed, a page navigated away from), or whose worker ended. Installed
+/// into the unloading document cleanup steps (dom.unloading_cleanup) by the
+/// first socket made.
 pub fn makeDisappearIn(realm: runtime.Context) void {
     // Backwards: nothing here frees a socket, but stay safe if it did.
     var i = live_sockets.items.len;
@@ -865,6 +859,8 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // worker.) Released by the close task, and by deinit.
     engine.keepPlatformObjectAlive(instance);
     live_sockets.append(std.heap.page_allocator, instance) catch {};
+    // Its document's end makes it disappear (dom.unloading_cleanup).
+    @import("dom").unloading_cleanup.install(&makeDisappearIn);
 
     return instance;
 }

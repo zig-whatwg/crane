@@ -164,14 +164,9 @@ pub fn initWithInternal(
     // it disabled until this port's start() or onmessage.
     internal_port.queue_enabled = false;
     live_ports.append(std.heap.page_allocator, instance) catch {};
+    // Its document's destruction disentangles it (`disentangleIn`).
+    @import("dom").unloading_cleanup.install(&disentangleIn);
     return instance;
-}
-
-// Analysed until its install lands (the unloading document cleanup steps
-// and "destroy a document" hooks - realms2 step 5, wired after crashes3's
-// dom.unloading_cleanup merges).
-comptime {
-    _ = &disentangleIn;
 }
 
 /// Every MessagePort on this thread, from init to deinit: the ports "destroy
@@ -192,7 +187,11 @@ fn forgetPort(instance: *runtime.Instance) void {
 /// `realm`, whose document is destroyed. A disentangled port has no pending
 /// activity left, so the hold that kept it - and through it its realm -
 /// while its channel lived goes (Blink: MessagePort::ContextDestroyed
-/// closes the port).
+/// closes the port). Installed into the unloading document cleanup steps
+/// (dom.unloading_cleanup), which "destroy a document" runs right after
+/// these (step 6); a document Crane unloads is always destroyed - it keeps
+/// no back/forward cache - so they run at the same moment either way, and a
+/// worker's ports go when it ends.
 pub fn disentangleIn(realm: runtime.Context) void {
     // Backwards: disentangling queues the peer's close event, frees nothing
     // here, but stay safe if it did.
