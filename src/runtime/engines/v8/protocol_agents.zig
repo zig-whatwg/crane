@@ -381,3 +381,23 @@ fn onMicrotasksCompleted(isolate: *ffi.Isolate, data: ?*anyopaque) callconv(.c) 
     const after = record.hooks.afterMicrotaskCheckpoint orelse return;
     after(record.host, @ptrCast(isolate));
 }
+
+// ---- lane: speed ----
+/// engine.abortRunningScript: V8's Isolate::TerminateExecution, which any
+/// thread may call without the isolate's lock (v8-isolate.h). The script
+/// running on the isolate's thread throws V8's uncatchable termination
+/// exception at its next interrupt check - a loop's back edge, a function
+/// entry - so no `catch` or `finally` runs; every API call it is inside
+/// returns empty, which callers treat as an abrupt completion.
+pub fn abortRunningScript(agent: *Agent) void {
+    ffi.v8_Isolate_TerminateExecution(@ptrCast(@alignCast(agent)));
+}
+
+/// engine.resumeScripts: Isolate::CancelTerminateExecution. V8 also ends the
+/// termination by itself once it has unwound past the outermost script (a
+/// TryCatch at call depth zero clears it); a termination requested while no
+/// script ran stays pending until this.
+pub fn resumeScripts(agent: *Agent) void {
+    ffi.v8_Isolate_CancelTerminateExecution(@ptrCast(@alignCast(agent)));
+}
+// ---- end lane: speed ----

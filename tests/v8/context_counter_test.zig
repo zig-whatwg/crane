@@ -487,6 +487,9 @@ test "document.all() with no argument is null" {
 // not move when they are taken lazily: the realm an error is made in, and no
 // handle left behind.
 
+const engine = @import("engine");
+const clock = @import("clock");
+
 var second_context: ?*ffi.Context = null;
 
 /// A second realm of the agent with every interface, reachable from the
@@ -567,5 +570,57 @@ test "an indexed getter's and a length getter's success paths leave no handle" {
     try expectNothingLeftAnywhere("list[1]", try leftBy("staticList[1];"));
     try expectNothingLeftAnywhere("classList[0]", try leftBy("tokens[0];"));
     try expectNothingLeftAnywhere("el.id", try leftBy("lengthDoc.body.id;"));
+}
+// An abort (engine.abortRunningScript, HTML 8.1.4.5) that lands while script
+// runs inside a binding's callback chain - script -> dispatchEvent -> the
+// DOM's dispatch -> a listener - unwinds through Zig code that called into
+// V8. Each of those calls returns empty, and each caller must take its error
+// path: nothing it made may be left behind.
+
+const AbortAfter = struct {
+    agent: *engine.Agent,
+    after_ms: u64,
+    fn run(self: *const AbortAfter) void {
+        clock.sleep(self.after_ms * std.time.ns_per_ms);
+        engine.abortRunningScript(self.agent);
+    }
+};
+
+fn abortedRound(comptime body: []const u8) !void {
+    const agent: *engine.Agent = @ptrCast(isolate_once.?);
+    const aborter: AbortAfter = .{ .agent = agent, .after_ms = 20 };
+    const thread = try std.Thread.spawn(.{}, AbortAfter.run, .{&aborter});
+    const outcome = scriptInt(body);
+    thread.join();
+    engine.resumeScripts(agent);
+    if (outcome) |_| return error.NotAborted else |_| {}
+}
+
+test "an abort inside a listener the binding dispatched to leaves no handle and no realm bytes" {
+    try allInterfaces();
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.abortTarget = new EventTarget();
+        \\abortTarget.addEventListener('spin', () => { for (;;) {} });
+        \\1
+    ));
+    const body = "abortTarget.dispatchEvent(new Event('spin')); 1";
+    const isolate = isolate_once.?;
+    // Two rounds first: what the first makes and later ones reuse.
+    try abortedRound(body);
+    try abortedRound(body);
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    const contexts_before = ffi.v8_Debug_LiveContextGlobals();
+    const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
+    const realm_before = realm_allocator.live;
+    for (0..8) |_| try abortedRound(body);
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    const left: Left = .{
+        .context_globals = ffi.v8_Debug_LiveContextGlobals() - contexts_before,
+        .handle_bytes = @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate))) - bytes_before,
+        .realm_bytes = realm_allocator.live - realm_before,
+    };
+    try expectNothingLeftAnywhere("an abort inside a dispatched listener", left);
+    // The realm runs script again.
+    try std.testing.expectEqual(@as(i32, 7), try scriptInt("3 + 4"));
 }
 // ---- end lane: speed ----
