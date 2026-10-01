@@ -794,12 +794,11 @@ pub fn V8Interface(comptime Interface: type) type {
         /// Even if V8 reuses the same isolate address, the generation will differ
         var template_cache_generation: u64 = 0;
 
-        /// Iterator prototype cache - shared prototype object for all iterators of this interface
-        /// Per WebIDL §3.7.7, iterator prototype has Symbol.toStringTag and inherits from %IteratorPrototype%
-        var iterator_proto_cache: ?*v8.Object = null;
-        var iterator_proto_cache_isolate: ?*v8.Isolate = null;
-        var iterator_proto_cache_context: ?*v8.Context = null;
-        var iterator_proto_cache_generation: u64 = 0;
+        /// The iterator prototype template for an isolate without template
+        /// storage (see iteratorPrototypeTemplate): isolate-scoped, no context.
+        var iterator_template_cache: ?*v8.FunctionTemplate = null;
+        var iterator_template_cache_isolate: ?*v8.Isolate = null;
+        var iterator_template_cache_generation: u64 = 0;
 
         /// All methods in this interface
         const all_methods = methods;
@@ -6182,16 +6181,6 @@ pub fn V8Interface(comptime Interface: type) type {
         /// For pair iterables (Headers, URLSearchParams, etc.) returns [key, value] pairs
         /// For indexed iterables (NodeList, etc.) returns values
         fn iteratorCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-            const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                conv.throwError(isolate, "No V8 context");
-                return;
-            };
-
-            // Get 'this' object
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-
             // Determine default iterator kind based on iterable type:
             // - Pair iterables (key_type is a string, not null): default to entries per WebIDL spec
             // - Indexed iterables (key_type is null or not defined): default to values
@@ -6208,68 +6197,53 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
                 break :blk .values;
             };
-
-            // Create an iterator object with next() method
-            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, default_kind);
-            if (iterator_obj) |obj| {
-                info.setReturnValue(@ptrCast(obj));
-            } else {
-                conv.throwError(isolate, "Failed to create iterator");
-            }
+            returnNewIterator(info, default_kind);
         }
 
         /// entries() callback - returns iterator yielding [index, value] pairs
         fn entriesCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-            const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                conv.throwError(isolate, "No V8 context");
-                return;
-            };
-
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .entries);
-            if (iterator_obj) |obj| {
-                info.setReturnValue(@ptrCast(obj));
-            } else {
-                conv.throwError(isolate, "Failed to create iterator");
-            }
+            returnNewIterator(info, .entries);
         }
 
         /// keys() callback - returns iterator yielding indices
         fn keysCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
-            const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                conv.throwError(isolate, "No V8 context");
-                return;
-            };
-
-            const this_obj = info.getThis();
-            defer v8.v8_Object_Dispose(this_obj);
-            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .keys);
-            if (iterator_obj) |obj| {
-                info.setReturnValue(@ptrCast(obj));
-            } else {
-                conv.throwError(isolate, "Failed to create iterator");
-            }
+            returnNewIterator(info, .keys);
         }
 
         /// values() callback - returns iterator yielding values
         fn valuesCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+            returnNewIterator(info, .values);
+        }
+
+        /// The body of @@iterator, entries(), keys() and values(): a new default
+        /// iterator object for `this`, returned to script.
+        ///
+        /// Every handle taken here is released here. Inside an API callback the
+        /// current context is the callee's realm, so a Global<Context> left
+        /// behind pinned that realm for the life of the isolate:
+        /// html5lib_write.html iterates its frames' childNodes from the parent
+        /// page, and kept every frame of all 56 variants - 898 realms, 1.17 GB -
+        /// alive to its end, and V8 aborted out of memory whenever a sweep ran
+        /// anything before it.
+        fn returnNewIterator(info: *const v8.FunctionCallbackInfo, kind: IteratorKind) void {
             const isolate = info.getIsolate();
             const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                 conv.throwError(isolate, "No V8 context");
                 return;
             };
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+            defer v8.v8_Context_Dispose(v8_context);
 
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj);
-            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, .values);
-            if (iterator_obj) |obj| {
-                info.setReturnValue(@ptrCast(obj));
-            } else {
+
+            const iterator_obj = createValueIterator(isolate, v8_context, this_obj, kind) orelse {
                 conv.throwError(isolate, "Failed to create iterator");
-            }
+                return;
+            };
+            // Copied into the return value (SetReturnValueGlobal); ours goes.
+            defer v8.v8_Object_Dispose(iterator_obj);
+            info.setReturnValue(@ptrCast(iterator_obj));
         }
 
         /// forEach() callback for pair iterables - calls callback(value, key, map) for each entry
@@ -6279,6 +6253,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 conv.throwError(isolate, "No V8 context");
                 return;
             };
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call
+            // (and pins its realm until released - see returnNewIterator).
+            defer v8.v8_Context_Dispose(v8_context);
 
             // Get 'this' object (the Headers/URLSearchParams/etc instance)
             const this_obj = info.getThis();
@@ -6290,7 +6267,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 return;
             }
 
+            // Owned: each argument is a Global the wrapper made for this call.
             const callback_arg = info.get(0);
+            defer v8.v8_Value_Dispose(callback_arg);
             if (!v8.v8_Value_IsFunction(callback_arg)) {
                 conv.throwTypeError(isolate, "forEach callback must be a function");
                 return;
@@ -6302,6 +6281,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 info.get(1)
             else
                 v8.v8_Undefined(isolate) orelse return;
+            defer v8.v8_Value_Dispose(this_arg);
 
             // Get entries using getEntriesForIterable with live iteration
             // Per WebIDL spec, forEach must iterate live - modifications during iteration
@@ -6323,7 +6303,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Use index-based iteration for live behavior
                     // Re-fetch entries on each iteration so modifications are visible
                     var index: usize = 0;
-                    while (true) {
+                    while (true) : (index += 1) {
                         // Get entries fresh on each iteration to see modifications
                         const entries = Interface.getEntriesForIterable(instance) orelse break;
 
@@ -6332,37 +6312,14 @@ pub fn V8Interface(comptime Interface: type) type {
 
                         const entry = entries[index];
 
-                        // Create V8 strings for key and value
-                        const key_str = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len)) orelse {
-                            index += 1;
-                            continue;
-                        };
+                        // Create V8 strings for key and value (released at the
+                        // end of each round: the call copies them into its
+                        // arguments).
+                        const key_str = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len)) orelse continue;
+                        defer v8.v8_String_Dispose(key_str);
 
-                        // Handle the value - check if it's a union type or simple string
-                        const ValueType = @TypeOf(entry.value);
-                        const val_v8: *v8.Value = val_blk: {
-                            if (@typeInfo(ValueType) == .@"union") {
-                                // It's a union - try to get the usvstring variant
-                                switch (entry.value) {
-                                    .usvstring => |s| {
-                                        break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len)) orelse {
-                                            index += 1;
-                                            continue;
-                                        });
-                                    },
-                                    else => {
-                                        index += 1;
-                                        continue;
-                                    }, // Skip non-string variants for now
-                                }
-                            } else {
-                                // Simple string type - use directly
-                                break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)) orelse {
-                                    index += 1;
-                                    continue;
-                                });
-                            }
-                        };
+                        const val_v8 = entryValue(isolate, entry) orelse continue;
+                        defer v8.v8_Value_Dispose(val_v8);
 
                         // Call: callback(value, key, map)
                         var args = [_]*v8.Value{
@@ -6370,19 +6327,30 @@ pub fn V8Interface(comptime Interface: type) type {
                             @ptrCast(key_str),
                             @ptrCast(this_obj),
                         };
-                        _ = v8.v8_Function_Call(
+                        const result = v8.v8_Function_Call(
                             callback_fn,
                             v8_context,
                             this_arg,
                             3,
                             @ptrCast(&args),
                         );
-
-                        // Increment index after callback (callback may modify collection)
-                        index += 1;
+                        if (result) |r| v8.v8_Value_Dispose(r);
                     }
                 }
             }
+        }
+
+        /// A pair iterable entry's value as a V8 string, OWNED; null for a
+        /// value that is not a string (not converted yet).
+        fn entryValue(isolate: *v8.Isolate, entry: anytype) ?*v8.Value {
+            const ValueType = @TypeOf(entry.value);
+            if (@typeInfo(ValueType) == .@"union") {
+                return switch (entry.value) {
+                    .usvstring => |s| @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len)) orelse return null),
+                    else => null, // Skip non-string variants for now
+                };
+            }
+            return @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)) orelse return null);
         }
 
         /// toString() callback for stringifier support
@@ -6434,17 +6402,19 @@ pub fn V8Interface(comptime Interface: type) type {
 
         const IteratorKind = enum { entries, keys, values };
 
-        /// Get %IteratorPrototype% from the JavaScript realm
+        /// Get %IteratorPrototype% from the JavaScript realm. OWNED.
         /// Per WebIDL §3.7.7, iterator prototypes must have %IteratorPrototype% in their chain.
         /// We obtain %IteratorPrototype% via: Object.getPrototypeOf(Object.getPrototypeOf([].values()))
         fn getIteratorPrototype(isolate: *v8.Isolate, context: *v8.Context) ?*v8.Value {
             // Create an empty array
             const arr = v8.v8_Array_New(isolate, 0);
+            defer v8.v8_Array_Dispose(arr);
 
             // Get the values() iterator from the array
             const values_key = v8.v8_String_NewFromUtf8(isolate, "values", 6) orelse return null;
             defer v8.v8_String_Dispose(values_key);
             const values_fn_val = v8.v8_Object_Get(@ptrCast(arr), context, @ptrCast(values_key)) orelse return null;
+            defer v8.v8_Value_Dispose(values_fn_val);
             if (!v8.v8_Value_IsFunction(values_fn_val)) return null;
 
             // Call values() to get an array iterator
@@ -6452,56 +6422,118 @@ pub fn V8Interface(comptime Interface: type) type {
             // For zero-argument calls, we still need a valid pointer (even though argc=0)
             var dummy_args: [1]*v8.Value = undefined;
             const array_iterator_val = v8.v8_Function_Call(values_fn, context, @ptrCast(arr), 0, &dummy_args) orelse return null;
+            defer v8.v8_Value_Dispose(array_iterator_val);
 
             // Get Array Iterator's prototype (this is the Array Iterator prototype object)
             const array_iterator_obj: *v8.Object = @ptrCast(@alignCast(array_iterator_val));
             const array_iterator_proto = v8.v8_Object_GetPrototype(array_iterator_obj) orelse return null;
+            defer v8.v8_Value_Dispose(array_iterator_proto);
 
             // Get %IteratorPrototype% (the prototype of Array Iterator prototype)
             const array_iterator_proto_obj: *v8.Object = @ptrCast(@alignCast(array_iterator_proto));
             return v8.v8_Object_GetPrototype(array_iterator_proto_obj);
         }
 
-        /// Get or create the iterator prototype object for this interface
-        /// Per WebIDL §3.7.7:
-        /// - Iterator prototype has Symbol.toStringTag = "<Interface> Iterator"
-        /// - Iterator prototype has next() method
-        /// - Iterator prototype has Symbol.iterator that returns 'this'
-        /// - Iterator prototype's [[Prototype]] is %IteratorPrototype%
-        fn getOrCreateIteratorPrototype(isolate: *v8.Isolate, context: *v8.Context) ?*v8.Object {
-            // Check cache first - must match isolate, context, AND generation
-            // Context check is critical: iterator prototypes from different contexts
-            // cannot be mixed due to cross-realm restrictions
-            if (iterator_proto_cache) |cached| {
-                if (iterator_proto_cache_isolate == isolate and
-                    iterator_proto_cache_context == context and
-                    iterator_proto_cache_generation == template_registry.cache_generation)
+        /// The isolate's template for this interface's iterator prototype
+        /// (borrowed). Kept in the isolate's template storage beside the
+        /// interface templates, or - for an isolate without one, as
+        /// createTemplateCached does - in a per-interface static for the
+        /// isolate and cache generation. A template holds no context.
+        fn iteratorPrototypeTemplate(isolate: *v8.Isolate) ?*v8.FunctionTemplate {
+            const isolate_templates = @import("isolate_templates.zig");
+            const isolate_alloc = @import("isolate_allocator.zig");
+            // Not an interface name (it has a space), so it cannot collide with one.
+            const key = interface_name ++ " Iterator";
+            const storage: ?*isolate_templates.IsolateTemplates = if (isolate_alloc.getIsolateAllocator(isolate)) |alloc|
+                isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null
+            else
+                null;
+            if (storage) |store| {
+                if (store.get(key)) |template| return template;
+            } else if (iterator_template_cache) |cached| {
+                if (iterator_template_cache_isolate == isolate and
+                    iterator_template_cache_generation == template_registry.cache_generation)
                 {
                     return cached;
                 }
-                // Cache invalid, clear it
-                iterator_proto_cache = null;
-                iterator_proto_cache_isolate = null;
-                iterator_proto_cache_context = null;
             }
+            const template = v8.v8_FunctionTemplate_New(isolate, null, null) orelse return null;
+            if (storage) |store| {
+                store.put(key, template) catch {
+                    v8.v8_FunctionTemplate_Dispose(template);
+                    return null;
+                };
+            } else {
+                // A template of another isolate or generation is dropped, not
+                // disposed: its isolate may be gone.
+                iterator_template_cache = template;
+                iterator_template_cache_isolate = isolate;
+                iterator_template_cache_generation = template_registry.cache_generation;
+            }
+            return template;
+        }
 
-            // Create the iterator prototype object
-            const iter_proto = v8.v8_Object_New(isolate) orelse return null;
+        /// This realm's iterator prototype object for this interface - WebIDL
+        /// §3.7.10 "%<Interface> Iterator Prototype%" (§3.7.8 for the iterator
+        /// objects): one object per interface per realm, whose [[Prototype]] is
+        /// the realm's %IteratorPrototype%, with next(), @@iterator and
+        /// @@toStringTag. OWNED by the caller.
+        ///
+        /// Made from `iteratorPrototypeTemplate`: V8 caches a template's
+        /// instantiation per native context, so GetFunction(context).prototype
+        /// is the same object for every iterator of the realm and lives exactly
+        /// as long as the realm - nothing of ours holds it. Blink makes its
+        /// iterator prototypes from per-isolate templates the same way. The
+        /// cache this replaces was one static per interface, compared by the
+        /// address of a Global<Context> made fresh on every call: it never hit,
+        /// so every iteration built a new prototype and overwrote the last one
+        /// without releasing it - each a Global that pinned its realm.
+        fn getOrCreateIteratorPrototype(isolate: *v8.Isolate, context: *v8.Context) ?*v8.Object {
+            const template = iteratorPrototypeTemplate(isolate) orelse return null;
+            const func = v8.v8_FunctionTemplate_GetFunction(template, context) orelse return null;
+            defer v8.v8_Function_Dispose(func);
 
+            const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return null;
+            defer v8.v8_String_Dispose(prototype_key);
+            const prototype_val = v8.v8_Object_Get(@ptrCast(func), context, @ptrCast(prototype_key)) orelse return null;
+            if (!v8.v8_Value_IsObject(prototype_val)) {
+                v8.v8_Value_Dispose(prototype_val);
+                return null;
+            }
+            const prototype: *v8.Object = @ptrCast(prototype_val);
+
+            // First use in this realm: the object still has the "constructor"
+            // V8 gives every template's prototype, which an iterator prototype
+            // does not have. Set it up once, and drop that marker.
+            const constructor_key = v8.v8_String_NewFromUtf8(isolate, "constructor", 11) orelse {
+                v8.v8_Object_Dispose(prototype);
+                return null;
+            };
+            defer v8.v8_String_Dispose(constructor_key);
+            if (v8.v8_Object_HasOwnProperty(prototype, context, @ptrCast(constructor_key))) {
+                _ = v8.v8_Object_Delete(prototype, context, @ptrCast(constructor_key));
+                setUpIteratorPrototype(isolate, context, prototype);
+            }
+            return prototype;
+        }
+
+        /// Give this realm's iterator prototype its [[Prototype]] and members.
+        fn setUpIteratorPrototype(isolate: *v8.Isolate, context: *v8.Context, prototype: *v8.Object) void {
             // Set [[Prototype]] to %IteratorPrototype%
             if (getIteratorPrototype(isolate, context)) |builtin_iter_proto| {
-                _ = v8.v8_Object_SetPrototype(iter_proto, context, builtin_iter_proto);
+                defer v8.v8_Value_Dispose(builtin_iter_proto);
+                _ = v8.v8_Object_SetPrototype(prototype, context, builtin_iter_proto);
             }
 
             // Set Symbol.toStringTag to "<Interface> Iterator" per WebIDL spec §3.7.7
             // The descriptor should be { writable: false, enumerable: false, configurable: true }
-            const symbol_toStringTag = v8.v8_Symbol_GetToStringTag(isolate);
-            if (symbol_toStringTag) |symbol| {
+            if (v8.v8_Symbol_GetToStringTag(isolate)) |symbol| {
+                defer v8.v8_Symbol_Dispose(symbol);
                 const iterator_tag = interface_name ++ " Iterator";
-                const tag_str = v8.v8_String_NewFromUtf8(isolate, iterator_tag.ptr, @intCast(iterator_tag.len));
-                if (tag_str) |tag| {
+                if (v8.v8_String_NewFromUtf8(isolate, iterator_tag.ptr, @intCast(iterator_tag.len))) |tag| {
+                    defer v8.v8_String_Dispose(tag);
                     _ = v8.v8_Object_DefineProperty(
-                        iter_proto,
+                        prototype,
                         context,
                         @ptrCast(symbol),
                         @ptrCast(tag),
@@ -6514,32 +6546,29 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Create unified next() method on the prototype
             // The callback will check _entries vs _target to determine behavior
-            const next_tmpl = v8.v8_FunctionTemplate_New(isolate, unifiedIteratorNextCallback, null) orelse return null;
-            const next_func = v8.v8_FunctionTemplate_GetFunction(next_tmpl, context) orelse return null;
-            const next_key = v8.v8_String_NewFromUtf8(isolate, "next", 4) orelse return null;
-            defer v8.v8_String_Dispose(next_key);
-            _ = v8.v8_Object_Set(iter_proto, context, @ptrCast(next_key), @ptrCast(next_func));
-
-            // Set Symbol.iterator on the prototype (returns this)
-            // This makes iterators iterable (required for for...of and spread)
-            const symbol_iterator = v8.v8_Symbol_GetIterator(isolate);
-            if (symbol_iterator) |symbol| {
-                const self_iterator_tmpl = v8.v8_FunctionTemplate_New(isolate, iteratorSelfCallback, null);
-                if (self_iterator_tmpl) |tmpl| {
-                    const self_iterator_func = v8.v8_FunctionTemplate_GetFunction(tmpl, context);
-                    if (self_iterator_func) |func| {
-                        _ = v8.v8_Object_Set(iter_proto, context, @ptrCast(symbol), @ptrCast(func));
+            if (v8.v8_FunctionTemplate_New(isolate, unifiedIteratorNextCallback, null)) |next_tmpl| {
+                defer v8.v8_FunctionTemplate_Dispose(next_tmpl);
+                if (v8.v8_FunctionTemplate_GetFunction(next_tmpl, context)) |next_func| {
+                    defer v8.v8_Function_Dispose(next_func);
+                    if (v8.v8_String_NewFromUtf8(isolate, "next", 4)) |next_key| {
+                        defer v8.v8_String_Dispose(next_key);
+                        _ = v8.v8_Object_Set(prototype, context, @ptrCast(next_key), @ptrCast(next_func));
                     }
                 }
             }
 
-            // Cache the prototype (including context for cross-realm safety)
-            iterator_proto_cache = iter_proto;
-            iterator_proto_cache_isolate = isolate;
-            iterator_proto_cache_context = context;
-            iterator_proto_cache_generation = template_registry.cache_generation;
-
-            return iter_proto;
+            // Set Symbol.iterator on the prototype (returns this)
+            // This makes iterators iterable (required for for...of and spread)
+            if (v8.v8_Symbol_GetIterator(isolate)) |symbol| {
+                defer v8.v8_Symbol_Dispose(symbol);
+                if (v8.v8_FunctionTemplate_New(isolate, iteratorSelfCallback, null)) |self_iterator_tmpl| {
+                    defer v8.v8_FunctionTemplate_Dispose(self_iterator_tmpl);
+                    if (v8.v8_FunctionTemplate_GetFunction(self_iterator_tmpl, context)) |func| {
+                        defer v8.v8_Function_Dispose(func);
+                        _ = v8.v8_Object_Set(prototype, context, @ptrCast(symbol), @ptrCast(func));
+                    }
+                }
+            }
         }
 
         /// Unified next() callback that handles both pair and indexed iterators
@@ -6547,6 +6576,8 @@ pub fn V8Interface(comptime Interface: type) type {
         fn unifiedIteratorNextCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
             const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
+            defer v8.v8_Context_Dispose(context);
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj);
 
@@ -6558,12 +6589,9 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             // Check if this is a pair iterator (has _isPairIterator flag) or indexed iterator
-            const pair_flag_key = v8.v8_String_NewFromUtf8(isolate, "_isPairIterator", 15) orelse return;
-            defer v8.v8_String_Dispose(pair_flag_key);
-            const pair_flag_val = v8.v8_Object_Get(this_obj, context, @ptrCast(pair_flag_key));
-
-            if (pair_flag_val) |fv| {
-                if (v8.v8_Value_IsBoolean(@ptrCast(fv)) and v8.v8_Value_BooleanValue(@ptrCast(fv), isolate)) {
+            if (iteratorSlot(isolate, context, this_obj, "_isPairIterator")) |flag| {
+                defer v8.v8_Value_Dispose(flag);
+                if (v8.v8_Value_IsBoolean(@ptrCast(flag)) and v8.v8_Value_BooleanValue(@ptrCast(flag), isolate)) {
                     // This is a pair iterator - use live iteration
                     pairIteratorNextCallback(info);
                     return;
@@ -6574,7 +6602,10 @@ pub fn V8Interface(comptime Interface: type) type {
             iteratorNextCallback(info);
         }
 
-        /// Create a JavaScript iterator object for indexed or pair collections
+        /// A new default iterator object for `target` (WebIDL §3.7.8), OWNED
+        /// by the caller. Its slots (_index, _kind, _iterType, _target and, for
+        /// a pair iterator, _isPairIterator) are copied in; every handle made
+        /// for them is released here.
         fn createValueIterator(
             isolate: *v8.Isolate,
             context: *v8.Context,
@@ -6582,14 +6613,15 @@ pub fn V8Interface(comptime Interface: type) type {
             kind: IteratorKind,
         ) ?*v8.Object {
             // Determine if this is a pair iterable (has forEach but no length)
-            const length_key = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return null;
-            defer v8.v8_String_Dispose(length_key);
-            const length_val = v8.v8_Object_Get(target, context, @ptrCast(length_key));
-            const has_length = if (length_val) |lv| !v8.v8_Value_IsUndefined(@ptrCast(lv)) else false;
+            const has_length = if (iteratorSlot(isolate, context, target, "length")) |length_val| blk: {
+                defer v8.v8_Value_Dispose(length_val);
+                break :blk !v8.v8_Value_IsUndefined(@ptrCast(length_val));
+            } else false;
             const is_pair_iterator = !has_length;
 
-            // Get or create the shared iterator prototype for this interface
+            // This realm's shared iterator prototype for this interface
             const iter_proto = getOrCreateIteratorPrototype(isolate, context) orelse return null;
+            defer v8.v8_Object_Dispose(iter_proto);
 
             // Create iterator instance object
             const iterator_obj = v8.v8_Object_New(isolate) orelse return null;
@@ -6598,46 +6630,48 @@ pub fn V8Interface(comptime Interface: type) type {
             _ = v8.v8_Object_SetPrototype(iterator_obj, context, @ptrCast(iter_proto));
 
             // Store current index
-            const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return null;
-            defer v8.v8_String_Dispose(index_key);
             const zero = v8.v8_Number_New(isolate, 0);
-            _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(index_key), @ptrCast(zero));
+            defer v8.v8_Value_Dispose(@ptrCast(zero));
+            setIteratorSlot(isolate, context, iterator_obj, "_index", @ptrCast(zero));
 
             // Store iterator kind
-            const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return null;
-            defer v8.v8_String_Dispose(kind_key);
             const kind_val = v8.v8_Number_New(isolate, @floatFromInt(@intFromEnum(kind)));
-            _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(kind_key), @ptrCast(kind_val));
+            defer v8.v8_Value_Dispose(@ptrCast(kind_val));
+            setIteratorSlot(isolate, context, iterator_obj, "_kind", @ptrCast(kind_val));
 
             // Store interface type marker for brand checking in next()
             // This ensures next() can only be called with iterators of the same interface type
-            const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return null;
-            defer v8.v8_String_Dispose(type_key);
-            const type_val = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len)) orelse return null;
-            defer v8.v8_String_Dispose(type_val);
-            _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(type_key), @ptrCast(type_val));
+            if (v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len))) |type_val| {
+                defer v8.v8_String_Dispose(type_val);
+                setIteratorSlot(isolate, context, iterator_obj, "_iterType", @ptrCast(type_val));
+            }
 
+            // Store reference to target for LIVE iteration (not snapshot): per
+            // WebIDL, iteration reflects concurrent modifications. A pair
+            // iterable (Headers, URLSearchParams, FormData) is marked as such.
+            setIteratorSlot(isolate, context, iterator_obj, "_target", @ptrCast(target));
             if (is_pair_iterator) {
-                // This is a pair iterable (like Headers, URLSearchParams, FormData)
-                // Store reference to target for LIVE iteration (not snapshot)
-                // Per WebIDL spec, iteration should reflect concurrent modifications
-                const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
-                defer v8.v8_String_Dispose(target_key);
-                _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
-
-                // Mark this as a pair iterator by setting _isPairIterator flag
-                const pair_flag_key = v8.v8_String_NewFromUtf8(isolate, "_isPairIterator", 15) orelse return null;
-                defer v8.v8_String_Dispose(pair_flag_key);
-                _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(pair_flag_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
-            } else {
-                // This is an indexed iterable (like NodeList, HTMLCollection)
-                // Store reference to target object
-                const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return null;
-                defer v8.v8_String_Dispose(target_key);
-                _ = v8.v8_Object_Set(iterator_obj, context, @ptrCast(target_key), @ptrCast(target));
+                if (v8.v8_Boolean_New(isolate, true)) |flag| {
+                    defer v8.v8_Value_Dispose(flag);
+                    setIteratorSlot(isolate, context, iterator_obj, "_isPairIterator", flag);
+                }
             }
 
             return iterator_obj;
+        }
+
+        /// `iterator[slot_name]`, OWNED, or null.
+        fn iteratorSlot(isolate: *v8.Isolate, context: *v8.Context, iterator: *v8.Object, comptime slot_name: []const u8) ?*v8.Value {
+            const key = v8.v8_String_NewFromUtf8(isolate, slot_name.ptr, @intCast(slot_name.len)) orelse return null;
+            defer v8.v8_String_Dispose(key);
+            return v8.v8_Object_Get(iterator, context, @ptrCast(key));
+        }
+
+        /// `iterator[slot_name] = value`; `value` is borrowed (Set copies it).
+        fn setIteratorSlot(isolate: *v8.Isolate, context: *v8.Context, iterator: *v8.Object, comptime slot_name: []const u8, value: *v8.Value) void {
+            const key = v8.v8_String_NewFromUtf8(isolate, slot_name.ptr, @intCast(slot_name.len)) orelse return;
+            defer v8.v8_String_Dispose(key);
+            _ = v8.v8_Object_Set(iterator, context, @ptrCast(key), value);
         }
 
         /// Callback for [Symbol.iterator] on iterator objects - returns this
@@ -6764,6 +6798,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the iterator object (this)
             const iterator_obj = info.getThis();
+            defer v8.v8_Object_Dispose(iterator_obj);
 
             // Check if this is null/undefined (happens with .call(null) or .call(undefined))
             // Per WebIDL, calling iterator.next() with invalid this throws TypeError
@@ -6774,44 +6809,18 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Check that the iterator's type matches this interface (brand check)
             // This prevents calling URLSearchParams iterator's next() with a Headers iterator
-            const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return;
-            defer v8.v8_String_Dispose(type_key);
-            const type_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(type_key));
-            const has_correct_type = blk: {
-                const tv = type_val orelse break :blk false;
-                if (v8.v8_Value_IsUndefined(@ptrCast(tv))) break :blk false;
-                // Get the stored type string and compare with interface_name
-                const type_str = v8.v8_Value_ToString(@ptrCast(tv), v8_context) orelse break :blk false;
-                var buf: [256]u8 = undefined;
-                const len = v8.v8_String_WriteUtf8(type_str, &buf, @intCast(buf.len));
-                if (len <= 1) break :blk false; // len includes null terminator
-                // Subtract 1 to exclude the null terminator from the slice
-                const stored_type = buf[0..@intCast(len - 1)];
-                break :blk std.mem.eql(u8, stored_type, interface_name);
-            };
-
-            if (!has_correct_type) {
-                // Throw TypeError: iterator from different interface type
-                // Use prototype's creation context for cross-realm support
-                if (v8.v8_Object_GetPrototypeCreationContext(iterator_obj)) |creation_ctx| {
-                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                } else {
-                    conv.throwTypeError(isolate, "Illegal invocation");
-                }
+            if (!hasIteratorBrand(isolate, v8_context, iterator_obj)) {
+                throwIllegalIteratorInvocation(isolate, iterator_obj);
                 return;
             }
 
             // Get stored state (index, kind, and target)
-            const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
-            defer v8.v8_String_Dispose(index_key);
-            const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
-            defer v8.v8_String_Dispose(kind_key);
-            const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return;
-            defer v8.v8_String_Dispose(target_key);
-
-            const index_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(index_key)) orelse return;
-            const kind_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(kind_key)) orelse return;
-            const target_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(target_key)) orelse return;
+            const index_val = iteratorSlot(isolate, v8_context, iterator_obj, "_index") orelse return;
+            defer v8.v8_Value_Dispose(index_val);
+            const kind_val = iteratorSlot(isolate, v8_context, iterator_obj, "_kind") orelse return;
+            defer v8.v8_Value_Dispose(kind_val);
+            const target_val = iteratorSlot(isolate, v8_context, iterator_obj, "_target") orelse return;
+            defer v8.v8_Value_Dispose(target_val);
 
             const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val), v8_context));
             const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context))));
@@ -6820,17 +6829,14 @@ pub fn V8Interface(comptime Interface: type) type {
             // This ensures concurrent modifications (like delete during iteration) are reflected
             const target_obj: *v8.Object = @ptrCast(target_val);
 
-            // Create result object { value: ..., done: ... }
-            const result_obj = v8.v8_Object_New(isolate) orelse return;
-            const value_key_str = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
-            defer v8.v8_String_Dispose(value_key_str);
-            const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
-            defer v8.v8_String_Dispose(done_key);
-
-            // Get live entries from the Zig instance
-            // Use comptime check for IterableEntry and getEntriesForIterable
-            if (comptime @hasDecl(Interface, "IterableEntry") and @hasDecl(Interface, "getEntriesForIterable")) {
-                const entries: ?[]const Interface.IterableEntry = entry_blk: {
+            // Get live entries from the Zig instance. The entry type is what
+            // getEntriesForIterable returns: the generated interfaces declare
+            // no IterableEntry of their own (it is their impl's), and requiring
+            // one made every pair iterator report done at once - `for (const
+            // [k, v] of new URLSearchParams("a=1"))` ran zero times.
+            if (comptime @hasDecl(Interface, "getEntriesForIterable")) {
+                const Entries = @typeInfo(@typeInfo(@TypeOf(Interface.getEntriesForIterable)).@"fn".return_type.?).optional.child;
+                const entries: ?Entries = entry_blk: {
                     const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(target_obj, 0);
                     if (instance_ptr) |ptr| {
                         // Safety check: detect use-after-free
@@ -6848,79 +6854,52 @@ pub fn V8Interface(comptime Interface: type) type {
                     break :entry_blk null;
                 };
 
-                const length: u32 = if (entries) |e| @intCast(e.len) else 0;
-
-                if (index >= length) {
-                    // Iterator exhausted
-                    if (v8.v8_Undefined(isolate)) |undef| {
-                        _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key_str), undef);
-                    }
-                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
-                } else if (entries) |e| {
-                    // Get entry at current index from live entries
-                    const entry = e[index];
-
-                    // Convert Zig strings to V8 strings
-                    const key_v8 = v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len));
-
-                    // Handle the value - check if it's a union type or simple string
-                    const ValueType = @TypeOf(entry.value);
-                    const val_v8: ?*v8.Value = val_blk: {
-                        if (@typeInfo(ValueType) == .@"union") {
-                            switch (entry.value) {
-                                .usvstring => |s| {
-                                    break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, s.ptr, @intCast(s.len)));
-                                },
-                                else => break :val_blk null,
-                            }
-                        } else {
-                            break :val_blk @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.value.ptr, @intCast(entry.value.len)));
-                        }
-                    };
-
-                    // Return value based on kind
-                    const undef = v8.v8_Undefined(isolate);
-                    const result_val: *v8.Value = switch (kind) {
-                        .keys => @ptrCast(key_v8 orelse return),
-                        .values => val_v8 orelse undef orelse return,
-                        .entries => result_blk: {
-                            // Create [key, value] pair array
-                            const pair = v8.v8_Array_New(isolate, 2);
-                            if (key_v8) |k| {
-                                _ = v8.v8_Array_Set(pair, v8_context, 0, @ptrCast(k));
-                            }
-                            if (val_v8) |v| {
-                                _ = v8.v8_Array_Set(pair, v8_context, 1, v);
-                            }
-                            break :result_blk @ptrCast(pair);
-                        },
-                    };
-
-                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key_str), result_val);
-                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, false)));
-
-                    // Increment index
-                    const new_index = v8.v8_Number_New(isolate, @floatFromInt(index + 1));
-                    _ = v8.v8_Object_Set(iterator_obj, v8_context, @ptrCast(index_key), @ptrCast(new_index));
-                } else {
+                const live = entries orelse {
                     // No entries available - done
-                    if (v8.v8_Undefined(isolate)) |undef| {
-                        _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key_str), undef);
-                    }
-                    _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
+                    returnIterDone(info, isolate, v8_context);
+                    return;
+                };
+                if (index >= live.len) {
+                    // Iterator exhausted
+                    returnIterDone(info, isolate, v8_context);
+                    return;
                 }
 
-                info.setReturnValue(@ptrCast(result_obj));
+                // Get entry at current index from live entries
+                const entry = live[index];
+
+                // Convert Zig strings to V8 strings
+                const undef = v8.v8_Undefined(isolate) orelse return;
+                defer v8.v8_Value_Dispose(undef);
+                const key_v8: ?*v8.Value = @ptrCast(v8.v8_String_NewFromUtf8(isolate, entry.name.ptr, @intCast(entry.name.len)));
+                defer if (key_v8) |k| v8.v8_Value_Dispose(k);
+                const val_v8 = entryValue(isolate, entry);
+                defer if (val_v8) |v| v8.v8_Value_Dispose(v);
+
+                // Return value based on kind
+                switch (kind) {
+                    .keys => returnIterResult(info, isolate, v8_context, key_v8 orelse undef, false),
+                    .values => returnIterResult(info, isolate, v8_context, val_v8 orelse undef, false),
+                    .entries => {
+                        // Create [key, value] pair array
+                        const pair = v8.v8_Array_New(isolate, 2);
+                        defer v8.v8_Array_Dispose(pair);
+                        _ = v8.v8_Array_Set(pair, v8_context, 0, key_v8 orelse undef);
+                        _ = v8.v8_Array_Set(pair, v8_context, 1, val_v8 orelse undef);
+                        returnIterResult(info, isolate, v8_context, @ptrCast(pair), false);
+                    },
+                }
+
+                // Increment index
+                const new_index = v8.v8_Number_New(isolate, @floatFromInt(index + 1));
+                defer v8.v8_Value_Dispose(@ptrCast(new_index));
+                setIteratorSlot(isolate, v8_context, iterator_obj, "_index", @ptrCast(new_index));
                 return;
             }
 
             // Fallback: interface doesn't have getEntriesForIterable - return done immediately
             // This shouldn't happen for properly implemented pair iterables
-            if (v8.v8_Undefined(isolate)) |undef| {
-                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key_str), undef);
-            }
-            _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
-            info.setReturnValue(@ptrCast(result_obj));
+            returnIterDone(info, isolate, v8_context);
         }
 
         /// next() callback for iterator objects
@@ -6935,20 +6914,16 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Get the iterator object (this)
             const iterator_obj = info.getThis();
-
-            // Get stored state
-            const target_key = v8.v8_String_NewFromUtf8(isolate, "_target", 7) orelse return;
-            defer v8.v8_String_Dispose(target_key);
-            const index_key = v8.v8_String_NewFromUtf8(isolate, "_index", 6) orelse return;
-            defer v8.v8_String_Dispose(index_key);
-            const kind_key = v8.v8_String_NewFromUtf8(isolate, "_kind", 5) orelse return;
-            defer v8.v8_String_Dispose(kind_key);
+            defer v8.v8_Object_Dispose(iterator_obj);
 
             // Validate that this is an actual iterator object, not the prototype
             // Per WebIDL spec: next() must throw TypeError when called on ineligible receiver
-            const target = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(target_key));
-            const index_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(index_key));
-            const kind_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(kind_key));
+            const target = iteratorSlot(isolate, v8_context, iterator_obj, "_target");
+            defer if (target) |t| v8.v8_Value_Dispose(t);
+            const index_val = iteratorSlot(isolate, v8_context, iterator_obj, "_index");
+            defer if (index_val) |i| v8.v8_Value_Dispose(i);
+            const kind_val = iteratorSlot(isolate, v8_context, iterator_obj, "_kind");
+            defer if (kind_val) |k| v8.v8_Value_Dispose(k);
 
             // Check if any of the iterator state properties are missing or undefined
             // This indicates the receiver is not a valid iterator (e.g., it's the prototype)
@@ -6958,95 +6933,108 @@ pub fn V8Interface(comptime Interface: type) type {
 
             if (!has_valid_target or !has_valid_index or !has_valid_kind) {
                 // Throw TypeError: next() called on ineligible receiver
-                // Use prototype's creation context for cross-realm support
-                if (v8.v8_Object_GetPrototypeCreationContext(iterator_obj)) |creation_ctx| {
-                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                } else {
-                    conv.throwTypeError(isolate, "Illegal invocation");
-                }
+                throwIllegalIteratorInvocation(isolate, iterator_obj);
                 return;
             }
 
             // Check that the iterator's type matches this interface (brand check)
             // This prevents calling URLSearchParams iterator's next() with a Headers iterator
-            const type_key = v8.v8_String_NewFromUtf8(isolate, "_iterType", 9) orelse return;
-            defer v8.v8_String_Dispose(type_key);
-            const type_val = v8.v8_Object_Get(iterator_obj, v8_context, @ptrCast(type_key));
-            const has_correct_type = blk: {
-                const tv = type_val orelse break :blk false;
-                if (v8.v8_Value_IsUndefined(@ptrCast(tv))) break :blk false;
-                // Get the stored type string and compare with interface_name
-                const type_str = v8.v8_Value_ToString(@ptrCast(tv), v8_context) orelse break :blk false;
-                var buf: [256]u8 = undefined;
-                const len = v8.v8_String_WriteUtf8(type_str, &buf, @intCast(buf.len));
-                if (len <= 1) break :blk false; // len includes null terminator
-                const stored_type = buf[0..@intCast(len - 1)]; // Exclude null terminator
-                break :blk std.mem.eql(u8, stored_type, interface_name);
-            };
-
-            if (!has_correct_type) {
-                // Throw TypeError: iterator from different interface type
-                // Use prototype's creation context for cross-realm support
-                if (v8.v8_Object_GetPrototypeCreationContext(iterator_obj)) |creation_ctx| {
-                    conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
-                } else {
-                    conv.throwTypeError(isolate, "Illegal invocation");
-                }
+            if (!hasIteratorBrand(isolate, v8_context, iterator_obj)) {
+                throwIllegalIteratorInvocation(isolate, iterator_obj);
                 return;
             }
 
-            const target_obj = target.?;
-            const index_value = index_val.?;
-            const kind_value = kind_val.?;
-
-            const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_value), v8_context));
-            const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_value), v8_context))));
+            const target_obj: *v8.Object = @ptrCast(target.?);
+            const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val.?), v8_context));
+            const kind: IteratorKind = @enumFromInt(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val.?), v8_context))));
 
             // Get length from target
-            const length_key = v8.v8_String_NewFromUtf8(isolate, "length", 6) orelse return;
-            defer v8.v8_String_Dispose(length_key);
-            const length_val = v8.v8_Object_Get(@ptrCast(target_obj), v8_context, @ptrCast(length_key));
-            const length: u32 = if (length_val) |lv| @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(lv), v8_context)) else 0;
-
-            // Create result object { value: ..., done: ... }
-            const result_obj = v8.v8_Object_New(isolate) orelse return;
-            const value_key = v8.v8_String_NewFromUtf8(isolate, "value", 5) orelse return;
-            defer v8.v8_String_Dispose(value_key);
-            const done_key = v8.v8_String_NewFromUtf8(isolate, "done", 4) orelse return;
-            defer v8.v8_String_Dispose(done_key);
-
-            const undef_val = v8.v8_Undefined(isolate) orelse return;
+            const length: u32 = if (iteratorSlot(isolate, v8_context, target_obj, "length")) |length_val| blk: {
+                defer v8.v8_Value_Dispose(length_val);
+                break :blk @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(length_val), v8_context));
+            } else 0;
 
             if (index >= length) {
                 // Iterator exhausted
-                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), undef_val);
-                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, true)));
-            } else {
-                // Get value at index using item() method or indexed access
-                const index_str = v8.v8_Number_New(isolate, @floatFromInt(index));
-                const item_val = v8.v8_Object_Get(@ptrCast(target_obj), v8_context, @ptrCast(index_str));
-
-                const result_value: *v8.Value = switch (kind) {
-                    .keys => @ptrCast(index_str),
-                    .values => item_val orelse undef_val,
-                    .entries => blk: {
-                        // Create [index, value] array
-                        const arr = v8.v8_Array_New(isolate, 2);
-                        _ = v8.v8_Array_Set(arr, v8_context, 0, @ptrCast(index_str));
-                        _ = v8.v8_Array_Set(arr, v8_context, 1, item_val orelse undef_val);
-                        break :blk @ptrCast(arr);
-                    },
-                };
-
-                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(value_key), result_value);
-                _ = v8.v8_Object_Set(result_obj, v8_context, @ptrCast(done_key), @ptrCast(v8.v8_Boolean_New(isolate, false)));
-
-                // Increment index
-                const new_index = v8.v8_Number_New(isolate, @floatFromInt(index + 1));
-                _ = v8.v8_Object_Set(iterator_obj, v8_context, @ptrCast(index_key), @ptrCast(new_index));
+                returnIterDone(info, isolate, v8_context);
+                return;
             }
 
-            info.setReturnValue(@ptrCast(result_obj));
+            const undef = v8.v8_Undefined(isolate) orelse return;
+            defer v8.v8_Value_Dispose(undef);
+
+            // Get value at index using indexed access
+            const index_num = v8.v8_Number_New(isolate, @floatFromInt(index));
+            defer v8.v8_Value_Dispose(@ptrCast(index_num));
+            const item_val = v8.v8_Object_Get(target_obj, v8_context, @ptrCast(index_num));
+            defer if (item_val) |item| v8.v8_Value_Dispose(item);
+
+            switch (kind) {
+                .keys => returnIterResult(info, isolate, v8_context, @ptrCast(index_num), false),
+                .values => returnIterResult(info, isolate, v8_context, item_val orelse undef, false),
+                .entries => {
+                    // Create [index, value] array
+                    const arr = v8.v8_Array_New(isolate, 2);
+                    defer v8.v8_Array_Dispose(arr);
+                    _ = v8.v8_Array_Set(arr, v8_context, 0, @ptrCast(index_num));
+                    _ = v8.v8_Array_Set(arr, v8_context, 1, item_val orelse undef);
+                    returnIterResult(info, isolate, v8_context, @ptrCast(arr), false);
+                },
+            }
+
+            // Increment index
+            const new_index = v8.v8_Number_New(isolate, @floatFromInt(index + 1));
+            defer v8.v8_Value_Dispose(@ptrCast(new_index));
+            setIteratorSlot(isolate, v8_context, iterator_obj, "_index", @ptrCast(new_index));
+        }
+
+        /// Whether `iterator` is one of this interface's iterators: its
+        /// `_iterType` slot names this interface.
+        fn hasIteratorBrand(isolate: *v8.Isolate, context: *v8.Context, iterator: *v8.Object) bool {
+            const type_val = iteratorSlot(isolate, context, iterator, "_iterType") orelse return false;
+            defer v8.v8_Value_Dispose(type_val);
+            if (v8.v8_Value_IsUndefined(@ptrCast(type_val))) return false;
+            // Get the stored type string and compare with interface_name
+            const type_str = v8.v8_Value_ToString(@ptrCast(type_val), context) orelse return false;
+            defer v8.v8_String_Dispose(type_str);
+            var buf: [256]u8 = undefined;
+            const len = v8.v8_String_WriteUtf8(type_str, &buf, @intCast(buf.len));
+            if (len <= 1) return false; // len includes null terminator
+            // Subtract 1 to exclude the null terminator from the slice
+            const stored_type = buf[0..@intCast(len - 1)];
+            return std.mem.eql(u8, stored_type, interface_name);
+        }
+
+        /// TypeError "Illegal invocation" for a next() on something that is not
+        /// one of this interface's iterators - in the realm of the receiver's
+        /// prototype when it has one (a cross-realm call).
+        fn throwIllegalIteratorInvocation(isolate: *v8.Isolate, receiver: *v8.Object) void {
+            if (v8.v8_Object_GetPrototypeCreationContext(receiver)) |creation_ctx| {
+                defer v8.v8_Context_Dispose(creation_ctx);
+                conv.throwTypeErrorFromContext(isolate, creation_ctx, "Illegal invocation");
+            } else {
+                conv.throwTypeError(isolate, "Illegal invocation");
+            }
+        }
+
+        /// Return `{ value, done }` (ECMA-262 CreateIterResultObject) to
+        /// script. `value` is borrowed; every handle made here is released.
+        fn returnIterResult(info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, context: *v8.Context, value: *v8.Value, done: bool) void {
+            const result = v8.v8_Object_New(isolate) orelse return;
+            defer v8.v8_Object_Dispose(result);
+            const done_val = v8.v8_Boolean_New(isolate, done) orelse return;
+            defer v8.v8_Value_Dispose(done_val);
+            setIteratorSlot(isolate, context, result, "value", value);
+            setIteratorSlot(isolate, context, result, "done", done_val);
+            // Copied into the return value (SetReturnValueGlobal); ours goes.
+            info.setReturnValue(@ptrCast(result));
+        }
+
+        /// Return `{ value: undefined, done: true }`.
+        fn returnIterDone(info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, context: *v8.Context) void {
+            const undef = v8.v8_Undefined(isolate) orelse return;
+            defer v8.v8_Value_Dispose(undef);
+            returnIterResult(info, isolate, context, undef, true);
         }
 
         /// Async iterator callback for Symbol.asyncIterator
