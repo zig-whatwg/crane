@@ -654,6 +654,9 @@ pub fn executeTests(
     options: Options,
     report: *result_reporter.WptReport,
     server: *wpt_server.WptServer,
+    /// Marked as each file starts and once after the last; inert when this
+    /// process is a supervised child (its parent watches the journal).
+    deadline: *stall_watchdog.SelfWatchdog,
 ) !void {
     // Calculate total accounting for multi-context and multi-variant execution.
     // This requires parsing all files upfront, but gives accurate progress
@@ -707,6 +710,7 @@ pub fn executeTests(
     for (discovery.test_files.items, 0..) |test_file, file_offset| {
         var tally: FileTally = FileTally.start();
         tally.index = discovery.base_index + file_offset;
+        deadline.mark(tally.index, test_file.path);
         // This file's results are the report's entries from here on. They are
         // streamed BEFORE the journal record: a crash between the two then
         // leaves real results under a CRASH record the supervisor writes, never
@@ -875,6 +879,10 @@ pub fn executeTests(
         fetch_mod.network.resetGlobalPool();
     }
 
+    // Every file has finished; what follows is the report and the teardown,
+    // which the deadline keeps bounding under a label of its own.
+    deadline.mark(discovery.base_index + file_count, "(teardown after the last file)");
+
     // Generate output path
     const output_path = try options.reportPath(allocator);
     defer allocator.free(output_path);
@@ -893,6 +901,53 @@ pub fn executeTests(
 
     progress.printSummary(output_path);
 }
+
+/// What the in-process deadline (`stall_watchdog.SelfWatchdog`) does when it
+/// fires: record the file as TIMEOUT in the run's journal, if it keeps one -
+/// what the supervisor records for a child it kills - then end the run.
+///
+/// It runs on the watchdog thread while the test thread is stuck, possibly
+/// inside the run's allocator (a traced DebugAllocator holds its mutex for the
+/// whole of an allocation), so it takes no lock and allocates nothing: the
+/// record is formatted into a stack buffer and appended with open/write.
+const SelfStall = struct {
+    /// Files in the run: a mark at or past this index is the teardown, which
+    /// is no file's TIMEOUT.
+    files: usize,
+    journal_buf: [std.Io.Dir.max_path_bytes + 1]u8 = undefined,
+    journal_len: usize = 0,
+
+    fn setJournal(self: *SelfStall, path: []const u8) void {
+        if (path.len >= self.journal_buf.len) return;
+        @memcpy(self.journal_buf[0..path.len], path);
+        self.journal_buf[path.len] = 0;
+        self.journal_len = path.len;
+    }
+
+    fn action(w: *stall_watchdog.SelfWatchdog) void {
+        const self: *SelfStall = @ptrCast(@alignCast(w.context.?));
+        if (self.journal_len > 0 and w.currentIndex() < self.files) self.recordTimeout(w);
+        stall_watchdog.endRun(w);
+    }
+
+    fn recordTimeout(self: *SelfStall, w: *stall_watchdog.SelfWatchdog) void {
+        var message_buf: [128]u8 = undefined;
+        const message = std.fmt.bufPrint(&message_buf, "runner ended a run that made no progress for {d}ms", .{w.stall_limit_ms}) catch return;
+        var line_buf: [2048]u8 = undefined;
+        var line: std.Io.Writer = .fixed(&line_buf);
+        journal.writeRecord(&line, .{
+            .index = w.currentIndex(),
+            .path = w.currentLabel(),
+            .status = .timeout,
+            .message = message,
+        }) catch return;
+        const path: [*:0]const u8 = @ptrCast(self.journal_buf[0..self.journal_len :0].ptr);
+        const fd = std.c.open(path, .{ .ACCMODE = .WRONLY, .APPEND = true, .CREAT = true }, @as(c_uint, 0o644));
+        if (fd < 0) return;
+        defer _ = std.c.close(fd);
+        stall_watchdog.writeAllFd(fd, line.buffered());
+    }
+};
 
 /// Per-file totals accumulated across the runs a test file fans out into - one
 /// per implemented global, times one per declared variant.
@@ -1357,8 +1412,23 @@ fn run(init: std.process.Init) !u8 {
         server.https_port,
     });
 
+    // Nobody supervises this process, so nobody else can end it: give it the
+    // deadline a supervisor gives its child, on a thread of its own. It stays
+    // up through teardown and the report, which are unbounded too.
+    var self_stall: SelfStall = .{ .files = discovery.test_files.items.len };
+    const self_journal = try options.journalPath(allocator);
+    defer if (self_journal) |p| allocator.free(p);
+    if (self_journal) |p| self_stall.setJournal(p);
+    var deadline: stall_watchdog.SelfWatchdog = .{
+        .stall_limit_ms = if (options.wantsSelfDeadline()) options.stall_limit_ms else 0,
+        .on_stall = SelfStall.action,
+        .context = &self_stall,
+    };
+    try deadline.start();
+    defer deadline.stop();
+
     // Execute tests (prints progress and summary)
-    try executeTests(allocator, discovery, options, &report, server);
+    try executeTests(allocator, discovery, options, &report, server, &deadline);
 
     // Clean up global storage resources
     const storage = @import("storage");

@@ -26,6 +26,7 @@
 //! per-file ceiling so that anything above it is a hang by definition.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const host = @import("host");
 const clock = @import("clock");
 
@@ -149,6 +150,134 @@ pub const Watchdog = struct {
     }
 };
 
+/// The exit status of a run its own deadline ended: what `timeout(1)` uses,
+/// so a pooled job's wrapper reads it as "timed out", not as a crash.
+pub const stall_exit_code: u8 = 124;
+
+/// The in-process deadline of a run that has no supervisor (`wpt_runner
+/// <path>`, or a `--journal`/`--baseline` run without `--parallel`).
+///
+/// A supervised run is bounded by its parent's `Watchdog`; an in-process run
+/// had no bound at all. The per-file ceiling covers only the wait for
+/// `__wpt_complete`, and synchronous script, a `fetch()` blocked in curl and a
+/// teardown under `CRANE_LEAK_TRACES=1` are all outside it - one such run sat
+/// 38 minutes at 100% CPU holding a shared runner token.
+///
+/// A check made by the thread that runs the tests cannot fire while that
+/// thread is stuck, so this one runs on a thread of its own and watches a
+/// progress counter the owner bumps (`mark`) as each file starts and once
+/// more when the last has finished. The limit is the supervisor's: no
+/// progress for `stall_limit_ms`. The stuck thread cannot be unwound from
+/// here, so the default action ends the process (`endRun`); the owner may
+/// replace it to record the file first, as the supervisor does.
+pub const SelfWatchdog = struct {
+    stall_limit_ms: u64,
+    /// How often the thread looks. The tests shorten it.
+    poll_ms: u64 = 1_000,
+    /// Run on the watchdog thread when the limit passes. It must not take a
+    /// lock the stuck thread may hold - not the run's allocator, whose
+    /// DebugAllocator mutex is held for the whole of a traced allocation.
+    on_stall: *const fn (*SelfWatchdog) void = endRun,
+    /// For `on_stall`.
+    context: ?*anyopaque = null,
+
+    /// Bumped by every `mark`. Written by the owner, read by the thread.
+    progress: std.atomic.Value(u64) = .init(0),
+    /// The file in progress, for the stall message and the journal. Written
+    /// by the owner before it bumps `progress` (release), so the thread sees a
+    /// whole label - and it reads it only after `stall_limit_ms` without a
+    /// mark, when the owner is not writing it.
+    index: usize = 0,
+    label_buf: [512]u8 = undefined,
+    label_len: usize = 0,
+
+    done: std.atomic.Value(bool) = .init(false),
+    fired: std.atomic.Value(bool) = .init(false),
+    thread: ?std.Thread = null,
+
+    pub fn start(self: *SelfWatchdog) !void {
+        if (self.stall_limit_ms == 0) return;
+        self.thread = try std.Thread.spawn(.{}, loop, .{self});
+    }
+
+    /// Stop watching and join. Safe to call when `start` was skipped.
+    pub fn stop(self: *SelfWatchdog) void {
+        self.done.store(true, .release);
+        if (self.thread) |t| {
+            t.join();
+            self.thread = null;
+        }
+    }
+
+    /// The owner made progress: it is starting the file at worklist `index`
+    /// (or, after the last file, a phase such as teardown) named `label`.
+    pub fn mark(self: *SelfWatchdog, index: usize, label: []const u8) void {
+        const n = @min(label.len, self.label_buf.len);
+        @memcpy(self.label_buf[0..n], label[0..n]);
+        self.label_len = n;
+        self.index = index;
+        _ = self.progress.fetchAdd(1, .release);
+    }
+
+    pub fn currentIndex(self: *const SelfWatchdog) usize {
+        return self.index;
+    }
+
+    pub fn currentLabel(self: *const SelfWatchdog) []const u8 {
+        return self.label_buf[0..self.label_len];
+    }
+
+    fn loop(self: *SelfWatchdog) void {
+        var progress: Progress = .{
+            .size = self.progress.load(.acquire),
+            .at_ms = clock.monotonicMillis(),
+        };
+        while (!self.done.load(.acquire)) {
+            clock.sleep(self.poll_ms * std.time.ns_per_ms);
+            if (self.done.load(.acquire)) return;
+
+            progress = observe(progress, self.progress.load(.acquire), clock.monotonicMillis());
+            if (!stalled(progress, clock.monotonicMillis(), self.stall_limit_ms)) continue;
+
+            self.fired.store(true, .release);
+            self.on_stall(self);
+            return;
+        }
+    }
+};
+
+/// The default stall action: say which file the run is ending on, straight
+/// to stderr (the runner's buffered sink belongs to the stuck thread), and end
+/// the process at once with `stall_exit_code`.
+///
+/// `_exit`, not `exit`: the stuck thread is inside V8 or curl, and `exit`
+/// would run atexit handlers and C++ static destructors under it.
+pub fn endRun(w: *SelfWatchdog) void {
+    var buf: [768]u8 = undefined;
+    const msg = std.fmt.bufPrint(&buf, "\n!!! wpt_runner: no progress for {d}ms in [{d}] {s}; ending the run (exit {d}). --stall-limit-ms=0 disables this.\n", .{
+        w.stall_limit_ms, w.currentIndex(), w.currentLabel(), stall_exit_code,
+    }) catch buf[0..0];
+    writeStderr(msg);
+    if (builtin.link_libc) std.c._exit(stall_exit_code);
+    std.process.exit(stall_exit_code);
+}
+
+/// write(2) to fd 2 until done or it fails. No buffer, no lock.
+pub fn writeStderr(bytes: []const u8) void {
+    writeAllFd(2, bytes);
+}
+
+/// write(2) `bytes` to `fd` until done or it fails. No buffer, no lock: for
+/// the watchdog thread, which must not wait on anything the stuck thread holds.
+pub fn writeAllFd(fd: std.c.fd_t, bytes: []const u8) void {
+    var rest = bytes;
+    while (rest.len > 0) {
+        const n = std.c.write(fd, rest.ptr, rest.len);
+        if (n <= 0) return;
+        rest = rest[@intCast(n)..];
+    }
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -220,4 +349,99 @@ test "journalSize reports zero for a file that is not there" {
         @as(u64, 0),
         journalSize("tmp/debug/definitely-not-a-journal-1a2b3c.jsonl"),
     );
+}
+
+// ----------------------------------------------------------------------------
+// The in-process deadline (SelfWatchdog)
+// ----------------------------------------------------------------------------
+
+/// What a test's stall action saw, written from the watchdog thread.
+const SeenStall = struct {
+    calls: std.atomic.Value(u32) = .init(0),
+    index: usize = 0,
+    label_buf: [64]u8 = undefined,
+    label_len: usize = 0,
+
+    fn action(w: *SelfWatchdog) void {
+        const self: *SeenStall = @ptrCast(@alignCast(w.context.?));
+        self.index = w.currentIndex();
+        const l = w.currentLabel();
+        @memcpy(self.label_buf[0..l.len], l);
+        self.label_len = l.len;
+        _ = self.calls.fetchAdd(1, .release);
+    }
+};
+
+test "a run with no supervisor ends itself when no file finishes within the limit" {
+    var seen: SeenStall = .{};
+    var w: SelfWatchdog = .{
+        .stall_limit_ms = 50,
+        .poll_ms = 5,
+        .on_stall = SeenStall.action,
+        .context = &seen,
+    };
+    try w.start();
+    w.mark(7, "dom/stuck-in-script.html");
+    // The owner never marks again - it is inside synchronous script. Nothing
+    // the owner does can end it; the deadline has to come from outside.
+    clock.sleep(400 * std.time.ns_per_ms);
+    w.stop();
+
+    try std.testing.expectEqual(@as(u32, 1), seen.calls.load(.acquire));
+    try std.testing.expect(w.fired.load(.acquire));
+    // The action is told which file it is ending, for the message and the
+    // journal's TIMEOUT record.
+    try std.testing.expectEqual(@as(usize, 7), seen.index);
+    try std.testing.expectEqualStrings("dom/stuck-in-script.html", seen.label_buf[0..seen.label_len]);
+}
+
+test "a run that keeps finishing files is never ended" {
+    var seen: SeenStall = .{};
+    var w: SelfWatchdog = .{
+        .stall_limit_ms = 1_000,
+        .poll_ms = 5,
+        .on_stall = SeenStall.action,
+        .context = &seen,
+    };
+    try w.start();
+    // 150 files of 10 ms: the run lasts longer than the limit, and no single
+    // file comes near it. The limit is per file, not per run.
+    var i: usize = 0;
+    while (i < 150) : (i += 1) {
+        w.mark(i, "fast.html");
+        clock.sleep(10 * std.time.ns_per_ms);
+    }
+    w.stop();
+    try std.testing.expectEqual(@as(u32, 0), seen.calls.load(.acquire));
+    try std.testing.expect(!w.fired.load(.acquire));
+}
+
+test "a zero limit disables the in-process deadline" {
+    var seen: SeenStall = .{};
+    var w: SelfWatchdog = .{ .stall_limit_ms = 0, .poll_ms = 1, .on_stall = SeenStall.action, .context = &seen };
+    try w.start();
+    try std.testing.expect(w.thread == null);
+    clock.sleep(20 * std.time.ns_per_ms);
+    w.stop();
+    try std.testing.expectEqual(@as(u32, 0), seen.calls.load(.acquire));
+}
+
+test "the in-process deadline's default action ends the process with the timeout exit code" {
+    // The default is pinned: a run that bounds itself must END, not log and
+    // carry on - the stuck thread cannot be unwound, so anything short of
+    // ending the process leaves it holding its runner token.
+    const w: SelfWatchdog = .{ .stall_limit_ms = default_stall_limit_ms };
+    try std.testing.expect(w.on_stall == &endRun);
+    try std.testing.expectEqual(@as(u8, 124), stall_exit_code);
+    // The same budget the supervisor gives a child.
+    try std.testing.expectEqual(default_stall_limit_ms, w.stall_limit_ms);
+}
+
+test "a label longer than the slot is truncated, not overflowed" {
+    var w: SelfWatchdog = .{ .stall_limit_ms = 0 };
+    const long = "a/" ** 400;
+    w.mark(3, long);
+    try std.testing.expectEqual(@as(usize, 3), w.currentIndex());
+    try std.testing.expectEqual(w.label_buf.len, w.currentLabel().len);
+    try std.testing.expectEqualStrings(long[0..w.label_buf.len], w.currentLabel());
 }
