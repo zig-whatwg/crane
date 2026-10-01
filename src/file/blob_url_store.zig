@@ -42,6 +42,13 @@ pub const BlobURLEntry = struct {
     /// The origin that created this URL
     origin: []const u8,
 
+    /// The entry's environment: the settings object that was current when the
+    /// URL was made, as an opaque key (the caller's realm), compared and never
+    /// read. File API: when that environment goes - its document's unloading
+    /// document cleanup steps, its worker's end - the entry is removed
+    /// (`removeEntriesFor`). Null for an entry no environment owns.
+    environment: ?*const anyopaque,
+
     /// Whether this entry is still valid
     valid: bool,
 };
@@ -115,7 +122,7 @@ pub const BlobURLStore = struct {
     /// Returns `[]u8`: the caller OWNS the returned URL and must free it. The store
     /// keeps `uuid` and `owned_origin`, not this string. The mutable slice says so in
     /// the type, which is what lets `DOMString.initOwned` accept it.
-    pub fn createObjectURL(self: *BlobURLStore, blob: *BlobData, origin: []const u8) ![]u8 {
+    pub fn createObjectURL(self: *BlobURLStore, blob: *BlobData, origin: []const u8, environment: ?*const anyopaque) ![]u8 {
         // Generate UUID
         const uuid = try self.generateUUID();
         errdefer self.allocator.free(uuid);
@@ -135,6 +142,7 @@ pub const BlobURLStore = struct {
         self.entries.putAssumeCapacity(uuid, .{
             .blob = blob.retain(),
             .origin = owned_origin,
+            .environment = environment,
             .valid = true,
         });
 
@@ -151,17 +159,49 @@ pub const BlobURLStore = struct {
         // Extract UUID from URL (after last '/')
         const uuid = self.extractUUID(url) orelse return;
 
-        if (self.entries.fetchRemove(uuid)) |kv| {
-            // Free the stored UUID key
-            self.allocator.free(kv.key);
-            // Free the origin
-            if (kv.value.origin.len > 0) {
-                self.allocator.free(@constCast(kv.value.origin));
+        self.removeEntry(uuid);
+    }
+
+    /// Remove every entry whose environment is `environment`, releasing each
+    /// one's reference to its blob's data.
+    ///
+    /// File API, the unloading document cleanup steps it adds: "Let
+    /// environment be the Document's relevant settings object. Let store be
+    /// the user agent's blob URL store; remove from store any entries for
+    /// which the value's environment is equal to environment." The same is
+    /// run for a worker's global scope when it ends (the File API's own note:
+    /// "This needs a similar hook when a worker is unloaded"; Blink's
+    /// PublicURLManager::ContextDestroyed does both). An entry holds its
+    /// blob's data, so one nothing removes keeps the data for as long as the
+    /// store lives - the process, in a browser or a test runner that loads
+    /// many pages.
+    pub fn removeEntriesFor(self: *BlobURLStore, environment: *const anyopaque) void {
+        var doomed: [16][]const u8 = undefined;
+        while (true) {
+            // Collected first, removed after: removing from a hash map while
+            // iterating it is not allowed. Batches of 16, until none is left.
+            var found: usize = 0;
+            var it = self.entries.iterator();
+            while (it.next()) |entry| {
+                if (entry.value_ptr.environment != environment) continue;
+                doomed[found] = entry.key_ptr.*;
+                found += 1;
+                if (found == doomed.len) break;
             }
-            // The entry's reference to its blob's data: the last one frees it
-            // when the Blob object has already been collected.
-            kv.value.blob.deinit();
+            if (found == 0) return;
+            for (doomed[0..found]) |uuid| self.removeEntry(uuid);
         }
+    }
+
+    /// Remove the entry keyed by `uuid`: its key, its origin and its
+    /// reference to its blob's data.
+    fn removeEntry(self: *BlobURLStore, uuid: []const u8) void {
+        const kv = self.entries.fetchRemove(uuid) orelse return;
+        self.allocator.free(kv.key);
+        if (kv.value.origin.len > 0) self.allocator.free(@constCast(kv.value.origin));
+        // The entry's reference to its blob's data: the last one frees it
+        // when the Blob object has already been collected.
+        kv.value.blob.deinit();
     }
 
     /// Resolve a blob URL to its associated blob.
@@ -239,7 +279,7 @@ test "BlobURLStore - createObjectURL and resolve" {
     const blob = try BlobData.init(allocator, "Hello", "text/plain");
     defer blob.deinit();
 
-    const url = try store.createObjectURL(blob, "https://example.com");
+    const url = try store.createObjectURL(blob, "https://example.com", null);
     defer allocator.free(url);
 
     try std.testing.expect(std.mem.startsWith(u8, url, "blob:https://example.com/"));
@@ -283,7 +323,7 @@ test "BlobURLStore - revokeObjectURL" {
     const blob = try BlobData.init(allocator, "Hello", "text/plain");
     defer blob.deinit();
 
-    const url = try store.createObjectURL(blob, "https://example.com");
+    const url = try store.createObjectURL(blob, "https://example.com", null);
     defer allocator.free(url);
 
     // Should resolve before revocation
@@ -341,7 +381,7 @@ test "BlobURLStore - an entry holds its blob after the Blob lets go of it" {
 
     const source = "export const foo = \"bar\";";
     const blob = try BlobData.init(allocator, source, "text/javascript");
-    const url = try store.createObjectURL(blob, "https://example.com");
+    const url = try store.createObjectURL(blob, "https://example.com", null);
     defer allocator.free(url);
 
     // The Blob object is collected: its reference goes.
@@ -364,7 +404,7 @@ test "BlobURLStore - deinit releases the entries it still holds" {
 
     var store = BlobURLStore.init(allocator);
     const blob = try BlobData.init(allocator, "kept", "text/plain");
-    const url = try store.createObjectURL(blob, "https://example.com");
+    const url = try store.createObjectURL(blob, "https://example.com", null);
     defer allocator.free(url);
     blob.deinit();
 
@@ -381,9 +421,9 @@ test "BlobURLStore - two URLs for one blob hold it independently" {
     defer store.deinit();
 
     const blob = try BlobData.init(allocator, "shared", "text/plain");
-    const url1 = try store.createObjectURL(blob, "https://example.com");
+    const url1 = try store.createObjectURL(blob, "https://example.com", null);
     defer allocator.free(url1);
-    const url2 = try store.createObjectURL(blob, "https://example.com");
+    const url2 = try store.createObjectURL(blob, "https://example.com", null);
     defer allocator.free(url2);
     blob.deinit();
 
@@ -392,6 +432,71 @@ test "BlobURLStore - two URLs for one blob hold it independently" {
     try std.testing.expectEqual(@as(usize, 6), resolved.bytes.len);
     try std.testing.expectEqualStrings("shared", resolved.bytes);
     store.revokeObjectURL(url2);
+}
+
+test "BlobURLStore - an environment's entries go when it ends, and no one else's" {
+    // File API: the unloading document cleanup steps "remove from store any
+    // entries for which the value's environment is equal to" the document's
+    // relevant settings object. An entry holds its blob's data, so an entry
+    // nothing removes keeps the data for as long as the store lives - every
+    // page that made a URL and never revoked it, for the life of the process.
+    var poisoning: PoisoningAllocator = .{ .child = std.testing.allocator };
+    const allocator = poisoning.allocator();
+    var page_a: u8 = 0;
+    var page_b: u8 = 0;
+
+    var store = BlobURLStore.init(allocator);
+    defer store.deinit();
+
+    const blob = try BlobData.init(allocator, "page data", "text/plain");
+    const url_a1 = try store.createObjectURL(blob, "https://example.com", &page_a);
+    defer allocator.free(url_a1);
+    const url_a2 = try store.createObjectURL(blob, "https://example.com", &page_a);
+    defer allocator.free(url_a2);
+    const url_b = try store.createObjectURL(blob, "https://example.com", &page_b);
+    defer allocator.free(url_b);
+    blob.deinit();
+
+    store.removeEntriesFor(&page_a);
+    try std.testing.expect(store.resolve(url_a1, "https://example.com") == null);
+    try std.testing.expect(store.resolve(url_a2, "https://example.com") == null);
+    const kept = store.resolve(url_b, "https://example.com") orelse return error.TestExpectedEntry;
+    try std.testing.expectEqualStrings("page data", kept.bytes);
+
+    // The last entry's end frees the data (std.testing.allocator fails the
+    // test on a leak or a second free).
+    store.removeEntriesFor(&page_b);
+    try std.testing.expect(store.resolve(url_b, "https://example.com") == null);
+    try std.testing.expectEqual(@as(usize, 0), store.entries.count());
+}
+
+test "BlobURLStore - a URL revoked before its environment ends is released once" {
+    var poisoning: PoisoningAllocator = .{ .child = std.testing.allocator };
+    const allocator = poisoning.allocator();
+    var page: u8 = 0;
+
+    var store = BlobURLStore.init(allocator);
+    defer store.deinit();
+
+    const blob = try BlobData.init(allocator, "revoked first", "text/plain");
+    const revoked = try store.createObjectURL(blob, "https://example.com", &page);
+    defer allocator.free(revoked);
+    const live = try store.createObjectURL(blob, "https://example.com", &page);
+    defer allocator.free(live);
+    blob.deinit();
+
+    // Revoking works as it always has: that URL is gone, the other resolves.
+    store.revokeObjectURL(revoked);
+    try std.testing.expect(store.resolve(revoked, "https://example.com") == null);
+    try std.testing.expect(store.resolve(live, "https://example.com") != null);
+
+    // The environment's end then takes only what is left.
+    store.removeEntriesFor(&page);
+    try std.testing.expect(store.resolve(live, "https://example.com") == null);
+    try std.testing.expectEqual(@as(usize, 0), store.entries.count());
+
+    // An environment with no entries left, or none ever, is a no-op.
+    store.removeEntriesFor(&page);
 }
 
 test "BlobURLStore - invalid URL" {

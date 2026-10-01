@@ -899,8 +899,10 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
     const origin = currentSettingsOrigin(realm);
     defer if (origin.owned) |o| origin.allocator.free(o);
 
-    // Create the blob URL
-    const blob_url = try store.createObjectURL(blob_internal.blob_data, origin.value);
+    // Create the blob URL. Its entry's environment is the current settings
+    // object - its realm - whose end removes it (`removeBlobURLEntries`).
+    const blob_url = try store.createObjectURL(blob_internal.blob_data, origin.value, @ptrCast(realm));
+    @import("dom").unloading_cleanup.install(&removeBlobURLEntries);
 
     // Every fetch of a blob URL - a module script's, a worker's import(), an
     // <img> - obtains its blob through scheme fetch "blob", which reaches
@@ -913,6 +915,18 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
 
     // Return as DOMString (take ownership of the allocated URL string)
     return runtime.DOMString.initOwned(blob_url);
+}
+
+/// The File API's unloading document cleanup step, and its counterpart for a
+/// worker's end: remove from the blob URL store every entry whose environment
+/// is `environment`. Installed with the first entry (no entry can need it
+/// before); dom.unloading_cleanup runs it as a document is unloaded or
+/// destroyed, or a worker ends. Each entry holds its blob's data, so without
+/// it every URL a page made and never revoked kept its data for the life of
+/// the process.
+fn removeBlobURLEntries(environment: runtime.Context) void {
+    const store = file_mod.getGlobalBlobURLStore() orelse return;
+    store.removeEntriesFor(@ptrCast(environment));
 }
 
 /// The current settings object's origin, serialized: `realm`'s global

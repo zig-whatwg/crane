@@ -1116,6 +1116,12 @@ pub const WorkerHost = struct {
         // So do the rejected promises tracked for its global, and the
         // notifications queued for it: Globals of this agent.
         if (self.global_scope) |global_scope| rejected_promises.forgetGlobal(global_scope);
+        // The unloading document cleanup steps other specifications define,
+        // run for the worker's realm as Blink runs them for every execution
+        // context that ends (the File API's: the blob URL entries the worker
+        // made leave the store - "This needs a similar hook when a worker is
+        // unloaded").
+        @import("dom").unloading_cleanup.run(realm);
         self.realm = null;
         // The realm's per-context data - the callbacks its script registered,
         // its wrapper cache and every Instance in it, the global scope first -
