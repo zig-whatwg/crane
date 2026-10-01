@@ -1,0 +1,6 @@
+// Fixture: a second, different definition of Lock (not the definer).
+[Exposed=(Window,Worker,SharedStorageWorklet)]
+interface Lock {
+  readonly attribute DOMString name;
+  readonly attribute DOMString fromSharedStorage;
+};

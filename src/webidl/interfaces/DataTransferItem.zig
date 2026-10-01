@@ -10,11 +10,11 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const FileSystemHandle = @import("interfaces").FileSystemHandle;
-const FunctionStringCallback = @import("callbacks").FunctionStringCallback;
 const FileSystemEntry = @import("interfaces").FileSystemEntry;
+const FunctionStringCallback = @import("callbacks").FunctionStringCallback;
 const File = @import("interfaces").File;
 const DOMString = @import("typedefs").DOMString;
+const FileSystemHandle = @import("interfaces").FileSystemHandle;
 
 pub const DataTransferItem = struct {
     pub const Meta = struct {
@@ -41,16 +41,16 @@ pub const DataTransferItem = struct {
         pub const methods = .{
             .{ "getAsString", "call_getAsString", 1 },
             .{ "getAsFile", "call_getAsFile", 0 },
-            .{ "getAsFileSystemHandle", "call_getAsFileSystemHandle", 0 },
             .{ "webkitGetAsEntry", "call_webkitGetAsEntry", 0 },
+            .{ "getAsFileSystemHandle", "call_getAsFileSystemHandle", 0 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
             "getAsString",
             "getAsFile",
-            "getAsFileSystemHandle",
             "webkitGetAsEntry",
+            "getAsFileSystemHandle",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -124,16 +124,16 @@ pub const DataTransferItem = struct {
         return try DataTransferItemImpl.call_getAsString(instance, callback);
     }
 
-    pub fn call_getAsFileSystemHandle(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try DataTransferItemImpl.call_getAsFileSystemHandle(instance);
+    pub fn call_webkitGetAsEntry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try DataTransferItemImpl.call_webkitGetAsEntry(instance);
     }
 
     pub fn call_getAsFile(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DataTransferItemImpl.call_getAsFile(instance);
     }
 
-    pub fn call_webkitGetAsEntry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try DataTransferItemImpl.call_webkitGetAsEntry(instance);
+    pub fn call_getAsFileSystemHandle(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try DataTransferItemImpl.call_getAsFileSystemHandle(instance);
     }
 
     /// WebIDL: operations whose return type is a promise - an exception in

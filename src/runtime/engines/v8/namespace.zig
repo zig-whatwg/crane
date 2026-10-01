@@ -32,6 +32,18 @@ const std = @import("std");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
 const runtime = @import("runtime");
+const webidl = @import("webidl");
+const interface = @import("interface.zig");
+
+/// The generated namespaces (for tests/v8, which reaches the namespace a
+/// binding is made from through this module).
+pub const generated_namespaces = @import("namespaces");
+
+/// The allocator of the runtime context namespace operations receive - what
+/// an impl allocates a result with, and what the binding frees it with.
+/// Tests set it to std.testing.allocator (then clearGlobalContext() at the
+/// end of the test) to see a leak.
+pub var context_allocator: std.mem.Allocator = std.heap.page_allocator;
 
 /// Global runtime context for V8 namespace operations
 /// TODO: This should be stored per-isolate, not globally
@@ -59,7 +71,7 @@ pub fn clearGlobalContext() void {
         // Deinit the context data to free resources
         ctx.deinit();
         // Free the ContextData struct itself
-        std.heap.page_allocator.destroy(ctx);
+        context_allocator.destroy(ctx);
     }
     global_context = null;
 }
@@ -81,6 +93,40 @@ fn resultIsOwned(comptime T: type, result: T) bool {
     }
     if (T == runtime.JSValue) return result != .instance;
     return @import("interface.zig").getterValueIsOwned(T);
+}
+
+/// Free a string result an impl returned - a DOMString (owned), or a
+/// USVString or ByteString slice - plain or optional, once the binding has
+/// converted it. Anything else is not the binding's to free here (a JSValue
+/// is released by `resultIsOwned`'s rule).
+fn freeStringResult(comptime T: type, allocator: std.mem.Allocator, result: T) void {
+    switch (@typeInfo(T)) {
+        .error_union => |eu| {
+            const payload = result catch return;
+            return freeStringResult(eu.payload, allocator, payload);
+        },
+        .optional => |opt| {
+            const payload = result orelse return;
+            return freeStringResult(opt.child, allocator, payload);
+        },
+        else => {},
+    }
+    if (T == runtime.DOMString) {
+        var owned = result;
+        owned.deinit(allocator);
+    } else if (T == []const u8 or T == []u8) {
+        if (result.len > 0) allocator.free(result);
+    }
+}
+
+/// `call_<name>__<k>`: overload k of an overloaded operation (AGENTS.md,
+/// "Names are the binding map").
+fn isFurtherOverload(comptime decl_name: []const u8) bool {
+    const at = std.mem.lastIndexOf(u8, decl_name, "__") orelse return false;
+    const suffix = decl_name[at + 2 ..];
+    if (suffix.len == 0) return false;
+    for (suffix) |c| if (!std.ascii.isDigit(c)) return false;
+    return true;
 }
 
 /// Comptime V8 namespace binding generator
@@ -108,11 +154,15 @@ pub fn V8Namespace(comptime Namespace: type) type {
         @compileError("V8Namespace requires a struct type, got: " ++ @typeName(Namespace));
     }
 
-    // Extract all call_* methods at compile time
+    // Extract all call_* methods at compile time. A further overload
+    // (`call_<name>__<k>`) is not a method of its own: the first overload's
+    // binding reaches it through overload resolution (see forwardToOverload).
     const methods = comptime blk: {
+        // CSS alone has ~75 operations, each name scanned for an overload suffix.
+        @setEvalBranchQuota(100_000);
         var method_list: []const MethodInfo = &.{};
         for (ns_info.@"struct".decls) |decl| {
-            if (std.mem.startsWith(u8, decl.name, "call_")) {
+            if (std.mem.startsWith(u8, decl.name, "call_") and !isFurtherOverload(decl.name)) {
                 const method_name = decl.name[5..]; // Remove "call_" prefix
                 const method_fn = @field(Namespace, decl.name);
                 const fn_info = @typeInfo(@TypeOf(method_fn));
@@ -133,6 +183,9 @@ pub fn V8Namespace(comptime Namespace: type) type {
 
     return struct {
         const Self = @This();
+
+        /// The namespace's name, for error messages.
+        const namespace_name: []const u8 = if (@hasDecl(Namespace, "Meta") and @hasDecl(Namespace.Meta, "name")) Namespace.Meta.name else @typeName(Namespace);
 
         /// All methods in this namespace
         const all_methods = methods;
@@ -271,6 +324,59 @@ pub fn V8Namespace(comptime Namespace: type) type {
         /// 4. Converts return value back to V8
         ///
         /// All type checking happens at compile time!
+        /// The overload set whose FIRST overload is `zig_name`, if any - see
+        /// `overloads` in a generated namespace (codegen writes the table an
+        /// interface carries).
+        fn overloadSetFor(comptime zig_name: []const u8) ?[]const webidl.overload_resolution.Overload {
+            if (!@hasDecl(Namespace, "overloads")) return null;
+            inline for (Namespace.overloads) |entry| {
+                const set: []const webidl.overload_resolution.Overload = entry[1];
+                if (comptime std.mem.eql(u8, set[0].function, zig_name)) return set;
+            }
+            return null;
+        }
+
+        /// WebIDL "create an operation function" step 3, as the interface
+        /// binding runs it (interface.zig forwardToOverload): the overload
+        /// resolution algorithm over `set` with the call's arguments, through
+        /// the same resolver (webidl.overload_resolution.select) and the same
+        /// view of the arguments (interface.OverloadArgs). Returns true when
+        /// the call was handled here - forwarded to a further overload, or a
+        /// TypeError thrown - and false when the first overload is the one to
+        /// run. A further overload runs its own delegate even before the impl
+        /// declares it (the delegate answers NotImplemented): a namespace had
+        /// no binding for any overload before, so there is nothing to keep.
+        fn forwardToOverload(
+            comptime set: []const webidl.overload_resolution.Overload,
+            info: *const v8.FunctionCallbackInfo,
+        ) bool {
+            const isolate = info.getIsolate();
+            var args = interface.OverloadArgs{ .info = info, .isolate = isolate };
+            defer args.release();
+
+            const chosen = webidl.overload_resolution.select(set, @intCast(info.length()), &args) catch |err| {
+                switch (err) {
+                    error.TypeError => conv.throwTypeError(isolate, "Failed to execute '" ++ comptime set[0].function["call_".len..] ++ "' on '" ++ namespace_name ++ "': no overload matches these arguments"),
+                    // GetMethod threw; the exception is already pending.
+                    error.JavaScriptException => {},
+                }
+                return true;
+            };
+            if (chosen == 0) return false;
+            inline for (set, 0..) |overload, k| {
+                if (k != 0 and k == chosen) {
+                    const callback = comptime generateCallback(.{
+                        .name = set[0].function["call_".len..],
+                        .zig_name = overload.function,
+                        .param_count = @typeInfo(@TypeOf(@field(Namespace, overload.function))).@"fn".params.len,
+                    });
+                    callback(info);
+                    return true;
+                }
+            }
+            return false;
+        }
+
         fn generateCallback(comptime method: MethodInfo) v8.FunctionCallback {
             const namespace_fn = @field(Namespace, method.zig_name);
             const fn_type_info = @typeInfo(@TypeOf(namespace_fn)).@"fn";
@@ -278,6 +384,9 @@ pub fn V8Namespace(comptime Namespace: type) type {
 
             const Wrapper = struct {
                 fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    if (comptime overloadSetFor(method.zig_name)) |set| {
+                        if (forwardToOverload(set, info)) return;
+                    }
                     const isolate = info.getIsolate();
                     // OWNED (every v8_* return is a Global the caller owns),
                     // and a Global<Context> keeps its realm - the whole page -
@@ -322,10 +431,18 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     // Extract and convert arguments at compile time based on parameter types
                     var args: std.meta.ArgsTuple(@TypeOf(namespace_fn)) = undefined;
 
-                    // Use stack allocator for temporary allocations during argument extraction
-                    var stack_buffer: [4096]u8 = undefined;
-                    var fba = std.heap.FixedBufferAllocator.init(&stack_buffer);
-                    const allocator = fba.allocator();
+                    // The arguments convert into an arena over the context's
+                    // allocator, released when the call returns - borrowed for
+                    // the call, as an interface operation's are - whatever
+                    // their size: a 4 KB stack buffer made any longer string
+                    // argument a TypeError ("Type error in argument").
+                    var arena = std.heap.ArenaAllocator.init(context_allocator);
+                    defer arena.deinit();
+                    const allocator = arena.allocator();
+
+                    // The context the impl receives; a string it returns was
+                    // allocated with that context's allocator.
+                    var impl_context: ?runtime.Context = null;
 
                     // Track JS argument index separately from param index
                     var js_arg_idx: c_int = 0;
@@ -342,8 +459,8 @@ pub fn V8Namespace(comptime Namespace: type) type {
 
                             if (global_context == null) {
                                 // Initialize global context with colored logger
-                                // Use a leaked allocator for now (TODO: proper lifecycle)
-                                const gpa = std.heap.page_allocator;
+                                // TODO: proper lifecycle (one per realm).
+                                const gpa = context_allocator;
                                 global_context = gpa.create(runtime.ContextData) catch {
                                     conv.throwTypeError(isolate, "Failed to create runtime context");
                                     return;
@@ -362,6 +479,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                             }
 
                             args[i] = global_context.?;
+                            impl_context = global_context.?;
                             // runtime.Context doesn't consume a JS argument
                             continue;
                         }
@@ -454,6 +572,11 @@ pub fn V8Namespace(comptime Namespace: type) type {
 
                     // Call the namespace function with extracted arguments
                     const result = @call(.auto, namespace_fn, args);
+                    // A string the impl returns is the binding's once it is
+                    // converted, as an interface operation's is (interface.zig,
+                    // needs_string_cleanup): freed with the allocator the impl
+                    // allocated it with, its context's.
+                    defer if (impl_context) |ctx| freeStringResult(return_type, ctx.getAllocator(), result);
 
                     // Handle return value
                     if (return_type == void) {

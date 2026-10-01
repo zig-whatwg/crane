@@ -1,0 +1,16 @@
+// Crane supplementary IDL - not in webref.
+// Origin: added to Crane's specs/idl by hand, moved here 2026-10-01.
+// Why Crane carries it: Crane implements WindowProxy's indexed access to child
+// navigables ([[GetOwnProperty]] on the WindowProxy exotic object) on Window itself,
+// so it declares the indexed getter on a partial Window.
+//
+// Supplementary partial interface to add indexed getter to Window
+// Per HTML spec, WindowProxy provides indexed access to child browsing contexts.
+// Since we implement WindowProxy behavior directly on Window, we add the
+// indexed getter here.
+//
+// See: https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-window-object
+
+partial interface Window {
+  getter WindowProxy? item(unsigned long index);
+};

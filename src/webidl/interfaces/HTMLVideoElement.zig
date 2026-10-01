@@ -19,7 +19,6 @@ const TextTrackKind = @import("enums").TextTrackKind;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const VideoFrameRequestCallback = @import("callbacks").VideoFrameRequestCallback;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
@@ -36,25 +35,25 @@ const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
 const Range = @import("interfaces").Range;
+const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const MediaProvider = @import("typedefs").MediaProvider;
 const TimeRanges = @import("interfaces").TimeRanges;
 const CanPlayTypeResult = @import("enums").CanPlayTypeResult;
 const TextTrackList = @import("interfaces").TextTrackList;
-const DOMRectList = @import("interfaces").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
+const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
-const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
+const DOMQuad = @import("interfaces").DOMQuad;
+const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
@@ -80,10 +79,10 @@ const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const FullscreenOptions = @import("dictionaries").FullscreenOptions;
 const AudioTrackList = @import("interfaces").AudioTrackList;
-const RemotePlayback = @import("interfaces").RemotePlayback;
+const MediaKeys = @import("interfaces").MediaKeys;
 const Observable = @import("interfaces").Observable;
 const DOMPoint = @import("interfaces").DOMPoint;
-const MediaKeys = @import("interfaces").MediaKeys;
+const RemotePlayback = @import("interfaces").RemotePlayback;
 const TextTrack = @import("interfaces").TextTrack;
 const PointerLockOptions = @import("dictionaries").PointerLockOptions;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
@@ -121,18 +120,18 @@ pub const HTMLVideoElement = struct {
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+            .{ "getVideoPlaybackQuality", "call_getVideoPlaybackQuality", 0 },
             .{ "requestPictureInPicture", "call_requestPictureInPicture", 0 },
             .{ "requestVideoFrameCallback", "call_requestVideoFrameCallback", 1 },
             .{ "cancelVideoFrameCallback", "call_cancelVideoFrameCallback", 1 },
-            .{ "getVideoPlaybackQuality", "call_getVideoPlaybackQuality", 0 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "getVideoPlaybackQuality",
             "requestPictureInPicture",
             "requestVideoFrameCallback",
             "cancelVideoFrameCallback",
-            "getVideoPlaybackQuality",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -184,17 +183,9 @@ pub const HTMLVideoElement = struct {
             "getSpatialNavigationContainer",
             "focusableAreas",
             "spatialNavigationSearch",
-            "requestFullscreen",
-            "requestPointerLock",
-            "setPointerCapture",
-            "releasePointerCapture",
-            "hasPointerCapture",
-            "computedStyleMap",
             "pseudo",
+            "computedStyleMap",
             "startViewTransition",
-            "setHTMLUnsafe",
-            "getHTML",
-            "insertAdjacentHTML",
             "getClientRects",
             "getBoundingClientRect",
             "checkVisibility",
@@ -205,9 +196,19 @@ pub const HTMLVideoElement = struct {
             "scrollTo",
             "scrollBy",
             "scrollBy",
-            "animate",
-            "getAnimations",
+            "requestFullscreen",
+            "setHTMLUnsafe",
+            "getHTML",
+            "insertAdjacentHTML",
+            "setPointerCapture",
+            "releasePointerCapture",
+            "hasPointerCapture",
+            "requestPointerLock",
             "getRegionFlowRanges",
+            "getBoxQuads",
+            "convertQuadFromNode",
+            "convertRectFromNode",
+            "convertPointFromNode",
             "prepend",
             "append",
             "replaceChildren",
@@ -218,10 +219,8 @@ pub const HTMLVideoElement = struct {
             "after",
             "replaceWith",
             "remove",
-            "getBoxQuads",
-            "convertQuadFromNode",
-            "convertRectFromNode",
-            "convertPointFromNode",
+            "animate",
+            "getAnimations",
             "click",
             "attachInternals",
             "showPopover",

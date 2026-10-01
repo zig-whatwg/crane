@@ -20,7 +20,6 @@ const TogglePopoverOptions = @import("dictionaries").TogglePopoverOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
@@ -36,21 +35,21 @@ const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
 const Range = @import("interfaces").Range;
+const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
-const DOMRectList = @import("interfaces").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
+const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
-const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
+const DOMQuad = @import("interfaces").DOMQuad;
+const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
@@ -116,6 +115,8 @@ pub const HTMLImageElement = struct {
             .{ "decoding", "get_decoding", "set_decoding" },
             .{ "loading", "get_loading", "set_loading" },
             .{ "fetchPriority", "get_fetchPriority", "set_fetchPriority" },
+            .{ "x", "get_x", null },
+            .{ "y", "get_y", null },
             .{ "name", "get_name", "set_name" },
             .{ "lowsrc", "get_lowsrc", "set_lowsrc" },
             .{ "align", "get_align", "set_align" },
@@ -123,8 +124,6 @@ pub const HTMLImageElement = struct {
             .{ "vspace", "get_vspace", "set_vspace" },
             .{ "longDesc", "get_longDesc", "set_longDesc" },
             .{ "border", "get_border", "set_border" },
-            .{ "x", "get_x", null },
-            .{ "y", "get_y", null },
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
             .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
@@ -188,17 +187,9 @@ pub const HTMLImageElement = struct {
             "getSpatialNavigationContainer",
             "focusableAreas",
             "spatialNavigationSearch",
-            "requestFullscreen",
-            "requestPointerLock",
-            "setPointerCapture",
-            "releasePointerCapture",
-            "hasPointerCapture",
-            "computedStyleMap",
             "pseudo",
+            "computedStyleMap",
             "startViewTransition",
-            "setHTMLUnsafe",
-            "getHTML",
-            "insertAdjacentHTML",
             "getClientRects",
             "getBoundingClientRect",
             "checkVisibility",
@@ -209,9 +200,19 @@ pub const HTMLImageElement = struct {
             "scrollTo",
             "scrollBy",
             "scrollBy",
-            "animate",
-            "getAnimations",
+            "requestFullscreen",
+            "setHTMLUnsafe",
+            "getHTML",
+            "insertAdjacentHTML",
+            "setPointerCapture",
+            "releasePointerCapture",
+            "hasPointerCapture",
+            "requestPointerLock",
             "getRegionFlowRanges",
+            "getBoxQuads",
+            "convertQuadFromNode",
+            "convertRectFromNode",
+            "convertPointFromNode",
             "prepend",
             "append",
             "replaceChildren",
@@ -222,10 +223,8 @@ pub const HTMLImageElement = struct {
             "after",
             "replaceWith",
             "remove",
-            "getBoxQuads",
-            "convertQuadFromNode",
-            "convertRectFromNode",
-            "convertPointFromNode",
+            "animate",
+            "getAnimations",
             "click",
             "attachInternals",
             "showPopover",
@@ -254,6 +253,8 @@ pub const HTMLImageElement = struct {
             .{ "decoding", "get_decoding", "set_decoding" },
             .{ "loading", "get_loading", "set_loading" },
             .{ "fetchPriority", "get_fetchPriority", "set_fetchPriority" },
+            .{ "x", "get_x", null },
+            .{ "y", "get_y", null },
             .{ "name", "get_name", "set_name" },
             .{ "lowsrc", "get_lowsrc", "set_lowsrc" },
             .{ "align", "get_align", "set_align" },
@@ -261,8 +262,6 @@ pub const HTMLImageElement = struct {
             .{ "vspace", "get_vspace", "set_vspace" },
             .{ "longDesc", "get_longDesc", "set_longDesc" },
             .{ "border", "get_border", "set_border" },
-            .{ "x", "get_x", null },
-            .{ "y", "get_y", null },
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
             .{ "sharedStorageWritable", "get_sharedStorageWritable", "set_sharedStorageWritable" },
         };
@@ -294,6 +293,8 @@ pub const HTMLImageElement = struct {
             decoding: typedefs.DOMString = undefined,
             loading: typedefs.DOMString = undefined,
             fetchPriority: typedefs.DOMString = undefined,
+            x: i32 = undefined,
+            y: i32 = undefined,
             name: typedefs.DOMString = undefined,
             lowsrc: runtime.USVString = undefined,
             @"align": typedefs.DOMString = undefined,
@@ -301,8 +302,6 @@ pub const HTMLImageElement = struct {
             vspace: u32 = undefined,
             longDesc: runtime.USVString = undefined,
             border: typedefs.DOMString = undefined,
-            x: i32 = undefined,
-            y: i32 = undefined,
             attributionSrc: runtime.USVString = undefined,
             sharedStorageWritable: bool = undefined,
             _internal: ?*HTMLImageElementImpl.InternalState = null,
@@ -611,6 +610,14 @@ pub const HTMLImageElement = struct {
         try HTMLImageElementImpl.set_fetchPriority(instance, value);
     }
 
+    pub fn get_x(instance: *runtime.Instance) anyerror!i32 {
+        return try HTMLImageElementImpl.get_x(instance);
+    }
+
+    pub fn get_y(instance: *runtime.Instance) anyerror!i32 {
+        return try HTMLImageElementImpl.get_y(instance);
+    }
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         if (comptime @hasDecl(HTMLImageElementImpl, "get_name")) return try HTMLImageElementImpl.get_name(instance);
@@ -721,14 +728,6 @@ pub const HTMLImageElement = struct {
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_border")) return try HTMLImageElementImpl.set_border(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "border" }, value);
-    }
-
-    pub fn get_x(instance: *runtime.Instance) anyerror!i32 {
-        return try HTMLImageElementImpl.get_x(instance);
-    }
-
-    pub fn get_y(instance: *runtime.Instance) anyerror!i32 {
-        return try HTMLImageElementImpl.get_y(instance);
     }
 
     /// Extended attributes: [CEReactions], [SecureContext]

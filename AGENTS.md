@@ -317,8 +317,8 @@ with one exception, the existing WPT tools (below).
 ## WebIDL codegen
 
 ```
-specs/idl/            341 official .idl files (symlink to webref)
-specs/supplementary/  extra definitions
+specs/idl/            334 webref .idl files, committed, pinned (specs/idl/WEBREF.md)
+specs/supplementary/  Crane's own definitions (7 files)
         |
         v             src/webidl/codegen/
         |
@@ -342,28 +342,38 @@ the codegen and the temporary edit must be overwritten by a regeneration —
 that is how you know the codegen actually produces it. Never commit a
 hand-edited generated file.
 
-Regenerate — **one source per invocation**:
+Regenerate - **one invocation, both sources, one model**:
 
 ```bash
-zig build codegen -- specs/idl/           --dest-root src/webidl/
-zig build codegen -- specs/supplementary/ --dest-root src/webidl/
+zig build codegen -- --dest-root src/webidl/
 ```
 
-Passing both sources to one invocation fails with `error.UnknownArgument`.
+With no source named, codegen reads `specs/idl` and `specs/supplementary`
+together, so a name in one resolves against the other (`typedef Window
+WindowProxy` needs Window) and every `root.zig` lists both. Its output is
+`zig fmt`-clean, so `git status` after a regeneration shows only real changes.
+Never regenerate from one source alone: that run resolves against that source
+only and rewrites every root with its entries.
 
-**The supplementary run is destructive today.** It builds its model from its
-own four files, so it rewrites every `*/root.zig` with only their entries
-(interfaces/root.zig loses ~1,260 lines) and writes `typedefs/WindowProxy.zig`
-as `runtime.JSValue`. Two lanes have hit it. Run it only when a supplementary
-definition changed; afterwards `git checkout` the seven roots and
-WindowProxy.zig, then diff every generated directory. The fix - one model over
-both sources, checked by regenerating from scratch against the committed tree -
-is queued.
+The model does not depend on the order files are read in (`ir.zig`,
+"Merging"): every partial definition merges into its definition, members go
+definition first, then partials by (file name, position), and overloads are
+numbered in that order. Two non-partial definitions of one name are an error
+unless `src/webidl/codegen/duplicates.zig` names the definer (from webref's
+curated idlnames); codegen stops and says so.
+
+**`zig build codegen-check`** (part of `zig build test`) regenerates the whole
+tree from scratch into a temporary directory and compares it byte for byte with
+the committed generated directories. A hand-edited generated file, an IDL or
+codegen change committed without its regeneration, and a stale generated file
+all fail it, and it prints the command above. `specs/idl` is a pinned webref
+snapshot: update it only by the procedure in specs/idl/WEBREF.md.
 
 When codegen behaviour is in question, **delete the generated directories and
 regenerate from scratch.** Partial regeneration hides systemic issues — that is
 how a parent-vs-child signature bug stayed hidden behind 12 "unrelated" type
-mismatches. Then `zig build` to confirm no interface/impl signature drift.
+mismatches. `codegen-check` does exactly that against the committed tree; then
+build (`zig build wpt-runner -j2`) to confirm no interface/impl signature drift.
 
 ### New interfaces
 

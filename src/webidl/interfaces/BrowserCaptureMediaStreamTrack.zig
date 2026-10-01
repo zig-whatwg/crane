@@ -72,9 +72,9 @@ pub const BrowserCaptureMediaStreamTrack = struct {
             "getConstraints",
             "getSettings",
             "applyConstraints",
+            "getCaptureHandle",
             "getSupportedCaptureActions",
             "sendCaptureAction",
-            "getCaptureHandle",
         };
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties

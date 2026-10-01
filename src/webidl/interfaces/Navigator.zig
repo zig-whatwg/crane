@@ -10,15 +10,9 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const NavigatorLocks = @import("mixins").NavigatorLocks;
-const NavigatorGPU = @import("mixins").NavigatorGPU;
-const GlobalPrivacyControl = @import("mixins").GlobalPrivacyControl;
-const NavigatorAutomationInformation = @import("mixins").NavigatorAutomationInformation;
-const NavigatorNetworkInformation = @import("mixins").NavigatorNetworkInformation;
-const NavigatorML = @import("mixins").NavigatorML;
+const NavigatorBadge = @import("mixins").NavigatorBadge;
 const NavigatorDeviceMemory = @import("mixins").NavigatorDeviceMemory;
-const NavigatorStorage = @import("mixins").NavigatorStorage;
-const NavigatorStorageBuckets = @import("mixins").NavigatorStorageBuckets;
+const GlobalPrivacyControl = @import("mixins").GlobalPrivacyControl;
 const NavigatorID = @import("mixins").NavigatorID;
 const NavigatorLanguage = @import("mixins").NavigatorLanguage;
 const NavigatorOnLine = @import("mixins").NavigatorOnLine;
@@ -26,33 +20,39 @@ const NavigatorContentUtils = @import("mixins").NavigatorContentUtils;
 const NavigatorCookies = @import("mixins").NavigatorCookies;
 const NavigatorPlugins = @import("mixins").NavigatorPlugins;
 const NavigatorConcurrentHardware = @import("mixins").NavigatorConcurrentHardware;
-const NavigatorBadge = @import("mixins").NavigatorBadge;
+const NavigatorNetworkInformation = @import("mixins").NavigatorNetworkInformation;
+const NavigatorStorageBuckets = @import("mixins").NavigatorStorageBuckets;
+const NavigatorStorage = @import("mixins").NavigatorStorage;
 const NavigatorUA = @import("mixins").NavigatorUA;
+const NavigatorLocks = @import("mixins").NavigatorLocks;
+const NavigatorAutomationInformation = @import("mixins").NavigatorAutomationInformation;
+const NavigatorGPU = @import("mixins").NavigatorGPU;
+const NavigatorML = @import("mixins").NavigatorML;
 const MimeTypeArray = @import("interfaces").MimeTypeArray;
 const UrnOrConfig = @import("typedefs").UrnOrConfig;
 const Serial = @import("interfaces").Serial;
 const Presentation = @import("interfaces").Presentation;
-const SmartCardResourceManager = @import("interfaces").SmartCardResourceManager;
-const AdAuctionDataConfig = @import("dictionaries").AdAuctionDataConfig;
-const HID = @import("interfaces").HID;
 const PreferenceManager = @import("interfaces").PreferenceManager;
+const MediaKeySystemAccess = @import("interfaces").MediaKeySystemAccess;
+const AdAuctionDataConfig = @import("dictionaries").AdAuctionDataConfig;
+const VibratePattern = @import("typedefs").VibratePattern;
 const AuctionAdConfig = @import("dictionaries").AuctionAdConfig;
 const USVString = @import("typedefs").USVString;
-const MediaKeySystemAccess = @import("interfaces").MediaKeySystemAccess;
-const VibratePattern = @import("typedefs").VibratePattern;
+const SmartCardResourceManager = @import("interfaces").SmartCardResourceManager;
+const HID = @import("interfaces").HID;
 const BatteryManager = @import("interfaces").BatteryManager;
 const NetworkInformation = @import("interfaces").NetworkInformation;
 const ML = @import("interfaces").ML;
 const StorageBucketManager = @import("interfaces").StorageBucketManager;
 const BodyInit = @import("typedefs").BodyInit;
 const HandwritingRecognizer = @import("interfaces").HandwritingRecognizer;
-const MIDIAccess = @import("interfaces").MIDIAccess;
 const AuctionAdInterestGroupKey = @import("dictionaries").AuctionAdInterestGroupKey;
+const MIDIAccess = @import("interfaces").MIDIAccess;
 const Attribution = @import("interfaces").Attribution;
-const ShareData = @import("dictionaries").ShareData;
-const Scheduling = @import("interfaces").Scheduling;
 const VirtualKeyboard = @import("interfaces").VirtualKeyboard;
 const AutoplayPolicy = @import("enums").AutoplayPolicy;
+const Scheduling = @import("interfaces").Scheduling;
+const ShareData = @import("dictionaries").ShareData;
 const Clipboard = @import("interfaces").Clipboard;
 const HandwritingModelConstraint = @import("dictionaries").HandwritingModelConstraint;
 const StorageManager = @import("interfaces").StorageManager;
@@ -60,11 +60,11 @@ const MediaKeySystemConfiguration = @import("dictionaries").MediaKeySystemConfig
 const AudioSession = @import("interfaces").AudioSession;
 const CredentialsContainer = @import("interfaces").CredentialsContainer;
 const ServiceWorkerContainer = @import("interfaces").ServiceWorkerContainer;
-const HTMLMediaElement = @import("interfaces").HTMLMediaElement;
 const MediaDevices = @import("interfaces").MediaDevices;
-const NavigatorManagedData = @import("interfaces").NavigatorManagedData;
+const HTMLMediaElement = @import("interfaces").HTMLMediaElement;
 const DOMString = @import("typedefs").DOMString;
 const Permissions = @import("interfaces").Permissions;
+const NavigatorManagedData = @import("interfaces").NavigatorManagedData;
 const LockManager = @import("interfaces").LockManager;
 const AudioContext = @import("interfaces").AudioContext;
 const HandwritingRecognizerQueryResult = @import("dictionaries").HandwritingRecognizerQueryResult;
@@ -72,14 +72,14 @@ const ContactsManager = @import("interfaces").ContactsManager;
 const DevicePosture = @import("interfaces").DevicePosture;
 const Geolocation = @import("interfaces").Geolocation;
 const PluginArray = @import("interfaces").PluginArray;
-const GPU = @import("interfaces").GPU;
-const WakeLock = @import("interfaces").WakeLock;
 const NavigatorUAData = @import("interfaces").NavigatorUAData;
-const ProtectedAudience = @import("interfaces").ProtectedAudience;
+const WakeLock = @import("interfaces").WakeLock;
+const GPU = @import("interfaces").GPU;
+const MediaSession = @import("interfaces").MediaSession;
 const NavigatorLogin = @import("interfaces").NavigatorLogin;
 const EpubReadingSystem = @import("interfaces").EpubReadingSystem;
+const ProtectedAudience = @import("interfaces").ProtectedAudience;
 const Bluetooth = @import("interfaces").Bluetooth;
-const MediaSession = @import("interfaces").MediaSession;
 const USB = @import("interfaces").USB;
 const AutoplayPolicyMediaType = @import("enums").AutoplayPolicyMediaType;
 const AdAuctionData = @import("dictionaries").AdAuctionData;
@@ -100,15 +100,9 @@ pub const Navigator = struct {
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = null;
         pub const MixinTypes = &.{
-            NavigatorLocks,
-            NavigatorGPU,
-            GlobalPrivacyControl,
-            NavigatorAutomationInformation,
-            NavigatorNetworkInformation,
-            NavigatorML,
+            NavigatorBadge,
             NavigatorDeviceMemory,
-            NavigatorStorage,
-            NavigatorStorageBuckets,
+            GlobalPrivacyControl,
             NavigatorID,
             NavigatorLanguage,
             NavigatorOnLine,
@@ -116,8 +110,14 @@ pub const Navigator = struct {
             NavigatorCookies,
             NavigatorPlugins,
             NavigatorConcurrentHardware,
-            NavigatorBadge,
+            NavigatorNetworkInformation,
+            NavigatorStorageBuckets,
+            NavigatorStorage,
             NavigatorUA,
+            NavigatorLocks,
+            NavigatorAutomationInformation,
+            NavigatorGPU,
+            NavigatorML,
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -130,48 +130,41 @@ pub const Navigator = struct {
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
-            .{ "scheduling", "get_scheduling", null },
-            .{ "presentation", "get_presentation", null },
-            .{ "keyboard", "get_keyboard", null },
-            .{ "clipboard", "get_clipboard", null },
             .{ "audioSession", "get_audioSession", null },
-            .{ "mediaCapabilities", "get_mediaCapabilities", null },
-            .{ "serial", "get_serial", null },
-            .{ "permissions", "get_permissions", null },
+            .{ "clipboard", "get_clipboard", null },
             .{ "contacts", "get_contacts", null },
+            .{ "credentials", "get_credentials", null },
             .{ "devicePosture", "get_devicePosture", null },
+            .{ "epubReadingSystem", "get_epubReadingSystem", null },
+            .{ "geolocation", "get_geolocation", null },
+            .{ "userActivation", "get_userActivation", null },
+            .{ "ink", "get_ink", null },
+            .{ "scheduling", "get_scheduling", null },
+            .{ "keyboard", "get_keyboard", null },
+            .{ "login", "get_login", null },
+            .{ "managed", "get_managed", null },
+            .{ "mediaCapabilities", "get_mediaCapabilities", null },
+            .{ "mediaDevices", "get_mediaDevices", null },
+            .{ "preferences", "get_preferences", null },
+            .{ "mediaSession", "get_mediaSession", null },
+            .{ "permissions", "get_permissions", null },
             .{ "maxTouchPoints", "get_maxTouchPoints", null },
+            .{ "presentation", "get_presentation", null },
             .{ "attribution", "get_attribution", null },
-            .{ "smartCard", "get_smartCard", null },
-            .{ "usb", "get_usb", null },
-            .{ "windowControlsOverlay", "get_windowControlsOverlay", null },
-            .{ "xr", "get_xr", null },
+            .{ "wakeLock", "get_wakeLock", null },
+            .{ "serial", "get_serial", null },
+            .{ "serviceWorker", "get_serviceWorker", null },
             .{ "deprecatedRunAdAuctionEnforcesKAnonymity", "get_deprecatedRunAdAuctionEnforcesKAnonymity", null },
             .{ "protectedAudience", "get_protectedAudience", null },
-            .{ "hid", "get_hid", null },
-            .{ "credentials", "get_credentials", null },
-            .{ "wakeLock", "get_wakeLock", null },
             .{ "virtualKeyboard", "get_virtualKeyboard", null },
-            .{ "preferences", "get_preferences", null },
-            .{ "managed", "get_managed", null },
-            .{ "serviceWorker", "get_serviceWorker", null },
-            .{ "ink", "get_ink", null },
-            .{ "epubReadingSystem", "get_epubReadingSystem", null },
-            .{ "userActivation", "get_userActivation", null },
             .{ "bluetooth", "get_bluetooth", null },
-            .{ "geolocation", "get_geolocation", null },
-            .{ "login", "get_login", null },
-            .{ "mediaSession", "get_mediaSession", null },
-            .{ "mediaDevices", "get_mediaDevices", null },
-            .{ "locks", "get_locks", null },
-            .{ "gpu", "get_gpu", null },
-            .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
-            .{ "webdriver", "get_webdriver", null },
-            .{ "connection", "get_connection", null },
-            .{ "ml", "get_ml", null },
+            .{ "smartCard", "get_smartCard", null },
+            .{ "hid", "get_hid", null },
+            .{ "usb", "get_usb", null },
+            .{ "xr", "get_xr", null },
+            .{ "windowControlsOverlay", "get_windowControlsOverlay", null },
             .{ "deviceMemory", "get_deviceMemory", null },
-            .{ "storage", "get_storage", null },
-            .{ "storageBuckets", "get_storageBuckets", null },
+            .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
             .{ "appCodeName", "get_appCodeName", null },
             .{ "appName", "get_appName", null },
             .{ "appVersion", "get_appVersion", null },
@@ -190,21 +183,29 @@ pub const Navigator = struct {
             .{ "mimeTypes", "get_mimeTypes", null },
             .{ "pdfViewerEnabled", "get_pdfViewerEnabled", null },
             .{ "hardwareConcurrency", "get_hardwareConcurrency", null },
+            .{ "connection", "get_connection", null },
+            .{ "storageBuckets", "get_storageBuckets", null },
+            .{ "storage", "get_storage", null },
             .{ "userAgentData", "get_userAgentData", null },
+            .{ "locks", "get_locks", null },
+            .{ "webdriver", "get_webdriver", null },
+            .{ "gpu", "get_gpu", null },
+            .{ "ml", "get_ml", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+            .{ "getAutoplayPolicy", "call_getAutoplayPolicy", 1 },
+            .{ "getBattery", "call_getBattery", 0 },
             .{ "sendBeacon", "call_sendBeacon", 1 },
-            .{ "getInstalledRelatedApps", "call_getInstalledRelatedApps", 0 },
-            .{ "queryHandwritingRecognizer", "call_queryHandwritingRecognizer", 1 },
-            .{ "createHandwritingRecognizer", "call_createHandwritingRecognizer", 1 },
-            .{ "requestMIDIAccess", "call_requestMIDIAccess", 0 },
+            .{ "requestMediaKeySystemAccess", "call_requestMediaKeySystemAccess", 2 },
             .{ "deprecatedReplaceInURN", "call_deprecatedReplaceInURN", 2 },
             .{ "deprecatedURNtoURL", "call_deprecatedURNtoURL", 1 },
             .{ "adAuctionComponents", "call_adAuctionComponents", 1 },
-            .{ "share", "call_share", 0 },
-            .{ "canShare", "call_canShare", 0 },
+            .{ "getGamepads", "call_getGamepads", 0 },
+            .{ "getInstalledRelatedApps", "call_getInstalledRelatedApps", 0 },
+            .{ "queryHandwritingRecognizer", "call_queryHandwritingRecognizer", 1 },
+            .{ "createHandwritingRecognizer", "call_createHandwritingRecognizer", 1 },
             .{ "joinAdInterestGroup", "call_joinAdInterestGroup", 1 },
             .{ "leaveAdInterestGroup", "call_leaveAdInterestGroup", 0 },
             .{ "clearOriginJoinedAdInterestGroups", "call_clearOriginJoinedAdInterestGroups", 1 },
@@ -213,31 +214,31 @@ pub const Navigator = struct {
             .{ "getInterestGroupAdAuctionData", "call_getInterestGroupAdAuctionData", 0 },
             .{ "createAuctionNonce", "call_createAuctionNonce", 0 },
             .{ "updateAdInterestGroups", "call_updateAdInterestGroups", 0 },
-            .{ "getBattery", "call_getBattery", 0 },
-            .{ "requestMediaKeySystemAccess", "call_requestMediaKeySystemAccess", 2 },
             .{ "vibrate", "call_vibrate", 1 },
-            .{ "getAutoplayPolicy", "call_getAutoplayPolicy", 1 },
-            .{ "getGamepads", "call_getGamepads", 0 },
+            .{ "share", "call_share", 0 },
+            .{ "canShare", "call_canShare", 0 },
+            .{ "requestMIDIAccess", "call_requestMIDIAccess", 0 },
+            .{ "setAppBadge", "call_setAppBadge", 0 },
+            .{ "clearAppBadge", "call_clearAppBadge", 0 },
             .{ "taintEnabled", "call_taintEnabled", 0 },
             .{ "registerProtocolHandler", "call_registerProtocolHandler", 2 },
             .{ "unregisterProtocolHandler", "call_unregisterProtocolHandler", 2 },
             .{ "javaEnabled", "call_javaEnabled", 0 },
-            .{ "setAppBadge", "call_setAppBadge", 0 },
-            .{ "clearAppBadge", "call_clearAppBadge", 0 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "getAutoplayPolicy",
+            "getBattery",
             "sendBeacon",
-            "getInstalledRelatedApps",
-            "queryHandwritingRecognizer",
-            "createHandwritingRecognizer",
-            "requestMIDIAccess",
+            "requestMediaKeySystemAccess",
             "deprecatedReplaceInURN",
             "deprecatedURNtoURL",
             "adAuctionComponents",
-            "share",
-            "canShare",
+            "getGamepads",
+            "getInstalledRelatedApps",
+            "queryHandwritingRecognizer",
+            "createHandwritingRecognizer",
             "joinAdInterestGroup",
             "leaveAdInterestGroup",
             "clearOriginJoinedAdInterestGroups",
@@ -246,17 +247,16 @@ pub const Navigator = struct {
             "getInterestGroupAdAuctionData",
             "createAuctionNonce",
             "updateAdInterestGroups",
-            "getBattery",
-            "requestMediaKeySystemAccess",
             "vibrate",
-            "getAutoplayPolicy",
-            "getGamepads",
+            "share",
+            "canShare",
+            "requestMIDIAccess",
+            "setAppBadge",
+            "clearAppBadge",
             "taintEnabled",
             "registerProtocolHandler",
             "unregisterProtocolHandler",
             "javaEnabled",
-            "setAppBadge",
-            "clearAppBadge",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -264,48 +264,41 @@ pub const Navigator = struct {
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
-            .{ "scheduling", "get_scheduling", null },
-            .{ "presentation", "get_presentation", null },
-            .{ "keyboard", "get_keyboard", null },
-            .{ "clipboard", "get_clipboard", null },
             .{ "audioSession", "get_audioSession", null },
-            .{ "mediaCapabilities", "get_mediaCapabilities", null },
-            .{ "serial", "get_serial", null },
-            .{ "permissions", "get_permissions", null },
+            .{ "clipboard", "get_clipboard", null },
             .{ "contacts", "get_contacts", null },
+            .{ "credentials", "get_credentials", null },
             .{ "devicePosture", "get_devicePosture", null },
+            .{ "epubReadingSystem", "get_epubReadingSystem", null },
+            .{ "geolocation", "get_geolocation", null },
+            .{ "userActivation", "get_userActivation", null },
+            .{ "ink", "get_ink", null },
+            .{ "scheduling", "get_scheduling", null },
+            .{ "keyboard", "get_keyboard", null },
+            .{ "login", "get_login", null },
+            .{ "managed", "get_managed", null },
+            .{ "mediaCapabilities", "get_mediaCapabilities", null },
+            .{ "mediaDevices", "get_mediaDevices", null },
+            .{ "preferences", "get_preferences", null },
+            .{ "mediaSession", "get_mediaSession", null },
+            .{ "permissions", "get_permissions", null },
             .{ "maxTouchPoints", "get_maxTouchPoints", null },
+            .{ "presentation", "get_presentation", null },
             .{ "attribution", "get_attribution", null },
-            .{ "smartCard", "get_smartCard", null },
-            .{ "usb", "get_usb", null },
-            .{ "windowControlsOverlay", "get_windowControlsOverlay", null },
-            .{ "xr", "get_xr", null },
+            .{ "wakeLock", "get_wakeLock", null },
+            .{ "serial", "get_serial", null },
+            .{ "serviceWorker", "get_serviceWorker", null },
             .{ "deprecatedRunAdAuctionEnforcesKAnonymity", "get_deprecatedRunAdAuctionEnforcesKAnonymity", null },
             .{ "protectedAudience", "get_protectedAudience", null },
-            .{ "hid", "get_hid", null },
-            .{ "credentials", "get_credentials", null },
-            .{ "wakeLock", "get_wakeLock", null },
             .{ "virtualKeyboard", "get_virtualKeyboard", null },
-            .{ "preferences", "get_preferences", null },
-            .{ "managed", "get_managed", null },
-            .{ "serviceWorker", "get_serviceWorker", null },
-            .{ "ink", "get_ink", null },
-            .{ "epubReadingSystem", "get_epubReadingSystem", null },
-            .{ "userActivation", "get_userActivation", null },
             .{ "bluetooth", "get_bluetooth", null },
-            .{ "geolocation", "get_geolocation", null },
-            .{ "login", "get_login", null },
-            .{ "mediaSession", "get_mediaSession", null },
-            .{ "mediaDevices", "get_mediaDevices", null },
-            .{ "locks", "get_locks", null },
-            .{ "gpu", "get_gpu", null },
-            .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
-            .{ "webdriver", "get_webdriver", null },
-            .{ "connection", "get_connection", null },
-            .{ "ml", "get_ml", null },
+            .{ "smartCard", "get_smartCard", null },
+            .{ "hid", "get_hid", null },
+            .{ "usb", "get_usb", null },
+            .{ "xr", "get_xr", null },
+            .{ "windowControlsOverlay", "get_windowControlsOverlay", null },
             .{ "deviceMemory", "get_deviceMemory", null },
-            .{ "storage", "get_storage", null },
-            .{ "storageBuckets", "get_storageBuckets", null },
+            .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
             .{ "appCodeName", "get_appCodeName", null },
             .{ "appName", "get_appName", null },
             .{ "appVersion", "get_appVersion", null },
@@ -324,7 +317,14 @@ pub const Navigator = struct {
             .{ "mimeTypes", "get_mimeTypes", null },
             .{ "pdfViewerEnabled", "get_pdfViewerEnabled", null },
             .{ "hardwareConcurrency", "get_hardwareConcurrency", null },
+            .{ "connection", "get_connection", null },
+            .{ "storageBuckets", "get_storageBuckets", null },
+            .{ "storage", "get_storage", null },
             .{ "userAgentData", "get_userAgentData", null },
+            .{ "locks", "get_locks", null },
+            .{ "webdriver", "get_webdriver", null },
+            .{ "gpu", "get_gpu", null },
+            .{ "ml", "get_ml", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -337,48 +337,41 @@ pub const Navigator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            scheduling: *runtime.Instance = undefined,
-            presentation: *runtime.Instance = undefined,
-            keyboard: *runtime.Instance = undefined,
-            clipboard: *runtime.Instance = undefined,
             audioSession: *runtime.Instance = undefined,
-            mediaCapabilities: *runtime.Instance = undefined,
-            serial: *runtime.Instance = undefined,
-            permissions: *runtime.Instance = undefined,
+            clipboard: *runtime.Instance = undefined,
             contacts: *runtime.Instance = undefined,
+            credentials: *runtime.Instance = undefined,
             devicePosture: *runtime.Instance = undefined,
+            epubReadingSystem: *runtime.Instance = undefined,
+            geolocation: *runtime.Instance = undefined,
+            userActivation: *runtime.Instance = undefined,
+            ink: *runtime.Instance = undefined,
+            scheduling: *runtime.Instance = undefined,
+            keyboard: *runtime.Instance = undefined,
+            login: *runtime.Instance = undefined,
+            managed: *runtime.Instance = undefined,
+            mediaCapabilities: *runtime.Instance = undefined,
+            mediaDevices: *runtime.Instance = undefined,
+            preferences: *runtime.Instance = undefined,
+            mediaSession: *runtime.Instance = undefined,
+            permissions: *runtime.Instance = undefined,
             maxTouchPoints: i32 = undefined,
+            presentation: *runtime.Instance = undefined,
             attribution: *runtime.Instance = undefined,
-            smartCard: *runtime.Instance = undefined,
-            usb: *runtime.Instance = undefined,
-            windowControlsOverlay: *runtime.Instance = undefined,
-            xr: *runtime.Instance = undefined,
+            wakeLock: *runtime.Instance = undefined,
+            serial: *runtime.Instance = undefined,
+            serviceWorker: *runtime.Instance = undefined,
             deprecatedRunAdAuctionEnforcesKAnonymity: bool = undefined,
             protectedAudience: *runtime.Instance = undefined,
-            hid: *runtime.Instance = undefined,
-            credentials: *runtime.Instance = undefined,
-            wakeLock: *runtime.Instance = undefined,
             virtualKeyboard: *runtime.Instance = undefined,
-            preferences: *runtime.Instance = undefined,
-            managed: *runtime.Instance = undefined,
-            serviceWorker: *runtime.Instance = undefined,
-            ink: *runtime.Instance = undefined,
-            epubReadingSystem: *runtime.Instance = undefined,
-            userActivation: *runtime.Instance = undefined,
             bluetooth: *runtime.Instance = undefined,
-            geolocation: *runtime.Instance = undefined,
-            login: *runtime.Instance = undefined,
-            mediaSession: *runtime.Instance = undefined,
-            mediaDevices: *runtime.Instance = undefined,
-            locks: *runtime.Instance = undefined,
-            gpu: *runtime.Instance = undefined,
-            globalPrivacyControl: bool = undefined,
-            webdriver: bool = undefined,
-            connection: *runtime.Instance = undefined,
-            ml: *runtime.Instance = undefined,
+            smartCard: *runtime.Instance = undefined,
+            hid: *runtime.Instance = undefined,
+            usb: *runtime.Instance = undefined,
+            xr: *runtime.Instance = undefined,
+            windowControlsOverlay: *runtime.Instance = undefined,
             deviceMemory: f64 = undefined,
-            storage: *runtime.Instance = undefined,
-            storageBuckets: *runtime.Instance = undefined,
+            globalPrivacyControl: bool = undefined,
             appCodeName: typedefs.DOMString = undefined,
             appName: typedefs.DOMString = undefined,
             appVersion: typedefs.DOMString = undefined,
@@ -397,42 +390,49 @@ pub const Navigator = struct {
             mimeTypes: *runtime.Instance = undefined,
             pdfViewerEnabled: bool = undefined,
             hardwareConcurrency: u64 = undefined,
+            connection: *runtime.Instance = undefined,
+            storageBuckets: *runtime.Instance = undefined,
+            storage: *runtime.Instance = undefined,
             userAgentData: *runtime.Instance = undefined,
-            cached_presentation: ?*runtime.Instance = null,
-            cached_keyboard: ?*runtime.Instance = null,
+            locks: *runtime.Instance = undefined,
+            webdriver: bool = undefined,
+            gpu: *runtime.Instance = undefined,
+            ml: *runtime.Instance = undefined,
             cached_clipboard: ?*runtime.Instance = null,
-            cached_mediaCapabilities: ?*runtime.Instance = null,
-            cached_serial: ?*runtime.Instance = null,
-            cached_permissions: ?*runtime.Instance = null,
             cached_contacts: ?*runtime.Instance = null,
-            cached_devicePosture: ?*runtime.Instance = null,
-            cached_attribution: ?*runtime.Instance = null,
-            cached_smartCard: ?*runtime.Instance = null,
-            cached_usb: ?*runtime.Instance = null,
-            cached_windowControlsOverlay: ?*runtime.Instance = null,
-            cached_xr: ?*runtime.Instance = null,
-            cached_protectedAudience: ?*runtime.Instance = null,
-            cached_hid: ?*runtime.Instance = null,
             cached_credentials: ?*runtime.Instance = null,
-            cached_wakeLock: ?*runtime.Instance = null,
-            cached_virtualKeyboard: ?*runtime.Instance = null,
-            cached_preferences: ?*runtime.Instance = null,
-            cached_managed: ?*runtime.Instance = null,
-            cached_serviceWorker: ?*runtime.Instance = null,
-            cached_ink: ?*runtime.Instance = null,
+            cached_devicePosture: ?*runtime.Instance = null,
             cached_epubReadingSystem: ?*runtime.Instance = null,
-            cached_userActivation: ?*runtime.Instance = null,
-            cached_bluetooth: ?*runtime.Instance = null,
             cached_geolocation: ?*runtime.Instance = null,
-            cached_mediaSession: ?*runtime.Instance = null,
+            cached_userActivation: ?*runtime.Instance = null,
+            cached_ink: ?*runtime.Instance = null,
+            cached_keyboard: ?*runtime.Instance = null,
+            cached_managed: ?*runtime.Instance = null,
+            cached_mediaCapabilities: ?*runtime.Instance = null,
             cached_mediaDevices: ?*runtime.Instance = null,
-            cached_gpu: ?*runtime.Instance = null,
-            cached_connection: ?*runtime.Instance = null,
-            cached_ml: ?*runtime.Instance = null,
-            cached_storage: ?*runtime.Instance = null,
-            cached_storageBuckets: ?*runtime.Instance = null,
+            cached_preferences: ?*runtime.Instance = null,
+            cached_mediaSession: ?*runtime.Instance = null,
+            cached_permissions: ?*runtime.Instance = null,
+            cached_presentation: ?*runtime.Instance = null,
+            cached_attribution: ?*runtime.Instance = null,
+            cached_wakeLock: ?*runtime.Instance = null,
+            cached_serial: ?*runtime.Instance = null,
+            cached_serviceWorker: ?*runtime.Instance = null,
+            cached_protectedAudience: ?*runtime.Instance = null,
+            cached_virtualKeyboard: ?*runtime.Instance = null,
+            cached_bluetooth: ?*runtime.Instance = null,
+            cached_smartCard: ?*runtime.Instance = null,
+            cached_hid: ?*runtime.Instance = null,
+            cached_usb: ?*runtime.Instance = null,
+            cached_xr: ?*runtime.Instance = null,
+            cached_windowControlsOverlay: ?*runtime.Instance = null,
             cached_plugins: ?*runtime.Instance = null,
             cached_mimeTypes: ?*runtime.Instance = null,
+            cached_connection: ?*runtime.Instance = null,
+            cached_storageBuckets: ?*runtime.Instance = null,
+            cached_storage: ?*runtime.Instance = null,
+            cached_gpu: ?*runtime.Instance = null,
+            cached_ml: ?*runtime.Instance = null,
             _internal: ?*NavigatorImpl.InternalState = null,
         },
     );
@@ -555,32 +555,8 @@ pub const Navigator = struct {
         NavigatorImpl.deinit(instance);
     }
 
-    pub fn get_scheduling(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try NavigatorImpl.get_scheduling(instance);
-    }
-
-    /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_presentation(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_presentation) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_presentation(instance);
-        state.own.cached_presentation = value;
-        return value;
-    }
-
-    /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_keyboard(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_keyboard) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_keyboard(instance);
-        state.own.cached_keyboard = value;
-        return value;
+    pub fn get_audioSession(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try NavigatorImpl.get_audioSession(instance);
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
@@ -592,46 +568,6 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_clipboard(instance);
         state.own.cached_clipboard = value;
-        return value;
-    }
-
-    pub fn get_audioSession(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try NavigatorImpl.get_audioSession(instance);
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_mediaCapabilities(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_mediaCapabilities) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_mediaCapabilities(instance);
-        state.own.cached_mediaCapabilities = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_serial) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_serial(instance);
-        state.own.cached_serial = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_permissions(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_permissions) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_permissions(instance);
-        state.own.cached_permissions = value;
         return value;
     }
 
@@ -647,6 +583,18 @@ pub const Navigator = struct {
         return value;
     }
 
+    /// Extended attributes: [SecureContext], [SameObject]
+    pub fn get_credentials(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_credentials) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_credentials(instance);
+        state.own.cached_credentials = value;
+        return value;
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_devicePosture(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -659,8 +607,161 @@ pub const Navigator = struct {
         return value;
     }
 
+    /// Extended attributes: [LegacyUnforgeable], [SameObject]
+    pub fn get_epubReadingSystem(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_epubReadingSystem) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_epubReadingSystem(instance);
+        state.own.cached_epubReadingSystem = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_geolocation(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_geolocation) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_geolocation(instance);
+        state.own.cached_geolocation = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_userActivation(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_userActivation) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_userActivation(instance);
+        state.own.cached_userActivation = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_ink(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_ink) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_ink(instance);
+        state.own.cached_ink = value;
+        return value;
+    }
+
+    pub fn get_scheduling(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try NavigatorImpl.get_scheduling(instance);
+    }
+
+    /// Extended attributes: [SecureContext], [SameObject]
+    pub fn get_keyboard(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_keyboard) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_keyboard(instance);
+        state.own.cached_keyboard = value;
+        return value;
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn get_login(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try NavigatorImpl.get_login(instance);
+    }
+
+    /// Extended attributes: [SecureContext], [SameObject]
+    pub fn get_managed(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_managed) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_managed(instance);
+        state.own.cached_managed = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_mediaCapabilities(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_mediaCapabilities) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_mediaCapabilities(instance);
+        state.own.cached_mediaCapabilities = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject], [SecureContext]
+    pub fn get_mediaDevices(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_mediaDevices) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_mediaDevices(instance);
+        state.own.cached_mediaDevices = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_preferences(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_preferences) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_preferences(instance);
+        state.own.cached_preferences = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_mediaSession(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_mediaSession) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_mediaSession(instance);
+        state.own.cached_mediaSession = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_permissions(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_permissions) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_permissions(instance);
+        state.own.cached_permissions = value;
+        return value;
+    }
+
     pub fn get_maxTouchPoints(instance: *runtime.Instance) anyerror!i32 {
         return try NavigatorImpl.get_maxTouchPoints(instance);
+    }
+
+    /// Extended attributes: [SecureContext], [SameObject]
+    pub fn get_presentation(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_presentation) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_presentation(instance);
+        state.own.cached_presentation = value;
+        return value;
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
@@ -676,50 +777,38 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_wakeLock(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
-        if (state.own.cached_smartCard) |cached| {
+        if (state.own.cached_wakeLock) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_smartCard(instance);
-        state.own.cached_smartCard = value;
+        const value = try NavigatorImpl.get_wakeLock(instance);
+        state.own.cached_wakeLock = value;
         return value;
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
-        if (state.own.cached_usb) |cached| {
+        if (state.own.cached_serial) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_usb(instance);
-        state.own.cached_usb = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_windowControlsOverlay(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_windowControlsOverlay) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_windowControlsOverlay(instance);
-        state.own.cached_windowControlsOverlay = value;
+        const value = try NavigatorImpl.get_serial(instance);
+        state.own.cached_serial = value;
         return value;
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_xr(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
-        if (state.own.cached_xr) |cached| {
+        if (state.own.cached_serviceWorker) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_xr(instance);
-        state.own.cached_xr = value;
+        const value = try NavigatorImpl.get_serviceWorker(instance);
+        state.own.cached_serviceWorker = value;
         return value;
     }
 
@@ -739,42 +828,6 @@ pub const Navigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
-    pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_hid) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_hid(instance);
-        state.own.cached_hid = value;
-        return value;
-    }
-
-    /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_credentials(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_credentials) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_credentials(instance);
-        state.own.cached_credentials = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_wakeLock(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_wakeLock) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_wakeLock(instance);
-        state.own.cached_wakeLock = value;
-        return value;
-    }
-
     /// Extended attributes: [SecureContext], [SameObject]
     pub fn get_virtualKeyboard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -784,78 +837,6 @@ pub const Navigator = struct {
         }
         const value = try NavigatorImpl.get_virtualKeyboard(instance);
         state.own.cached_virtualKeyboard = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_preferences(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_preferences) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_preferences(instance);
-        state.own.cached_preferences = value;
-        return value;
-    }
-
-    /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_managed(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_managed) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_managed(instance);
-        state.own.cached_managed = value;
-        return value;
-    }
-
-    /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_serviceWorker) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_serviceWorker(instance);
-        state.own.cached_serviceWorker = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_ink(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_ink) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_ink(instance);
-        state.own.cached_ink = value;
-        return value;
-    }
-
-    /// Extended attributes: [LegacyUnforgeable], [SameObject]
-    pub fn get_epubReadingSystem(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_epubReadingSystem) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_epubReadingSystem(instance);
-        state.own.cached_epubReadingSystem = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_userActivation(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_userActivation) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_userActivation(instance);
-        state.own.cached_userActivation = value;
         return value;
     }
 
@@ -872,113 +853,68 @@ pub const Navigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_geolocation(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_smartCard(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
-        if (state.own.cached_geolocation) |cached| {
+        if (state.own.cached_smartCard) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_geolocation(instance);
-        state.own.cached_geolocation = value;
+        const value = try NavigatorImpl.get_smartCard(instance);
+        state.own.cached_smartCard = value;
         return value;
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn get_login(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try NavigatorImpl.get_login(instance);
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_mediaSession(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
-        if (state.own.cached_mediaSession) |cached| {
+        if (state.own.cached_hid) |cached| {
             return cached;
         }
-        const value = try NavigatorImpl.get_mediaSession(instance);
-        state.own.cached_mediaSession = value;
+        const value = try NavigatorImpl.get_hid(instance);
+        state.own.cached_hid = value;
         return value;
     }
-
-    /// Extended attributes: [SameObject], [SecureContext]
-    pub fn get_mediaDevices(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_mediaDevices) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_mediaDevices(instance);
-        state.own.cached_mediaDevices = value;
-        return value;
-    }
-
-    pub const get_locks = mixins.NavigatorLocks.get_locks;
-
-    /// Extended attributes: [SameObject], [SecureContext]
-    pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_gpu) |cached| {
-            return cached;
-        }
-        const value = try mixins.NavigatorGPU.get_gpu(instance);
-        state.own.cached_gpu = value;
-        return value;
-    }
-
-    pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
-
-    pub const get_webdriver = mixins.NavigatorAutomationInformation.get_webdriver;
 
     /// Extended attributes: [SameObject]
-    pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
-        if (state.own.cached_connection) |cached| {
+        if (state.own.cached_usb) |cached| {
             return cached;
         }
-        const value = try mixins.NavigatorNetworkInformation.get_connection(instance);
-        state.own.cached_connection = value;
+        const value = try NavigatorImpl.get_usb(instance);
+        state.own.cached_usb = value;
         return value;
     }
 
     /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_ml(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_xr(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
-        if (state.own.cached_ml) |cached| {
+        if (state.own.cached_xr) |cached| {
             return cached;
         }
-        const value = try mixins.NavigatorML.get_ml(instance);
-        state.own.cached_ml = value;
+        const value = try NavigatorImpl.get_xr(instance);
+        state.own.cached_xr = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_windowControlsOverlay(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_windowControlsOverlay) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_windowControlsOverlay(instance);
+        state.own.cached_windowControlsOverlay = value;
         return value;
     }
 
     pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
-    /// Extended attributes: [SameObject]
-    pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_storage) |cached| {
-            return cached;
-        }
-        const value = try NavigatorImpl.get_storage(instance);
-        state.own.cached_storage = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_storageBuckets) |cached| {
-            return cached;
-        }
-        const value = try mixins.NavigatorStorageBuckets.get_storageBuckets(instance);
-        state.own.cached_storageBuckets = value;
-        return value;
-    }
+    pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
 
     pub fn get_appCodeName(instance: *runtime.Instance) anyerror!DOMString {
         return try NavigatorImpl.get_appCodeName(instance);
@@ -1070,8 +1006,72 @@ pub const Navigator = struct {
         return try NavigatorImpl.get_hardwareConcurrency(instance);
     }
 
+    /// Extended attributes: [SameObject]
+    pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_connection) |cached| {
+            return cached;
+        }
+        const value = try mixins.NavigatorNetworkInformation.get_connection(instance);
+        state.own.cached_connection = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_storageBuckets) |cached| {
+            return cached;
+        }
+        const value = try mixins.NavigatorStorageBuckets.get_storageBuckets(instance);
+        state.own.cached_storageBuckets = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_storage) |cached| {
+            return cached;
+        }
+        const value = try NavigatorImpl.get_storage(instance);
+        state.own.cached_storage = value;
+        return value;
+    }
+
     /// Extended attributes: [SecureContext]
     pub const get_userAgentData = mixins.NavigatorUA.get_userAgentData;
+
+    pub const get_locks = mixins.NavigatorLocks.get_locks;
+
+    pub const get_webdriver = mixins.NavigatorAutomationInformation.get_webdriver;
+
+    /// Extended attributes: [SameObject], [SecureContext]
+    pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_gpu) |cached| {
+            return cached;
+        }
+        const value = try mixins.NavigatorGPU.get_gpu(instance);
+        state.own.cached_gpu = value;
+        return value;
+    }
+
+    /// Extended attributes: [SecureContext], [SameObject]
+    pub fn get_ml(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_ml) |cached| {
+            return cached;
+        }
+        const value = try mixins.NavigatorML.get_ml(instance);
+        state.own.cached_ml = value;
+        return value;
+    }
 
     pub fn call_deprecatedURNtoURL(instance: *runtime.Instance, urnOrConfig: UrnOrConfig, send_reports: webidl.Opt(bool)) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_deprecatedURNtoURL(instance, urnOrConfig, send_reports);
@@ -1155,7 +1155,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_updateAdInterestGroups(instance);
     }
 
-    pub const call_unregisterProtocolHandler = mixins.NavigatorContentUtils.call_unregisterProtocolHandler;
+    pub const call_setAppBadge = mixins.NavigatorBadge.call_setAppBadge;
 
     pub fn call_getAutoplayPolicy(instance: *runtime.Instance, @"type": AutoplayPolicyMediaType) anyerror!AutoplayPolicy {
         return try NavigatorImpl.call_getAutoplayPolicy(instance, @"type");
@@ -1175,7 +1175,7 @@ pub const Navigator = struct {
         return try NavigatorImpl.call_getBattery(instance);
     }
 
-    pub const call_setAppBadge = mixins.NavigatorBadge.call_setAppBadge;
+    pub const call_unregisterProtocolHandler = mixins.NavigatorContentUtils.call_unregisterProtocolHandler;
 
     pub fn call_leaveAdInterestGroup(instance: *runtime.Instance, group: webidl.Opt(AuctionAdInterestGroupKey)) anyerror!runtime.JSValue {
         return try NavigatorImpl.call_leaveAdInterestGroup(instance, group);
@@ -1227,10 +1227,10 @@ pub const Navigator = struct {
         "call_createHandwritingRecognizer",
         "call_deprecatedReplaceInURN",
         "call_getInterestGroupAdAuctionData",
+        "call_setAppBadge",
         "call_share",
         "call_getInstalledRelatedApps",
         "call_getBattery",
-        "call_setAppBadge",
         "call_leaveAdInterestGroup",
         "call_clearOriginJoinedAdInterestGroups",
     };

@@ -704,7 +704,9 @@ pub fn generateMixin(
     const type_registry = &model.type_registry;
     const mixin_name = mixin.name;
 
-    const file_path = try std.fs.path.join(allocator, &.{ mixins_path, try std.fmt.allocPrint(allocator, "{s}.zig", .{mixin_name}) });
+    const file_name = try std.fmt.allocPrint(allocator, "{s}.zig", .{mixin_name});
+    defer allocator.free(file_name);
+    const file_path = try std.fs.path.join(allocator, &.{ mixins_path, file_name });
     defer allocator.free(file_path);
 
     // Ensure the mixins directory exists
@@ -770,6 +772,74 @@ pub fn generateMixin(
 
 /// Check if a typedef has a special hand-written implementation that should not be generated
 /// These typedefs are in webidl/types/buffer_sources.zig with proper union types and methods
+/// The typedef files of the buffer source types, which re-export the
+/// hand-written unions in webidl/types/buffer_sources.zig instead of being
+/// generated from their IDL.
+const special_typedef_files = std.StaticStringMap([]const u8).initComptime(.{
+    .{
+        "ArrayBufferView",
+        \\//! WebIDL typedef: ArrayBufferView
+        \\//!
+        \\//! Spec: Union of all typed array types (Int8Array, Uint8Array, etc.) and DataView
+        \\//!
+        \\//! This file is AUTO-GENERATED. Do not edit manually.
+        \\//!
+        \\//! Uses the rich implementation from webidl/types/buffer_sources.zig
+        \\//! which provides proper union type with 14 typed array variants and full API:
+        \\//! - getViewedArrayBuffer(), getByteOffset(), getByteLength()
+        \\//! - getTypedArrayName(), getElementSize(), getArrayLength()
+        \\//! - isDetached(), asBytes(), and more
+        \\
+        \\const webidl = @import("webidl");
+        \\
+        \\pub const ArrayBufferView = webidl.buffer_sources.ArrayBufferView;
+        \\
+    },
+    .{
+        "BufferSource",
+        \\//! WebIDL typedef: BufferSource
+        \\//!
+        \\//! Spec: typedef (ArrayBufferView or ArrayBuffer) BufferSource;
+        \\//!
+        \\//! This file is AUTO-GENERATED. Do not edit manually.
+        \\//!
+        \\//! Uses the rich implementation from webidl/types/buffer_sources.zig
+        \\//! which provides proper union type with asBytes() method and type safety.
+        \\
+        \\const webidl = @import("webidl");
+        \\
+        \\pub const BufferSource = webidl.buffer_sources.BufferSource;
+        \\
+    },
+    .{
+        "AllowSharedBufferSource",
+        \\//! WebIDL typedef: AllowSharedBufferSource
+        \\//!
+        \\//! Spec: typedef (ArrayBuffer or SharedArrayBuffer or [AllowShared] ArrayBufferView) AllowSharedBufferSource;
+        \\//!
+        \\//! This file is AUTO-GENERATED. Do not edit manually.
+        \\//!
+        \\//! Uses the rich implementation from webidl/types/buffer_sources.zig
+        \\//! which provides proper union type with SharedArrayBuffer support and asBytes() method.
+        \\
+        \\const webidl = @import("webidl");
+        \\
+        \\pub const AllowSharedBufferSource = webidl.buffer_sources.AllowSharedBufferSource;
+        \\
+    },
+});
+
+/// Write a buffer source typedef's file (see special_typedef_files).
+pub fn generateSpecialTypedef(name: []const u8, typedefs_path: []const u8) !void {
+    const content = special_typedef_files.get(name) orelse return error.NotASpecialTypedef;
+    const io = host.io();
+    var dir = try host.cwd().createDirPathOpen(io, typedefs_path, .{});
+    defer dir.close(io);
+    var file_name_buf: [128]u8 = undefined;
+    const file_name = try std.fmt.bufPrint(&file_name_buf, "{s}.zig", .{name});
+    try dir.writeFile(io, .{ .sub_path = file_name, .data = content });
+}
+
 pub fn isSpecialTypedef(name: []const u8) bool {
     const special_typedefs = [_][]const u8{
         // Buffer source types with rich implementations in buffer_sources.zig
@@ -1806,14 +1876,7 @@ pub fn generateFromFile(
 
     // Add all interfaces to IR (this merges partials automatically)
     for (parsed.value.interfaces) |iface| {
-        ir.addInterface(iface, input_path) catch |err| {
-            if (err == error.DuplicateInterface) {
-                // Skip duplicates
-                continue;
-            } else {
-                return err;
-            }
-        };
+        try ir.addInterface(iface, input_path);
     }
 
     // Add dictionaries to IR
@@ -1870,9 +1933,11 @@ pub fn generateFromFile(
         var typedef_iter = ir.typedefs.iterator();
         while (typedef_iter.next()) |entry| {
             const typedef = entry.value_ptr.*;
-            // Skip typedefs that have special hand-written implementations
-            // These are in webidl/types/buffer_sources.zig with proper union types and methods
-            if (isSpecialTypedef(typedef.name)) continue;
+            // The buffer source typedefs re-export webidl/types/buffer_sources.zig.
+            if (isSpecialTypedef(typedef.name)) {
+                try generateSpecialTypedef(typedef.name, typedefs_path);
+                continue;
+            }
             try generateTypedef(allocator, typedef, typedefs_path, &ir);
         }
     }
@@ -2415,6 +2480,12 @@ fn sanitizeTypeName(allocator: std.mem.Allocator, type_name: []const u8) ![]cons
 }
 
 /// Parse an inline type string like "sequence<ByteString>" or "ByteString" into an IDLType
+/// Free what parseInlineType allocated (it sets only `type` and `generic`).
+fn freeInlineType(allocator: std.mem.Allocator, idl_type: types.IDLType) void {
+    allocator.free(idl_type.type);
+    if (idl_type.generic) |generic| allocator.free(generic);
+}
+
 fn parseInlineType(allocator: std.mem.Allocator, type_str: []const u8) !types.IDLType {
     const trimmed = std.mem.trim(u8, type_str, " \t\n");
 
@@ -2492,6 +2563,7 @@ fn writeTypeForTypedefWithRegistry(allocator: std.mem.Allocator, w: anytype, idl
         const inner_type_str = idl_type.generic.?;
         try w.writeAll("[]const ");
         const inner_idl_type = try parseInlineType(allocator, inner_type_str);
+        defer freeInlineType(allocator, inner_idl_type);
         try writeTypeForTypedefWithRegistry(allocator, w, inner_idl_type, typedefs_path, type_registry);
         return;
     }
@@ -2514,9 +2586,11 @@ fn writeTypeForTypedefWithRegistry(allocator: std.mem.Allocator, w: anytype, idl
             const val_str = std.mem.trim(u8, generic_str[comma_idx + 1 ..], " \t");
             try w.writeAll("[]const struct { key: ");
             const key_idl = try parseInlineType(allocator, key_str);
+            defer freeInlineType(allocator, key_idl);
             try writeTypeForTypedefWithRegistry(allocator, w, key_idl, typedefs_path, type_registry);
             try w.writeAll(", value: ");
             const val_idl = try parseInlineType(allocator, val_str);
+            defer freeInlineType(allocator, val_idl);
             try writeTypeForTypedefWithRegistry(allocator, w, val_idl, typedefs_path, type_registry);
             try w.writeAll(" }");
             return;
@@ -2659,6 +2733,7 @@ fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type:
         const inner_type_str = idl_type.generic.?;
         try w.writeAll("[]const ");
         const inner_idl_type = try parseInlineType(allocator, inner_type_str);
+        defer freeInlineType(allocator, inner_idl_type);
         try writeDictionaryMemberType(allocator, w, inner_idl_type, type_registry);
         return;
     }
@@ -2681,9 +2756,11 @@ fn writeDictionaryMemberType(allocator: std.mem.Allocator, w: anytype, idl_type:
             const val_str = std.mem.trim(u8, generic_str[comma_idx + 1 ..], " \t");
             try w.writeAll("[]const struct { key: ");
             const key_idl = try parseInlineType(allocator, key_str);
+            defer freeInlineType(allocator, key_idl);
             try writeDictionaryMemberType(allocator, w, key_idl, type_registry);
             try w.writeAll(", value: ");
             const val_idl = try parseInlineType(allocator, val_str);
+            defer freeInlineType(allocator, val_idl);
             try writeDictionaryMemberType(allocator, w, val_idl, type_registry);
             try w.writeAll(" }");
             return;
@@ -3091,6 +3168,54 @@ fn writeCallbackReturnType(w: anytype, idl_type: types.IDLType, type_registry: ?
 }
 
 /// Generate a namespace Zig file
+/// One namespace operation's delegate: overload `k` of `name` - `call_<name>`
+/// for the first, `call_<name>__<k>` for a further one, which answers
+/// error.NotImplemented until the impl declares it (as an interface's does).
+fn writeNamespaceOperation(
+    allocator: std.mem.Allocator,
+    w: anytype,
+    namespace_name: []const u8,
+    name: []const u8,
+    k: usize,
+    op: types.Operation,
+) !void {
+    const fn_name = if (k == 0)
+        try std.fmt.allocPrint(allocator, "call_{s}", .{name})
+    else
+        try std.fmt.allocPrint(allocator, "call_{s}__{d}", .{ name, k });
+    defer allocator.free(fn_name);
+
+    if (isZigKeyword(fn_name)) {
+        try w.print("    pub fn @\"{s}\"(ctx: runtime.Context", .{fn_name});
+    } else {
+        try w.print("    pub fn {s}(ctx: runtime.Context", .{fn_name});
+    }
+    for (op.arguments) |arg| {
+        try w.print(", {s}: ", .{arg.name});
+        try writeParamType(w, arg, null);
+    }
+    try w.writeAll(") anyerror!");
+    try writeTypeSimple(w, op.idlType, null);
+    try w.writeAll(" {\n");
+
+    const indent = if (k == 0) "        " else "            ";
+    if (k != 0) try w.print("        if (comptime @hasDecl({s}_impl, \"{s}\")) {{\n", .{ namespace_name, fn_name });
+    if (isZigKeyword(fn_name)) {
+        try w.print("{s}return try {s}_impl.@\"{s}\"(ctx", .{ indent, namespace_name, fn_name });
+    } else {
+        try w.print("{s}return try {s}_impl.{s}(ctx", .{ indent, namespace_name, fn_name });
+    }
+    for (op.arguments) |arg| try w.print(", {s}", .{arg.name});
+    try w.writeAll(");\n");
+    if (k != 0) {
+        // No discards: the parameters are used in the branch above.
+        try w.writeAll("        } else {\n");
+        try w.writeAll("            return error.NotImplemented;\n");
+        try w.writeAll("        }\n");
+    }
+    try w.writeAll("    }\n\n");
+}
+
 pub fn generateNamespace(
     allocator: std.mem.Allocator,
     namespace: types.Namespace,
@@ -3155,17 +3280,10 @@ pub fn generateNamespace(
     try w.writeAll("        \n");
     try w.writeAll("        /// Method binding hints for V8Interface (JS name, Zig function name)\n");
     try w.writeAll("        pub const methods = .{\n");
+    // One entry per operation name: an overloaded operation is bound once,
+    // as its first overload, which forwards to the one the arguments select.
     for (overload_sets) |set| {
-        if (set.isOverloaded()) {
-            // Multiple operations with same name - generate variants
-            for (set.operations) |op| {
-                const variant_name = try overload.generateVariantName(allocator, op);
-                defer allocator.free(variant_name);
-                try w.print("            .{{ \"{s}_{s}\", \"call_{s}_{s}\" }},\n", .{ set.name, variant_name, set.name, variant_name });
-            }
-        } else {
-            try w.print("            .{{ \"{s}\", \"call_{s}\" }},\n", .{ set.name, set.name });
-        }
+        try w.print("            .{{ \"{s}\", \"call_{s}\" }},\n", .{ set.name, set.name });
     }
     try w.writeAll("        };\n");
     try w.writeAll("        \n");
@@ -3176,84 +3294,48 @@ pub fn generateNamespace(
     // Generate empty State for V8Interface compatibility
     try w.writeAll("    pub const State = struct {};\n\n");
 
-    // Generate operations (methods)
+    // Generate operations (methods). Overloads are named as an interface's
+    // are (AGENTS.md, "Names are the binding map"): the first `call_<name>`,
+    // a further one `call_<name>__<k>`, numbered in member order.
     for (overload_sets) |set| {
-        if (set.isOverloaded()) {
-            // Multiple operations with same name - generate variants
-            for (set.operations) |op| {
-                const variant_name = try overload.generateVariantName(allocator, op);
-                defer allocator.free(variant_name);
-
-                const full_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ set.name, variant_name });
-                defer allocator.free(full_name);
-
-                // Prefix with call_ for JS bindings convention
-                const prefixed_full_name = try std.fmt.allocPrint(allocator, "call_{s}", .{full_name});
-                defer allocator.free(prefixed_full_name);
-
-                // Escape Zig keywords in function names
-                if (isZigKeyword(prefixed_full_name)) {
-                    try w.print("    pub fn @\"{s}\"(ctx: runtime.Context", .{prefixed_full_name});
-                } else {
-                    try w.print("    pub fn {s}(ctx: runtime.Context", .{prefixed_full_name});
-                }
-
-                for (op.arguments) |arg| {
-                    try w.writeAll(", ");
-                    try w.print("{s}: ", .{arg.name});
-                    try writeParamType(w, arg, null);
-                }
-
-                try w.writeAll(") anyerror!");
-                try writeTypeSimple(w, op.idlType, null);
-                try w.writeAll(" {\n");
-                // Delegate to impl - use the prefixed full_name (impl has call_ prefix too)
-                try w.print("        return try {s}_impl.{s}(ctx", .{ namespace.name, prefixed_full_name });
-                for (op.arguments) |arg| {
-                    try w.writeAll(", ");
-                    try w.print("{s}", .{arg.name});
-                }
-                try w.writeAll(");\n");
-                try w.writeAll("    }\n\n");
-            }
-        } else {
-            // Single operation with this name
-            const op = set.operations[0];
-            const op_name = set.name;
-
-            // Escape Zig keywords in function names
-            // Prefix with call_ for JS bindings convention
-            const prefixed_name = try std.fmt.allocPrint(allocator, "call_{s}", .{op_name});
-            defer allocator.free(prefixed_name);
-
-            if (isZigKeyword(prefixed_name)) {
-                try w.print("    pub fn @\"{s}\"(ctx: runtime.Context", .{prefixed_name});
-            } else {
-                try w.print("    pub fn {s}(ctx: runtime.Context", .{prefixed_name});
-            }
-
-            for (op.arguments) |arg| {
-                try w.writeAll(", ");
-                try w.print("{s}: ", .{arg.name});
-                try writeParamType(w, arg, null);
-            }
-
-            try w.writeAll(") anyerror!");
-            try writeTypeSimple(w, op.idlType, null);
-            try w.writeAll(" {\n");
-            // Delegate to impl (use prefixed name since impl has call_ prefix too)
-            if (isZigKeyword(prefixed_name)) {
-                try w.print("        return try {s}_impl.@\"{s}\"(ctx", .{ namespace.name, prefixed_name });
-            } else {
-                try w.print("        return try {s}_impl.{s}(ctx", .{ namespace.name, prefixed_name });
-            }
-            for (op.arguments) |arg| {
-                try w.writeAll(", ");
-                try w.print("{s}", .{arg.name});
-            }
-            try w.writeAll(");\n");
-            try w.writeAll("    }\n\n");
+        for (set.operations, 0..) |op, k| {
+            try writeNamespaceOperation(allocator, w, namespace.name, set.name, k, op);
         }
+    }
+
+    // The overload sets, for the overload resolution algorithm - the same
+    // table an interface carries (writer.writeOverloadDelegates).
+    var any_overloaded = false;
+    for (overload_sets) |set| {
+        if (set.isOverloaded()) any_overloaded = true;
+    }
+    if (any_overloaded) {
+        try w.writeAll("    /// WebIDL overload sets: every overload of each overloaded operation,\n");
+        try w.writeAll("    /// in IDL order, for the overload resolution algorithm\n");
+        try w.writeAll("    /// (webidl.overload_resolution). The binding is installed for the first\n");
+        try w.writeAll("    /// overload and forwards to the one the arguments select.\n");
+        try w.writeAll("    pub const overloads = .{\n");
+        for (overload_sets) |set| {
+            if (!set.isOverloaded()) continue;
+            try w.print("        .{{ \"{s}\", &[_]webidl.overload_resolution.Overload{{\n", .{set.name});
+            for (set.operations, 0..) |op, k| {
+                if (k == 0) {
+                    try w.print("            .{{ .function = \"call_{s}\", .args = &.{{", .{set.name});
+                } else {
+                    try w.print("            .{{ .function = \"call_{s}__{d}\", .implemented = @hasDecl({s}_impl, \"call_{s}__{d}\"), .args = &.{{", .{ set.name, k, namespace.name, set.name, k });
+                }
+                for (op.arguments, 0..) |arg, i| {
+                    if (i > 0) try w.writeAll(",");
+                    try w.writeAll(" ");
+                    // No type registry: a namespace module does not import
+                    // the interfaces, so an interface argument is `.other`.
+                    try writer.writeOverloadArg(w, arg, null);
+                }
+                try w.writeAll(" } },\n");
+            }
+            try w.writeAll("        } },\n");
+        }
+        try w.writeAll("    };\n\n");
     }
 
     // Generate attributes
@@ -3309,9 +3391,9 @@ pub fn generateNamespaceImpl(
     try w.writeAll("//! Implement the functions below to provide actual functionality.\n");
     try w.writeAll("\n");
 
-    // Write imports
-    // NOTE: v8 import removed - use runtime.JSValue instead of v8.JSValue
-    try w.writeAll("const runtime = @import(\"runtime\");\n\n");
+    // Write imports (optional arguments are webidl.Opt)
+    try w.writeAll("const runtime = @import(\"runtime\");\n");
+    try w.writeAll("const webidl = @import(\"webidl\");\n\n");
 
     // Collect operations for overload detection
     var operations = std.ArrayList(types.Operation).empty;
@@ -3329,71 +3411,30 @@ pub fn generateNamespaceImpl(
     const overload_sets = try overload.groupOperationsByName(allocator, operations.items);
     defer overload.freeOverloadSets(allocator, overload_sets);
 
-    // Generate operation implementations
+    // Generate operation implementations: the first overload `call_<name>`,
+    // a further one `call_<name>__<k>` (see writeNamespaceOperation).
     for (overload_sets) |set| {
-        if (set.isOverloaded()) {
-            // Multiple operations with same name - generate variants
-            for (set.operations) |op| {
-                const variant_name = try overload.generateVariantName(allocator, op);
-                defer allocator.free(variant_name);
+        for (set.operations, 0..) |op, k| {
+            const fn_name = if (k == 0)
+                try std.fmt.allocPrint(allocator, "call_{s}", .{set.name})
+            else
+                try std.fmt.allocPrint(allocator, "call_{s}__{d}", .{ set.name, k });
+            defer allocator.free(fn_name);
 
-                const full_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ set.name, variant_name });
-                defer allocator.free(full_name);
-
-                // Prefix with call_ for JS bindings convention
-                const prefixed_full_name = try std.fmt.allocPrint(allocator, "call_{s}", .{full_name});
-                defer allocator.free(prefixed_full_name);
-
-                // Generate function signature
-                try w.print("pub fn {s}(ctx: runtime.Context", .{prefixed_full_name});
-
-                for (op.arguments) |arg| {
-                    try w.writeAll(", ");
-                    try w.print("{s}: ", .{arg.name});
-                    try writeParamType(w, arg, null);
-                }
-
-                try w.writeAll(") anyerror!");
-                try writeTypeSimple(w, op.idlType, null);
-                try w.writeAll(" {\n");
-                // Unused var suppression
-                try w.writeAll("    _ = ctx;\n");
-                for (op.arguments) |arg| {
-                    try w.print("    _ = {s};\n", .{arg.name});
-                }
-                try w.writeAll("    return error.NotImplemented;\n");
-                try w.writeAll("}\n\n");
-            }
-        } else {
-            // Single operation with this name
-            const op = set.operations[0];
-            const op_name = set.name;
-
-            // Prefix with call_ for JS bindings convention
-            const prefixed_name = try std.fmt.allocPrint(allocator, "call_{s}", .{op_name});
-            defer allocator.free(prefixed_name);
-
-            // Generate function signature
-            if (isZigKeyword(prefixed_name)) {
-                try w.print("pub fn @\"{s}\"(ctx: runtime.Context", .{prefixed_name});
+            if (isZigKeyword(fn_name)) {
+                try w.print("pub fn @\"{s}\"(ctx: runtime.Context", .{fn_name});
             } else {
-                try w.print("pub fn {s}(ctx: runtime.Context", .{prefixed_name});
+                try w.print("pub fn {s}(ctx: runtime.Context", .{fn_name});
             }
-
             for (op.arguments) |arg| {
-                try w.writeAll(", ");
-                try w.print("{s}: ", .{arg.name});
+                try w.print(", {s}: ", .{arg.name});
                 try writeParamType(w, arg, null);
             }
-
             try w.writeAll(") anyerror!");
             try writeTypeSimple(w, op.idlType, null);
             try w.writeAll(" {\n");
-            // Unused var suppression
             try w.writeAll("    _ = ctx;\n");
-            for (op.arguments) |arg| {
-                try w.print("    _ = {s};\n", .{arg.name});
-            }
+            for (op.arguments) |arg| try w.print("    _ = {s};\n", .{arg.name});
             try w.writeAll("    return error.NotImplemented;\n");
             try w.writeAll("}\n\n");
         }

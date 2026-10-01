@@ -51,14 +51,14 @@ pub const MouseEvent = struct {
             .{ "button", "get_button", null },
             .{ "buttons", "get_buttons", null },
             .{ "relatedTarget", "get_relatedTarget", null },
-            .{ "movementX", "get_movementX", null },
-            .{ "movementY", "get_movementY", null },
             .{ "pageX", "get_pageX", null },
             .{ "pageY", "get_pageY", null },
             .{ "x", "get_x", null },
             .{ "y", "get_y", null },
             .{ "offsetX", "get_offsetX", null },
             .{ "offsetY", "get_offsetY", null },
+            .{ "movementX", "get_movementX", null },
+            .{ "movementY", "get_movementY", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -98,14 +98,14 @@ pub const MouseEvent = struct {
             .{ "button", "get_button", null },
             .{ "buttons", "get_buttons", null },
             .{ "relatedTarget", "get_relatedTarget", null },
-            .{ "movementX", "get_movementX", null },
-            .{ "movementY", "get_movementY", null },
             .{ "pageX", "get_pageX", null },
             .{ "pageY", "get_pageY", null },
             .{ "x", "get_x", null },
             .{ "y", "get_y", null },
             .{ "offsetX", "get_offsetX", null },
             .{ "offsetY", "get_offsetY", null },
+            .{ "movementX", "get_movementX", null },
+            .{ "movementY", "get_movementY", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -131,14 +131,14 @@ pub const MouseEvent = struct {
             button: i16 = undefined,
             buttons: u16 = undefined,
             relatedTarget: ?*runtime.Instance = null,
-            movementX: f64 = undefined,
-            movementY: f64 = undefined,
             pageX: f64 = undefined,
             pageY: f64 = undefined,
             x: f64 = undefined,
             y: f64 = undefined,
             offsetX: f64 = undefined,
             offsetY: f64 = undefined,
+            movementX: f64 = undefined,
+            movementY: f64 = undefined,
             _internal: ?*MouseEventImpl.InternalState = null,
         },
     );
@@ -254,14 +254,6 @@ pub const MouseEvent = struct {
         return try MouseEventImpl.get_relatedTarget(instance);
     }
 
-    pub fn get_movementX(instance: *runtime.Instance) anyerror!f64 {
-        return try MouseEventImpl.get_movementX(instance);
-    }
-
-    pub fn get_movementY(instance: *runtime.Instance) anyerror!f64 {
-        return try MouseEventImpl.get_movementY(instance);
-    }
-
     pub fn get_pageX(instance: *runtime.Instance) anyerror!f64 {
         return try MouseEventImpl.get_pageX(instance);
     }
@@ -284,6 +276,14 @@ pub const MouseEvent = struct {
 
     pub fn get_offsetY(instance: *runtime.Instance) anyerror!f64 {
         return try MouseEventImpl.get_offsetY(instance);
+    }
+
+    pub fn get_movementX(instance: *runtime.Instance) anyerror!f64 {
+        return try MouseEventImpl.get_movementX(instance);
+    }
+
+    pub fn get_movementY(instance: *runtime.Instance) anyerror!f64 {
+        return try MouseEventImpl.get_movementY(instance);
     }
 
     pub fn call_getModifierState(instance: *runtime.Instance, keyArg: DOMString) anyerror!bool {

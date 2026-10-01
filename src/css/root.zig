@@ -90,6 +90,12 @@ pub const Keyword = property_parser.Keyword;
 pub const import_rules = @import("import_rules.zig");
 pub const rules = @import("rules.zig");
 
+/// CSS.supports(): the supports() functions of CSS Conditional 3.
+pub const supports = @import("supports.zig");
+
+/// CSSOM serializing idioms: serialize an identifier (CSS.escape()).
+pub const serialize = @import("serialize.zig");
+
 // ============================================================================
 // Tests
 // ============================================================================

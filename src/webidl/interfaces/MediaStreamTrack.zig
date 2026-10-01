@@ -53,8 +53,8 @@ pub const MediaStreamTrack = struct {
             .{ "onunmute", "get_onunmute", "set_onunmute" },
             .{ "readyState", "get_readyState", null },
             .{ "onended", "get_onended", "set_onended" },
-            .{ "contentHint", "get_contentHint", "set_contentHint" },
             .{ "oncapturehandlechange", "get_oncapturehandlechange", "set_oncapturehandlechange" },
+            .{ "contentHint", "get_contentHint", "set_contentHint" },
             .{ "isolated", "get_isolated", null },
             .{ "onisolationchange", "get_onisolationchange", "set_onisolationchange" },
         };
@@ -67,9 +67,9 @@ pub const MediaStreamTrack = struct {
             .{ "getConstraints", "call_getConstraints", 0 },
             .{ "getSettings", "call_getSettings", 0 },
             .{ "applyConstraints", "call_applyConstraints", 0 },
+            .{ "getCaptureHandle", "call_getCaptureHandle", 0 },
             .{ "getSupportedCaptureActions", "call_getSupportedCaptureActions", 0 },
             .{ "sendCaptureAction", "call_sendCaptureAction", 1 },
-            .{ "getCaptureHandle", "call_getCaptureHandle", 0 },
         };
 
         /// Methods defined/overridden by this interface
@@ -80,9 +80,9 @@ pub const MediaStreamTrack = struct {
             "getConstraints",
             "getSettings",
             "applyConstraints",
+            "getCaptureHandle",
             "getSupportedCaptureActions",
             "sendCaptureAction",
-            "getCaptureHandle",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -104,8 +104,8 @@ pub const MediaStreamTrack = struct {
             .{ "onunmute", "get_onunmute", "set_onunmute" },
             .{ "readyState", "get_readyState", null },
             .{ "onended", "get_onended", "set_onended" },
-            .{ "contentHint", "get_contentHint", "set_contentHint" },
             .{ "oncapturehandlechange", "get_oncapturehandlechange", "set_oncapturehandlechange" },
+            .{ "contentHint", "get_contentHint", "set_contentHint" },
             .{ "isolated", "get_isolated", null },
             .{ "onisolationchange", "get_onisolationchange", "set_onisolationchange" },
         };
@@ -129,8 +129,8 @@ pub const MediaStreamTrack = struct {
             onunmute: typedefs.EventHandler = undefined,
             readyState: enums.MediaStreamTrackState = undefined,
             onended: typedefs.EventHandler = undefined,
-            contentHint: typedefs.DOMString = undefined,
             oncapturehandlechange: typedefs.EventHandler = undefined,
+            contentHint: typedefs.DOMString = undefined,
             isolated: bool = undefined,
             onisolationchange: typedefs.EventHandler = undefined,
             _internal: ?*MediaStreamTrackImpl.InternalState = null,
@@ -247,20 +247,20 @@ pub const MediaStreamTrack = struct {
         try MediaStreamTrackImpl.set_onended(instance, value);
     }
 
-    pub fn get_contentHint(instance: *runtime.Instance) anyerror!DOMString {
-        return try MediaStreamTrackImpl.get_contentHint(instance);
-    }
-
-    pub fn set_contentHint(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        try MediaStreamTrackImpl.set_contentHint(instance, value);
-    }
-
     pub fn get_oncapturehandlechange(instance: *runtime.Instance) anyerror!EventHandler {
         return try MediaStreamTrackImpl.get_oncapturehandlechange(instance);
     }
 
     pub fn set_oncapturehandlechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
         try MediaStreamTrackImpl.set_oncapturehandlechange(instance, value);
+    }
+
+    pub fn get_contentHint(instance: *runtime.Instance) anyerror!DOMString {
+        return try MediaStreamTrackImpl.get_contentHint(instance);
+    }
+
+    pub fn set_contentHint(instance: *runtime.Instance, value: DOMString) anyerror!void {
+        try MediaStreamTrackImpl.set_contentHint(instance, value);
     }
 
     pub fn get_isolated(instance: *runtime.Instance) anyerror!bool {
@@ -295,12 +295,12 @@ pub const MediaStreamTrack = struct {
         return try MediaStreamTrackImpl.call_applyConstraints(instance, constraints);
     }
 
-    pub fn call_getSupportedCaptureActions(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try MediaStreamTrackImpl.call_getSupportedCaptureActions(instance);
-    }
-
     pub fn call_getCaptureHandle(instance: *runtime.Instance) anyerror!?CaptureHandle {
         return try MediaStreamTrackImpl.call_getCaptureHandle(instance);
+    }
+
+    pub fn call_getSupportedCaptureActions(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try MediaStreamTrackImpl.call_getSupportedCaptureActions(instance);
     }
 
     pub fn call_clone(instance: *runtime.Instance) anyerror!*runtime.Instance {

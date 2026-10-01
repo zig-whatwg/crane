@@ -10,25 +10,25 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const NavigatorLocks = @import("mixins").NavigatorLocks;
-const NavigatorGPU = @import("mixins").NavigatorGPU;
-const GlobalPrivacyControl = @import("mixins").GlobalPrivacyControl;
-const NavigatorNetworkInformation = @import("mixins").NavigatorNetworkInformation;
-const NavigatorML = @import("mixins").NavigatorML;
+const NavigatorBadge = @import("mixins").NavigatorBadge;
 const NavigatorDeviceMemory = @import("mixins").NavigatorDeviceMemory;
-const NavigatorStorage = @import("mixins").NavigatorStorage;
-const NavigatorStorageBuckets = @import("mixins").NavigatorStorageBuckets;
+const GlobalPrivacyControl = @import("mixins").GlobalPrivacyControl;
 const NavigatorID = @import("mixins").NavigatorID;
 const NavigatorLanguage = @import("mixins").NavigatorLanguage;
 const NavigatorOnLine = @import("mixins").NavigatorOnLine;
 const NavigatorConcurrentHardware = @import("mixins").NavigatorConcurrentHardware;
-const NavigatorBadge = @import("mixins").NavigatorBadge;
+const NavigatorNetworkInformation = @import("mixins").NavigatorNetworkInformation;
+const NavigatorStorageBuckets = @import("mixins").NavigatorStorageBuckets;
+const NavigatorStorage = @import("mixins").NavigatorStorage;
 const NavigatorUA = @import("mixins").NavigatorUA;
-const LockManager = @import("interfaces").LockManager;
+const NavigatorLocks = @import("mixins").NavigatorLocks;
+const NavigatorGPU = @import("mixins").NavigatorGPU;
+const NavigatorML = @import("mixins").NavigatorML;
+const NetworkInformation = @import("interfaces").NetworkInformation;
 const Serial = @import("interfaces").Serial;
 const SmartCardResourceManager = @import("interfaces").SmartCardResourceManager;
 const HID = @import("interfaces").HID;
-const NetworkInformation = @import("interfaces").NetworkInformation;
+const LockManager = @import("interfaces").LockManager;
 const ML = @import("interfaces").ML;
 const NavigatorUAData = @import("interfaces").NavigatorUAData;
 const GPU = @import("interfaces").GPU;
@@ -48,20 +48,20 @@ pub const WorkerNavigator = struct {
         pub const spec_url: ?[]const u8 = null;
         pub const BaseType = null;
         pub const MixinTypes = &.{
-            NavigatorLocks,
-            NavigatorGPU,
-            GlobalPrivacyControl,
-            NavigatorNetworkInformation,
-            NavigatorML,
+            NavigatorBadge,
             NavigatorDeviceMemory,
-            NavigatorStorage,
-            NavigatorStorageBuckets,
+            GlobalPrivacyControl,
             NavigatorID,
             NavigatorLanguage,
             NavigatorOnLine,
             NavigatorConcurrentHardware,
-            NavigatorBadge,
+            NavigatorNetworkInformation,
+            NavigatorStorageBuckets,
+            NavigatorStorage,
             NavigatorUA,
+            NavigatorLocks,
+            NavigatorGPU,
+            NavigatorML,
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Worker" } },
@@ -75,20 +75,14 @@ pub const WorkerNavigator = struct {
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{
             .{ "mediaCapabilities", "get_mediaCapabilities", null },
-            .{ "serial", "get_serial", null },
             .{ "permissions", "get_permissions", null },
-            .{ "smartCard", "get_smartCard", null },
-            .{ "usb", "get_usb", null },
-            .{ "hid", "get_hid", null },
+            .{ "serial", "get_serial", null },
             .{ "serviceWorker", "get_serviceWorker", null },
-            .{ "locks", "get_locks", null },
-            .{ "gpu", "get_gpu", null },
-            .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
-            .{ "connection", "get_connection", null },
-            .{ "ml", "get_ml", null },
+            .{ "smartCard", "get_smartCard", null },
+            .{ "hid", "get_hid", null },
+            .{ "usb", "get_usb", null },
             .{ "deviceMemory", "get_deviceMemory", null },
-            .{ "storage", "get_storage", null },
-            .{ "storageBuckets", "get_storageBuckets", null },
+            .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
             .{ "appCodeName", "get_appCodeName", null },
             .{ "appName", "get_appName", null },
             .{ "appVersion", "get_appVersion", null },
@@ -103,21 +97,27 @@ pub const WorkerNavigator = struct {
             .{ "languages", "get_languages", null },
             .{ "onLine", "get_onLine", null },
             .{ "hardwareConcurrency", "get_hardwareConcurrency", null },
+            .{ "connection", "get_connection", null },
+            .{ "storageBuckets", "get_storageBuckets", null },
+            .{ "storage", "get_storage", null },
             .{ "userAgentData", "get_userAgentData", null },
+            .{ "locks", "get_locks", null },
+            .{ "gpu", "get_gpu", null },
+            .{ "ml", "get_ml", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "taintEnabled", "call_taintEnabled", 0 },
             .{ "setAppBadge", "call_setAppBadge", 0 },
             .{ "clearAppBadge", "call_clearAppBadge", 0 },
+            .{ "taintEnabled", "call_taintEnabled", 0 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "taintEnabled",
             "setAppBadge",
             "clearAppBadge",
+            "taintEnabled",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -126,20 +126,14 @@ pub const WorkerNavigator = struct {
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
         pub const eager_properties = .{
             .{ "mediaCapabilities", "get_mediaCapabilities", null },
-            .{ "serial", "get_serial", null },
             .{ "permissions", "get_permissions", null },
-            .{ "smartCard", "get_smartCard", null },
-            .{ "usb", "get_usb", null },
-            .{ "hid", "get_hid", null },
+            .{ "serial", "get_serial", null },
             .{ "serviceWorker", "get_serviceWorker", null },
-            .{ "locks", "get_locks", null },
-            .{ "gpu", "get_gpu", null },
-            .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
-            .{ "connection", "get_connection", null },
-            .{ "ml", "get_ml", null },
+            .{ "smartCard", "get_smartCard", null },
+            .{ "hid", "get_hid", null },
+            .{ "usb", "get_usb", null },
             .{ "deviceMemory", "get_deviceMemory", null },
-            .{ "storage", "get_storage", null },
-            .{ "storageBuckets", "get_storageBuckets", null },
+            .{ "globalPrivacyControl", "get_globalPrivacyControl", null },
             .{ "appCodeName", "get_appCodeName", null },
             .{ "appName", "get_appName", null },
             .{ "appVersion", "get_appVersion", null },
@@ -154,7 +148,13 @@ pub const WorkerNavigator = struct {
             .{ "languages", "get_languages", null },
             .{ "onLine", "get_onLine", null },
             .{ "hardwareConcurrency", "get_hardwareConcurrency", null },
+            .{ "connection", "get_connection", null },
+            .{ "storageBuckets", "get_storageBuckets", null },
+            .{ "storage", "get_storage", null },
             .{ "userAgentData", "get_userAgentData", null },
+            .{ "locks", "get_locks", null },
+            .{ "gpu", "get_gpu", null },
+            .{ "ml", "get_ml", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -168,20 +168,14 @@ pub const WorkerNavigator = struct {
         Meta.MixinTypes,
         struct {
             mediaCapabilities: *runtime.Instance = undefined,
-            serial: *runtime.Instance = undefined,
             permissions: *runtime.Instance = undefined,
-            smartCard: *runtime.Instance = undefined,
-            usb: *runtime.Instance = undefined,
-            hid: *runtime.Instance = undefined,
+            serial: *runtime.Instance = undefined,
             serviceWorker: *runtime.Instance = undefined,
-            locks: *runtime.Instance = undefined,
-            gpu: *runtime.Instance = undefined,
-            globalPrivacyControl: bool = undefined,
-            connection: *runtime.Instance = undefined,
-            ml: *runtime.Instance = undefined,
+            smartCard: *runtime.Instance = undefined,
+            hid: *runtime.Instance = undefined,
+            usb: *runtime.Instance = undefined,
             deviceMemory: f64 = undefined,
-            storage: *runtime.Instance = undefined,
-            storageBuckets: *runtime.Instance = undefined,
+            globalPrivacyControl: bool = undefined,
             appCodeName: typedefs.DOMString = undefined,
             appName: typedefs.DOMString = undefined,
             appVersion: typedefs.DOMString = undefined,
@@ -196,19 +190,25 @@ pub const WorkerNavigator = struct {
             languages: runtime.JSValue = undefined,
             onLine: bool = undefined,
             hardwareConcurrency: u64 = undefined,
+            connection: *runtime.Instance = undefined,
+            storageBuckets: *runtime.Instance = undefined,
+            storage: *runtime.Instance = undefined,
             userAgentData: *runtime.Instance = undefined,
+            locks: *runtime.Instance = undefined,
+            gpu: *runtime.Instance = undefined,
+            ml: *runtime.Instance = undefined,
             cached_mediaCapabilities: ?*runtime.Instance = null,
-            cached_serial: ?*runtime.Instance = null,
             cached_permissions: ?*runtime.Instance = null,
-            cached_smartCard: ?*runtime.Instance = null,
-            cached_usb: ?*runtime.Instance = null,
-            cached_hid: ?*runtime.Instance = null,
+            cached_serial: ?*runtime.Instance = null,
             cached_serviceWorker: ?*runtime.Instance = null,
-            cached_gpu: ?*runtime.Instance = null,
+            cached_smartCard: ?*runtime.Instance = null,
+            cached_hid: ?*runtime.Instance = null,
+            cached_usb: ?*runtime.Instance = null,
             cached_connection: ?*runtime.Instance = null,
-            cached_ml: ?*runtime.Instance = null,
-            cached_storage: ?*runtime.Instance = null,
             cached_storageBuckets: ?*runtime.Instance = null,
+            cached_storage: ?*runtime.Instance = null,
+            cached_gpu: ?*runtime.Instance = null,
+            cached_ml: ?*runtime.Instance = null,
             _internal: ?*WorkerNavigatorImpl.InternalState = null,
         },
     );
@@ -287,6 +287,18 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
+    pub fn get_permissions(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_permissions) |cached| {
+            return cached;
+        }
+        const value = try WorkerNavigatorImpl.get_permissions(instance);
+        state.own.cached_permissions = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
     pub fn get_serial(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -298,15 +310,15 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SameObject]
-    pub fn get_permissions(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    /// Extended attributes: [SecureContext], [SameObject]
+    pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
-        if (state.own.cached_permissions) |cached| {
+        if (state.own.cached_serviceWorker) |cached| {
             return cached;
         }
-        const value = try WorkerNavigatorImpl.get_permissions(instance);
-        state.own.cached_permissions = value;
+        const value = try WorkerNavigatorImpl.get_serviceWorker(instance);
+        state.own.cached_serviceWorker = value;
         return value;
     }
 
@@ -323,18 +335,6 @@ pub const WorkerNavigator = struct {
     }
 
     /// Extended attributes: [SameObject]
-    pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_usb) |cached| {
-            return cached;
-        }
-        const value = try WorkerNavigatorImpl.get_usb(instance);
-        state.own.cached_usb = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
     pub fn get_hid(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
@@ -346,83 +346,21 @@ pub const WorkerNavigator = struct {
         return value;
     }
 
-    /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_serviceWorker(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_serviceWorker) |cached| {
-            return cached;
-        }
-        const value = try WorkerNavigatorImpl.get_serviceWorker(instance);
-        state.own.cached_serviceWorker = value;
-        return value;
-    }
-
-    pub const get_locks = mixins.NavigatorLocks.get_locks;
-
-    /// Extended attributes: [SameObject], [SecureContext]
-    pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_gpu) |cached| {
-            return cached;
-        }
-        const value = try mixins.NavigatorGPU.get_gpu(instance);
-        state.own.cached_gpu = value;
-        return value;
-    }
-
-    pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
-
     /// Extended attributes: [SameObject]
-    pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    pub fn get_usb(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
         // [SameObject] - Return cached instance
-        if (state.own.cached_connection) |cached| {
+        if (state.own.cached_usb) |cached| {
             return cached;
         }
-        const value = try mixins.NavigatorNetworkInformation.get_connection(instance);
-        state.own.cached_connection = value;
-        return value;
-    }
-
-    /// Extended attributes: [SecureContext], [SameObject]
-    pub fn get_ml(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_ml) |cached| {
-            return cached;
-        }
-        const value = try mixins.NavigatorML.get_ml(instance);
-        state.own.cached_ml = value;
+        const value = try WorkerNavigatorImpl.get_usb(instance);
+        state.own.cached_usb = value;
         return value;
     }
 
     pub const get_deviceMemory = mixins.NavigatorDeviceMemory.get_deviceMemory;
 
-    /// Extended attributes: [SameObject]
-    pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_storage) |cached| {
-            return cached;
-        }
-        const value = try WorkerNavigatorImpl.get_storage(instance);
-        state.own.cached_storage = value;
-        return value;
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_storageBuckets) |cached| {
-            return cached;
-        }
-        const value = try mixins.NavigatorStorageBuckets.get_storageBuckets(instance);
-        state.own.cached_storageBuckets = value;
-        return value;
-    }
+    pub const get_globalPrivacyControl = mixins.GlobalPrivacyControl.get_globalPrivacyControl;
 
     pub fn get_appCodeName(instance: *runtime.Instance) anyerror!DOMString {
         return try WorkerNavigatorImpl.get_appCodeName(instance);
@@ -484,8 +422,70 @@ pub const WorkerNavigator = struct {
         return try WorkerNavigatorImpl.get_hardwareConcurrency(instance);
     }
 
+    /// Extended attributes: [SameObject]
+    pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_connection) |cached| {
+            return cached;
+        }
+        const value = try mixins.NavigatorNetworkInformation.get_connection(instance);
+        state.own.cached_connection = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_storageBuckets(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_storageBuckets) |cached| {
+            return cached;
+        }
+        const value = try mixins.NavigatorStorageBuckets.get_storageBuckets(instance);
+        state.own.cached_storageBuckets = value;
+        return value;
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_storage(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_storage) |cached| {
+            return cached;
+        }
+        const value = try WorkerNavigatorImpl.get_storage(instance);
+        state.own.cached_storage = value;
+        return value;
+    }
+
     /// Extended attributes: [SecureContext]
     pub const get_userAgentData = mixins.NavigatorUA.get_userAgentData;
+
+    pub const get_locks = mixins.NavigatorLocks.get_locks;
+
+    /// Extended attributes: [SameObject], [SecureContext]
+    pub fn get_gpu(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_gpu) |cached| {
+            return cached;
+        }
+        const value = try mixins.NavigatorGPU.get_gpu(instance);
+        state.own.cached_gpu = value;
+        return value;
+    }
+
+    /// Extended attributes: [SecureContext], [SameObject]
+    pub fn get_ml(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_ml) |cached| {
+            return cached;
+        }
+        const value = try mixins.NavigatorML.get_ml(instance);
+        state.own.cached_ml = value;
+        return value;
+    }
 
     pub const call_clearAppBadge = mixins.NavigatorBadge.call_clearAppBadge;
 

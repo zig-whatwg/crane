@@ -1275,6 +1275,8 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("mixins", mixins_mod);
     // Add selector to impls (for ParentNode querySelector/querySelectorAll)
     impls_mod.addImport("selector", selector_mod);
+    // Add css to impls (the CSS namespace: CSS.supports, CSS.escape)
+    impls_mod.addImport("css", css_mod);
 
     // Add mixins to interfaces (for ParentNode.NodeOrString and other mixin types)
     interfaces_mod.addImport("mixins", mixins_mod);
@@ -3301,34 +3303,6 @@ pub fn build(b: *std.Build) void {
     crane_step.dependOn(&install_crane_exe.step);
 
     // ========================================================================
-    // IDL PARSER TOOL
-    // ========================================================================
-
-    const parse_idls_exe = b.addExecutable(.{
-        .name = "parse-idls",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/webidl/parser/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "infra", .module = infra_mod },
-                .{ .name = "host", .module = host_mod },
-            },
-        }),
-    });
-
-    const install_parse_idls = b.addInstallArtifact(parse_idls_exe, .{});
-    const parse_idls_cmd = b.addRunArtifact(parse_idls_exe);
-    parse_idls_cmd.step.dependOn(&install_parse_idls.step);
-
-    // Add arguments to parse webref IDLs
-    parse_idls_cmd.addArg("/Users/bcardarella/projects/webref/ed/idl/");
-    parse_idls_cmd.addArg("webidl/idls/");
-
-    const parse_idls_step = b.step("parse-idls", "Parse WebIDL files from webref");
-    parse_idls_step.dependOn(&parse_idls_cmd.step);
-
-    // ========================================================================
     // WEBIDL TOOLS
     // ========================================================================
 
@@ -3357,6 +3331,25 @@ pub fn build(b: *std.Build) void {
 
     const codegen_step = b.step("codegen", "Run WebIDL code generator (use -- to pass args)");
     codegen_step.dependOn(&run_codegen.step);
+
+    // The codegen drift check: regenerate the whole tree from scratch, from
+    // specs/idl and specs/supplementary in one invocation, into a temporary
+    // directory, and compare it byte for byte with the committed generated
+    // directories under src/webidl/. A hand-edited generated file, an IDL or
+    // codegen change committed without its regeneration, or a stale generated
+    // file all fail it. `zig build test` runs it.
+    const codegen_check = b.addRunArtifact(codegen_exe);
+    // It reads specs/ and src/webidl/, which the build graph does not track.
+    codegen_check.has_side_effects = true;
+    codegen_check.setCwd(b.path("."));
+    codegen_check.addArgs(&.{ "--check", "--dest-root", "src/webidl", "--scratch" });
+    codegen_check.addDirectoryArg(b.tmpPath().path(b, "tree"));
+    const codegen_check_step = b.step("codegen-check", "Fail if the committed generated WebIDL tree differs from a from-scratch regeneration");
+    codegen_check_step.dependOn(&codegen_check.step);
+    // ~45 s on chat (a full regeneration and a byte compare of ~2,900 files).
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {
+        test_step.dependOn(&codegen_check.step);
+    }
 
     // IDL scanner tool
     const idl_scanner_exe = b.addExecutable(.{
@@ -4480,11 +4473,12 @@ pub fn build(b: *std.Build) void {
         \\fi
         \\
         \\# ========================================
-        \\# W3C WebRef data (algorithms & IDL)
+        \\# W3C WebRef data (algorithms only: specs/idl is a committed, pinned
+        \\# snapshot - see specs/idl/WEBREF.md - and setup never overwrites it)
         \\# ========================================
         \\SPECS_DIR="specs"
         \\
-        \\if [ ! -d "$SPECS_DIR/algorithms" ] || [ ! -d "$SPECS_DIR/idl" ]; then
+        \\if [ ! -d "$SPECS_DIR/algorithms" ]; then
         \\    echo "==> Downloading W3C WebRef data..."
         \\    
         \\    # Download tarball (no auth required for public repos)
@@ -4493,9 +4487,8 @@ pub fn build(b: *std.Build) void {
         \\    
         \\    # Copy to specs directory (tarball extracts to webref-main/)
         \\    mkdir -p "$SPECS_DIR"
-        \\    rm -rf "$SPECS_DIR/algorithms" "$SPECS_DIR/idl"
+        \\    rm -rf "$SPECS_DIR/algorithms"
         \\    cp -r "$WEBREF_TMP/webref-main/ed/algorithms" "$SPECS_DIR/algorithms"
-        \\    cp -r "$WEBREF_TMP/webref-main/ed/idl" "$SPECS_DIR/idl"
         \\    rm -rf "$WEBREF_TMP"
         \\    
         \\    echo "    WebRef data downloaded successfully"

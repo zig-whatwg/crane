@@ -11,13 +11,12 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
-const ElementCSSInlineStyle = @import("interfaces").ElementCSSInlineStyle;
+const ElementCSSInlineStyle = @import("mixins").ElementCSSInlineStyle;
 const GlobalEventHandlers = @import("mixins").GlobalEventHandlers;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
 const USVString = @import("typedefs").USVString;
 const TrustedType = @import("typedefs").TrustedType;
@@ -32,20 +31,20 @@ const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
 const Range = @import("interfaces").Range;
+const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
-const DOMRectList = @import("interfaces").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
+const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
-const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
+const DOMQuad = @import("interfaces").DOMQuad;
+const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
@@ -169,17 +168,17 @@ pub const MathMLElement = struct {
             .{ "onwebkitanimationstart", "get_onwebkitanimationstart", "set_onwebkitanimationstart" },
             .{ "onwebkittransitionend", "get_onwebkittransitionend", "set_onwebkittransitionend" },
             .{ "onwheel", "get_onwheel", "set_onwheel" },
-            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
-            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "onanimationstart", "get_onanimationstart", "set_onanimationstart" },
             .{ "onanimationiteration", "get_onanimationiteration", "set_onanimationiteration" },
             .{ "onanimationend", "get_onanimationend", "set_onanimationend" },
             .{ "onanimationcancel", "get_onanimationcancel", "set_onanimationcancel" },
+            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
+            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
             .{ "ontransitionrun", "get_ontransitionrun", "set_ontransitionrun" },
             .{ "ontransitionstart", "get_ontransitionstart", "set_ontransitionstart" },
             .{ "ontransitionend", "get_ontransitionend", "set_ontransitionend" },
             .{ "ontransitioncancel", "get_ontransitioncancel", "set_ontransitioncancel" },
-            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
+            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
             .{ "onpointerover", "get_onpointerover", "set_onpointerover" },
             .{ "onpointerenter", "get_onpointerenter", "set_onpointerenter" },
             .{ "onpointerdown", "get_onpointerdown", "set_onpointerdown" },
@@ -191,13 +190,13 @@ pub const MathMLElement = struct {
             .{ "onpointerleave", "get_onpointerleave", "set_onpointerleave" },
             .{ "ongotpointercapture", "get_ongotpointercapture", "set_ongotpointercapture" },
             .{ "onlostpointercapture", "get_onlostpointercapture", "set_onlostpointercapture" },
+            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
+            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "ontouchstart", "get_ontouchstart", "set_ontouchstart" },
             .{ "ontouchend", "get_ontouchend", "set_ontouchend" },
             .{ "ontouchmove", "get_ontouchmove", "set_ontouchmove" },
             .{ "ontouchcancel", "get_ontouchcancel", "set_ontouchcancel" },
-            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
-            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
-            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
+            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
         };
 
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -268,17 +267,9 @@ pub const MathMLElement = struct {
             "getSpatialNavigationContainer",
             "focusableAreas",
             "spatialNavigationSearch",
-            "requestFullscreen",
-            "requestPointerLock",
-            "setPointerCapture",
-            "releasePointerCapture",
-            "hasPointerCapture",
-            "computedStyleMap",
             "pseudo",
+            "computedStyleMap",
             "startViewTransition",
-            "setHTMLUnsafe",
-            "getHTML",
-            "insertAdjacentHTML",
             "getClientRects",
             "getBoundingClientRect",
             "checkVisibility",
@@ -289,9 +280,19 @@ pub const MathMLElement = struct {
             "scrollTo",
             "scrollBy",
             "scrollBy",
-            "animate",
-            "getAnimations",
+            "requestFullscreen",
+            "setHTMLUnsafe",
+            "getHTML",
+            "insertAdjacentHTML",
+            "setPointerCapture",
+            "releasePointerCapture",
+            "hasPointerCapture",
+            "requestPointerLock",
             "getRegionFlowRanges",
+            "getBoxQuads",
+            "convertQuadFromNode",
+            "convertRectFromNode",
+            "convertPointFromNode",
             "prepend",
             "append",
             "replaceChildren",
@@ -302,10 +303,8 @@ pub const MathMLElement = struct {
             "after",
             "replaceWith",
             "remove",
-            "getBoxQuads",
-            "convertQuadFromNode",
-            "convertRectFromNode",
-            "convertPointFromNode",
+            "animate",
+            "getAnimations",
         };
 
         /// Properties to define eagerly (frequently accessed) - ONLY own properties
@@ -388,17 +387,17 @@ pub const MathMLElement = struct {
             .{ "onwebkitanimationstart", "get_onwebkitanimationstart", "set_onwebkitanimationstart" },
             .{ "onwebkittransitionend", "get_onwebkittransitionend", "set_onwebkittransitionend" },
             .{ "onwheel", "get_onwheel", "set_onwheel" },
-            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
-            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "onanimationstart", "get_onanimationstart", "set_onanimationstart" },
             .{ "onanimationiteration", "get_onanimationiteration", "set_onanimationiteration" },
             .{ "onanimationend", "get_onanimationend", "set_onanimationend" },
             .{ "onanimationcancel", "get_onanimationcancel", "set_onanimationcancel" },
+            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
+            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
             .{ "ontransitionrun", "get_ontransitionrun", "set_ontransitionrun" },
             .{ "ontransitionstart", "get_ontransitionstart", "set_ontransitionstart" },
             .{ "ontransitionend", "get_ontransitionend", "set_ontransitionend" },
             .{ "ontransitioncancel", "get_ontransitioncancel", "set_ontransitioncancel" },
-            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
+            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
             .{ "onpointerover", "get_onpointerover", "set_onpointerover" },
             .{ "onpointerenter", "get_onpointerenter", "set_onpointerenter" },
             .{ "onpointerdown", "get_onpointerdown", "set_onpointerdown" },
@@ -410,13 +409,13 @@ pub const MathMLElement = struct {
             .{ "onpointerleave", "get_onpointerleave", "set_onpointerleave" },
             .{ "ongotpointercapture", "get_ongotpointercapture", "set_ongotpointercapture" },
             .{ "onlostpointercapture", "get_onlostpointercapture", "set_onlostpointercapture" },
+            .{ "onselectstart", "get_onselectstart", "set_onselectstart" },
+            .{ "onselectionchange", "get_onselectionchange", "set_onselectionchange" },
             .{ "ontouchstart", "get_ontouchstart", "set_ontouchstart" },
             .{ "ontouchend", "get_ontouchend", "set_ontouchend" },
             .{ "ontouchmove", "get_ontouchmove", "set_ontouchmove" },
             .{ "ontouchcancel", "get_ontouchcancel", "set_ontouchcancel" },
-            .{ "onfencedtreeclick", "get_onfencedtreeclick", "set_onfencedtreeclick" },
-            .{ "onsnapchanged", "get_onsnapchanged", "set_onsnapchanged" },
-            .{ "onsnapchanging", "get_onsnapchanging", "set_onsnapchanging" },
+            .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -944,12 +943,6 @@ pub const MathMLElement = struct {
     pub const get_onwheel = mixins.GlobalEventHandlers.get_onwheel;
     pub const set_onwheel = mixins.GlobalEventHandlers.set_onwheel;
 
-    pub const get_onselectstart = mixins.GlobalEventHandlers.get_onselectstart;
-    pub const set_onselectstart = mixins.GlobalEventHandlers.set_onselectstart;
-
-    pub const get_onselectionchange = mixins.GlobalEventHandlers.get_onselectionchange;
-    pub const set_onselectionchange = mixins.GlobalEventHandlers.set_onselectionchange;
-
     pub const get_onanimationstart = mixins.GlobalEventHandlers.get_onanimationstart;
     pub const set_onanimationstart = mixins.GlobalEventHandlers.set_onanimationstart;
 
@@ -961,6 +954,12 @@ pub const MathMLElement = struct {
 
     pub const get_onanimationcancel = mixins.GlobalEventHandlers.get_onanimationcancel;
     pub const set_onanimationcancel = mixins.GlobalEventHandlers.set_onanimationcancel;
+
+    pub const get_onsnapchanged = mixins.GlobalEventHandlers.get_onsnapchanged;
+    pub const set_onsnapchanged = mixins.GlobalEventHandlers.set_onsnapchanged;
+
+    pub const get_onsnapchanging = mixins.GlobalEventHandlers.get_onsnapchanging;
+    pub const set_onsnapchanging = mixins.GlobalEventHandlers.set_onsnapchanging;
 
     pub const get_ontransitionrun = mixins.GlobalEventHandlers.get_ontransitionrun;
     pub const set_ontransitionrun = mixins.GlobalEventHandlers.set_ontransitionrun;
@@ -974,8 +973,8 @@ pub const MathMLElement = struct {
     pub const get_ontransitioncancel = mixins.GlobalEventHandlers.get_ontransitioncancel;
     pub const set_ontransitioncancel = mixins.GlobalEventHandlers.set_ontransitioncancel;
 
-    pub const get_onbeforexrselect = mixins.GlobalEventHandlers.get_onbeforexrselect;
-    pub const set_onbeforexrselect = mixins.GlobalEventHandlers.set_onbeforexrselect;
+    pub const get_onfencedtreeclick = mixins.GlobalEventHandlers.get_onfencedtreeclick;
+    pub const set_onfencedtreeclick = mixins.GlobalEventHandlers.set_onfencedtreeclick;
 
     pub const get_onpointerover = mixins.GlobalEventHandlers.get_onpointerover;
     pub const set_onpointerover = mixins.GlobalEventHandlers.set_onpointerover;
@@ -1011,6 +1010,12 @@ pub const MathMLElement = struct {
     pub const get_onlostpointercapture = mixins.GlobalEventHandlers.get_onlostpointercapture;
     pub const set_onlostpointercapture = mixins.GlobalEventHandlers.set_onlostpointercapture;
 
+    pub const get_onselectstart = mixins.GlobalEventHandlers.get_onselectstart;
+    pub const set_onselectstart = mixins.GlobalEventHandlers.set_onselectstart;
+
+    pub const get_onselectionchange = mixins.GlobalEventHandlers.get_onselectionchange;
+    pub const set_onselectionchange = mixins.GlobalEventHandlers.set_onselectionchange;
+
     pub const get_ontouchstart = mixins.GlobalEventHandlers.get_ontouchstart;
     pub const set_ontouchstart = mixins.GlobalEventHandlers.set_ontouchstart;
 
@@ -1023,12 +1028,6 @@ pub const MathMLElement = struct {
     pub const get_ontouchcancel = mixins.GlobalEventHandlers.get_ontouchcancel;
     pub const set_ontouchcancel = mixins.GlobalEventHandlers.set_ontouchcancel;
 
-    pub const get_onfencedtreeclick = mixins.GlobalEventHandlers.get_onfencedtreeclick;
-    pub const set_onfencedtreeclick = mixins.GlobalEventHandlers.set_onfencedtreeclick;
-
-    pub const get_onsnapchanged = mixins.GlobalEventHandlers.get_onsnapchanged;
-    pub const set_onsnapchanged = mixins.GlobalEventHandlers.set_onsnapchanged;
-
-    pub const get_onsnapchanging = mixins.GlobalEventHandlers.get_onsnapchanging;
-    pub const set_onsnapchanging = mixins.GlobalEventHandlers.set_onsnapchanging;
+    pub const get_onbeforexrselect = mixins.GlobalEventHandlers.get_onbeforexrselect;
+    pub const set_onbeforexrselect = mixins.GlobalEventHandlers.set_onbeforexrselect;
 };

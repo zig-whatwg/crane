@@ -14,7 +14,6 @@ const CSSConditionRule = @import("interfaces").CSSConditionRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
 const CSSRule = @import("interfaces").CSSRule;
-const DOMString = @import("typedefs").DOMString;
 const CSSRuleList = @import("interfaces").CSSRuleList;
 
 pub const CSSSupportsRule = struct {

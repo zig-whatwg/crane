@@ -12,7 +12,6 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const CSSOMString = @import("typedefs").CSSOMString;
-const DOMString = @import("typedefs").DOMString;
 
 pub const CSSRule = struct {
     pub const Meta = struct {
@@ -50,10 +49,9 @@ pub const CSSRule = struct {
             .{ "PAGE_RULE", "get_PAGE_RULE" },
             .{ "MARGIN_RULE", "get_MARGIN_RULE" },
             .{ "NAMESPACE_RULE", "get_NAMESPACE_RULE" },
-            .{ "UNKNOWN_RULE", "get_UNKNOWN_RULE" },
-            .{ "SUPPORTS_RULE", "get_SUPPORTS_RULE" },
             .{ "KEYFRAMES_RULE", "get_KEYFRAMES_RULE" },
             .{ "KEYFRAME_RULE", "get_KEYFRAME_RULE" },
+            .{ "SUPPORTS_RULE", "get_SUPPORTS_RULE" },
             .{ "COUNTER_STYLE_RULE", "get_COUNTER_STYLE_RULE" },
             .{ "FONT_FEATURE_VALUES_RULE", "get_FONT_FEATURE_VALUES_RULE" },
         };
@@ -134,16 +132,6 @@ pub const CSSRule = struct {
         return 10;
     }
 
-    /// WebIDL constant: const unsigned short UNKNOWN_RULE = 0;
-    pub fn get_UNKNOWN_RULE() u16 {
-        return 0;
-    }
-
-    /// WebIDL constant: const unsigned short SUPPORTS_RULE = 12;
-    pub fn get_SUPPORTS_RULE() u16 {
-        return 12;
-    }
-
     /// WebIDL constant: const unsigned short KEYFRAMES_RULE = 7;
     pub fn get_KEYFRAMES_RULE() u16 {
         return 7;
@@ -152,6 +140,11 @@ pub const CSSRule = struct {
     /// WebIDL constant: const unsigned short KEYFRAME_RULE = 8;
     pub fn get_KEYFRAME_RULE() u16 {
         return 8;
+    }
+
+    /// WebIDL constant: const unsigned short SUPPORTS_RULE = 12;
+    pub fn get_SUPPORTS_RULE() u16 {
+        return 12;
     }
 
     /// WebIDL constant: const unsigned short COUNTER_STYLE_RULE = 11;
@@ -178,7 +171,6 @@ pub const CSSRule = struct {
         .get_PAGE_RULE = &get_PAGE_RULE,
         .get_STYLE_RULE = &get_STYLE_RULE,
         .get_SUPPORTS_RULE = &get_SUPPORTS_RULE,
-        .get_UNKNOWN_RULE = &get_UNKNOWN_RULE,
         .get_cssText = &get_cssText,
         .get_parentRule = &get_parentRule,
         .get_parentStyleSheet = &get_parentStyleSheet,

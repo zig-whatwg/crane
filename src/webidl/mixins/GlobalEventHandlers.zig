@@ -627,22 +627,6 @@ pub fn set_onwheel(instance: *runtime.Instance, value: EventHandler) anyerror!vo
     try GlobalEventHandlersImpl.set_onwheel(instance, value);
 }
 
-pub fn get_onselectstart(instance: *runtime.Instance) anyerror!EventHandler {
-    return try GlobalEventHandlersImpl.get_onselectstart(instance);
-}
-
-pub fn set_onselectstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try GlobalEventHandlersImpl.set_onselectstart(instance, value);
-}
-
-pub fn get_onselectionchange(instance: *runtime.Instance) anyerror!EventHandler {
-    return try GlobalEventHandlersImpl.get_onselectionchange(instance);
-}
-
-pub fn set_onselectionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try GlobalEventHandlersImpl.set_onselectionchange(instance, value);
-}
-
 pub fn get_onanimationstart(instance: *runtime.Instance) anyerror!EventHandler {
     return try GlobalEventHandlersImpl.get_onanimationstart(instance);
 }
@@ -673,6 +657,22 @@ pub fn get_onanimationcancel(instance: *runtime.Instance) anyerror!EventHandler 
 
 pub fn set_onanimationcancel(instance: *runtime.Instance, value: EventHandler) anyerror!void {
     try GlobalEventHandlersImpl.set_onanimationcancel(instance, value);
+}
+
+pub fn get_onsnapchanged(instance: *runtime.Instance) anyerror!EventHandler {
+    return try GlobalEventHandlersImpl.get_onsnapchanged(instance);
+}
+
+pub fn set_onsnapchanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+    try GlobalEventHandlersImpl.set_onsnapchanged(instance, value);
+}
+
+pub fn get_onsnapchanging(instance: *runtime.Instance) anyerror!EventHandler {
+    return try GlobalEventHandlersImpl.get_onsnapchanging(instance);
+}
+
+pub fn set_onsnapchanging(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+    try GlobalEventHandlersImpl.set_onsnapchanging(instance, value);
 }
 
 pub fn get_ontransitionrun(instance: *runtime.Instance) anyerror!EventHandler {
@@ -707,12 +707,12 @@ pub fn set_ontransitioncancel(instance: *runtime.Instance, value: EventHandler) 
     try GlobalEventHandlersImpl.set_ontransitioncancel(instance, value);
 }
 
-pub fn get_onbeforexrselect(instance: *runtime.Instance) anyerror!EventHandler {
-    return try GlobalEventHandlersImpl.get_onbeforexrselect(instance);
+pub fn get_onfencedtreeclick(instance: *runtime.Instance) anyerror!EventHandler {
+    return try GlobalEventHandlersImpl.get_onfencedtreeclick(instance);
 }
 
-pub fn set_onbeforexrselect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try GlobalEventHandlersImpl.set_onbeforexrselect(instance, value);
+pub fn set_onfencedtreeclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+    try GlobalEventHandlersImpl.set_onfencedtreeclick(instance, value);
 }
 
 pub fn get_onpointerover(instance: *runtime.Instance) anyerror!EventHandler {
@@ -805,6 +805,22 @@ pub fn set_onlostpointercapture(instance: *runtime.Instance, value: EventHandler
     try GlobalEventHandlersImpl.set_onlostpointercapture(instance, value);
 }
 
+pub fn get_onselectstart(instance: *runtime.Instance) anyerror!EventHandler {
+    return try GlobalEventHandlersImpl.get_onselectstart(instance);
+}
+
+pub fn set_onselectstart(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+    try GlobalEventHandlersImpl.set_onselectstart(instance, value);
+}
+
+pub fn get_onselectionchange(instance: *runtime.Instance) anyerror!EventHandler {
+    return try GlobalEventHandlersImpl.get_onselectionchange(instance);
+}
+
+pub fn set_onselectionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+    try GlobalEventHandlersImpl.set_onselectionchange(instance, value);
+}
+
 pub fn get_ontouchstart(instance: *runtime.Instance) anyerror!EventHandler {
     return try GlobalEventHandlersImpl.get_ontouchstart(instance);
 }
@@ -837,26 +853,10 @@ pub fn set_ontouchcancel(instance: *runtime.Instance, value: EventHandler) anyer
     try GlobalEventHandlersImpl.set_ontouchcancel(instance, value);
 }
 
-pub fn get_onfencedtreeclick(instance: *runtime.Instance) anyerror!EventHandler {
-    return try GlobalEventHandlersImpl.get_onfencedtreeclick(instance);
+pub fn get_onbeforexrselect(instance: *runtime.Instance) anyerror!EventHandler {
+    return try GlobalEventHandlersImpl.get_onbeforexrselect(instance);
 }
 
-pub fn set_onfencedtreeclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try GlobalEventHandlersImpl.set_onfencedtreeclick(instance, value);
-}
-
-pub fn get_onsnapchanged(instance: *runtime.Instance) anyerror!EventHandler {
-    return try GlobalEventHandlersImpl.get_onsnapchanged(instance);
-}
-
-pub fn set_onsnapchanged(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try GlobalEventHandlersImpl.set_onsnapchanged(instance, value);
-}
-
-pub fn get_onsnapchanging(instance: *runtime.Instance) anyerror!EventHandler {
-    return try GlobalEventHandlersImpl.get_onsnapchanging(instance);
-}
-
-pub fn set_onsnapchanging(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-    try GlobalEventHandlersImpl.set_onsnapchanging(instance, value);
+pub fn set_onbeforexrselect(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+    try GlobalEventHandlersImpl.set_onbeforexrselect(instance, value);
 }

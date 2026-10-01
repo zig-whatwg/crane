@@ -303,13 +303,6 @@ pub fn call_removeProperty(instance: *runtime.Instance, property: typedefs.CSSOM
     return error.NotImplemented;
 }
 
-/// Operation: getPropertyCSSValue
-pub fn call_getPropertyCSSValue(instance: *runtime.Instance, propertyName: runtime.DOMString) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = propertyName;
-    return error.NotImplemented;
-}
-
 /// Operation: getPropertyPriority
 pub fn call_getPropertyPriority(instance: *runtime.Instance, property: typedefs.CSSOMString) anyerror!typedefs.CSSOMString {
     _ = instance;

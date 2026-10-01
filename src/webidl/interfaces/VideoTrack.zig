@@ -22,14 +22,11 @@ pub const VideoTrack = struct {
         pub const BaseType = null;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
-            .{ .name = "Exposed", .value = .{ .identifier_list = &.{ "Window", "DedicatedWorker" } } },
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
         };
 
         /// Global contexts where this interface is exposed
-        pub const exposed_in = .{
-            .Window = true,
-            .DedicatedWorker = true,
-        };
+        pub const exposed_in = .{ .Window = true };
 
         /// Property binding hints for V8Interface (JS name, getter fn name, setter fn name or null) - ONLY own properties
         pub const properties = .{

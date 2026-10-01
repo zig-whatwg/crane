@@ -1,0 +1,5 @@
+// Fixture: the second definition of Unlisted.
+[Exposed=Window]
+interface Unlisted {
+  readonly attribute long y;
+};

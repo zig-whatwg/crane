@@ -4458,8 +4458,18 @@ fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, ev
     event.releaseIfUnwrapped(generation);
 }
 
-/// Operation: requestStorageAccess
-pub fn call_requestStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSValue {
+/// Operation: requestStorageAccess(optional StorageAccessTypes types = {})
+/// (saa-non-cookie-storage.idl). Overload 0: codegen numbers overloads in
+/// member order, partials by file name, and saa-non-cookie-storage.idl sorts
+/// before storage-access.idl, whose requestStorageAccess() is overload 1.
+pub fn call_requestStorageAccess(instance: *runtime.Instance, types: webidl.Opt(dictionaries.StorageAccessTypes)) anyerror!runtime.JSValue {
+    _ = instance;
+    _ = types;
+    return error.NotImplemented;
+}
+
+/// Operation: requestStorageAccess() (storage-access.idl), overload 1.
+pub fn call_requestStorageAccess__1(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

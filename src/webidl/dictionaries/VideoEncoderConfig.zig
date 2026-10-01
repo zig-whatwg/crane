@@ -22,8 +22,8 @@ pub const VideoEncoderConfig = struct {
     bitrateMode: ?enums.VideoEncoderBitrateMode = null,
     latencyMode: ?enums.LatencyMode = null,
     contentHint: ?runtime.DOMString = null,
-    hevc: ?HevcEncoderConfig = null,
     avc: ?AvcEncoderConfig = null,
+    hevc: ?HevcEncoderConfig = null,
 
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.

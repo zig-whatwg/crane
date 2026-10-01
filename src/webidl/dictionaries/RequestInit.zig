@@ -25,11 +25,11 @@ pub const RequestInit = struct {
     priority: ?enums.RequestPriority = null,
     window: ?runtime.JSValue = null,
     attributionReporting: ?AttributionReportingRequestOptions = null,
-    browsingTopics: ?bool = null,
-    adAuctionHeaders: ?bool = null,
     targetAddressSpace: ?enums.IPAddressSpace = null,
     sharedStorageWritable: ?bool = null,
+    browsingTopics: ?bool = null,
     privateToken: ?PrivateToken = null,
+    adAuctionHeaders: ?bool = null,
 
     /// `any` members: one present with the value null converts to `.null`,
     /// not to "not present".

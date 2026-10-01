@@ -4,12 +4,12 @@
 
 const runtime = @import("runtime");
 const typedefs = @import("typedefs");
-const XRDOMOverlayInit = @import("XRDOMOverlayInit.zig").XRDOMOverlayInit;
 const XRDepthStateInit = @import("XRDepthStateInit.zig").XRDepthStateInit;
+const XRDOMOverlayInit = @import("XRDOMOverlayInit.zig").XRDOMOverlayInit;
 
 pub const XRSessionInit = struct {
     requiredFeatures: ?[]const runtime.DOMString = null,
     optionalFeatures: ?[]const runtime.DOMString = null,
-    domOverlay: ?XRDOMOverlayInit = null,
     depthSensing: ?XRDepthStateInit = null,
+    domOverlay: ?XRDOMOverlayInit = null,
 };

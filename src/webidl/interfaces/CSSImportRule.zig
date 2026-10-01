@@ -12,9 +12,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSRule = @import("interfaces").CSSRule;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
-const CSSOMString = @import("typedefs").CSSOMString;
 const USVString = @import("typedefs").USVString;
-const DOMString = @import("typedefs").DOMString;
+const CSSOMString = @import("typedefs").CSSOMString;
 const MediaList = @import("interfaces").MediaList;
 
 pub const CSSImportRule = struct {

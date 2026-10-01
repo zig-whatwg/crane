@@ -78,15 +78,15 @@ pub const XRSession = struct {
             .{ "onsqueezeend", "get_onsqueezeend", "set_onsqueezeend" },
             .{ "onvisibilitychange", "get_onvisibilitychange", "set_onvisibilitychange" },
             .{ "onframeratechange", "get_onframeratechange", "set_onframeratechange" },
-            .{ "domOverlayState", "get_domOverlayState", null },
+            .{ "persistentAnchors", "get_persistentAnchors", null },
+            .{ "environmentBlendMode", "get_environmentBlendMode", null },
+            .{ "interactionMode", "get_interactionMode", null },
             .{ "depthUsage", "get_depthUsage", null },
             .{ "depthDataFormat", "get_depthDataFormat", null },
             .{ "depthType", "get_depthType", null },
             .{ "depthActive", "get_depthActive", null },
-            .{ "persistentAnchors", "get_persistentAnchors", null },
+            .{ "domOverlayState", "get_domOverlayState", null },
             .{ "preferredReflectionFormat", "get_preferredReflectionFormat", null },
-            .{ "environmentBlendMode", "get_environmentBlendMode", null },
-            .{ "interactionMode", "get_interactionMode", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -97,12 +97,12 @@ pub const XRSession = struct {
             .{ "requestAnimationFrame", "call_requestAnimationFrame", 1 },
             .{ "cancelAnimationFrame", "call_cancelAnimationFrame", 1 },
             .{ "end", "call_end", 0 },
-            .{ "requestHitTestSource", "call_requestHitTestSource", 1 },
-            .{ "requestHitTestSourceForTransientInput", "call_requestHitTestSourceForTransientInput", 1 },
-            .{ "pauseDepthSensing", "call_pauseDepthSensing", 0 },
-            .{ "resumeDepthSensing", "call_resumeDepthSensing", 0 },
             .{ "restorePersistentAnchor", "call_restorePersistentAnchor", 1 },
             .{ "deletePersistentAnchor", "call_deletePersistentAnchor", 1 },
+            .{ "pauseDepthSensing", "call_pauseDepthSensing", 0 },
+            .{ "resumeDepthSensing", "call_resumeDepthSensing", 0 },
+            .{ "requestHitTestSource", "call_requestHitTestSource", 1 },
+            .{ "requestHitTestSourceForTransientInput", "call_requestHitTestSourceForTransientInput", 1 },
             .{ "requestLightProbe", "call_requestLightProbe", 0 },
             .{ "initiateRoomCapture", "call_initiateRoomCapture", 0 },
         };
@@ -115,12 +115,12 @@ pub const XRSession = struct {
             "requestAnimationFrame",
             "cancelAnimationFrame",
             "end",
-            "requestHitTestSource",
-            "requestHitTestSourceForTransientInput",
-            "pauseDepthSensing",
-            "resumeDepthSensing",
             "restorePersistentAnchor",
             "deletePersistentAnchor",
+            "pauseDepthSensing",
+            "resumeDepthSensing",
+            "requestHitTestSource",
+            "requestHitTestSourceForTransientInput",
             "requestLightProbe",
             "initiateRoomCapture",
         };
@@ -153,15 +153,15 @@ pub const XRSession = struct {
             .{ "onsqueezeend", "get_onsqueezeend", "set_onsqueezeend" },
             .{ "onvisibilitychange", "get_onvisibilitychange", "set_onvisibilitychange" },
             .{ "onframeratechange", "get_onframeratechange", "set_onframeratechange" },
-            .{ "domOverlayState", "get_domOverlayState", null },
+            .{ "persistentAnchors", "get_persistentAnchors", null },
+            .{ "environmentBlendMode", "get_environmentBlendMode", null },
+            .{ "interactionMode", "get_interactionMode", null },
             .{ "depthUsage", "get_depthUsage", null },
             .{ "depthDataFormat", "get_depthDataFormat", null },
             .{ "depthType", "get_depthType", null },
             .{ "depthActive", "get_depthActive", null },
-            .{ "persistentAnchors", "get_persistentAnchors", null },
+            .{ "domOverlayState", "get_domOverlayState", null },
             .{ "preferredReflectionFormat", "get_preferredReflectionFormat", null },
-            .{ "environmentBlendMode", "get_environmentBlendMode", null },
-            .{ "interactionMode", "get_interactionMode", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -192,15 +192,15 @@ pub const XRSession = struct {
             onsqueezeend: typedefs.EventHandler = undefined,
             onvisibilitychange: typedefs.EventHandler = undefined,
             onframeratechange: typedefs.EventHandler = undefined,
-            domOverlayState: ?dictionaries.XRDOMOverlayState = null,
+            persistentAnchors: runtime.JSValue = undefined,
+            environmentBlendMode: enums.XREnvironmentBlendMode = undefined,
+            interactionMode: enums.XRInteractionMode = undefined,
             depthUsage: enums.XRDepthUsage = undefined,
             depthDataFormat: enums.XRDepthDataFormat = undefined,
             depthType: ?enums.XRDepthType = null,
             depthActive: ?bool = null,
-            persistentAnchors: runtime.JSValue = undefined,
+            domOverlayState: ?dictionaries.XRDOMOverlayState = null,
             preferredReflectionFormat: enums.XRReflectionFormat = undefined,
-            environmentBlendMode: enums.XREnvironmentBlendMode = undefined,
-            interactionMode: enums.XRInteractionMode = undefined,
             cached_renderState: ?*runtime.Instance = null,
             cached_inputSources: ?*runtime.Instance = null,
             cached_trackedSources: ?*runtime.Instance = null,
@@ -424,8 +424,16 @@ pub const XRSession = struct {
         try XRSessionImpl.set_onframeratechange(instance, value);
     }
 
-    pub fn get_domOverlayState(instance: *runtime.Instance) anyerror!?XRDOMOverlayState {
-        return try XRSessionImpl.get_domOverlayState(instance);
+    pub fn get_persistentAnchors(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try XRSessionImpl.get_persistentAnchors(instance);
+    }
+
+    pub fn get_environmentBlendMode(instance: *runtime.Instance) anyerror!XREnvironmentBlendMode {
+        return try XRSessionImpl.get_environmentBlendMode(instance);
+    }
+
+    pub fn get_interactionMode(instance: *runtime.Instance) anyerror!XRInteractionMode {
+        return try XRSessionImpl.get_interactionMode(instance);
     }
 
     pub fn get_depthUsage(instance: *runtime.Instance) anyerror!XRDepthUsage {
@@ -444,20 +452,12 @@ pub const XRSession = struct {
         return try XRSessionImpl.get_depthActive(instance);
     }
 
-    pub fn get_persistentAnchors(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try XRSessionImpl.get_persistentAnchors(instance);
+    pub fn get_domOverlayState(instance: *runtime.Instance) anyerror!?XRDOMOverlayState {
+        return try XRSessionImpl.get_domOverlayState(instance);
     }
 
     pub fn get_preferredReflectionFormat(instance: *runtime.Instance) anyerror!XRReflectionFormat {
         return try XRSessionImpl.get_preferredReflectionFormat(instance);
-    }
-
-    pub fn get_environmentBlendMode(instance: *runtime.Instance) anyerror!XREnvironmentBlendMode {
-        return try XRSessionImpl.get_environmentBlendMode(instance);
-    }
-
-    pub fn get_interactionMode(instance: *runtime.Instance) anyerror!XRInteractionMode {
-        return try XRSessionImpl.get_interactionMode(instance);
     }
 
     pub fn call_updateTargetFrameRate(instance: *runtime.Instance, rate: f32) anyerror!runtime.JSValue {

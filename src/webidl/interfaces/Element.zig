@@ -11,14 +11,14 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Node = @import("interfaces").Node;
-const ARIAMixin = @import("mixins").ARIAMixin;
-const Animatable = @import("mixins").Animatable;
 const Region = @import("mixins").Region;
+const GeometryUtils = @import("mixins").GeometryUtils;
 const ParentNode = @import("mixins").ParentNode;
 const NonDocumentTypeChildNode = @import("mixins").NonDocumentTypeChildNode;
 const ChildNode = @import("mixins").ChildNode;
 const Slottable = @import("mixins").Slottable;
-const GeometryUtils = @import("mixins").GeometryUtils;
+const ARIAMixin = @import("mixins").ARIAMixin;
+const Animatable = @import("mixins").Animatable;
 const CSSOMString = @import("typedefs").CSSOMString;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
@@ -35,8 +35,8 @@ const EventListener = @import("interfaces").EventListener;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const Animation = @import("interfaces").Animation;
 const Range = @import("interfaces").Range;
+const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const DOMRectList = @import("interfaces").DOMRectList;
 const DOMString = @import("typedefs").DOMString;
@@ -44,9 +44,9 @@ const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOption
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const Document = @import("interfaces").Document;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
-const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
-const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
+const DOMQuad = @import("interfaces").DOMQuad;
+const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
@@ -80,14 +80,14 @@ pub const Element = struct {
         pub const BaseType = Node.State;
         pub const ParentInterface = Node;
         pub const MixinTypes = &.{
-            ARIAMixin,
-            Animatable,
             Region,
+            GeometryUtils,
             ParentNode,
             NonDocumentTypeChildNode,
             ChildNode,
             Slottable,
-            GeometryUtils,
+            ARIAMixin,
+            Animatable,
         };
         pub const extended_attributes = .{
             .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
@@ -109,13 +109,8 @@ pub const Element = struct {
             .{ "attributes", "get_attributes", null },
             .{ "shadowRoot", "get_shadowRoot", null },
             .{ "customElementRegistry", "get_customElementRegistry", null },
-            .{ "onfullscreenchange", "get_onfullscreenchange", "set_onfullscreenchange" },
-            .{ "onfullscreenerror", "get_onfullscreenerror", "set_onfullscreenerror" },
-            .{ "elementTiming", "get_elementTiming", "set_elementTiming" },
             .{ "part", "get_part", "set_part" },
             .{ "activeViewTransition", "get_activeViewTransition", null },
-            .{ "innerHTML", "get_innerHTML", "set_innerHTML" },
-            .{ "outerHTML", "get_outerHTML", "set_outerHTML" },
             .{ "scrollTop", "get_scrollTop", "set_scrollTop" },
             .{ "scrollLeft", "get_scrollLeft", "set_scrollLeft" },
             .{ "scrollWidth", "get_scrollWidth", null },
@@ -125,6 +120,19 @@ pub const Element = struct {
             .{ "clientWidth", "get_clientWidth", null },
             .{ "clientHeight", "get_clientHeight", null },
             .{ "currentCSSZoom", "get_currentCSSZoom", null },
+            .{ "elementTiming", "get_elementTiming", "set_elementTiming" },
+            .{ "onfullscreenchange", "get_onfullscreenchange", "set_onfullscreenchange" },
+            .{ "onfullscreenerror", "get_onfullscreenerror", "set_onfullscreenerror" },
+            .{ "innerHTML", "get_innerHTML", "set_innerHTML" },
+            .{ "outerHTML", "get_outerHTML", "set_outerHTML" },
+            .{ "regionOverset", "get_regionOverset", null },
+            .{ "children", "get_children", null },
+            .{ "firstElementChild", "get_firstElementChild", null },
+            .{ "lastElementChild", "get_lastElementChild", null },
+            .{ "childElementCount", "get_childElementCount", null },
+            .{ "previousElementSibling", "get_previousElementSibling", null },
+            .{ "nextElementSibling", "get_nextElementSibling", null },
+            .{ "assignedSlot", "get_assignedSlot", null },
             .{ "role", "get_role", "set_role" },
             .{ "ariaActiveDescendantElement", "get_ariaActiveDescendantElement", "set_ariaActiveDescendantElement" },
             .{ "ariaAtomic", "get_ariaAtomic", "set_ariaAtomic" },
@@ -177,14 +185,6 @@ pub const Element = struct {
             .{ "ariaValueMin", "get_ariaValueMin", "set_ariaValueMin" },
             .{ "ariaValueNow", "get_ariaValueNow", "set_ariaValueNow" },
             .{ "ariaValueText", "get_ariaValueText", "set_ariaValueText" },
-            .{ "regionOverset", "get_regionOverset", null },
-            .{ "children", "get_children", null },
-            .{ "firstElementChild", "get_firstElementChild", null },
-            .{ "lastElementChild", "get_lastElementChild", null },
-            .{ "childElementCount", "get_childElementCount", null },
-            .{ "previousElementSibling", "get_previousElementSibling", null },
-            .{ "nextElementSibling", "get_nextElementSibling", null },
-            .{ "assignedSlot", "get_assignedSlot", null },
         };
 
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
@@ -224,17 +224,9 @@ pub const Element = struct {
             .{ "getSpatialNavigationContainer", "call_getSpatialNavigationContainer", 0 },
             .{ "focusableAreas", "call_focusableAreas", 0 },
             .{ "spatialNavigationSearch", "call_spatialNavigationSearch", 1 },
-            .{ "requestFullscreen", "call_requestFullscreen", 0 },
-            .{ "requestPointerLock", "call_requestPointerLock", 0 },
-            .{ "setPointerCapture", "call_setPointerCapture", 1 },
-            .{ "releasePointerCapture", "call_releasePointerCapture", 1 },
-            .{ "hasPointerCapture", "call_hasPointerCapture", 1 },
-            .{ "computedStyleMap", "call_computedStyleMap", 0 },
             .{ "pseudo", "call_pseudo", 1 },
+            .{ "computedStyleMap", "call_computedStyleMap", 0 },
             .{ "startViewTransition", "call_startViewTransition", 0 },
-            .{ "setHTMLUnsafe", "call_setHTMLUnsafe", 1 },
-            .{ "getHTML", "call_getHTML", 0 },
-            .{ "insertAdjacentHTML", "call_insertAdjacentHTML", 2 },
             .{ "getClientRects", "call_getClientRects", 0 },
             .{ "getBoundingClientRect", "call_getBoundingClientRect", 0 },
             .{ "checkVisibility", "call_checkVisibility", 0 },
@@ -242,9 +234,19 @@ pub const Element = struct {
             .{ "scroll", "call_scroll", 0 },
             .{ "scrollTo", "call_scrollTo", 0 },
             .{ "scrollBy", "call_scrollBy", 0 },
-            .{ "animate", "call_animate", 1 },
-            .{ "getAnimations", "call_getAnimations", 0 },
+            .{ "requestFullscreen", "call_requestFullscreen", 0 },
+            .{ "setHTMLUnsafe", "call_setHTMLUnsafe", 1 },
+            .{ "getHTML", "call_getHTML", 0 },
+            .{ "insertAdjacentHTML", "call_insertAdjacentHTML", 2 },
+            .{ "setPointerCapture", "call_setPointerCapture", 1 },
+            .{ "releasePointerCapture", "call_releasePointerCapture", 1 },
+            .{ "hasPointerCapture", "call_hasPointerCapture", 1 },
+            .{ "requestPointerLock", "call_requestPointerLock", 0 },
             .{ "getRegionFlowRanges", "call_getRegionFlowRanges", 0 },
+            .{ "getBoxQuads", "call_getBoxQuads", 0 },
+            .{ "convertQuadFromNode", "call_convertQuadFromNode", 2 },
+            .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
+            .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
             .{ "prepend", "call_prepend", 0 },
             .{ "append", "call_append", 0 },
             .{ "replaceChildren", "call_replaceChildren", 0 },
@@ -255,10 +257,8 @@ pub const Element = struct {
             .{ "after", "call_after", 0 },
             .{ "replaceWith", "call_replaceWith", 0 },
             .{ "remove", "call_remove", 0 },
-            .{ "getBoxQuads", "call_getBoxQuads", 0 },
-            .{ "convertQuadFromNode", "call_convertQuadFromNode", 2 },
-            .{ "convertRectFromNode", "call_convertRectFromNode", 2 },
-            .{ "convertPointFromNode", "call_convertPointFromNode", 2 },
+            .{ "animate", "call_animate", 1 },
+            .{ "getAnimations", "call_getAnimations", 0 },
         };
 
         /// Methods defined/overridden by this interface
@@ -291,17 +291,9 @@ pub const Element = struct {
             "getSpatialNavigationContainer",
             "focusableAreas",
             "spatialNavigationSearch",
-            "requestFullscreen",
-            "requestPointerLock",
-            "setPointerCapture",
-            "releasePointerCapture",
-            "hasPointerCapture",
-            "computedStyleMap",
             "pseudo",
+            "computedStyleMap",
             "startViewTransition",
-            "setHTMLUnsafe",
-            "getHTML",
-            "insertAdjacentHTML",
             "getClientRects",
             "getBoundingClientRect",
             "checkVisibility",
@@ -309,9 +301,19 @@ pub const Element = struct {
             "scroll",
             "scrollTo",
             "scrollBy",
-            "animate",
-            "getAnimations",
+            "requestFullscreen",
+            "setHTMLUnsafe",
+            "getHTML",
+            "insertAdjacentHTML",
+            "setPointerCapture",
+            "releasePointerCapture",
+            "hasPointerCapture",
+            "requestPointerLock",
             "getRegionFlowRanges",
+            "getBoxQuads",
+            "convertQuadFromNode",
+            "convertRectFromNode",
+            "convertPointFromNode",
             "prepend",
             "append",
             "replaceChildren",
@@ -322,10 +324,8 @@ pub const Element = struct {
             "after",
             "replaceWith",
             "remove",
-            "getBoxQuads",
-            "convertQuadFromNode",
-            "convertRectFromNode",
-            "convertPointFromNode",
+            "animate",
+            "getAnimations",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -364,13 +364,8 @@ pub const Element = struct {
             .{ "attributes", "get_attributes", null },
             .{ "shadowRoot", "get_shadowRoot", null },
             .{ "customElementRegistry", "get_customElementRegistry", null },
-            .{ "onfullscreenchange", "get_onfullscreenchange", "set_onfullscreenchange" },
-            .{ "onfullscreenerror", "get_onfullscreenerror", "set_onfullscreenerror" },
-            .{ "elementTiming", "get_elementTiming", "set_elementTiming" },
             .{ "part", "get_part", "set_part" },
             .{ "activeViewTransition", "get_activeViewTransition", null },
-            .{ "innerHTML", "get_innerHTML", "set_innerHTML" },
-            .{ "outerHTML", "get_outerHTML", "set_outerHTML" },
             .{ "scrollTop", "get_scrollTop", "set_scrollTop" },
             .{ "scrollLeft", "get_scrollLeft", "set_scrollLeft" },
             .{ "scrollWidth", "get_scrollWidth", null },
@@ -380,6 +375,19 @@ pub const Element = struct {
             .{ "clientWidth", "get_clientWidth", null },
             .{ "clientHeight", "get_clientHeight", null },
             .{ "currentCSSZoom", "get_currentCSSZoom", null },
+            .{ "elementTiming", "get_elementTiming", "set_elementTiming" },
+            .{ "onfullscreenchange", "get_onfullscreenchange", "set_onfullscreenchange" },
+            .{ "onfullscreenerror", "get_onfullscreenerror", "set_onfullscreenerror" },
+            .{ "innerHTML", "get_innerHTML", "set_innerHTML" },
+            .{ "outerHTML", "get_outerHTML", "set_outerHTML" },
+            .{ "regionOverset", "get_regionOverset", null },
+            .{ "children", "get_children", null },
+            .{ "firstElementChild", "get_firstElementChild", null },
+            .{ "lastElementChild", "get_lastElementChild", null },
+            .{ "childElementCount", "get_childElementCount", null },
+            .{ "previousElementSibling", "get_previousElementSibling", null },
+            .{ "nextElementSibling", "get_nextElementSibling", null },
+            .{ "assignedSlot", "get_assignedSlot", null },
             .{ "role", "get_role", "set_role" },
             .{ "ariaActiveDescendantElement", "get_ariaActiveDescendantElement", "set_ariaActiveDescendantElement" },
             .{ "ariaAtomic", "get_ariaAtomic", "set_ariaAtomic" },
@@ -432,14 +440,6 @@ pub const Element = struct {
             .{ "ariaValueMin", "get_ariaValueMin", "set_ariaValueMin" },
             .{ "ariaValueNow", "get_ariaValueNow", "set_ariaValueNow" },
             .{ "ariaValueText", "get_ariaValueText", "set_ariaValueText" },
-            .{ "regionOverset", "get_regionOverset", null },
-            .{ "children", "get_children", null },
-            .{ "firstElementChild", "get_firstElementChild", null },
-            .{ "lastElementChild", "get_lastElementChild", null },
-            .{ "childElementCount", "get_childElementCount", null },
-            .{ "previousElementSibling", "get_previousElementSibling", null },
-            .{ "nextElementSibling", "get_nextElementSibling", null },
-            .{ "assignedSlot", "get_assignedSlot", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -468,18 +468,8 @@ pub const Element = struct {
             attributes: *runtime.Instance = undefined,
             shadowRoot: ?*runtime.Instance = null,
             customElementRegistry: ?*runtime.Instance = null,
-            onfullscreenchange: typedefs.EventHandler = undefined,
-            onfullscreenerror: typedefs.EventHandler = undefined,
             part: *runtime.Instance = undefined,
             activeViewTransition: ?*runtime.Instance = null,
-            innerHTML: union(enum) {
-                TrustedHTML: TrustedHTML,
-                DOMString: runtime.DOMString,
-            } = undefined,
-            outerHTML: union(enum) {
-                TrustedHTML: TrustedHTML,
-                DOMString: runtime.DOMString,
-            } = undefined,
             scrollTop: f64 = undefined,
             scrollLeft: f64 = undefined,
             scrollWidth: i32 = undefined,
@@ -489,14 +479,16 @@ pub const Element = struct {
             clientWidth: i32 = undefined,
             clientHeight: i32 = undefined,
             currentCSSZoom: f64 = undefined,
-            ariaActiveDescendantElement: ?*runtime.Instance = null,
-            ariaControlsElements: ?runtime.JSValue = null,
-            ariaDescribedByElements: ?runtime.JSValue = null,
-            ariaDetailsElements: ?runtime.JSValue = null,
-            ariaErrorMessageElements: ?runtime.JSValue = null,
-            ariaFlowToElements: ?runtime.JSValue = null,
-            ariaLabelledByElements: ?runtime.JSValue = null,
-            ariaOwnsElements: ?runtime.JSValue = null,
+            onfullscreenchange: typedefs.EventHandler = undefined,
+            onfullscreenerror: typedefs.EventHandler = undefined,
+            innerHTML: union(enum) {
+                TrustedHTML: TrustedHTML,
+                DOMString: runtime.DOMString,
+            } = undefined,
+            outerHTML: union(enum) {
+                TrustedHTML: TrustedHTML,
+                DOMString: runtime.DOMString,
+            } = undefined,
             regionOverset: typedefs.CSSOMString = undefined,
             children: *runtime.Instance = undefined,
             firstElementChild: ?*runtime.Instance = null,
@@ -505,6 +497,14 @@ pub const Element = struct {
             previousElementSibling: ?*runtime.Instance = null,
             nextElementSibling: ?*runtime.Instance = null,
             assignedSlot: ?*runtime.Instance = null,
+            ariaActiveDescendantElement: ?*runtime.Instance = null,
+            ariaControlsElements: ?runtime.JSValue = null,
+            ariaDescribedByElements: ?runtime.JSValue = null,
+            ariaDetailsElements: ?runtime.JSValue = null,
+            ariaErrorMessageElements: ?runtime.JSValue = null,
+            ariaFlowToElements: ?runtime.JSValue = null,
+            ariaLabelledByElements: ?runtime.JSValue = null,
+            ariaOwnsElements: ?runtime.JSValue = null,
             cached_classList: ?*runtime.Instance = null,
             cached_attributes: ?*runtime.Instance = null,
             cached_part: ?*runtime.Instance = null,
@@ -857,40 +857,6 @@ pub const Element = struct {
         return try ElementImpl.get_customElementRegistry(instance);
     }
 
-    pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ElementImpl.get_onfullscreenchange(instance);
-    }
-
-    pub fn set_onfullscreenchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ElementImpl.set_onfullscreenchange(instance, value);
-    }
-
-    pub fn get_onfullscreenerror(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ElementImpl.get_onfullscreenerror(instance);
-    }
-
-    pub fn set_onfullscreenerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ElementImpl.set_onfullscreenerror(instance, value);
-    }
-
-    const reflection = @import("impls").reflection;
-
-    /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_elementTiming(instance: *runtime.Instance) anyerror!DOMString {
-        if (comptime @hasDecl(ElementImpl, "get_elementTiming")) return try ElementImpl.get_elementTiming(instance);
-        return try reflection.get(DOMString, instance, .{ .name = "elementtiming" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_elementTiming(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        if (comptime @hasDecl(ElementImpl, "set_elementTiming")) return try ElementImpl.set_elementTiming(instance, value);
-        try reflection.set(DOMString, instance, .{ .name = "elementtiming" }, value);
-    }
-
     /// Extended attributes: [SameObject], [PutForwards=value]
     pub fn get_part(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);
@@ -916,34 +882,6 @@ pub const Element = struct {
 
     pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ElementImpl.get_activeViewTransition(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn get_innerHTML(instance: *runtime.Instance) anyerror!DOMString {
-        return try ElementImpl.get_innerHTML(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_innerHTML(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try ElementImpl.set_innerHTML(instance, value);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn get_outerHTML(instance: *runtime.Instance) anyerror!DOMString {
-        return try ElementImpl.get_outerHTML(instance);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn set_outerHTML(instance: *runtime.Instance, value: DOMString) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
-
-        try ElementImpl.set_outerHTML(instance, value);
     }
 
     pub fn get_scrollTop(instance: *runtime.Instance) anyerror!f64 {
@@ -988,6 +926,98 @@ pub const Element = struct {
 
     pub fn get_currentCSSZoom(instance: *runtime.Instance) anyerror!f64 {
         return try ElementImpl.get_currentCSSZoom(instance);
+    }
+
+    const reflection = @import("impls").reflection;
+
+    /// Extended attributes: [CEReactions], [Reflect]
+    pub fn get_elementTiming(instance: *runtime.Instance) anyerror!DOMString {
+        if (comptime @hasDecl(ElementImpl, "get_elementTiming")) return try ElementImpl.get_elementTiming(instance);
+        return try reflection.get(DOMString, instance, .{ .name = "elementtiming" });
+    }
+
+    /// Extended attributes: [CEReactions], [Reflect]
+    pub fn set_elementTiming(instance: *runtime.Instance, value: DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        if (comptime @hasDecl(ElementImpl, "set_elementTiming")) return try ElementImpl.set_elementTiming(instance, value);
+        try reflection.set(DOMString, instance, .{ .name = "elementtiming" }, value);
+    }
+
+    pub fn get_onfullscreenchange(instance: *runtime.Instance) anyerror!EventHandler {
+        return try ElementImpl.get_onfullscreenchange(instance);
+    }
+
+    pub fn set_onfullscreenchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try ElementImpl.set_onfullscreenchange(instance, value);
+    }
+
+    pub fn get_onfullscreenerror(instance: *runtime.Instance) anyerror!EventHandler {
+        return try ElementImpl.get_onfullscreenerror(instance);
+    }
+
+    pub fn set_onfullscreenerror(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try ElementImpl.set_onfullscreenerror(instance, value);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn get_innerHTML(instance: *runtime.Instance) anyerror!DOMString {
+        return try ElementImpl.get_innerHTML(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn set_innerHTML(instance: *runtime.Instance, value: DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        try ElementImpl.set_innerHTML(instance, value);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn get_outerHTML(instance: *runtime.Instance) anyerror!DOMString {
+        return try ElementImpl.get_outerHTML(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn set_outerHTML(instance: *runtime.Instance, value: DOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        try ElementImpl.set_outerHTML(instance, value);
+    }
+
+    pub fn get_regionOverset(instance: *runtime.Instance) anyerror!CSSOMString {
+        return try ElementImpl.get_regionOverset(instance);
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_children) |cached| {
+            return cached;
+        }
+        const value = try mixins.ParentNode.get_children(instance);
+        state.own.cached_children = value;
+        return value;
+    }
+
+    pub const get_firstElementChild = mixins.ParentNode.get_firstElementChild;
+
+    pub const get_lastElementChild = mixins.ParentNode.get_lastElementChild;
+
+    pub const get_childElementCount = mixins.ParentNode.get_childElementCount;
+
+    pub const get_previousElementSibling = mixins.NonDocumentTypeChildNode.get_previousElementSibling;
+
+    pub const get_nextElementSibling = mixins.NonDocumentTypeChildNode.get_nextElementSibling;
+
+    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
+        return try ElementImpl.get_assignedSlot(instance);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -1806,36 +1836,6 @@ pub const Element = struct {
         try reflection.set(?DOMString, instance, .{ .name = "aria-valuetext" }, value);
     }
 
-    pub fn get_regionOverset(instance: *runtime.Instance) anyerror!CSSOMString {
-        return try ElementImpl.get_regionOverset(instance);
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_children(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_children) |cached| {
-            return cached;
-        }
-        const value = try mixins.ParentNode.get_children(instance);
-        state.own.cached_children = value;
-        return value;
-    }
-
-    pub const get_firstElementChild = mixins.ParentNode.get_firstElementChild;
-
-    pub const get_lastElementChild = mixins.ParentNode.get_lastElementChild;
-
-    pub const get_childElementCount = mixins.ParentNode.get_childElementCount;
-
-    pub const get_previousElementSibling = mixins.NonDocumentTypeChildNode.get_previousElementSibling;
-
-    pub const get_nextElementSibling = mixins.NonDocumentTypeChildNode.get_nextElementSibling;
-
-    pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-        return try ElementImpl.get_assignedSlot(instance);
-    }
-
     pub fn call_getSpatialNavigationContainer(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.call_getSpatialNavigationContainer(instance);
     }
@@ -1917,11 +1917,11 @@ pub const Element = struct {
         return try ElementImpl.call_setAttributeNode(instance, attr);
     }
 
-    pub const call_remove = mixins.ChildNode.call_remove;
-
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
+
+    pub const call_remove = mixins.ChildNode.call_remove;
 
     pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(PointerLockOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_requestPointerLock(instance, options);
@@ -1934,10 +1934,6 @@ pub const Element = struct {
         defer runtime.CEReactions.end();
 
         return try ElementImpl.call_setAttributeNodeNS(instance, attr);
-    }
-
-    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-        return try ElementImpl.call_animate(instance, keyframes, options);
     }
 
     pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?DOMString {
@@ -1956,12 +1952,12 @@ pub const Element = struct {
         return try ElementImpl.call_getAttributeNodeNS(instance, namespace, localName);
     }
 
-    pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        return try ElementImpl.call_scroll(instance, options);
-    }
-
     pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
         return try ElementImpl.call_getElementsByTagName(instance, qualifiedName);
+    }
+
+    pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
+        return try ElementImpl.call_scroll(instance, options);
     }
 
     pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: SpatialNavigationDirection, options: webidl.Opt(SpatialNavigationSearchOptions)) anyerror!?*runtime.Instance {
@@ -1978,6 +1974,10 @@ pub const Element = struct {
     }
 
     pub const call_querySelector = mixins.ParentNode.call_querySelector;
+
+    pub fn call_animate(instance: *runtime.Instance, keyframes: ?runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+        return try ElementImpl.call_animate(instance, keyframes, options);
+    }
 
     /// Extended attributes: [CEReactions]
     pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: DOMString, force: webidl.Opt(bool)) anyerror!bool {
@@ -2024,7 +2024,9 @@ pub const Element = struct {
         return try ElementImpl.call_getAttributeNames(instance);
     }
 
-    pub const call_replaceWith = mixins.ChildNode.call_replaceWith;
+    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
+        return try ElementImpl.call_convertPointFromNode(instance, point, from, options);
+    }
 
     pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
         return try ElementImpl.call_getElementsByTagNameNS(instance, namespace, localName);
@@ -2034,9 +2036,7 @@ pub const Element = struct {
         return try ElementImpl.call_webkitMatchesSelector(instance, selectors);
     }
 
-    pub fn call_convertPointFromNode(instance: *runtime.Instance, point: DOMPointInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
-        return try ElementImpl.call_convertPointFromNode(instance, point, from, options);
-    }
+    pub const call_replaceWith = mixins.ChildNode.call_replaceWith;
 
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         return try ElementImpl.call_convertRectFromNode(instance, rect, from, options);
@@ -2065,8 +2065,6 @@ pub const Element = struct {
         return try ElementImpl.call_getRegionFlowRanges(instance);
     }
 
-    pub const call_prepend = mixins.ParentNode.call_prepend;
-
     /// Extended attributes: [CEReactions]
     pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -2080,6 +2078,10 @@ pub const Element = struct {
         return try ElementImpl.call_hasAttribute(instance, qualifiedName);
     }
 
+    pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        return try ElementImpl.call_getClientRects(instance);
+    }
+
     /// Extended attributes: [CEReactions]
     pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: DOMString, string: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -2089,20 +2091,18 @@ pub const Element = struct {
         return try ElementImpl.call_insertAdjacentHTML(instance, position, string);
     }
 
-    pub fn call_getClientRects(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        return try ElementImpl.call_getClientRects(instance);
-    }
+    pub const call_prepend = mixins.ParentNode.call_prepend;
 
     pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         return try ElementImpl.call_scrollIntoView(instance, arg);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!runtime.JSValue {
-        return try ElementImpl.call_getAnimations(instance, options);
-    }
-
     pub fn call_attachShadow(instance: *runtime.Instance, init_data: ShadowRootInit) anyerror!*runtime.Instance {
         return try ElementImpl.call_attachShadow(instance, init_data);
+    }
+
+    pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!runtime.JSValue {
+        return try ElementImpl.call_getAnimations(instance, options);
     }
 
     pub fn call_releasePointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {

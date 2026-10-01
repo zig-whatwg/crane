@@ -38,9 +38,3 @@ pub fn deinit(instance: *runtime.Instance) void {
     // TODO: Clean up your instance resources here
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
-
-/// Getter for sheet
-pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    return null;
-}

@@ -34,12 +34,12 @@ const CookieStore = @import("interfaces").CookieStore;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const Clients = @import("interfaces").Clients;
 const VoidFunction = @import("callbacks").VoidFunction;
-const Performance = @import("interfaces").Performance;
-const IDBFactory = @import("interfaces").IDBFactory;
-const CacheStorage = @import("interfaces").CacheStorage;
 const RequestInfo = @import("typedefs").RequestInfo;
-const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
+const IDBFactory = @import("interfaces").IDBFactory;
+const Performance = @import("interfaces").Performance;
+const CacheStorage = @import("interfaces").CacheStorage;
 const RequestInit = @import("dictionaries").RequestInit;
+const TrustedTypePolicyFactory = @import("interfaces").TrustedTypePolicyFactory;
 const Observable = @import("interfaces").Observable;
 const ServiceWorkerRegistration = @import("interfaces").ServiceWorkerRegistration;
 const Event = @import("interfaces").Event;
@@ -56,9 +56,9 @@ pub const ServiceWorkerGlobalScope = struct {
         pub const ParentInterface = WorkerGlobalScope;
         pub const MixinTypes = &.{};
         pub const extended_attributes = .{
+            .{ .name = "Global", .value = .{ .identifier_list = &.{ "Worker", "ServiceWorker" } } },
             .{ .name = "Exposed", .value = .{ .identifier = "ServiceWorker" } },
             .{ .name = "SecureContext" },
-            .{ .name = "Global", .value = .{ .identifier_list = &.{ "Worker", "ServiceWorker" } } },
         };
 
         /// Global contexts where this interface is exposed
@@ -74,21 +74,21 @@ pub const ServiceWorkerGlobalScope = struct {
             .{ "onfetch", "get_onfetch", "set_onfetch" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
-            .{ "onperiodicsync", "get_onperiodicsync", "set_onperiodicsync" },
-            .{ "cookieStore", "get_cookieStore", null },
-            .{ "oncookiechange", "get_oncookiechange", "set_oncookiechange" },
-            .{ "onsync", "get_onsync", "set_onsync" },
-            .{ "oncontentdelete", "get_oncontentdelete", "set_oncontentdelete" },
             .{ "onbackgroundfetchsuccess", "get_onbackgroundfetchsuccess", "set_onbackgroundfetchsuccess" },
             .{ "onbackgroundfetchfail", "get_onbackgroundfetchfail", "set_onbackgroundfetchfail" },
             .{ "onbackgroundfetchabort", "get_onbackgroundfetchabort", "set_onbackgroundfetchabort" },
             .{ "onbackgroundfetchclick", "get_onbackgroundfetchclick", "set_onbackgroundfetchclick" },
-            .{ "onpush", "get_onpush", "set_onpush" },
-            .{ "onpushsubscriptionchange", "get_onpushsubscriptionchange", "set_onpushsubscriptionchange" },
-            .{ "oncanmakepayment", "get_oncanmakepayment", "set_oncanmakepayment" },
-            .{ "onpaymentrequest", "get_onpaymentrequest", "set_onpaymentrequest" },
+            .{ "onsync", "get_onsync", "set_onsync" },
+            .{ "oncontentdelete", "get_oncontentdelete", "set_oncontentdelete" },
+            .{ "cookieStore", "get_cookieStore", null },
+            .{ "oncookiechange", "get_oncookiechange", "set_oncookiechange" },
             .{ "onnotificationclick", "get_onnotificationclick", "set_onnotificationclick" },
             .{ "onnotificationclose", "get_onnotificationclose", "set_onnotificationclose" },
+            .{ "oncanmakepayment", "get_oncanmakepayment", "set_oncanmakepayment" },
+            .{ "onpaymentrequest", "get_onpaymentrequest", "set_onpaymentrequest" },
+            .{ "onperiodicsync", "get_onperiodicsync", "set_onperiodicsync" },
+            .{ "onpush", "get_onpush", "set_onpush" },
+            .{ "onpushsubscriptionchange", "get_onpushsubscriptionchange", "set_onpushsubscriptionchange" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -132,21 +132,21 @@ pub const ServiceWorkerGlobalScope = struct {
             .{ "onfetch", "get_onfetch", "set_onfetch" },
             .{ "onmessage", "get_onmessage", "set_onmessage" },
             .{ "onmessageerror", "get_onmessageerror", "set_onmessageerror" },
-            .{ "onperiodicsync", "get_onperiodicsync", "set_onperiodicsync" },
-            .{ "cookieStore", "get_cookieStore", null },
-            .{ "oncookiechange", "get_oncookiechange", "set_oncookiechange" },
-            .{ "onsync", "get_onsync", "set_onsync" },
-            .{ "oncontentdelete", "get_oncontentdelete", "set_oncontentdelete" },
             .{ "onbackgroundfetchsuccess", "get_onbackgroundfetchsuccess", "set_onbackgroundfetchsuccess" },
             .{ "onbackgroundfetchfail", "get_onbackgroundfetchfail", "set_onbackgroundfetchfail" },
             .{ "onbackgroundfetchabort", "get_onbackgroundfetchabort", "set_onbackgroundfetchabort" },
             .{ "onbackgroundfetchclick", "get_onbackgroundfetchclick", "set_onbackgroundfetchclick" },
-            .{ "onpush", "get_onpush", "set_onpush" },
-            .{ "onpushsubscriptionchange", "get_onpushsubscriptionchange", "set_onpushsubscriptionchange" },
-            .{ "oncanmakepayment", "get_oncanmakepayment", "set_oncanmakepayment" },
-            .{ "onpaymentrequest", "get_onpaymentrequest", "set_onpaymentrequest" },
+            .{ "onsync", "get_onsync", "set_onsync" },
+            .{ "oncontentdelete", "get_oncontentdelete", "set_oncontentdelete" },
+            .{ "cookieStore", "get_cookieStore", null },
+            .{ "oncookiechange", "get_oncookiechange", "set_oncookiechange" },
             .{ "onnotificationclick", "get_onnotificationclick", "set_onnotificationclick" },
             .{ "onnotificationclose", "get_onnotificationclose", "set_onnotificationclose" },
+            .{ "oncanmakepayment", "get_oncanmakepayment", "set_oncanmakepayment" },
+            .{ "onpaymentrequest", "get_onpaymentrequest", "set_onpaymentrequest" },
+            .{ "onperiodicsync", "get_onperiodicsync", "set_onperiodicsync" },
+            .{ "onpush", "get_onpush", "set_onpush" },
+            .{ "onpushsubscriptionchange", "get_onpushsubscriptionchange", "set_onpushsubscriptionchange" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -319,50 +319,6 @@ pub const ServiceWorkerGlobalScope = struct {
         try ServiceWorkerGlobalScopeImpl.set_onmessageerror(instance, value);
     }
 
-    pub fn get_onperiodicsync(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onperiodicsync(instance);
-    }
-
-    pub fn set_onperiodicsync(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onperiodicsync(instance, value);
-    }
-
-    /// Extended attributes: [SameObject]
-    pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_cookieStore) |cached| {
-            return cached;
-        }
-        const value = try ServiceWorkerGlobalScopeImpl.get_cookieStore(instance);
-        state.own.cached_cookieStore = value;
-        return value;
-    }
-
-    pub fn get_oncookiechange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_oncookiechange(instance);
-    }
-
-    pub fn set_oncookiechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_oncookiechange(instance, value);
-    }
-
-    pub fn get_onsync(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onsync(instance);
-    }
-
-    pub fn set_onsync(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onsync(instance, value);
-    }
-
-    pub fn get_oncontentdelete(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_oncontentdelete(instance);
-    }
-
-    pub fn set_oncontentdelete(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_oncontentdelete(instance, value);
-    }
-
     pub fn get_onbackgroundfetchsuccess(instance: *runtime.Instance) anyerror!EventHandler {
         return try ServiceWorkerGlobalScopeImpl.get_onbackgroundfetchsuccess(instance);
     }
@@ -395,20 +351,56 @@ pub const ServiceWorkerGlobalScope = struct {
         try ServiceWorkerGlobalScopeImpl.set_onbackgroundfetchclick(instance, value);
     }
 
-    pub fn get_onpush(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onpush(instance);
+    pub fn get_onsync(instance: *runtime.Instance) anyerror!EventHandler {
+        return try ServiceWorkerGlobalScopeImpl.get_onsync(instance);
     }
 
-    pub fn set_onpush(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onpush(instance, value);
+    pub fn set_onsync(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try ServiceWorkerGlobalScopeImpl.set_onsync(instance, value);
     }
 
-    pub fn get_onpushsubscriptionchange(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onpushsubscriptionchange(instance);
+    pub fn get_oncontentdelete(instance: *runtime.Instance) anyerror!EventHandler {
+        return try ServiceWorkerGlobalScopeImpl.get_oncontentdelete(instance);
     }
 
-    pub fn set_onpushsubscriptionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onpushsubscriptionchange(instance, value);
+    pub fn set_oncontentdelete(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try ServiceWorkerGlobalScopeImpl.set_oncontentdelete(instance, value);
+    }
+
+    /// Extended attributes: [SameObject]
+    pub fn get_cookieStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
+        const state = instance.getState(State);
+        // [SameObject] - Return cached instance
+        if (state.own.cached_cookieStore) |cached| {
+            return cached;
+        }
+        const value = try ServiceWorkerGlobalScopeImpl.get_cookieStore(instance);
+        state.own.cached_cookieStore = value;
+        return value;
+    }
+
+    pub fn get_oncookiechange(instance: *runtime.Instance) anyerror!EventHandler {
+        return try ServiceWorkerGlobalScopeImpl.get_oncookiechange(instance);
+    }
+
+    pub fn set_oncookiechange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try ServiceWorkerGlobalScopeImpl.set_oncookiechange(instance, value);
+    }
+
+    pub fn get_onnotificationclick(instance: *runtime.Instance) anyerror!EventHandler {
+        return try ServiceWorkerGlobalScopeImpl.get_onnotificationclick(instance);
+    }
+
+    pub fn set_onnotificationclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try ServiceWorkerGlobalScopeImpl.set_onnotificationclick(instance, value);
+    }
+
+    pub fn get_onnotificationclose(instance: *runtime.Instance) anyerror!EventHandler {
+        return try ServiceWorkerGlobalScopeImpl.get_onnotificationclose(instance);
+    }
+
+    pub fn set_onnotificationclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try ServiceWorkerGlobalScopeImpl.set_onnotificationclose(instance, value);
     }
 
     pub fn get_oncanmakepayment(instance: *runtime.Instance) anyerror!EventHandler {
@@ -427,20 +419,28 @@ pub const ServiceWorkerGlobalScope = struct {
         try ServiceWorkerGlobalScopeImpl.set_onpaymentrequest(instance, value);
     }
 
-    pub fn get_onnotificationclick(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onnotificationclick(instance);
+    pub fn get_onperiodicsync(instance: *runtime.Instance) anyerror!EventHandler {
+        return try ServiceWorkerGlobalScopeImpl.get_onperiodicsync(instance);
     }
 
-    pub fn set_onnotificationclick(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onnotificationclick(instance, value);
+    pub fn set_onperiodicsync(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try ServiceWorkerGlobalScopeImpl.set_onperiodicsync(instance, value);
     }
 
-    pub fn get_onnotificationclose(instance: *runtime.Instance) anyerror!EventHandler {
-        return try ServiceWorkerGlobalScopeImpl.get_onnotificationclose(instance);
+    pub fn get_onpush(instance: *runtime.Instance) anyerror!EventHandler {
+        return try ServiceWorkerGlobalScopeImpl.get_onpush(instance);
     }
 
-    pub fn set_onnotificationclose(instance: *runtime.Instance, value: EventHandler) anyerror!void {
-        try ServiceWorkerGlobalScopeImpl.set_onnotificationclose(instance, value);
+    pub fn set_onpush(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try ServiceWorkerGlobalScopeImpl.set_onpush(instance, value);
+    }
+
+    pub fn get_onpushsubscriptionchange(instance: *runtime.Instance) anyerror!EventHandler {
+        return try ServiceWorkerGlobalScopeImpl.get_onpushsubscriptionchange(instance);
+    }
+
+    pub fn set_onpushsubscriptionchange(instance: *runtime.Instance, value: EventHandler) anyerror!void {
+        try ServiceWorkerGlobalScopeImpl.set_onpushsubscriptionchange(instance, value);
     }
 
     /// Extended attributes: [NewObject]

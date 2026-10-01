@@ -17,8 +17,6 @@ const CSSRule = @import("interfaces").CSSRule;
 const StylePropertyMap = @import("interfaces").StylePropertyMap;
 const CSSRuleList = @import("interfaces").CSSRuleList;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
-const CSSStyleDeclaration = @import("interfaces").CSSStyleDeclaration;
-const DOMString = @import("typedefs").DOMString;
 
 pub const CSSStyleRule = struct {
     pub const Meta = struct {
