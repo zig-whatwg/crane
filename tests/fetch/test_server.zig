@@ -23,6 +23,8 @@
 //!   GET  /trickle/{n}      - n chunks of "chunk\n", 100ms apart, chunked
 //!   GET  /bad-chunk        - one good chunk, then a malformed one
 //!   GET  /big/{kib}        - kib KiB of "x", as fast as the peer reads
+//!   GET  /split-head/{ms}  - the status line now, the rest of the header
+//!                            block and a 5-byte body {ms} ms later
 //!
 //! WebSocket Endpoints:
 //!   /ws/echo               - Echo all messages back
@@ -199,6 +201,16 @@ pub const TestServer = struct {
         if (std.mem.startsWith(u8, path, "/big/")) {
             const kib = std.fmt.parseInt(usize, path["/big/".len..], 10) catch 1;
             return sendBig(io, stream, @min(kib, 64 * 1024));
+        }
+        // What a peer behind Nagle does when its header block goes out in
+        // many small writes: the first segment now, the rest once the first
+        // is acknowledged - here, `ms` later.
+        if (std.mem.startsWith(u8, path, "/split-head/")) {
+            const ms = std.fmt.parseInt(u64, path["/split-head/".len..], 10) catch 50;
+            try writeAllToStream(io, stream, "HTTP/1.1 200 OK\r\n");
+            const wait_ms: u64 = @min(ms, 2_000);
+            clock.sleep(wait_ms * std.time.ns_per_ms);
+            return writeAllToStream(io, stream, "Content-Type: text/plain\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello");
         }
         if (std.mem.eql(u8, path, "/bad-chunk")) {
             try writeAllToStream(io, stream, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n6\r\nchunk\n\r\n");

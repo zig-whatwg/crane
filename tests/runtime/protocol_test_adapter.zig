@@ -71,7 +71,7 @@ pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}
 pub fn createWindowRealm(_: *const engine.WindowRealmOptions) Error!Context {
     return error.NotSupported;
 }
-pub fn destroyWindowRealm(_: Context) void {}
+pub fn destroyWindowRealm(_: Context, _: engine.WindowRealmEnd) void {}
 pub fn createWorkerRealm(_: *Agent, _: *const engine.WorkerRealmOptions) Error!engine.WorkerRealm {
     return error.NotSupported;
 }

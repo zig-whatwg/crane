@@ -41,3 +41,9 @@ also times out in Chrome, Firefox and Safari, but because `test_driver.minimize_
 window in wpt.fyi's automated runs - an infrastructure limit, not a test bug. Crane's test_driver
 implements `minimize_window` by marking the page hidden, and the file PASSES in Crane since the testdriver
 merge (822673be0, 2026-09-30) - the one file in the worklist all three shipping browsers time out on.
+
+## Candidates - not filed (the user decides on filing)
+
+| Test | Found | Why it cannot pass |
+|------|-------|--------------------|
+| `xhr/open-url-multi-window-4.htm` | 2026-09-30, flakes lane | Expects `error` then `loadend` at an XHR whose frame is removed mid-request, "according to my suggested spec text in whatwg/xhr#3" (its own comment) - a proposal never adopted. HTML "destroy a document" step 2 runs "abort a document", whose step 2 cancels the document's fetches "discarding any tasks queued for them, and discarding any further data received from the network for them", and step 7 removes its queued tasks without running them: no event fires, and the test can only time out. wpt.fyi: Edge TIMEOUT 0/1; Chrome, Firefox and Safari have no result. Crane has timed out on it since the flakes lane (the XHR is canceled at the removal); before, it fired events it must not (OK 0/1). `crane/fl-xhr-frame-removed-mid-request.html` pins the spec's answer. Still in the worklist. |

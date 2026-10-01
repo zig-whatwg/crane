@@ -38,6 +38,7 @@ const same_object = @import("same_object.zig");
 const fetch_body = @import("fetch_body.zig");
 const blob_bytes = @import("dom").blob_bytes;
 const global_settings = @import("dom").global_settings;
+const document_fetches = @import("dom").document_fetches;
 const infra = @import("infra");
 const encoding = @import("encoding");
 
@@ -961,10 +962,46 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     if (pending.body != null) body_taken = true;
     internal.pending_fetch = pending;
     pending.keep_alive.hold(instance);
+    // "Abort a document" reaches it through `live_pending`.
+    live_pending.append(std.heap.c_allocator, pending) catch {};
+    document_fetches.install(&abortFetchesIn);
 
     // Step 11.11: If this's timeout is not 0, end the fetch once it has run
     // that long.
     pending.armTimeout(xhr_state.timeout);
+}
+
+/// Every PendingFetch on this thread not yet freed, for `abortFetchesIn`.
+threadlocal var live_pending: std.ArrayListUnmanaged(*PendingFetch) = .empty;
+
+/// HTML "abort a document" step 2, for this interface: the request of every
+/// XMLHttpRequest whose relevant realm is `realm` - a document of it is being
+/// destroyed ("destroy a document" step 2) - is canceled, "discarding any
+/// tasks queued for them, and discarding any further data received from the
+/// network for them". No request error steps run and no event fires - "destroy
+/// a document" step 7 removes the document's queued tasks without running
+/// them - and the object keeps its state (XHR defines no steps of its own for
+/// a document that stops being fully active). Its fetch is terminated
+/// (Fetch "terminate", as a fetch group's termination does), and a response
+/// already in hand is dropped with its task. Installed into
+/// dom.document_fetches; HTMLIFrameElement's removing steps call it for every
+/// document "destroy a child navigable" destroys.
+///
+/// xhr/open-url-multi-window-4.htm expects `error` and `loadend` instead,
+/// after an XHR proposal (whatwg/xhr#3) that was never adopted; Edge, like
+/// this, fires nothing (wpt.fyi: TIMEOUT).
+fn abortFetchesIn(realm: runtime.Context) void {
+    // Backwards: a cancel may free its entry, which swapRemove replaces with
+    // one already visited.
+    var i = live_pending.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (i >= live_pending.items.len) continue;
+        const pending = live_pending.items[i];
+        if (pending.cancelled or pending.instance.ctx != realm) continue;
+        const internal = getInternal(pending.instance);
+        if (internal.pending_fetch == pending) internal.cancelFetch() else pending.cancel();
+    }
 }
 
 /// One asynchronous send()'s fetch, from `send()` until its body has been
@@ -1009,6 +1046,11 @@ const PendingFetch = struct {
     complete: bool = false,
     fetch_holds: bool = true,
     task_queued: bool = false,
+    /// A task of this request is on the stack (`run`, `timedOut`): it frees
+    /// this when it returns. Script it runs can end the request - abort(),
+    /// open(), or removing the frame whose document owns it
+    /// (`abortFetchesIn`) - and `cancel` must not free it under the task.
+    running: bool = false,
     /// When the fetch began, which is what `timeout` counts from.
     started_ms: i64,
     /// The XMLHttpRequest's wrapper, held strongly while this exists. XHR
@@ -1097,7 +1139,9 @@ const PendingFetch = struct {
         // A task runs from the event loop, not from script: it enters the
         // realm itself (a worker's, whose agent is not the page's) and ends
         // as a task there does.
+        self.running = true;
         engine.runTaskInRealm(self.instance.ctx, taskSteps, self) catch {};
+        self.running = false;
         self.maybeFree();
     }
 
@@ -1193,6 +1237,10 @@ const PendingFetch = struct {
         pipe.consumer = null;
     }
 
+    /// How long a timeout waits, at most, for a response that has started
+    /// arriving (`async_fetch.catchUp`).
+    const catch_up_budget_ms = 20;
+
     /// Step 11.11's timer: the fetch has run for this's timeout. Set the
     /// timed out flag and terminate the fetch; its processResponse would then
     /// run the timeout steps, which this does instead.
@@ -1202,9 +1250,15 @@ const PendingFetch = struct {
         // The response may be in and unread: a long task can hold the loop
         // past the deadline with it waiting in the socket. The fetch and the
         // timer race in parallel, and the fetch finished first, so give the
-        // network its step before calling it a timeout. (Only while the realm
-        // lives: a sweep inside the pump would end this very call.)
-        if (alive(self)) _ = fetch_mod.algorithms.async_fetch.pump();
+        // network its step before calling it a timeout - and, INTERIM, while
+        // the response is arriving, the reads a network thread would have
+        // made during the long task (async_fetch.catchUp, bounded, inert).
+        // (Only while the realm lives: a sweep inside the pump would end this
+        // very call.)
+        if (alive(self)) {
+            _ = fetch_mod.algorithms.async_fetch.pump();
+            fetch_mod.algorithms.async_fetch.catchUp(&self.fetch, catch_up_budget_ms);
+        }
         if (self.cancelled or self.complete) return;
         // A response in, and its body not yet all read: in time only if the
         // body has arrived.
@@ -1223,6 +1277,8 @@ const PendingFetch = struct {
         }
         defer self.maybeFree();
         // The timer's task: in the XHR's realm, ended as a task there is.
+        self.running = true;
+        defer self.running = false;
         engine.runTaskInRealm(instance.ctx, timeoutSteps, instance) catch {};
     }
 
@@ -1262,8 +1318,13 @@ const PendingFetch = struct {
     /// Free once nothing holds this: the fetch has let go, no task is
     /// queued, and there is nothing more to read.
     fn maybeFree(self: *PendingFetch) void {
-        if (self.fetch_holds or self.task_queued) return;
+        if (self.fetch_holds or self.task_queued or self.running) return;
         if (!self.cancelled and !self.complete) return;
+        for (live_pending.items, 0..) |p, i| {
+            if (p != self) continue;
+            _ = live_pending.swapRemove(i);
+            break;
+        }
         self.releasePipe();
         self.keep_alive.release();
         self.disarmTimeout();

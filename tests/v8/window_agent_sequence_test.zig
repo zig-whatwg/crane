@@ -59,7 +59,7 @@ fn oneAgent(from_snapshot: bool) !void {
         .origin = "https://example.test",
         .create_global_object = WindowHost.createGlobalObject,
     });
-    defer protocol.destroyWindowRealm(realm);
+    defer protocol.destroyWindowRealm(realm, .global_detached);
 
     var reports: Reports = .{};
     const result = try protocol.evaluateClassicScriptToString(

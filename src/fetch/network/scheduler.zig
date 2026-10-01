@@ -189,6 +189,16 @@ pub const NetworkScheduler = struct {
         }
     }
 
+    /// Wait at most `ms` for a socket of any transfer to be ready, moving no
+    /// transfer: `pump` does the reading. Returns at once with nothing in
+    /// flight. The kick's wait (`kick_wait_ms`), for `async_fetch.catchUp`.
+    pub fn waitForSockets(self: *NetworkScheduler, ms: u32) void {
+        const multi = self.multi orelse return;
+        if (self.jobs.items.len == 0) return;
+        var ready: c_int = 0;
+        _ = curl.multi_poll(multi, @intCast(ms), &ready);
+    }
+
     /// End `job` now. Its callback never runs, and what it received is
     /// dropped. Safe from a completion callback, including for a job that
     /// ended in the same `pump` and has not been delivered yet. `job` must not

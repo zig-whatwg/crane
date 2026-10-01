@@ -1398,7 +1398,7 @@ pub const Context = struct {
         // its context released - Blink's LocalWindowProxy::DisposeContext
         // order.
         if (self.realm) |realm| {
-            engine.destroyWindowRealm(realm);
+            engine.destroyWindowRealm(realm, .global_detached);
             self.realm = null;
         }
 

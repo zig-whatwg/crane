@@ -529,3 +529,118 @@ test "a body nobody reads pauses its transfer at the high-water mark, and readin
     try testing.expect(reader.finished);
     try testing.expectEqual(size, reader.received);
 }
+
+/// A streamed fetch's client that keeps the fetch's handle for as long as the
+/// fetch lives - as XMLHttpRequest's PendingFetch does - for `catchUpWith`.
+const HeldFetch = struct {
+    reader: StreamingReader = .{},
+    fetch: ?*AsyncFetch = null,
+
+    fn client(self: *HeldFetch) AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = StreamingReader.alive, .gone = gone, .finished = finished };
+    }
+    fn done(context: *anyopaque, result: algorithms.FetchError!algorithms.FetchResult) void {
+        const self: *HeldFetch = @ptrCast(@alignCast(context));
+        StreamingReader.done(&self.reader, result);
+    }
+    fn gone(context: *anyopaque) void {
+        const self: *HeldFetch = @ptrCast(@alignCast(context));
+        self.fetch = null;
+        StreamingReader.gone(&self.reader);
+    }
+    fn finished(context: *anyopaque) void {
+        const self: *HeldFetch = @ptrCast(@alignCast(context));
+        self.fetch = null;
+        StreamingReader.onFinished(&self.reader);
+    }
+    fn deinit(self: *HeldFetch) void {
+        if (self.fetch) |f| f.terminate();
+        self.fetch = null;
+        self.reader.deinit();
+    }
+};
+
+test "catchUp reads out a response that had started arriving during a long task" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var held: HeldFetch = .{};
+    defer held.deinit();
+    held.fetch = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/split-head/150"), .{}, &scheduler, held.client());
+
+    // The long task: nothing reads the socket while the status line waits in
+    // it and the rest of the header block is still to come.
+    clock.sleep(40 * std.time.ns_per_ms);
+    // The timeout's one network step: the header block is not complete.
+    _ = async_fetch.pumpWith(&scheduler);
+    try testing.expect(held.reader.response == null);
+
+    // What a network thread would have read meanwhile: the rest of the
+    // response, as it arrives, within the budget.
+    async_fetch.catchUpWith(&scheduler, &held.fetch, 500);
+    const response = held.reader.response orelse return error.TestUnexpectedResult;
+    try testing.expectEqual(@as(u16, 200), response.status);
+    // The whole response: its body ended too, and the fetch is over.
+    try testing.expect(held.reader.finished);
+    try testing.expect(held.fetch == null);
+    const pipe = response.body.?.pipe.?;
+    try testing.expectEqual(fetch.internal.body_pipe.State.closed, pipe.state);
+    const body = try pipe.take();
+    defer testing.allocator.free(body);
+    try testing.expectEqualStrings("hello", body);
+}
+
+test "catchUp does not wait for a response that has not started arriving" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var held: HeldFetch = .{};
+    defer held.deinit();
+    held.fetch = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/delay/1"), .{}, &scheduler, held.client());
+    clock.sleep(20 * std.time.ns_per_ms);
+    _ = async_fetch.pumpWith(&scheduler);
+
+    const before = clock.monotonicMillis();
+    async_fetch.catchUpWith(&scheduler, &held.fetch, 200);
+    // Nothing had arrived: the timeout is decided as it always was.
+    try testing.expect(clock.monotonicMillis() - before < 20);
+    try testing.expect(held.reader.response == null);
+    try testing.expect(held.fetch != null);
+}
+
+test "catchUp never runs past its budget" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var held: HeldFetch = .{};
+    defer held.deinit();
+    // Headers now, then a chunk every 100 ms: arriving for a second.
+    held.fetch = try AsyncFetch.startStreaming(testing.allocator, try requestFor(server, "/trickle/10"), .{}, &scheduler, held.client());
+    const Until = struct {
+        fn headed(ctx: *anyopaque) bool {
+            const h: *HeldFetch = @ptrCast(@alignCast(ctx));
+            return h.reader.response != null;
+        }
+    };
+    turnUntil(&scheduler, 5_000, Until.headed, &held);
+    try testing.expect(held.reader.response != null);
+
+    const before = clock.monotonicMillis();
+    async_fetch.catchUpWith(&scheduler, &held.fetch, 30);
+    const took = clock.monotonicMillis() - before;
+    try testing.expect(took >= 25);
+    try testing.expect(took < 80);
+    try testing.expect(!held.reader.finished);
+}
