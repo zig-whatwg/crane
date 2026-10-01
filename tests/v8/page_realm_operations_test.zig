@@ -1495,6 +1495,141 @@ test "protocol: traceChild and forgetTracedChild leave no global handle behind" 
     try expectEval(w, "delete globalThis.owner && delete globalThis.child", "true");
 }
 
+/// A Headers made the way an impl makes a platform object (its interface's
+/// constructor, from Zig): script has not seen it, so it has no wrapper.
+fn unwrappedHeaders(r: runtime.Context) !*runtime.Instance {
+    const Init = @typeInfo(@TypeOf(interfaces.Headers.call_constructor)).@"fn".params[1].type.?;
+    return interfaces.Headers.call_constructor(r, Init.notPassed());
+}
+
+test "protocol: an owner script has not seen keeps its traced child, and draws the edge on its wrapper once made" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // A Zig-made event before its dispatch, or a constructor's instance
+    // before the binding caches `this`: no wrapper yet.
+    const owner = Watched.of(try unwrappedHeaders(w));
+    const child = Watched.of(try platformObjectIn(w, "new Headers([['child', '1']])"));
+    protocol.traceChild(owner.instance, child.instance, .{ .name = "child" });
+    // traceChild makes no wrapper for it - one made now would be the
+    // collector's to free the owner with, and a constructor would replace it.
+    try std.testing.expect(!protocol.hasWrapper(owner.instance));
+    collectTwice();
+    try std.testing.expect(owner.alive());
+    try std.testing.expect(child.alive());
+
+    // Script sees the owner: the edge is drawn on the wrapper made for it.
+    {
+        const wrapped = try protocol.retainValue(w, .{ .instance = owner.instance });
+        defer wrapped.release();
+        try setGlobal(w, "owner", wrapped.value);
+    }
+    collectTwice();
+    try std.testing.expect(owner.alive());
+    try std.testing.expect(child.alive());
+
+    // The strong hold went to the edge, so the child goes with the owner.
+    try expectEval(w, "delete globalThis.owner", "true");
+    collectTwice();
+    try std.testing.expect(!owner.alive());
+    try std.testing.expect(!child.alive());
+}
+
+test "protocol: forgetTracedChild ends an edge that waits for its owner's wrapper, and a slot keeps one child" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    const owner = Watched.of(try unwrappedHeaders(w));
+    const first = Watched.of(try platformObjectIn(w, "new Headers()"));
+    const second = Watched.of(try platformObjectIn(w, "new Headers()"));
+    const other = Watched.of(try platformObjectIn(w, "new Headers()"));
+    protocol.traceChild(owner.instance, first.instance, .{ .name = "child" });
+    protocol.traceChild(owner.instance, other.instance, .{ .name = "other" });
+    protocol.traceChild(owner.instance, second.instance, .{ .name = "child" });
+    collectTwice();
+    try std.testing.expect(!first.alive());
+    try std.testing.expect(second.alive());
+    try std.testing.expect(other.alive());
+
+    protocol.forgetTracedChild(owner.instance, .{ .name = "child" });
+    protocol.forgetTracedChild(owner.instance, .{ .name = "never" });
+    collectTwice();
+    try std.testing.expect(!second.alive());
+    try std.testing.expect(other.alive());
+    try std.testing.expect(!protocol.hasWrapper(owner.instance));
+}
+
+test "protocol: an owner freed unwrapped lets its waiting edges go" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    const waiting = v8.wrapper_cache_mod.liveDeferredEdgeCount();
+
+    // A Zig-made event that never reaches script: its teardown ends its
+    // edges (forgetTracedChild), and it is freed - its child with them.
+    const owner = try unwrappedHeaders(w);
+    const child = Watched.of(try platformObjectIn(w, "new Headers()"));
+    protocol.traceChild(owner, child.instance, .{ .name = "child" });
+    try std.testing.expectEqual(waiting + 1, v8.wrapper_cache_mod.liveDeferredEdgeCount());
+    protocol.forgetTracedChild(owner, .{ .name = "child" });
+    runtime.Instance.releaseIfUnwrapped(owner, runtime.SlabAllocator.generationOf(owner));
+    try std.testing.expectEqual(waiting, v8.wrapper_cache_mod.liveDeferredEdgeCount());
+    collectTwice();
+    try std.testing.expect(!child.alive());
+
+    // An owner freed without ending them: the next edge drawn in its realm
+    // finds its slot's generation moved on and lets them go too.
+    const careless = try unwrappedHeaders(w);
+    const orphan = Watched.of(try platformObjectIn(w, "new Headers()"));
+    protocol.traceChild(careless, orphan.instance, .{ .name = "child" });
+    runtime.Instance.releaseIfUnwrapped(careless, runtime.SlabAllocator.generationOf(careless));
+    const next = try unwrappedHeaders(w);
+    const kept = Watched.of(try platformObjectIn(w, "new Headers()"));
+    protocol.traceChild(next, kept.instance, .{ .name = "child" });
+    try std.testing.expectEqual(waiting + 1, v8.wrapper_cache_mod.liveDeferredEdgeCount());
+    collectTwice();
+    try std.testing.expect(!orphan.alive());
+    try std.testing.expect(kept.alive());
+    protocol.forgetTracedChild(next, .{ .name = "child" });
+    runtime.Instance.releaseIfUnwrapped(next, runtime.SlabAllocator.generationOf(next));
+}
+
+test "protocol: edges waiting for an owner's wrapper leave no global handle behind" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    const isolate = isolate_once.?;
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    const owner = try unwrappedHeaders(w);
+    const child = try platformObjectIn(w, "globalThis.child = new Headers()");
+    // The first round makes what every later one reuses.
+    protocol.traceChild(owner, child, .{ .name = "child" });
+    protocol.forgetTracedChild(owner, .{ .name = "child" });
+    collectTwice();
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const rounds = 32;
+    for (0..rounds) |_| {
+        protocol.traceChild(owner, child, .{ .name = "child" });
+        protocol.traceChild(owner, child, .{ .name = "child" });
+        protocol.forgetTracedChild(owner, .{ .name = "child" });
+    }
+    collectTwice();
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    if (after -| before >= handle_bytes) {
+        std.debug.print("global handles {d} -> {d} bytes over {d} rounds ({d} bytes a handle)\n", .{ before, after, rounds, handle_bytes });
+        return error.HandlesLeaked;
+    }
+    try expectEval(w, "delete globalThis.child", "true");
+}
+
 test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whichever realm queued them" {
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);

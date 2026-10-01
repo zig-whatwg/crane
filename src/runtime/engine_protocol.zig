@@ -1297,27 +1297,37 @@ pub const TracedSlot = struct { name: []const u8 };
 /// `Member<>`; WebKit: `visitChildren`; V8: a private property on `owner`'s
 /// wrapper; JavaScriptCore: an opaque root / `JSManagedValue` owner.
 ///
-/// Makes either wrapper if script has not seen it yet, each in its own
-/// relevant realm. Tracing a new child into an occupied slot replaces the
-/// edge. Does nothing when `owner`'s realm has no engine realm left.
+/// Makes `child`'s wrapper if script has not seen it yet, in its relevant
+/// realm - never `owner`'s (a Window's wrapper is its global object). An
+/// owner script has not seen yet - a Zig-made event before its dispatch, a
+/// constructor's instance before the binding caches `this` - holds `child`
+/// STRONGLY until its wrapper is made, and the edge is drawn on that wrapper
+/// then: a wrapper made here would be the collector's to free the owner
+/// with, and a constructor's `this` would replace it. An owner that can be
+/// freed without ever being wrapped ends such an edge in its teardown
+/// (`forgetTracedChild`). Tracing a new child into an occupied slot replaces
+/// the edge. Does nothing when `owner`'s realm has no engine realm left.
 ///
 /// The edge keeps `child` only while `owner`'s wrapper lives, so that wrapper
 /// must live as long as `owner` does: true of a Window (its global object),
 /// of an owner script holds, and of anything a traced edge itself keeps. Not
-/// of an owner the host keeps while the collector may take its wrapper, and
-/// not of one script has never seen - the wrapper made for it here would be
-/// the only thing keeping it, and the collector would free it. Never call it
-/// while the collector runs (from a finalizer, or a teardown one starts).
+/// of an owner the host keeps while the collector may take its wrapper.
+/// Never call it while the collector runs (from a finalizer, or a teardown
+/// one starts).
 /// OWNED: nothing - the edge dies with `owner`'s wrapper.
 pub inline fn traceChild(owner: *Instance, child: *Instance, slot: TracedSlot) void {
     impl.traceChild(owner, child, slot);
 }
 
 /// End the edge `traceChild` drew from `owner` in `slot` (the member was
-/// cleared: Selection's range removed). A no-op when there is none, or when
-/// `owner` has no wrapper; never makes one. Teardown need not call it: the
-/// edge dies with the wrapper - and, like `traceChild`, it must not run while
-/// the collector does.
+/// cleared: Selection's range removed), or the one waiting for `owner`'s
+/// wrapper. A no-op when there is none; never makes a wrapper. The teardown
+/// of an owner script has seen need not call it - the edge dies with the
+/// wrapper. An owner that can be freed unwrapped calls it from its teardown,
+/// where it only lets the waiting edge go: an owner the collector frees has
+/// no wrapper left by then, so nothing touches the engine while the collector
+/// runs. Anywhere else, like `traceChild`, it must not run while the
+/// collector does.
 pub inline fn forgetTracedChild(owner: *Instance, slot: TracedSlot) void {
     impl.forgetTracedChild(owner, slot);
 }

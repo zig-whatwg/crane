@@ -429,6 +429,14 @@ pub fn liveEntryCount() usize {
     return total;
 }
 
+/// The edges every live cache on this thread holds for owners script has
+/// not seen yet (`WrapperCache.deferEdge`), for tests and diagnostics.
+pub fn liveDeferredEdgeCount() usize {
+    var total: usize = 0;
+    for (live_caches.items) |cache| total += cache.deferredEdgeCount();
+    return total;
+}
+
 /// Whether a live cache other than `except` holds a wrapper for this very
 /// instance - same slot, same generation.
 fn wrappedElsewhere(instance: *runtime.Instance, except: *const WrapperCache) bool {
@@ -621,7 +629,117 @@ pub const WrapperCache = struct {
     /// does not inherit one. `set` moves a hold onto the new wrapper's entry.
     pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, u64) = .empty,
 
+    /// Edges `traceChild` drew from an owner script had not seen yet
+    /// (protocol_tracing.zig): each child's wrapper held strongly here until
+    /// the owner's wrapper is made - `set` draws the edges on it - or this
+    /// realm ends. By slab generation, so an owner freed unwrapped and its
+    /// address reissued leaves nothing to a newcomer.
+    edges_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, DeferredEdges) = .empty,
+
     const Self = @This();
+
+    /// One owner's edges waiting for its wrapper.
+    pub const DeferredEdges = struct {
+        generation: u64,
+        edges: std.ArrayListUnmanaged(DeferredEdge) = .empty,
+
+        fn dispose(self: *DeferredEdges, allocator: std.mem.Allocator) void {
+            for (self.edges.items) |edge| edge.dispose(allocator);
+            self.edges.deinit(allocator);
+        }
+    };
+
+    /// A private key (owned) and the child's wrapper, a strong Global
+    /// (owned): what `v8_Object_SetPrivateRef` will set on the owner.
+    pub const DeferredEdge = struct {
+        key: []u8,
+        child: *v8.Value,
+
+        fn dispose(self: DeferredEdge, allocator: std.mem.Allocator) void {
+            v8.v8_Global_Dispose(self.child);
+            allocator.free(self.key);
+        }
+    };
+
+    /// Hold `child` - a Global the cache takes over, on failure too - for
+    /// `owner`, whose wrapper is not made yet, under `key`; until then the
+    /// hold is strong. Replaces an edge in the same key.
+    pub fn deferEdge(self: *Self, owner: *runtime.Instance, key: []const u8, child: *v8.Value) error{OutOfMemory}!void {
+        errdefer v8.v8_Global_Dispose(child);
+        self.pruneDeferredEdges();
+        const generation = runtime.SlabAllocator.generationOf(owner);
+        const gop = try self.edges_before_wrap.getOrPut(self.allocator, owner);
+        if (!gop.found_existing) {
+            gop.value_ptr.* = .{ .generation = generation };
+        } else if (gop.value_ptr.generation != generation) {
+            // A dead owner's edges at a reissued address: not the newcomer's.
+            gop.value_ptr.dispose(self.allocator);
+            gop.value_ptr.* = .{ .generation = generation };
+        }
+        for (gop.value_ptr.edges.items) |*edge| {
+            if (!std.mem.eql(u8, edge.key, key)) continue;
+            v8.v8_Global_Dispose(edge.child);
+            edge.child = child;
+            return;
+        }
+        const owned_key = try self.allocator.dupe(u8, key);
+        errdefer self.allocator.free(owned_key);
+        try gop.value_ptr.edges.append(self.allocator, .{ .key = owned_key, .child = child });
+    }
+
+    /// End a deferred edge (engine.forgetTracedChild on an owner script has
+    /// not seen). A no-op when there is none.
+    pub fn forgetDeferredEdge(self: *Self, owner: *runtime.Instance, key: []const u8) void {
+        const deferred = self.edges_before_wrap.getPtr(owner) orelse return;
+        for (deferred.edges.items, 0..) |edge, i| {
+            if (!std.mem.eql(u8, edge.key, key)) continue;
+            edge.dispose(self.allocator);
+            _ = deferred.edges.swapRemove(i);
+            return;
+        }
+    }
+
+    /// The owner's wrapper is made: draw the edges waiting for it, and let
+    /// the strong holds go. Needs a current context, which every wrap has.
+    fn drawDeferredEdges(self: *Self, instance: *runtime.Instance, generation: u64, wrapper: *v8.Object) void {
+        var kv = self.edges_before_wrap.fetchRemove(instance) orelse return;
+        defer kv.value.dispose(self.allocator);
+        if (kv.value.generation != generation) return;
+        for (kv.value.edges.items) |edge| {
+            v8.v8_Object_SetPrivateRef(wrapper, edge.key.ptr, @intCast(edge.key.len), edge.child);
+        }
+    }
+
+    /// Drop the edges of owners freed unwrapped whose teardown did not end
+    /// them (their slot's generation moved on): a backstop - an owner that
+    /// can be freed unwrapped ends its edges in its teardown
+    /// (engine.forgetTracedChild).
+    fn pruneDeferredEdges(self: *Self) void {
+        var iter = self.edges_before_wrap.iterator();
+        while (iter.next()) |kv| {
+            if (runtime.SlabAllocator.generationOf(kv.key_ptr.*) == kv.value_ptr.generation) continue;
+            kv.value_ptr.dispose(self.allocator);
+            // Removing during iteration: the map's own tombstone removal
+            // leaves the iterator valid.
+            self.edges_before_wrap.removeByPtr(kv.key_ptr);
+        }
+    }
+
+    /// The edges waiting for their owners' wrappers, in this cache.
+    pub fn deferredEdgeCount(self: *const Self) usize {
+        var total: usize = 0;
+        var iter = self.edges_before_wrap.valueIterator();
+        while (iter.next()) |deferred| total += deferred.edges.items.len;
+        return total;
+    }
+
+    /// Every deferred edge's hold, at the realm's end.
+    fn disposeDeferredEdges(self: *Self) void {
+        var iter = self.edges_before_wrap.valueIterator();
+        while (iter.next()) |deferred| deferred.dispose(self.allocator);
+        self.edges_before_wrap.deinit(self.allocator);
+        self.edges_before_wrap = .empty;
+    }
 
     /// Initialize a new wrapper cache
     ///
@@ -792,6 +910,7 @@ pub const WrapperCache = struct {
         self.unregister();
         self.cache.deinit();
         self.pending_before_wrap.deinit(self.allocator);
+        self.disposeDeferredEdges();
     }
 
     /// Clean up cache without calling onObjectFreed callbacks.
@@ -853,6 +972,7 @@ pub const WrapperCache = struct {
         self.unregister();
         self.cache.deinit();
         self.pending_before_wrap.deinit(self.allocator);
+        self.disposeDeferredEdges();
     }
 
     /// Join `live_caches` - on first use, when this cache's address is
@@ -951,6 +1071,8 @@ pub const WrapperCache = struct {
         if (self.pending_before_wrap.fetchRemove(instance)) |held| {
             if (held.value == entry.original_generation) entry.holds.pending_activity = true;
         }
+        // Edges traced from the instance before script saw it.
+        self.drawDeferredEdges(instance, entry.original_generation, wrapper);
         if (shouldBeStrong(entry)) {
             entry.strong = true;
         } else {
@@ -997,6 +1119,7 @@ pub const WrapperCache = struct {
         }
 
         self.cache.clearRetainingCapacity();
+        self.disposeDeferredEdges();
     }
 
     /// Mark an entry as already cleaned (instance deinit already called)
