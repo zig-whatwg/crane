@@ -230,7 +230,22 @@ pub fn isTestFile(path: []const u8) bool {
 }
 
 /// Parse command-line arguments
+/// What `parseArgsDiagnosed` could not parse.
+pub const Diagnostic = struct {
+    /// The first argument that looked like an option and was not one.
+    unknown_option: []const u8 = "",
+};
+
 pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Options {
+    var diag: Diagnostic = .{};
+    return parseArgsDiagnosed(allocator, args, &diag);
+}
+
+/// `parseArgs`, saying which argument it rejected. An argument that starts
+/// with '-' and is no option here is `error.UnknownOption`, never ignored: an
+/// ignored flag leaves a run that does something other than what was asked,
+/// and the default run is the whole in-scope corpus.
+pub fn parseArgsDiagnosed(allocator: std.mem.Allocator, args: []const []const u8, diag: *Diagnostic) !Options {
     var options = Options.init(allocator);
     errdefer options.deinit();
 
@@ -243,6 +258,8 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
         } else if (std.mem.eql(u8, arg, "--quiet") or std.mem.eql(u8, arg, "-q")) {
             // Quiet mode: minimal output (progress bar only)
             options.verbose = false;
+        } else if (std.mem.eql(u8, arg, "--verbose")) {
+            options.verbose = true;
         } else if (std.mem.startsWith(u8, arg, "--parallel=")) {
             const value = arg["--parallel=".len..];
             options.parallel = std.fmt.parseInt(u32, value, 10) catch 0;
@@ -278,7 +295,10 @@ pub fn parseArgs(allocator: std.mem.Allocator, args: []const []const u8) !Option
             const value = arg["--stall-limit-ms=".len..];
             options.stall_limit_ms = std.fmt.parseInt(u64, value, 10) catch
                 stall_watchdog.default_stall_limit_ms;
-        } else if (!std.mem.startsWith(u8, arg, "-")) {
+        } else if (std.mem.startsWith(u8, arg, "-")) {
+            diag.unknown_option = arg;
+            return error.UnknownOption;
+        } else {
             // Directory or file filter
             // Check if it's a specific file (has extension) or a directory
             if (isTestFile(arg)) {
@@ -310,6 +330,25 @@ test "parseArgs defaults" {
     try testing.expectEqual(@as(usize, 0), options.limit);
     try testing.expect(!options.supervise);
     try testing.expect(!options.isChild());
+}
+
+test "parseArgs rejects an option it does not know, and names it" {
+    // An unknown flag used to be ignored, so a typo ran the whole in-scope
+    // corpus serially - 9,278 runs, outside every runner budget - instead of
+    // what was asked (2026-10-01: `--allocator-self-check` on a runner built
+    // before the flag existed).
+    const testing = std.testing;
+    var diag: Diagnostic = .{};
+    try testing.expectError(error.UnknownOption, parseArgsDiagnosed(testing.allocator, &.{ "dom/", "--paralel=3" }, &diag));
+    try testing.expectEqualStrings("--paralel=3", diag.unknown_option);
+    try testing.expectError(error.UnknownOption, parseArgs(testing.allocator, &.{"-x"}));
+}
+
+test "parseArgs: --verbose, which zig build wpt passes, is an option" {
+    const testing = std.testing;
+    var options = try parseArgs(testing.allocator, &.{ "--quiet", "--verbose" });
+    defer options.deinit();
+    try testing.expect(options.verbose);
 }
 
 test "parseArgs collects directory filters and scalar options" {
@@ -523,18 +562,15 @@ test "only a supervised child appends to an existing journal" {
     try testing.expect(child.appendsToJournal());
 }
 
-test "parseArgs ignores unrecognised flags" {
+test "parseArgs never reads an unrecognised flag as a filter" {
     const testing = std.testing;
     const allocator = testing.allocator;
 
     // A leading dash means "an option", so an unknown one must not be mistaken
-    // for a directory filter and silently narrow the run to nothing.
+    // for a directory filter and silently narrow the run to nothing - nor be
+    // ignored, which widens it to everything: it is an error.
     const args = [_][]const u8{"--not-a-real-flag"};
-    var options = try parseArgs(allocator, &args);
-    defer options.deinit();
-
-    try testing.expectEqual(@as(usize, 0), options.filters.items.len);
-    try testing.expectEqual(@as(usize, 0), options.specific_files.items.len);
+    try testing.expectError(error.UnknownOption, parseArgs(allocator, &args));
 }
 
 test "isTestFile" {

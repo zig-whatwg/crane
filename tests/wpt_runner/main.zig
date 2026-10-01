@@ -1293,7 +1293,14 @@ fn run(init: std.process.Init) !u8 {
 
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 
-    var options = try parseArgs(allocator, args[1..]);
+    var diag: options_mod.Diagnostic = .{};
+    var options = options_mod.parseArgsDiagnosed(allocator, args[1..], &diag) catch |err| switch (err) {
+        error.UnknownOption => {
+            print("wpt_runner: unknown option {s}\n", .{diag.unknown_option});
+            return 2;
+        },
+        else => return err,
+    };
     defer options.deinit();
 
     // Set verbose mode for log filtering
