@@ -1,0 +1,12 @@
+# Architecture: A stringifier is an operation, and its result is the binding's
+
+**Date**: 2026-10-01
+**Lesson**: A WebIDL stringifier is bound as the operation `toString()`, through the same callback as every other operation, and the binding frees the non-empty string it returns. A stub stringifier that returns the literal `"[object]"` hands `Allocator.free` a pointer into the binary's read-only data, and the process dies on the first `String(x)`.
+
+**Why**: The generated method table maps `toString` to the impl's `serialize` (`.{ "toString", "serialize", 0 }`), so `MethodCallback("serialize")` runs it and `callMethodWithArgs` frees a returned `[]const u8`/USVString of non-zero length - the rule every operation follows ([The binding frees an operation's arguments before it converts its result](architecture-the-binding-frees-an-operation-s-arguments-before-it-converts-its-result.md), [A USVString getter's result is freed by the binding](architecture-a-usvstring-getter-s-result-is-freed-by-the-binding.md)). `serialize` carries no `call_` prefix, so an audit that reads only `get_`/`call_` functions never looks at it, and `toStringCallback` in interface.zig - which does NOT free - looks like the path but is never installed.
+
+**What Happened**: codegen's stub for every stringifier returned `"[object]"`. Twelve impls still had it (DOMMatrixReadOnly, CSSStyleValue, CSSTransformComponent, five CSSParser*, three Trusted*, Selection). `String(new DOMMatrix())` and `String(getSelection())` each ended the page with a bus error in `mem.Allocator.free`'s `@memset(bytes, undefined)` under `MethodCallback("serialize")`. No sweep showed it: the 0.1 worklist holds no css-typed-om, geometry or selection stringification test, so the crash waited for the first page that stringified one of them. The Trusted* stringifiers' real answer (their [[Data]]) and TrustedScriptURL's toJSON returned the object's own string - a double free per call once a policy can make one.
+
+**Fix**: every `serialize` returns memory from `instance.ctx.allocator` - a copy of the placeholder for a stub, a copy of [[Data]] for the Trusted* types. Red: crane/sm-stringifier-results.html (CRASH on main) and crane/sm-selection-stringifier.html.
+
+**Takeaway**: **Every function the generated interface binds is an operation or an accessor, whatever its name, and its returned string is the binding's to free: a literal, a view or a kept string is a crash waiting for its first caller. Audit by the method table, not by prefix.**

@@ -57,6 +57,8 @@ pub fn call_static_parse(instance: *runtime.Instance, property: runtime.USVStrin
 
 /// Stringifier - serialize method for toString
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return "[object]";
+    // TODO: CSS Typed OM "serialize a CSSStyleValue" (https://drafts.css-houdini.org/css-typed-om-1/#stylevalue-serialization). Until then, the placeholder - as a copy: the binding frees
+    // the string toString() returns, and freeing a literal faulted in
+    // Allocator.free's memset.
+    return instance.ctx.allocator.dupe(u8, "[object]");
 }

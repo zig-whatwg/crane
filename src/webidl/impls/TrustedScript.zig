@@ -102,6 +102,12 @@ pub fn isValid(instance: *runtime.Instance) bool {
 
 /// Stringifier - serialize method for toString
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return "[object]";
+    // "The stringification behavior is to return the value of this's [[Data]]
+    // internal slot" - as a copy: the binding frees the string toString()
+    // returns. It returned the literal "[object]", which the binding's free
+    // faulted on.
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return "";
+    const inner = internal.inner orelse return "";
+    return instance.ctx.allocator.dupe(u8, inner.toString());
 }

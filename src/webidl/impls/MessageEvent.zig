@@ -26,6 +26,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
 const clock = @import("clock");
+const event_construction = @import("dom").event_construction;
 const MessageEvent = interfaces.MessageEvent;
 
 pub const State = MessageEvent.State;
@@ -107,6 +108,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     // Clean up the cloned JSValue data (if it's an owned string)
     // This was cloned in call_constructor to take ownership using ctx.allocator
     state.own.data.deinit(instance.ctx.allocator);
+    // The event's own copy of lastEventId (empty unless a constructor's
+    // dictionary or initMessageEvent gave one).
+    state.own.lastEventId.deinit(instance.ctx.allocator);
 
     if (state.own._internal) |internal| {
         // Free origin string if we own it (allocated in createPostMessageEvent)
@@ -171,7 +175,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         } else {
             state.own.origin = "";
         }
-        state.own.lastEventId = if (init_dict.lastEventId) |id| id else runtime.DOMString.initEmpty();
+        // The dictionary's string too: a copy the event owns.
+        state.own.lastEventId = if (init_dict.lastEventId) |id| try id.clone(ctx.allocator) else runtime.DOMString.initEmpty();
         // "source": the dictionary's - a WindowProxy, MessagePort or
         // ServiceWorker, or null - as initMessageEvent sets it. The event
         // holds its wrapper: nothing else may. `new MessageEvent(t, {source:
@@ -332,35 +337,68 @@ fn makePortsArray(instance: *runtime.Instance) !void {
 /// Operation: initMessageEvent (legacy)
 /// Spec: https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-initmessageevent
 ///
-/// This is a legacy method for initializing MessageEvent.
-/// New code should use the constructor instead.
+/// "The initMessageEvent() method must initialize the event in a manner
+/// analogous to the similarly-named initEvent() method": DOM's initEvent
+/// steps - 1. if this's dispatch flag is set, return; 2. initialize this with
+/// type, bubbles and cancelable - and then this interface's own attributes.
+///
+/// Every argument is the binding's, freed when this returns: the event keeps
+/// copies of its strings (Event's initEvent copies the type) and a hold of
+/// its own on data and source. Storing the `type` argument itself made every
+/// read of `type` a read of freed memory and the event's teardown a double
+/// free - four "Double free detected" per run of
+/// html/webappapis/scripting/events/messageevent-constructor.https.html.
 pub fn call_initMessageEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), data: webidl.Opt(runtime.JSValue), origin: webidl.Opt(runtime.USVString), lastEventId: webidl.Opt(runtime.DOMString), source: webidl.Opt(?typedefs.MessageEventSource), ports: webidl.Opt(runtime.JSValue)) anyerror!void {
+    const allocator = instance.ctx.allocator;
     const state = instance.getState(State);
 
-    // Update event properties (Event fields in state.base.own)
-    state.base.own.type = @"type";
-    state.base.own.bubbles = if (bubbles.was_passed) bubbles.value else false;
-    state.base.own.cancelable = if (cancelable.was_passed) cancelable.value else false;
+    // initEvent step 1: an event being dispatched is left as it is.
+    if (event_construction.dispatchFlag(instance)) return;
 
-    // MessageEvent fields in state.own. What the event held before is let
-    // go, and it takes its own hold on the new values: the arguments are the
-    // binding's, freed when this returns.
+    // The copies first - the fallible part - so nothing is half set.
+    var next_last_event_id = if (lastEventId.was_passed) try lastEventId.value.clone(allocator) else runtime.DOMString.initEmpty();
+    errdefer next_last_event_id.deinit(allocator);
+    const next_origin: []const u8 = if (origin.was_passed and origin.value.len > 0) try allocator.dupe(u8, origin.value) else "";
+    errdefer if (next_origin.len > 0) allocator.free(next_origin);
+
+    // initEvent step 2: initialize this with type, bubbles and cancelable.
+    try interfaces.Event.call_initEvent(instance, @"type", bubbles, cancelable);
+
+    // This interface's attributes. What the event held before is let go.
     if (state.own._internal) |internal| {
         releaseData(state, internal);
-        if (internal.owns_origin and state.own.origin.len > 0) instance.ctx.allocator.free(state.own.origin);
+        if (internal.owns_origin and state.own.origin.len > 0) allocator.free(state.own.origin);
         internal.owns_origin = false;
+        if (internal.source_hold) |held| {
+            held.release();
+            internal.source_hold = null;
+        }
     }
-    state.own.data.deinit(instance.ctx.allocator);
-    state.own.data = if (data.was_passed) try keepData(instance.ctx, instance, data.value) else runtime.JSValue.jsUndefined;
-    state.own.origin = "";
-    if (origin.was_passed and origin.value.len > 0) {
-        state.own.origin = try instance.ctx.allocator.dupe(u8, origin.value);
+    state.own.data.deinit(allocator);
+    // `optional any data = null`: absent or undefined is null.
+    state.own.data = runtime.JSValue.jsNull;
+    if (data.was_passed and data.value != .undefined) state.own.data = try keepData(instance.ctx, instance, data.value);
+
+    state.own.origin = next_origin;
+    if (next_origin.len > 0) {
         if (state.own._internal) |internal| internal.owns_origin = true;
     }
-    state.own.lastEventId = if (lastEventId.was_passed) lastEventId.value else runtime.DOMString.initEmpty();
-    state.own.source = if (source.was_passed) source.value else null;
 
-    // ports handling would require more complex logic
+    state.own.lastEventId.deinit(allocator);
+    state.own.lastEventId = next_last_event_id;
+
+    // "source": the event holds its wrapper, as the constructor's does.
+    state.own.source = if (source.was_passed) source.value else null;
+    if (state.own.source) |source_value| {
+        const source_instance: *runtime.Instance = switch (source_value) {
+            inline else => |object| object,
+        };
+        if (state.own._internal) |internal| internal.source_hold = engine.retainValue(instance.ctx, .{ .instance = source_instance }) catch null;
+    }
+
+    // TODO(seam): "ports" - a sequence<MessagePort> the binding hands over as
+    // an `any` (initMessageEvent's ports default `[]`); setting the frozen
+    // array from it needs the array's elements as MessagePort instances.
     _ = ports;
 }
 

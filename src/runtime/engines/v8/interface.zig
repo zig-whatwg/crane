@@ -2570,8 +2570,15 @@ pub fn V8Interface(comptime Interface: type) type {
                                 // Without this, sandboxed iframes can't catch SecurityError when
                                 // accessing parent.document because the exception is thrown in
                                 // the parent's context, not the iframe's context.
+                                // Both owned - each a fresh Global<Context> - and used only
+                                // to choose the realm the exception is made in, which
+                                // throwWebIDLErrorFromContext enters and leaves. Kept, they
+                                // were two Globals per throwing getter call, and the current
+                                // one is the getter's realm: each pinned it.
                                 const entered_ctx = v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate_inner);
+                                defer if (entered_ctx) |ctx| v8.v8_Context_Dispose(ctx);
                                 const current_ctx = v8.v8_Isolate_GetCurrentContext(isolate_inner);
+                                defer if (current_ctx) |ctx| v8.v8_Context_Dispose(ctx);
                                 const entered_raw = if (entered_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
                                 const current_raw = if (current_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
                                 const getter_raw = v8.v8_Context_GetRawAddress(getter_context);
@@ -2820,6 +2827,18 @@ pub fn V8Interface(comptime Interface: type) type {
                             if (result != .instance) v8.v8_Global_Dispose(v8_value);
                         } else if (comptime PayloadType == ?runtime.JSValue) {
                             if (result == null or result.? != .instance) v8.v8_Global_Dispose(v8_value);
+                        } else if (comptime @typeInfo(PayloadType) == .optional) {
+                            // Any other optional: a null result's value is made
+                            // here, fresh - `v8.v8_Null(isolate_inner)` in the
+                            // instance and callback branches, `toV8Null` in
+                            // conv.toV8Value's optional branch, and the
+                            // wrapper's v8_Null news a Global per call - so it
+                            // is ours. A non-null one stays: it may be a
+                            // wrapper the cache owns or a stored callback. Kept,
+                            // every `event.target` read before dispatch, every
+                            // `messageEvent.source` of a WebSocket message,
+                            // leaked a Null Global.
+                            if (result == null) v8.v8_Global_Dispose(v8_value);
                         }
                     }
                 }
@@ -5077,7 +5096,6 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
 
             // Get the 'this' object
             const this_obj = info.getThis();
@@ -5128,6 +5146,15 @@ pub fn V8Interface(comptime Interface: type) type {
             const value_global = v8.v8_Value_Persist(isolate, @ptrCast(value)) orelse return .kNo;
             defer v8.v8_Value_Dispose(value_global);
 
+            // The current context, for the conversion: acquired here, past the
+            // early returns, and released unless converting a `ValueType` can
+            // keep it (typeRetainsContext, the rule every binding path uses).
+            // It is a fresh Global of the callee's realm per call; acquired at
+            // entry and never released, each `select[0] = option` pinned the
+            // realm.
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kNo;
+            defer if (comptime !typeRetainsContext(ValueType)) v8.v8_Context_Dispose(v8_context);
+
             // Convert V8 value to the expected Zig type
             const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, value_global) catch {
                 return .kNo;
@@ -5153,7 +5180,10 @@ pub fn V8Interface(comptime Interface: type) type {
             info: *const v8.PropertyCallbackInfoVoid,
         ) callconv(.c) v8.Intercepted {
             const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
+            // The current context is acquired below, only where a value is
+            // converted: it is a fresh Global of the callee's realm per call,
+            // and taken here at entry it was never released - every
+            // Object.defineProperty on an indexed collection pinned the realm.
 
             // Check for indexed setter via Meta (from codegen) or fallback to method detection
             const has_indexed_setter = comptime blk: {
@@ -5205,6 +5235,10 @@ pub fn V8Interface(comptime Interface: type) type {
                             const info_si = @typeInfo(@TypeOf(Interface.set_item)).@"fn";
                             break :blk info_si.params[2].type.?;
                         };
+                        // Released unless converting the value can keep it
+                        // (typeRetainsContext).
+                        const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
+                        defer if (comptime !typeRetainsContext(it_val_type)) v8.v8_Context_Dispose(v8_context);
                         const zig_value = conv.fromV8Value(it_val_type, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
                             conv.throwTypeError(isolate, @errorName(err));
                             return .kYes;
@@ -5218,6 +5252,10 @@ pub fn V8Interface(comptime Interface: type) type {
                             const info_cs = @typeInfo(@TypeOf(Interface.call_setter)).@"fn";
                             break :blk info_cs.params[2].type.?;
                         };
+                        // Released unless converting the value can keep it
+                        // (typeRetainsContext).
+                        const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
+                        defer if (comptime !typeRetainsContext(cs_val_type)) v8.v8_Context_Dispose(v8_context);
                         const zig_value = conv.fromV8Value(cs_val_type, instance.ctx.allocator, isolate, v8_context, value) catch |err| {
                             conv.throwTypeError(isolate, @errorName(err));
                             return .kYes;
@@ -5834,7 +5872,6 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
 
             // Get the 'this' object
             const this_obj = info.getThis();
@@ -5908,6 +5945,14 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             const ValueType = params[2].type orelse return .kNo;
+
+            // The current context, for the conversion: acquired here, past the
+            // early returns, and released unless converting a `ValueType` can
+            // keep it (typeRetainsContext). A fresh Global of the callee's
+            // realm per call; acquired at entry and never released, every
+            // `el.dataset.x = v` pinned the realm.
+            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return .kYes;
+            defer if (comptime !typeRetainsContext(ValueType)) v8.v8_Context_Dispose(v8_context);
 
             // Convert V8 value to the expected Zig type
             const zig_value = conv.fromV8Value(ValueType, instance.ctx.allocator, isolate, v8_context, v8_value) catch |err| {
@@ -7141,21 +7186,34 @@ pub fn V8Interface(comptime Interface: type) type {
                     const argc = info.length();
                     if (argc > 0) {
                         const options_v8 = info.get(0);
+                        // Owned (info.get allocates a Global), and read only
+                        // in this block: options_obj below is this same handle,
+                        // cast, and only Get reads through it.
+                        defer v8.v8_Value_Dispose(options_v8);
                         // Only parse if it's an object (not undefined/null)
                         if (!v8.v8_Value_IsNullOrUndefined(options_v8) and v8.v8_Value_IsObject(options_v8)) {
                             const options_obj: *v8.Object = @ptrCast(options_v8);
+                            // Each owned, and used only to read one boolean
+                            // member: the context (a fresh Global of the
+                            // stream's realm per call), the key and the value
+                            // Get returns. Kept, they were three Globals per
+                            // `stream.values({...})` call, the first pinning
+                            // the realm.
                             const ctx = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
                                 conv.throwError(isolate, "No context available");
                                 return;
                             };
+                            defer v8.v8_Context_Dispose(ctx);
 
                             // Get preventCancel property
                             const key = v8.v8_String_NewFromUtf8(isolate, "preventCancel", 13) orelse {
                                 conv.throwError(isolate, "Failed to create property key");
                                 return;
                             };
+                            defer v8.v8_String_Dispose(key);
 
                             if (v8.v8_Object_Get(options_obj, ctx, @ptrCast(key))) |prevent_cancel_val| {
+                                defer v8.v8_Value_Dispose(prevent_cancel_val);
                                 if (!v8.v8_Value_IsNullOrUndefined(prevent_cancel_val)) {
                                     options.preventCancel = v8.v8_Value_BooleanValue(prevent_cancel_val, isolate);
                                 }

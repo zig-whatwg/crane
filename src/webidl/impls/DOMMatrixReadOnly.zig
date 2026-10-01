@@ -9,6 +9,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const DOMMatrixReadOnly = interfaces.DOMMatrixReadOnly;
+const reflection = @import("reflection.zig");
 
 pub const State = DOMMatrixReadOnly.State;
 
@@ -374,7 +375,42 @@ pub fn call_rotateFromVector(instance: *runtime.Instance, x: webidl.Opt(f64), y:
 }
 
 /// Stringifier - serialize method for toString
+/// Spec: https://drafts.fxtf.org/geometry/#dommatrixreadonly-stringification-behavior
+///
+/// The result is the binding's to free - toString() is bound as an
+/// operation - so it is allocated here. This returned the literal
+/// "[object]", and `String(new DOMMatrix())` died in Allocator.free's memset
+/// on the literal's read-only page.
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return "[object]";
+    const state = instance.getState(State);
+    const elements = [16]f64{
+        state.own.m11, state.own.m12, state.own.m13, state.own.m14,
+        state.own.m21, state.own.m22, state.own.m23, state.own.m24,
+        state.own.m31, state.own.m32, state.own.m33, state.own.m34,
+        state.own.m41, state.own.m42, state.own.m43, state.own.m44,
+    };
+    // 1. If one or more of m11 element through m44 element are a non-finite
+    //    value, then throw an "InvalidStateError" DOMException.
+    for (elements) |element| {
+        if (!std.math.isFinite(element)) return error.InvalidStateError;
+    }
+    // 2. Let string be the empty string.
+    const allocator = instance.ctx.allocator;
+    var string: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer string.deinit(allocator);
+    // 3. If is 2D is true: "matrix(" m11, m12, m21, m22, m41, m42 ")" - a
+    //    CSS <matrix()>. 4. Otherwise: "matrix3d(" and all sixteen elements
+    //    in column-major order, then ")".
+    const two_d = [_]usize{ 0, 1, 4, 5, 12, 13 };
+    const all = [_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+    const order: []const usize = if (state.own.is2D) &two_d else &all;
+    try string.appendSlice(allocator, if (state.own.is2D) "matrix(" else "matrix3d(");
+    for (order, 0..) |index, i| {
+        if (i > 0) try string.appendSlice(allocator, ", ");
+        // ! ToString(element).
+        var buffer: [32]u8 = undefined;
+        try string.appendSlice(allocator, reflection.numberToString(&buffer, elements[index]));
+    }
+    try string.append(allocator, ')');
+    return string.toOwnedSlice(allocator);
 }

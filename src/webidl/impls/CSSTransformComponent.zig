@@ -60,6 +60,8 @@ pub fn call_toMatrix(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Stringifier - serialize method for toString
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
-    _ = instance;
-    return "[object]";
+    // TODO: CSS Typed OM "serialize a CSSTransformComponent" (https://drafts.css-houdini.org/css-typed-om-1/#transformvalue-serialization). Until then, the placeholder - as a copy: the binding frees
+    // the string toString() returns, and freeing a literal faulted in
+    // Allocator.free's memset.
+    return instance.ctx.allocator.dupe(u8, "[object]");
 }
