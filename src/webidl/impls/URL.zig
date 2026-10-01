@@ -17,6 +17,8 @@ const engine = @import("engine");
 const file_mod = @import("file");
 const BlobURLStore = file_mod.BlobURLStore;
 const BlobImpl = @import("Blob.zig");
+// Scheme fetch "blob"'s resolver over the store (a helper module, not an impl).
+const fetch_body = @import("fetch_body.zig");
 
 // Import URL infrastructure from src/url/
 const URLRecord = @import("url_record").URLRecord;
@@ -899,6 +901,15 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
 
     // Create the blob URL
     const blob_url = try store.createObjectURL(blob_internal.blob_data, origin.value);
+
+    // Every fetch of a blob URL - a module script's, a worker's import(), an
+    // <img> - obtains its blob through scheme fetch "blob", which reaches
+    // this store through a resolver. Install it with the first entry: before
+    // there is one, no blob URL can resolve, and installed only by fetch() and
+    // send(), a module fetch of a blob URL was a network error in a process
+    // that had run neither yet (blob-url.any.js: 4 of 24 alone, 20 after
+    // other files). Idempotent.
+    fetch_body.installBlobURLResolver();
 
     // Return as DOMString (take ownership of the allocated URL string)
     return runtime.DOMString.initOwned(blob_url);
