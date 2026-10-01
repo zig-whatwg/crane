@@ -143,6 +143,8 @@ const Holds = packed struct {
 /// document, Location or History, a streams-graph object). The default - no
 /// reason - is weak, and only then.
 fn shouldBeStrong(entry: *const CacheEntry) bool {
+    // A torn-down instance's wrapper is never what keeps anything.
+    if (entry.instance_already_cleaned) return false;
     if (entry.holds.document or entry.holds.pending_activity) return true;
     return engineOwns(entry.instance);
 }
@@ -1234,10 +1236,22 @@ pub const WrapperCache = struct {
         }
 
         if (self.cache.get(instance)) |entry| {
-            // Clear weak callback to prevent it from firing
-            v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
             // Mark as already cleaned - deinit will skip onObjectFreed
             entry.instance_already_cleaned = true;
+            // The instance is gone, its wrapper not: script may still hold
+            // it. Weak from here, whatever held it before (a node's tree did,
+            // while it had a parent) - its weak callback, which skips an
+            // instance whose cleanup started, frees the storage the teardown
+            // left (releaseStorage). It used to be held strongly until the
+            // page ended, a wrapper and an instance a torn-down node, and with
+            // it everything it reaches: gc_bench retained both for every
+            // `void div.attachShadow().appendChild(span)`, and a removed
+            // frame whose torn-down nodes' wrappers were held could never be
+            // collected.
+            if (entry.strong) {
+                v8.v8_Global_SetWeak(@ptrCast(entry.wrapper), @ptrCast(entry), weakCallback);
+                entry.strong = false;
+            }
             return true;
         }
         return false;
