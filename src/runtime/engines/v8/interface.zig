@@ -2244,31 +2244,44 @@ pub fn V8Interface(comptime Interface: type) type {
                     const zig_getter = @field(Interface, getter_name);
                     const isolate_inner = info.getIsolate();
 
-                    // Get function's creation context for cross-realm error throwing
-                    // Per WebIDL spec: "Throw a TypeError using the function's realm."
-                    const caller_context = v8.v8_Isolate_GetCurrentContext(isolate_inner) orelse {
-                        conv.throwError(isolate_inner, "No current context");
-                        return;
+                    // The realm a thrown error is made in. WebIDL: "throw a TypeError
+                    // using the function's realm" - the getter's creation context, or
+                    // the current one when V8 knows none. Only the throwing paths use
+                    // it, and each is a fresh Global<Context> the caller owns, so it
+                    // is taken on the first throw, not on every call: taken eagerly,
+                    // the two were made and disposed per `list.length` - a third of
+                    // the binding's cost in a profile of NodeList-static-length-
+                    // getter-tampered-1.html (2026-10-01). Released on every exit
+                    // (the per-element context leak this once was: 1.00 per
+                    // createElement, one per `document` / `el.id` read).
+                    const ErrorRealm = struct {
+                        info: *const v8.FunctionCallbackInfo,
+                        isolate: *v8.Isolate,
+                        owned: ?*v8.Context = null,
+
+                        fn get(self: *@This()) ?*v8.Context {
+                            if (self.owned == null) {
+                                self.owned = self.info.getFunctionCreationContext() orelse
+                                    v8.v8_Isolate_GetCurrentContext(self.isolate);
+                            }
+                            return self.owned;
+                        }
+
+                        fn throwTypeError(self: *@This(), message: []const u8) void {
+                            if (self.get()) |realm| {
+                                conv.throwTypeErrorFromContext(self.isolate, realm, message);
+                            } else {
+                                conv.throwError(self.isolate, message);
+                            }
+                        }
+
+                        fn release(self: *@This()) void {
+                            if (self.owned) |c| v8.v8_Context_Dispose(c);
+                            self.owned = null;
+                        }
                     };
-                    // THE one-per-element context leak. This fires on every attribute
-                    // read - `document`, `el.id`, `el.tagName` - and nothing released
-                    // it. The live-handle counter showed contexts growing 1.00 per
-                    // createElement; this was all of it.
-                    //
-                    // Safe either way the `orelse` below lands: when
-                    // `getter_context_owned` is non-null this value goes unused, and
-                    // when it is null this becomes `getter_context`, which only feeds
-                    // return-value conversion. Getters take no arguments, so
-                    // `fromV8Value` - the one conversion path that retains a context -
-                    // is not involved at all.
-                    defer v8.v8_Context_Dispose(caller_context);
-                    // Owned: this returns a fresh Global<Context> per call, which nothing was
-                    // disposing - 2 leaked handles per DOM object created. Dispose the OWNED
-                    // one only; the `orelse` fallback is borrowed and freeing it would be a
-                    // double free.
-                    const getter_context_owned = info.getFunctionCreationContext();
-                    defer if (getter_context_owned) |c| v8.v8_Context_Dispose(c);
-                    const getter_context = getter_context_owned orelse caller_context;
+                    var error_realm: ErrorRealm = .{ .info = info, .isolate = isolate_inner };
+                    defer error_realm.release();
 
                     // Check return type
                     const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
@@ -2499,14 +2512,14 @@ pub fn V8Interface(comptime Interface: type) type {
 
                             // Throw TypeError from getter's realm (function's creation context)
                             // Per WebIDL spec: "Throw a TypeError using the function's realm."
-                            conv.throwTypeErrorFromContext(isolate_inner, getter_context, "Illegal invocation");
+                            error_realm.throwTypeError("Illegal invocation");
 
                             return;
                         };
 
                         // Shouldn't happen - we either have a valid instance or returned above
                         if (resolved_instance == null) {
-                            conv.throwTypeErrorFromContext(isolate_inner, getter_context, "Illegal invocation");
+                            error_realm.throwTypeError("Illegal invocation");
                             return;
                         }
 
@@ -2532,7 +2545,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             if (lenient) {
                                 if (v8.v8_Undefined(isolate_inner)) |undef| info.setReturnValue(undef);
                             } else {
-                                conv.throwTypeErrorFromContext(isolate_inner, getter_context, "Illegal invocation");
+                                error_realm.throwTypeError("Illegal invocation");
                             }
                             return;
                         }
@@ -2627,13 +2640,18 @@ pub fn V8Interface(comptime Interface: type) type {
                                 defer if (current_ctx) |ctx| v8.v8_Context_Dispose(ctx);
                                 const entered_raw = if (entered_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
                                 const current_raw = if (current_ctx) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
-                                const getter_raw = v8.v8_Context_GetRawAddress(getter_context);
+                                const getter_context = error_realm.get();
+                                const getter_raw = if (getter_context) |ctx| v8.v8_Context_GetRawAddress(ctx) else null;
                                 log.debug("[interface] err={s} entered_raw={?*} current_raw={?*} getter_raw={?*}\n", .{ @errorName(err), entered_raw, current_raw, getter_raw });
                                 const error_context = if (err == error.SecurityError)
                                     entered_ctx orelse current_ctx orelse getter_context
                                 else
                                     getter_context;
-                                conv.throwWebIDLErrorFromContext(isolate_inner, error_context, @errorName(err));
+                                if (error_context) |ctx| {
+                                    conv.throwWebIDLErrorFromContext(isolate_inner, ctx, @errorName(err));
+                                } else {
+                                    conv.throwError(isolate_inner, @errorName(err));
+                                }
                                 return;
                             }
                         else
@@ -4738,12 +4756,26 @@ pub fn V8Interface(comptime Interface: type) type {
             }
 
             const isolate = info.getIsolate();
-            const v8_context = v8.v8_Isolate_GetCurrentContext(isolate) orelse {
-                conv.throwError(isolate, "No V8 context");
-                return .kNo;
+            // The current context, taken where a path uses it - wrapping or
+            // converting an item, or the realm of an error - and not for an
+            // index past the end, which answers kNo. Owned:
+            // v8_Isolate_GetCurrentContext allocates a Global per call.
+            const CurrentContext = struct {
+                isolate: *v8.Isolate,
+                owned: ?*v8.Context = null,
+
+                fn get(self: *@This()) ?*v8.Context {
+                    if (self.owned == null) self.owned = v8.v8_Isolate_GetCurrentContext(self.isolate);
+                    return self.owned;
+                }
+
+                fn release(self: *@This()) void {
+                    if (self.owned) |c| v8.v8_Context_Dispose(c);
+                    self.owned = null;
+                }
             };
-            // Owned: v8_Isolate_GetCurrentContext allocates a Global per call.
-            defer v8.v8_Context_Dispose(v8_context);
+            var current_context: CurrentContext = .{ .isolate = isolate };
+            defer current_context.release();
 
             // Get the 'this' object (the interface instance)
             const this_obj = info.getThis();
@@ -4778,7 +4810,11 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Owned when V8 answers it - a fresh Global<Context>.
                 const creation_ctx = v8.v8_Object_GetCreationContext(this_obj);
                 defer if (creation_ctx) |made| v8.v8_Context_Dispose(made);
-                conv.throwWebIDLErrorFromContext(isolate, creation_ctx orelse v8_context, @errorName(err));
+                if (creation_ctx orelse current_context.get()) |realm| {
+                    conv.throwWebIDLErrorFromContext(isolate, realm, @errorName(err));
+                } else {
+                    conv.throwError(isolate, @errorName(err));
+                }
                 return .kNo;
             };
             // A string item() made for the result is the binding's.
@@ -4794,6 +4830,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Optional type - check for null
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
+                    const v8_context = current_context.get() orelse {
+                        conv.throwError(isolate, "No V8 context");
+                        return .kNo;
+                    };
                     // Check if it's an Instance pointer
                     if (ChildType == *runtime.Instance) {
                         // Wrap Instance in V8
@@ -4827,6 +4867,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             } else {
                 // Non-optional type (like CSSOMString)
+                const v8_context = current_context.get() orelse {
+                    conv.throwError(isolate, "No V8 context");
+                    return .kNo;
+                };
                 const v8_value = conv.toV8Value(ActualReturnType, isolate, v8_context, result) catch {
                     conv.throwError(isolate, "Failed to convert result to V8");
                     return .kNo;
