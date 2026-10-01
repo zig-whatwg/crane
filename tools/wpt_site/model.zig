@@ -80,7 +80,7 @@ pub const Counts = struct {
 /// Where this differs from tools/wpt_progress.py: that tool files an OK run
 /// whose only non-passing subtests are NOTRUN as clean (its clean test looks
 /// at failed and timed_out only). A NOTRUN subtest did not pass, so here such
-/// a file is `partial` - the site says "passing every subtest" and means it.
+/// a file is `partial` - "Clean" on the site means every reported subtest passed.
 /// The blocking set is identical.
 pub fn gateOf(status: ?[]const u8, c: Counts) Gate {
     const st = status orelse return .unrun;

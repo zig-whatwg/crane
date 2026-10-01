@@ -39,6 +39,7 @@ const EventImpl = @import("Event.zig");
 const ProcessingInstructionImpl = @import("ProcessingInstruction.zig");
 const RangeImpl = @import("Range.zig");
 const SelectionImpl = @import("Selection.zig");
+const same_object = @import("same_object.zig");
 
 // Import ParentNode mixin for shared ParentNode interface methods
 const mixins = @import("mixins");
@@ -221,6 +222,9 @@ pub const InternalState = struct {
 
     // === StyleSheetList (DocumentOrShadowRoot mixin) ===
     style_sheets: ?*runtime.Instance,
+    /// `style_sheets` and its wrapper, for as long as this document lives:
+    /// see `KeptChild`.
+    style_sheets_kept: KeptChild = .{},
 
     // === Script execution state (HTML Standard §4.12.1.1) ===
 
@@ -316,6 +320,9 @@ pub const InternalState = struct {
     /// The document's selection object (lazily created, [SameObject])
     /// Spec: https://w3c.github.io/selection-api/#dom-document-getselection
     selection: ?*runtime.Instance,
+    /// `selection` and its wrapper, for as long as this document lives: see
+    /// `KeptChild`.
+    selection_kept: KeptChild = .{},
 
     // === Adopted Style Sheets (CSSOM) ===
 
@@ -327,11 +334,17 @@ pub const InternalState = struct {
     /// Cached FontFaceSet instance ([SameObject])
     /// Spec: https://drafts.csswg.org/css-font-loading/#dom-fontfacesource-fonts
     fonts: ?*runtime.Instance,
+    /// `fonts` and its wrapper, for as long as this document lives: see
+    /// `KeptChild`.
+    fonts_kept: KeptChild = .{},
 
     /// Cached HTMLAllCollection instance ([SameObject])
     /// Spec: https://html.spec.whatwg.org/multipage/dom.html#dom-document-all
     /// This collection has [[IsHTMLDDA]] internal slot (undetectable)
     all_collection: ?*runtime.Instance,
+    /// `all_collection` and its wrapper, for as long as this document lives:
+    /// see `KeptChild`.
+    all_collection_kept: KeptChild = .{},
 
     /// The default view (window) associated with this document.
     /// This is the Window whose document is this Document.
@@ -543,21 +556,62 @@ pub const InternalState = struct {
         // Stylesheet blocking tracker
         self.stylesheet_tracker.deinit();
 
-        // Clean up cached [SameObject] instances
-        // These instances are lazily created and cached, so we need to clean them up here.
-        // The GC may not have cleaned them up yet if the context is being torn down.
-        if (self.all_collection) |all| {
-            interfaces.HTMLAllCollection.deinit(all);
-        }
-        if (self.fonts) |fonts_inst| {
-            interfaces.FontFaceSet.deinit(fonts_inst);
-        }
-        if (self.selection) |sel| {
-            interfaces.Selection.deinit(sel);
-        }
-        if (self.style_sheets) |ss| {
-            interfaces.StyleSheetList.deinit(ss);
-        }
+        // The objects this document handed out as the same object for its
+        // whole life: each lets go of its wrapper here (see `KeptChild`).
+        if (self.all_collection) |all| self.all_collection_kept.release(all, interfaces.HTMLAllCollection.deinit);
+        if (self.fonts) |fonts_inst| self.fonts_kept.release(fonts_inst, interfaces.FontFaceSet.deinit);
+        if (self.selection) |sel| self.selection_kept.release(sel, interfaces.Selection.deinit);
+        if (self.style_sheets) |ss| self.style_sheets_kept.release(ss, interfaces.StyleSheetList.deinit);
+    }
+};
+
+/// An object the document makes once, keeps in its own state and hands out as
+/// the same object for its whole life: getSelection()'s Selection ("each
+/// document ... has a unique selection associated with it"), document.all,
+/// document.fonts, document.styleSheets.
+///
+/// Kept as a bare pointer, such a child dangles as soon as script drops it.
+/// Its wrapper is weak, so a collection frees the instance
+/// (wrapper_cache.weakCallback -> gc.onObjectFreed) while the document still
+/// points at it, and the next read wraps whatever took the slot:
+/// Range-mutations.js runs `getSelection().removeAllRanges()` in every "with
+/// selected" subtest and got "removeAllRanges is not a function", or
+/// undefined, from wherever the collector happened to run - 236 to 339 of 564
+/// passing, by the files a sweep ran before it. The document's teardown then
+/// deinit'd that slot, whoever owned it by then.
+///
+/// Blink traces each of them from the document: TreeScope::Trace visits
+/// selection_ and style_sheet_list_, document.all is a collection cached in
+/// the document's traced node lists, and fonts is FontFaceSetDocument, a
+/// Supplement<Document>. Crane has no tracing, so the document holds the
+/// child's wrapper strongly from the first hand-out (`same_object.Pin`)
+/// until the document goes, as AbortController does for its signal.
+const KeptChild = struct {
+    pin: same_object.Pin = .{},
+    /// The child as it was when this document made it.
+    link: ?same_object.Link = null,
+
+    /// `child` was just made and stored in the document's state.
+    fn made(self: *KeptChild, child: *runtime.Instance) void {
+        self.link = same_object.Link.to(child);
+    }
+
+    /// `child` is going to script: keep its wrapper for as long as this
+    /// document lives. Idempotent.
+    fn handOut(self: *KeptChild, child: *runtime.Instance) void {
+        self.pin.hold(child);
+    }
+
+    /// The document is going. `child`, if it is still the object this
+    /// document made, is severed from it (`sever` is its interface's deinit,
+    /// which releases its state; script that still holds it gets
+    /// InvalidStateError, not a document that is gone). Then its wrapper is
+    /// let go, and the wrapper cache frees the instance once script drops it
+    /// too.
+    fn release(self: *KeptChild, child: *runtime.Instance, sever: *const fn (*runtime.Instance) void) void {
+        if (self.link) |link| if (link.isLive()) sever(child);
+        self.pin.release();
+        self.* = .{};
     }
 };
 
@@ -1791,17 +1845,17 @@ pub fn get_applets(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_all(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Return cached HTMLAllCollection (lazily created, [SameObject])
-    if (internal.all_collection) |all| {
-        return all;
-    }
-
-    // Create a new HTMLAllCollection for this document
-    // The HTMLAllCollection template is automatically marked as undetectable
-    // by the V8Interface binding code (see interface.zig HTMLAllCollection handling)
-    const HTMLAllCollection = interfaces.HTMLAllCollection;
-    const all = try HTMLAllCollection.init(internal.allocator, instance.ctx);
-    internal.all_collection = all;
+    // One HTMLAllCollection for the document's whole life ([SameObject]),
+    // made on first use. The HTMLAllCollection template is marked
+    // undetectable by the V8Interface binding code (see interface.zig
+    // HTMLAllCollection handling).
+    const all = internal.all_collection orelse blk: {
+        const made = try interfaces.HTMLAllCollection.init(internal.allocator, instance.ctx);
+        internal.all_collection = made;
+        internal.all_collection_kept.made(made);
+        break :blk made;
+    };
+    internal.all_collection_kept.handOut(all);
     return all;
 }
 
@@ -1826,13 +1880,13 @@ pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Inst
 /// Lazily creates a FontFaceSet on first access ([SameObject] semantics).
 pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.fonts) |fonts| {
-        return fonts;
-    }
-    // Lazily create FontFaceSet
-    const FontFaceSet = interfaces.FontFaceSet;
-    const fonts = FontFaceSet.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
-    internal.fonts = fonts;
+    const fonts = internal.fonts orelse blk: {
+        const made = interfaces.FontFaceSet.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+        internal.fonts = made;
+        internal.fonts_kept.made(made);
+        break :blk made;
+    };
+    internal.fonts_kept.handOut(fonts);
     return fonts;
 }
 
@@ -1873,13 +1927,13 @@ pub fn get_pointerLockElement(instance: *runtime.Instance) anyerror!?*runtime.In
 /// Lazily creates an empty StyleSheetList on first access.
 pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    if (internal.style_sheets) |sheets| {
-        return sheets;
-    }
-    // Lazily create an empty StyleSheetList
-    const StyleSheetList = interfaces.StyleSheetList;
-    const sheets = StyleSheetList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
-    internal.style_sheets = sheets;
+    const sheets = internal.style_sheets orelse blk: {
+        const made = interfaces.StyleSheetList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
+        internal.style_sheets = made;
+        internal.style_sheets_kept.made(made);
+        break :blk made;
+    };
+    internal.style_sheets_kept.handOut(sheets);
     return sheets;
 }
 
@@ -3749,21 +3803,21 @@ pub fn call_createDocumentFragment(instance: *runtime.Instance) anyerror!*runtim
 pub fn call_getSelection(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
 
-    // Return cached selection if already created ([SameObject])
-    if (internal.selection) |selection| {
-        return selection;
-    }
-
-    // Create new Selection for this document
-    const selection = SelectionImpl.createSelection(internal.allocator, instance.ctx, instance) catch |err| {
-        if (@import("builtin").mode == .Debug) {
-            log.err("Failed to create Selection: {any}", .{err});
-        }
-        return null;
+    // The document's one selection, made on first use.
+    const selection = internal.selection orelse blk: {
+        const made = interfaces.Selection.init(internal.allocator, instance.ctx) catch |err| {
+            if (@import("builtin").mode == .Debug) {
+                log.err("Failed to create Selection: {any}", .{err});
+            }
+            return null;
+        };
+        internal.selection = made;
+        internal.selection_kept.made(made);
+        break :blk made;
     };
-
-    // Cache the selection
-    internal.selection = selection;
+    // It is this document's for the document's whole life, whatever script
+    // keeps of it (`KeptChild`).
+    internal.selection_kept.handOut(selection);
     return selection;
 }
 

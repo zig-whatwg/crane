@@ -60,6 +60,7 @@ pub const range_boundaries = @import("range_boundaries.zig");
 pub const node_document = @import("node_document.zig");
 pub const navigable_container = @import("navigable_container.zig");
 pub const document_lifecycle = @import("document_lifecycle.zig");
+pub const document_fetches = @import("document_fetches.zig");
 pub const document_origin = @import("document_origin.zig");
 pub const window_documents = @import("window_documents.zig");
 pub const child_navigables = @import("child_navigables.zig");

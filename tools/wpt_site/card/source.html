@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+The social card's two committed images, drawn once in the site's own faces:
+  ?part=atlas  -> atlas.png  (1210x306: the digit glyphs, black on white, one per cell)
+  ?part=base   -> base.png   (1200x630: the card without its numbers)
+  ?part=metrics             (writes the glyph advances into the page, for card.zig)
+How they were made, and how to remake them: README.md beside this file.
+The cell geometry and the placements below are the constants in card.zig: change both together.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: "Source Serif 4"; font-weight: 200 900; src: url(../assets/fonts/source-serif-4-latin.woff2) format("woff2"); }
+@font-face { font-family: "Public Sans"; font-weight: 100 900; src: url(../assets/fonts/public-sans-latin.woff2) format("woff2"); }
+html, body { margin: 0; padding: 0; background: #fff; }
+svg { display: block; }
+text { font-kerning: none; font-variant-numeric: tabular-nums lining-nums; }
+.serif { font-family: "Source Serif 4"; }
+.sans { font-family: "Public Sans"; }
+pre { font: 14px monospace; margin: 0; }
+</style>
+</head>
+<body>
+<script>
+// Cell geometry per glyph set: [size, weight, cell width, cell height, origin x in cell, baseline in cell]
+const SETS = [
+  { name: "big",   size: 132, weight: 600, cw: 110, ch: 170, ox: 20, bl: 135 },
+  { name: "of",    size: 60,  weight: 400, cw: 60,  ch: 80,  ox: 10, bl: 62 },
+  { name: "small", size: 40,  weight: 600, cw: 44,  ch: 56,  ox: 8,  bl: 42 },
+];
+const GLYPHS = "0123456789,/ ";
+const NS = "http://www.w3.org/2000/svg";
+const part = new URLSearchParams(location.search).get("part") || "atlas";
+
+function svg(w, h) {
+  const s = document.createElementNS(NS, "svg");
+  s.setAttribute("width", w); s.setAttribute("height", h); s.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  document.body.append(s);
+  return s;
+}
+function text(s, x, y, str, cls, size, weight, fill, extra = {}) {
+  const t = document.createElementNS(NS, "text");
+  t.setAttribute("x", x); t.setAttribute("y", y); t.setAttribute("class", cls);
+  t.setAttribute("font-size", size); t.setAttribute("font-weight", weight); t.setAttribute("fill", fill);
+  for (const [k, v] of Object.entries(extra)) t.setAttribute(k, v);
+  t.textContent = str;
+  s.append(t);
+  return t;
+}
+
+document.fonts.load('600 40px "Source Serif 4"').then(() => document.fonts.load('400 40px "Source Serif 4"'))
+  .then(() => document.fonts.load('400 20px "Public Sans"')).then(() => document.fonts.ready).then(() => {
+  if (part === "atlas") {
+    const s = svg(1210, 306);
+    let y = 0;
+    for (const set of SETS) {
+      [...GLYPHS].forEach((g, i) => text(s, i * set.cw + set.ox, y + set.bl, g, "serif", set.size, set.weight, "#000"));
+      y += set.ch;
+    }
+  } else if (part === "metrics") {
+    const s = svg(1210, 306);
+    const out = {};
+    for (const set of SETS) {
+      out[set.name] = {};
+      for (const g of GLYPHS) out[set.name][g] = text(s, 0, 200, g === " " ? " " : g, "serif", set.size, set.weight, "#000").getComputedTextLength();
+    }
+    const pre = document.createElement("pre");
+    pre.id = "metrics";
+    pre.textContent = JSON.stringify(out);
+    document.body.replaceChildren(pre);
+  } else {
+    // The card without its numbers. Tokens: paper #ffffff, ink #202124, ink-2 #5a5e63, rule #d9dce0 (site.css, light).
+    const s = svg(1200, 630);
+    const bg = document.createElementNS(NS, "rect");
+    bg.setAttribute("width", 1200); bg.setAttribute("height", 630); bg.setAttribute("fill", "#ffffff");
+    s.append(bg);
+    const title = text(s, 80, 112, "", "serif", 46, 620, "#202124");
+    const a = document.createElementNS(NS, "tspan"); a.textContent = "Crane ";
+    const b = document.createElementNS(NS, "tspan"); b.textContent = "Web Platform Tests Results"; b.setAttribute("font-weight", 380);
+    title.append(a, b);
+    text(s, 80, 378, "WPT SUBTESTS PASSING", "sans", 21, 600, "#5a5e63", { "letter-spacing": "1.7" });
+    const rule = (y) => { const l = document.createElementNS(NS, "rect"); l.setAttribute("x", 80); l.setAttribute("y", y); l.setAttribute("width", 1040); l.setAttribute("height", 1); l.setAttribute("fill", "#d9dce0"); s.append(l); };
+    rule(414);
+    ["Failed", "Timed out", "Not run", "Test files", "Blocking files"].forEach((l, i) => text(s, 80 + i * 212, 458, l, "sans", 21, 400, "#5a5e63"));
+    rule(548);
+    text(s, 80, 590, "zig-whatwg.github.io/crane", "sans", 21, 500, "#202124");
+    text(s, 1120, 590, "Testharness tests only; rendering and layout are out of scope", "sans", 19, 400, "#5a5e63", { "text-anchor": "end" });
+  }
+  document.title = "ready";
+});
+</script>
+</body>
+</html>

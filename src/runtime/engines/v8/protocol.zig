@@ -184,8 +184,8 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     return protocol_realms.createWindowRealm(options);
 }
 
-pub fn destroyWindowRealm(realm: Context) void {
-    protocol_realms.destroyWindowRealm(realm);
+pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
+    protocol_realms.destroyWindowRealm(realm, how);
 }
 
 pub fn createWorkerRealm(agent: *Agent, options: *const engine.WorkerRealmOptions) Error!engine.WorkerRealm {

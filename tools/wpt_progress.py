@@ -796,6 +796,19 @@ def status_of(rec):
     return st if st in GATING else 'ERROR'
 
 
+def subtest_sums(worklist, records):
+    """The headline's subtest sums: every worklist file's latest record, whatever its
+    status - the same sums the public site's headline prints (tools/wpt_site)."""
+    out = {'passed': 0, 'failed': 0, 'timed_out': 0, 'notrun': 0}
+    for path in worklist:
+        rec = records.get(path)
+        if rec is None:
+            continue
+        for k in out:
+            out[k] += rec.get(k, 0) or 0
+    return out
+
+
 def record_generation(worklist, records, areas):
     """Append this generation to HISTORY if anything moved; return the history.
 
@@ -817,6 +830,7 @@ def record_generation(worklist, records, areas):
     tot = collections.Counter()
     for c in areas.values():
         tot.update(c)
+    subs = subtest_sums(worklist, records)
     snap = {
         'n': len(history['generations']) + 1,
         'at': datetime.datetime.now().isoformat(timespec='seconds'),
@@ -829,6 +843,7 @@ def record_generation(worklist, records, areas):
         'sub_pass': tot['sub_pass'], 'sub_fail': tot['sub_fail'],
         'sub_targeted': round(tot['sub_targeted']),
         'sub_passing': round(tot['sub_passing']),
+        'subs': subs,
         'tiers': {t: tot['tier_' + t] for t in TIERS},
         'areas': {a: {'run': c['run'], 'blocking': c['gating'], 'clean': c['clean']}
                   for a, c in areas.items()},
@@ -860,9 +875,12 @@ def record_generation(worklist, records, areas):
             moves[key] += 1
             if len(samples[key]) < HISTORY_SAMPLE:
                 samples[key].append(f'{path}  {before} -> {now}')
-        if not moves:
-            # Nothing moved: not a new generation. Note the regeneration and keep
-            # the map as it is.
+        last_subs = history['generations'][-1].get('subs') if history['generations'] else None
+        if not moves and subs == last_subs:
+            # Nothing moved - no file changed standing and the subtest sums are
+            # the same: not a new generation. Note the regeneration and keep
+            # the map as it is. (Subtests that moved inside files that kept their
+            # standing do make a generation: the public site charts subtests.)
             if history['generations']:
                 last = history['generations'][-1]
                 last['regenerations'] = last.get('regenerations', 0) + 1
@@ -1624,6 +1642,31 @@ def _check_gate_rule():
     HISTORY = saved
 
 
+def _check_history_subs():
+    """Each generation records the headline's subtest sums over every worklist file,
+    whatever its status; subtests that move with no file changing standing still make
+    a generation, and a regeneration that moves nothing still does not."""
+    import tempfile
+    global HISTORY
+    saved = HISTORY
+    wl = ['a.html', 'b.html', 'c.html']
+    recs = {'a.html': {'status': 'OK', 'passed': 5, 'failed': 1, 'timed_out': 1, 'notrun': 0},
+            'b.html': {'status': 'TIMEOUT', 'passed': 2, 'failed': 0, 'timed_out': 0, 'notrun': 3}}
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            HISTORY = os.path.join(d, 'h.json')
+            h = record_generation(wl, recs, {})
+            assert h['generations'][-1]['subs'] == {'passed': 7, 'failed': 1, 'timed_out': 1, 'notrun': 3}, h['generations'][-1].get('subs')
+            h = record_generation(wl, recs, {})
+            assert len(h['generations']) == 1 and h['generations'][-1]['regenerations'] == 1
+            more = dict(recs, **{'a.html': dict(recs['a.html'], passed=6, failed=0)})
+            h = record_generation(wl, more, {})
+            assert len(h['generations']) == 2, 'moved subtests make a generation'
+            assert h['generations'][-1]['moves'] == {} and h['generations'][-1]['subs']['passed'] == 8
+    finally:
+        HISTORY = saved
+
+
 def _check_history_chart():
     """The history chart plots every generation as a point on each line, fills the
     column, and carries each generation's data for the hover tooltip."""
@@ -1653,6 +1696,7 @@ if __name__ == '__main__':
         _check_declared_variants()
         _check_history_chart()
         _check_gate_rule()
+        _check_history_subs()
         print('wpt_progress self-test: ok')
     else:
         main()

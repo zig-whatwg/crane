@@ -884,7 +884,7 @@ fn evalOwned(r: runtime.Context, source: []const u8) !protocol.Owned {
 test "protocol: a Window realm made afresh has the host's Window as its global object" {
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
 
     // HTML "create a new realm": the host made the Window, once, for this realm.
     try std.testing.expectEqual(@as(usize, 1), host.made);
@@ -903,7 +903,7 @@ test "protocol: a Window realm made afresh has the host's Window as its global o
 test "protocol: a Window's indexed property enumerator leaves no handle behind" {
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
     const isolate = isolate_once.?;
 
     // The control: the same enumeration of an ordinary object, no interceptor.
@@ -928,7 +928,7 @@ test "protocol: a realm restored from a snapshot the agent lacks is built afresh
     // JavaScriptCore, always) still gets a working Window realm.
     var host: WindowHost = .{};
     const w = try windowRealm(&host, true, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
     try std.testing.expectEqual(@as(usize, 1), host.made);
     try expectEval(w, "globalThis instanceof Window && self === globalThis", "true");
 }
@@ -955,9 +955,9 @@ test "protocol: a realm made around another's WindowProxy is what that WindowPro
     // [reuse_window_proxy]: a navigation's new Window, behind the same proxy.
     var host_b: WindowHost = .{};
     const b = try windowRealm(&host_b, false, .{ .window_proxy_of = a });
-    defer protocol.destroyWindowRealm(b);
+    defer protocol.destroyWindowRealm(b, .global_detached);
     // The old realm ends first, as a navigation's does.
-    protocol.destroyWindowRealm(a);
+    protocol.destroyWindowRealm(a, .global_detached);
     try std.testing.expectEqual(b, protocol.entryRealm().?);
 
     // What script held of A's WindowProxy is B's global now; A's own
@@ -972,7 +972,7 @@ test "protocol: destroyWindowRealm retires the realm and lets its context go" {
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     try expectEval(w, "globalThis.kept = [globalThis, self]; kept.length", "2");
-    protocol.destroyWindowRealm(w);
+    protocol.destroyWindowRealm(w, .global_detached);
     // Retired: the realm can be compared, never entered.
     try std.testing.expect(w.engine_ctx == null);
     const after = liveContexts();
@@ -1084,13 +1084,13 @@ test "protocol: a Window realm made and ended leaves no global handle behind" {
     };
     // The first realm makes what every later one reuses (the templates).
     var host: WindowHost = .{};
-    protocol.destroyWindowRealm(try windowRealm(&host, false, .new_window_proxy));
+    protocol.destroyWindowRealm(try windowRealm(&host, false, .new_window_proxy), .global_detached);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     // The global the host was lent is the Window's wrapper-cache entry's,
     // released at the realm's end with everything else it held.
     const rounds = 3;
-    for (0..rounds) |_| protocol.destroyWindowRealm(try windowRealm(&host, false, .new_window_proxy));
+    for (0..rounds) |_| protocol.destroyWindowRealm(try windowRealm(&host, false, .new_window_proxy), .global_detached);
     ffi.v8_Isolate_RequestGarbageCollection(isolate);
     const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     if (after -| before >= handle_bytes) {
@@ -1140,10 +1140,10 @@ const FrameRealm = struct {
 test "protocol: a frame's realm is made inside its parent's script and not left entered" {
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(parent);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
     var frame_realm: FrameRealm = .{ .parent = parent };
     const frame = try frame_realm.make();
-    defer protocol.destroyWindowRealm(frame);
+    defer protocol.destroyWindowRealm(frame, .global_detached);
 
     // The parent's steps went on in the parent's realm: the frame's context
     // was entered only while it was made.
@@ -1156,10 +1156,10 @@ test "protocol: a frame's realm is made inside its parent's script and not left 
 test "protocol: a frame's realm shares its parent's security token" {
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(parent);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
     var frame_realm: FrameRealm = .{ .parent = parent };
     const frame = try frame_realm.make();
-    defer protocol.destroyWindowRealm(frame);
+    defer protocol.destroyWindowRealm(frame, .global_detached);
 
     try expectEval(frame, "globalThis.fromFrame = 7; fromFrame", "7");
     const frame_global = try evalOwned(frame, "globalThis");
@@ -1179,7 +1179,7 @@ test "protocol: ending a parent's realm ends its frames' realms first" {
     var nested_realm: FrameRealm = .{ .parent = frame };
     const nested = try nested_realm.make();
 
-    protocol.destroyWindowRealm(parent);
+    protocol.destroyWindowRealm(parent, .global_detached);
     // Retired, every one: each may only be compared now.
     try std.testing.expect(nested.engine_ctx == null);
     try std.testing.expect(frame.engine_ctx == null);
@@ -1189,7 +1189,7 @@ test "protocol: ending a parent's realm ends its frames' realms first" {
 test "protocol: a frame's realm whose WindowProxy went on is severed from its Window at its end" {
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(parent);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
     var old_realm: FrameRealm = .{ .parent = parent };
     const old = try old_realm.make();
     // A function of the old realm that reads its Window through its global.
@@ -1200,8 +1200,8 @@ test "protocol: a frame's realm whose WindowProxy went on is severed from its Wi
     // ends, and its Window with it.
     var new_realm: FrameRealm = .{ .parent = parent, .global_this = .{ .window_proxy_of = old } };
     const new = try new_realm.make();
-    defer protocol.destroyWindowRealm(new);
-    protocol.destroyWindowRealm(old);
+    defer protocol.destroyWindowRealm(new, .global_detached);
+    protocol.destroyWindowRealm(old, .global_detached);
 
     // The old global no longer names the freed Window: reading a Window member
     // through it is a TypeError, not a read of freed memory.
@@ -1210,13 +1210,73 @@ test "protocol: a frame's realm whose WindowProxy went on is severed from its Wi
     try expectEval(parent, "delete globalThis.reader", "true");
 }
 
+test "protocol: a destroyed navigable's realm keeps its global attached, severed from its Window" {
+    _ = try realm();
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    const baseline = liveContexts();
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    {
+        const frame_global = try evalOwned(frame, "globalThis");
+        defer frame_global.release();
+        try setGlobal(parent, "frameWindow", frame_global.value);
+    }
+
+    // HTML "destroy a child navigable" (an iframe removed): Blink's
+    // DisposeContext(kFrameIsDetached) leaves the global attached.
+    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    try std.testing.expect(frame.engine_ctx == null);
+
+    // The WindowProxy script held still answers its self-references - own
+    // data properties, and `window`, which needs no Window
+    // (self-et-al.window.js). Detached, each read threw "no access".
+    try expectEval(parent, "[frameWindow.self, frameWindow.frames, frameWindow.globalThis, frameWindow.window].every(w => w === frameWindow)", "true");
+    // A member that needs the Window finds none: a TypeError, not a read of
+    // the Window the host freed.
+    try expectEval(parent, "(() => { try { return String(frameWindow.name); } catch (e) { return e.name; } })()", "TypeError");
+
+    // Crane holds nothing of the frame's context: once script lets its
+    // WindowProxy go, the collector takes the context.
+    try expectEval(parent, "delete globalThis.frameWindow", "true");
+    const after = liveContexts();
+    if (after != baseline) {
+        std.debug.print("native contexts: {d} before the frame, {d} after its realm ended and its WindowProxy was dropped\n", .{ baseline, after });
+        return error.RealmKeptAlive;
+    }
+}
+
+test "protocol: a wrapper another realm still holds is severed when its realm ends" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    {
+        const held = try evalOwned(frame, "new Headers([['a', '1']])");
+        defer held.release();
+        try setGlobal(parent, "heldHeaders", held.value);
+    }
+    try expectEval(parent, "heldHeaders.get('a')", "1");
+
+    // The frame's realm ends: its wrapper cache frees the Headers, and the
+    // parent still holds the wrapper. Reading through it is a TypeError - the
+    // wrapper names no instance any more - never a read of the freed one
+    // (Headers.call_get unwraps its `_internal` unchecked: a panic, or worse
+    // once the slot is reissued).
+    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    try expectEval(parent, "(() => { try { return String(heldHeaders.get('a')); } catch (e) { return e.name; } })()", "TypeError");
+    try expectEval(parent, "delete globalThis.heldHeaders", "true");
+}
+
 test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whichever realm queued them" {
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(parent);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
     var frame_realm: FrameRealm = .{ .parent = parent };
     const frame = try frame_realm.make();
-    defer protocol.destroyWindowRealm(frame);
+    defer protocol.destroyWindowRealm(frame, .global_detached);
 
     // One microtask queued in each realm, from no script: nothing runs them
     // until the agent's checkpoint, which runs both.
@@ -1242,7 +1302,7 @@ test "protocol: notifyMemoryPressure critical collects what a realm that ended h
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     try expectEval(w, "globalThis.kept = [globalThis, self]; kept.length", "2");
-    protocol.destroyWindowRealm(w);
+    protocol.destroyWindowRealm(w, .global_detached);
     // What the page held is garbage now: the host asks for it back.
     protocol.notifyMemoryPressure(agent, .critical);
     var count: usize = 0;
@@ -1261,10 +1321,10 @@ test "protocol: the entry and incumbent realms are the innermost prepared realm"
     // move the file's.
     var host_a: WindowHost = .{};
     const a = try windowRealm(&host_a, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(a);
+    defer protocol.destroyWindowRealm(a, .global_detached);
     var host_b: WindowHost = .{};
     const b = try windowRealm(&host_b, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(b);
+    defer protocol.destroyWindowRealm(b, .global_detached);
 
     const outer = try protocol.prepareToRunScript(a);
     try std.testing.expectEqual(a, protocol.entryRealm().?);
@@ -1282,10 +1342,10 @@ test "protocol: the entry and incumbent realms are the innermost prepared realm"
 test "protocol: functionRealm follows bound functions and proxies to their target's realm" {
     var host_w: WindowHost = .{};
     const w = try windowRealm(&host_w, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
     var host_o: WindowHost = .{};
     const other = try windowRealm(&host_o, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(other);
+    defer protocol.destroyWindowRealm(other, .global_detached);
 
     const f = try evalOwned(w, "(function f() {})");
     defer f.release();
@@ -2042,7 +2102,7 @@ test "protocol: listeners added and removed in a loop leave no callback wrapper 
     // returns - std.testing.allocator fails the test on any that outlives it.
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
     const saved = v8.conversions.callback_allocator;
     v8.conversions.callback_allocator = std.testing.allocator;
     defer v8.conversions.callback_allocator = saved;
@@ -2074,7 +2134,7 @@ test "protocol: what a getter returns is the binding's - a kept value reads the 
     // the frozen array's identity, not the parse.
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
     try expectEval(w,
         \\const e = new ErrorEvent('x');
         \\const c = new CustomEvent('x', { detail: { a: 1 } });
@@ -2139,7 +2199,7 @@ test "protocol: engine code that reads a kept value through its getter releases 
     // its stored error, so gc_bench measures those.)
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
     try expectEval(w,
         \\globalThis.seen = [];
         \\onerror = (message, filename, lineno, colno, error) => { seen.push(error); };
@@ -2193,7 +2253,7 @@ test "protocol: a MessageEvent made with ports keeps one frozen array, the one e
     // after a collection cannot single the constructor out.
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
     try expectEval(w,
         \\globalThis.port = new MessageChannel().port1;
         \\globalThis.withPorts = new MessageEvent('x', { ports: [port] });
@@ -2222,7 +2282,7 @@ test "protocol: the indexed and named property interceptors release the handles 
     // same kind of value the same way.
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
     try expectEval(w,
         \\globalThis.el = new Document().createElementNS('http://www.w3.org/1999/xhtml', 'span');
         \\el.setAttribute('data-bytes', 'E1 78');
@@ -2252,7 +2312,7 @@ test "protocol: a trusted animation event reaches a listener for its legacy webk
     // event, so the dispatch is the user agent's: dom.fire_event.
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(w);
+    defer protocol.destroyWindowRealm(w, .global_detached);
     try expectEval(w,
         \\globalThis.seen = [];
         \\globalThis.legacyOnly = new EventTarget();
