@@ -105,6 +105,11 @@ pub const InternalState = struct {
     /// and one never released kept that page alive for the process.
     event_handler_map: ?*std.StringHashMapUnmanaged(HandlerValue) = null,
 
+    /// Set on an entry made lazily (`lazyInternal`), for an EventTarget whose
+    /// impl never ran EventTarget's init - and so never runs its deinit,
+    /// which is what removes an entry. Null for every other entry.
+    lazy: ?LazyEntry = null,
+
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
@@ -169,6 +174,31 @@ pub const InternalState = struct {
         }
         return &[_]EventListenerRecord{};
     }
+};
+
+/// What an entry made lazily records about the instance it was made for.
+///
+/// 236 impls of EventTarget's descendants (EventSource until 2026-10-01,
+/// OffscreenCanvas, Performance, the IDB requests, the Audio, Sensor and
+/// Bluetooth stubs ...) make their instance with runtime.Instance.init and
+/// never chain to EventTarget's init or deinit, so their first
+/// addEventListener makes the entry here and nothing removes it when the
+/// instance goes. A worker's such entry outlived the worker's agent, and the
+/// browser's end released its listener's handle into the disposed isolate
+/// (eventsource/format-bom.any.js, at a sweep shard's exit: "Check failed:
+/// node->IsInUse()").
+const LazyEntry = struct {
+    /// The instance's realm. Its end releases the entry (`releaseRealmEntries`,
+    /// an unloading cleanup step), while the realm's agent lives: listeners
+    /// go with their realm.
+    realm: runtime.Context,
+    /// INTERIM until every EventTarget impl chains init/deinit (queue): the
+    /// instance's slab generation. An entry whose instance was freed stays
+    /// here until its realm ends, keyed by an address the slab hands out
+    /// again; the instance that gets the slot must not inherit the dead
+    /// one's listeners (`getInternalFromRegistry`). A chained impl removes
+    /// its entry in deinit, and then this goes.
+    generation: u64,
 };
 
 /// Get the internal state from an instance
@@ -298,13 +328,75 @@ pub fn cleanupRegistry() void {
 
 fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
     const registry = ensureRegistry();
-    return registry.get(@intFromPtr(instance));
+    const internal = registry.get(@intFromPtr(instance)) orelse return null;
+    // INTERIM until every EventTarget impl chains init/deinit (queue): an
+    // entry made lazily for an instance that has since been freed, whose slot
+    // this instance now has. The listeners are the dead instance's: they go
+    // now - its realm still lives, or its end would have released the entry -
+    // and this instance has none.
+    if (internal.lazy) |lazy| {
+        if (lazy.generation != runtime.SlabAllocator.generationOf(instance)) {
+            dropEntry(registry, @intFromPtr(instance));
+            return null;
+        }
+    }
+    return internal;
 }
 
 fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
     const registry = ensureRegistry();
+    // A lazily made entry still under this address is a freed instance's
+    // (see `LazyEntry`): it goes before the new one takes its place, rather
+    // than being overwritten with its listeners still held.
+    if (registry.get(@intFromPtr(instance))) |old| {
+        if (old != internal and old.lazy != null) dropEntry(registry, @intFromPtr(instance));
+    }
     registry_guard.beforeInsert(registry);
     try registry.put(@intFromPtr(instance), internal);
+}
+
+/// The entry for an instance that never ran EventTarget's init (see
+/// `LazyEntry`), made on its first addEventListener.
+fn lazyInternal(instance: *runtime.Instance) !*InternalState {
+    if (getInternalFromRegistry(instance)) |internal| return internal;
+    // Its realm's end releases it: nothing else will.
+    dom_module.unloading_cleanup.install(&releaseRealmEntries);
+    const ArenaAllocator = @import("runtime").ArenaAllocator;
+    const internal = try ArenaAllocator.get().create(InternalState);
+    errdefer ArenaAllocator.get().destroy(InternalState, internal);
+    internal.* = InternalState.init(std.heap.page_allocator);
+    internal.lazy = .{ .realm = instance.ctx, .generation = runtime.SlabAllocator.generationOf(instance) };
+    try setInternalInRegistry(instance, internal);
+    return internal;
+}
+
+/// Release an entry and what it holds - its listeners' callbacks and its
+/// event handlers - and remove it. Only for an entry whose realm's agent
+/// lives.
+fn dropEntry(registry: *std.AutoHashMap(usize, *InternalState), key: usize) void {
+    const kv = registry.fetchRemove(key) orelse return;
+    registry_guard.noteRemoval(registry);
+    kv.value.deinitEx(true);
+    const Arena = @import("runtime").ArenaAllocator;
+    if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, kv.value);
+}
+
+/// EventTarget's unloading cleanup step (dom.unloading_cleanup): the entries
+/// made lazily for `environment`'s instances leave with it - nothing else
+/// removes them (see `LazyEntry`) - and what they hold is released now,
+/// while the realm's agent lives. A worker's agent ends right after its
+/// realm, and the browser's end, which releases whatever is left here, is
+/// too late for it.
+fn releaseRealmEntries(environment: runtime.Context) void {
+    const registry = if (internal_state_registry) |*r| r else return;
+    var doomed: std.ArrayListUnmanaged(usize) = .empty;
+    defer doomed.deinit(std.heap.page_allocator);
+    var it = registry.iterator();
+    while (it.next()) |entry| {
+        const lazy = entry.value_ptr.*.lazy orelse continue;
+        if (lazy.realm == environment) doomed.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
+    }
+    for (doomed.items) |key| dropEntry(registry, key);
 }
 
 fn removeFromRegistry(instance: *runtime.Instance) void {
@@ -791,16 +883,9 @@ fn flattenOptions(ctx: runtime.Context, options: webidl.Opt(runtime.JSValue), co
 }
 
 pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
-    // Get or create internal state
-    var internal = getInternalFromRegistry(instance);
-    if (internal == null) {
-        // First operation - initialize internal state
-        const ArenaAllocator = @import("runtime").ArenaAllocator;
-        const new_internal = ArenaAllocator.get().create(InternalState) catch return error.OutOfMemory;
-        new_internal.* = InternalState.init(std.heap.page_allocator);
-        setInternalInRegistry(instance, new_internal) catch return error.OutOfMemory;
-        internal = new_internal;
-    }
+    // Get the internal state, or make it for an instance that never ran
+    // EventTarget's init.
+    const internal = lazyInternal(instance) catch return error.OutOfMemory;
 
     // https://dom.spec.whatwg.org/#concept-flatten-more
     const flat = try flattenOptions(instance.ctx, options, true);
@@ -820,7 +905,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     // Duplicate the type string with internal allocator to ensure ownership
     // The incoming DOMString may be allocated with a different allocator (from V8 conversion layer)
     // and we need to own it to safely free it in deinit()
-    const owned_type = runtime.DOMString.initDupe(internal.?.allocator, @"type".asSlice()) catch {
+    const owned_type = runtime.DOMString.initDupe(internal.allocator, @"type".asSlice()) catch {
         if (callback_value) |value| value.release();
         return error.OutOfMemory;
     };
@@ -836,7 +921,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     };
 
     // It stores or frees the record's type and callback on every path.
-    try addAnEventListener(internal.?, instance, listener);
+    try addAnEventListener(internal, instance, listener);
 }
 
 /// Operation: removeEventListener

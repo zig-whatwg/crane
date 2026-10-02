@@ -496,19 +496,19 @@ fn settingsIndexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return factory_instance;
     }
 
-    // Create the backend IDBFactory
+    // Create the backend IDBFactory. Until the factory takes it over below,
+    // it is this call's: the errdefers release it - once. (The factory's
+    // failure path used to free it too, and then the errdefer freed it again:
+    // a double free on every failed allocation of IDBFactory.init.)
     const backend = internal.allocator.create(IDBFactoryBackend) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
     backend.* = IDBFactoryBackend.init(internal.allocator);
+    errdefer backend.deinit();
     backend.setStorageKey(internal.origin);
 
     // Create the WebIDL IDBFactory instance
-    const factory_instance = interfaces.IDBFactory.init(internal.allocator, instance.ctx) catch {
-        backend.deinit();
-        internal.allocator.destroy(backend);
-        return error.OutOfMemory;
-    };
+    const factory_instance = interfaces.IDBFactory.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
 
     // Set the backend in the factory's internal state
     const factory_state = factory_instance.getState(interfaces.IDBFactory.State);
@@ -739,13 +739,14 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
     const internal = getInternal(instance) orelse return;
     // The document this one replaces - the initial about:blank, when a
     // navigation reuses its Window (HTML "create and initialize a Document
-    // object" step 6) - loses the window's edge to its successor
-    // (Document.setDefaultView draws it), but still names this window as its
-    // default view, so its wrapper is never what frees it: kept as it was
-    // before the edge, until the realm ends. Blink lets the collector take
-    // it; that needs a document whose window has moved on to stop counting
-    // as the window's (wrapper_cache.engineOwns).
-    if (internal.document) |previous| if (previous != document) engine.keepPlatformObjectAlive(previous);
+    // object" step 6) - is unloaded and, never salvageable, destroyed: HTML
+    // "destroy a document" step 8 sets its browsing context to null. Its
+    // defaultView answers null, the window's edge goes to its successor
+    // (Document.setDefaultView), and nothing keeps it for the window: Blink
+    // detaches the old document and the collector takes it once script lets
+    // it go. (It used to be kept, with a pending-activity hold, until the
+    // realm ended.)
+    if (internal.document) |previous| if (previous != document) @import("dom").document_browsing_context.clearWindow(previous);
     internal.document = document;
     // A Window's associated Document is its browsing context's active
     // document while the Window is that context's active window.

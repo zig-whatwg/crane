@@ -35,14 +35,14 @@ pub const ImplError = error{
 };
 
 /// "The formData attribute must return the value it was initialized to."
-/// The event holds the FormData's wrapper strongly, as Blink traces
-/// `form_data_` from the event: a listener reads `e.formData` after the
-/// FormData was made for it and nothing else refers to it. A FormData
-/// points at nothing, so the hold makes no cycle.
+/// The event's wrapper keeps the FormData's, as Blink traces `form_data_`
+/// from the event: a listener reads `e.formData` after the FormData was made
+/// for it and nothing else refers to it. An edge, not a root
+/// (same_object.Traced).
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     form_data: ?*runtime.Instance = null,
-    pin: same_object.Pin = .{},
+    form_data_edge: same_object.Traced = .{ .slot = .{ .name = "formData" } },
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -69,7 +69,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.pin.release();
+        internal.form_data_edge.release(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -83,7 +83,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     try event_construction.innerEventCreationSteps(instance, @"type", event_construction.eventInitFrom(eventInitDict.base));
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.form_data = eventInitDict.formData;
-    internal.pin.hold(eventInitDict.formData);
+    internal.form_data_edge.hold(instance, eventInitDict.formData);
     return instance;
 }
 

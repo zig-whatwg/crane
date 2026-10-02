@@ -60,24 +60,25 @@ pub fn init(
     errdefer runtime.Instance.deinit(instance);
 
     const state = instance.getState(StateType);
+    // What deinit reads, should anything below fail: the errdefer above runs
+    // it, and an `_internal` never set read garbage (a failed allocation of
+    // the state below crashed in deinit).
+    state.own._internal = null;
 
-    // Create internal state
-    state.own._internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(state.own._internal.?);
-
-    const internal = state.own._internal.?;
+    // Create internal state - this call's until it is complete, then deinit's.
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
     internal.allocator = allocator;
 
     // Create backend factory
     internal.factory = try allocator.create(BackendFactory);
-    errdefer allocator.destroy(internal.factory);
-
     internal.factory.* = BackendFactory.init(allocator);
 
     // Set default storage key from context origin (if available)
     // TODO: Get origin from runtime context
     internal.factory.setStorageKey("default-origin");
 
+    state.own._internal = internal;
     return instance;
 }
 

@@ -28,17 +28,20 @@ pub const ImplError = error{
     InvalidStateError,
 };
 
-/// Its from entry and destination, kept alive with it, and its promises.
+/// Its from entry and destination, kept alive by its wrapper (edges:
+/// same_object.Traced), and its promises (still strong holds: values, not
+/// platform objects).
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    from_pin: same_object.Pin = .{},
-    to_pin: same_object.Pin = .{},
+    from_edge: same_object.Traced = .{ .slot = .{ .name = "from" } },
+    to_edge: same_object.Traced = .{ .slot = .{ .name = "to" } },
     committed: ?engine.Owned = null,
     finished: ?engine.Owned = null,
 
-    fn deinit(self: *InternalState) void {
-        self.from_pin.release();
-        self.to_pin.release();
+    /// `transition`: the object this state is, whose edges go.
+    fn deinit(self: *InternalState, transition: *runtime.Instance) void {
+        self.from_edge.release(transition);
+        self.to_edge.release(transition);
         if (self.committed) |p| p.release();
         if (self.finished) |p| p.release();
     }
@@ -67,7 +70,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        internal.deinit(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -88,9 +91,9 @@ fn create(realm: runtime.Context, init_state: dom.navigation_objects.TransitionI
         .traverse => ._traverse_,
     };
     state.own.from = init_state.from;
-    internal.from_pin.hold(init_state.from);
+    internal.from_edge.hold(instance, init_state.from);
     state.own.to = init_state.destination;
-    internal.to_pin.hold(init_state.destination);
+    internal.to_edge.hold(instance, init_state.destination);
     internal.committed = try engine.retainValue(realm, init_state.committed);
     internal.finished = try engine.retainValue(realm, init_state.finished);
     state.own.committed = runtime.JSValue.jsUndefined;

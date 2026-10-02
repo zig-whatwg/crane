@@ -44,6 +44,7 @@ progress = [
   "9fd458bfe - journal records live V8 native contexts per file (exact, where heap is noisy)",
   "875a0db20 - a destroyed frame releases its own handles (context, Window constructor, intrinsics, global); variadic arguments released",
   "7b265eb8f - the event handler map owns its values: 40 frame files leave 21 live contexts, not 102",
+  "0af9d3df0, 005e85fac, 1e0711be0, 483783b0a, 677e88983 (merged 58ddcc8b5) - realms2: a removed frame's realm ends when nothing reachable holds it - traceChild never makes the owner's wrapper, torn-down nodes' wrappers weak, callback handles tagged with their realm and weakened at detach, Pin only for pending activity, retired realms end outside GC",
 ]
 
   [[infra.items]]
@@ -88,7 +89,7 @@ progress = [
 
   [[infra.items]]
   name = "Wrapper cache stops holding torn-down wrappers strongly (markAsCleanedUp)"
-  status = "todo"
+  status = "done"
 
   [[infra.items]]
   name = "Native timers release their handler and context handles"
@@ -104,7 +105,7 @@ progress = [
 
   [[infra.items]]
   name = "Event listeners and handlers are traced from their target, not held as strong roots - today a target whose listener closure captures the target can never be collected (Blink traces listeners from the target)"
-  status = "todo"
+  status = "doing"
 
 [[infra]]
 id = "navigation"
@@ -454,7 +455,7 @@ progress = [
 
   [[infra.items]]
   name = "Isolation tests across instances and sharing tests across tabs; the process-global/threadlocal ratchet"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Optional persistent profile directory (in-memory by default)"

@@ -250,6 +250,9 @@ pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFu
     //    [LegacyTreatNonObjectAsNull] attribute's value - return undefined
     //    converted to the return type (the caller's conversion).
     const function = support.handleOf(callback.function.value) orelse return normal_undefined;
+    // A callback of a realm the collector took (weak since the realm's
+    // detach, protocol_realms) is empty: nothing to call.
+    if (ffi.v8_Global_IsEmpty(function)) return normal_undefined;
     if (!ffi.v8_Value_IsFunction(function)) return normal_undefined;
 
     // 5. Let realm be F's associated realm.
@@ -310,6 +313,8 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
     // 2. If thisArg was not given, let thisArg be undefined.
     // 3. Let O be the JavaScript object corresponding to value.
     const object = support.handleOf(callback.object.value) orelse return error.TypeError;
+    // Empty: a callback of a realm the collector took (protocol_realms).
+    if (ffi.v8_Global_IsEmpty(object)) return error.TypeError;
     if (!ffi.v8_Value_IsObject(object)) return error.TypeError;
 
     // 4. Let realm be O's associated realm.
@@ -396,7 +401,22 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
 pub fn takeCallbackFunction(argument: *const anyopaque) engine.CallbackFunction {
     const function = callback_interfaces.takeCallbackFunction(argument);
     const isolate = ffi.v8_Isolate_GetCurrent() orelse return .{ .function = .{ .value = function }, .context = null };
+    tagWithCurrentRealm(isolate, function);
     return .{ .function = .{ .value = function }, .context = incumbentRealm(isolate) };
+}
+
+/// Tag a callback's handle with the realm whose API is storing it - the
+/// current realm: V8 runs an API function in its own context, so a frame
+/// target's `onmessage` setter or `addEventListener` is the frame's,
+/// whichever realm called it. If that realm's navigable is destroyed, its
+/// detach makes the handle weak (protocol_realms) - a listener whose closure
+/// reaches the frame must not be a root that keeps the frame forever.
+fn tagWithCurrentRealm(isolate: *ffi.Isolate, value: JSValue) void {
+    const handle = support.handleOf(value) orelse return;
+    const current = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
+    defer ffi.v8_Context_Dispose(current);
+    const key = context_manager.keyOf(current) orelse return;
+    ffi.v8_Global_TagRealm(handle, key);
 }
 
 /// A callback-interface argument as the binding hands it over (the
@@ -411,5 +431,6 @@ pub fn takeCallbackInterface(argument: *const engine.CallbackWrapper) engine.Cal
         (if (ffi.v8_Global_Clone(global.ptr)) |clone| realm_entry.owned(clone) else JSValue.jsUndefined)
     else
         JSValue.jsUndefined;
+    tagWithCurrentRealm(wrapper.isolate, object);
     return .{ .object = .{ .value = object }, .context = incumbentRealm(wrapper.isolate) };
 }

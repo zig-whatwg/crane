@@ -22,6 +22,10 @@ pub const Implementation = struct {
     /// Make `window` `document`'s browsing context's window; a no-op for an
     /// object that is no Document.
     set_window: *const fn (document: *runtime.Instance, window: *runtime.Instance) void,
+    /// `document` was destroyed: HTML "destroy a document" step 8 sets its
+    /// browsing context to null, so its defaultView answers null from then
+    /// on - and nothing keeps it for the window any more.
+    clear_window: ?*const fn (document: *runtime.Instance) void = null,
 };
 
 /// Per thread, like the documents it serves.
@@ -36,6 +40,14 @@ pub fn install(impl: Implementation) void {
 pub fn setWindow(document: *runtime.Instance, window: *runtime.Instance) void {
     const impl = implementation orelse return;
     impl.set_window(document, window);
+}
+
+/// `document` was destroyed: its browsing context is null from now on (HTML
+/// "destroy a document" step 8).
+pub fn clearWindow(document: *runtime.Instance) void {
+    const impl = implementation orelse return;
+    const clear = impl.clear_window orelse return;
+    clear(document);
 }
 
 test "without an installed implementation setting the window does nothing" {

@@ -6,15 +6,22 @@
 //! running them - so a fetch of a destroyed document ends with no further
 //! event at all.
 //!
-//! The fetches are the owners' state - XMLHttpRequest's in-flight request -
-//! and no IDL member reaches them, so each owner installs a canceler here and
-//! "destroy a child navigable" (HTMLIFrameElement's removing steps) calls
-//! `abortAll` for each destroyed document's realm.
+//! The fetches are the owners' state - XMLHttpRequest's in-flight request,
+//! fetch()'s call - and no IDL member reaches them, so each kind of fetch
+//! owner installs a canceler here and "destroy a child navigable"
+//! (HTMLIFrameElement's removing steps) calls `abortAll` for each destroyed
+//! document's realm. Canceling is also what lets a destroyed frame's realm
+//! go: a fetch in flight holds its owner, and the owner its realm, until it
+//! ends (Blink's HasPendingActivity), so it has to end.
+//!
+//! Only "abort a document" step 2 belongs here. Steps the spec puts in the
+//! unloading document cleanup steps (a WebSocket's "make disappear") are
+//! not fetches.
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/document-lifecycle.html#abort-a-document
 //! Spec: https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document
 //!
-//! lint-impls: hook for XMLHttpRequest
+//! lint-impls: hook for XMLHttpRequest, WindowOrWorkerGlobalScope (fetch())
 
 const runtime = @import("runtime");
 
@@ -23,7 +30,8 @@ pub const Canceler = *const fn (realm: runtime.Context) void;
 
 /// One slot per kind of fetch owner, with room to spare. Per thread, as the
 /// fetches are.
-threadlocal var cancelers: [4]?Canceler = .{ null, null, null, null };
+const slot_count = 8;
+threadlocal var cancelers: [slot_count]?Canceler = .{null} ** slot_count;
 
 /// Called by each owner when it starts a fetch. Idempotent.
 pub fn install(canceler: Canceler) void {
@@ -50,7 +58,7 @@ test "install is idempotent and abortAll asks every owner" {
     const std = @import("std");
     const saved = cancelers;
     defer cancelers = saved;
-    cancelers = .{ null, null, null, null };
+    cancelers = .{null} ** slot_count;
 
     const Owner = struct {
         var calls: usize = 0;

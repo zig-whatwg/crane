@@ -93,6 +93,11 @@ const CacheEntry = struct {
     /// Reasons to hold the wrapper that only a caller can state - see `Holds`.
     holds: Holds = .{},
 
+    /// Kept by an edge from its realm's global object instead of a strong
+    /// handle, since the realm's navigable was destroyed
+    /// (`WrapperCache.detach`).
+    retained: bool = false,
+
     /// Set to true when the cache is being destroyed. This allows pending
     /// weak callbacks to detect that they should skip cleanup because:
     /// 1. The cache is no longer valid
@@ -138,6 +143,8 @@ const Holds = packed struct {
 /// document, Location or History, a streams-graph object). The default - no
 /// reason - is weak, and only then.
 fn shouldBeStrong(entry: *const CacheEntry) bool {
+    // A torn-down instance's wrapper is never what keeps anything.
+    if (entry.instance_already_cleaned) return false;
     if (entry.holds.document or entry.holds.pending_activity) return true;
     return engineOwns(entry.instance);
 }
@@ -243,6 +250,11 @@ fn engineOwns(instance: *runtime.Instance) bool {
         if (doc_internal.default_view != null) return true;
     }
     return false;
+}
+
+/// A realm's Window: its realm's end frees it (protocol_realms).
+fn isRealmWindow(instance: *runtime.Instance) bool {
+    return std.mem.eql(u8, instance.vtable.name, "Window");
 }
 
 /// True for a node with a parent: its tree holds it - the parent's child list
@@ -399,7 +411,23 @@ fn entryOf(instance: *runtime.Instance) ?*CacheEntry {
 
 /// Arm or disarm `entry`'s weak callback to match `shouldBeStrong` - the one
 /// path by which a wrapper's strength changes after it is made.
+///
+/// In a detached cache (`WrapperCache.detach`) no wrapper is strong: one that
+/// should be is kept by an edge from the realm's global object instead,
+/// drawn once and never withdrawn - the realm is going, and what it kept goes
+/// with it.
 fn syncEntry(entry: *CacheEntry) void {
+    if (entry.cache.detached_context) |context| {
+        if (shouldBeStrong(entry) and !entry.retained) {
+            retainOnGlobal(context, @ptrCast(entry.wrapper));
+            entry.retained = true;
+        }
+        if (entry.strong) {
+            v8.v8_Global_SetWeak(@ptrCast(entry.wrapper), @ptrCast(entry), weakCallback);
+            entry.strong = false;
+        }
+        return;
+    }
     const strong = shouldBeStrong(entry);
     if (entry.strong == strong) return;
     if (strong) {
@@ -409,6 +437,18 @@ fn syncEntry(entry: *CacheEntry) void {
     }
     entry.strong = strong;
 }
+
+/// The private key of the array on a detached realm's global object that
+/// keeps what its cache would otherwise hold strongly.
+const retained_key = "crane:retained";
+
+fn retainOnGlobal(context: *v8.Context, value: *v8.Value) void {
+    v8.v8_Context_RetainOnGlobal(context, retained_key.ptr, retained_key.len, value);
+}
+
+/// A deferred edge's child, made weak at a realm's detach once it is kept
+/// from the global object: nothing to do when it is collected.
+fn deferredChildCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
 
 /// Every live WrapperCache on this thread - one per realm. A node has one
 /// wrapper whatever realm reads it (its bound wrapper), but any other platform
@@ -426,6 +466,14 @@ threadlocal var live_caches: std.ArrayListUnmanaged(*WrapperCache) = .empty;
 pub fn liveEntryCount() usize {
     var total: usize = 0;
     for (live_caches.items) |cache| total += cache.size();
+    return total;
+}
+
+/// The edges every live cache on this thread holds for owners script has
+/// not seen yet (`WrapperCache.deferEdge`), for tests and diagnostics.
+pub fn liveDeferredEdgeCount() usize {
+    var total: usize = 0;
+    for (live_caches.items) |cache| total += cache.deferredEdgeCount();
     return total;
 }
 
@@ -566,7 +614,18 @@ fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
         // freed memory. Only the wrapper goes; a later wrap makes a fresh one,
         // and the instance is freed when its tree is torn down, or once it is
         // removed from the tree and its next wrapper is collected.
-        if (engineOwns(entry.instance)) {
+        // A realm's Window is freed by its realm's end, never by its
+        // wrapper's death: the global proxy of a realm whose navigable was
+        // destroyed is collected with the realm, before the task that ends it
+        // runs (protocol_realms).
+        //
+        // And a streams object of a detached realm is not kept: its graph
+        // was held for the realm's life by the global object, which is gone
+        // now with every wrapper of the graph, and the realm's end no longer
+        // finds this entry to free it (the teardown of these classes touches
+        // only their own slots, so any order is safe).
+        const detached_streams = entry.cache.detached_context != null and isStreamsGraphObject(entry.instance.vtable.name);
+        if (isRealmWindow(entry.instance) or (engineOwns(entry.instance) and !detached_streams)) {
             log.debug("[weakCallback] ENGINE-OWNED: instance={*} - wrapper released, instance kept", .{entry.instance});
             disposeEntryWrapper(entry);
             entry.cache.allocator.destroy(entry);
@@ -621,7 +680,147 @@ pub const WrapperCache = struct {
     /// does not inherit one. `set` moves a hold onto the new wrapper's entry.
     pending_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, u64) = .empty,
 
+    /// Edges `traceChild` drew from an owner script had not seen yet
+    /// (protocol_tracing.zig): each child's wrapper held strongly here until
+    /// the owner's wrapper is made - `set` draws the edges on it - or this
+    /// realm ends. By slab generation, so an owner freed unwrapped and its
+    /// address reissued leaves nothing to a newcomer.
+    edges_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, DeferredEdges) = .empty,
+
+    /// Its realm's navigable was destroyed (`detach`): the realm's context,
+    /// BORROWED - the realm's own handle, weak from then on and empty once
+    /// collected. Every wrapper that would be held strongly is kept by an
+    /// edge from the realm's global object instead (`syncEntry`).
+    detached_context: ?*v8.Context = null,
+
     const Self = @This();
+
+    /// The realm's navigable was destroyed, and its realm lives on only for
+    /// as long as script holds its WindowProxy (protocol_realms, HTML
+    /// "destroy a child navigable"). A strong handle here would keep it
+    /// forever, so each wrapper held strongly - a node in a tree, a window's
+    /// Location, a streams object, pending activity - is kept from the
+    /// global object instead, and so is each child waiting for its owner's
+    /// wrapper (`edges_before_wrap`). `context` is the realm's own handle,
+    /// borrowed for the cache's life. Needs the context entered.
+    pub fn detach(self: *Self, context: *v8.Context) void {
+        if (self.detached_context != null) return;
+        self.detached_context = context;
+        var iter = self.cache.valueIterator();
+        while (iter.next()) |entry_ptr| syncEntry(entry_ptr.*);
+        var deferred_iter = self.edges_before_wrap.valueIterator();
+        while (deferred_iter.next()) |deferred| {
+            for (deferred.edges.items) |edge| {
+                retainOnGlobal(context, edge.child);
+                v8.v8_Global_SetWeak(@ptrCast(edge.child), null, deferredChildCollected);
+            }
+        }
+    }
+
+    /// One owner's edges waiting for its wrapper.
+    pub const DeferredEdges = struct {
+        generation: u64,
+        edges: std.ArrayListUnmanaged(DeferredEdge) = .empty,
+
+        fn dispose(self: *DeferredEdges, allocator: std.mem.Allocator) void {
+            for (self.edges.items) |edge| edge.dispose(allocator);
+            self.edges.deinit(allocator);
+        }
+    };
+
+    /// A private key (owned) and the child's wrapper, a strong Global
+    /// (owned): what `v8_Object_SetPrivateRef` will set on the owner.
+    pub const DeferredEdge = struct {
+        key: []u8,
+        child: *v8.Value,
+
+        fn dispose(self: DeferredEdge, allocator: std.mem.Allocator) void {
+            v8.v8_Global_Dispose(self.child);
+            allocator.free(self.key);
+        }
+    };
+
+    /// Hold `child` - a Global the cache takes over, on failure too - for
+    /// `owner`, whose wrapper is not made yet, under `key`; until then the
+    /// hold is strong. Replaces an edge in the same key.
+    pub fn deferEdge(self: *Self, owner: *runtime.Instance, key: []const u8, child: *v8.Value) error{OutOfMemory}!void {
+        errdefer v8.v8_Global_Dispose(child);
+        self.pruneDeferredEdges();
+        const generation = runtime.SlabAllocator.generationOf(owner);
+        const gop = try self.edges_before_wrap.getOrPut(self.allocator, owner);
+        if (!gop.found_existing) {
+            gop.value_ptr.* = .{ .generation = generation };
+        } else if (gop.value_ptr.generation != generation) {
+            // A dead owner's edges at a reissued address: not the newcomer's.
+            gop.value_ptr.dispose(self.allocator);
+            gop.value_ptr.* = .{ .generation = generation };
+        }
+        for (gop.value_ptr.edges.items) |*edge| {
+            if (!std.mem.eql(u8, edge.key, key)) continue;
+            v8.v8_Global_Dispose(edge.child);
+            edge.child = child;
+            return;
+        }
+        const owned_key = try self.allocator.dupe(u8, key);
+        errdefer self.allocator.free(owned_key);
+        try gop.value_ptr.edges.append(self.allocator, .{ .key = owned_key, .child = child });
+    }
+
+    /// End a deferred edge (engine.forgetTracedChild on an owner script has
+    /// not seen). A no-op when there is none.
+    pub fn forgetDeferredEdge(self: *Self, owner: *runtime.Instance, key: []const u8) void {
+        const deferred = self.edges_before_wrap.getPtr(owner) orelse return;
+        for (deferred.edges.items, 0..) |edge, i| {
+            if (!std.mem.eql(u8, edge.key, key)) continue;
+            edge.dispose(self.allocator);
+            _ = deferred.edges.swapRemove(i);
+            return;
+        }
+    }
+
+    /// The owner's wrapper is made: draw the edges waiting for it, and let
+    /// the strong holds go. Needs a current context, which every wrap has.
+    fn drawDeferredEdges(self: *Self, instance: *runtime.Instance, generation: u64, wrapper: *v8.Object) void {
+        var kv = self.edges_before_wrap.fetchRemove(instance) orelse return;
+        defer kv.value.dispose(self.allocator);
+        if (kv.value.generation != generation) return;
+        for (kv.value.edges.items) |edge| {
+            // A child a detached realm let go weak may be gone.
+            if (v8.v8_Global_IsEmpty(edge.child)) continue;
+            v8.v8_Object_SetPrivateRef(wrapper, edge.key.ptr, @intCast(edge.key.len), edge.child);
+        }
+    }
+
+    /// Drop the edges of owners freed unwrapped whose teardown did not end
+    /// them (their slot's generation moved on): a backstop - an owner that
+    /// can be freed unwrapped ends its edges in its teardown
+    /// (engine.forgetTracedChild).
+    fn pruneDeferredEdges(self: *Self) void {
+        var iter = self.edges_before_wrap.iterator();
+        while (iter.next()) |kv| {
+            if (runtime.SlabAllocator.generationOf(kv.key_ptr.*) == kv.value_ptr.generation) continue;
+            kv.value_ptr.dispose(self.allocator);
+            // Removing during iteration: the map's own tombstone removal
+            // leaves the iterator valid.
+            self.edges_before_wrap.removeByPtr(kv.key_ptr);
+        }
+    }
+
+    /// The edges waiting for their owners' wrappers, in this cache.
+    pub fn deferredEdgeCount(self: *const Self) usize {
+        var total: usize = 0;
+        var iter = self.edges_before_wrap.valueIterator();
+        while (iter.next()) |deferred| total += deferred.edges.items.len;
+        return total;
+    }
+
+    /// Every deferred edge's hold, at the realm's end.
+    fn disposeDeferredEdges(self: *Self) void {
+        var iter = self.edges_before_wrap.valueIterator();
+        while (iter.next()) |deferred| deferred.dispose(self.allocator);
+        self.edges_before_wrap.deinit(self.allocator);
+        self.edges_before_wrap = .empty;
+    }
 
     /// Initialize a new wrapper cache
     ///
@@ -792,6 +991,7 @@ pub const WrapperCache = struct {
         self.unregister();
         self.cache.deinit();
         self.pending_before_wrap.deinit(self.allocator);
+        self.disposeDeferredEdges();
     }
 
     /// Clean up cache without calling onObjectFreed callbacks.
@@ -853,6 +1053,7 @@ pub const WrapperCache = struct {
         self.unregister();
         self.cache.deinit();
         self.pending_before_wrap.deinit(self.allocator);
+        self.disposeDeferredEdges();
     }
 
     /// Join `live_caches` - on first use, when this cache's address is
@@ -951,7 +1152,9 @@ pub const WrapperCache = struct {
         if (self.pending_before_wrap.fetchRemove(instance)) |held| {
             if (held.value == entry.original_generation) entry.holds.pending_activity = true;
         }
-        if (shouldBeStrong(entry)) {
+        // Edges traced from the instance before script saw it.
+        self.drawDeferredEdges(instance, entry.original_generation, wrapper);
+        if (shouldBeStrong(entry) and self.detached_context == null) {
             entry.strong = true;
         } else {
             v8.v8_Global_SetWeak(
@@ -959,6 +1162,7 @@ pub const WrapperCache = struct {
                 @ptrCast(entry),
                 weakCallback,
             );
+            if (self.detached_context != null) syncEntry(entry);
         }
     }
 
@@ -997,6 +1201,7 @@ pub const WrapperCache = struct {
         }
 
         self.cache.clearRetainingCapacity();
+        self.disposeDeferredEdges();
     }
 
     /// Mark an entry as already cleaned (instance deinit already called)
@@ -1031,10 +1236,22 @@ pub const WrapperCache = struct {
         }
 
         if (self.cache.get(instance)) |entry| {
-            // Clear weak callback to prevent it from firing
-            v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
             // Mark as already cleaned - deinit will skip onObjectFreed
             entry.instance_already_cleaned = true;
+            // The instance is gone, its wrapper not: script may still hold
+            // it. Weak from here, whatever held it before (a node's tree did,
+            // while it had a parent) - its weak callback, which skips an
+            // instance whose cleanup started, frees the storage the teardown
+            // left (releaseStorage). It used to be held strongly until the
+            // page ended, a wrapper and an instance a torn-down node, and with
+            // it everything it reaches: gc_bench retained both for every
+            // `void div.attachShadow().appendChild(span)`, and a removed
+            // frame whose torn-down nodes' wrappers were held could never be
+            // collected.
+            if (entry.strong) {
+                v8.v8_Global_SetWeak(@ptrCast(entry.wrapper), @ptrCast(entry), weakCallback);
+                entry.strong = false;
+            }
             return true;
         }
         return false;

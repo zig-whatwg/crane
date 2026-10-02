@@ -35,7 +35,8 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     event: ?*runtime.Instance = null,
-    event_pin: same_object.Pin = .{},
+    /// Kept by this object's wrapper (an edge: same_object.Traced).
+    event_edge: same_object.Traced = .{ .slot = .{ .name = "event" } },
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
@@ -61,7 +62,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.event_pin.release();
+        internal.event_edge.release(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -74,7 +75,7 @@ fn create(realm: runtime.Context, event: *runtime.Instance) anyerror!*runtime.In
     errdefer runtime.Instance.deinit(instance);
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.event = event;
-    internal.event_pin.hold(event);
+    internal.event_edge.hold(instance, event);
     return instance;
 }
 

@@ -3035,6 +3035,12 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(full_static_lib);
 
+    // The C ABI's own tests - a browser created and destroyed through it under
+    // std.testing.allocator - run with the browser tests: nothing else compiles
+    // this module for the host.
+    const lib_exports_test = b.addTest(.{ .root_module = lib_exports_mod });
+    test_browser_step.dependOn(&b.addRunArtifact(lib_exports_test).step);
+
     // Build step for the full browser runtime library
     const lib_full_step = b.step("lib-full", "Build the full browser runtime library with all WebIDL interfaces");
     const install_full_static = b.addInstallArtifact(full_static_lib, .{});

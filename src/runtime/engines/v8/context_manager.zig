@@ -1019,11 +1019,26 @@ pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
 ///
 /// Thread safety: Thread-local, no synchronization needed
 pub fn removeContext(v8_ctx: *v8.Context) void {
-    const state = &(manager_state orelse return);
-
     // Use the raw V8 internal address as the key (must match getOrCreate*)
     const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return;
-    const key = @intFromPtr(raw_addr);
+    removeContextByKey(@intFromPtr(raw_addr), v8_ctx);
+}
+
+/// The key `removeContextByKey` takes for `v8_ctx` - read while the context
+/// lives (it is in the context's embedder data), so a realm whose context
+/// the collector may take first can still be removed.
+pub fn keyOf(v8_ctx: *v8.Context) ?usize {
+    const raw_addr = v8.v8_Context_GetRawAddress(v8_ctx) orelse return null;
+    return @intFromPtr(raw_addr);
+}
+
+/// `removeContext` by the context's key (`keyOf`): the realm's Window, its
+/// wrapper cache and its realm record go, and the entry is retired. Touches
+/// the context only through `v8_ctx`, which may be null - a context the
+/// collector already took - when the entry knows its Window.
+pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
+    const state = &(manager_state orelse return);
+    const raw_addr: ?*anyopaque = @ptrFromInt(key);
 
     if (state.contexts.fetchRemove(key)) |kv| {
         const entry = kv.value; // This is now *ContextEntry
@@ -1076,7 +1091,7 @@ pub fn removeContext(v8_ctx: *v8.Context) void {
             // HTMLIFrameElement instances are cleaned up when Node.deinit iterates children.
 
             // Clean up the Window and its DOM tree
-            const window_instance_dom = entry.window_instance orelse getWindowFromGlobalInternalField(v8_ctx);
+            const window_instance_dom = entry.window_instance orelse if (v8_ctx) |c| getWindowFromGlobalInternalField(c) else null;
             if (window_instance_dom) |wi| {
                 // Remove Window from wrapper cache FIRST to prevent double-free
                 if (ctx_data.getV8WrapperCacheStorage()) |cache_storage| {

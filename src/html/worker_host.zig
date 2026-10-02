@@ -95,7 +95,7 @@ const WorkerTimerContext = struct {
     /// The timer's handler (OWNED), with its callback context.
     callback: engine.CallbackFunction,
     /// The id script holds: HTML's key in the global's map of setTimeout and
-    /// setInterval IDs, and `worker_timer_contexts`' key here. It names the
+    /// setInterval IDs, and its key in its host's `timers`. It names the
     /// timer for as long as it lives - a repeating timer keeps it across
     /// repeats (timer initialization steps, "previousId") - so clearInterval
     /// finds an interval however often it has fired.
@@ -126,34 +126,6 @@ const WorkerTimerContext = struct {
     worker_host: *WorkerHost,
 };
 
-/// Thread-local storage for worker timer contexts, keyed by the id script
-/// holds (`WorkerTimerContext.id`).
-threadlocal var worker_timer_contexts: ?std.AutoHashMap(runtime.TimerId, *WorkerTimerContext) = null;
-
-/// The next id handed to script: greater than zero, and never one a live
-/// timer on this thread has (HTML timer initialization step 2). Its own
-/// counter, not the timer manager's: an interval's manager id changes on
-/// every repeat, and the id script holds must not.
-threadlocal var next_worker_timer_id: runtime.TimerId = 1;
-
-/// Initialize worker timer storage
-fn initWorkerTimerStorage(allocator: Allocator) void {
-    if (worker_timer_contexts == null) {
-        worker_timer_contexts = std.AutoHashMap(runtime.TimerId, *WorkerTimerContext).init(allocator);
-    }
-}
-
-/// Free the timer map once no worker is left on this thread. Every context
-/// in it belongs to a host whose end cancels and frees it (`cancelWorkerTimers`),
-/// so the map is empty by then; nothing else ever freed its table, which a
-/// leak check reported at exit after any file whose worker set a timer.
-fn releaseWorkerTimerStorage() void {
-    const map = if (worker_timer_contexts) |*m| m else return;
-    if (map.count() != 0) return;
-    map.deinit();
-    worker_timer_contexts = null;
-}
-
 /// Release a timer context and the handler it holds.
 fn freeWorkerTimer(ctx: *WorkerTimerContext) void {
     ctx.callback.release();
@@ -161,55 +133,15 @@ fn freeWorkerTimer(ctx: *WorkerTimerContext) void {
 }
 
 /// Cancel and free every timer `owner` armed: HTML "terminate a worker" step 2
-/// and close() step 1 discard the worker's tasks, and a timer is one.
-///
-/// The map is shared by every worker on this thread. This used to clear all of
-/// it whenever ANY worker was torn down, so one worker's end silently dropped
-/// every other worker's timers. A timer whose callback is on the stack is only
-/// marked: its trampoline owns it until the callback returns, and frees it.
+/// and close() step 1 discard the worker's tasks, and a timer is one. A timer
+/// whose callback is on the stack is only marked: its trampoline owns it until
+/// the callback returns, and frees it.
 fn cancelWorkerTimers(owner: *WorkerHost) void {
-    const map = if (worker_timer_contexts) |*m| m else return;
     var ids: std.ArrayListUnmanaged(runtime.TimerId) = .empty;
     defer ids.deinit(owner.allocator);
-    var iter = map.iterator();
-    while (iter.next()) |entry| {
-        if (entry.value_ptr.*.worker_host == owner) ids.append(owner.allocator, entry.key_ptr.*) catch {};
-    }
-    for (ids.items) |id| {
-        const ctx = map.get(id) orelse continue;
-        ctx.cancelled = true;
-        if (ctx.executing) continue;
-        // Not armed any more, or armed and now cancelled: either way the
-        // timer manager will not hand it back, so it is ours to free.
-        if (owner.timer) |timer| _ = timer.clearTimeout(ctx.current_timer_id);
-        _ = map.remove(id);
-        freeWorkerTimer(ctx);
-    }
-}
-
-/// Register a timer context for tracking, under the id script holds.
-fn registerWorkerTimerContext(ctx: *WorkerTimerContext) void {
-    if (worker_timer_contexts) |*map| {
-        map.put(ctx.id, ctx) catch {};
-    }
-}
-
-/// clearTimeout() / clearInterval(): cancel the timer and free it, unless its
-/// callback is on the stack - the running trampoline then frees it on return.
-///
-/// This used to fetchRemove, dispose the handler and destroy the ctx
-/// unconditionally. If the timer was still armed it then fired into
-/// workerTimerTrampoline, which read ctx.cancelled from freed memory. clearTimeout
-/// removes an armed timer from the manager, and a fired one-shot is already out
-/// of the map, so a context found here and not executing is never handed back.
-fn unregisterWorkerTimerContext(id: runtime.TimerId) void {
-    const map = if (worker_timer_contexts) |*m| m else return;
-    const ctx = map.get(id) orelse return;
-    ctx.cancelled = true;
-    if (ctx.executing) return;
-    if (ctx.worker_host.timer) |timer| _ = timer.clearTimeout(ctx.current_timer_id);
-    _ = map.remove(id);
-    freeWorkerTimer(ctx);
+    var iter = owner.timers.keyIterator();
+    while (iter.next()) |id| ids.append(owner.allocator, id.*) catch {};
+    for (ids.items) |id| owner.clearTimer(id);
 }
 
 // ============================================================================
@@ -608,7 +540,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
     // close() step 1, "terminate a worker" step 2). Free it - this is the last
     // time the timer system will reference this context.
     if (ctx.cancelled or !wctx.runsTasks()) {
-        if (worker_timer_contexts) |*map| _ = map.remove(ctx.id);
+        _ = wctx.timers.remove(ctx.id);
         freeWorkerTimer(ctx);
         return;
     }
@@ -643,7 +575,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
                 return;
             }
             // Reschedule failed: it is not armed now, so untrack and free it.
-            if (worker_timer_contexts) |*map| _ = map.remove(ctx.id);
+            _ = wctx.timers.remove(ctx.id);
             freeWorkerTimer(ctx);
             return;
         }
@@ -651,7 +583,7 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
 
     // A one-shot that has run, or a repeat that was cancelled: the timer
     // manager has already dropped it, so nothing will hand it back.
-    if (worker_timer_contexts) |*map| _ = map.remove(ctx.id);
+    _ = wctx.timers.remove(ctx.id);
     freeWorkerTimer(ctx);
 }
 
@@ -818,6 +750,19 @@ pub const WorkerHost = struct {
     /// The built-in functions this host defines on the global object. The
     /// engine reads them on every call, so they live as long as this does.
     builtins: [5]runtime.BuiltinFunction = undefined,
+
+    /// The global's map of setTimeout and setInterval IDs (HTML 8.6): its
+    /// active timers, keyed by the id its script holds. Each global has its
+    /// own, and clearTimeout(id) removes this global's entry and nothing in
+    /// any other - it used to be one map for every worker on the thread, so a
+    /// worker clearing an id it never armed cancelled another worker's timer.
+    timers: std.AutoHashMapUnmanaged(runtime.TimerId, *WorkerTimerContext) = .empty,
+
+    /// The next id this global's script is handed: greater than zero, and
+    /// never one in `timers` (timer initialization step 2). Its own counter,
+    /// not the timer manager's: an interval's manager id changes on every
+    /// repeat, and the id script holds must not.
+    next_timer_id: runtime.TimerId = 1,
 
     /// The worker's module map (HTML "module map" of its settings object):
     /// keys owned, values a `*module_script.ModuleScript` or
@@ -1258,7 +1203,10 @@ pub const WorkerHost = struct {
     fn free(self: *Self) void {
         removeLive(self);
         removeHost(self);
-        if (hosts.items.len == 0) releaseWorkerTimerStorage();
+        // Every timer goes with its global; a worker with no teardown ahead
+        // of it still has them here.
+        cancelWorkerTimers(self);
+        self.timers.deinit(self.allocator);
         forgetSharedScope(self);
         if (self.shared) |*shared| shared.deinit(self.allocator);
         self.cancelConnects();
@@ -1818,16 +1766,47 @@ pub const WorkerHost = struct {
         return runtime.JSValue.fromNumber(@floatFromInt(self.setTimer(args, true)));
     }
 
-    /// clearTimeout() and clearInterval(): the same list of active timers.
-    fn clearTimerSteps(_: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
+    /// clearTimeout() and clearInterval(): remove this's map of setTimeout
+    /// and setInterval IDs[id] - the same map for both.
+    fn clearTimerSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
+        const self: *Self = @ptrCast(@alignCast(data orelse return runtime.JSValue.jsUndefined));
         if (args.len < 1) return runtime.JSValue.jsUndefined;
         const id = switch (args[0]) {
             .number => |n| n,
             else => return runtime.JSValue.jsUndefined,
         };
         if (std.math.isNan(id) or std.math.isInf(id) or id < 0) return runtime.JSValue.jsUndefined;
-        unregisterWorkerTimerContext(@intFromFloat(id));
+        self.clearTimer(@intFromFloat(id));
         return runtime.JSValue.jsUndefined;
+    }
+
+    /// Remove `id` from this global's timers: cancel the timer and free it,
+    /// unless its callback is on the stack - the running trampoline then
+    /// frees it on return. An id this global never armed is no entry here,
+    /// whoever else armed it.
+    ///
+    /// The timer is cleared from the manager before it is freed: a context
+    /// freed while still armed would fire into workerTimerTrampoline, which
+    /// reads it. A fired one-shot is already out of the map, so a context
+    /// found here and not executing is never handed back.
+    fn clearTimer(self: *Self, id: runtime.TimerId) void {
+        const ctx = self.timers.get(id) orelse return;
+        ctx.cancelled = true;
+        if (ctx.executing) return;
+        if (self.timer) |timer| _ = timer.clearTimeout(ctx.current_timer_id);
+        _ = self.timers.remove(id);
+        freeWorkerTimer(ctx);
+    }
+
+    /// Timer initialization step 2: an id greater than zero that is not
+    /// already in this global's map.
+    fn takeTimerId(self: *Self) runtime.TimerId {
+        while (true) {
+            const id = self.next_timer_id;
+            // Script sees the id as a u32 (setTimer's return): wrap there.
+            self.next_timer_id = if (id >= std.math.maxInt(u32)) 1 else id + 1;
+            if (id != 0 and !self.timers.contains(id)) return id;
+        }
     }
 
     /// done() for the WPT harness, which defines its own when it loads.
@@ -1855,7 +1834,9 @@ pub const WorkerHost = struct {
         }
 
         const timer = self.timer orelse return 0;
-        initWorkerTimerStorage(self.allocator);
+        // Room for the entry first: a timer armed and then not tracked could
+        // be neither cleared nor freed with its global.
+        self.timers.ensureUnusedCapacity(self.allocator, 1) catch return 0;
 
         // The handler as a callback function, with the incumbent realm - the
         // worker's, whose built-in this is - as its callback context.
@@ -1891,10 +1872,9 @@ pub const WorkerHost = struct {
             return 0;
         }
         timer_ctx.current_timer_id = timer_id;
-        timer_ctx.id = next_worker_timer_id;
-        next_worker_timer_id += 1;
-        registerWorkerTimerContext(timer_ctx);
-        return @truncate(timer_ctx.id);
+        timer_ctx.id = self.takeTimerId();
+        self.timers.putAssumeCapacityNoClobber(timer_ctx.id, timer_ctx);
+        return @intCast(timer_ctx.id);
     }
 };
 

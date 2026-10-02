@@ -24,11 +24,12 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Keeps `from` alive for as long as the event is: script can hold the
-/// event after the navigation API has let that entry go (same_object.zig).
+/// Keeps `from` alive for as long as the event's wrapper is: script can hold
+/// the event after the navigation API has let that entry go. An edge, not a
+/// root (same_object.Traced).
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-    from_pin: same_object.Pin = .{},
+    from_edge: same_object.Traced = .{ .slot = .{ .name = "from" } },
 };
 
 /// Initialize instance (creates the instance)
@@ -46,7 +47,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.from_pin.release();
+        internal.from_edge.release(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -83,7 +84,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const internal = try ctx.allocator.create(InternalState);
     internal.* = .{ .allocator = ctx.allocator };
     state.own._internal = internal;
-    internal.from_pin.hold(init_dict.from);
+    internal.from_edge.hold(instance, init_dict.from);
 
     // The inherited Event internal state and its initialized flag: without
     // them dispatchEvent throws InvalidStateError.

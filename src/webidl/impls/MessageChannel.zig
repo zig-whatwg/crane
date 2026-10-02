@@ -52,14 +52,15 @@ pub const InternalState = struct {
     /// If true, GC owns the port's lifetime. If false, MessageChannel owns it.
     port2_exposed: bool = false,
 
-    /// The exposed ports, held for as long as the channel lives: `port1` and
-    /// `port2` are [SameObject], and the channel's state points at them where
-    /// V8 cannot see - so a port script reached only through its channel
+    /// The exposed ports, kept by the channel's wrapper: `port1` and `port2`
+    /// are [SameObject], and the channel's state points at them where V8
+    /// cannot see - so a port script reached only through its channel
     /// (`channel.port2.postMessage(...)` with nothing else holding port2) was
     /// collected while the channel lived, and the next `channel.port2` handed
-    /// out a freed slot. Blink traces both from MessageChannel::Trace.
-    port1_pin: same_object.Pin = .{},
-    port2_pin: same_object.Pin = .{},
+    /// out a freed slot. Blink traces both from MessageChannel::Trace; so does
+    /// this (same_object.Traced: an edge, not a root).
+    port1_edge: same_object.Traced = .{ .slot = .{ .name = "port1" } },
+    port2_edge: same_object.Traced = .{ .slot = .{ .name = "port2" } },
 };
 
 /// Initialize instance (creates the instance)
@@ -111,8 +112,8 @@ pub fn deinit(instance: *runtime.Instance) void {
                 MessagePortInterface.deinit(state.own.port2);
             }
         }
-        internal.port1_pin.release();
-        internal.port2_pin.release();
+        internal.port1_edge.release(instance);
+        internal.port2_edge.release(instance);
         internal.allocator.destroy(internal);
     }
 
@@ -174,7 +175,7 @@ pub fn get_port1(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Mark port1 as exposed to JavaScript - GC now owns its lifetime
     if (state.own._internal) |internal| {
         internal.port1_exposed = true;
-        internal.port1_pin.hold(state.own.port1);
+        if (!internal.port1_edge.drawn) internal.port1_edge.hold(instance, state.own.port1);
     }
     return state.own.port1;
 }
@@ -186,7 +187,7 @@ pub fn get_port2(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Mark port2 as exposed to JavaScript - GC now owns its lifetime
     if (state.own._internal) |internal| {
         internal.port2_exposed = true;
-        internal.port2_pin.hold(state.own.port2);
+        if (!internal.port2_edge.drawn) internal.port2_edge.hold(instance, state.own.port2);
     }
     return state.own.port2;
 }

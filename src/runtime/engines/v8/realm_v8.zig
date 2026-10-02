@@ -223,6 +223,21 @@ pub fn disposeIntrinsics(realm: *Realm) void {
     }
 }
 
+/// The realm's navigable was destroyed (protocol_realms, `.navigable_destroyed`):
+/// its intrinsics are functions of its context, so a strong handle to one
+/// keeps the context. Weak from now on - each is reachable from the global
+/// object for as long as the realm lives, and empty once the collector takes
+/// the realm, when nothing enters it any more. `disposeIntrinsics` still
+/// releases them.
+pub fn weakenIntrinsics(realm: *Realm) void {
+    const intrinsics = realm.getIntrinsicsMut();
+    inline for (.{ "type_error", "range_error", "syntax_error", "object", "object_prototype", "array", "array_prototype", "function_prototype", "promise", "async_iterator_prototype" }) |field| {
+        if (@field(intrinsics, field)) |handle| v8.v8_Global_SetWeak(@ptrCast(@alignCast(handle)), null, intrinsicCollected);
+    }
+}
+
+fn intrinsicCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
