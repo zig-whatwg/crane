@@ -1,0 +1,13 @@
+# Testing: Attribute a sweep's leak reports by shard, then by file, then by trace
+
+**Date**: 2026-10-02
+**Lesson**: A sweep log's `error(DebugAllocator): memory address 0x... leaked:` reports name no file and carry no stack (the sweep allocator keeps none), but they are attributable in three cheap steps: the shard process that printed them, the file in that shard, the allocation site in that file.
+
+**Why**: A shard process prints its reports when its allocator deinits, at its exit, after every file has been journalled - so no journal record, and no file name, goes with them. `CRANE_LEAK_TRACES=1` names the site, but it unwinds DWARF on every allocation and every free, so a traced run of a whole shard is far too slow to start with.
+
+**What Happened**: main-50ede13e5's sweep printed 18,286 reports. Counted per chunk between the `crane-measure: ... chunk <c>` lines, 16,261 were in chunk aac. Replaying aac's eight shard worklists as eight single-runner processes (each `wpt_runner --from-file=<shard worklist> --parallel=1`, output piped) gave 15,871 for shard 6 and about 100 or fewer for the others, which matched the sweep. Running shard 6's 100 files alone, one process each, gave 13,702 for dom/nodes/name-validation.html. Splitting that file by its `test()` blocks, then probing `createElement` with 500, 3,000 and 8,000 names, gave a leak only past a GC (8,000 distinct names: 11,580). One traced run of the probe named the site: an unknown element whose deinit never chained to HTMLElement's. In a PIPED sweep log each shard's reports form one contiguous block, so the blocks are the shards: chunk aaa's 674 reports were 8 blocks of 55 to 113, a per-file leak shared by every shard (IndexedDB's deleteDatabase), not one bad file.
+Traps: a per-file census over a list sorted with chat's default locale is case-insensitive (IndexedDB sorts among the i's, not before the lowercase directories), so "the census covered it" needs checking against the list itself. And a leak test under `std.testing.allocator` in test-browser unwinds on every allocation too: 2,400 elements ran past 18 minutes, 36 caught the same leak in seconds.
+
+**Fix**: Scratch scripts, not tools: replay a chunk's shards from the frozen baseline's worklists (`full/chunks/<c>/worklist.shardN.txt`), run the leaking shard's files one per process, split a leaking file or directory into one-process sub-lists, and trace only what is left - a probe page or a handful of files - grouping the reports by their six function names.
+
+**Takeaway**: **Count by chunk, replay by shard, run by file, and trace last. A leak report you cannot place is a leak you cannot fix, and the traced allocator is for naming a site, not for finding one.**
