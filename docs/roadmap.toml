@@ -454,7 +454,7 @@ progress = [
 
   [[infra.items]]
   name = "Isolation tests across instances and sharing tests across tabs; the process-global/threadlocal ratchet"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Optional persistent profile directory (in-memory by default)"
