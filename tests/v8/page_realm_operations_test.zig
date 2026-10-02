@@ -2062,6 +2062,102 @@ test "protocol: traceValue and tracedValue leave no global handle behind" {
     try expectEval(w, "delete globalThis.owner && delete globalThis.value", "true");
 }
 
+// ============================================================================
+// Node tracing: a node's wrapper keeps its parent's and its parent's its own,
+// so a tree lives exactly as long as script reaches any wrapper in it.
+// ============================================================================
+
+/// The tree hooks crane.Process installs at start-up (initializeEngine): the
+/// insertion, removing and moving steps that keep node tracing's edges.
+fn withTreeHooks() void {
+    v8.wrapper_cache_mod.installTreeHooks();
+}
+
+test "protocol: a node script holds keeps its detached tree's root, and the tree goes once script drops it" {
+    withTreeHooks();
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    try expectEval(w, "globalThis.doc = new Document(); 'ok'", "ok");
+    // Script keeps only the innermost node; the root's last use is done.
+    try expectEval(w,
+        \\globalThis.held = (() => {
+        \\  const root = doc.createElement('section');
+        \\  root.r3 = 'root';
+        \\  const middle = root.appendChild(doc.createElement('div'));
+        \\  root.appendChild(doc.createElement('p')).r3 = 'sibling';
+        \\  return middle.appendChild(doc.createElement('span'));
+        \\})(); 'ok'
+    , "ok");
+    collectTwice();
+    collectTwice();
+    try expectEval(w, "[held.parentNode.parentNode.localName, held.parentNode.parentNode.r3, held.parentNode.parentNode.lastChild.r3].join()", "section,root,sibling");
+    // The tree works: no InvalidStateError from a node freed under script.
+    try expectEval(w, "held.appendChild(doc.createElement('i')).parentNode === held && held.parentNode.parentNode.appendChild(doc.createElement('b')).localName", "b");
+
+    // Dropped, the whole tree goes: the edges are no root.
+    const root = Watched.of(try platformObjectIn(w, "held.parentNode.parentNode"));
+    const kept = Watched.of(try platformObjectIn(w, "held"));
+    try expectEval(w, "delete globalThis.held", "true");
+    collectTwice();
+    collectTwice();
+    try std.testing.expect(!root.alive());
+    try std.testing.expect(!kept.alive());
+    try expectEval(w, "delete globalThis.doc", "true");
+}
+
+test "protocol: a node whose ancestors' wrappers script dropped keeps them, and its tree" {
+    withTreeHooks();
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    try expectEval(w, "globalThis.doc = new Document(); 'ok'", "ok");
+    // A deep clone, walked down to its deepest node: every wrapper on the way
+    // is a temporary, and the clone's root is let go - only the edges keep
+    // them. (A first wrap deep inside a tree script never saw, which wraps the
+    // ancestors with it, is crane/r3-detached-tree-child-keeps-root.html's.)
+    try expectEval(w,
+        \\globalThis.held = (() => {
+        \\  const source = doc.createElement('div');
+        \\  let at = source;
+        \\  for (const name of ['ul', 'li', 'a', 'b']) at = at.appendChild(doc.createElement(name));
+        \\  at.setAttribute('id', 'deep');
+        \\  source.appendChild(doc.createElement('p')).setAttribute('id', 'sibling');
+        \\  return source.cloneNode(true).firstChild.firstChild.firstChild.firstChild;
+        \\})(); 'ok'
+    , "ok");
+    collectTwice();
+    collectTwice();
+    try expectEval(w, "[held.parentNode.parentNode.parentNode.parentNode.localName, held.parentNode.parentNode.parentNode.parentNode.lastChild.localName].join()", "div,p");
+    try expectEval(w, "delete globalThis.held && delete globalThis.doc", "true");
+}
+
+test "protocol: a node's wrapper in a live tree keeps its expandos without being a root" {
+    withTreeHooks();
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    // The tree is kept by script holding its root only: every wrapped node
+    // in it keeps its identity and expandos (the parent's edges to it).
+    try expectEval(w,
+        \\globalThis.doc = new Document();
+        \\globalThis.root = doc.createElement('div');
+        \\(() => { for (let i = 0; i < 50; i++) root.appendChild(doc.createElement('span')).n = i; })();
+        \\'ok'
+    , "ok");
+    collectTwice();
+    collectTwice();
+    try expectEval(w, "(() => { let i = 0; for (let c = root.firstChild; c; c = c.nextSibling, i++) if (c.n !== i) return false; return i === 50; })()", "true");
+    // Removed, a child loses the edge from its old parent: script that drops
+    // it lets it go, while its old siblings stay.
+    const removed = Watched.of(try platformObjectIn(w, "root.removeChild(root.firstChild)"));
+    collectTwice();
+    collectTwice();
+    try std.testing.expect(!removed.alive());
+    try expectEval(w, "root.firstChild.n === 1 && root.lastChild.n === 49", "true");
+    try expectEval(w, "delete globalThis.root && delete globalThis.doc", "true");
+}
+
 test "a window's indexedDB, when making its IDBFactory fails at any allocation, frees what it made once" {
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);

@@ -3437,6 +3437,15 @@ pub extern fn v8_Object_GetPrivateRef(holder: *Object, key: [*]const u8, key_len
 /// private property (`key`) of it - an edge, never a root. Runs in the
 /// holder's creation context. A no-op for an empty (collected) holder.
 pub extern fn v8_Object_RetainInPrivateArray(holder: *Value, key: [*]const u8, key_len: c_int, value: *Value) void;
+/// Set `holder`'s private property `key` to `value`, or delete it when
+/// `value` is null: an edge, never a root - a node's wrapper keeping its
+/// parent's. Runs in the holder's creation context.
+pub extern fn v8_Object_PrivateRefUpdate(holder: *Value, key: [*]const u8, key_len: c_int, value: ?*Value) void;
+/// Add `member` to (`add`), or remove it from, the JS Set in `holder`'s
+/// private property `key` (made on the first add): an edge, never a root -
+/// a parent node's wrapper keeping its children's. Runs in the holder's
+/// creation context; a no-op for empty handles.
+pub extern fn v8_Object_PrivateSetUpdate(holder: *Value, key: [*]const u8, key_len: c_int, member: *Value, add: bool) void;
 /// Make `context`'s handle weak; `callback(user_data, 0)` runs once the
 /// collector takes the context (first pass: the handle is reset by then).
 /// v8_Context_Dispose ends the arm.

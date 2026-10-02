@@ -12688,6 +12688,75 @@ void v8_Object_RetainInPrivateArray(Global<Value>* holder, const char* key, int 
     (void)list->Set(ctx, list->Length(), value->Get(isolate));
 }
 
+/// Set `holder`'s private property `key` to `value`, or delete it when
+/// `value` is null: an edge from `holder` to `value`, never a root - a node's
+/// wrapper keeping its parent's (the engine's node tracing). Runs in
+/// `holder`'s creation context, so it needs none entered. A no-op for an
+/// empty holder.
+void v8_Object_PrivateRefUpdate(Global<Value>* holder, const char* key, int key_len, Global<Value>* value) {
+    if (!holder || holder->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Local<Value> held = holder->Get(isolate);
+    if (!held->IsObject()) return;
+    Local<Object> object = held.As<Object>();
+    Local<Context> ctx;
+    if (!object->GetCreationContext(isolate).ToLocal(&ctx)) {
+        ctx = isolate->GetCurrentContext();
+        if (ctx.IsEmpty()) return;
+    }
+    Context::Scope context_scope(ctx);
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
+    Local<Private> priv = Private::ForApi(isolate, name);
+    if (value && !value->IsEmpty()) {
+        (void)object->SetPrivate(ctx, priv, value->Get(isolate));
+    } else {
+        (void)object->DeletePrivate(ctx, priv);
+    }
+}
+
+/// Add `member` to (`add`), or remove it from, the JS Set held in `holder`'s
+/// private property `key`, made on the first add. An edge from `holder` to
+/// each member, never a root: how a parent node's wrapper keeps the wrappers
+/// of its children (the engine's node tracing - Blink's Node::Trace visits a
+/// node's children, WebKit keeps a node's wrapper for as long as its tree's
+/// root is reachable). Runs in `holder`'s creation context. A no-op for an
+/// empty holder or member, and for a remove that finds no set.
+void v8_Object_PrivateSetUpdate(Global<Value>* holder, const char* key, int key_len, Global<Value>* member, bool add) {
+    if (!holder || holder->IsEmpty() || !member || member->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Local<Value> held = holder->Get(isolate);
+    if (!held->IsObject()) return;
+    Local<Object> object = held.As<Object>();
+    Local<Context> ctx;
+    if (!object->GetCreationContext(isolate).ToLocal(&ctx)) {
+        ctx = isolate->GetCurrentContext();
+        if (ctx.IsEmpty()) return;
+    }
+    Context::Scope context_scope(ctx);
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
+    Local<Private> priv = Private::ForApi(isolate, name);
+    Local<Value> existing;
+    Local<Set> set;
+    if (object->GetPrivate(ctx, priv).ToLocal(&existing) && existing->IsSet()) {
+        set = existing.As<Set>();
+    } else {
+        if (!add) return;
+        set = Set::New(isolate);
+        if (object->SetPrivate(ctx, priv, set).IsNothing()) return;
+    }
+    if (add) {
+        (void)set->Add(ctx, member->Get(isolate));
+    } else {
+        (void)set->Delete(ctx, member->Get(isolate));
+    }
+}
+
 /// Make `context`'s handle weak: `callback(user_data)` runs (first pass,
 /// after V8 reset the handle) once the collector takes the context. The
 /// handle stays the caller's to dispose (v8_Context_Dispose ends the arm).
