@@ -11,6 +11,9 @@ pub const key = @import("key.zig");
 pub const aes = @import("aes.zig");
 pub const normalize = @import("normalize.zig");
 pub const tasks = @import("tasks.zig");
+pub const secret_keys = @import("secret_keys.zig");
+pub const jwk = @import("jwk.zig");
+pub const der = @import("der.zig");
 
 test {
     _ = random;
@@ -21,4 +24,7 @@ test {
     _ = registry;
     _ = key;
     _ = aes;
+    _ = secret_keys;
+    _ = jwk;
+    _ = der;
 }

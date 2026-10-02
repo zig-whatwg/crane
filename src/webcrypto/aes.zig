@@ -100,11 +100,13 @@ pub fn gcm(allocator: std.mem.Allocator, direction: Direction, key: []const u8, 
     if (direction == .encrypt and input.len > (@as(u64, 1) << 39) - 256) return error.OperationError;
     if (key.len != 16 and key.len != 24 and key.len != 32) return error.OperationError;
     if (iv.len == 0) return error.OperationError; // SP 800-38D §5.2.1.1.
+    const data_length = if (direction == .encrypt) input.len else input.len - tag_length;
+    // SP 800-38D §5.2.1.1 also bounds the inputs to its authenticated function.
+    if (data_length > (@as(u64, 1) << 36) - 32 or iv.len > std.math.maxInt(u64) / 8 or additional_data.len > std.math.maxInt(u64) / 8) return error.OperationError;
     const length = if (direction == .encrypt) std.math.add(usize, input.len, tag_length) catch return error.OperationError else input.len - tag_length;
     const result = try allocator.alloc(u8, length);
     errdefer eraseFree(allocator, result);
-    // std.crypto's GCM supports a 96-bit IV and a 128-bit tag. Use PSA for
-    // the other WebCrypto parameter combinations and for 192-bit AES keys.
+    // Use std.crypto's full GCM where its fixed-size nonce/tag API applies.
     if (iv.len == 12 and bits == 128 and key.len != 24) {
         inline for (.{ std.crypto.aead.aes_gcm.Aes128Gcm, std.crypto.aead.aes_gcm.Aes256Gcm }) |Gcm| {
             if (key.len == Gcm.key_length) {
@@ -118,19 +120,80 @@ pub fn gcm(allocator: std.mem.Allocator, direction: Direction, key: []const u8, 
         }
         unreachable;
     }
-    if (!mbed.available) return error.NotSupportedError;
-    const algorithm: u32 = @intCast(c.PSA_ALG_AEAD_WITH_SHORTENED_TAG(c.PSA_ALG_GCM, tag_length));
-    var imported = try mbed.Key.importAes(key, algorithm, if (direction == .encrypt) c.PSA_KEY_USAGE_ENCRYPT else c.PSA_KEY_USAGE_DECRYPT);
-    defer imported.deinit();
-    var written: usize = 0;
-    // §29.4.1 steps 5-8 / §29.4.2 steps 5-9: authenticated mode, C || T.
-    const status = if (direction == .encrypt)
-        c.psa_aead_encrypt(imported.id, algorithm, iv.ptr, iv.len, additional_data.ptr, additional_data.len, input.ptr, input.len, result.ptr, result.len, &written)
-    else
-        c.psa_aead_decrypt(imported.id, algorithm, iv.ptr, iv.len, additional_data.ptr, additional_data.len, input.ptr, input.len, result.ptr, result.len, &written);
-    try mbed.check(status);
-    if (written != result.len) return error.OperationError;
+    // §29.4.1 step 6 / §29.4.2 step 8: SP 800-38D Algorithms 4 and 5,
+    // using std.crypto's GHASH and AES blocks (the same-library PSA for AES-192).
+    const Ghash = std.crypto.onetimeauth.Ghash;
+    var cipher = try BlockCipher.init(key, .encrypt);
+    defer cipher.deinit();
+    var h: [16]u8 = undefined;
+    defer std.crypto.secureZero(u8, &h);
+    try cipher.apply(&h, &([_]u8{0} ** 16)); // Algorithm 4 step 1 / 5 step 2.
+    var j0: [16]u8 = @splat(0);
+    defer std.crypto.secureZero(u8, &j0);
+    // Algorithm 4 step 2 / 5 step 3: GHASH derives J0 for every other IV size.
+    if (iv.len == 12) {
+        @memcpy(j0[0..12], iv);
+        j0[15] = 1;
+    } else {
+        var iv_hash = Ghash.initForBlockCount(&h, iv.len / 16 + @intFromBool(iv.len % 16 != 0) + 1);
+        defer std.crypto.secureZero(u8, std.mem.asBytes(&iv_hash));
+        iv_hash.update(iv);
+        iv_hash.pad();
+        var final: [16]u8 = @splat(0);
+        std.mem.writeInt(u64, final[8..16], @as(u64, iv.len) * 8, .big);
+        iv_hash.update(&final);
+        iv_hash.final(&j0);
+    }
+    if (direction == .encrypt) try gctr(&cipher, j0, result[0..data_length], input);
+    const ciphertext = if (direction == .encrypt) result[0..data_length] else input[0..data_length];
+    // Algorithm 4 steps 4-6 / 5 steps 5-7: authenticate padded A, C and lengths.
+    const block_count = additional_data.len / 16 + @intFromBool(additional_data.len % 16 != 0) + ciphertext.len / 16 + @intFromBool(ciphertext.len % 16 != 0) + 1;
+    var mac = Ghash.initForBlockCount(&h, block_count);
+    defer std.crypto.secureZero(u8, std.mem.asBytes(&mac));
+    mac.update(additional_data);
+    mac.pad();
+    mac.update(ciphertext);
+    mac.pad();
+    var lengths: [16]u8 = undefined;
+    std.mem.writeInt(u64, lengths[0..8], @as(u64, additional_data.len) * 8, .big);
+    std.mem.writeInt(u64, lengths[8..16], @as(u64, ciphertext.len) * 8, .big);
+    mac.update(&lengths);
+    var tag: [16]u8 = undefined;
+    defer std.crypto.secureZero(u8, &tag);
+    mac.final(&tag);
+    var encrypted_j0: [16]u8 = undefined;
+    defer std.crypto.secureZero(u8, &encrypted_j0);
+    try cipher.apply(&encrypted_j0, &j0);
+    for (&tag, encrypted_j0) |*byte, mask| byte.* ^= mask;
+    if (direction == .encrypt) {
+        // Algorithm 4 steps 7-8: C || MSB_t(GCTR(J0, S)).
+        @memcpy(result[data_length..], tag[0..tag_length]);
+    } else {
+        // Algorithm 5 step 8: compare the complete supplied tag in constant time.
+        var supplied: [16]u8 = @splat(0);
+        @memcpy(supplied[0..tag_length], input[data_length..]);
+        @memset(tag[tag_length..], 0);
+        if (!std.crypto.timing_safe.eql([16]u8, tag, supplied)) return error.OperationError;
+        // Computing P after authenticating avoids exposing unauthenticated bytes.
+        try gctr(&cipher, j0, result, ciphertext);
+    }
     return result;
+}
+
+fn gctr(cipher: *const BlockCipher, initial: [16]u8, output: []u8, input: []const u8) !void {
+    // SP 800-38D Algorithm 3 with ICB=inc32(J0): only the low 32 bits change.
+    var counter = initial;
+    defer std.crypto.secureZero(u8, &counter);
+    var offset: usize = 0;
+    while (offset < input.len) {
+        std.mem.writeInt(u32, counter[12..16], std.mem.readInt(u32, counter[12..16], .big) +% 1, .big);
+        var stream: [16]u8 = undefined;
+        defer std.crypto.secureZero(u8, &stream);
+        try cipher.apply(&stream, &counter);
+        const count = @min(16, input.len - offset);
+        for (0..count) |i| output[offset + i] = input[offset + i] ^ stream[i];
+        offset += count;
+    }
 }
 
 /// RFC 3394 AES-KW, with its default initial value (no KWP padding).
@@ -276,11 +339,29 @@ test "AES-GCM matches the NIST all-zero single-block vector" {
 }
 
 test "AES-GCM short tags are prefixes of the full authentication tag" {
-    if (!mbed.available) return error.SkipZigTest;
     const key = [_]u8{0} ** 16;
     const iv = [_]u8{0} ** 12;
     var expected: [16]u8 = undefined;
     _ = try std.fmt.hexToBytes(&expected, "58e2fccefa7e3061367f1d57a4e7455a");
+    for ([_]u8{ 32, 64, 96, 104, 112, 120, 128 }) |bits| {
+        const encrypted = try gcm(std.testing.allocator, .encrypt, &key, &iv, "", bits, "");
+        defer std.testing.allocator.free(encrypted);
+        try std.testing.expectEqualSlices(u8, expected[0 .. bits / 8], encrypted);
+        const decrypted = try gcm(std.testing.allocator, .decrypt, &key, &iv, "", bits, encrypted);
+        defer std.testing.allocator.free(decrypted);
+        try std.testing.expectEqual(@as(usize, 0), decrypted.len);
+    }
+}
+
+test "AES-GCM derives J0 for a non-96-bit IV using the NIST validation vector" {
+    // NIST AES-128, IV=128, PT=0, AAD=0, tag=128, case 0;
+    // also carried by mbedTLS test_suite_gcm.aes128_en.data.
+    var key: [16]u8 = undefined;
+    var iv: [16]u8 = undefined;
+    var expected: [16]u8 = undefined;
+    _ = try std.fmt.hexToBytes(&key, "1014f74310d1718d1cc8f65f033aaf83");
+    _ = try std.fmt.hexToBytes(&iv, "6bb54c9fd83c12f5ba76cc83f7650d2c");
+    _ = try std.fmt.hexToBytes(&expected, "0b6b57db309eff920c8133b8691e0cac");
     for ([_]u8{ 32, 64, 96, 104, 112, 120, 128 }) |bits| {
         const encrypted = try gcm(std.testing.allocator, .encrypt, &key, &iv, "", bits, "");
         defer std.testing.allocator.free(encrypted);
