@@ -146,8 +146,12 @@ pub const Implementation = struct {
     scripting_enabled: *const fn (document: *runtime.Instance) bool,
     /// Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
     has_style_sheet_blocking_scripts: *const fn (document: *runtime.Instance) bool,
-    /// CSP "should element's inline type behavior be blocked", for a script.
-    inline_script_allowed_by_csp: *const fn (document: *runtime.Instance, nonce: ?[]const u8, hash_algorithm: ?[]const u8, hash_value: ?[]const u8) bool,
+    /// CSP §4.2.3 "should element's inline type behavior be blocked", for
+    /// the inline script `element` with `source` (type "script"): whether
+    /// it may run. `nonce` is its nonce attribute when it is nonceable,
+    /// `parser_inserted` whether the parser inserted it. Each violating
+    /// policy is reported (a securitypolicyviolation at the element).
+    inline_script_allowed_by_csp: *const fn (document: *runtime.Instance, element: *runtime.Instance, source: []const u8, nonce: ?[]const u8, parser_inserted: bool) bool,
     /// Record a speculation rule set's prefetch candidate.
     add_prefetch_hint: *const fn (document: *runtime.Instance, url: []const u8, eagerness: SpeculationEagerness) error{ InvalidStateError, OutOfMemory }!void,
     /// The document's URL as its state records it: "" when none was set.
@@ -181,11 +185,12 @@ pub fn hasStyleSheetBlockingScripts(document: *runtime.Instance) bool {
     return impl.has_style_sheet_blocking_scripts(document);
 }
 
-/// Whether `document`'s CSP allows an inline script with this nonce and
-/// hash. Allowed with no document state to ask.
-pub fn inlineScriptAllowedByCsp(document: *runtime.Instance, nonce: ?[]const u8, hash_algorithm: ?[]const u8, hash_value: ?[]const u8) bool {
+/// Whether `document`'s CSP allows the inline script `element` with
+/// `source` to run (CSP §4.2.3, type "script"), its violations reported.
+/// Allowed with no document state to ask.
+pub fn inlineScriptAllowedByCsp(document: *runtime.Instance, element: *runtime.Instance, source: []const u8, nonce: ?[]const u8, parser_inserted: bool) bool {
     const impl = implementation orelse return true;
-    return impl.inline_script_allowed_by_csp(document, nonce, hash_algorithm, hash_value);
+    return impl.inline_script_allowed_by_csp(document, element, source, nonce, parser_inserted);
 }
 
 /// Record a prefetch hint for `url` on `document`, the more eager one
@@ -210,6 +215,6 @@ test "without an installed implementation a document has no scripts and allows e
     try std.testing.expect(of(&document) == null);
     try std.testing.expect(!scriptingEnabled(&document));
     try std.testing.expect(!hasStyleSheetBlockingScripts(&document));
-    try std.testing.expect(inlineScriptAllowedByCsp(&document, null, null, null));
+    try std.testing.expect(inlineScriptAllowedByCsp(&document, &document, "", null, false));
     try std.testing.expectEqualStrings("", urlOf(&document));
 }

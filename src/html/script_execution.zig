@@ -274,23 +274,25 @@ pub fn prepareScriptElement(
     // - Nonce matching (nonce attribute)
     // - Hash matching (computed from source text)
     if (!hasSrcAttribute(script_element)) {
-        // This is an inline script
+        // This is an inline script: "if el does not have a src content
+        // attribute, and the Should element's inline behavior be blocked by
+        // Content Security Policy? algorithm returns "Blocked" when given
+        // el, "script", and source text, then return" (CSP 4.2.3; nonces,
+        // hashes and 'strict-dynamic' are csp.inline_check's).
         if (node_document) |doc| {
-            // Get nonce attribute if present
+            // CSP 6.7.3.1 "Is element nonceable?": one with a nonce
+            // attribute. Not modelled, stated: step 2's scan of a script's
+            // attributes for "<script" and the like, and step 3's
+            // duplicate-attribute parse error.
             const nonce = getNonceAttribute(script_element);
-
-            // TODO: Compute hash of source text for hash-based CSP
-            // For now, we only check nonce and 'unsafe-inline'
-
-            // Check if inline script is allowed by CSP
             if (!document_scripts.inlineScriptAllowedByCsp(
                 doc,
+                script_element,
+                source_text,
                 if (nonce.len > 0) nonce else null,
-                null, // hash_algorithm (TODO: compute from source)
-                null, // hash_value (TODO: compute from source)
+                parser_document != null,
             )) {
-                // CSP blocked inline script
-                log.debug("CSP blocked inline script\n", .{});
+                log.debug("CSP blocked inline script", .{});
                 return false;
             }
         }

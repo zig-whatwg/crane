@@ -122,6 +122,8 @@ pub const HashAlgorithm = hash.HashAlgorithm;
 
 // Violations
 pub const violations = @import("violations.zig");
+/// §4.2.3 should element's inline type behavior be blocked, per policy.
+pub const inline_check = @import("inline_check.zig");
 
 pub const createViolation = violations.createViolation;
 pub const createTrustedTypesPolicyViolation = violations.createTrustedTypesPolicyViolation;

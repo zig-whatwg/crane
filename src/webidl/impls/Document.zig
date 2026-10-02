@@ -5007,73 +5007,36 @@ pub fn setCSPSelfOrigin(instance: *runtime.Instance, scheme: []const u8, host: [
     internal.csp_self_origin = try csp.Origin.create(internal.allocator, scheme, host, port);
 }
 
-/// Check if an inline script is allowed by CSP
-/// Spec: https://www.w3.org/TR/CSP3/ §6.7.3
+/// CSP §4.2.3 "Should element's inline type behavior be blocked by Content
+/// Security Policy?" for the inline script `element` (type "script") with
+/// `source`: for each policy of the document's CSP list, the inline check
+/// of the directive §6.8.4 picks (csp.inline_check: nonce, hash -
+/// base64url too - 'strict-dynamic', 'unsafe-inline'); a policy it blocks
+/// blocks the script when it is enforced. `nonce` is the element's nonce
+/// attribute when it is nonceable (§6.7.3.1). Not yet: the violation
+/// report (steps 3.1.2-3.1.7).
 ///
-/// Returns true if the script is allowed, false if blocked.
-/// This checks script-src (or default-src fallback) for:
-/// - 'unsafe-inline' keyword
-/// - Nonce matching
-/// - Hash matching
+/// Spec: https://w3c.github.io/webappsec-csp/#should-block-inline
 pub fn isInlineScriptAllowedByCSP(
     instance: *runtime.Instance,
+    element: *runtime.Instance,
+    source: []const u8,
     nonce: ?[]const u8,
-    hash_algorithm: ?[]const u8,
-    hash_value: ?[]const u8,
+    parser_inserted: bool,
 ) bool {
+    _ = element; // the violation's element: steps 3.1.2-3.1.7, not yet
     const internal = getInternal(instance) orelse return true; // No document = allow
-    const csp_list = &internal.policy_container.csp_list;
-
-    // Check each policy
-    for (csp_list.policies.items) |*policy| {
-        // Only check enforcing policies for blocking
-        if (policy.disposition != .enforce) continue;
-
-        // Get effective script-src directive (with fallback to default-src)
-        const directive = csp.fallback.getEffectiveScriptSrcElem(policy) orelse continue;
-
-        // Check if 'strict-dynamic' is present
-        // With strict-dynamic, inline scripts are blocked unless nonced
-        const has_strict_dynamic = csp.matching.hasStrictDynamic(&directive.value);
-
-        // Check nonce
-        if (nonce) |n| {
-            if (csp.matching.doesNonceMatch(n, &directive.value)) {
-                continue; // Allowed by nonce
-            }
-        }
-
-        // Check hash
-        if (hash_algorithm) |algo| {
-            if (hash_value) |hash| {
-                if (csp.matching.doesHashMatch(algo, hash, &directive.value)) {
-                    continue; // Allowed by hash
-                }
-            }
-        }
-
-        // Check 'unsafe-inline'
-        // Note: 'unsafe-inline' is ignored if nonce or hash is present in the directive
-        if (!has_strict_dynamic and csp.matching.allowsUnsafeInline(&directive.value)) {
-            // Check if there are any nonces or hashes in the directive
-            var has_nonce_or_hash = false;
-            for (directive.value.expressions.items) |expr| {
-                if (expr.type == .nonce or expr.type == .hash) {
-                    has_nonce_or_hash = true;
-                    break;
-                }
-            }
-
-            if (!has_nonce_or_hash) {
-                continue; // Allowed by 'unsafe-inline'
-            }
-        }
-
-        // Script blocked by this policy
-        return false;
+    // 2. Let result be "Allowed".
+    var allowed = true;
+    // 3. For each policy of the CSP list:
+    for (internal.policy_container.csp_list.policies.items) |*policy| {
+        // 3.1.1. A directive whose inline check allows it is skipped.
+        _ = csp.inline_check.blockingDirective(policy, .{ .nonce = nonce, .parser_inserted = parser_inserted }, .script, source) orelse continue;
+        // 3.1.8. An enforced policy blocks.
+        if (policy.disposition == .enforce) allowed = false;
     }
-
-    return true;
+    // 4. Return result.
+    return allowed;
 }
 
 /// Check if eval() is allowed by CSP

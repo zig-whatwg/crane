@@ -107,7 +107,7 @@ test "a Document's scripts are reached through document_scripts.of, and currentS
     try testing.expect(!dom.document_scripts.hasStyleSheetBlockingScripts(document));
     // No CSP: every inline script is allowed. (An external script's CSP
     // check is main fetch step 7's, on the request.)
-    try testing.expect(dom.document_scripts.inlineScriptAllowedByCsp(document, null, null, null));
+    try testing.expect(dom.document_scripts.inlineScriptAllowedByCsp(document, script, "alert(1)", null, true));
 
     // An element is no Document.
     try testing.expect(dom.document_scripts.of(script) == null);
