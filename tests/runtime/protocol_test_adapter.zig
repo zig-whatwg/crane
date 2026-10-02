@@ -30,6 +30,7 @@ pub const capabilities: engine.Capabilities = .{
     .heap_statistics = .unsupported,
     .heap_snapshots = .unsupported,
     .diagnostic_counters = .unsupported,
+    .script_abort = .unsupported,
 };
 
 /// No engine behind it.
@@ -404,6 +405,9 @@ pub fn heapStatistics(_: *Agent) engine.HeapStatistics {
 pub fn writeHeapSnapshot(_: *Agent, _: [:0]const u8) bool {
     return false;
 }
+/// [script_abort] is unsupported: never reached (the protocol gates it).
+pub fn abortRunningScript(_: *Agent) void {}
+pub fn resumeScripts(_: *Agent) void {}
 pub fn diagnosticCounters(_: Allocator) Error![]engine.Counter {
     return error.NotSupported;
 }

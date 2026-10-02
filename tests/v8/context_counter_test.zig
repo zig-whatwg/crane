@@ -474,3 +474,153 @@ test "document.all() with no argument is null" {
         \\noArgDoc.all() === null ? 1 : 0
     ));
 }
+
+// ---- lane: speed ----
+// Attribute and indexed getters take their contexts only where they use them.
+//
+// A getter's success path - nearly every call - needs no Global<Context>: the
+// creation context (WebIDL "throw a TypeError using the function's realm")
+// serves only the throwing paths, and the current one only conversions that
+// take one. Taken eagerly they were two Global<Context> made and disposed per
+// `list.length`, a third of the binding's cost in a profile of
+// dom/nodes/NodeList-static-length-getter-tampered-1.html. These pin what may
+// not move when they are taken lazily: the realm an error is made in, and no
+// handle left behind.
+
+const engine = @import("engine");
+const clock = @import("clock");
+
+var second_context: ?*ffi.Context = null;
+
+/// A second realm of the agent with every interface, reachable from the
+/// file's realm as `otherRealm` (one security token for both).
+fn secondRealm() !void {
+    try allInterfaces();
+    if (second_context != null) return;
+    const isolate = isolate_once.?;
+    const first = context_once.?;
+    const other = ffi.v8_Context_New(isolate) orelse return error.ContextCreationFailed;
+    _ = try v8.context_manager.getOrCreate(other, realm_allocator.allocator());
+    ffi.v8_Context_Enter(other);
+    v8.interface_bindings.registerAllInterfaces(isolate, other);
+    ffi.v8_Context_Exit(other);
+
+    const token_text = "speed-lane-same-origin";
+    const token = ffi.v8_String_NewFromUtf8(isolate, token_text.ptr, token_text.len) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(token);
+    ffi.v8_Context_SetSecurityToken(first, @ptrCast(token));
+    ffi.v8_Context_SetSecurityToken(other, @ptrCast(token));
+
+    const first_global = ffi.v8_Context_Global(first) orelse return error.NoGlobal;
+    defer ffi.v8_Object_Dispose(first_global);
+    const other_global = ffi.v8_Context_Global(other) orelse return error.NoGlobal;
+    defer ffi.v8_Object_Dispose(other_global);
+    const key_text = "otherRealm";
+    const key = ffi.v8_String_NewFromUtf8(isolate, key_text.ptr, key_text.len) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(key);
+    if (!ffi.v8_Object_Set(first_global, first, @ptrCast(key), @ptrCast(other_global))) return error.SetFailed;
+    second_context = other;
+}
+
+test "an attribute getter called on an illegal receiver throws the getter's realm's TypeError" {
+    try secondRealm();
+    // WebIDL 3.7.6 (attribute getter) step 1.2: the receiver is not a platform
+    // object implementing the interface - "throw a TypeError". The getter is
+    // a built-in function object of otherRealm, so the TypeError is
+    // otherRealm's, whichever realm calls it.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\(() => {
+        \\  const get = Object.getOwnPropertyDescriptor(otherRealm.Node.prototype, 'nodeType').get;
+        \\  try { get.call({}); return 0 } catch (e) { return e instanceof otherRealm.TypeError ? 1 : (e instanceof TypeError ? 2 : 3) }
+        \\})()
+    ));
+    // The same getter, on a node, answers.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\(() => {
+        \\  const get = Object.getOwnPropertyDescriptor(otherRealm.Node.prototype, 'nodeType').get;
+        \\  return get.call(new Document().implementation.createHTMLDocument('').body);
+        \\})()
+    ));
+}
+
+test "an attribute getter whose impl throws throws in the getter's realm" {
+    try secondRealm();
+    // WritableStreamDefaultWriter.desiredSize step 1: a released writer has no
+    // stream - the impl's TypeError, converted by the binding.
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\(() => {
+        \\  const writer = new otherRealm.WritableStream().getWriter();
+        \\  writer.releaseLock();
+        \\  try { writer.desiredSize; return 0 } catch (e) { return e instanceof otherRealm.TypeError ? 1 : (e instanceof TypeError ? 2 : 3) }
+        \\})()
+    ));
+}
+
+test "an indexed getter's and a length getter's success paths leave no handle" {
+    try allInterfaces();
+    try std.testing.expectEqual(@as(i32, 3), try scriptInt(
+        \\globalThis.lengthDoc = new Document().implementation.createHTMLDocument('');
+        \\for (let i = 0; i < 3; i++) lengthDoc.body.append(lengthDoc.createElement('span'));
+        \\globalThis.staticList = lengthDoc.querySelectorAll('span');
+        \\globalThis.tokens = lengthDoc.body.classList;
+        \\tokens.add('a', 'b');
+        \\staticList.length
+    ));
+    try expectNothingLeftAnywhere("list.length", try leftBy("staticList.length;"));
+    try expectNothingLeftAnywhere("list[1]", try leftBy("staticList[1];"));
+    try expectNothingLeftAnywhere("classList[0]", try leftBy("tokens[0];"));
+    try expectNothingLeftAnywhere("el.id", try leftBy("lengthDoc.body.id;"));
+}
+// An abort (engine.abortRunningScript, HTML 8.1.4.5) that lands while script
+// runs inside a binding's callback chain - script -> dispatchEvent -> the
+// DOM's dispatch -> a listener - unwinds through Zig code that called into
+// V8. Each of those calls returns empty, and each caller must take its error
+// path: nothing it made may be left behind.
+
+const AbortAfter = struct {
+    agent: *engine.Agent,
+    after_ms: u64,
+    fn run(self: *const AbortAfter) void {
+        clock.sleep(self.after_ms * std.time.ns_per_ms);
+        engine.abortRunningScript(self.agent);
+    }
+};
+
+fn abortedRound(comptime body: []const u8) !void {
+    const agent: *engine.Agent = @ptrCast(isolate_once.?);
+    const aborter: AbortAfter = .{ .agent = agent, .after_ms = 20 };
+    const thread = try std.Thread.spawn(.{}, AbortAfter.run, .{&aborter});
+    const outcome = scriptInt(body);
+    thread.join();
+    engine.resumeScripts(agent);
+    if (outcome) |_| return error.NotAborted else |_| {}
+}
+
+test "an abort inside a listener the binding dispatched to leaves no handle and no realm bytes" {
+    try allInterfaces();
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt(
+        \\globalThis.abortTarget = new EventTarget();
+        \\abortTarget.addEventListener('spin', () => { for (;;) {} });
+        \\1
+    ));
+    const body = "abortTarget.dispatchEvent(new Event('spin')); 1";
+    const isolate = isolate_once.?;
+    // Two rounds first: what the first makes and later ones reuse.
+    try abortedRound(body);
+    try abortedRound(body);
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    const contexts_before = ffi.v8_Debug_LiveContextGlobals();
+    const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
+    const realm_before = realm_allocator.live;
+    for (0..8) |_| try abortedRound(body);
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    const left: Left = .{
+        .context_globals = ffi.v8_Debug_LiveContextGlobals() - contexts_before,
+        .handle_bytes = @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate))) - bytes_before,
+        .realm_bytes = realm_allocator.live - realm_before,
+    };
+    try expectNothingLeftAnywhere("an abort inside a dispatched listener", left);
+    // The realm runs script again.
+    try std.testing.expectEqual(@as(i32, 7), try scriptInt("3 + 4"));
+}
+// ---- end lane: speed ----

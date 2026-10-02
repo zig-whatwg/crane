@@ -3652,6 +3652,8 @@ pub fn build(b: *std.Build) void {
             "tests/wpt_runner/stall_watchdog.zig",
             "tests/wpt_runner/wpt_test_ids.zig",
             "tests/wpt_runner/result_reporter.zig",
+            "tests/wpt_runner/runner_allocator.zig",
+            "tests/wpt_runner/script_deadline.zig",
         };
         for (harness_sources) |src| {
             const harness_tests = b.addTest(.{
@@ -3676,13 +3678,32 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // The WPT runner's optimize mode: -Doptimize (Debug by default), or
+    // -Dwpt-runner-optimize=<mode> for the runner alone.
+    //
+    // NOT ReleaseSafe by default, although it is 5.9x faster on CPU-bound
+    // files (NodeList-static-length-getter-tampered-1.html: 130 s -> 22 s): it
+    // is not at parity. On 2,100 worklist files (2026-10-01, main 815bc4793's
+    // engine) it CRASHed 667 (SIGTRAP: the C sanitizer's alignment trap in
+    // v8_Global_Clone, reached from EventTarget.innerInvoke -> retainValue
+    // with a misaligned handle) and timed out 290 that pass in Debug (the
+    // legacy-mb decode files among them) - latent undefined behaviour that
+    // the Debug build does not reach. Debug's own UBSan runtime has the same
+    // check and never fires there. Default it to ReleaseSafe once a sweep
+    // shows parity.
+    const wpt_runner_optimize: std.builtin.OptimizeMode = b.option(
+        std.builtin.OptimizeMode,
+        "wpt-runner-optimize",
+        "Optimize mode of wpt_runner (default: -Doptimize). ReleaseSafe is not at parity yet",
+    ) orelse optimize;
+
     // WPT Runner executable for running Web Platform Tests
     const wpt_runner_exe = b.addExecutable(.{
         .name = "wpt_runner",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/wpt_runner/main.zig"),
             .target = target,
-            .optimize = optimize,
+            .optimize = wpt_runner_optimize,
             .imports = &.{
                 .{ .name = "clock", .module = clock_mod },
                 .{ .name = "host", .module = host_mod },
@@ -3739,6 +3760,13 @@ pub fn build(b: *std.Build) void {
 
     // Link C++ standard library
     wpt_runner_exe.root_module.link_libcpp = true; //
+
+    // The C libraries it links (curl, zlib, mbedtls) are built with `optimize`
+    // - Debug, whose C sanitizer calls the UBSan runtime - while a ReleaseSafe
+    // root bundles no runtime of its own (its sanitizer traps). Without this a
+    // `-Dwpt-runner-optimize=ReleaseSafe` runner fails to link on
+    // ___ubsan_handle_* from libmbedtls.a.
+    wpt_runner_exe.bundle_ubsan_rt = true;
 
     // Make WPT runner depend on snapshot generation
     // This ensures the snapshot is always up-to-date with the current V8 build

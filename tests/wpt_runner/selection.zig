@@ -279,6 +279,9 @@ const test_manifest_json =
     \\      "domparsing": {
     \\        "xmlserializer.html": ["hash", [null, {}]]
     \\      },
+    \\      "html-aam": {
+    \\        "roles.html": ["hash", [null, {}]]
+    \\      },
     \\      "css": {
     \\        "selectors": {
     \\          "focus-visible.html": ["hash", [null, {}]]
@@ -313,18 +316,20 @@ test "selectInScope keeps in-scope tests and drops out-of-scope ones" {
     var sel = try selectInScope(allocator, &manifest, &.{});
     defer sel.deinit();
 
-    // dom/ and html/dom/ are in scope.
+    // dom/, html/dom/ and domparsing/ (a category of its own since the 0.1
+    // scope's tier 1) are in scope.
     try std.testing.expect(indexOfSource(sel, "dom/nodes/Node-appendChild.html") != null);
     try std.testing.expect(indexOfSource(sel, "dom/abort/AbortSignal.any.js") != null);
     try std.testing.expect(indexOfSource(sel, "html/dom/reflection.html") != null);
+    try std.testing.expect(indexOfSource(sel, "domparsing/xmlserializer.html") != null);
 
     // css/ is not an in-scope category; html/rendering/ is explicitly excluded;
-    // domparsing only shares a prefix with dom.
+    // html-aam only shares a prefix with html.
     try std.testing.expect(indexOfSource(sel, "css/selectors/focus-visible.html") == null);
     try std.testing.expect(indexOfSource(sel, "html/rendering/replaced-elements.html") == null);
-    try std.testing.expect(indexOfSource(sel, "domparsing/xmlserializer.html") == null);
+    try std.testing.expect(indexOfSource(sel, "html-aam/roles.html") == null);
 
-    try std.testing.expectEqual(@as(usize, 3), sel.sources.len);
+    try std.testing.expectEqual(@as(usize, 4), sel.sources.len);
 }
 
 test "selectInScope counts URLs, not sources" {
@@ -336,9 +341,9 @@ test "selectInScope counts URLs, not sources" {
     var sel = try selectInScope(allocator, &manifest, &.{});
     defer sel.deinit();
 
-    // AbortSignal.any.js is one source but two URLs, so the denominator is 4
-    // over 3 sources.
-    try std.testing.expectEqual(@as(usize, 4), sel.url_count);
+    // AbortSignal.any.js is one source but two URLs, so the denominator is 5
+    // over 4 sources.
+    try std.testing.expectEqual(@as(usize, 5), sel.url_count);
 }
 
 test "selectInScope orders sources deterministically" {
@@ -352,7 +357,8 @@ test "selectInScope orders sources deterministically" {
 
     try std.testing.expectEqualStrings("dom/abort/AbortSignal.any.js", sel.sources[0]);
     try std.testing.expectEqualStrings("dom/nodes/Node-appendChild.html", sel.sources[1]);
-    try std.testing.expectEqualStrings("html/dom/reflection.html", sel.sources[2]);
+    try std.testing.expectEqualStrings("domparsing/xmlserializer.html", sel.sources[2]);
+    try std.testing.expectEqualStrings("html/dom/reflection.html", sel.sources[3]);
 }
 
 test "selectInScope honours directory filters" {
@@ -369,6 +375,7 @@ test "selectInScope honours directory filters" {
         try std.testing.expectEqual(@as(usize, 2), sel.sources.len);
         try std.testing.expectEqual(@as(usize, 3), sel.url_count);
         try std.testing.expect(indexOfSource(sel, "html/dom/reflection.html") == null);
+        try std.testing.expect(indexOfSource(sel, "domparsing/xmlserializer.html") == null);
     }
 
     // A nested filter selects only below that path.
@@ -426,12 +433,12 @@ test "selectAll keeps every testharness source, out-of-scope and excluded ones t
     defer sel.deinit();
 
     // css/ is off the allowlist, html/rendering/ is an exclusion pattern and
-    // domparsing/ only shares a prefix with dom/: the full corpus has all three.
-    try std.testing.expectEqual(@as(usize, 6), sel.sources.len);
-    try std.testing.expectEqual(@as(usize, 7), sel.url_count);
+    // html-aam/ only shares a prefix with html/: the full corpus has all three.
+    try std.testing.expectEqual(@as(usize, 7), sel.sources.len);
+    try std.testing.expectEqual(@as(usize, 8), sel.url_count);
     try std.testing.expect(indexOfSource(sel, "css/selectors/focus-visible.html") != null);
     try std.testing.expect(indexOfSource(sel, "html/rendering/replaced-elements.html") != null);
-    try std.testing.expect(indexOfSource(sel, "domparsing/xmlserializer.html") != null);
+    try std.testing.expect(indexOfSource(sel, "html-aam/roles.html") != null);
     try std.testing.expectEqualStrings("css/selectors/focus-visible.html", sel.sources[0]);
 }
 

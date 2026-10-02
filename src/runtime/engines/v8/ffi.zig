@@ -3409,3 +3409,11 @@ pub extern fn v8_JSON_StringifyValue(context: *Context, value: *Value, no_repres
 /// no-op when there is none; needs an entered context.
 pub extern fn v8_Object_DeletePrivateRef(holder: *Object, key: [*]const u8, key_len: c_int) void;
 // ---- end lane: realms ----
+// ---- lane: speed ----
+/// Isolate::TerminateExecution: any thread, no lock (engine.abortRunningScript).
+pub extern fn v8_Isolate_TerminateExecution(isolate: *Isolate) void;
+/// Isolate::CancelTerminateExecution, on the isolate's thread (engine.resumeScripts).
+pub extern fn v8_Isolate_CancelTerminateExecution(isolate: *Isolate) void;
+/// Isolate::IsExecutionTerminating.
+pub extern fn v8_Isolate_IsExecutionTerminating(isolate: *Isolate) bool;
+// ---- end lane: speed ----
