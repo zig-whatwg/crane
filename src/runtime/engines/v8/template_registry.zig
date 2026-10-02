@@ -41,25 +41,88 @@ const ownership = @import("isolate_ownership.zig");
 
 const log = std.log.scoped(.template_registry);
 
-/// Maximum number of interface templates that can be registered
-// Capacity is per-PROCESS, not per-isolate, and every isolate registers its own
-// entry for every interface it uses. With ~1,263 generated interfaces a single
-// isolate already approaches 2048; a worker would have exhausted it and silently
-// dropped registrations, because the add below is a bounds check with no error.
-const MAX_TEMPLATES = 8192;
+/// One isolate's templates, by interface name. The names are BORROWED: they
+/// are the generated interfaces' comptime names, which outlive the registry.
+const IsolateTemplates = std.StringHashMapUnmanaged(*v8.FunctionTemplate);
 
-/// Entry in the template registry
-const TemplateEntry = struct {
-    name: []const u8,
-    template: *v8.FunctionTemplate,
-    isolate: *v8.Isolate,
-};
+/// What the registry's tables are allocated with: the process's, as the
+/// registry is (instances B2 moves it onto the agent record).
+const table_allocator = std.heap.c_allocator;
 
-/// Global template registry
-/// Maps interface names to their FunctionTemplates
-var templates: [MAX_TEMPLATES]?TemplateEntry = [_]?TemplateEntry{null} ** MAX_TEMPLATES;
-var template_count: usize = 0;
-var initialized: bool = false;
+/// The template registry: per isolate, its FunctionTemplates by interface
+/// name - entries that live exactly as long as their isolate
+/// (`clearForIsolate`) and grow with it.
+///
+/// It was one fixed array of 8,192 (interface, isolate) entries for the whole
+/// process, and every isolate registers ~1,260. A file with many shared
+/// workers alive at once (workers/modules/shared-worker-options-credentials.html)
+/// filled it, and every later registration was DROPPED with a log line - so
+/// the next file's dedicated worker found no template for a constructible
+/// interface it had just registered, made a second one (createTemplateFresh),
+/// and XMLHttpRequestEventTarget.prototype's [[Prototype]] was not that
+/// realm's EventTarget.prototype (xhr/idlharness.any.worker.html 151/160
+/// after it, 153/160 alone). A map per isolate cannot fill, and finds an
+/// entry without scanning every other isolate's.
+///
+/// Isolates are made, read and ended on several threads (a worker's runs on
+/// its own), so the table of isolates is read and written under
+/// `templates_lock`, held only for a find, an insert or a removal. Each
+/// isolate's map is heap-allocated - a rehash of the table never moves it -
+/// and is read and written only on its isolate's thread, without the lock.
+// process-wide: interface templates per live isolate, keyed by isolate, under templates_lock (instances B2 moves each isolate's map onto its agent record).
+var templates: std.AutoHashMapUnmanaged(*v8.Isolate, *IsolateTemplates) = .empty;
+// process-wide: guards `templates` (the table of isolates), shared by every isolate's thread.
+var templates_lock: std.Io.Mutex = .init;
+
+/// `isolate`'s map, or null.
+fn setOf(isolate: *v8.Isolate) ?*IsolateTemplates {
+    std.Io.Threaded.mutexLock(&templates_lock);
+    defer std.Io.Threaded.mutexUnlock(&templates_lock);
+    return templates.get(isolate);
+}
+
+/// `isolate`'s map, made if it has none. Null when out of memory.
+fn setFor(isolate: *v8.Isolate) ?*IsolateTemplates {
+    std.Io.Threaded.mutexLock(&templates_lock);
+    defer std.Io.Threaded.mutexUnlock(&templates_lock);
+    const slot = templates.getOrPut(table_allocator, isolate) catch return null;
+    if (slot.found_existing) return slot.value_ptr.*;
+    const set = table_allocator.create(IsolateTemplates) catch {
+        templates.removeByPtr(slot.key_ptr);
+        return null;
+    };
+    set.* = .empty;
+    slot.value_ptr.* = set;
+    return set;
+}
+
+/// Take `isolate`'s map out of the table: the caller frees it.
+fn takeSet(isolate: *v8.Isolate) ?*IsolateTemplates {
+    std.Io.Threaded.mutexLock(&templates_lock);
+    defer std.Io.Threaded.mutexUnlock(&templates_lock);
+    const kv = templates.fetchRemove(isolate) orelse return null;
+    return kv.value;
+}
+
+fn destroySet(set: *IsolateTemplates, dispose: bool) void {
+    if (dispose) {
+        var iter = set.valueIterator();
+        while (iter.next()) |template| v8.v8_FunctionTemplate_Dispose(template.*);
+    }
+    set.deinit(table_allocator);
+    table_allocator.destroy(set);
+}
+
+/// Every isolate's map out of the table, each freed (`dispose`: its
+/// templates disposed first).
+fn destroyAllSets(dispose: bool) void {
+    std.Io.Threaded.mutexLock(&templates_lock);
+    defer std.Io.Threaded.mutexUnlock(&templates_lock);
+    var sets = templates.valueIterator();
+    while (sets.next()) |set| destroySet(set.*, dispose);
+    templates.deinit(table_allocator);
+    templates = .empty;
+}
 
 /// Snapshot mode flag - when true, templates are NOT cached
 ///
@@ -93,13 +156,6 @@ pub var snapshot_mode: bool = false;
 /// their cached templates. When the generation doesn't match, the cache is stale.
 pub var cache_generation: u64 = 0;
 
-/// Initialize the registry (called automatically on first use)
-fn ensureInitialized() void {
-    if (!initialized) {
-        initialized = true;
-    }
-}
-
 /// Dispose and remove only the templates belonging to `isolate`.
 ///
 /// `clear()` below wipes EVERY entry. That was harmless while the registry could
@@ -118,22 +174,7 @@ fn ensureInitialized() void {
 /// down while another isolate is still running would break it. Full teardown
 /// still goes through clear().
 pub fn clearForIsolate(isolate: *v8.Isolate) void {
-    var write: usize = 0;
-    for (templates[0..template_count]) |maybe_entry| {
-        if (maybe_entry) |e| {
-            if (e.isolate == isolate) {
-                v8.v8_FunctionTemplate_Dispose(e.template);
-                continue; // drop it
-            }
-            templates[write] = e;
-            write += 1;
-        }
-    }
-    // Null out the vacated tail so stale entries cannot be read back.
-    var i = write;
-    while (i < template_count) : (i += 1) templates[i] = null;
-    template_count = write;
-
+    if (takeSet(isolate)) |set| destroySet(set, true);
     cache_generation +%= 1;
 }
 
@@ -154,13 +195,7 @@ pub fn clearForIsolate(isolate: *v8.Isolate) void {
 pub fn clear() void {
     // Dispose V8 FunctionTemplate handles before clearing entries
     // V8 Global handles must be explicitly disposed to release resources
-    for (&templates) |*entry| {
-        if (entry.*) |e| {
-            v8.v8_FunctionTemplate_Dispose(e.template);
-        }
-        entry.* = null;
-    }
-    template_count = 0;
+    destroyAllSets(true);
     // Increment generation to invalidate all per-interface static caches
     cache_generation +%= 1;
     // Clear the async iterator template cache in C++ layer
@@ -175,22 +210,26 @@ pub fn clear() void {
     // namespace context (holds V8 context references).
     const namespace = @import("namespace.zig");
     namespace.clearGlobalContext();
+}
 
-    // Don't reset initialized - the registry can be reused
+/// clearForIsolate without disposing anything: for a test whose templates are
+/// synthetic pointers.
+pub fn forgetIsolateForTest(isolate: *v8.Isolate) void {
+    if (takeSet(isolate)) |set| destroySet(set, false);
 }
 
 /// How many (interface, isolate) entries are currently registered.
 ///
 /// Exposed for tests and diagnostics: the count is what distinguishes a genuine
-/// re-registration (updates in place) from an append, and unbounded growth here is
-/// how the registry would silently fill and start dropping templates.
+/// re-registration (updates in place) from an append.
 pub fn registeredCount() usize {
-    return template_count;
+    std.Io.Threaded.mutexLock(&templates_lock);
+    defer std.Io.Threaded.mutexUnlock(&templates_lock);
+    var count: usize = 0;
+    var sets = templates.valueIterator();
+    while (sets.next()) |set| count += set.*.count();
+    return count;
 }
-
-/// Capacity, so a test can assert two full interface sets fit rather than
-/// hard-coding a number that drifts.
-pub const capacity = MAX_TEMPLATES;
 
 /// Remove every entry WITHOUT disposing any V8 handle.
 ///
@@ -198,8 +237,7 @@ pub const capacity = MAX_TEMPLATES;
 /// for real templates and fatal for a test using synthetic pointers. This exists
 /// so a test can borrow the registry and put it back.
 pub fn resetForTest() void {
-    for (&templates) |*entry| entry.* = null;
-    template_count = 0;
+    destroyAllSets(false);
     cache_generation +%= 1;
 }
 
@@ -220,47 +258,17 @@ pub fn register(
     // NOTE: We register even in snapshot_mode for deduplication of parent templates.
     // The handles will be cleared by v8_Snapshot_ClearGlobalHandles() before CreateBlob().
 
-    ensureInitialized();
-
-    // Check if already registered (avoid duplicates on re-registration).
-    //
-    // Match on name AND isolate. Matching on name alone made this registry
-    // single-isolate by construction: a second isolate registering "Element"
-    // reassigned the FIRST isolate's entry to itself, and since lookup requires
-    // both name and isolate to match (getTemplateForIsolate), the first isolate
-    // then found NO template for an interface it had already registered.
-    //
-    // V8 Global<FunctionTemplate> handles are isolate-scoped and cannot be shared,
-    // so one entry per (interface, isolate) is the only correct shape. This is the
-    // structural half of Phase 5's exit criterion: two isolates each holding a full
-    // interface template set at the same time.
-    for (templates[0..template_count]) |*entry| {
-        if (entry.*) |*e| {
-            if (std.mem.eql(u8, e.name, interface_name) and e.isolate == isolate) {
-                // Same interface, same isolate: genuine re-registration.
-                e.template = template;
-                return;
-            }
-        }
-    }
-
-    // Add new entry
-    if (template_count < MAX_TEMPLATES) {
-        templates[template_count] = .{
-            .name = interface_name,
-            .template = template,
-            .isolate = isolate,
-        };
-        template_count += 1;
-    } else {
-        // Previously a silent no-op. A dropped template does not fail here - it
-        // fails much later, as a lookup miss that looks like a missing interface.
-        log.err(
-            "template registry full ({d} entries): dropping '{s}'. Raise MAX_TEMPLATES - " ++
-                "capacity is per-process and every isolate registers its own entries.",
-            .{ MAX_TEMPLATES, interface_name },
-        );
-    }
+    // One entry per (interface, isolate): V8 Global<FunctionTemplate> handles
+    // are isolate-scoped and cannot be shared, and a second isolate
+    // registering "Element" must not take the first one's entry. Registering
+    // the same interface again in the same isolate replaces its entry.
+    const set = setFor(isolate) orelse {
+        log.err("template registry: out of memory registering '{s}'", .{interface_name});
+        return;
+    };
+    set.put(table_allocator, interface_name, template) catch {
+        log.err("template registry: out of memory registering '{s}'", .{interface_name});
+    };
 }
 
 /// Get a registered FunctionTemplate by interface name for the current isolate
@@ -279,21 +287,10 @@ pub fn getTemplate(interface_name: []const u8) ?*v8.FunctionTemplate {
 /// in one isolate cannot be used in another isolate. This function ensures
 /// we only return templates that match the specified isolate.
 pub fn getTemplateForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) ?*v8.FunctionTemplate {
-    ensureInitialized();
-
     // If no isolate provided, can't match
-    if (isolate == null) return null;
-
-    // Only iterate over registered templates, not the full array
-    for (templates[0..template_count]) |entry| {
-        if (entry) |e| {
-            // Must match BOTH name AND isolate
-            if (std.mem.eql(u8, e.name, interface_name) and e.isolate == isolate.?) {
-                return e.template;
-            }
-        }
-    }
-    return null;
+    const key = isolate orelse return null;
+    const set = setOf(key) orelse return null;
+    return set.get(interface_name);
 }
 
 /// Wrap a Zig runtime.Instance into a V8 Object with the correct prototype
@@ -645,7 +642,6 @@ fn isLegacyPlatformObject(interface_name: []const u8) bool {
 
 test "template_registry basic operations" {
     // This test would require V8 initialization, so we just test the registry logic
-    ensureInitialized();
 
     // Verify initial state
     const template = getTemplate("NonExistent");

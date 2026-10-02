@@ -49,12 +49,11 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// - src/webidl/impls/MutationObserver.zig for Observer callback pattern
 ///
 /// Implementation requirements:
-/// 1. Add `callback: v8_engine.OptionalGlobalHandle` to InternalState
-/// 2. Add `isolate: ?*v8_engine.ffi.Isolate` to InternalState
-/// 3. Extract Global handle from tagged pointer in constructor:
-///    `const untagged = v8_engine.pointer_tag.untagPointer(@ptrCast(callback));`
-///    `internal.callback = v8_engine.GlobalHandle{ .ptr = @ptrCast(@alignCast(untagged.ptr)) };`
-/// 4. Dispose Global handle in deinit: `v8_engine.disposeOptionalGlobalHandle(&self.callback)`
+/// 1. Add `callback: ?engine.CallbackFunction` to InternalState
+/// 2. Take the argument over in the constructor:
+///    `internal.callback = engine.takeCallbackFunction(@ptrCast(callback));`
+///    (as MutationObserver does; no V8 type in an impl - AGENTS.md, the engine boundary)
+/// 3. Release it in deinit: `if (internal.callback) |c| c.release();`
 pub fn call_constructor(ctx: runtime.Context, callback: callbacks.ResizeObserverCallback) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &ResizeObserver.vtable, ctx);

@@ -221,3 +221,115 @@ test "protocol: keepPlatformObjectAlive holds a wrapper through a full GC, and r
     collect();
     try std.testing.expect(wasFreed(worker));
 }
+
+// ============================================================================
+// Teardown and the collector (engine_protocol.zig 4.12)
+// ============================================================================
+//
+// An instance's teardown never runs while the engine is collecting. V8 allows
+// no API call in the first pass of its weak callbacks (v8-weak-callback-info.h)
+// - another handle of the same collection may still hold the 0xCA11 zap value -
+// so the wrapper cache only unlinks a collected entry there, and the instance's
+// deinit runs in the second pass.
+
+/// What each probe's deinit saw.
+const Probe = struct {
+    ran: bool = false,
+    in_first_pass: bool = false,
+    /// A weak handle to another object this probe's deinit reads, and what it
+    /// read: whether it was empty, and, if not, whether it was an object.
+    other: ?*ffi.Value = null,
+    other_empty: ?bool = null,
+};
+var probes: [64]Probe = [_]Probe{.{}} ** 64;
+var probe_states: [64]u64 = [_]u64{0} ** 64;
+
+fn probingDeinit(instance: *runtime.Instance) void {
+    const index = @as(*u64, @ptrCast(@alignCast(instance.state))).*;
+    const probe = &probes[index];
+    probe.ran = true;
+    probe.in_first_pass = ffi.v8_Debug_InFirstPassWeakCallback();
+    // An engine call a teardown may make once the collection is over: read
+    // a handle whose object died in the same collection.
+    if (probe.other) |other| {
+        const empty = ffi.v8_Global_IsEmpty(other);
+        probe.other_empty = empty;
+        if (!empty) _ = ffi.v8_Value_IsObject(other);
+    }
+}
+
+const probe_vtable = runtime.VTable{
+    .name = "MockTeardownProbe",
+    .deinit = probingDeinit,
+    .methods_ptr = &mock_methods,
+};
+
+fn noopCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
+
+/// A wrapped probe instance whose state is its index.
+fn probeAt(index: usize) !Made {
+    const instance = try runtime.SlabAllocator.get().alloc(&probe_vtable);
+    probe_states[index] = index;
+    instance.state = @ptrCast(&probe_states[index]);
+    instance.ctx = data_once.?;
+    const made = Made.of(instance);
+    // Made and cached in a scope of its own: no Local of the test's keeps it.
+    const scope = ffi.v8_HandleScope_New(isolate_once.?);
+    defer if (scope) |s| ffi.v8_HandleScope_Dispose(s);
+    try wrap(made);
+    return made;
+}
+
+test "a collected wrapper's instance is torn down after the collection, not inside it" {
+    try setup();
+    probes[0] = .{};
+    const made = try probeAt(0);
+    collect();
+    try std.testing.expect(probes[0].ran);
+    // The deinit ran outside V8's first pass, where engine calls are allowed.
+    try std.testing.expect(!probes[0].in_first_pass);
+    try std.testing.expect(!isCached(made));
+}
+
+test "a teardown may read a handle whose object died in the same collection" {
+    try setup();
+    // Pairs that die together: each probe's deinit reads a weak handle to an
+    // object of the same collection. Inside the first pass that handle may
+    // still hold V8's zap value (a SIGSEGV at 0xca10 when read); after it,
+    // every handle of the collection has been Reset.
+    const pairs = 32;
+    var handles: [pairs]*ffi.Value = undefined;
+    for (0..pairs) |i| {
+        probes[i] = .{};
+        const scope = ffi.v8_HandleScope_New(isolate_once.?);
+        defer if (scope) |s| ffi.v8_HandleScope_Dispose(s);
+        const object = ffi.v8_Object_New(isolate_once.?) orelse return error.ObjectFailed;
+        ffi.v8_Global_SetWeak(@ptrCast(object), null, noopCollected);
+        handles[i] = @ptrCast(object);
+        probes[i].other = handles[i];
+        _ = try probeAt(i);
+    }
+    collect();
+    for (0..pairs) |i| {
+        try std.testing.expect(probes[i].ran);
+        try std.testing.expect(!probes[i].in_first_pass);
+        try std.testing.expectEqual(@as(?bool, true), probes[i].other_empty);
+        ffi.v8_Value_Dispose(handles[i]);
+    }
+}
+
+test "a teardown the collection deferred is not run for an instance wrapped again before it" {
+    try setup();
+    probes[0] = .{};
+    const made = try probeAt(0);
+    // The entry leaves the cache in the first pass; a wrap before the second
+    // pass makes a new wrapper, which owns the instance from then on.
+    const entry = cache_once.?.cache.get(made.instance).?;
+    _ = cache_once.?.cache.remove(made.instance);
+    entry.collected = true;
+    cache_once.?.linkPendingForTest(entry);
+    try wrap(made);
+    cache_once.?.finalizePendingForTest();
+    try std.testing.expect(!probes[0].ran);
+    try std.testing.expect(isCached(made));
+}

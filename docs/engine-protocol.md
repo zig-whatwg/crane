@@ -74,6 +74,21 @@ Slices an operation returns are allocated with the allocator the caller
 passed, and are the caller's. Every operation that reads a value takes the
 realm first.
 
+**An instance's teardown never runs while the engine is collecting.** When the
+collector takes a platform object's wrapper, the adapter makes the instance
+unreachable through the binding at once - a later wrap makes a new wrapper -
+and defers its teardown (the vtable `deinit` and everything it releases) to a
+point where engine calls are allowed, so a deinit may release `Owned` values,
+end holds and edges, and call any operation. An instance wrapped again in
+between is not torn down: the new wrapper owns it. V8: the first pass of its
+weak callbacks only unlinks the wrapper cache's entry, and the instance is
+torn down in the second pass (`SetSecondPassCallback`; v8-weak-callback-info.h:
+"No v8 other api calls may be called in the first callback"), as Blink's
+ScriptWrappable did. JavaScriptCore's `JSObjectFinalizeCallback` and QuickJS's
+class finalizer run inside their collectors, so those adapters queue the
+teardown the same way once they wrap platform objects; today they wrap none.
+`AsyncIteratorSteps.finalize` runs under the same rule.
+
 ### Errors
 
 `Error = { OperationFailed, ExceptionReported, OutOfMemory, TypeError, ExceptionPending, DataCloneError, NotSupported }`

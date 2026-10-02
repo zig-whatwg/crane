@@ -2345,15 +2345,15 @@ pub extern fn v8_External_Dispose(external: *External) void;
 ///   length_in_bytes: Size estimate (unused in our case)
 pub const WeakCallbackFn = *const fn (data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void;
 
-/// Make a Global handle weak and register a finalizer
+/// Make a Global handle weak with a FIRST-PASS callback.
 ///
-/// When the V8 object is garbage collected, the finalizer will be called
-/// with the provided data pointer. This is used to clean up native resources.
-///
-/// Arguments:
-///   handle: The Global handle to make weak (Function, Object, etc.)
-///   data: User data to pass to finalizer (e.g., CallbackUserData*)
-///   callback: Finalizer function to call on GC
+/// When the V8 object is garbage collected, `callback(data)` runs inside the
+/// collection - V8's first pass, after the handle is Reset - where no V8 API
+/// may be called ("No v8 other api calls may be called in the first
+/// callback", v8-weak-callback-info.h): other handles of the same collection
+/// may still hold the 0xCA11 zap value. Bookkeeping only. Anything that
+/// touches the engine - an instance's teardown above all - is a finalizer:
+/// `v8_Global_SetWeakFinalizer`.
 ///
 /// Note: The handle can be any Global<T>* since they're all opaque pointers
 pub extern fn v8_Global_SetWeak(
@@ -2361,6 +2361,26 @@ pub extern fn v8_Global_SetWeak(
     data: ?*anyopaque,
     callback: WeakCallbackFn,
 ) void;
+
+/// Make a Global handle weak with a finalizer that runs after the collection.
+///
+/// `unlink(data)` (optional) runs in V8's first pass, under the same rule as
+/// v8_Global_SetWeak's callback - no V8 API - so that nothing can reach what
+/// is being finalized: the wrapper cache drops its entry there. `finalize(data)`
+/// runs in V8's second pass, once every first-pass callback of the collection
+/// has run - from V8's posted task, the next collection's prologue, or at the
+/// end of a forced collection - where V8 API calls are allowed. Disposing the
+/// handle before then cancels `finalize`.
+pub extern fn v8_Global_SetWeakFinalizer(
+    handle: *anyopaque,
+    data: ?*anyopaque,
+    unlink: ?WeakCallbackFn,
+    finalize: WeakCallbackFn,
+) void;
+
+/// Whether this thread is inside V8's first-pass weak callbacks - for tests
+/// that a finalizer runs after the collection, never inside it.
+pub extern fn v8_Debug_InFirstPassWeakCallback() bool;
 
 /// Clear weak reference and restore strong reference
 ///

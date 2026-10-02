@@ -94,13 +94,19 @@ pub fn registerCallbackRuntime(callback: v8.FunctionCallback) void {
 ///
 /// This is the generic version that accepts any pointer type.
 /// Use this for non-FunctionCallback callbacks (e.g., NamedPropertyCallback).
+///
+/// Every registration takes the next index, a repeated address included. A
+/// snapshot names a callback by its index, so the table must have the same
+/// entries in the same order at generation and at load whatever the build
+/// mode - and which callbacks share an address IS mode-dependent: an
+/// optimized build merges identical functions. V8 expects that and keeps the
+/// first index of a repeated address ("This can happen due to ICF. See
+/// http://crbug.com/726896.", src/codegen/external-reference-encoder.cc).
+/// Dropping repeats here made a ReleaseSafe table 8,287 entries long against
+/// the Debug generator's 11,465, so ReleaseSafe runners never restored the
+/// snapshot.
 pub fn registerPointer(ptr: usize) void {
     const ptr_value: isize = @intCast(ptr);
-
-    // Check if already registered
-    for (runtime_refs[0..runtime_ref_count]) |ref| {
-        if (ref == ptr_value) return;
-    }
 
     if (runtime_ref_count >= MAX_EXTERNAL_REFS) {
         std.debug.panic("Too many external references - increase MAX_EXTERNAL_REFS", .{});
@@ -427,27 +433,24 @@ test "external references - hash determinism" {
     clearRuntimeReferences();
 }
 
-test "registerPointer dedups and preserves registration order" {
+test "registerPointer keeps repeats and registration order" {
     // Order is load-bearing: snapshot creation and snapshot load must agree entry for
-    // entry, so a dedup that reordered the array would corrupt the snapshot rather
-    // than fail loudly. Nothing covered this before.
+    // entry. A repeated address keeps its own index (tests/v8/snapshot_test.zig pins
+    // this where it runs: test blocks in this directory are not built).
     clearRuntimeReferences();
     defer clearRuntimeReferences();
 
     const a: usize = 0x1000;
     const b: usize = 0x2000;
-    const c: usize = 0x3000;
 
     registerPointer(a);
     registerPointer(b);
-    registerPointer(a); // duplicate
-    registerPointer(c);
-    registerPointer(b); // duplicate
+    registerPointer(a); // a second callback merged with the first
 
     try std.testing.expectEqual(@as(usize, 3), runtime_ref_count);
     try std.testing.expectEqual(@as(isize, @intCast(a)), runtime_refs[0]);
     try std.testing.expectEqual(@as(isize, @intCast(b)), runtime_refs[1]);
-    try std.testing.expectEqual(@as(isize, @intCast(c)), runtime_refs[2]);
+    try std.testing.expectEqual(@as(isize, @intCast(a)), runtime_refs[2]);
 }
 
 test "clearRuntimeReferences lets a previously-seen pointer register again" {

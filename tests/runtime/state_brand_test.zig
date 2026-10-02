@@ -27,13 +27,14 @@ const std = @import("std");
 /// A runtime-comparable identity for a comptime type.
 ///
 /// `type` cannot be passed or stored at runtime, so each state type gets a unique
-/// address: one zero-sized static per instantiation of `Holder`. Comparing pointers
-/// is exact, unlike comparing `@typeName` strings.
+/// address: one static per instantiation of `Holder`. Comparing pointers is exact,
+/// unlike comparing `@typeName` strings. A `var`: equal constants may share an
+/// address (see the runtime's typeId test at the end of this file).
 const TypeId = *const anyopaque;
 
 fn Holder(comptime T: type) type {
     return struct {
-        const marker: u8 = 0;
+        var marker: u8 = 0;
         comptime {
             _ = T;
         }
@@ -180,4 +181,32 @@ test "typeId is stable per type and distinct across types" {
     try std.testing.expectEqual(typeId(BaseState), typeId(BaseState));
     try std.testing.expect(typeId(BaseState) != typeId(DerivedState));
     try std.testing.expect(typeId(BaseState) != typeId(UnrelatedState));
+}
+
+// ---------------------------------------------------------------------------
+// The runtime's own typeId (src/runtime/instance.zig), which every
+// `Instance.stateAs` brand check compares
+// ---------------------------------------------------------------------------
+
+const runtime = @import("runtime");
+
+test "the runtime's typeId gives distinct types distinct identities, in every build mode" {
+    // Two state types with nothing but their names to tell them apart: the
+    // case an optimizer that merges equal constants collapses. As the address
+    // of a `const marker: u8 = 0`, the ReleaseSafe runner had ONE marker for
+    // its 1,068 state types (nm), so every brand check passed - an
+    // XMLHttpRequest read as a Window (crane/td-event-handler-brand.html). The
+    // marker is a `var` now: Zig keeps distinct variables at distinct
+    // addresses. This test runs in Debug, where the merge never happened; the
+    // ReleaseSafe runner's Crane test is what showed it.
+    const First = struct { value: u8 };
+    const Second = struct { value: u8 };
+    try std.testing.expect(runtime.typeId(First) != runtime.typeId(Second));
+    try std.testing.expectEqual(runtime.typeId(First), runtime.typeId(First));
+
+    // And the brand check built on it: a chain holds its own levels, not a
+    // stranger with the same shape.
+    const chain = comptime runtime.ancestorsOf(First);
+    try std.testing.expectEqual(runtime.typeId(First), chain[0].id);
+    for (chain) |level| try std.testing.expect(level.id != runtime.typeId(Second));
 }

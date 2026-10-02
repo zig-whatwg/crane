@@ -1481,71 +1481,42 @@ pub fn fromV8Value(
     // The fix: Create a V8 Global handle immediately during dictionary extraction.
     // Global handles persist until explicitly disposed, surviving HandleScope destruction.
     //
-    // We return the Global handle's internal pointer tagged with `.global_handle` so that
-    // consumers (like jsCallbackAlgorithmGlobal in algorithm.zig) can detect it's a Global
-    // and wrap it appropriately without trying to create another Global from an invalid Local.
-    //
-    // Memory management: The consumer is responsible for disposing the Global handle when done.
-    // The GlobalHandle struct wraps the internal pointer for proper disposal.
-    //
-    // See: src/runtime/engines/v8/global_handles.zig for GlobalHandle documentation
-    // See: src/runtime/engines/v8/pointer_tag.zig for pointer tagging documentation
-    // See: whatwg-9bmsj for the bug report this fixes
-    // Note: Direct function pointer conversion is problematic because V8 functions
-    // can't be directly converted to Zig function pointers. For proper callback handling,
-    // use CallbackWrapper types instead.
-    //
-    // For backward compatibility with code that expects function pointers (like EventHandler),
-    // we create a GlobalHandle and return a tagged pointer. The consumer MUST untag it
-    // and use it through the GlobalHandle API, NOT call it directly as a function pointer.
+    // A callback function type is a Zig function-pointer type until codegen
+    // types callback parameters as engine.CallbackFunction (the protocol's
+    // TRANSITIONAL note on takeCallbackFunction): the value holds the
+    // function's Global<Value>* and is never called. Every consumer takes it
+    // over through takeCallbackFunction, or returns it from a getter
+    // (interface.zig), as a Global.
     if (type_info == .pointer) {
         const child_info = @typeInfo(type_info.pointer.child);
         if (child_info == .@"fn") {
-            // Verify this is actually a V8 function
-            // NOTE: value from v8_FunctionCallbackInfo_GetArgument is ALREADY a Global<Value>*
-            // (the C++ function creates a new Global from the Local argument and returns it).
-            // So we use v8_Value_IsFunction which expects Global<Value>*.
+            // NOTE: value from v8_FunctionCallbackInfo_GetArgument is ALREADY a
+            // Global<Value>* of the binding's (the C++ side made it from the
+            // argument's Local), so it is handed over as it is.
             if (!v8.v8_Value_IsFunction(value)) {
                 return ConversionError.TypeError;
             }
 
-            // The value is already a Global<Value>* from v8_FunctionCallbackInfo_GetArgument.
-            // We don't need to create another Global - just use this one directly.
-            // Tag the pointer so consumers know it's a GlobalHandle.
+            // UNTAGGED. A value of a pointer type must be aligned for it - a
+            // function is 4-aligned on aarch64 - and it once carried
+            // `.global_handle` in its low bits. That is illegal behaviour, and
+            // an optimized build acted on it: with the impl's untag inlined
+            // after a parameter of this type, LLVM took the low bits as zero
+            // and dropped the untag, so a ReleaseSafe runner disposed and
+            // cloned Global* + 1 (the alignment trap in v8_Global_Clone, under
+            // EventTarget.innerInvoke, on every event handler it ran). The
+            // Global from `new` is 16-aligned, so the plain address is a value
+            // the type may hold; the union path below already stored its
+            // function-pointer arms this way.
             //
-            // Consumers should:
-            // 1. Call pointer_tag.untagPointer() to get the raw pointer and tag
-            // 2. Check for .global_handle tag
-            // 3. Wrap in GlobalHandle{ .ptr = @ptrCast(untagged.ptr) } for proper disposal
-            //
-            // IMPORTANT: Tagged pointers are intentionally misaligned (low bits used for tag).
-            // We can't use normal pointer casts because Zig checks alignment for function pointers.
-            // Instead, we use a union type-pun to bypass alignment checks entirely.
-            // The pointer MUST be untagged before any alignment-sensitive operations.
-            const tagged_ptr = pointer_tag.tagPointer(@ptrCast(value), .global_handle);
-
-            // Bypass Zig's alignment checking for function pointers.
-            // This is safe because:
-            // 1. The tagged pointer is never dereferenced directly
-            // 2. Consumers must untag before using
-            // 3. The underlying GlobalHandle maintains proper alignment
-            //
-            // Zig 0.16: `packed struct { ptr: T }` is rejected ("pointers cannot be
-            // directly bitpacked"), so the old @bitCast pun is gone. The replacements
-            // that look obvious do NOT work here:
-            //   - @ptrFromInt(tagged_addr) asserts the address is aligned for T and
-            //     panics ("incorrect alignment") in Debug/ReleaseSafe, which is exactly
-            //     the invariant a tagged pointer deliberately breaks.
-            //   - extern struct / extern union reject `*const fn` fields that do not
-            //     specify a C calling convention, and T here is usually a plain Zig
-            //     callback type (e.g. EventHandler), so they fail to compile.
-            // Copying the raw address bytes into an undefined T is the one pun that is
-            // layout-guaranteed, alignment-check-free, and generic over any pointer T.
-            const tagged_addr: usize = @intFromPtr(tagged_ptr);
+            // A byte copy, since no pointer cast turns a Value* into a function
+            // pointer; both are one machine word.
+            const address: usize = @intFromPtr(value);
+            std.debug.assert(std.mem.isAligned(address, @alignOf(type_info.pointer.child)));
             comptime std.debug.assert(@sizeOf(T) == @sizeOf(usize));
-            var punned_ptr: T = undefined;
-            @memcpy(std.mem.asBytes(&punned_ptr), std.mem.asBytes(&tagged_addr));
-            return punned_ptr;
+            var function_value: T = undefined;
+            @memcpy(std.mem.asBytes(&function_value), std.mem.asBytes(&address));
+            return function_value;
         }
     }
 

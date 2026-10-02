@@ -774,6 +774,25 @@ fn ArgView(comptime mask: u32) type {
     };
 }
 
+/// Throw the WebIDL error an impl's member returned. It is made in the
+/// member's own realm (`member_context`, the current realm) - except a
+/// SecurityError, which a cross-origin check raises: browsers raise it from
+/// the [[Get]], [[Set]] or [[Call]] the CALLER's realm performs (HTML
+/// CrossOriginGet / CrossOriginSet, the Location members' first step), so it
+/// is made in the entered realm, where the caller's try/catch and
+/// `instanceof DOMException` expect it - as the attribute getters already do.
+fn throwMemberError(isolate: *v8.Isolate, member_context: *v8.Context, err: anyerror) void {
+    if (err == error.SecurityError) {
+        if (v8.v8_Isolate_GetEnteredOrMicrotaskContext(isolate)) |entered| {
+            // Owned: a fresh Global<Context>, used only to pick the realm.
+            defer v8.v8_Context_Dispose(entered);
+            conv.throwWebIDLErrorFromContext(isolate, entered, @errorName(err));
+            return;
+        }
+    }
+    conv.throwWebIDLErrorFromContext(isolate, member_context, @errorName(err));
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -2155,8 +2174,8 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// Check if a type is an optional callback type (like EventHandler = ?*const fn(...))
-        /// These types are stored as tagged pointers to V8 GlobalHandles and need special
-        /// handling for return value conversion.
+        /// A value of one holds the function's Global<Value>* (conversions.zig), so a
+        /// getter returning one needs special handling for return value conversion.
         fn isOptionalCallbackType(comptime T: type) bool {
             const type_info = @typeInfo(T);
             if (type_info != .optional) return false;
@@ -2809,47 +2828,17 @@ pub fn V8Interface(comptime Interface: type) type {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 };
                                 break :comptime_convert v8_converted;
-                            } else if (PayloadType == @import("typedefs").EventHandler) {
-                                // EventHandler explicit check - tagged pointer to V8 GlobalHandle
-                                // This is redundant with isOptionalCallbackType but ensures explicit matching
-                                if (result) |tagged_ptr| {
-                                    const ptr_tag = @import("pointer_tag.zig");
-                                    // Cast function pointer to *const anyopaque for untagging
-                                    // The pointer has tag bits set in low 2 bits
-                                    const ptr_addr: usize = @intFromPtr(tagged_ptr);
-                                    const raw_ptr: *const anyopaque = @ptrFromInt(ptr_addr);
-                                    const untagged = ptr_tag.untagPointer(raw_ptr);
-
-                                    if (untagged.tag == .global_handle) {
-                                        // Return the Global<Value>* directly - setReturnValue expects a Global pointer
-                                        // DO NOT call handle.get() - that returns a Local which is the wrong type
-                                        break :comptime_convert @ptrCast(@alignCast(untagged.ptr));
-                                    }
-                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
-                                } else {
-                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
-                                }
                             } else if (comptime isOptionalCallbackType(PayloadType)) {
-                                // Optional callback type (like EventHandler = ?*const fn(...))
-                                // These are stored as tagged pointers to V8 GlobalHandles
-                                // Per WebIDL spec, null EventHandler should return JavaScript null
-                                if (result) |tagged_ptr| {
-                                    const ptr_tag = @import("pointer_tag.zig");
-                                    // Cast function pointer to *const anyopaque for untagging
-                                    // The pointer has tag bits set in low 2 bits
-                                    const ptr_addr: usize = @intFromPtr(tagged_ptr);
-                                    const raw_ptr: *const anyopaque = @ptrFromInt(ptr_addr);
-                                    const untagged = ptr_tag.untagPointer(raw_ptr);
-
-                                    if (untagged.tag == .global_handle) {
-                                        // Return the Global<Value>* directly - setReturnValue expects a Global pointer
-                                        // DO NOT call handle.get() - that returns a Local which is the wrong type
-                                        break :comptime_convert @ptrCast(@alignCast(untagged.ptr));
-                                    }
-                                    // Fallback: return null if we can't extract the V8 value
-                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                // An optional callback function type (EventHandler is
+                                // ?EventHandlerNonNull, a function pointer): the value
+                                // is the function's Global<Value>* (conversions.zig,
+                                // UNTAGGED - a tag in a function pointer's low bits is
+                                // illegal behaviour an optimized build acts on), which
+                                // is what setReturnValue reads. Null is JavaScript null.
+                                if (result) |function_value| {
+                                    const address: usize = @intFromPtr(function_value);
+                                    break :comptime_convert @ptrFromInt(address);
                                 } else {
-                                    // null EventHandler -> JavaScript null
                                     break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
                                 }
                             } else {
@@ -3317,7 +3306,7 @@ pub fn V8Interface(comptime Interface: type) type {
                             return;
                         }
                         // Throw proper DOMException for WebIDL errors
-                        conv.throwWebIDLErrorFromContext(isolate, method_context, @errorName(err));
+                        throwMemberError(isolate, method_context, err);
                         return;
                     };
 
@@ -7681,7 +7670,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     if (return_type_info == .error_union) {
                         zig_setter(instance, zig_value) catch |err| {
-                            conv.throwWebIDLErrorFromContext(isolate_inner, setter_context, @errorName(err));
+                            throwMemberError(isolate_inner, setter_context, err);
                             return;
                         };
                     } else {

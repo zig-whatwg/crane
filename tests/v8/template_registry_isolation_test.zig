@@ -75,7 +75,6 @@ test "PHASE 5 EXIT: two isolates hold a full interface template set simultaneous
     for (names, 0..) |n, i| registry.register(n, @ptrFromInt(0x20_0000 + i * 8), isolate_b);
 
     try std.testing.expectEqual(@as(usize, FULL_INTERFACE_SET * 2), registry.registeredCount());
-    try std.testing.expect(FULL_INTERFACE_SET * 2 <= registry.capacity);
 
     // Each isolate gets ITS OWN template back, for every interface. Under name-only
     // keying every one of these returned B's template or nothing at all.
@@ -139,9 +138,97 @@ test "re-registering an interface replaces only that isolate's entry" {
     );
 }
 
-test "capacity holds two full sets with room to spare" {
-    // The capacity half of the criterion, stated on its own so a future reduction of
-    // MAX_TEMPLATES fails here with an obvious message rather than as a dropped
-    // template that looks like a missing interface at runtime.
-    try std.testing.expect(registry.capacity >= FULL_INTERFACE_SET * 2);
+test "isolates alive at once each keep a full set, however many there are" {
+    // A file with many shared workers holds one isolate per worker, each with
+    // its full set: shared-worker-options-credentials.html made the fixed
+    // 8,192-entry table drop 5,058 registrations, and the NEXT file's
+    // dedicated worker - its registrations dropped - made a second template
+    // for each constructible interface it looked up (createTemplateFresh), so
+    // XMLHttpRequestEventTarget.prototype's [[Prototype]] was not that realm's
+    // EventTarget.prototype (xhr/idlharness.any.worker.html 151/160 after it,
+    // 153/160 alone).
+    const allocator = std.testing.allocator;
+    borrowRegistry();
+    defer registry.resetForTest();
+
+    const isolates = 12; // 12 x 1,263 = 15,156 entries, past the old 8,192
+    const names = try allocator.alloc([]u8, FULL_INTERFACE_SET);
+    defer {
+        for (names) |n| allocator.free(n);
+        allocator.free(names);
+    }
+    for (names, 0..) |*n, i| n.* = try std.fmt.allocPrint(allocator, "Interface{d}", .{i});
+
+    for (0..isolates) |k| {
+        const isolate: *ffi.Isolate = @ptrFromInt(0x1000 * (k + 1));
+        for (names, 0..) |n, i| registry.register(n, @ptrFromInt(0x100_0000 * (k + 1) + i * 8), isolate);
+    }
+    try std.testing.expectEqual(@as(usize, FULL_INTERFACE_SET * isolates), registry.registeredCount());
+    for (0..isolates) |k| {
+        const isolate: *ffi.Isolate = @ptrFromInt(0x1000 * (k + 1));
+        for (names, 0..) |n, i| {
+            const got = registry.getTemplateForIsolate(n, isolate) orelse return error.TemplateDropped;
+            try std.testing.expectEqual(@as(usize, 0x100_0000 * (k + 1) + i * 8), @intFromPtr(got));
+        }
+    }
+}
+
+test "isolates made and ended in sequence leave nothing behind" {
+    // An ended isolate's entries go with it (clearForIsolate), so a process
+    // that makes and ends isolates one after another never fills anything.
+    // `forgetIsolateForTest` is clearForIsolate without disposing the
+    // synthetic templates.
+    borrowRegistry();
+    defer registry.resetForTest();
+
+    for (0..50) |k| {
+        const isolate: *ffi.Isolate = @ptrFromInt(0x1000 * (k + 1));
+        registry.register("EventTarget", @ptrFromInt(0x10_0000 + k * 8), isolate);
+        registry.register("Event", @ptrFromInt(0x20_0000 + k * 8), isolate);
+        try std.testing.expectEqual(@as(usize, 2), registry.registeredCount());
+        registry.forgetIsolateForTest(isolate);
+        try std.testing.expectEqual(@as(usize, 0), registry.registeredCount());
+        try std.testing.expectEqual(@as(?*ffi.FunctionTemplate, null), registry.getTemplateForIsolate("Event", isolate));
+    }
+}
+
+/// One thread's share of the concurrency test: isolates made and ended in
+/// turn, each registering and reading back its own set.
+const Churn = struct {
+    base: usize,
+    rounds: usize,
+    missing: usize = 0,
+
+    fn run(self: *Churn) void {
+        const names = [_][]const u8{ "EventTarget", "Event", "Node", "Element", "Document", "Window", "XMLHttpRequest", "ProgressEvent" };
+        for (0..self.rounds) |round| {
+            const isolate: *ffi.Isolate = @ptrFromInt(self.base + round * 0x40);
+            for (names, 0..) |n, i| registry.register(n, @ptrFromInt(self.base + round * 0x40 + i * 8 + 0x1000_0000), isolate);
+            for (names, 0..) |n, i| {
+                const got = registry.getTemplateForIsolate(n, isolate) orelse {
+                    self.missing += 1;
+                    continue;
+                };
+                if (@intFromPtr(got) != self.base + round * 0x40 + i * 8 + 0x1000_0000) self.missing += 1;
+            }
+            registry.forgetIsolateForTest(isolate);
+        }
+    }
+};
+
+test "isolates made and ended on two threads at once keep their own sets" {
+    // Workers will run on threads of their own: isolates are made, read and
+    // ended concurrently, and the registry is shared by all of them.
+    borrowRegistry();
+    defer registry.resetForTest();
+
+    var a: Churn = .{ .base = 0x10_0000_0000, .rounds = 4000 };
+    var b: Churn = .{ .base = 0x20_0000_0000, .rounds = 4000 };
+    const ta = try std.Thread.spawn(.{}, Churn.run, .{&a});
+    const tb = try std.Thread.spawn(.{}, Churn.run, .{&b});
+    ta.join();
+    tb.join();
+    try std.testing.expectEqual(@as(usize, 0), a.missing);
+    try std.testing.expectEqual(@as(usize, 0), b.missing);
+    try std.testing.expectEqual(@as(usize, 0), registry.registeredCount());
 }
