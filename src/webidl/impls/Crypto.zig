@@ -71,7 +71,7 @@ pub fn call_getRandomValues(instance: *runtime.Instance, array: typedefs.ArrayBu
         const value = runtime.JSValue.fromAnyopaque(handle);
         const description = engine.describeArrayBufferView(instance.ctx, value) orelse return domException(instance.ctx, "TypeMismatchError");
         // Steps 2-4: the quota concerns the current view, not its backing buffer.
-        if (description.byte_length > 65536) return domException(instance.ctx, "QuotaExceededError");
+        if (description.byte_length > 65536) return quotaExceeded(instance.ctx);
         if (description.byte_length != 0) {
             const bytes = try instance.ctx.allocator.alloc(u8, description.byte_length);
             defer instance.ctx.allocator.free(bytes);
@@ -81,7 +81,7 @@ pub fn call_getRandomValues(instance: *runtime.Instance, array: typedefs.ArrayBu
         }
     } else {
         // Native callers have a real BufferSource rather than an engine view.
-        if (array.getByteLength() > 65536) return domException(instance.ctx, "QuotaExceededError");
+        if (array.getByteLength() > 65536) return quotaExceeded(instance.ctx);
         const bytes = try array.asBytes();
         if (bytes.len != 0) random.fill(host.io(), @constCast(bytes)) catch return error.OperationError;
     }
@@ -103,5 +103,13 @@ fn domException(realm: runtime.Context, name: []const u8) anyerror {
     const exception = engine.createDOMException(realm, name, "Invalid random-value destination") catch |err| return err;
     defer exception.release();
     engine.throwValue(realm, exception.borrow()) catch |err| return err;
+    return error.ExceptionPending;
+}
+
+fn quotaExceeded(realm: runtime.Context) anyerror {
+    // WebCrypto §10.1.1 step 4: the WebIDL derived exception, with null amounts.
+    const exception = interfaces.QuotaExceededError.call_constructor(realm, .{ .was_passed = false, .value = undefined }, .{ .was_passed = false, .value = undefined }) catch |err| return err;
+    defer if (!engine.hasWrapper(exception)) runtime.Instance.deinit(exception);
+    engine.throwValue(realm, .{ .instance = exception }) catch |err| return err;
     return error.ExceptionPending;
 }

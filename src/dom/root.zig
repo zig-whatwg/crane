@@ -54,6 +54,7 @@ pub const tree_helpers = @import("tree_helpers.zig");
 pub const mutation = @import("mutation.zig");
 pub const abort_algorithms = @import("abort_algorithms.zig");
 pub const crypto_keys = @import("crypto_keys.zig");
+pub const dom_exceptions = @import("dom_exceptions.zig");
 pub const fire_event = @import("fire_event.zig");
 pub const message_ports = @import("message_ports.zig");
 pub const cloning_steps = @import("cloning_steps.zig");
