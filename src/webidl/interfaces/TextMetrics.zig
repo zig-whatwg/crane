@@ -135,6 +135,15 @@ pub const TextMetrics = struct {
         TextMetricsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TextMetrics")) {
+            if (comptime @hasDecl(impls.TextMetrics, "installHooks")) impls.TextMetrics.installHooks();
+        }
+    }
+
     pub fn get_width(instance: *runtime.Instance) anyerror!f64 {
         return try TextMetricsImpl.get_width(instance);
     }

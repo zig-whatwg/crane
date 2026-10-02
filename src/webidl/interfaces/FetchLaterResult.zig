@@ -88,6 +88,15 @@ pub const FetchLaterResult = struct {
         FetchLaterResultImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "FetchLaterResult")) {
+            if (comptime @hasDecl(impls.FetchLaterResult, "installHooks")) impls.FetchLaterResult.installHooks();
+        }
+    }
+
     pub fn get_activated(instance: *runtime.Instance) anyerror!bool {
         return try FetchLaterResultImpl.get_activated(instance);
     }

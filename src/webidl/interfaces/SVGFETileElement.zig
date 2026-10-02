@@ -263,6 +263,15 @@ pub const SVGFETileElement = struct {
         SVGFETileElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFETileElement")) {
+            if (comptime @hasDecl(impls.SVGFETileElement, "installHooks")) impls.SVGFETileElement.installHooks();
+        }
+    }
+
     pub fn get_in1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFETileElementImpl.get_in1(instance);
     }

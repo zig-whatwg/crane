@@ -226,6 +226,15 @@ pub const ShadowRoot = struct {
         ShadowRootImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ShadowRoot")) {
+            if (comptime @hasDecl(impls.ShadowRoot, "installHooks")) impls.ShadowRoot.installHooks();
+        }
+    }
+
     pub fn get_mode(instance: *runtime.Instance) anyerror!ShadowRootMode {
         return try ShadowRootImpl.get_mode(instance);
     }

@@ -92,6 +92,15 @@ pub const UserActivation = struct {
         UserActivationImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "UserActivation")) {
+            if (comptime @hasDecl(impls.UserActivation, "installHooks")) impls.UserActivation.installHooks();
+        }
+    }
+
     pub fn get_hasBeenActive(instance: *runtime.Instance) anyerror!bool {
         return try UserActivationImpl.get_hasBeenActive(instance);
     }

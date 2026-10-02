@@ -216,6 +216,10 @@ test "a getter that throws releases the contexts it took" {
 }
 
 test "the indexed property setter releases the current context" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     try std.testing.expectEqual(@as(i32, 1), try scriptInt(
         \\globalThis.setterDoc = new Document().implementation.createHTMLDocument('');
@@ -228,6 +232,10 @@ test "the indexed property setter releases the current context" {
 }
 
 test "the indexed property definer releases the current context" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // Object.defineProperty on an indexed collection runs the definer: on a
     // select (an indexed setter) it converts the value and sets the option;
@@ -245,6 +253,10 @@ test "the indexed property definer releases the current context" {
 }
 
 test "the indexed property definer releases every handle it takes" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // Besides the current context: the descriptor's value
     // (v8_PropertyDescriptor_GetValue hands out a Global the caller owns) and
@@ -270,6 +282,10 @@ test "the indexed property definer releases every handle it takes" {
 }
 
 test "the named property setter releases the current context" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     try std.testing.expectEqual(@as(i32, 3), try scriptInt(
         \\globalThis.datasetOwner = new Document().implementation.createHTMLDocument('').createElement('div');
@@ -399,6 +415,10 @@ test "a getter's kept string stays the object's: read twice, and 64 times, it is
 }
 
 test "the indexed descriptor and query release what they make" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // V8 asks a legacy platform object for an index's descriptor
     // (Object.getOwnPropertyDescriptor) and attributes (`in`); each answer
@@ -417,6 +437,10 @@ test "the indexed descriptor and query release what they make" {
 }
 
 test "an indexed getter frees the string it returns" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // DOMTokenList's indexed getter is item(): a copy of the token, owned by
     // the caller. classList.item(0), an operation, frees it; classList[0]
@@ -431,6 +455,10 @@ test "an indexed getter frees the string it returns" {
 }
 
 test "a named getter frees the string it returns" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // DOMStringMap's named getter answers the data-* attribute's value.
     try std.testing.expectEqual(@as(i32, 6), try scriptInt(
@@ -447,6 +475,10 @@ test "a named getter frees the string it returns" {
 // document.all's legacy caller.
 
 test "document.all's legacy caller releases what it takes" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // Called as a function, document.all runs the binding's call handler:
     // the current context, the argument and the result were Globals the
@@ -465,6 +497,10 @@ test "document.all's legacy caller releases what it takes" {
 }
 
 test "document.all() with no argument is null" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     // WebIDL: the legacy caller is the operation `item(optional DOMString
     // nameOrIndex)`; HTML's item() step 1: "If nameOrIndex was not provided,
@@ -523,6 +559,10 @@ fn secondRealm() !void {
 }
 
 test "an attribute getter called on an illegal receiver throws the getter's realm's TypeError" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try secondRealm();
     // WebIDL 3.7.6 (attribute getter) step 1.2: the receiver is not a platform
     // object implementing the interface - "throw a TypeError". The getter is
@@ -557,6 +597,10 @@ test "an attribute getter whose impl throws throws in the getter's realm" {
 }
 
 test "an indexed getter's and a length getter's success paths leave no handle" {
+    // Production's start, as crane.Process does it with no Browser: the engine
+    // (its tree hooks keep a parented node's wrapper strong), then the hooks.
+    try engine.initializeEngine(.{});
+    @import("interfaces").process_hooks.startHooksForTest();
     try allInterfaces();
     try std.testing.expectEqual(@as(i32, 3), try scriptInt(
         \\globalThis.lengthDoc = new Document().implementation.createHTMLDocument('');

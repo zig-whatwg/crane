@@ -114,6 +114,15 @@ pub const GPUQuerySet = struct {
         GPUQuerySetImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUQuerySet")) {
+            if (comptime @hasDecl(impls.GPUQuerySet, "installHooks")) impls.GPUQuerySet.installHooks();
+        }
+    }
+
     pub fn get_type(instance: *runtime.Instance) anyerror!GPUQueryType {
         return try GPUQuerySetImpl.get_type(instance);
     }

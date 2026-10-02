@@ -15,6 +15,15 @@ const SVGPathSegment = @import("interfaces").SVGPathSegment;
 
 pub const impl = @import("impls").SVGPathData;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "SVGPathData")) {
+        if (comptime @hasDecl(impls.SVGPathData, "installHooks")) impls.SVGPathData.installHooks();
+    }
+}
+
 pub fn call_setPathData(instance: *runtime.Instance, pathData: runtime.JSValue) anyerror!void {
     return try SVGPathDataImpl.call_setPathData(instance, pathData);
 }

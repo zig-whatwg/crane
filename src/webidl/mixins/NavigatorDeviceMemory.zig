@@ -13,6 +13,15 @@ const dictionaries = @import("dictionaries");
 
 pub const impl = @import("impls").NavigatorDeviceMemory;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorDeviceMemory")) {
+        if (comptime @hasDecl(impls.NavigatorDeviceMemory, "installHooks")) impls.NavigatorDeviceMemory.installHooks();
+    }
+}
+
 pub fn get_deviceMemory(instance: *runtime.Instance) anyerror!f64 {
     return try NavigatorDeviceMemoryImpl.get_deviceMemory(instance);
 }

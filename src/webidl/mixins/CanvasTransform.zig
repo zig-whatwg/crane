@@ -15,6 +15,15 @@ const DOMMatrix = @import("interfaces").DOMMatrix;
 
 pub const impl = @import("impls").CanvasTransform;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CanvasTransform")) {
+        if (comptime @hasDecl(impls.CanvasTransform, "installHooks")) impls.CanvasTransform.installHooks();
+    }
+}
+
 pub fn call_rotate(instance: *runtime.Instance, angle: f64) anyerror!void {
     return try CanvasTransformImpl.call_rotate(instance, angle);
 }

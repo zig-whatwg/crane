@@ -84,6 +84,15 @@ pub const DocumentStyle = struct {
         DocumentStyleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "DocumentStyle")) {
+            if (comptime @hasDecl(impls.DocumentStyle, "installHooks")) impls.DocumentStyle.installHooks();
+        }
+    }
+
     pub fn get_styleSheets(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentStyleImpl.get_styleSheets(instance);
     }

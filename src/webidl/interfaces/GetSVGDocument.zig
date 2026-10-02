@@ -83,6 +83,15 @@ pub const GetSVGDocument = struct {
         GetSVGDocumentImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GetSVGDocument")) {
+            if (comptime @hasDecl(impls.GetSVGDocument, "installHooks")) impls.GetSVGDocument.installHooks();
+        }
+    }
+
     pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GetSVGDocumentImpl.call_getSVGDocument(instance);
     }

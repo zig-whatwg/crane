@@ -89,6 +89,15 @@ pub const ProtectedAudience = struct {
         ProtectedAudienceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ProtectedAudience")) {
+            if (comptime @hasDecl(impls.ProtectedAudience, "installHooks")) impls.ProtectedAudience.installHooks();
+        }
+    }
+
     pub fn call_queryFeatureSupport(instance: *runtime.Instance, feature: DOMString) anyerror!runtime.JSValue {
         return try ProtectedAudienceImpl.call_queryFeatureSupport(instance, feature);
     }

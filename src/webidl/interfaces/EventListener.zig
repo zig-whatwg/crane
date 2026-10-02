@@ -83,6 +83,15 @@ pub const EventListener = struct {
         EventListenerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "EventListener")) {
+            if (comptime @hasDecl(impls.EventListener, "installHooks")) impls.EventListener.installHooks();
+        }
+    }
+
     pub fn call_handleEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!void {
         return try EventListenerImpl.call_handleEvent(instance, event);
     }

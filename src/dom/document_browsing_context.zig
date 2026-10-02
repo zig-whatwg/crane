@@ -5,7 +5,7 @@
 //! browsing context is the navigable's, and `document.defaultView` answers
 //! that browsing context's WindowProxy from then on. The association is the
 //! Document's state and no IDL member sets it, so Document installs this hook
-//! from its `init` and the parsers that build a frame's document ask it -
+//! from its installHooks and the parsers that build a frame's document ask it -
 //! the shape of `document_lifecycle.zig`. Setting it also keeps the
 //! document's wrapper alive for as long as the window's realm lives, as the
 //! window's `document` does in WebKit (a strong reference).
@@ -14,6 +14,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-document-defaultview
 //!
 //! lint-impls: hook for Document
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -28,11 +29,12 @@ pub const Implementation = struct {
     clear_window: ?*const fn (document: *runtime.Instance) void = null,
 };
 
-/// Per thread, like the documents it serves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by Document. Idempotent: every call installs the same function.
+/// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

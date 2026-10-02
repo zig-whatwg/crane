@@ -14,6 +14,15 @@ const XRRigidTransform = @import("interfaces").XRRigidTransform;
 
 pub const impl = @import("impls").XRViewGeometry;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "XRViewGeometry")) {
+        if (comptime @hasDecl(impls.XRViewGeometry, "installHooks")) impls.XRViewGeometry.installHooks();
+    }
+}
+
 pub fn get_projectionMatrix(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return try XRViewGeometryImpl.get_projectionMatrix(instance);
 }

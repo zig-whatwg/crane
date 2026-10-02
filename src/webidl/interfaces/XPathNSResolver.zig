@@ -83,6 +83,15 @@ pub const XPathNSResolver = struct {
         XPathNSResolverImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XPathNSResolver")) {
+            if (comptime @hasDecl(impls.XPathNSResolver, "installHooks")) impls.XPathNSResolver.installHooks();
+        }
+    }
+
     pub fn call_lookupNamespaceURI(instance: *runtime.Instance, prefix: ?DOMString) anyerror!?DOMString {
         return try XPathNSResolverImpl.call_lookupNamespaceURI(instance, prefix);
     }

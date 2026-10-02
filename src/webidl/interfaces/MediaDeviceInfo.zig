@@ -122,6 +122,15 @@ pub const MediaDeviceInfo = struct {
         MediaDeviceInfoImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaDeviceInfo")) {
+            if (comptime @hasDecl(impls.MediaDeviceInfo, "installHooks")) impls.MediaDeviceInfo.installHooks();
+        }
+    }
+
     pub fn get_deviceId(instance: *runtime.Instance) anyerror!DOMString {
         return try MediaDeviceInfoImpl.get_deviceId(instance);
     }

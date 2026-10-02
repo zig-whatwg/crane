@@ -12,6 +12,7 @@
 //! lint-impls: hook for HTMLIFrameElement
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// A navigable made for window.open().
@@ -32,16 +33,16 @@ pub const Implementation = struct {
     definitely_close: *const fn (window: *runtime.Instance) bool,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by HTMLIFrameElement. Idempotent: every call installs the same
-/// function.
+/// Called by HTMLIFrameElement's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 
-/// Whether HTMLIFrameElement has installed its implementation yet - it does
-/// so when the first iframe element is created.
+/// Whether the owner has installed its implementation: from process start on,
+/// unless a test cleared it.
 pub fn isInstalled() bool {
     return implementation != null;
 }

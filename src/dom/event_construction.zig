@@ -4,15 +4,15 @@
 //! init*Event() methods consult, and UIEventInit's members (view, detail,
 //! the legacy which), which every UIEvent subclass's constructor sets.
 //!
-//! Event and UIEvent install their steps here from their init - which every
-//! subclass's init chains through - and the subclasses ask, never naming
-//! either impl.
+//! Event and UIEvent install their steps here once, at process start (their
+//! installHooks), and the subclasses ask, never naming either impl.
 //!
 //! Spec: https://dom.spec.whatwg.org/#inner-event-creation-steps
 //!
 //! lint-impls: hook for Event, UIEvent
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// EventInit's members.
@@ -64,17 +64,19 @@ pub const UIEventSteps = struct {
     initialize: *const fn (event: *runtime.Instance, init: UIEventInit) void,
 };
 
-/// Per thread, like the events themselves.
-threadlocal var event_steps: ?EventSteps = null;
-threadlocal var ui_event_steps: ?UIEventSteps = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var event_steps: ?EventSteps = null;
+var ui_event_steps: ?UIEventSteps = null;
 
-/// Called by the Event impl. Idempotent.
+/// Called by Event's installHooks, once, at process start (process_start.zig).
 pub fn installEvent(steps: EventSteps) void {
+    process_start.assertInstalling();
     event_steps = steps;
 }
 
-/// Called by the UIEvent impl. Idempotent.
+/// Called by UIEvent's installHooks, once, at process start (process_start.zig).
 pub fn installUIEvent(steps: UIEventSteps) void {
+    process_start.assertInstalling();
     ui_event_steps = steps;
 }
 

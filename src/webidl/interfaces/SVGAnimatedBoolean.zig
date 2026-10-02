@@ -94,6 +94,15 @@ pub const SVGAnimatedBoolean = struct {
         SVGAnimatedBooleanImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGAnimatedBoolean")) {
+            if (comptime @hasDecl(impls.SVGAnimatedBoolean, "installHooks")) impls.SVGAnimatedBoolean.installHooks();
+        }
+    }
+
     pub fn get_baseVal(instance: *runtime.Instance) anyerror!bool {
         return try SVGAnimatedBooleanImpl.get_baseVal(instance);
     }

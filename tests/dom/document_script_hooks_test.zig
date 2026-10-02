@@ -81,6 +81,8 @@ test "the ignore-destructive-writes counter never goes below zero" {
 }
 
 test "a Document's scripts are reached through document_scripts.of, and currentScript reads them" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();
@@ -119,6 +121,8 @@ fn countDisposal(module: *anyopaque) void {
 }
 
 test "a module stored in a Document's module map is the map's, disposed of with the Document" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();
@@ -143,6 +147,8 @@ test "a module stored in a Document's module map is the map's, disposed of with 
 }
 
 test "an import map answers its mappings, a scope's before the top level" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();
@@ -162,6 +168,8 @@ test "an import map answers its mappings, a scope's before the top level" {
 }
 
 test "the window a Document's browsing context is given is what defaultView answers" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();

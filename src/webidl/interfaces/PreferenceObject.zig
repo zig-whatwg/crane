@@ -127,6 +127,15 @@ pub const PreferenceObject = struct {
         PreferenceObjectImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PreferenceObject")) {
+            if (comptime @hasDecl(impls.PreferenceObject, "installHooks")) impls.PreferenceObject.installHooks();
+        }
+    }
+
     pub fn get_override(instance: *runtime.Instance) anyerror!?DOMString {
         return try PreferenceObjectImpl.get_override(instance);
     }

@@ -6,14 +6,14 @@
 //! `input` (value, dirtiness and checkedness) and `template` (the contents).
 //!
 //! The clone algorithm is Node's, and a base type cannot depend on its
-//! subtypes, so each owning impl installs its steps here when its first
-//! element is created - necessarily before there is one to clone - and the
-//! algorithm runs every installed set. The same shape as `mutation.zig`'s
+//! subtypes, so each owning impl installs its steps here once, at process
+//! start (its installHooks), and the algorithm runs every installed set. The same shape as `mutation.zig`'s
 //! insertion-steps registry.
 //!
 //! lint-impls: hook for HTMLScriptElement, Document
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// One specification's cloning steps. They run for every clone, so each set
@@ -25,9 +25,9 @@ pub const Steps = *const fn (node: *runtime.Instance, copy: *runtime.Instance, s
 var installed: [8]Steps = undefined;
 var installed_count: usize = 0;
 
-/// Called by an owning impl. Idempotent: a set already installed is not
-/// installed twice.
+/// Called by an owning's installHooks, once, at process start (process_start.zig).
 pub fn install(steps: Steps) void {
+    process_start.assertInstalling();
     for (installed[0..installed_count]) |existing| {
         if (existing == steps) return;
     }

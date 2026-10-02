@@ -6,7 +6,7 @@
 //! keeps both on the Document, with the allocator module scripts are made
 //! with: a module script lives in the map, and dies with the Document, whose
 //! teardown runs the dispose function the loader installed. None of that is
-//! reachable from script, so Document installs this hook from its `init` and
+//! reachable from script, so Document installs this hook from its installHooks and
 //! html's script_execution builds a module loading environment from it
 //! (module_script.Environment). Blink keeps the same on the document's
 //! Modulator (core/script/modulator.h): its ModuleMap and its import map.
@@ -20,6 +20,7 @@
 //! lint-impls: hook for Document
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 pub const Error = error{ InvalidStateError, OutOfMemory };
@@ -43,11 +44,12 @@ pub const Implementation = struct {
     resolve_import_specifier: *const fn (document: *runtime.Instance, specifier: []const u8, referrer_url: []const u8) ?[]const u8,
 };
 
-/// Per thread, like the documents it serves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by Document. Idempotent: every call installs the same functions.
+/// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

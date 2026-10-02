@@ -97,6 +97,15 @@ pub const PermissionsPolicy = struct {
         PermissionsPolicyImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PermissionsPolicy")) {
+            if (comptime @hasDecl(impls.PermissionsPolicy, "installHooks")) impls.PermissionsPolicy.installHooks();
+        }
+    }
+
     pub fn call_features(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PermissionsPolicyImpl.call_features(instance);
     }

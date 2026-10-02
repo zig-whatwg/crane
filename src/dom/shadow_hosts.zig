@@ -18,10 +18,11 @@
 //! shadow root's host is its host for its whole life. Such a shadow root
 //! answers InvalidStateError for `host`.
 //!
-//! The ShadowRoot impl installs the implementation in its `init`, which runs
+//! The ShadowRoot impl installs the implementation in its installHooks, which runs
 //! before any element can have a shadow root.
 //!
 //! lint-impls: hook for ShadowRoot
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -30,12 +31,12 @@ pub const Implementation = struct {
     host_destroyed: *const fn (shadow: *runtime.Instance) void,
 };
 
-/// Per thread, as a shadow root and its host live on one thread.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by the ShadowRoot impl. Idempotent: every call installs the same
-/// function.
+/// Called by ShadowRoot's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

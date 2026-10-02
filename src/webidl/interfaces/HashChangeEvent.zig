@@ -106,6 +106,15 @@ pub const HashChangeEvent = struct {
         HashChangeEventImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "HashChangeEvent")) {
+            if (comptime @hasDecl(impls.HashChangeEvent, "installHooks")) impls.HashChangeEvent.installHooks();
+        }
+    }
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

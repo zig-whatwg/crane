@@ -96,6 +96,15 @@ pub const SpeechGrammar = struct {
         SpeechGrammarImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SpeechGrammar")) {
+            if (comptime @hasDecl(impls.SpeechGrammar, "installHooks")) impls.SpeechGrammar.installHooks();
+        }
+    }
+
     pub fn get_src(instance: *runtime.Instance) anyerror!DOMString {
         return try SpeechGrammarImpl.get_src(instance);
     }

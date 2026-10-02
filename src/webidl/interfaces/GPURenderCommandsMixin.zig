@@ -107,6 +107,15 @@ pub const GPURenderCommandsMixin = struct {
         GPURenderCommandsMixinImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPURenderCommandsMixin")) {
+            if (comptime @hasDecl(impls.GPURenderCommandsMixin, "installHooks")) impls.GPURenderCommandsMixin.installHooks();
+        }
+    }
+
     pub fn call_setVertexBuffer(instance: *runtime.Instance, slot: GPUIndex32, buffer: ?*runtime.Instance, offset: webidl.Opt(GPUSize64), size: webidl.Opt(GPUSize64)) anyerror!void {
         return try GPURenderCommandsMixinImpl.call_setVertexBuffer(instance, slot, buffer, offset, size);
     }

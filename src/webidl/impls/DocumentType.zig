@@ -67,6 +67,13 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The parsers set a doctype's identifiers through `dom.node_creation`.
+    @import("dom").node_creation.installDocumentType(.{ .set_ids = &setIdsHook });
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class: Node → EventTarget
 pub fn init(
@@ -81,9 +88,6 @@ pub fn init(
 
     // Set node type to DOCUMENT_TYPE_NODE (10)
     try NodeImpl.setNodeType(instance, NodeImpl.NodeType.DOCUMENT_TYPE_NODE);
-
-    // The parsers set a doctype's identifiers through `dom.node_creation`.
-    @import("dom").node_creation.installDocumentType(.{ .set_ids = &setIdsHook });
 
     // Initialize DocumentType internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;

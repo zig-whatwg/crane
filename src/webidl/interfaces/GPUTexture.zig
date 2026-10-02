@@ -154,6 +154,15 @@ pub const GPUTexture = struct {
         GPUTextureImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUTexture")) {
+            if (comptime @hasDecl(impls.GPUTexture, "installHooks")) impls.GPUTexture.installHooks();
+        }
+    }
+
     pub fn get_width(instance: *runtime.Instance) anyerror!GPUIntegerCoordinateOut {
         return try GPUTextureImpl.get_width(instance);
     }

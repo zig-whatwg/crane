@@ -143,6 +143,15 @@ pub const CanvasTextDrawingStyles = struct {
         CanvasTextDrawingStylesImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CanvasTextDrawingStyles")) {
+            if (comptime @hasDecl(impls.CanvasTextDrawingStyles, "installHooks")) impls.CanvasTextDrawingStyles.installHooks();
+        }
+    }
+
     pub fn get_lang(instance: *runtime.Instance) anyerror!DOMString {
         return try CanvasTextDrawingStylesImpl.get_lang(instance);
     }

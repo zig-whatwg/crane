@@ -90,6 +90,15 @@ pub const PresentationReceiver = struct {
         PresentationReceiverImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PresentationReceiver")) {
+            if (comptime @hasDecl(impls.PresentationReceiver, "installHooks")) impls.PresentationReceiver.installHooks();
+        }
+    }
+
     pub fn get_connectionList(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PresentationReceiverImpl.get_connectionList(instance);
     }

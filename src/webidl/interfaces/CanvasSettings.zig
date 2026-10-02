@@ -83,6 +83,15 @@ pub const CanvasSettings = struct {
         CanvasSettingsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CanvasSettings")) {
+            if (comptime @hasDecl(impls.CanvasSettings, "installHooks")) impls.CanvasSettings.installHooks();
+        }
+    }
+
     pub fn call_getContextAttributes(instance: *runtime.Instance) anyerror!CanvasRenderingContext2DSettings {
         return try CanvasSettingsImpl.call_getContextAttributes(instance);
     }

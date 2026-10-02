@@ -100,6 +100,15 @@ pub const CSSFunctionDescriptors = struct {
         CSSFunctionDescriptorsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSFunctionDescriptors")) {
+            if (comptime @hasDecl(impls.CSSFunctionDescriptors, "installHooks")) impls.CSSFunctionDescriptors.installHooks();
+        }
+    }
+
     /// Extended attributes: [LegacyNullToEmptyString]
     pub fn get_result(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFunctionDescriptorsImpl.get_result(instance);

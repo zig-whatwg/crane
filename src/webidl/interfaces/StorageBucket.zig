@@ -129,6 +129,15 @@ pub const StorageBucket = struct {
         StorageBucketImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "StorageBucket")) {
+            if (comptime @hasDecl(impls.StorageBucket, "installHooks")) impls.StorageBucket.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try StorageBucketImpl.get_name(instance);
     }

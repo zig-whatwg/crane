@@ -98,6 +98,15 @@ pub const PeriodicSyncManager = struct {
         PeriodicSyncManagerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PeriodicSyncManager")) {
+            if (comptime @hasDecl(impls.PeriodicSyncManager, "installHooks")) impls.PeriodicSyncManager.installHooks();
+        }
+    }
+
     pub fn call_unregister(instance: *runtime.Instance, tag: DOMString) anyerror!runtime.JSValue {
         return try PeriodicSyncManagerImpl.call_unregister(instance, tag);
     }

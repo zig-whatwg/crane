@@ -16,6 +16,7 @@
 //! Spec: https://w3c.github.io/FileAPI/#blob-section
 //!
 //! lint-impls: hook for Blob
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -30,12 +31,11 @@ pub const Steps = struct {
     set_bytes: *const fn (blob: *runtime.Instance, bytes: []const u8, mime_type: []const u8) anyerror!void,
 };
 
-threadlocal var steps: ?Steps = null;
+var steps: ?Steps = null;
 
-/// Called by Blob. Idempotent. Every caller of `bytesOf` holds a Blob
-/// already, so it is installed before anyone can ask; `create` makes a Blob
-/// first.
+/// Called by Blob's installHooks, once, at process start (process_start.zig).
 pub fn install(s: Steps) void {
+    process_start.assertInstalling();
     steps = s;
 }
 

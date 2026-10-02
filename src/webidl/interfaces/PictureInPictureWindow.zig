@@ -113,6 +113,15 @@ pub const PictureInPictureWindow = struct {
         PictureInPictureWindowImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PictureInPictureWindow")) {
+            if (comptime @hasDecl(impls.PictureInPictureWindow, "installHooks")) impls.PictureInPictureWindow.installHooks();
+        }
+    }
+
     pub fn get_width(instance: *runtime.Instance) anyerror!i32 {
         return try PictureInPictureWindowImpl.get_width(instance);
     }

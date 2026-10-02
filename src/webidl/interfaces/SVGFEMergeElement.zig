@@ -259,6 +259,15 @@ pub const SVGFEMergeElement = struct {
         SVGFEMergeElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFEMergeElement")) {
+            if (comptime @hasDecl(impls.SVGFEMergeElement, "installHooks")) impls.SVGFEMergeElement.installHooks();
+        }
+    }
+
     pub const get_x = mixins.SVGFilterPrimitiveStandardAttributes.get_x;
 
     pub const get_y = mixins.SVGFilterPrimitiveStandardAttributes.get_y;

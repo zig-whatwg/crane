@@ -397,15 +397,9 @@ fn inheritsCreatorOrigin(url: []const u8) bool {
     return std.ascii.startsWithIgnoreCase(url, "about:") or std.ascii.startsWithIgnoreCase(url, "javascript:");
 }
 
-/// Initialize Window instance
-/// Creates the instance with a new top-level browsing context.
-/// Chains to EventTarget.init() to ensure EventTarget internal state is registered.
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
     // A frame's host binds the Window to the global its realm made here.
@@ -424,6 +418,17 @@ pub fn init(
         .performance = &settingsPerformance,
         .cookie_jar = &settingsCookieJar,
     });
+}
+
+/// Initialize Window instance
+/// Creates the instance with a new top-level browsing context.
+/// Chains to EventTarget.init() to ensure EventTarget internal state is registered.
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
 
     // Chain to parent class (EventTarget) to initialize EventTarget internal state
     // This ensures window.addEventListener() works correctly
@@ -2384,11 +2389,6 @@ const CloseTask = struct {
         // installed when the first iframe element is made: make one if no
         // page has yet. Nothing sees it.
         const auxiliary_navigables = @import("dom").auxiliary_navigables;
-        if (!auxiliary_navigables.isInstalled()) {
-            const document = interfaces.Window.get_document(window) catch return;
-            const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
-            installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-        }
         _ = auxiliary_navigables.definitelyClose(window);
     }
 };
@@ -2519,10 +2519,6 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
         // install the navigation; a page with none makes one to install it.
         if (url_record) |u| {
             const navigables = @import("dom").navigables;
-            if (!navigables.isInstalled()) {
-                const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
-                installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-            }
             // The rules start from this's navigable; sourceDocument navigates.
             const this_document = interfaces.Window.get_document(this) catch source_document;
             navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .noopener = noopener, .current_document = this_document });
@@ -2548,10 +2544,6 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
         // navigable by target name" looks through every navigable the
         // source is familiar with, and its page's frames are.
         const navigables = @import("dom").navigables;
-        if (!navigables.isInstalled()) {
-            const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
-            installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-        }
         const this_document = interfaces.Window.get_document(this) catch source_document;
         if (navigables.findByName(this_document, target_str)) |frame_window| {
             // Step 16.1: navigate it, then (step 18) return its WindowProxy.
@@ -2578,10 +2570,6 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // element is made: make one if no page has yet. Script never sees it, so
     // it goes as soon as it has done that.
     const auxiliary_navigables = @import("dom").auxiliary_navigables;
-    if (!auxiliary_navigables.isInstalled()) {
-        const installer = try interfaces.Document.call_createElement(source_document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
-        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-    }
     // Step 15.1: "Set targetNavigable's active browsing context's is popup
     // to the result of checking if a popup window is requested". Deviation,
     // stated, matching Chrome and Safari (window-open-popup-behavior passes

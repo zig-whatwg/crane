@@ -93,6 +93,15 @@ pub const TrustedScript = struct {
         TrustedScriptImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TrustedScript")) {
+            if (comptime @hasDecl(impls.TrustedScript, "installHooks")) impls.TrustedScript.installHooks();
+        }
+    }
+
     pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
         return try TrustedScriptImpl.call_stringifier(instance);
     }

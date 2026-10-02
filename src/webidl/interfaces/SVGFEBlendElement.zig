@@ -399,6 +399,15 @@ pub const SVGFEBlendElement = struct {
         SVGFEBlendElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFEBlendElement")) {
+            if (comptime @hasDecl(impls.SVGFEBlendElement, "installHooks")) impls.SVGFEBlendElement.installHooks();
+        }
+    }
+
     pub fn get_in1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEBlendElementImpl.get_in1(instance);
     }

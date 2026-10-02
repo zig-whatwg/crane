@@ -129,6 +129,15 @@ pub const MediaError = struct {
         MediaErrorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaError")) {
+            if (comptime @hasDecl(impls.MediaError, "installHooks")) impls.MediaError.installHooks();
+        }
+    }
+
     pub fn get_code(instance: *runtime.Instance) anyerror!u16 {
         return try MediaErrorImpl.get_code(instance);
     }

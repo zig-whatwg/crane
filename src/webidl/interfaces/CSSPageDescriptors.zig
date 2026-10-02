@@ -168,6 +168,15 @@ pub const CSSPageDescriptors = struct {
         CSSPageDescriptorsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSPageDescriptors")) {
+            if (comptime @hasDecl(impls.CSSPageDescriptors, "installHooks")) impls.CSSPageDescriptors.installHooks();
+        }
+    }
+
     /// Extended attributes: [LegacyNullToEmptyString]
     pub fn get_margin(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPageDescriptorsImpl.get_margin(instance);

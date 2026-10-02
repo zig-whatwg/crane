@@ -89,6 +89,15 @@ pub const NavigatorLogin = struct {
         NavigatorLoginImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "NavigatorLogin")) {
+            if (comptime @hasDecl(impls.NavigatorLogin, "installHooks")) impls.NavigatorLogin.installHooks();
+        }
+    }
+
     pub fn call_setStatus(instance: *runtime.Instance, status: LoginStatus) anyerror!runtime.JSValue {
         return try NavigatorLoginImpl.call_setStatus(instance, status);
     }

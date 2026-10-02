@@ -614,6 +614,15 @@ pub const GlobalEventHandlers = struct {
         GlobalEventHandlersImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GlobalEventHandlers")) {
+            if (comptime @hasDecl(impls.GlobalEventHandlers, "installHooks")) impls.GlobalEventHandlers.installHooks();
+        }
+    }
+
     pub fn get_onabort(instance: *runtime.Instance) anyerror!EventHandler {
         return try GlobalEventHandlersImpl.get_onabort(instance);
     }

@@ -92,6 +92,15 @@ pub const Counter = struct {
         CounterImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Counter")) {
+            if (comptime @hasDecl(impls.Counter, "installHooks")) impls.Counter.installHooks();
+        }
+    }
+
     pub fn get_identifier(instance: *runtime.Instance) anyerror!DOMString {
         return try CounterImpl.get_identifier(instance);
     }

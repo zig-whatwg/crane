@@ -117,6 +117,15 @@ pub const CSSMathValue = struct {
         CSSMathValueImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSMathValue")) {
+            if (comptime @hasDecl(impls.CSSMathValue, "installHooks")) impls.CSSMathValue.installHooks();
+        }
+    }
+
     pub fn get_operator(instance: *runtime.Instance) anyerror!CSSMathOperator {
         return try CSSMathValueImpl.get_operator(instance);
     }

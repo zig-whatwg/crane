@@ -98,6 +98,15 @@ pub const LayoutShiftAttribution = struct {
         LayoutShiftAttributionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "LayoutShiftAttribution")) {
+            if (comptime @hasDecl(impls.LayoutShiftAttribution, "installHooks")) impls.LayoutShiftAttribution.installHooks();
+        }
+    }
+
     pub fn get_node(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try LayoutShiftAttributionImpl.get_node(instance);
     }

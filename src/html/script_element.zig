@@ -10,7 +10,7 @@
 //! attribute changes) in the HTMLScriptElement impl. Neither may reach into
 //! the other, so the state's type is defined here, where both can see it.
 //! The impl keeps each element's `State` - created with the element, freed by
-//! the element's deinit - and installs `of`, from its `init`, before any
+//! the element's deinit - and installs `of`, from its installHooks, before any
 //! script element exists; the processing model calls `of`.
 //!
 //! Blink draws the same line: an HTMLScriptElement owns a ScriptLoader
@@ -198,11 +198,12 @@ pub const Implementation = struct {
     state: *const fn (element: *runtime.Instance) ?*State,
 };
 
-/// Per thread, like the elements it serves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (dom.process_start).
+var implementation: ?Implementation = null;
 
-/// Called by HTMLScriptElement. Idempotent: every call installs the same one.
+/// Called by HTMLScriptElement's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    @import("dom").process_start.assertInstalling();
     implementation = impl;
 }
 

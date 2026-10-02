@@ -152,6 +152,15 @@ pub const SharedWorkerGlobalScope = struct {
         SharedWorkerGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SharedWorkerGlobalScope")) {
+            if (comptime @hasDecl(impls.SharedWorkerGlobalScope, "installHooks")) impls.SharedWorkerGlobalScope.installHooks();
+        }
+    }
+
     /// Extended attributes: [Replaceable]
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try SharedWorkerGlobalScopeImpl.get_name(instance);

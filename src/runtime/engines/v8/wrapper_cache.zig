@@ -321,10 +321,11 @@ pub fn isStreamsGraphObject(name: []const u8) bool {
 /// decides for the whole tree. The mutation algorithms run the insertion and
 /// removing steps for every node of a moved subtree, but only the subtree's
 /// root gains or loses a parent, so the predicate is read per node rather than
-/// implied by which hook fired. Installed once, by the first WrapperCache.
+/// implied by which hook fired. Installed once, at process start
+/// (initializeEngine).
 var tree_hooks_installed = false;
 
-fn installTreeHooks() void {
+pub fn installTreeHooks() void {
     if (tree_hooks_installed) return;
     tree_hooks_installed = true;
     const mutation = @import("dom").mutation;
@@ -833,7 +834,6 @@ pub const WrapperCache = struct {
     /// ## Returns
     /// Initialized WrapperCache
     pub fn init(allocator: std.mem.Allocator, context: *v8.Context) !Self {
-        installTreeHooks();
         return .{
             .cache = std.AutoHashMap(*runtime.Instance, *CacheEntry).init(allocator),
             .allocator = allocator,

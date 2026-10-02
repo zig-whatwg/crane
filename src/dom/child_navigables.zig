@@ -7,6 +7,7 @@
 //! engine adapter's indexed getter asks it.
 //!
 //! lint-impls: hook for HTMLIFrameElement
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -18,11 +19,11 @@ pub const Implementation = struct {
     window: *const fn (browsing_context: *anyopaque) ?*runtime.Instance,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by HTMLIFrameElement. Idempotent: every call installs the same
-/// function.
+/// Called by HTMLIFrameElement's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

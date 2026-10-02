@@ -119,6 +119,15 @@ pub const RTCDTMFSender = struct {
         RTCDTMFSenderImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RTCDTMFSender")) {
+            if (comptime @hasDecl(impls.RTCDTMFSender, "installHooks")) impls.RTCDTMFSender.installHooks();
+        }
+    }
+
     pub fn get_ontonechange(instance: *runtime.Instance) anyerror!EventHandler {
         return try RTCDTMFSenderImpl.get_ontonechange(instance);
     }

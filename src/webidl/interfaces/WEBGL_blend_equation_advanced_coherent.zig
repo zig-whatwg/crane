@@ -199,4 +199,13 @@ pub const WEBGL_blend_equation_advanced_coherent = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         WEBGL_blend_equation_advanced_coherentImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_blend_equation_advanced_coherent")) {
+            if (comptime @hasDecl(impls.WEBGL_blend_equation_advanced_coherent, "installHooks")) impls.WEBGL_blend_equation_advanced_coherent.installHooks();
+        }
+    }
 };

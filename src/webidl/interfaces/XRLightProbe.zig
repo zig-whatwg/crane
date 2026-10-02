@@ -111,6 +111,15 @@ pub const XRLightProbe = struct {
         XRLightProbeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRLightProbe")) {
+            if (comptime @hasDecl(impls.XRLightProbe, "installHooks")) impls.XRLightProbe.installHooks();
+        }
+    }
+
     pub fn get_probeSpace(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRLightProbeImpl.get_probeSpace(instance);
     }

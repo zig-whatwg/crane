@@ -102,6 +102,15 @@ pub const StorageManager = struct {
         StorageManagerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "StorageManager")) {
+            if (comptime @hasDecl(impls.StorageManager, "installHooks")) impls.StorageManager.installHooks();
+        }
+    }
+
     pub fn call_getDirectory(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try StorageManagerImpl.call_getDirectory(instance);
     }

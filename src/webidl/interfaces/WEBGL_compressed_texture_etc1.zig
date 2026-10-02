@@ -101,4 +101,13 @@ pub const WEBGL_compressed_texture_etc1 = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         WEBGL_compressed_texture_etc1Impl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_compressed_texture_etc1")) {
+            if (comptime @hasDecl(impls.WEBGL_compressed_texture_etc1, "installHooks")) impls.WEBGL_compressed_texture_etc1.installHooks();
+        }
+    }
 };

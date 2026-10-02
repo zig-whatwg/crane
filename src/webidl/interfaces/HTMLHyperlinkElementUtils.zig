@@ -139,6 +139,15 @@ pub const HTMLHyperlinkElementUtils = struct {
         HTMLHyperlinkElementUtilsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "HTMLHyperlinkElementUtils")) {
+            if (comptime @hasDecl(impls.HTMLHyperlinkElementUtils, "installHooks")) impls.HTMLHyperlinkElementUtils.installHooks();
+        }
+    }
+
     const reflection = @import("impls").reflection;
 
     /// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]

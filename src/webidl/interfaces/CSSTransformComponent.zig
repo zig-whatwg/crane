@@ -105,6 +105,15 @@ pub const CSSTransformComponent = struct {
         CSSTransformComponentImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSTransformComponent")) {
+            if (comptime @hasDecl(impls.CSSTransformComponent, "installHooks")) impls.CSSTransformComponent.installHooks();
+        }
+    }
+
     pub fn get_is2D(instance: *runtime.Instance) anyerror!bool {
         return try CSSTransformComponentImpl.get_is2D(instance);
     }

@@ -254,6 +254,15 @@ pub const WorkerGlobalScope = struct {
         WorkerGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WorkerGlobalScope")) {
+            if (comptime @hasDecl(impls.WorkerGlobalScope, "installHooks")) impls.WorkerGlobalScope.installHooks();
+        }
+    }
+
     pub fn get_self(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WorkerGlobalScopeImpl.get_self(instance);
     }

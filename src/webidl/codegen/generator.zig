@@ -354,6 +354,8 @@ pub fn generateInterfacesRoot(
         try w.print("pub const {s} = @import(\"{s}.zig\").{s};\n", .{ name, name, name });
     }
 
+    try writer.writeRootInstallHooks(w, "interface");
+
     try w.flush();
 }
 
@@ -644,6 +646,8 @@ pub fn generateMixinsRoot(
         try w.print("pub const {s} = @import(\"{s}.zig\");\n", .{ name, name });
     }
 
+    try writer.writeRootInstallHooks(w, "mixin");
+
     try w.flush();
 }
 
@@ -737,6 +741,8 @@ pub fn generateMixin(
 
     // Re-export types from impl
     try w.print("pub const impl = @import(\"impls\").{s};\n", .{mixin_name});
+    try w.writeAll("\n");
+    try writer.writeInstallHooks(w, mixin_name, "");
     // Re-export NodeOrString if this is ParentNode (commonly needed by interfaces)
     if (std.mem.eql(u8, mixin_name, "ParentNode")) {
         try w.writeAll("pub const NodeOrString = impl.NodeOrString;\n");

@@ -118,6 +118,15 @@ pub const CSSRotate = struct {
         CSSRotateImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSRotate")) {
+            if (comptime @hasDecl(impls.CSSRotate, "installHooks")) impls.CSSRotate.installHooks();
+        }
+    }
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(angle)

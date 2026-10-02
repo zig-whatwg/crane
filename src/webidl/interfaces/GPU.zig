@@ -106,6 +106,15 @@ pub const GPU = struct {
         GPUImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPU")) {
+            if (comptime @hasDecl(impls.GPU, "installHooks")) impls.GPU.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_wgslLanguageFeatures(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);

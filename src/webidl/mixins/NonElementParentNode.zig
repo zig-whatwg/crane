@@ -15,6 +15,15 @@ const DOMString = @import("typedefs").DOMString;
 
 pub const impl = @import("impls").NonElementParentNode;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NonElementParentNode")) {
+        if (comptime @hasDecl(impls.NonElementParentNode, "installHooks")) impls.NonElementParentNode.installHooks();
+    }
+}
+
 pub fn call_getElementById(instance: *runtime.Instance, elementId: DOMString) anyerror!?*runtime.Instance {
     return try NonElementParentNodeImpl.call_getElementById(instance, elementId);
 }

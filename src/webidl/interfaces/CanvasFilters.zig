@@ -86,6 +86,15 @@ pub const CanvasFilters = struct {
         CanvasFiltersImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CanvasFilters")) {
+            if (comptime @hasDecl(impls.CanvasFilters, "installHooks")) impls.CanvasFilters.installHooks();
+        }
+    }
+
     pub fn get_filter(instance: *runtime.Instance) anyerror!DOMString {
         return try CanvasFiltersImpl.get_filter(instance);
     }

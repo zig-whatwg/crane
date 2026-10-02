@@ -103,6 +103,15 @@ pub const CSSGroupingRule = struct {
         CSSGroupingRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSGroupingRule")) {
+            if (comptime @hasDecl(impls.CSSGroupingRule, "installHooks")) impls.CSSGroupingRule.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_cssRules(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);

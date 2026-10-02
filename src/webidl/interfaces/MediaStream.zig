@@ -143,6 +143,15 @@ pub const MediaStream = struct {
         MediaStreamImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaStream")) {
+            if (comptime @hasDecl(impls.MediaStream, "installHooks")) impls.MediaStream.installHooks();
+        }
+    }
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor()

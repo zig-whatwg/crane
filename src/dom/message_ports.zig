@@ -9,6 +9,7 @@
 //! receiving realm.
 //!
 //! lint-impls: hook for MessagePort
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -28,11 +29,12 @@ pub const Steps = struct {
     discard: *const fn (end: *anyopaque) void,
 };
 
-/// Per thread: a worker's ports live on its own thread's realms.
-threadlocal var steps: ?Steps = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var steps: ?Steps = null;
 
-/// Called by MessagePort. Idempotent.
+/// Called by MessagePort's installHooks, once, at process start (process_start.zig).
 pub fn install(installed: Steps) void {
+    process_start.assertInstalling();
     steps = installed;
 }
 

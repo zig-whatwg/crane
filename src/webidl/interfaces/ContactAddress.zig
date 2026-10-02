@@ -150,6 +150,15 @@ pub const ContactAddress = struct {
         ContactAddressImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ContactAddress")) {
+            if (comptime @hasDecl(impls.ContactAddress, "installHooks")) impls.ContactAddress.installHooks();
+        }
+    }
+
     pub fn get_city(instance: *runtime.Instance) anyerror!DOMString {
         return try ContactAddressImpl.get_city(instance);
     }

@@ -14,6 +14,15 @@ const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
 
 pub const impl = @import("impls").CanvasImageSmoothing;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CanvasImageSmoothing")) {
+        if (comptime @hasDecl(impls.CanvasImageSmoothing, "installHooks")) impls.CanvasImageSmoothing.installHooks();
+    }
+}
+
 pub fn get_imageSmoothingEnabled(instance: *runtime.Instance) anyerror!bool {
     return try CanvasImageSmoothingImpl.get_imageSmoothingEnabled(instance);
 }

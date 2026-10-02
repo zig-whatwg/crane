@@ -237,4 +237,13 @@ pub const HTMLModelElement = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         HTMLModelElementImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "HTMLModelElement")) {
+            if (comptime @hasDecl(impls.HTMLModelElement, "installHooks")) impls.HTMLModelElement.installHooks();
+        }
+    }
 };

@@ -115,6 +115,15 @@ pub const MIDIOutput = struct {
         MIDIOutputImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MIDIOutput")) {
+            if (comptime @hasDecl(impls.MIDIOutput, "installHooks")) impls.MIDIOutput.installHooks();
+        }
+    }
+
     pub fn call_send(instance: *runtime.Instance, data: runtime.JSValue, timestamp: webidl.Opt(DOMHighResTimeStamp)) anyerror!void {
         return try MIDIOutputImpl.call_send(instance, data, timestamp);
     }

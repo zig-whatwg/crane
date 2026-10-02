@@ -4,14 +4,15 @@
 //! of what dispatch sets has an attribute that reads it back but no setter;
 //! the one step here so far is "invoke" step 9, which renames a trusted
 //! animation or transition event to its legacy WebKit type while the legacy
-//! listeners run, and back again. Event installs the implementation from its
-//! init, which every event's init chains through.
+//! listeners run, and back again. Event installs the implementation once, at
+//! process start (its installHooks).
 //!
 //! Spec: https://dom.spec.whatwg.org/#concept-event-listener-invoke
 //!
 //! lint-impls: hook for Event
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// What the Event impl supplies.
@@ -22,11 +23,12 @@ pub const Implementation = struct {
     swap_type: *const fn (event: *runtime.Instance, event_type: runtime.DOMString) ?runtime.DOMString,
 };
 
-/// Per thread, like the events.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by Event. Idempotent.
+/// Called by Event's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

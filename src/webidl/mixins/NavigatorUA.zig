@@ -14,6 +14,15 @@ const NavigatorUAData = @import("interfaces").NavigatorUAData;
 
 pub const impl = @import("impls").NavigatorUA;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorUA")) {
+        if (comptime @hasDecl(impls.NavigatorUA, "installHooks")) impls.NavigatorUA.installHooks();
+    }
+}
+
 /// Extended attributes: [SecureContext]
 pub fn get_userAgentData(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return try NavigatorUAImpl.get_userAgentData(instance);

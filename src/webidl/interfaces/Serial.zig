@@ -125,6 +125,15 @@ pub const Serial = struct {
         SerialImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Serial")) {
+            if (comptime @hasDecl(impls.Serial, "installHooks")) impls.Serial.installHooks();
+        }
+    }
+
     pub fn get_onconnect(instance: *runtime.Instance) anyerror!EventHandler {
         return try SerialImpl.get_onconnect(instance);
     }

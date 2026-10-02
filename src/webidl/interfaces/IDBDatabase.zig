@@ -156,6 +156,15 @@ pub const IDBDatabase = struct {
         IDBDatabaseImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "IDBDatabase")) {
+            if (comptime @hasDecl(impls.IDBDatabase, "installHooks")) impls.IDBDatabase.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try IDBDatabaseImpl.get_name(instance);
     }

@@ -104,6 +104,15 @@ pub const CSSPropertyRule = struct {
         CSSPropertyRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSPropertyRule")) {
+            if (comptime @hasDecl(impls.CSSPropertyRule, "installHooks")) impls.CSSPropertyRule.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPropertyRuleImpl.get_name(instance);
     }

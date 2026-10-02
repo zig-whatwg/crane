@@ -101,6 +101,15 @@ pub const ChildNode = struct {
         ChildNodeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ChildNode")) {
+            if (comptime @hasDecl(impls.ChildNode, "installHooks")) impls.ChildNode.installHooks();
+        }
+    }
+
     /// Extended attributes: [CEReactions], [Unscopable]
     pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks

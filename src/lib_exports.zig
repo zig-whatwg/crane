@@ -217,7 +217,8 @@ pub export fn whatwg_browser_evaluate(
 /// application they would disable V8's parallelism, make `Math.random()`
 /// deterministic and drop hash-flooding protection.)
 pub export fn whatwg_runtime_init() callconv(.c) void {
-    engine.initializeEngine(.{}) catch {};
+    // crane.Process: the engine and every hook, once (docs/instances.md).
+    browser.Process.ensureStarted(.{}) catch {};
 }
 
 /// End the engine (call once at program end), after destroying all browser

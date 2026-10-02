@@ -146,6 +146,18 @@ fn getEventTargetInternal(instance: *runtime.Instance) ?*EventTargetImpl.Interna
     return EventTargetImpl.getInternalState(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Every other node creator sets a node document through
+    // `dom.node_document`, never through this impl. The hook is installed
+    // here, before anything can hold this node to set its document.
+    dom_module.node_document.install(.{ .set = &setNodeDocumentHook });
+    // And a parser's DOM adapter frees a node it made and never inserted
+    // through `dom.node_creation`, as the tree teardown frees a child.
+    dom_module.node_creation.installNode(.{ .destroy_uninserted = &deinitNodeByType });
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class initialization: EventTarget
 ///
@@ -161,14 +173,6 @@ pub fn init(
     // Chain to parent class (EventTarget)
     const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
     errdefer EventTargetImpl.deinit(instance);
-
-    // Every other node creator sets a node document through
-    // `dom.node_document`, never through this impl. The hook is installed
-    // here, before anything can hold this node to set its document.
-    dom_module.node_document.install(.{ .set = &setNodeDocumentHook });
-    // And a parser's DOM adapter frees a node it made and never inserted
-    // through `dom.node_creation`, as the tree teardown frees a child.
-    dom_module.node_creation.installNode(.{ .destroy_uninserted = &deinitNodeByType });
 
     // Initialize Node internal state in global registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;

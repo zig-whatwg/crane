@@ -118,6 +118,15 @@ pub const PushSubscription = struct {
         PushSubscriptionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PushSubscription")) {
+            if (comptime @hasDecl(impls.PushSubscription, "installHooks")) impls.PushSubscription.installHooks();
+        }
+    }
+
     pub fn get_endpoint(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try PushSubscriptionImpl.get_endpoint(instance);
     }

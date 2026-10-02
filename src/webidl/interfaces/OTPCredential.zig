@@ -96,6 +96,15 @@ pub const OTPCredential = struct {
         OTPCredentialImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "OTPCredential")) {
+            if (comptime @hasDecl(impls.OTPCredential, "installHooks")) impls.OTPCredential.installHooks();
+        }
+    }
+
     pub fn get_code(instance: *runtime.Instance) anyerror!DOMString {
         return try OTPCredentialImpl.get_code(instance);
     }

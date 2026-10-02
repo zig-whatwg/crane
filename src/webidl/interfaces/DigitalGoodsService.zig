@@ -98,6 +98,15 @@ pub const DigitalGoodsService = struct {
         DigitalGoodsServiceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "DigitalGoodsService")) {
+            if (comptime @hasDecl(impls.DigitalGoodsService, "installHooks")) impls.DigitalGoodsService.installHooks();
+        }
+    }
+
     pub fn call_listPurchases(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try DigitalGoodsServiceImpl.call_listPurchases(instance);
     }

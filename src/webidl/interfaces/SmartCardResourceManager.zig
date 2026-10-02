@@ -94,6 +94,15 @@ pub const SmartCardResourceManager = struct {
         SmartCardResourceManagerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SmartCardResourceManager")) {
+            if (comptime @hasDecl(impls.SmartCardResourceManager, "installHooks")) impls.SmartCardResourceManager.installHooks();
+        }
+    }
+
     pub fn call_establishContext(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SmartCardResourceManagerImpl.call_establishContext(instance);
     }

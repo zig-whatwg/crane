@@ -113,6 +113,15 @@ pub const Clipboard = struct {
         ClipboardImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Clipboard")) {
+            if (comptime @hasDecl(impls.Clipboard, "installHooks")) impls.Clipboard.installHooks();
+        }
+    }
+
     pub fn call_readText(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ClipboardImpl.call_readText(instance);
     }

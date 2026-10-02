@@ -306,6 +306,15 @@ pub const SVGFEMorphologyElement = struct {
         SVGFEMorphologyElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFEMorphologyElement")) {
+            if (comptime @hasDecl(impls.SVGFEMorphologyElement, "installHooks")) impls.SVGFEMorphologyElement.installHooks();
+        }
+    }
+
     pub fn get_in1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEMorphologyElementImpl.get_in1(instance);
     }

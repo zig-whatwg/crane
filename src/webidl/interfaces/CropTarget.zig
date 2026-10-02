@@ -93,6 +93,15 @@ pub const CropTarget = struct {
         CropTargetImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CropTarget")) {
+            if (comptime @hasDecl(impls.CropTarget, "installHooks")) impls.CropTarget.installHooks();
+        }
+    }
+
     /// Extended attributes: [Exposed=Window], [SecureContext]
     pub fn call_static_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!runtime.JSValue {
         return try CropTargetImpl.call_static_fromElement(instance, element);

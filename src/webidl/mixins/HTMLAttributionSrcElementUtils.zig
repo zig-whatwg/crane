@@ -14,6 +14,15 @@ const USVString = @import("typedefs").USVString;
 
 pub const impl = @import("impls").HTMLAttributionSrcElementUtils;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "HTMLAttributionSrcElementUtils")) {
+        if (comptime @hasDecl(impls.HTMLAttributionSrcElementUtils, "installHooks")) impls.HTMLAttributionSrcElementUtils.installHooks();
+    }
+}
+
 /// Extended attributes: [CEReactions], [SecureContext]
 pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
     return try HTMLAttributionSrcElementUtilsImpl.get_attributionSrc(instance);

@@ -26,6 +26,7 @@
 //! lint-impls: hook for Navigation
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const fire_event = @import("fire_event.zig");
@@ -116,10 +117,11 @@ pub const Implementation = struct {
     add_handler: *const fn (event: *runtime.Instance, handler: *const anyopaque) anyerror!void,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by Navigation. Idempotent.
+/// Called by Navigation's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 
@@ -196,13 +198,7 @@ pub fn firePageSwap(window: *runtime.Instance, swap: PageSwap) void {
     defer if (activation) |a| a.releaseIfUnwrapped(activation_generation);
     // Step 5: "Fire an event named pageswap at displayedDocument's relevant
     // global object, using PageSwapEvent with its activation set to
-    // activation, and its viewTransition set to viewTransition." The first
-    // PageSwapEvent installs its part of the hook; with none made yet, one
-    // is made to install it, and let go.
-    if (!navigation_objects.pageSwapEventsInstalled()) {
-        const installer = interfaces.PageSwapEvent.init(window.ctx.allocator, window.ctx) catch return;
-        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-    }
+    // activation, and its viewTransition set to viewTransition."
     const event = navigation_objects.createPageSwapEvent(window.ctx, activation) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
     defer event.releaseIfUnwrapped(generation);

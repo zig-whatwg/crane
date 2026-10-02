@@ -88,6 +88,15 @@ pub const CanvasRect = struct {
         CanvasRectImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CanvasRect")) {
+            if (comptime @hasDecl(impls.CanvasRect, "installHooks")) impls.CanvasRect.installHooks();
+        }
+    }
+
     pub fn call_strokeRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f64) anyerror!void {
         return try CanvasRectImpl.call_strokeRect(instance, x, y, w, h);
     }

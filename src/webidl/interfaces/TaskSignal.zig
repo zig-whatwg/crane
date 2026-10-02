@@ -124,6 +124,15 @@ pub const TaskSignal = struct {
         TaskSignalImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TaskSignal")) {
+            if (comptime @hasDecl(impls.TaskSignal, "installHooks")) impls.TaskSignal.installHooks();
+        }
+    }
+
     pub fn get_priority(instance: *runtime.Instance) anyerror!TaskPriority {
         return try TaskSignalImpl.get_priority(instance);
     }

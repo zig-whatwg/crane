@@ -342,6 +342,15 @@ pub const ARIAMixin = struct {
         ARIAMixinImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ARIAMixin")) {
+            if (comptime @hasDecl(impls.ARIAMixin, "installHooks")) impls.ARIAMixin.installHooks();
+        }
+    }
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_role(instance: *runtime.Instance) anyerror!?DOMString {
         return try ARIAMixinImpl.get_role(instance);

@@ -126,6 +126,15 @@ pub const WebTransportDatagramDuplexStream = struct {
         WebTransportDatagramDuplexStreamImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebTransportDatagramDuplexStream")) {
+            if (comptime @hasDecl(impls.WebTransportDatagramDuplexStream, "installHooks")) impls.WebTransportDatagramDuplexStream.installHooks();
+        }
+    }
+
     pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportDatagramDuplexStreamImpl.get_readable(instance);
     }

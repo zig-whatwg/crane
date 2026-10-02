@@ -99,6 +99,15 @@ pub const PerformanceTimingConfidence = struct {
         PerformanceTimingConfidenceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PerformanceTimingConfidence")) {
+            if (comptime @hasDecl(impls.PerformanceTimingConfidence, "installHooks")) impls.PerformanceTimingConfidence.installHooks();
+        }
+    }
+
     pub fn get_randomizedTriggerRate(instance: *runtime.Instance) anyerror!f64 {
         return try PerformanceTimingConfidenceImpl.get_randomizedTriggerRate(instance);
     }

@@ -156,6 +156,15 @@ pub const TextTrack = struct {
         TextTrackImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TextTrack")) {
+            if (comptime @hasDecl(impls.TextTrack, "installHooks")) impls.TextTrack.installHooks();
+        }
+    }
+
     pub fn get_kind(instance: *runtime.Instance) anyerror!TextTrackKind {
         return try TextTrackImpl.get_kind(instance);
     }

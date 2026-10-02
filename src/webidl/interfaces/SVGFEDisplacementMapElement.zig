@@ -324,6 +324,15 @@ pub const SVGFEDisplacementMapElement = struct {
         SVGFEDisplacementMapElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFEDisplacementMapElement")) {
+            if (comptime @hasDecl(impls.SVGFEDisplacementMapElement, "installHooks")) impls.SVGFEDisplacementMapElement.installHooks();
+        }
+    }
+
     pub fn get_in1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEDisplacementMapElementImpl.get_in1(instance);
     }

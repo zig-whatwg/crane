@@ -16,6 +16,7 @@
 //! lint-impls: hook for NavigateEvent, NavigationDestination, NavigationTransition, NavigationPrecommitController, NavigationActivation, PageSwapEvent
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const joint_history = @import("html_core").navigation.joint_history;
 const navigation_api = @import("navigation_api.zig");
@@ -89,45 +90,51 @@ pub const Events = struct {
     set_info: *const fn (event: *runtime.Instance, info: runtime.JSValue) anyerror!void,
 };
 
-threadlocal var destinations: ?Destinations = null;
-threadlocal var transitions: ?Transitions = null;
-threadlocal var controllers: ?Controllers = null;
-threadlocal var activations: ?Activations = null;
-threadlocal var page_swap_events: ?PageSwapEvents = null;
-threadlocal var events: ?Events = null;
+var destinations: ?Destinations = null;
+var transitions: ?Transitions = null;
+var controllers: ?Controllers = null;
+var activations: ?Activations = null;
+var page_swap_events: ?PageSwapEvents = null;
+var events: ?Events = null;
 
-/// Called by NavigationDestination. Idempotent.
+/// Called by NavigationDestination's installHooks, once, at process start (process_start.zig).
 pub fn installDestinations(impl: Destinations) void {
+    process_start.assertInstalling();
     destinations = impl;
 }
 
-/// Called by NavigationTransition. Idempotent.
+/// Called by NavigationTransition's installHooks, once, at process start (process_start.zig).
 pub fn installTransitions(impl: Transitions) void {
+    process_start.assertInstalling();
     transitions = impl;
 }
 
-/// Called by NavigationPrecommitController. Idempotent.
+/// Called by NavigationPrecommitController's installHooks, once, at process start (process_start.zig).
 pub fn installControllers(impl: Controllers) void {
+    process_start.assertInstalling();
     controllers = impl;
 }
 
-/// Called by NavigationActivation. Idempotent.
+/// Called by NavigationActivation's installHooks, once, at process start (process_start.zig).
 pub fn installActivations(impl: Activations) void {
+    process_start.assertInstalling();
     activations = impl;
 }
 
-/// Called by PageSwapEvent. Idempotent.
+/// Called by PageSwapEvent's installHooks, once, at process start (process_start.zig).
 pub fn installPageSwapEvents(impl: PageSwapEvents) void {
+    process_start.assertInstalling();
     page_swap_events = impl;
 }
 
-/// Called by NavigateEvent. Idempotent.
+/// Called by NavigateEvent's installHooks, once, at process start (process_start.zig).
 pub fn installEvents(impl: Events) void {
+    process_start.assertInstalling();
     events = impl;
 }
 
-/// Each part is installed when its type makes its first object; a caller
-/// with none makes one first (through the interface's `init`) and lets it go.
+/// Whether the owner has installed its implementation: from process start on,
+/// unless a test cleared it.
 pub fn destinationsInstalled() bool {
     return destinations != null;
 }

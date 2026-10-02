@@ -515,6 +515,15 @@ pub const HTMLMediaElement = struct {
         HTMLMediaElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "HTMLMediaElement")) {
+            if (comptime @hasDecl(impls.HTMLMediaElement, "installHooks")) impls.HTMLMediaElement.installHooks();
+        }
+    }
+
     pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLMediaElementImpl.get_error(instance);
     }

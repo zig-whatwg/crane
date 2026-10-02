@@ -115,6 +115,15 @@ pub const AudioDestinationNode = struct {
         AudioDestinationNodeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AudioDestinationNode")) {
+            if (comptime @hasDecl(impls.AudioDestinationNode, "installHooks")) impls.AudioDestinationNode.installHooks();
+        }
+    }
+
     pub fn get_maxChannelCount(instance: *runtime.Instance) anyerror!u32 {
         return try AudioDestinationNodeImpl.get_maxChannelCount(instance);
     }

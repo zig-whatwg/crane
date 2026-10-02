@@ -86,4 +86,13 @@ pub const WebGLProgram = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         WebGLProgramImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebGLProgram")) {
+            if (comptime @hasDecl(impls.WebGLProgram, "installHooks")) impls.WebGLProgram.installHooks();
+        }
+    }
 };

@@ -106,6 +106,15 @@ pub const PushManager = struct {
         PushManagerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PushManager")) {
+            if (comptime @hasDecl(impls.PushManager, "installHooks")) impls.PushManager.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_static_supportedContentEncodings(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PushManagerImpl.get_static_supportedContentEncodings(instance);

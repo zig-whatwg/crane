@@ -121,6 +121,15 @@ pub const LayoutConstraints = struct {
         LayoutConstraintsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "LayoutConstraints")) {
+            if (comptime @hasDecl(impls.LayoutConstraints, "installHooks")) impls.LayoutConstraints.installHooks();
+        }
+    }
+
     pub fn get_availableInlineSize(instance: *runtime.Instance) anyerror!f64 {
         return try LayoutConstraintsImpl.get_availableInlineSize(instance);
     }

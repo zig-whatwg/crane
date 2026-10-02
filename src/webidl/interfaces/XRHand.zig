@@ -106,6 +106,15 @@ pub const XRHand = struct {
         XRHandImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRHand")) {
+            if (comptime @hasDecl(impls.XRHand, "installHooks")) impls.XRHand.installHooks();
+        }
+    }
+
     pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
         return try XRHandImpl.get_size(instance);
     }

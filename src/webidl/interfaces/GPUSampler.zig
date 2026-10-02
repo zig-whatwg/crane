@@ -98,6 +98,15 @@ pub const GPUSampler = struct {
         GPUSamplerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUSampler")) {
+            if (comptime @hasDecl(impls.GPUSampler, "installHooks")) impls.GPUSampler.installHooks();
+        }
+    }
+
     pub const get_label = mixins.GPUObjectBase.get_label;
     pub const set_label = mixins.GPUObjectBase.set_label;
 };

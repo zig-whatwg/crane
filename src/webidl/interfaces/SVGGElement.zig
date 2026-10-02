@@ -239,4 +239,13 @@ pub const SVGGElement = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         SVGGElementImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGGElement")) {
+            if (comptime @hasDecl(impls.SVGGElement, "installHooks")) impls.SVGGElement.installHooks();
+        }
+    }
 };

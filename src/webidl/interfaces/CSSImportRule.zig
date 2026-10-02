@@ -120,6 +120,15 @@ pub const CSSImportRule = struct {
         CSSImportRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSImportRule")) {
+            if (comptime @hasDecl(impls.CSSImportRule, "installHooks")) impls.CSSImportRule.installHooks();
+        }
+    }
+
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try CSSImportRuleImpl.get_href(instance);
     }

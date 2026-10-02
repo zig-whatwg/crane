@@ -102,6 +102,15 @@ pub const InterestGroupBiddingScriptRunnerGlobalScope = struct {
         InterestGroupBiddingScriptRunnerGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "InterestGroupBiddingScriptRunnerGlobalScope")) {
+            if (comptime @hasDecl(impls.InterestGroupBiddingScriptRunnerGlobalScope, "installHooks")) impls.InterestGroupBiddingScriptRunnerGlobalScope.installHooks();
+        }
+    }
+
     pub fn call_setBid(instance: *runtime.Instance, oneOrManyBids: webidl.Opt(runtime.JSValue)) anyerror!bool {
         return try InterestGroupBiddingScriptRunnerGlobalScopeImpl.call_setBid(instance, oneOrManyBids);
     }

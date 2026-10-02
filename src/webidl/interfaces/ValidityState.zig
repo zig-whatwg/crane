@@ -128,6 +128,15 @@ pub const ValidityState = struct {
         ValidityStateImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ValidityState")) {
+            if (comptime @hasDecl(impls.ValidityState, "installHooks")) impls.ValidityState.installHooks();
+        }
+    }
+
     pub fn get_valueMissing(instance: *runtime.Instance) anyerror!bool {
         return try ValidityStateImpl.get_valueMissing(instance);
     }

@@ -101,6 +101,15 @@ pub const CSSScopeRule = struct {
         CSSScopeRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSScopeRule")) {
+            if (comptime @hasDecl(impls.CSSScopeRule, "installHooks")) impls.CSSScopeRule.installHooks();
+        }
+    }
+
     pub fn get_start(instance: *runtime.Instance) anyerror!?CSSOMString {
         return try CSSScopeRuleImpl.get_start(instance);
     }

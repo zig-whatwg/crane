@@ -145,6 +145,15 @@ pub const WebGLRenderingContextOverloads = struct {
         WebGLRenderingContextOverloadsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebGLRenderingContextOverloads")) {
+            if (comptime @hasDecl(impls.WebGLRenderingContextOverloads, "installHooks")) impls.WebGLRenderingContextOverloads.installHooks();
+        }
+    }
+
     pub fn call_texSubImage2D(instance: *runtime.Instance, target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, @"type": GLenum, pixels: ?ArrayBufferView) anyerror!void {
         return try WebGLRenderingContextOverloadsImpl.call_texSubImage2D(instance, target, level, xoffset, yoffset, width, height, format, @"type", pixels);
     }

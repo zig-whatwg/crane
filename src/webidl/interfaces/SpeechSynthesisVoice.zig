@@ -105,6 +105,15 @@ pub const SpeechSynthesisVoice = struct {
         SpeechSynthesisVoiceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SpeechSynthesisVoice")) {
+            if (comptime @hasDecl(impls.SpeechSynthesisVoice, "installHooks")) impls.SpeechSynthesisVoice.installHooks();
+        }
+    }
+
     pub fn get_voiceURI(instance: *runtime.Instance) anyerror!DOMString {
         return try SpeechSynthesisVoiceImpl.get_voiceURI(instance);
     }

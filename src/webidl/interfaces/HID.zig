@@ -125,6 +125,15 @@ pub const HID = struct {
         HIDImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "HID")) {
+            if (comptime @hasDecl(impls.HID, "installHooks")) impls.HID.installHooks();
+        }
+    }
+
     pub fn get_onconnect(instance: *runtime.Instance) anyerror!EventHandler {
         return try HIDImpl.get_onconnect(instance);
     }

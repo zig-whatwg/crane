@@ -83,6 +83,19 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The navigation API's traverseTo(), back(), forward() and reload() run
+    // this traversal too.
+    @import("dom").history_traversal.install(.{
+        .traverse_to_step = &traverseWindowToStep,
+        .reload = &reloadWindow,
+        .url_and_history_update = &urlAndHistoryUpdateOfWindow,
+        .resume_traversal = &resumeTraversalOfWindow,
+    });
+}
+
 /// Initialize instance
 pub fn init(
     allocator: std.mem.Allocator,
@@ -101,15 +114,6 @@ pub fn init(
     // Store internal state
     const state = instance.getState(StateType);
     state.own._internal = internal;
-
-    // The navigation API's traverseTo(), back(), forward() and reload() run
-    // this traversal too.
-    @import("dom").history_traversal.install(.{
-        .traverse_to_step = &traverseWindowToStep,
-        .reload = &reloadWindow,
-        .url_and_history_update = &urlAndHistoryUpdateOfWindow,
-        .resume_traversal = &resumeTraversalOfWindow,
-    });
 
     return instance;
 }

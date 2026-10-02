@@ -57,18 +57,19 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: HTMLElement → Element → Node → EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
     // A script element that becomes connected must run "prepare the script
-    // element". Registering here rather than at binding-init time keeps the
-    // cost on documents that actually contain a script.
-    ensureInsertionStepsRegistered();
+    // element", and one whose children change may too.
+    dom_module.mutation.registerInsertionStepsCallback(&scriptInsertionStepsCallback) catch |err| {
+        log.warn("script insertion steps not registered: {}", .{err});
+    };
+    dom_module.mutation.registerChildrenChangedCallback(&scriptChildrenChangedCallback) catch |err| {
+        log.warn("script children changed steps not registered: {}", .{err});
+    };
+    // html's script processing model reaches its state.
+    script_element_state.install(.{ .state = &getInternal });
     // And a clone of one must not run again: the cloning steps copy "already
     // started" (HTML § 4.12.1.1).
     dom_module.cloning_steps.install(&cloningSteps);
@@ -79,9 +80,16 @@ pub fn init(
         .mark_parser_inserted = &markParserInsertedStep,
         .mark_already_started = &markAlreadyStartedStep,
     });
-    // And html's script processing model reaches its state.
-    script_element_state.install(.{ .state = &getInternal });
+}
 
+/// Initialize instance (creates the instance)
+/// Chains to parent class: HTMLElement → Element → Node → EventTarget
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
     // Chain to parent class (HTMLElement) which chains to Element → Node → EventTarget
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer HTMLElementImpl.deinit(instance);
@@ -493,10 +501,6 @@ pub fn call_static_supports(instance: *runtime.Instance, @"type": runtime.DOMStr
 // Insertion steps
 // =============================================================================
 
-/// Registered once, on the first script element created in this process.
-var insertion_steps_registered: bool = false;
-var children_changed_steps_registered: bool = false;
-
 /// The script element's insertion steps.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#script-processing-model
@@ -654,19 +658,6 @@ fn attributeChangeSteps(
     _ = prepareScriptElement(element.ctx.allocator, element) catch |err| {
         log.debug("attribute change steps: prepare failed: {}", .{err});
     };
-}
-
-/// Register the script insertion and children changed steps with the DOM
-/// mutation system. Idempotent.
-pub fn ensureInsertionStepsRegistered() void {
-    if (!insertion_steps_registered) {
-        dom_module.mutation.registerInsertionStepsCallback(&scriptInsertionStepsCallback) catch return;
-        insertion_steps_registered = true;
-    }
-    if (!children_changed_steps_registered) {
-        dom_module.mutation.registerChildrenChangedCallback(&scriptChildrenChangedCallback) catch return;
-        children_changed_steps_registered = true;
-    }
 }
 
 /// Prepare the script element

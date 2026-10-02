@@ -99,6 +99,15 @@ pub const WebTransportWriter = struct {
         WebTransportWriterImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebTransportWriter")) {
+            if (comptime @hasDecl(impls.WebTransportWriter, "installHooks")) impls.WebTransportWriter.installHooks();
+        }
+    }
+
     pub fn call_commit(instance: *runtime.Instance) anyerror!void {
         return try WebTransportWriterImpl.call_commit(instance);
     }

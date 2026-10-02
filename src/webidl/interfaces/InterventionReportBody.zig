@@ -129,6 +129,15 @@ pub const InterventionReportBody = struct {
         InterventionReportBodyImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "InterventionReportBody")) {
+            if (comptime @hasDecl(impls.InterventionReportBody, "installHooks")) impls.InterventionReportBody.installHooks();
+        }
+    }
+
     pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
         return try InterventionReportBodyImpl.get_id(instance);
     }

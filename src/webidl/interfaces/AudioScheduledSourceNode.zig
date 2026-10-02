@@ -127,6 +127,15 @@ pub const AudioScheduledSourceNode = struct {
         AudioScheduledSourceNodeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AudioScheduledSourceNode")) {
+            if (comptime @hasDecl(impls.AudioScheduledSourceNode, "installHooks")) impls.AudioScheduledSourceNode.installHooks();
+        }
+    }
+
     pub fn get_onended(instance: *runtime.Instance) anyerror!EventHandler {
         return try AudioScheduledSourceNodeImpl.get_onended(instance);
     }

@@ -120,6 +120,15 @@ pub const XRCubeLayer = struct {
         XRCubeLayerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRCubeLayer")) {
+            if (comptime @hasDecl(impls.XRCubeLayer, "installHooks")) impls.XRCubeLayer.installHooks();
+        }
+    }
+
     pub fn get_space(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRCubeLayerImpl.get_space(instance);
     }

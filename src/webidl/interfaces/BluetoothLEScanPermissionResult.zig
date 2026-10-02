@@ -108,6 +108,15 @@ pub const BluetoothLEScanPermissionResult = struct {
         BluetoothLEScanPermissionResultImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "BluetoothLEScanPermissionResult")) {
+            if (comptime @hasDecl(impls.BluetoothLEScanPermissionResult, "installHooks")) impls.BluetoothLEScanPermissionResult.installHooks();
+        }
+    }
+
     pub fn get_scans(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try BluetoothLEScanPermissionResultImpl.get_scans(instance);
     }

@@ -199,6 +199,15 @@ pub const RTCDataChannel = struct {
         RTCDataChannelImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RTCDataChannel")) {
+            if (comptime @hasDecl(impls.RTCDataChannel, "installHooks")) impls.RTCDataChannel.installHooks();
+        }
+    }
+
     pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try RTCDataChannelImpl.get_label(instance);
     }

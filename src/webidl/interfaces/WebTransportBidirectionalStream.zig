@@ -98,6 +98,15 @@ pub const WebTransportBidirectionalStream = struct {
         WebTransportBidirectionalStreamImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebTransportBidirectionalStream")) {
+            if (comptime @hasDecl(impls.WebTransportBidirectionalStream, "installHooks")) impls.WebTransportBidirectionalStream.installHooks();
+        }
+    }
+
     pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WebTransportBidirectionalStreamImpl.get_readable(instance);
     }

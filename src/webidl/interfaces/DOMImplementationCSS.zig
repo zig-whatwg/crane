@@ -94,6 +94,15 @@ pub const DOMImplementationCSS = struct {
         DOMImplementationCSSImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "DOMImplementationCSS")) {
+            if (comptime @hasDecl(impls.DOMImplementationCSS, "installHooks")) impls.DOMImplementationCSS.installHooks();
+        }
+    }
+
     pub fn call_createCSSStyleSheet(instance: *runtime.Instance, title: DOMString, media: DOMString) anyerror!*runtime.Instance {
         return try DOMImplementationCSSImpl.call_createCSSStyleSheet(instance, title, media);
     }

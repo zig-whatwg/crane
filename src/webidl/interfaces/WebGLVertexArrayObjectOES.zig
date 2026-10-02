@@ -87,4 +87,13 @@ pub const WebGLVertexArrayObjectOES = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         WebGLVertexArrayObjectOESImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebGLVertexArrayObjectOES")) {
+            if (comptime @hasDecl(impls.WebGLVertexArrayObjectOES, "installHooks")) impls.WebGLVertexArrayObjectOES.installHooks();
+        }
+    }
 };

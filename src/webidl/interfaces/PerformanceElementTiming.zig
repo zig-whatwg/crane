@@ -169,6 +169,15 @@ pub const PerformanceElementTiming = struct {
         PerformanceElementTimingImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PerformanceElementTiming")) {
+            if (comptime @hasDecl(impls.PerformanceElementTiming, "installHooks")) impls.PerformanceElementTiming.installHooks();
+        }
+    }
+
     pub fn get_renderTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformanceElementTimingImpl.get_renderTime(instance);
     }

@@ -92,6 +92,15 @@ pub const PopoverTargetAttributes = struct {
         PopoverTargetAttributesImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PopoverTargetAttributes")) {
+            if (comptime @hasDecl(impls.PopoverTargetAttributes, "installHooks")) impls.PopoverTargetAttributes.installHooks();
+        }
+    }
+
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try PopoverTargetAttributesImpl.get_popoverTargetElement(instance);

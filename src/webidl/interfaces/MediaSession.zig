@@ -118,6 +118,15 @@ pub const MediaSession = struct {
         MediaSessionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaSession")) {
+            if (comptime @hasDecl(impls.MediaSession, "installHooks")) impls.MediaSession.installHooks();
+        }
+    }
+
     pub fn get_metadata(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try MediaSessionImpl.get_metadata(instance);
     }

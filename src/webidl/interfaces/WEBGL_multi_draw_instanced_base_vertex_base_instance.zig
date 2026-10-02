@@ -98,6 +98,15 @@ pub const WEBGL_multi_draw_instanced_base_vertex_base_instance = struct {
         WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_multi_draw_instanced_base_vertex_base_instance")) {
+            if (comptime @hasDecl(impls.WEBGL_multi_draw_instanced_base_vertex_base_instance, "installHooks")) impls.WEBGL_multi_draw_instanced_base_vertex_base_instance.installHooks();
+        }
+    }
+
     pub fn call_multiDrawArraysInstancedBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, firstsList: runtime.JSValue, firstsOffset: u64, countsList: runtime.JSValue, countsOffset: u64, instanceCountsList: runtime.JSValue, instanceCountsOffset: u64, baseInstancesList: runtime.JSValue, baseInstancesOffset: u64, drawcount: GLsizei) anyerror!void {
         return try WEBGL_multi_draw_instanced_base_vertex_base_instanceImpl.call_multiDrawArraysInstancedBaseInstanceWEBGL(instance, mode, firstsList, firstsOffset, countsList, countsOffset, instanceCountsList, instanceCountsOffset, baseInstancesList, baseInstancesOffset, drawcount);
     }

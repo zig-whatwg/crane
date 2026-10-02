@@ -95,6 +95,15 @@ pub const IdleDeadline = struct {
         IdleDeadlineImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "IdleDeadline")) {
+            if (comptime @hasDecl(impls.IdleDeadline, "installHooks")) impls.IdleDeadline.installHooks();
+        }
+    }
+
     pub fn get_didTimeout(instance: *runtime.Instance) anyerror!bool {
         return try IdleDeadlineImpl.get_didTimeout(instance);
     }

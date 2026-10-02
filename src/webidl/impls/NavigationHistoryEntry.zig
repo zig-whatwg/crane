@@ -60,6 +60,12 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    @import("dom").navigation_history_entries.install(.{ .create = &createForEntry, .entry_id = &entryIdOf });
+}
+
 /// Initialize instance (creates the instance): an EventTarget, which the
 /// dispose event is fired at.
 pub fn init(
@@ -73,7 +79,6 @@ pub fn init(
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
     instance.getState(StateType).own._internal = internal;
-    @import("dom").navigation_history_entries.install(.{ .create = &createForEntry, .entry_id = &entryIdOf });
     return instance;
 }
 

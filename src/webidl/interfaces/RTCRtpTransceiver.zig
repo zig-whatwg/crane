@@ -122,6 +122,15 @@ pub const RTCRtpTransceiver = struct {
         RTCRtpTransceiverImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RTCRtpTransceiver")) {
+            if (comptime @hasDecl(impls.RTCRtpTransceiver, "installHooks")) impls.RTCRtpTransceiver.installHooks();
+        }
+    }
+
     pub fn get_mid(instance: *runtime.Instance) anyerror!?DOMString {
         return try RTCRtpTransceiverImpl.get_mid(instance);
     }

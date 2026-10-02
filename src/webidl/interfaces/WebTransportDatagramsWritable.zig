@@ -109,6 +109,15 @@ pub const WebTransportDatagramsWritable = struct {
         WebTransportDatagramsWritableImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebTransportDatagramsWritable")) {
+            if (comptime @hasDecl(impls.WebTransportDatagramsWritable, "installHooks")) impls.WebTransportDatagramsWritable.installHooks();
+        }
+    }
+
     pub fn get_sendGroup(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try WebTransportDatagramsWritableImpl.get_sendGroup(instance);
     }

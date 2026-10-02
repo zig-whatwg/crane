@@ -118,6 +118,15 @@ pub const XRSystem = struct {
         XRSystemImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRSystem")) {
+            if (comptime @hasDecl(impls.XRSystem, "installHooks")) impls.XRSystem.installHooks();
+        }
+    }
+
     pub fn get_ondevicechange(instance: *runtime.Instance) anyerror!EventHandler {
         return try XRSystemImpl.get_ondevicechange(instance);
     }

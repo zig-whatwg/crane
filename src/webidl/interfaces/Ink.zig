@@ -89,6 +89,15 @@ pub const Ink = struct {
         InkImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Ink")) {
+            if (comptime @hasDecl(impls.Ink, "installHooks")) impls.Ink.installHooks();
+        }
+    }
+
     pub fn call_requestPresenter(instance: *runtime.Instance, param: webidl.Opt(InkPresenterParam)) anyerror!runtime.JSValue {
         return try InkImpl.call_requestPresenter(instance, param);
     }

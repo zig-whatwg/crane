@@ -339,6 +339,15 @@ pub const WEBGL_draw_buffers = struct {
         WEBGL_draw_buffersImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_draw_buffers")) {
+            if (comptime @hasDecl(impls.WEBGL_draw_buffers, "installHooks")) impls.WEBGL_draw_buffers.installHooks();
+        }
+    }
+
     pub fn call_drawBuffersWEBGL(instance: *runtime.Instance, buffers: runtime.JSValue) anyerror!void {
         return try WEBGL_draw_buffersImpl.call_drawBuffersWEBGL(instance, buffers);
     }

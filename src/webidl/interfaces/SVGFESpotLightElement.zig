@@ -268,6 +268,15 @@ pub const SVGFESpotLightElement = struct {
         SVGFESpotLightElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFESpotLightElement")) {
+            if (comptime @hasDecl(impls.SVGFESpotLightElement, "installHooks")) impls.SVGFESpotLightElement.installHooks();
+        }
+    }
+
     pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFESpotLightElementImpl.get_x(instance);
     }

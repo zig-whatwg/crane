@@ -125,6 +125,15 @@ pub const Screen = struct {
         ScreenImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Screen")) {
+            if (comptime @hasDecl(impls.Screen, "installHooks")) impls.Screen.installHooks();
+        }
+    }
+
     pub fn get_availWidth(instance: *runtime.Instance) anyerror!i32 {
         return try ScreenImpl.get_availWidth(instance);
     }

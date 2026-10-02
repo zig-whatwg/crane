@@ -8,11 +8,11 @@
 //! IDL gives no setter for; one whose attribute is removed must keep the
 //! attribute's last value and lose its element. Neither the Element impl nor
 //! Document's attribute factories may reach into the Attr impl for that, so
-//! the Attr impl installs the implementation here in its `init` - which the
-//! caller has always just run, through `interfaces.Attr.init`, to make the
-//! node it passes in.
+//! the Attr impl installs the implementation here, once, at process start
+//! (its installHooks).
 //!
 //! lint-impls: hook for Attr
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -25,11 +25,12 @@ pub const Implementation = struct {
     detach: *const fn (attr: *runtime.Instance, value: []const u8) Error!void,
 };
 
-/// Per thread, like the nodes it serves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by the Attr impl. Idempotent.
+/// Called by Attr's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

@@ -93,6 +93,15 @@ pub const Baseline = struct {
         BaselineImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Baseline")) {
+            if (comptime @hasDecl(impls.Baseline, "installHooks")) impls.Baseline.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try BaselineImpl.get_name(instance);
     }

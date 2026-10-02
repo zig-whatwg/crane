@@ -92,6 +92,15 @@ pub const IntrinsicSizes = struct {
         IntrinsicSizesImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "IntrinsicSizes")) {
+            if (comptime @hasDecl(impls.IntrinsicSizes, "installHooks")) impls.IntrinsicSizes.installHooks();
+        }
+    }
+
     pub fn get_minContentSize(instance: *runtime.Instance) anyerror!f64 {
         return try IntrinsicSizesImpl.get_minContentSize(instance);
     }

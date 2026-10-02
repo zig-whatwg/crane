@@ -122,6 +122,15 @@ pub const ScreenDetailed = struct {
         ScreenDetailedImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ScreenDetailed")) {
+            if (comptime @hasDecl(impls.ScreenDetailed, "installHooks")) impls.ScreenDetailed.installHooks();
+        }
+    }
+
     pub fn get_availLeft(instance: *runtime.Instance) anyerror!i32 {
         return try ScreenDetailedImpl.get_availLeft(instance);
     }

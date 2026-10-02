@@ -112,6 +112,15 @@ pub const NavigatorManagedData = struct {
         NavigatorManagedDataImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "NavigatorManagedData")) {
+            if (comptime @hasDecl(impls.NavigatorManagedData, "installHooks")) impls.NavigatorManagedData.installHooks();
+        }
+    }
+
     pub fn get_onmanagedconfigurationchange(instance: *runtime.Instance) anyerror!EventHandler {
         return try NavigatorManagedDataImpl.get_onmanagedconfigurationchange(instance);
     }

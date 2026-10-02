@@ -43,6 +43,12 @@ pub const InternalState = struct {
     }
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    dom.navigation_objects.installPageSwapEvents(.{ .create = &createPageSwap });
+}
+
 /// Initialize instance (creates the instance): the Event part is set by the
 /// constructor; until then deinit finds an empty type and no pins, so an
 /// instance made only to install dom.navigation_objects can be let go.
@@ -57,7 +63,6 @@ pub fn init(
     state.base.own.type = runtime.DOMString.initEmpty();
     state.base.own._internal = null;
     state.own._internal = null;
-    dom.navigation_objects.installPageSwapEvents(.{ .create = &createPageSwap });
     return instance;
 }
 

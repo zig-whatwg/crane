@@ -176,3 +176,61 @@ test "Browsers in sequence each hold the network for their life, and the next fi
         try std.testing.expectError(error.NetworkError, browser_mod.navigation.fetchUrl(allocator, "http://127.0.0.1:9/", .{}));
     }
 }
+
+// docs/instances.md: hooks are process-wide, written once at start-up. A
+// Browser on a thread of its own - as an embedder runs each instance - must
+// find every hook installed, whatever has or has not run on that thread:
+// a threadlocal hook installed by its first owner is null on any other
+// thread, and a page that consumes a hook before any owner exists (a fetch
+// before any AbortSignal; a frame's timers) saw a different engine alone
+// than after other pages (docs/lessons/
+// architecture-a-threadlocal-hook-installed-by-the-first-owner.md).
+const FreshThreadPage = struct {
+    result: ?[]u8 = null,
+    err: ?anyerror = null,
+
+    fn run(self: *FreshThreadPage) void {
+        self.result = load(std.heap.c_allocator) catch |err| {
+            self.err = err;
+            return;
+        };
+    }
+
+    fn load(allocator: std.mem.Allocator) ![]u8 {
+        const browser = try Browser.init(allocator, .{});
+        defer browser.deinit();
+        const ctx = browser.current_context orelse return error.NoContext;
+        const html =
+            \\<!DOCTYPE html>
+            \\<html><body>
+            \\<script>
+            \\  // Before any AbortSignal, NavigationHistoryEntry, NavigateEvent
+            \\  // or iframe element exists in the process.
+            \\  var log = [];
+            \\  fetch("data:text/plain,fetched").then(function (r) { return r.text(); })
+            \\    .then(function (t) { log.push("fetch:" + t); }, function (e) { log.push("fetch-error:" + e); });
+            \\  log.push("entries:" + navigation.entries().length);
+            \\  navigation.navigate("#here").finished
+            \\    .then(function () { log.push("navigated:" + location.hash); }, function (e) { log.push("navigate-error:" + e); });
+            \\</script>
+            \\<iframe name="target" src="about:blank"></iframe>
+            \\<script>
+            \\  frames[0].setTimeout(function () { log.push("frame-timeout"); }, 0);
+            \\</script>
+            \\</body></html>
+        ;
+        try ctx.loadHTML(html, .{ .base_url = "http://localhost/fresh-thread.html" });
+        _ = try browser.runEventLoopBlocking(200);
+        return ctx.evaluateScriptToString("log.slice().sort().join()", allocator);
+    }
+};
+
+test "a page on a fresh thread fetches before any AbortSignal exists, navigates before any navigation object, and runs a frame's setTimeout" {
+    var page: FreshThreadPage = .{};
+    const thread = try std.Thread.spawn(.{}, FreshThreadPage.run, .{&page});
+    thread.join();
+    if (page.err) |err| return err;
+    const result = page.result.?;
+    defer std.heap.c_allocator.free(result);
+    try std.testing.expectEqualStrings("entries:1,fetch:fetched,frame-timeout,navigated:#here", result);
+}

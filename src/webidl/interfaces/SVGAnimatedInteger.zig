@@ -94,6 +94,15 @@ pub const SVGAnimatedInteger = struct {
         SVGAnimatedIntegerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGAnimatedInteger")) {
+            if (comptime @hasDecl(impls.SVGAnimatedInteger, "installHooks")) impls.SVGAnimatedInteger.installHooks();
+        }
+    }
+
     pub fn get_baseVal(instance: *runtime.Instance) anyerror!i32 {
         return try SVGAnimatedIntegerImpl.get_baseVal(instance);
     }

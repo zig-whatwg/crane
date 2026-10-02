@@ -8,10 +8,11 @@
 //! module is only the seam between them, the same shape as
 //! `abort_algorithms.zig`.
 //!
-//! The Node impl installs the implementation in its `init`, which runs for
+//! The Node impl installs the implementation in its installHooks, which runs for
 //! every node before anything can hold that node to set its document.
 //!
 //! lint-impls: hook for Node
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -24,11 +25,12 @@ pub const Implementation = struct {
     set: *const fn (node: *runtime.Instance, document: ?*runtime.Instance) Error!void,
 };
 
-/// Per thread: a node is created, and given its document, on one thread.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by the Node impl. Idempotent: every call installs the same function.
+/// Called by Node's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

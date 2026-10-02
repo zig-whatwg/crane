@@ -84,6 +84,15 @@ pub const FontFaceSource = struct {
         FontFaceSourceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "FontFaceSource")) {
+            if (comptime @hasDecl(impls.FontFaceSource, "installHooks")) impls.FontFaceSource.installHooks();
+        }
+    }
+
     pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FontFaceSourceImpl.get_fonts(instance);
     }

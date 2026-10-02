@@ -84,6 +84,15 @@ pub const TextEncoderCommon = struct {
         TextEncoderCommonImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TextEncoderCommon")) {
+            if (comptime @hasDecl(impls.TextEncoderCommon, "installHooks")) impls.TextEncoderCommon.installHooks();
+        }
+    }
+
     pub fn get_encoding(instance: *runtime.Instance) anyerror!DOMString {
         return try TextEncoderCommonImpl.get_encoding(instance);
     }

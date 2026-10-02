@@ -131,6 +131,15 @@ pub const ScriptingPolicyReportBody = struct {
         ScriptingPolicyReportBodyImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ScriptingPolicyReportBody")) {
+            if (comptime @hasDecl(impls.ScriptingPolicyReportBody, "installHooks")) impls.ScriptingPolicyReportBody.installHooks();
+        }
+    }
+
     pub fn get_violationType(instance: *runtime.Instance) anyerror!DOMString {
         return try ScriptingPolicyReportBodyImpl.get_violationType(instance);
     }

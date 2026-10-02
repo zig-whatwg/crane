@@ -78,6 +78,13 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Code outside this impl associates a list through dom.token_lists.
+    @import("dom").token_lists.install(.{ .associate = &associateWithAttribute });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -98,9 +105,6 @@ pub fn init(
     // Initialize length to 0
     state.own.length = 0;
     state.own.value = runtime.DOMString.initEmpty();
-
-    // Code outside this impl associates a list through dom.token_lists.
-    @import("dom").token_lists.install(.{ .associate = &associateWithAttribute });
 
     return instance;
 }

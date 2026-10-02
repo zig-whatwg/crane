@@ -14,6 +14,15 @@ const Element = @import("interfaces").Element;
 
 pub const impl = @import("impls").NonDocumentTypeChildNode;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NonDocumentTypeChildNode")) {
+        if (comptime @hasDecl(impls.NonDocumentTypeChildNode, "installHooks")) impls.NonDocumentTypeChildNode.installHooks();
+    }
+}
+
 pub fn get_previousElementSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return try NonDocumentTypeChildNodeImpl.get_previousElementSibling(instance);
 }

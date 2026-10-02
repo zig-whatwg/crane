@@ -14,6 +14,15 @@ const EventHandler = @import("typedefs").EventHandler;
 
 pub const impl = @import("impls").MessageEventTarget;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "MessageEventTarget")) {
+        if (comptime @hasDecl(impls.MessageEventTarget, "installHooks")) impls.MessageEventTarget.installHooks();
+    }
+}
+
 pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
     return try MessageEventTargetImpl.get_onmessage(instance);
 }

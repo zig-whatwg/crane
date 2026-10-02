@@ -277,6 +277,12 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    @import("dom").unloading_cleanup.install(&makeDisappearIn);
+}
+
 /// Initialize instance (creates the instance)
 ///
 /// Through EventTarget's init, which registers the EventTarget state - the
@@ -859,8 +865,7 @@ pub fn call_constructor(ctx: runtime.Context, url: runtime.USVString, protocols:
     // worker.) Released by the close task, and by deinit.
     engine.keepPlatformObjectAlive(instance);
     live_sockets.append(std.heap.page_allocator, instance) catch {};
-    // Its document's end makes it disappear (dom.unloading_cleanup).
-    @import("dom").unloading_cleanup.install(&makeDisappearIn);
+    // Its document's end makes it disappear (`makeDisappearIn`).
 
     return instance;
 }

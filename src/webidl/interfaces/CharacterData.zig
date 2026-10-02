@@ -179,6 +179,15 @@ pub const CharacterData = struct {
         CharacterDataImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CharacterData")) {
+            if (comptime @hasDecl(impls.CharacterData, "installHooks")) impls.CharacterData.installHooks();
+        }
+    }
+
     /// Extended attributes: [LegacyNullToEmptyString]
     pub fn get_data(instance: *runtime.Instance) anyerror!DOMString {
         return try CharacterDataImpl.get_data(instance);

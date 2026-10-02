@@ -117,6 +117,15 @@ pub const PortalHost = struct {
         PortalHostImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PortalHost")) {
+            if (comptime @hasDecl(impls.PortalHost, "installHooks")) impls.PortalHost.installHooks();
+        }
+    }
+
     pub fn get_onmessage(instance: *runtime.Instance) anyerror!EventHandler {
         return try PortalHostImpl.get_onmessage(instance);
     }

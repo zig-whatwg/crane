@@ -93,6 +93,15 @@ pub const ContactsManager = struct {
         ContactsManagerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ContactsManager")) {
+            if (comptime @hasDecl(impls.ContactsManager, "installHooks")) impls.ContactsManager.installHooks();
+        }
+    }
+
     pub fn call_select(instance: *runtime.Instance, properties: runtime.JSValue, options: webidl.Opt(ContactsSelectOptions)) anyerror!runtime.JSValue {
         return try ContactsManagerImpl.call_select(instance, properties, options);
     }

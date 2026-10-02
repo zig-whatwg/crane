@@ -99,6 +99,15 @@ pub const MediaKeys = struct {
         MediaKeysImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaKeys")) {
+            if (comptime @hasDecl(impls.MediaKeys, "installHooks")) impls.MediaKeys.installHooks();
+        }
+    }
+
     pub fn call_setServerCertificate(instance: *runtime.Instance, serverCertificate: BufferSource) anyerror!runtime.JSValue {
         return try MediaKeysImpl.call_setServerCertificate(instance, serverCertificate);
     }

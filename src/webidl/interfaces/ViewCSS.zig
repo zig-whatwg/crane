@@ -85,6 +85,15 @@ pub const ViewCSS = struct {
         ViewCSSImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ViewCSS")) {
+            if (comptime @hasDecl(impls.ViewCSS, "installHooks")) impls.ViewCSS.installHooks();
+        }
+    }
+
     pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance, pseudoElt: DOMString) anyerror!*runtime.Instance {
         return try ViewCSSImpl.call_getComputedStyle(instance, elt, pseudoElt);
     }

@@ -1169,6 +1169,15 @@ pub const Window = struct {
         WindowImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Window")) {
+            if (comptime @hasDecl(impls.Window, "installHooks")) impls.Window.installHooks();
+        }
+    }
+
     /// Extended attributes: [LegacyUnforgeable]
     pub fn get_window(instance: *runtime.Instance) anyerror!WindowProxy {
         return try WindowImpl.get_window(instance);

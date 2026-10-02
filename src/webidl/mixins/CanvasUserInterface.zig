@@ -15,6 +15,15 @@ const Path2D = @import("interfaces").Path2D;
 
 pub const impl = @import("impls").CanvasUserInterface;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CanvasUserInterface")) {
+        if (comptime @hasDecl(impls.CanvasUserInterface, "installHooks")) impls.CanvasUserInterface.installHooks();
+    }
+}
+
 pub fn call_drawFocusIfNeeded(instance: *runtime.Instance, element: *runtime.Instance) anyerror!void {
     return try CanvasUserInterfaceImpl.call_drawFocusIfNeeded(instance, element);
 }

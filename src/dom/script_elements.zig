@@ -9,8 +9,7 @@
 //! as part of the HTML fragment parsing algorithm, then set the script
 //! element's already started to true"). That state is the script element's:
 //! HTMLScriptElement's and SVGScriptElement's impls each install their half
-//! here, from their `init` - necessarily before any script element exists for
-//! a parser to create.
+//! here, once, at process start (their installHooks).
 //!
 //! An SVG script shares HTML's processing model (SVG 2 §15.2: "A script
 //! element is equivalent to the script element in HTML"), which html's
@@ -19,6 +18,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead
 //!
 //! lint-impls: hook for HTMLScriptElement, SVGScriptElement
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -42,17 +42,19 @@ pub const SvgImplementation = struct {
     flags: *const fn (element: *runtime.Instance) ?*ScriptFlags,
 };
 
-/// Per thread, like the elements they serve.
-threadlocal var implementation: ?Implementation = null;
-threadlocal var svg_implementation: ?SvgImplementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
+var svg_implementation: ?SvgImplementation = null;
 
-/// Called by HTMLScriptElement. Idempotent: every call installs the same one.
+/// Called by HTMLScriptElement's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 
-/// Called by SVGScriptElement. Idempotent.
+/// Called by SVGScriptElement's installHooks, once, at process start (process_start.zig).
 pub fn installSvg(impl: SvgImplementation) void {
+    process_start.assertInstalling();
     svg_implementation = impl;
 }
 

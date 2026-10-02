@@ -201,6 +201,15 @@ pub const SVGPreserveAspectRatio = struct {
         SVGPreserveAspectRatioImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGPreserveAspectRatio")) {
+            if (comptime @hasDecl(impls.SVGPreserveAspectRatio, "installHooks")) impls.SVGPreserveAspectRatio.installHooks();
+        }
+    }
+
     pub fn get_align(instance: *runtime.Instance) anyerror!u16 {
         return try SVGPreserveAspectRatioImpl.get_align(instance);
     }

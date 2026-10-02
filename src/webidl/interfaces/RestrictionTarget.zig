@@ -93,6 +93,15 @@ pub const RestrictionTarget = struct {
         RestrictionTargetImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RestrictionTarget")) {
+            if (comptime @hasDecl(impls.RestrictionTarget, "installHooks")) impls.RestrictionTarget.installHooks();
+        }
+    }
+
     /// Extended attributes: [Exposed=Window], [SecureContext]
     pub fn call_static_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!runtime.JSValue {
         return try RestrictionTargetImpl.call_static_fromElement(instance, element);

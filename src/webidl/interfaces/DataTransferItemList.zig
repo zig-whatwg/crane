@@ -103,6 +103,15 @@ pub const DataTransferItemList = struct {
         DataTransferItemListImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "DataTransferItemList")) {
+            if (comptime @hasDecl(impls.DataTransferItemList, "installHooks")) impls.DataTransferItemList.installHooks();
+        }
+    }
+
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try DataTransferItemListImpl.get_length(instance);
     }

@@ -178,6 +178,15 @@ pub const PerformanceScriptTiming = struct {
         PerformanceScriptTimingImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PerformanceScriptTiming")) {
+            if (comptime @hasDecl(impls.PerformanceScriptTiming, "installHooks")) impls.PerformanceScriptTiming.installHooks();
+        }
+    }
+
     pub fn get_startTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformanceScriptTimingImpl.get_startTime(instance);
     }

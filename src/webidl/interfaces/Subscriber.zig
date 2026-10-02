@@ -109,6 +109,15 @@ pub const Subscriber = struct {
         SubscriberImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Subscriber")) {
+            if (comptime @hasDecl(impls.Subscriber, "installHooks")) impls.Subscriber.installHooks();
+        }
+    }
+
     pub fn get_active(instance: *runtime.Instance) anyerror!bool {
         return try SubscriberImpl.get_active(instance);
     }

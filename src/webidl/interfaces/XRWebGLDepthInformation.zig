@@ -102,6 +102,15 @@ pub const XRWebGLDepthInformation = struct {
         XRWebGLDepthInformationImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRWebGLDepthInformation")) {
+            if (comptime @hasDecl(impls.XRWebGLDepthInformation, "installHooks")) impls.XRWebGLDepthInformation.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_texture(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);

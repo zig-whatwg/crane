@@ -108,4 +108,13 @@ pub const WEBGL_debug_renderer_info = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         WEBGL_debug_renderer_infoImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_debug_renderer_info")) {
+            if (comptime @hasDecl(impls.WEBGL_debug_renderer_info, "installHooks")) impls.WEBGL_debug_renderer_info.installHooks();
+        }
+    }
 };

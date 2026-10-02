@@ -105,6 +105,15 @@ pub const NotRestoredReasonDetails = struct {
         NotRestoredReasonDetailsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "NotRestoredReasonDetails")) {
+            if (comptime @hasDecl(impls.NotRestoredReasonDetails, "installHooks")) impls.NotRestoredReasonDetails.installHooks();
+        }
+    }
+
     pub fn get_reason(instance: *runtime.Instance) anyerror!DOMString {
         return try NotRestoredReasonDetailsImpl.get_reason(instance);
     }

@@ -110,6 +110,15 @@ pub const USBPermissionResult = struct {
         USBPermissionResultImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "USBPermissionResult")) {
+            if (comptime @hasDecl(impls.USBPermissionResult, "installHooks")) impls.USBPermissionResult.installHooks();
+        }
+    }
+
     pub fn get_devices(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try USBPermissionResultImpl.get_devices(instance);
     }

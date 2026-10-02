@@ -109,6 +109,13 @@ pub const InternalState = struct {
     signal_pin: same_object.Traced = .{ .slot = .{ .name = "signal" } },
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // fetch() reads a Request object's request through this hook.
+    @import("dom").fetch_objects.installRequest(.{ .request_of = &requestOf, .body_stream = &bodyStreamToSend });
+}
+
 /// Initialize instance
 pub fn init(
     allocator: std.mem.Allocator,
@@ -116,9 +123,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // fetch() reads a Request object's request through this hook.
-    @import("dom").fetch_objects.installRequest(.{ .request_of = &requestOf, .body_stream = &bodyStreamToSend });
-
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 

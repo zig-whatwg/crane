@@ -13,6 +13,15 @@ const dictionaries = @import("dictionaries");
 
 pub const impl = @import("impls").NavigatorBadge;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorBadge")) {
+        if (comptime @hasDecl(impls.NavigatorBadge, "installHooks")) impls.NavigatorBadge.installHooks();
+    }
+}
+
 pub fn call_clearAppBadge(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return try NavigatorBadgeImpl.call_clearAppBadge(instance);
 }

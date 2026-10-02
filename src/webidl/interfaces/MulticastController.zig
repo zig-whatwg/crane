@@ -104,6 +104,15 @@ pub const MulticastController = struct {
         MulticastControllerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MulticastController")) {
+            if (comptime @hasDecl(impls.MulticastController, "installHooks")) impls.MulticastController.installHooks();
+        }
+    }
+
     pub fn get_joinedGroups(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try MulticastControllerImpl.get_joinedGroups(instance);
     }

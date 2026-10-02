@@ -300,6 +300,15 @@ pub const CSSFontFaceDescriptors = struct {
         CSSFontFaceDescriptorsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSFontFaceDescriptors")) {
+            if (comptime @hasDecl(impls.CSSFontFaceDescriptors, "installHooks")) impls.CSSFontFaceDescriptors.installHooks();
+        }
+    }
+
     /// Extended attributes: [LegacyNullToEmptyString]
     pub fn get_src(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFaceDescriptorsImpl.get_src(instance);

@@ -14,6 +14,15 @@ const DOMString = @import("typedefs").DOMString;
 
 pub const impl = @import("impls").CanvasShadowStyles;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CanvasShadowStyles")) {
+        if (comptime @hasDecl(impls.CanvasShadowStyles, "installHooks")) impls.CanvasShadowStyles.installHooks();
+    }
+}
+
 pub fn get_shadowOffsetX(instance: *runtime.Instance) anyerror!f64 {
     return try CanvasShadowStylesImpl.get_shadowOffsetX(instance);
 }

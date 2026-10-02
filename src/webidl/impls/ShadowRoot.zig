@@ -146,6 +146,13 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // A host's teardown reaches its shadow root through this hook.
+    @import("dom").shadow_hosts.install(.{ .host_destroyed = &hostDestroyed });
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to DocumentFragmentImpl.init() to properly initialize the inheritance chain.
 pub fn init(
@@ -166,9 +173,6 @@ pub fn init(
     if (NodeImpl.getInternalState(instance)) |node_internal| {
         node_internal.node_type = NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE;
     }
-
-    // A host's teardown reaches its shadow root through this hook.
-    @import("dom").shadow_hosts.install(.{ .host_destroyed = &hostDestroyed });
 
     // Initialize ShadowRoot's own internal state and register it
     const internal = try allocator.create(InternalState);

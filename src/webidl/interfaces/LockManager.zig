@@ -98,6 +98,15 @@ pub const LockManager = struct {
         LockManagerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "LockManager")) {
+            if (comptime @hasDecl(impls.LockManager, "installHooks")) impls.LockManager.installHooks();
+        }
+    }
+
     pub fn call_query(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try LockManagerImpl.call_query(instance);
     }

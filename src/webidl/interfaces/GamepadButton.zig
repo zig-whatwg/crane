@@ -96,6 +96,15 @@ pub const GamepadButton = struct {
         GamepadButtonImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GamepadButton")) {
+            if (comptime @hasDecl(impls.GamepadButton, "installHooks")) impls.GamepadButton.installHooks();
+        }
+    }
+
     pub fn get_pressed(instance: *runtime.Instance) anyerror!bool {
         return try GamepadButtonImpl.get_pressed(instance);
     }

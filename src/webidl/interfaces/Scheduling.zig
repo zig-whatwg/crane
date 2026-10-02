@@ -88,6 +88,15 @@ pub const Scheduling = struct {
         SchedulingImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Scheduling")) {
+            if (comptime @hasDecl(impls.Scheduling, "installHooks")) impls.Scheduling.installHooks();
+        }
+    }
+
     pub fn call_isInputPending(instance: *runtime.Instance, isInputPendingOptions: webidl.Opt(IsInputPendingOptions)) anyerror!bool {
         return try SchedulingImpl.call_isInputPending(instance, isInputPendingOptions);
     }

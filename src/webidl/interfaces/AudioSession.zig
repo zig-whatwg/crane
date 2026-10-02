@@ -116,6 +116,15 @@ pub const AudioSession = struct {
         AudioSessionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AudioSession")) {
+            if (comptime @hasDecl(impls.AudioSession, "installHooks")) impls.AudioSession.installHooks();
+        }
+    }
+
     pub fn get_type(instance: *runtime.Instance) anyerror!AudioSessionType {
         return try AudioSessionImpl.get_type(instance);
     }

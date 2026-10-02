@@ -89,6 +89,15 @@ pub const XPathExpression = struct {
         XPathExpressionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XPathExpression")) {
+            if (comptime @hasDecl(impls.XPathExpression, "installHooks")) impls.XPathExpression.installHooks();
+        }
+    }
+
     pub fn call_evaluate(instance: *runtime.Instance, contextNode: *runtime.Instance, @"type": webidl.Opt(u16), result: webidl.Opt(?*runtime.Instance)) anyerror!*runtime.Instance {
         return try XPathExpressionImpl.call_evaluate(instance, contextNode, @"type", result);
     }

@@ -11,6 +11,7 @@
 //! `EventTargetImpl.dispatchTrusted` directly; code outside it fires here.
 //!
 //! lint-impls: hook for EventTarget
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -18,11 +19,12 @@ pub const Implementation = struct {
     dispatch_trusted: *const fn (target: *runtime.Instance, event: *runtime.Instance) anyerror!bool,
 };
 
-/// Per thread: a worker's targets fire on its own thread.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by EventTarget. Idempotent.
+/// Called by EventTarget's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

@@ -130,6 +130,15 @@ pub const LayoutShift = struct {
         LayoutShiftImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "LayoutShift")) {
+            if (comptime @hasDecl(impls.LayoutShift, "installHooks")) impls.LayoutShift.installHooks();
+        }
+    }
+
     pub fn get_value(instance: *runtime.Instance) anyerror!f64 {
         return try LayoutShiftImpl.get_value(instance);
     }

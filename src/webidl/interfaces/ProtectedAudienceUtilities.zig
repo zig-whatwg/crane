@@ -91,6 +91,15 @@ pub const ProtectedAudienceUtilities = struct {
         ProtectedAudienceUtilitiesImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ProtectedAudienceUtilities")) {
+            if (comptime @hasDecl(impls.ProtectedAudienceUtilities, "installHooks")) impls.ProtectedAudienceUtilities.installHooks();
+        }
+    }
+
     pub fn call_decodeUtf8(instance: *runtime.Instance, bytes: runtime.JSValue) anyerror!runtime.USVString {
         return try ProtectedAudienceUtilitiesImpl.call_decodeUtf8(instance, bytes);
     }

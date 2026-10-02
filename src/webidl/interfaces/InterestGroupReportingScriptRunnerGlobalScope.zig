@@ -100,6 +100,15 @@ pub const InterestGroupReportingScriptRunnerGlobalScope = struct {
         InterestGroupReportingScriptRunnerGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "InterestGroupReportingScriptRunnerGlobalScope")) {
+            if (comptime @hasDecl(impls.InterestGroupReportingScriptRunnerGlobalScope, "installHooks")) impls.InterestGroupReportingScriptRunnerGlobalScope.installHooks();
+        }
+    }
+
     pub fn call_sendReportTo(instance: *runtime.Instance, url: DOMString) anyerror!void {
         return try InterestGroupReportingScriptRunnerGlobalScopeImpl.call_sendReportTo(instance, url);
     }

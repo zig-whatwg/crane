@@ -186,6 +186,14 @@ fn refreshFromDocument(internal: *InternalState) void {
     }
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The hyperlinks and forms that choose the top-level page navigate it
+    // here.
+    @import("dom").top_level_navigation.install(.{ .navigate = &topLevelNavigateHook });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -205,9 +213,6 @@ pub fn init(
         .allocator = allocator,
         .window = relevantWindow(ctx),
     };
-    // The hyperlinks and forms that choose the top-level page navigate it
-    // here.
-    @import("dom").top_level_navigation.install(.{ .navigate = &topLevelNavigateHook });
 
     // Initialize with default URL (about:blank)
     // Per spec, Location's URL should be the document's URL

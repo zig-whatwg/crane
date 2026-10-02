@@ -15,7 +15,7 @@
 //! (currentScript is read-only to script). So Document keeps a `Scripts` -
 //! the object Blink calls ScriptRunner (core/script/script_runner.h) and
 //! WebKit ScriptRunner (Source/WebCore/dom/ScriptRunner.h), both owned by
-//! their Document - and installs this hook from its `init`, before any
+//! their Document - and installs this hook from its installHooks, before any
 //! document exists; html's script_execution asks it. The shape of
 //! `document_lifecycle.zig`.
 //!
@@ -29,6 +29,7 @@
 //! lint-impls: hook for Document
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// A speculation rule's eagerness. More eager first: `@intFromEnum` orders
@@ -155,11 +156,12 @@ pub const Implementation = struct {
     url: *const fn (document: *runtime.Instance) []const u8,
 };
 
-/// Per thread, like the documents it serves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by Document. Idempotent: every call installs the same functions.
+/// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

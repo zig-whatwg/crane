@@ -16,6 +16,7 @@
 //! lint-impls: hook for Window, WorkerGlobalScope
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const cookiestore = @import("cookiestore");
 const fetch = @import("fetch");
@@ -89,11 +90,12 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
 /// A Window and a WorkerGlobalScope - with room to spare for the next kind.
 const capacity = 4;
 
-threadlocal var installed: [capacity]?Settings = @splat(null);
+var installed: [capacity]?Settings = @splat(null);
 
 /// Called by each kind of global. Idempotent: a kind is recognised by its
 /// `owns` function and installed once.
 pub fn install(settings: Settings) void {
+    process_start.assertInstalling();
     for (&installed) |*slot| {
         if (slot.*) |existing| {
             if (existing.owns == settings.owns) return;

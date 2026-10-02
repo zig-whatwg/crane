@@ -136,6 +136,15 @@ pub const PermissionsPolicyViolationReportBody = struct {
         PermissionsPolicyViolationReportBodyImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PermissionsPolicyViolationReportBody")) {
+            if (comptime @hasDecl(impls.PermissionsPolicyViolationReportBody, "installHooks")) impls.PermissionsPolicyViolationReportBody.installHooks();
+        }
+    }
+
     pub fn get_featureId(instance: *runtime.Instance) anyerror!DOMString {
         return try PermissionsPolicyViolationReportBodyImpl.get_featureId(instance);
     }

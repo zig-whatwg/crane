@@ -15,6 +15,15 @@ const DOMString = @import("typedefs").DOMString;
 
 pub const impl = @import("impls").NavigatorContentUtils;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorContentUtils")) {
+        if (comptime @hasDecl(impls.NavigatorContentUtils, "installHooks")) impls.NavigatorContentUtils.installHooks();
+    }
+}
+
 /// Extended attributes: [SecureContext]
 pub fn call_registerProtocolHandler(instance: *runtime.Instance, scheme: DOMString, url: runtime.USVString) anyerror!void {
     return try NavigatorContentUtilsImpl.call_registerProtocolHandler(instance, scheme, url);

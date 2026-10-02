@@ -231,4 +231,13 @@ pub const SVGTitleElement = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         SVGTitleElementImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGTitleElement")) {
+            if (comptime @hasDecl(impls.SVGTitleElement, "installHooks")) impls.SVGTitleElement.installHooks();
+        }
+    }
 };

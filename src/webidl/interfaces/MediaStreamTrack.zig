@@ -195,6 +195,15 @@ pub const MediaStreamTrack = struct {
         MediaStreamTrackImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaStreamTrack")) {
+            if (comptime @hasDecl(impls.MediaStreamTrack, "installHooks")) impls.MediaStreamTrack.installHooks();
+        }
+    }
+
     pub fn get_kind(instance: *runtime.Instance) anyerror!DOMString {
         return try MediaStreamTrackImpl.get_kind(instance);
     }

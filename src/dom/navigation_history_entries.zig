@@ -4,6 +4,7 @@
 //! state, so NavigationHistoryEntry installs this hook and Navigation asks it.
 //!
 //! lint-impls: hook for NavigationHistoryEntry
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -15,15 +16,16 @@ pub const Implementation = struct {
     entry_id: *const fn (instance: *runtime.Instance) u64,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by NavigationHistoryEntry. Idempotent.
+/// Called by NavigationHistoryEntry's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 
-/// Whether NavigationHistoryEntry has installed the implementation - it does
-/// when its first object is made; a caller with none makes one first.
+/// Whether the owner has installed its implementation: from process start on,
+/// unless a test cleared it.
 pub fn isInstalled() bool {
     return implementation != null;
 }

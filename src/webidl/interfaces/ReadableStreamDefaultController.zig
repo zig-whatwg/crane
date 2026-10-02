@@ -100,6 +100,15 @@ pub const ReadableStreamDefaultController = struct {
         ReadableStreamDefaultControllerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ReadableStreamDefaultController")) {
+            if (comptime @hasDecl(impls.ReadableStreamDefaultController, "installHooks")) impls.ReadableStreamDefaultController.installHooks();
+        }
+    }
+
     pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
         return try ReadableStreamDefaultControllerImpl.get_desiredSize(instance);
     }

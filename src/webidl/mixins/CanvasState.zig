@@ -13,6 +13,15 @@ const dictionaries = @import("dictionaries");
 
 pub const impl = @import("impls").CanvasState;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CanvasState")) {
+        if (comptime @hasDecl(impls.CanvasState, "installHooks")) impls.CanvasState.installHooks();
+    }
+}
+
 pub fn call_reset(instance: *runtime.Instance) anyerror!void {
     return try CanvasStateImpl.call_reset(instance);
 }

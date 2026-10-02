@@ -93,6 +93,15 @@ pub const XRCamera = struct {
         XRCameraImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRCamera")) {
+            if (comptime @hasDecl(impls.XRCamera, "installHooks")) impls.XRCamera.installHooks();
+        }
+    }
+
     pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
         return try XRCameraImpl.get_width(instance);
     }

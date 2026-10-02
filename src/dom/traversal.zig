@@ -8,6 +8,7 @@
 //! as `abort_algorithms.zig`.
 //!
 //! lint-impls: hook for NodeIterator, TreeWalker
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -31,17 +32,19 @@ pub const TreeWalkerSetUp = *const fn (
     filter: ?*runtime.CallbackWrapper,
 ) anyerror!void;
 
-/// Per thread, like the objects themselves.
-threadlocal var node_iterator: ?NodeIteratorSetUp = null;
-threadlocal var tree_walker: ?TreeWalkerSetUp = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var node_iterator: ?NodeIteratorSetUp = null;
+var tree_walker: ?TreeWalkerSetUp = null;
 
-/// Called by the NodeIterator impl. Idempotent.
+/// Called by NodeIterator's installHooks, once, at process start (process_start.zig).
 pub fn installNodeIterator(set_up: NodeIteratorSetUp) void {
+    process_start.assertInstalling();
     node_iterator = set_up;
 }
 
-/// Called by the TreeWalker impl. Idempotent.
+/// Called by TreeWalker's installHooks, once, at process start (process_start.zig).
 pub fn installTreeWalker(set_up: TreeWalkerSetUp) void {
+    process_start.assertInstalling();
     tree_walker = set_up;
 }
 

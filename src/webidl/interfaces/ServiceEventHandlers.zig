@@ -98,6 +98,15 @@ pub const ServiceEventHandlers = struct {
         ServiceEventHandlersImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ServiceEventHandlers")) {
+            if (comptime @hasDecl(impls.ServiceEventHandlers, "installHooks")) impls.ServiceEventHandlers.installHooks();
+        }
+    }
+
     pub fn get_onserviceadded(instance: *runtime.Instance) anyerror!EventHandler {
         return try ServiceEventHandlersImpl.get_onserviceadded(instance);
     }

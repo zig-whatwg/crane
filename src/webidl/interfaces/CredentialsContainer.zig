@@ -100,6 +100,15 @@ pub const CredentialsContainer = struct {
         CredentialsContainerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CredentialsContainer")) {
+            if (comptime @hasDecl(impls.CredentialsContainer, "installHooks")) impls.CredentialsContainer.installHooks();
+        }
+    }
+
     pub fn call_get(instance: *runtime.Instance, options: webidl.Opt(CredentialRequestOptions)) anyerror!runtime.JSValue {
         return try CredentialsContainerImpl.call_get(instance, options);
     }

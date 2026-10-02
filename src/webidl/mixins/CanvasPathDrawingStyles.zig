@@ -15,6 +15,15 @@ const CanvasLineCap = @import("enums").CanvasLineCap;
 
 pub const impl = @import("impls").CanvasPathDrawingStyles;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CanvasPathDrawingStyles")) {
+        if (comptime @hasDecl(impls.CanvasPathDrawingStyles, "installHooks")) impls.CanvasPathDrawingStyles.installHooks();
+    }
+}
+
 pub fn get_lineWidth(instance: *runtime.Instance) anyerror!f64 {
     return try CanvasPathDrawingStylesImpl.get_lineWidth(instance);
 }

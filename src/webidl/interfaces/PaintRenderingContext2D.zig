@@ -317,6 +317,15 @@ pub const PaintRenderingContext2D = struct {
         PaintRenderingContext2DImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PaintRenderingContext2D")) {
+            if (comptime @hasDecl(impls.PaintRenderingContext2D, "installHooks")) impls.PaintRenderingContext2D.installHooks();
+        }
+    }
+
     pub const get_globalAlpha = mixins.CanvasCompositing.get_globalAlpha;
     pub const set_globalAlpha = mixins.CanvasCompositing.set_globalAlpha;
 

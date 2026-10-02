@@ -239,4 +239,13 @@ pub const SVGSwitchElement = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         SVGSwitchElementImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGSwitchElement")) {
+            if (comptime @hasDecl(impls.SVGSwitchElement, "installHooks")) impls.SVGSwitchElement.installHooks();
+        }
+    }
 };

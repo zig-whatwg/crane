@@ -98,6 +98,15 @@ pub const Lock = struct {
         LockImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Lock")) {
+            if (comptime @hasDecl(impls.Lock, "installHooks")) impls.Lock.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try LockImpl.get_name(instance);
     }

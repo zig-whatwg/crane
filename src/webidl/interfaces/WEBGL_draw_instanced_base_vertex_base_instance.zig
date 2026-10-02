@@ -99,6 +99,15 @@ pub const WEBGL_draw_instanced_base_vertex_base_instance = struct {
         WEBGL_draw_instanced_base_vertex_base_instanceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_draw_instanced_base_vertex_base_instance")) {
+            if (comptime @hasDecl(impls.WEBGL_draw_instanced_base_vertex_base_instance, "installHooks")) impls.WEBGL_draw_instanced_base_vertex_base_instance.installHooks();
+        }
+    }
+
     pub fn call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance: *runtime.Instance, mode: GLenum, count: GLsizei, @"type": GLenum, offset: GLintptr, instanceCount: GLsizei, baseVertex: GLint, baseInstance: GLuint) anyerror!void {
         return try WEBGL_draw_instanced_base_vertex_base_instanceImpl.call_drawElementsInstancedBaseVertexBaseInstanceWEBGL(instance, mode, count, @"type", offset, instanceCount, baseVertex, baseInstance);
     }

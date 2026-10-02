@@ -14,6 +14,15 @@ const DOMString = @import("typedefs").DOMString;
 
 pub const impl = @import("impls").NavigatorID;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorID")) {
+        if (comptime @hasDecl(impls.NavigatorID, "installHooks")) impls.NavigatorID.installHooks();
+    }
+}
+
 pub fn get_appCodeName(instance: *runtime.Instance) anyerror!DOMString {
     return try NavigatorIDImpl.get_appCodeName(instance);
 }

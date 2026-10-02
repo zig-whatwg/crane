@@ -109,6 +109,15 @@ pub const MediaList = struct {
         MediaListImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaList")) {
+            if (comptime @hasDecl(impls.MediaList, "installHooks")) impls.MediaList.installHooks();
+        }
+    }
+
     /// Extended attributes: [Stringifier], [LegacyNullToEmptyString]
     pub fn get_mediaText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try MediaListImpl.get_mediaText(instance);

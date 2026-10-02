@@ -65,30 +65,29 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-var steps_registered = false;
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    dom_module.style_sheet_owners.installLoadDelay(&style_sheet_loading.delaysLoadEvent);
+    dom_module.style_sheet_owners.installParserSteps(.{ .created = &createdByParser, .popped = &poppedByParser });
+    dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch |err| {
+        log.warn("style insertion steps not registered: {}", .{err});
+    };
+    dom_module.mutation.registerRemovingStepsCallback(&removingSteps) catch |err| {
+        log.warn("style removing steps not registered: {}", .{err});
+    };
+    dom_module.mutation.registerChildrenChangedCallback(&childrenChangedSteps) catch |err| {
+        log.warn("style children changed steps not registered: {}", .{err});
+    };
+}
 
-/// Initialize instance: the element's steps installed (idempotent), then the
-/// chain to HTMLElement.
+/// Initialize instance: the chain to HTMLElement.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    dom_module.style_sheet_owners.installLoadDelay(&style_sheet_loading.delaysLoadEvent);
-    dom_module.style_sheet_owners.installParserSteps(.{ .created = &createdByParser, .popped = &poppedByParser });
-    if (!steps_registered) {
-        dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch |err| {
-            log.warn("style insertion steps not registered: {}", .{err});
-        };
-        dom_module.mutation.registerRemovingStepsCallback(&removingSteps) catch |err| {
-            log.warn("style removing steps not registered: {}", .{err});
-        };
-        dom_module.mutation.registerChildrenChangedCallback(&childrenChangedSteps) catch |err| {
-            log.warn("style children changed steps not registered: {}", .{err});
-        };
-        steps_registered = true;
-    }
     const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
     // From the arena that holds the element's state, as every element's

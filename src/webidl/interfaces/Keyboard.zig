@@ -119,6 +119,15 @@ pub const Keyboard = struct {
         KeyboardImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Keyboard")) {
+            if (comptime @hasDecl(impls.Keyboard, "installHooks")) impls.Keyboard.installHooks();
+        }
+    }
+
     pub fn get_onlayoutchange(instance: *runtime.Instance) anyerror!EventHandler {
         return try KeyboardImpl.get_onlayoutchange(instance);
     }

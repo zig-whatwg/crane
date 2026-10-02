@@ -102,6 +102,15 @@ pub const BeforeUnloadEvent = struct {
         BeforeUnloadEventImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "BeforeUnloadEvent")) {
+            if (comptime @hasDecl(impls.BeforeUnloadEvent, "installHooks")) impls.BeforeUnloadEvent.installHooks();
+        }
+    }
+
     pub fn get_returnValue(instance: *runtime.Instance) anyerror!DOMString {
         return try BeforeUnloadEventImpl.get_returnValue(instance);
     }

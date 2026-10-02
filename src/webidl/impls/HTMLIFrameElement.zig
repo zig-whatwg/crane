@@ -150,18 +150,19 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
-/// Initialize instance (creates the instance)
-/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // Ensure the iframe DOM mutation callbacks are registered.
-    // These only register once and are no-ops on subsequent calls.
-    ensureRemovingStepsRegistered();
-    ensurePostConnectionStepsRegistered();
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The iframe's removing and post-connection steps (HTML 4.8.5).
+    dom_module.mutation.registerRemovingStepsCallback(&iframeRemovingStepsCallback) catch |err| {
+        log.warn("iframe removing steps not registered: {}", .{err});
+    };
+    dom_module.mutation.registerPostConnectionStepsCallback(&iframePostConnectionSteps) catch |err| {
+        log.warn("iframe post-connection steps not registered: {}", .{err});
+    };
+    // The WindowProxy's frames[index] finds a child browsing context before
+    // its container made the navigable's Window: the container makes it.
+    dom_module.child_navigables.install(.{ .window = &windowOfChildNavigable });
     dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable, .definitely_close = &definitelyCloseTraversable });
     dom_module.content_navigables.install(.{
         .delays_load_event = &iframesDelayLoadEvent,
@@ -175,6 +176,16 @@ pub fn init(
         .traverse_navigable = &traverseNavigable,
         .find_by_name = &frameWindowByName,
     });
+}
+
+/// Initialize instance (creates the instance)
+/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
 
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
@@ -3853,27 +3864,6 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
     }
 }
 
-/// Register the iframe removing steps callback with the DOM mutation system.
-/// This should be called during application initialization.
-///
-/// The callback is idempotent - calling it multiple times just adds the callback
-/// again, but since it's the same function pointer, the behavior is the same.
-pub fn registerIframeRemovingSteps() !void {
-    try dom_module.mutation.registerRemovingStepsCallback(&iframeRemovingStepsCallback);
-}
-
-/// Flag to track if the callbacks have been registered
-var removing_steps_registered: bool = false;
-var post_connection_steps_registered: bool = false;
-
-/// Ensure the iframe removing steps callback is registered.
-/// This is called lazily during iframe creation to ensure the callback is set up.
-pub fn ensureRemovingStepsRegistered() void {
-    if (removing_steps_registered) return;
-    registerIframeRemovingSteps() catch return;
-    removing_steps_registered = true;
-}
-
 // ============================================================================
 // Post-connection steps (HTML §4.8.5)
 // ============================================================================
@@ -3965,22 +3955,6 @@ fn registerNamedPropertyOnParentGlobal(iframe_instance: *runtime.Instance, name:
     engine.setProperty(parent_window.ctx, .{ .instance = parent_window }, name, .{ .instance = child_window }) catch |err| {
         log.debug("window[{s}] was not set: {}", .{ name, err });
     };
-}
-
-/// Register the iframe post-connection steps with the DOM mutation system.
-pub fn registerIframePostConnectionSteps() !void {
-    try dom_module.mutation.registerPostConnectionStepsCallback(&iframePostConnectionSteps);
-}
-
-/// Ensure the iframe post-connection steps are registered - once, when the
-/// first iframe element is made.
-pub fn ensurePostConnectionStepsRegistered() void {
-    // The WindowProxy's frames[index] finds a child browsing context before
-    // its container made the navigable's Window: the container makes it.
-    dom_module.child_navigables.install(.{ .window = &windowOfChildNavigable });
-    if (post_connection_steps_registered) return;
-    registerIframePostConnectionSteps() catch return;
-    post_connection_steps_registered = true;
 }
 
 /// dom.child_navigables: the Window of `bc_ptr`'s navigable (an html_core

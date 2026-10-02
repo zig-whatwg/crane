@@ -154,6 +154,15 @@ pub const SubtleCrypto = struct {
         SubtleCryptoImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SubtleCrypto")) {
+            if (comptime @hasDecl(impls.SubtleCrypto, "installHooks")) impls.SubtleCrypto.installHooks();
+        }
+    }
+
     pub fn call_deriveBits(instance: *runtime.Instance, algorithm: AlgorithmIdentifier, baseKey: *runtime.Instance, length: webidl.Opt(?u32)) anyerror!runtime.JSValue {
         return try SubtleCryptoImpl.call_deriveBits(instance, algorithm, baseKey, length);
     }

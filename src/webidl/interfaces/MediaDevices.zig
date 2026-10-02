@@ -145,6 +145,15 @@ pub const MediaDevices = struct {
         MediaDevicesImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaDevices")) {
+            if (comptime @hasDecl(impls.MediaDevices, "installHooks")) impls.MediaDevices.installHooks();
+        }
+    }
+
     pub fn get_ondevicechange(instance: *runtime.Instance) anyerror!EventHandler {
         return try MediaDevicesImpl.get_ondevicechange(instance);
     }

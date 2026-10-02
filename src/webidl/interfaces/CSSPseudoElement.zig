@@ -144,6 +144,15 @@ pub const CSSPseudoElement = struct {
         CSSPseudoElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSPseudoElement")) {
+            if (comptime @hasDecl(impls.CSSPseudoElement, "installHooks")) impls.CSSPseudoElement.installHooks();
+        }
+    }
+
     pub fn get_type(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSPseudoElementImpl.get_type(instance);
     }

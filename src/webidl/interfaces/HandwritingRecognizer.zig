@@ -93,6 +93,15 @@ pub const HandwritingRecognizer = struct {
         HandwritingRecognizerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "HandwritingRecognizer")) {
+            if (comptime @hasDecl(impls.HandwritingRecognizer, "installHooks")) impls.HandwritingRecognizer.installHooks();
+        }
+    }
+
     pub fn call_finish(instance: *runtime.Instance) anyerror!void {
         return try HandwritingRecognizerImpl.call_finish(instance);
     }

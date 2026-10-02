@@ -97,6 +97,15 @@ pub const RTCCertificate = struct {
         RTCCertificateImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RTCCertificate")) {
+            if (comptime @hasDecl(impls.RTCCertificate, "installHooks")) impls.RTCCertificate.installHooks();
+        }
+    }
+
     pub fn get_expires(instance: *runtime.Instance) anyerror!EpochTimeStamp {
         return try RTCCertificateImpl.get_expires(instance);
     }

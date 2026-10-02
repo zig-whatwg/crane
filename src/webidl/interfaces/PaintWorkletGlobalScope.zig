@@ -99,6 +99,15 @@ pub const PaintWorkletGlobalScope = struct {
         PaintWorkletGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PaintWorkletGlobalScope")) {
+            if (comptime @hasDecl(impls.PaintWorkletGlobalScope, "installHooks")) impls.PaintWorkletGlobalScope.installHooks();
+        }
+    }
+
     pub fn get_devicePixelRatio(instance: *runtime.Instance) anyerror!f64 {
         return try PaintWorkletGlobalScopeImpl.get_devicePixelRatio(instance);
     }

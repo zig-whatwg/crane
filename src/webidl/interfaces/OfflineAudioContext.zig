@@ -166,6 +166,15 @@ pub const OfflineAudioContext = struct {
         OfflineAudioContextImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "OfflineAudioContext")) {
+            if (comptime @hasDecl(impls.OfflineAudioContext, "installHooks")) impls.OfflineAudioContext.installHooks();
+        }
+    }
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(contextOptions)

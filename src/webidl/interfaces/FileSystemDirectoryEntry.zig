@@ -103,6 +103,15 @@ pub const FileSystemDirectoryEntry = struct {
         FileSystemDirectoryEntryImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "FileSystemDirectoryEntry")) {
+            if (comptime @hasDecl(impls.FileSystemDirectoryEntry, "installHooks")) impls.FileSystemDirectoryEntry.installHooks();
+        }
+    }
+
     pub fn call_getDirectory(instance: *runtime.Instance, path: webidl.Opt(?runtime.USVString), options: webidl.Opt(FileSystemFlags), successCallback: webidl.Opt(FileSystemEntryCallback), errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         return try FileSystemDirectoryEntryImpl.call_getDirectory(instance, path, options, successCallback, errorCallback);
     }

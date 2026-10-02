@@ -96,6 +96,15 @@ pub const Geolocation = struct {
         GeolocationImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Geolocation")) {
+            if (comptime @hasDecl(impls.Geolocation, "installHooks")) impls.Geolocation.installHooks();
+        }
+    }
+
     pub fn call_getCurrentPosition(instance: *runtime.Instance, successCallback: PositionCallback, errorCallback: webidl.Opt(?PositionErrorCallback), options: webidl.Opt(PositionOptions)) anyerror!void {
         return try GeolocationImpl.call_getCurrentPosition(instance, successCallback, errorCallback, options);
     }

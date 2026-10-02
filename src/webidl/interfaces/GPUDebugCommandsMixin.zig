@@ -89,6 +89,15 @@ pub const GPUDebugCommandsMixin = struct {
         GPUDebugCommandsMixinImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUDebugCommandsMixin")) {
+            if (comptime @hasDecl(impls.GPUDebugCommandsMixin, "installHooks")) impls.GPUDebugCommandsMixin.installHooks();
+        }
+    }
+
     pub fn call_insertDebugMarker(instance: *runtime.Instance, markerLabel: runtime.USVString) anyerror!void {
         return try GPUDebugCommandsMixinImpl.call_insertDebugMarker(instance, markerLabel);
     }

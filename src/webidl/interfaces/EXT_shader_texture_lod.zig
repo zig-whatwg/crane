@@ -84,4 +84,13 @@ pub const EXT_shader_texture_lod = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         EXT_shader_texture_lodImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "EXT_shader_texture_lod")) {
+            if (comptime @hasDecl(impls.EXT_shader_texture_lod, "installHooks")) impls.EXT_shader_texture_lod.installHooks();
+        }
+    }
 };

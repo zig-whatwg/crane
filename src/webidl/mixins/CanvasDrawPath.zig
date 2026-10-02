@@ -15,6 +15,15 @@ const Path2D = @import("interfaces").Path2D;
 
 pub const impl = @import("impls").CanvasDrawPath;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CanvasDrawPath")) {
+        if (comptime @hasDecl(impls.CanvasDrawPath, "installHooks")) impls.CanvasDrawPath.installHooks();
+    }
+}
+
 pub fn call_clip(instance: *runtime.Instance, fillRule: webidl.Opt(CanvasFillRule)) anyerror!void {
     return try CanvasDrawPathImpl.call_clip(instance, fillRule);
 }

@@ -112,6 +112,15 @@ pub const GeolocationPosition = struct {
         GeolocationPositionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GeolocationPosition")) {
+            if (comptime @hasDecl(impls.GeolocationPosition, "installHooks")) impls.GeolocationPosition.installHooks();
+        }
+    }
+
     pub fn get_coords(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try GeolocationPositionImpl.get_coords(instance);
     }

@@ -139,6 +139,15 @@ pub const XMLHttpRequestEventTarget = struct {
         XMLHttpRequestEventTargetImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XMLHttpRequestEventTarget")) {
+            if (comptime @hasDecl(impls.XMLHttpRequestEventTarget, "installHooks")) impls.XMLHttpRequestEventTarget.installHooks();
+        }
+    }
+
     pub fn get_onloadstart(instance: *runtime.Instance) anyerror!EventHandler {
         return try XMLHttpRequestEventTargetImpl.get_onloadstart(instance);
     }

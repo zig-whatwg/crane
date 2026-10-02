@@ -50,6 +50,14 @@ pub const InternalState = struct {
     }
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Fetch, FormData's encoding and fetch()'s upload read a Blob's bytes
+    // through this hook.
+    @import("dom").blob_bytes.install(.{ .bytes_of = &bytesOf, .set_bytes = &setBytes });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -57,10 +65,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Fetch, FormData's encoding and fetch()'s upload read a Blob's bytes
-    // through this hook.
-    @import("dom").blob_bytes.install(.{ .bytes_of = &bytesOf, .set_bytes = &setBytes });
-
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     return instance;
 }

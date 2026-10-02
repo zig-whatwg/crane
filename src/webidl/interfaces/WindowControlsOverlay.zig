@@ -116,6 +116,15 @@ pub const WindowControlsOverlay = struct {
         WindowControlsOverlayImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WindowControlsOverlay")) {
+            if (comptime @hasDecl(impls.WindowControlsOverlay, "installHooks")) impls.WindowControlsOverlay.installHooks();
+        }
+    }
+
     pub fn get_visible(instance: *runtime.Instance) anyerror!bool {
         return try WindowControlsOverlayImpl.get_visible(instance);
     }

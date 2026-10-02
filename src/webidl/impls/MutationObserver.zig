@@ -161,6 +161,18 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
     return Accessor.getCast(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // A node going away reaches its observers through this hook. Installed
+    // before this observer can register anywhere.
+    dom_module.observer_registrations.install(.{
+        .node_released = &nodeReleasedHook,
+        .transient_added = &transientAddedHook,
+        .remove_transients = &removeTransientsHook,
+    });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -170,14 +182,6 @@ pub fn init(
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
-
-    // A node going away reaches its observers through this hook. Installed
-    // before this observer can register anywhere.
-    dom_module.observer_registrations.install(.{
-        .node_released = &nodeReleasedHook,
-        .transient_added = &transientAddedHook,
-        .remove_transients = &removeTransientsHook,
-    });
 
     // Initialize internal state using ArenaAllocator
     const ArenaAllocator = @import("runtime").ArenaAllocator;

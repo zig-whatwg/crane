@@ -126,6 +126,15 @@ pub const MutationRecord = struct {
         MutationRecordImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MutationRecord")) {
+            if (comptime @hasDecl(impls.MutationRecord, "installHooks")) impls.MutationRecord.installHooks();
+        }
+    }
+
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
         return try MutationRecordImpl.get_type(instance);
     }

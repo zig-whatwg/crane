@@ -90,6 +90,15 @@ pub const CanvasImageData = struct {
         CanvasImageDataImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CanvasImageData")) {
+            if (comptime @hasDecl(impls.CanvasImageData, "installHooks")) impls.CanvasImageData.installHooks();
+        }
+    }
+
     pub fn call_putImageData(instance: *runtime.Instance, imageData: *runtime.Instance, dx: i32, dy: i32) anyerror!void {
         // [EnforceRange] on dx
         if (!runtime.isInRange(i32, dx)) return error.TypeError;

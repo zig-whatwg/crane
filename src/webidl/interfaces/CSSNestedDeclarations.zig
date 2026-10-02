@@ -102,6 +102,15 @@ pub const CSSNestedDeclarations = struct {
         CSSNestedDeclarationsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSNestedDeclarations")) {
+            if (comptime @hasDecl(impls.CSSNestedDeclarations, "installHooks")) impls.CSSNestedDeclarations.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject], [PutForwards=cssText]
     pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);

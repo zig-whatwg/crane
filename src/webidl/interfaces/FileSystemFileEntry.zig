@@ -96,6 +96,15 @@ pub const FileSystemFileEntry = struct {
         FileSystemFileEntryImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "FileSystemFileEntry")) {
+            if (comptime @hasDecl(impls.FileSystemFileEntry, "installHooks")) impls.FileSystemFileEntry.installHooks();
+        }
+    }
+
     pub fn call_file(instance: *runtime.Instance, successCallback: FileCallback, errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         return try FileSystemFileEntryImpl.call_file(instance, successCallback, errorCallback);
     }

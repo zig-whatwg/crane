@@ -15,13 +15,14 @@
 //! ownership, not a spec step), Blink's and WebKit's reference counting.
 //!
 //! Each step is its owner's state: Element installs the names, DocumentType
-//! the identifiers, Node the teardown, each from its `init`, before any node
+//! the identifiers, Node the teardown, each from its installHooks, before any node
 //! exists for a parser to make.
 //!
 //! Spec: https://dom.spec.whatwg.org/#concept-create-element
 //! Spec: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
 //!
 //! lint-impls: hook for Node, Element, DocumentType
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -45,23 +46,26 @@ pub const NodeSteps = struct {
     destroy_uninserted: *const fn (node: *runtime.Instance) void,
 };
 
-/// Per thread, like the nodes they serve.
-threadlocal var element_steps: ?ElementSteps = null;
-threadlocal var document_type_steps: ?DocumentTypeSteps = null;
-threadlocal var node_steps: ?NodeSteps = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var element_steps: ?ElementSteps = null;
+var document_type_steps: ?DocumentTypeSteps = null;
+var node_steps: ?NodeSteps = null;
 
-/// Called by Element. Idempotent.
+/// Called by Element's installHooks, once, at process start (process_start.zig).
 pub fn installElement(steps: ElementSteps) void {
+    process_start.assertInstalling();
     element_steps = steps;
 }
 
-/// Called by DocumentType. Idempotent.
+/// Called by DocumentType's installHooks, once, at process start (process_start.zig).
 pub fn installDocumentType(steps: DocumentTypeSteps) void {
+    process_start.assertInstalling();
     document_type_steps = steps;
 }
 
-/// Called by Node. Idempotent.
+/// Called by Node's installHooks, once, at process start (process_start.zig).
 pub fn installNode(steps: NodeSteps) void {
+    process_start.assertInstalling();
     node_steps = steps;
 }
 

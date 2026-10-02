@@ -139,6 +139,15 @@ pub const AudioNode = struct {
         AudioNodeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AudioNode")) {
+            if (comptime @hasDecl(impls.AudioNode, "installHooks")) impls.AudioNode.installHooks();
+        }
+    }
+
     pub fn get_context(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AudioNodeImpl.get_context(instance);
     }

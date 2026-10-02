@@ -101,6 +101,15 @@ pub const AnimationTimeline = struct {
         AnimationTimelineImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AnimationTimeline")) {
+            if (comptime @hasDecl(impls.AnimationTimeline, "installHooks")) impls.AnimationTimeline.installHooks();
+        }
+    }
+
     pub fn get_currentTime(instance: *runtime.Instance) anyerror!?f64 {
         return try AnimationTimelineImpl.get_currentTime(instance);
     }

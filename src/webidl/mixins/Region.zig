@@ -15,6 +15,15 @@ const Range = @import("interfaces").Range;
 
 pub const impl = @import("impls").Region;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "Region")) {
+        if (comptime @hasDecl(impls.Region, "installHooks")) impls.Region.installHooks();
+    }
+}
+
 pub fn get_regionOverset(instance: *runtime.Instance) anyerror!CSSOMString {
     return try RegionImpl.get_regionOverset(instance);
 }

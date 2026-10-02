@@ -15,6 +15,15 @@ const SVGAnimatedPreserveAspectRatio = @import("interfaces").SVGAnimatedPreserve
 
 pub const impl = @import("impls").SVGFitToViewBox;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "SVGFitToViewBox")) {
+        if (comptime @hasDecl(impls.SVGFitToViewBox, "installHooks")) impls.SVGFitToViewBox.installHooks();
+    }
+}
+
 /// Extended attributes: [SameObject]
 pub fn get_viewBox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return try SVGFitToViewBoxImpl.get_viewBox(instance);

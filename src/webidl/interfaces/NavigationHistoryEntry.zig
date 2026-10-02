@@ -132,6 +132,15 @@ pub const NavigationHistoryEntry = struct {
         NavigationHistoryEntryImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "NavigationHistoryEntry")) {
+            if (comptime @hasDecl(impls.NavigationHistoryEntry, "installHooks")) impls.NavigationHistoryEntry.installHooks();
+        }
+    }
+
     pub fn get_url(instance: *runtime.Instance) anyerror!?runtime.USVString {
         return try NavigationHistoryEntryImpl.get_url(instance);
     }

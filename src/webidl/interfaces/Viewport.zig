@@ -89,6 +89,15 @@ pub const Viewport = struct {
         ViewportImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Viewport")) {
+            if (comptime @hasDecl(impls.Viewport, "installHooks")) impls.Viewport.installHooks();
+        }
+    }
+
     pub fn get_segments(instance: *runtime.Instance) anyerror!?runtime.JSValue {
         return try ViewportImpl.get_segments(instance);
     }

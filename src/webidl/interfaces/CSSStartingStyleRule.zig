@@ -89,4 +89,13 @@ pub const CSSStartingStyleRule = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         CSSStartingStyleRuleImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSStartingStyleRule")) {
+            if (comptime @hasDecl(impls.CSSStartingStyleRule, "installHooks")) impls.CSSStartingStyleRule.installHooks();
+        }
+    }
 };

@@ -106,6 +106,15 @@ pub const XRBody = struct {
         XRBodyImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRBody")) {
+            if (comptime @hasDecl(impls.XRBody, "installHooks")) impls.XRBody.installHooks();
+        }
+    }
+
     pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
         return try XRBodyImpl.get_size(instance);
     }

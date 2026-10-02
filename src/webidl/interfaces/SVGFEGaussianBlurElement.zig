@@ -319,6 +319,15 @@ pub const SVGFEGaussianBlurElement = struct {
         SVGFEGaussianBlurElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFEGaussianBlurElement")) {
+            if (comptime @hasDecl(impls.SVGFEGaussianBlurElement, "installHooks")) impls.SVGFEGaussianBlurElement.installHooks();
+        }
+    }
+
     pub fn get_in1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEGaussianBlurElementImpl.get_in1(instance);
     }

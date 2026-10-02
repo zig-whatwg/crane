@@ -21,6 +21,15 @@ const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOption
 
 pub const impl = @import("impls").GeometryUtils;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "GeometryUtils")) {
+        if (comptime @hasDecl(impls.GeometryUtils, "installHooks")) impls.GeometryUtils.installHooks();
+    }
+}
+
 pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
     return try GeometryUtilsImpl.call_convertQuadFromNode(instance, quad, from, options);
 }

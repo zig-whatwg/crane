@@ -14,6 +14,15 @@ const NetworkInformation = @import("interfaces").NetworkInformation;
 
 pub const impl = @import("impls").NavigatorNetworkInformation;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorNetworkInformation")) {
+        if (comptime @hasDecl(impls.NavigatorNetworkInformation, "installHooks")) impls.NavigatorNetworkInformation.installHooks();
+    }
+}
+
 /// Extended attributes: [SameObject]
 pub fn get_connection(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return try NavigatorNetworkInformationImpl.get_connection(instance);

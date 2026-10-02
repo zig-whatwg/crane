@@ -106,6 +106,12 @@ fn removeInternal(instance: *runtime.Instance) void {
     }
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    range_boundaries.install(&boundariesOf);
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -123,7 +129,6 @@ pub fn init(
 
     // Store in our global map
     try setInternal(instance, internal);
-    range_boundaries.install(&boundariesOf);
 
     return instance;
 }

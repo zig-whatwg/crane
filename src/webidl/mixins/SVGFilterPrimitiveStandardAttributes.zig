@@ -15,6 +15,15 @@ const SVGAnimatedString = @import("interfaces").SVGAnimatedString;
 
 pub const impl = @import("impls").SVGFilterPrimitiveStandardAttributes;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "SVGFilterPrimitiveStandardAttributes")) {
+        if (comptime @hasDecl(impls.SVGFilterPrimitiveStandardAttributes, "installHooks")) impls.SVGFilterPrimitiveStandardAttributes.installHooks();
+    }
+}
+
 pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return try SVGFilterPrimitiveStandardAttributesImpl.get_x(instance);
 }

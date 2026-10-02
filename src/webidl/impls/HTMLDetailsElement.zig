@@ -57,24 +57,22 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-var insertion_steps_registered = false;
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    dom_module.attribute_change_steps.install("details", &attributeChangeSteps);
+    dom_module.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
+        log.warn("details insertion steps not registered: {}", .{err});
+    };
+}
 
-/// Initialize instance: the element's steps installed (idempotent), then the
-/// chain to HTMLElement.
+/// Initialize instance: the chain to HTMLElement.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    dom_module.attribute_change_steps.install("details", &attributeChangeSteps);
-    if (!insertion_steps_registered) {
-        if (dom_module.mutation.registerInsertionStepsCallback(&insertionStepsCallback)) {
-            insertion_steps_registered = true;
-        } else |err| {
-            log.warn("details insertion steps not registered: {}", .{err});
-        }
-    }
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer HTMLElementImpl.deinit(instance);
     // From the arena that holds the element's state, as every element's

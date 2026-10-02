@@ -107,6 +107,15 @@ pub const XRBoundedReferenceSpace = struct {
         XRBoundedReferenceSpaceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRBoundedReferenceSpace")) {
+            if (comptime @hasDecl(impls.XRBoundedReferenceSpace, "installHooks")) impls.XRBoundedReferenceSpace.installHooks();
+        }
+    }
+
     pub fn get_boundsGeometry(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRBoundedReferenceSpaceImpl.get_boundsGeometry(instance);
     }

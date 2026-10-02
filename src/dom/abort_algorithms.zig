@@ -7,16 +7,16 @@
 //! that impl and its consumers, so neither imports the other's impl - the
 //! same shape as `mutation.zig`'s insertion-steps registry.
 //!
-//! AbortSignal installs the implementation when the first signal is created,
-//! which is necessarily before anyone holds a signal to add an algorithm to.
-//! Creating a dependent signal is the exception: `fetch(url)` asks for one
-//! from « » (the Request constructor's step 30) before the page may have made
-//! any signal, so `createDependent` makes the first one itself.
+//! AbortSignal installs the implementation once, at process start
+//! (process_start.zig) - before any page runs. Installed by the first signal
+//! instead, `fetch(url)`, which asks for a dependent signal from « » (the
+//! Request constructor's step 30), found none on a page that had made no
+//! signal yet (docs/lessons/architecture-a-threadlocal-hook-installed-by-the-first-owner.md).
 //!
 //! lint-impls: hook for AbortSignal
 
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
-const interfaces = @import("interfaces");
 
 /// An abort algorithm: `run(ctx)` once, when the signal is aborted. `ctx`
 /// identifies it for removal. The signal holds the algorithm until it runs
@@ -36,11 +36,12 @@ pub const Implementation = struct {
     create_dependent: *const fn (ctx: runtime.Context, signals: []const *runtime.Instance) anyerror!*runtime.Instance,
 };
 
-/// Per thread: a worker's signals are created, and aborted, on its own thread.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by AbortSignal. Idempotent: every call installs the same functions.
+/// Called by AbortSignal's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 
@@ -55,18 +56,8 @@ pub fn add(signal: *runtime.Instance, algorithm: Algorithm) !void {
 /// AbortSignal, in `ctx`'s realm - as Fetch's Request constructor and
 /// clone() do.
 pub fn createDependent(ctx: runtime.Context, signals: []const *runtime.Instance) !*runtime.Instance {
-    const impl = implementation orelse try installByCreatingSignal(ctx);
+    const impl = implementation orelse return error.NotSupported;
     return impl.create_dependent(ctx, signals);
-}
-
-/// No signal exists on this thread yet, so `signals` is empty - and a page's
-/// first `fetch(url)` still needs one. AbortSignal installs its implementation
-/// whenever it makes a signal, so make one through its interface and let it
-/// go: nothing wrapped it, so nothing else can hold it.
-fn installByCreatingSignal(ctx: runtime.Context) !Implementation {
-    const signal = try interfaces.AbortSignal.init(ctx.allocator, ctx);
-    signal.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(signal));
-    return implementation orelse error.NotSupported;
 }
 
 /// "Remove an algorithm from an AbortSignal": every algorithm whose `ctx`

@@ -83,6 +83,15 @@ pub const CanvasDrawImage = struct {
         CanvasDrawImageImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CanvasDrawImage")) {
+            if (comptime @hasDecl(impls.CanvasDrawImage, "installHooks")) impls.CanvasDrawImage.installHooks();
+        }
+    }
+
     pub fn call_drawImage(instance: *runtime.Instance, image: CanvasImageSource, dx: f64, dy: f64) anyerror!void {
         return try CanvasDrawImageImpl.call_drawImage(instance, image, dx, dy);
     }

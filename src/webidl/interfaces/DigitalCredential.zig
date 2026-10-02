@@ -126,6 +126,15 @@ pub const DigitalCredential = struct {
         DigitalCredentialImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "DigitalCredential")) {
+            if (comptime @hasDecl(impls.DigitalCredential, "installHooks")) impls.DigitalCredential.installHooks();
+        }
+    }
+
     pub fn get_protocol(instance: *runtime.Instance) anyerror!DOMString {
         return try DigitalCredentialImpl.get_protocol(instance);
     }

@@ -90,6 +90,15 @@ pub const EpubReadingSystem = struct {
         EpubReadingSystemImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "EpubReadingSystem")) {
+            if (comptime @hasDecl(impls.EpubReadingSystem, "installHooks")) impls.EpubReadingSystem.installHooks();
+        }
+    }
+
     pub fn call_hasFeature(instance: *runtime.Instance, feature: DOMString, version: webidl.Opt(DOMString)) anyerror!bool {
         return try EpubReadingSystemImpl.call_hasFeature(instance, feature, version);
     }

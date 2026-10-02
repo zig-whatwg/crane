@@ -132,6 +132,15 @@ pub const OVR_multiview2 = struct {
         OVR_multiview2Impl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "OVR_multiview2")) {
+            if (comptime @hasDecl(impls.OVR_multiview2, "installHooks")) impls.OVR_multiview2.installHooks();
+        }
+    }
+
     pub fn call_framebufferTextureMultiviewOVR(instance: *runtime.Instance, target: GLenum, attachment: GLenum, texture: ?*runtime.Instance, level: GLint, baseViewIndex: GLint, numViews: GLsizei) anyerror!void {
         return try OVR_multiview2Impl.call_framebufferTextureMultiviewOVR(instance, target, attachment, texture, level, baseViewIndex, numViews);
     }

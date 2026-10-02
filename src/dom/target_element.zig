@@ -3,12 +3,13 @@
 //! initially null.
 //!
 //! The state is the Document's; the selector matcher and "scroll to the
-//! fragment" reach it here. Document installs the implementation from its
-//! init, before any document can have a target.
+//! fragment" reach it here. Document installs the implementation once, at
+//! process start (its installHooks).
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#target-element
 //!
 //! lint-impls: hook for Document
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -21,11 +22,12 @@ pub const Implementation = struct {
     set: *const fn (document: *runtime.Instance, element: ?*runtime.Instance) void,
 };
 
-/// Per thread, like the documents.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by Document. Idempotent.
+/// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

@@ -116,6 +116,15 @@ pub const GamepadPose = struct {
         GamepadPoseImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GamepadPose")) {
+            if (comptime @hasDecl(impls.GamepadPose, "installHooks")) impls.GamepadPose.installHooks();
+        }
+    }
+
     pub fn get_hasOrientation(instance: *runtime.Instance) anyerror!bool {
         return try GamepadPoseImpl.get_hasOrientation(instance);
     }

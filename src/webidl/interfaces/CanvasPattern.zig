@@ -91,6 +91,15 @@ pub const CanvasPattern = struct {
         CanvasPatternImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CanvasPattern")) {
+            if (comptime @hasDecl(impls.CanvasPattern, "installHooks")) impls.CanvasPattern.installHooks();
+        }
+    }
+
     pub fn call_setTransform(instance: *runtime.Instance, transform: webidl.Opt(DOMMatrix2DInit)) anyerror!void {
         return try CanvasPatternImpl.call_setTransform(instance, transform);
     }

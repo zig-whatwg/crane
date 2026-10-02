@@ -103,6 +103,15 @@ pub const Fence = struct {
         FenceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Fence")) {
+            if (comptime @hasDecl(impls.Fence, "installHooks")) impls.Fence.installHooks();
+        }
+    }
+
     pub fn call_reportEvent(instance: *runtime.Instance, event: webidl.Opt(ReportEventType)) anyerror!void {
         return try FenceImpl.call_reportEvent(instance, event);
     }

@@ -48,6 +48,9 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     // A host that already started the platform set the runtime flags then
     // too.
     if (!ffi.v8_Platform_IsInitialized()) snapshot_loader.initializePlatformForRuntime();
+    // Node wrappers' strength follows their tree (dom.mutation's insertion and
+    // removing steps), installed once while the process starts.
+    @import("wrapper_cache.zig").installTreeHooks();
     engine_snapshot = null;
     if (options.snapshot) |stamped| engine_snapshot = try usableSnapshot(stamped);
 }

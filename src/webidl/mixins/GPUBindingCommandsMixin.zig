@@ -18,6 +18,15 @@ const GPUSize32 = @import("typedefs").GPUSize32;
 
 pub const impl = @import("impls").GPUBindingCommandsMixin;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "GPUBindingCommandsMixin")) {
+        if (comptime @hasDecl(impls.GPUBindingCommandsMixin, "installHooks")) impls.GPUBindingCommandsMixin.installHooks();
+    }
+}
+
 pub fn call_setBindGroup(instance: *runtime.Instance, index: GPUIndex32, bindGroup: ?*runtime.Instance, dynamicOffsets: webidl.Opt(runtime.JSValue)) anyerror!void {
     return try GPUBindingCommandsMixinImpl.call_setBindGroup(instance, index, bindGroup, dynamicOffsets);
 }

@@ -90,6 +90,15 @@ pub const Worklet = struct {
         WorkletImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Worklet")) {
+            if (comptime @hasDecl(impls.Worklet, "installHooks")) impls.Worklet.installHooks();
+        }
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_addModule(instance: *runtime.Instance, moduleURL: runtime.USVString, options: webidl.Opt(WorkletOptions)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object

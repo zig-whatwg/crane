@@ -88,6 +88,15 @@ pub const BarProp = struct {
         BarPropImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "BarProp")) {
+            if (comptime @hasDecl(impls.BarProp, "installHooks")) impls.BarProp.installHooks();
+        }
+    }
+
     pub fn get_visible(instance: *runtime.Instance) anyerror!bool {
         return try BarPropImpl.get_visible(instance);
     }

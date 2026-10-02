@@ -125,6 +125,13 @@ fn removeAlgorithm(instance: *runtime.Instance, ctx: *anyopaque) void {
     }
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Nobody can hold a signal to add an algorithm to before one exists.
+    abort_algorithms.install(.{ .add = addAlgorithm, .remove = removeAlgorithm, .create_dependent = createDependentAbortSignal });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -139,9 +146,6 @@ pub fn init(
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
     instance.getState(StateType).own._internal = internal;
-
-    // Nobody can hold a signal to add an algorithm to before one exists.
-    abort_algorithms.install(.{ .add = addAlgorithm, .remove = removeAlgorithm, .create_dependent = createDependentAbortSignal });
 
     return instance;
 }

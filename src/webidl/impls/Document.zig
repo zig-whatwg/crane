@@ -585,6 +585,49 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
     return NodeImpl.getInternalState(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    @import("dom").document_lifecycle.install(.{
+        .parsing_stopped = &lifecycleParsingStopped,
+        .finish_loading = &lifecycleFinishLoading,
+        .load_delay_may_have_ended = &lifecycleLoadDelayMayHaveEnded,
+        .is_completely_loaded = &lifecycleIsCompletelyLoaded,
+        .is_initial_about_blank = &lifecycleIsInitialAboutBlank,
+        .mark_initial_about_blank = &lifecycleMarkInitialAboutBlank,
+        .is_unloading = &lifecycleIsUnloading,
+        .fire_beforeunload = &lifecycleFireBeforeUnload,
+        .unload = &lifecycleUnload,
+        .destroy = &lifecycleDestroy,
+        .set_about_base_url = &lifecycleSetAboutBaseUrl,
+        .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
+        .declarative_refresh = &lifecycleDeclarativeRefresh,
+    });
+    @import("dom").document_origin.install(.{ .domain = &originDomain });
+    // A clone of a Document keeps its mode. Installed here, before any
+    // Document exists to be cloned.
+    @import("dom").cloning_steps.install(&cloningSteps);
+    // The target element :target matches and "scroll to the fragment" sets.
+    @import("dom").target_element.install(.{ .get = &targetElement, .set = &setTargetElement });
+    // User input (testdriver lane): the focusing steps designate a document's
+    // focused area (src/html/focus.zig), and a top-level traversable's system
+    // visibility state updates its documents' visibility state, through these
+    // hooks.
+    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea });
+    @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
+    // The selector matchers ask whether an element matches :focus,
+    // :focus-within and :focus-visible through this one (html.focus, which
+    // applies the focus fixup rule as activeElement does).
+    const focus = @import("html").focus;
+    @import("dom").focus_matching.install(.{
+        .matches_focus = &focus.matchesFocus,
+        .matches_focus_within = &focus.matchesFocusWithin,
+        .matches_focus_visible = &focus.matchesFocusVisible,
+    });
+    // html's script processing model reaches a document's script state.
+    installScriptHooks();
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class initialization: Node -> EventTarget
 ///
@@ -610,47 +653,6 @@ pub fn init(
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, ArenaAllocator.get());
     internal.* = InternalState.init(allocator);
-
-    @import("dom").document_lifecycle.install(.{
-        .parsing_stopped = &lifecycleParsingStopped,
-        .finish_loading = &lifecycleFinishLoading,
-        .load_delay_may_have_ended = &lifecycleLoadDelayMayHaveEnded,
-        .is_completely_loaded = &lifecycleIsCompletelyLoaded,
-        .is_initial_about_blank = &lifecycleIsInitialAboutBlank,
-        .mark_initial_about_blank = &lifecycleMarkInitialAboutBlank,
-        .is_unloading = &lifecycleIsUnloading,
-        .fire_beforeunload = &lifecycleFireBeforeUnload,
-        .unload = &lifecycleUnload,
-        .destroy = &lifecycleDestroy,
-        .set_about_base_url = &lifecycleSetAboutBaseUrl,
-        .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
-        .declarative_refresh = &lifecycleDeclarativeRefresh,
-    });
-    @import("dom").document_origin.install(.{ .domain = &originDomain });
-    // A clone of a Document keeps its mode. Installed here, before any
-    // Document exists to be cloned.
-    @import("dom").cloning_steps.install(&cloningSteps);
-    // The target element :target matches and "scroll to the fragment" sets.
-    @import("dom").target_element.install(.{ .get = &targetElement, .set = &setTargetElement });
-
-    // html's script processing model reaches a document's script state.
-    installScriptHooks();
-
-    // User input (testdriver lane): the focusing steps designate a document's
-    // focused area (src/html/focus.zig), and a top-level traversable's system
-    // visibility state updates its documents' visibility state, through these
-    // hooks.
-    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea });
-    @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
-    // The selector matchers ask whether an element matches :focus,
-    // :focus-within and :focus-visible through this one (html.focus, which
-    // applies the focus fixup rule as activeElement does).
-    const focus = @import("html").focus;
-    @import("dom").focus_matching.install(.{
-        .matches_focus = &focus.matchesFocus,
-        .matches_focus_within = &focus.matchesFocusWithin,
-        .matches_focus_visible = &focus.matchesFocusVisible,
-    });
 
     return instance;
 }

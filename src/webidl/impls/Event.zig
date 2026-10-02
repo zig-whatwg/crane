@@ -87,6 +87,17 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The constructing steps every subclass runs (dom.event_construction);
+    // each subclass's init chains through this one.
+    @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &getDispatchFlag });
+    // What dispatch does to an event that no IDL member does
+    // (dom.event_dispatch).
+    @import("dom").event_dispatch.install(.{ .swap_type = &swapTypeHook });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -96,12 +107,6 @@ pub fn init(
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     // Initialize state will be done in call_constructor
-    // The constructing steps every subclass runs (dom.event_construction);
-    // each subclass's init chains through this one.
-    @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &getDispatchFlag });
-    // What dispatch does to an event that no IDL member does
-    // (dom.event_dispatch).
-    @import("dom").event_dispatch.install(.{ .swap_type = &swapTypeHook });
     return instance;
 }
 

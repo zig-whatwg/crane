@@ -97,6 +97,15 @@ pub const PerformanceMeasure = struct {
         PerformanceMeasureImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PerformanceMeasure")) {
+            if (comptime @hasDecl(impls.PerformanceMeasure, "installHooks")) impls.PerformanceMeasure.installHooks();
+        }
+    }
+
     pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceMeasureImpl.get_detail(instance);
     }

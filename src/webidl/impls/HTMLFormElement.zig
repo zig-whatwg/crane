@@ -59,6 +59,15 @@ pub const InternalState = struct {
     }
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The form's algorithms other element types run (a submit button's
+    // activation, FormData's constructor): installed before anyone can hold
+    // a form.
+    @import("dom").form_submission.install(submission_algorithms);
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
 pub fn init(
@@ -79,11 +88,6 @@ pub fn init(
     // exit - 904 bytes per discarded element, measured.
     const internal = try Registry.createIn(instance, ArenaAllocator.get());
     internal.* = .{};
-
-    // The form's algorithms other element types run (a submit button's
-    // activation, FormData's constructor): installed before anyone can hold
-    // a form.
-    @import("dom").form_submission.install(submission_algorithms);
 
     return instance;
 }
@@ -1182,10 +1186,6 @@ fn navigateSteps(data: ?*anyopaque) void {
     else
         null;
     const navigables = @import("dom").navigables;
-    if (!navigables.isInstalled()) {
-        const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
-        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-    }
     navigables.navigateByTarget(document, .{
         .target = task.target,
         .current_document = if (form_document != document) form_document else null,

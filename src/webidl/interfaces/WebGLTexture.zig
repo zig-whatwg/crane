@@ -86,4 +86,13 @@ pub const WebGLTexture = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         WebGLTextureImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebGLTexture")) {
+            if (comptime @hasDecl(impls.WebGLTexture, "installHooks")) impls.WebGLTexture.installHooks();
+        }
+    }
 };

@@ -535,6 +535,22 @@ pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
     return NodeImpl.getInternalState(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The attribute list's hook, for its ancestors' use (cloning). Installed
+    // before any element can be cloned: this runs for every element.
+    dom.element_attributes.install(.{
+        .at = &attributeAtHook,
+        .count = &attributeCountHook,
+        .append = &appendAttributeHook,
+        .change = &changeAttributeHook,
+        .node_at = &attrNodeAtHook,
+    });
+    // The parsers' "create an element" sets names through `dom.node_creation`.
+    dom.node_creation.installElement(.{ .set_names = &setNamesHook });
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class initialization: Node -> EventTarget
 ///
@@ -552,18 +568,6 @@ pub fn init(
 
     // Set node type to ELEMENT_NODE
     try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ELEMENT_NODE);
-
-    // The attribute list's hook, for its ancestors' use (cloning). Installed
-    // before any element can be cloned: this runs for every element.
-    dom.element_attributes.install(.{
-        .at = &attributeAtHook,
-        .count = &attributeCountHook,
-        .append = &appendAttributeHook,
-        .change = &changeAttributeHook,
-        .node_at = &attrNodeAtHook,
-    });
-    // The parsers' "create an element" sets names through `dom.node_creation`.
-    dom.node_creation.installElement(.{ .set_names = &setNamesHook });
 
     // Initialize Element's own internal state in registry
     const ArenaAllocator = @import("runtime").ArenaAllocator;

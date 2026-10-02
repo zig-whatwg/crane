@@ -106,6 +106,15 @@ pub const ReadableByteStreamController = struct {
         ReadableByteStreamControllerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ReadableByteStreamController")) {
+            if (comptime @hasDecl(impls.ReadableByteStreamController, "installHooks")) impls.ReadableByteStreamController.installHooks();
+        }
+    }
+
     pub fn get_byobRequest(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try ReadableByteStreamControllerImpl.get_byobRequest(instance);
     }

@@ -171,4 +171,13 @@ pub const WEBGL_clip_cull_distance = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         WEBGL_clip_cull_distanceImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_clip_cull_distance")) {
+            if (comptime @hasDecl(impls.WEBGL_clip_cull_distance, "installHooks")) impls.WEBGL_clip_cull_distance.installHooks();
+        }
+    }
 };

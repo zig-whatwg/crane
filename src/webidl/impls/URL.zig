@@ -72,6 +72,19 @@ pub const InternalState = struct {
     }
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The File API's unloading document cleanup step (`removeBlobURLEntries`).
+    @import("dom").unloading_cleanup.install(&removeBlobURLEntries);
+    // Every fetch of a blob URL - a module script's, a worker's import(), an
+    // <img> - obtains its blob through scheme fetch "blob", which reaches the
+    // store through this resolver. Installed lazily by fetch() and send(), a
+    // module fetch of a blob URL was a network error in a process that had
+    // run neither yet (blob-url.any.js: 4 of 24 alone, 20 after other files).
+    fetch_body.installBlobURLResolver();
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -902,16 +915,6 @@ pub fn call_static_createObjectURL(instance: *runtime.Instance, obj: runtime.JSV
     // Create the blob URL. Its entry's environment is the current settings
     // object - its realm - whose end removes it (`removeBlobURLEntries`).
     const blob_url = try store.createObjectURL(blob_internal.blob_data, origin.value, @ptrCast(realm));
-    @import("dom").unloading_cleanup.install(&removeBlobURLEntries);
-
-    // Every fetch of a blob URL - a module script's, a worker's import(), an
-    // <img> - obtains its blob through scheme fetch "blob", which reaches
-    // this store through a resolver. Install it with the first entry: before
-    // there is one, no blob URL can resolve, and installed only by fetch() and
-    // send(), a module fetch of a blob URL was a network error in a process
-    // that had run neither yet (blob-url.any.js: 4 of 24 alone, 20 after
-    // other files). Idempotent.
-    fetch_body.installBlobURLResolver();
 
     // Return as DOMString (take ownership of the allocated URL string)
     return runtime.DOMString.initOwned(blob_url);

@@ -12,6 +12,7 @@
 //! lint-impls: hook for HTMLInputElement, HTMLTextAreaElement, HTMLSelectElement
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// One element type's reset algorithm.
@@ -23,11 +24,12 @@ pub const Control = struct {
 };
 
 const max_controls = 8;
-threadlocal var controls: [max_controls]Control = undefined;
-threadlocal var count: usize = 0;
+var controls: [max_controls]Control = undefined;
+var count: usize = 0;
 
 /// Install `control`. Idempotent: the same brand check installs once.
 pub fn install(control: Control) void {
+    process_start.assertInstalling();
     for (controls[0..count]) |*existing| {
         if (existing.is == control.is) {
             existing.* = control;

@@ -148,6 +148,15 @@ pub const MediaKeySession = struct {
         MediaKeySessionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaKeySession")) {
+            if (comptime @hasDecl(impls.MediaKeySession, "installHooks")) impls.MediaKeySession.installHooks();
+        }
+    }
+
     pub fn get_sessionId(instance: *runtime.Instance) anyerror!DOMString {
         return try MediaKeySessionImpl.get_sessionId(instance);
     }

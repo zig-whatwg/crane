@@ -106,6 +106,13 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Other impls fill a static list they created (an element's labels).
+    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -125,9 +132,6 @@ pub fn init(
 
     // Initialize length to 0
     state.own.length = 0;
-
-    // Other impls fill a static list they created (an element's labels).
-    @import("dom").node_lists.install(.{ .set_static = &setStaticNodes });
 
     return instance;
 }

@@ -173,6 +173,15 @@ pub const Navigation = struct {
         NavigationImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Navigation")) {
+            if (comptime @hasDecl(impls.Navigation, "installHooks")) impls.Navigation.installHooks();
+        }
+    }
+
     pub fn get_currentEntry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try NavigationImpl.get_currentEntry(instance);
     }

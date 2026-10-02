@@ -88,6 +88,15 @@ pub const LaunchQueue = struct {
         LaunchQueueImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "LaunchQueue")) {
+            if (comptime @hasDecl(impls.LaunchQueue, "installHooks")) impls.LaunchQueue.installHooks();
+        }
+    }
+
     pub fn call_setConsumer(instance: *runtime.Instance, consumer: LaunchConsumer) anyerror!void {
         return try LaunchQueueImpl.call_setConsumer(instance, consumer);
     }

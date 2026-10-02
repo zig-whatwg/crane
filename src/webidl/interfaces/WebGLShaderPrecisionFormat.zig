@@ -100,6 +100,15 @@ pub const WebGLShaderPrecisionFormat = struct {
         WebGLShaderPrecisionFormatImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebGLShaderPrecisionFormat")) {
+            if (comptime @hasDecl(impls.WebGLShaderPrecisionFormat, "installHooks")) impls.WebGLShaderPrecisionFormat.installHooks();
+        }
+    }
+
     pub fn get_rangeMin(instance: *runtime.Instance) anyerror!GLint {
         return try WebGLShaderPrecisionFormatImpl.get_rangeMin(instance);
     }
