@@ -168,3 +168,39 @@ test "snapshot validation - invalid data" {
 //
 //     std.log.info("Context created from snapshot - SUCCESS!", .{});
 // }
+
+test "the external reference table keeps a callback registered twice, in its place" {
+    // A snapshot names each callback by its INDEX in this table, so the table
+    // must be the same at generation and at load - entry for entry - in every
+    // build mode. V8's encoder takes duplicate addresses ("Ignore duplicate
+    // references. This can happen due to ICF. See http://crbug.com/726896.",
+    // src/codegen/external-reference-encoder.cc). An optimized build merges
+    // identical functions, so callbacks distinct in Debug can share an address
+    // in ReleaseSafe; a table that dropped repeats was shorter there (8,287
+    // entries against the Debug generator's 11,465), every ReleaseSafe runner
+    // refused the build's snapshot ("the snapshot was made against 11465
+    // external references and this build has 8287"), and ran every realm on
+    // the no-snapshot path - a different engine from the Debug runner's.
+    const refs = v8.external_references;
+    refs.clearRuntimeReferences();
+    defer refs.clearRuntimeReferences();
+
+    refs.registerPointer(0x1000);
+    refs.registerPointer(0x2000);
+    refs.registerPointer(0x1000); // a second callback the optimizer merged with the first
+    refs.registerPointer(0x3000);
+
+    try std.testing.expectEqualSlices(isize, &.{ 0x1000, 0x2000, 0x1000, 0x3000, 0 }, refs.getRuntimeExternalReferences());
+}
+
+test "the external reference table is the same length however often it is registered" {
+    // registerAllExternalReferences starts from an empty table each time: the
+    // snapshot generator and every engine start register it once each.
+    const refs = v8.external_references;
+    defer refs.clearRuntimeReferences();
+    refs.registerAllExternalReferences();
+    const first = refs.getRuntimeCount();
+    refs.registerAllExternalReferences();
+    try std.testing.expectEqual(first, refs.getRuntimeCount());
+    try std.testing.expect(first > 0);
+}

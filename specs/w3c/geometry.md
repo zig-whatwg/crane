@@ -12,6 +12,17 @@ common interfaces used by SVG, Canvas 2D Context and CSS Transforms.
 [\[HTML\]](#biblio-html "HTML Standard")
 [\[CSS3-TRANSFORMS\]](#biblio-css3-transforms "CSS Transforms Module Level 1")
 
+Tests
+
+- [idlharness.any.js](https://wpt.fyi/results/css/geometry/idlharness.any.js "css/geometry/idlharness.any.js")
+ [[(live
+ test)]](http://wpt.live/css/geometry/idlharness.any.js)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/idlharness.any.js)
+- [spec-examples.html](https://wpt.fyi/results/css/geometry/spec-examples.html "css/geometry/spec-examples.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/spec-examples.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/spec-examples.html)
+
 ## 2. The DOMPoint interfaces
 
 A 2D or a 3D [point] can be represented by the following WebIDL interfaces:
@@ -91,6 +102,13 @@ constructors, when invoked, must run the following steps:
 
 3. Return `point`.
 
+Tests
+
+- [DOMPoint-001.html](https://wpt.fyi/results/css/geometry/DOMPoint-001.html "css/geometry/DOMPoint-001.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMPoint-001.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMPoint-001.html)
+
 The [`fromPoint(``other``)`] static method on
 [`DOMPointReadOnly`](#dompointreadonly) must [create a `DOMPointReadOnly` from the
 dictionary](#create-a-dompointreadonly-from-the-dictionary) `other`.
@@ -152,7 +170,6 @@ interface, setting the
 [`w`](#dom-dompointreadonly-w) attribute must set the [w
 perspective] to the new value.
 
-The
 [`matrixTransform(``matrix``)`] method, when
 invoked, must run the following steps:
 
@@ -164,7 +181,7 @@ invoked, must run the following steps:
  matrix](#transform-a-point-with-a-matrix), given the current point and
  `matrixObject`. The current point does not get modified.
 
-(#example-81a83758) In this example the method
+In this example the method
 [`matrixTransform()`](#dom-dompointreadonly-matrixtransform) on a [`DOMPoint`](#dompoint) instance is called with a
 [`DOMMatrix`](#dommatrix)
 instance as argument.
@@ -185,6 +202,11 @@ now scaled and the translated by `matrix`. This resulting
 `transformedPoint` has the [x
 coordinate] 20 and [y
 coordinate] 18.
+
+- [DOMPoint-002.html](https://wpt.fyi/results/css/geometry/DOMPoint-002.html "css/geometry/DOMPoint-002.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMPoint-002.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMPoint-002.html)
 
 ### 2.1. Transforming a point with a matrix
 
@@ -446,6 +468,19 @@ coordinate](#rectangle-x-coordinate) and the sum of the [x
 coordinate] and the [width
 dimension](#rectangle-width-dimension).
 
+- [DOMRect-001.html](https://wpt.fyi/results/css/geometry/DOMRect-001.html "css/geometry/DOMRect-001.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMRect-001.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMRect-001.html)
+- [DOMRect-002.html](https://wpt.fyi/results/css/geometry/DOMRect-002.html "css/geometry/DOMRect-002.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMRect-002.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMRect-002.html)
+- [DOMRect-nan.html](https://wpt.fyi/results/css/geometry/DOMRect-nan.html "css/geometry/DOMRect-nan.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMRect-nan.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMRect-nan.html)
+
 ## 4. The DOMRectList interface
 
 ```
@@ -473,6 +508,13 @@ at `index` must be returned. Indices are zero-based.
 When specifying a new API,
 [`DOMRectList`](#domrectlist) must not be used. Use `sequence<DOMRect>` instead.
 [\[WEBIDL\]](#biblio-webidl "Web IDL Standard")**
+
+Tests
+
+- [DOMRectList.html](https://wpt.fyi/results/css/geometry/DOMRectList.html "css/geometry/DOMRectList.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMRectList.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMRectList.html)
 
 ## 5. The DOMQuad interface
 
@@ -710,7 +752,22 @@ must run the following algorithm:
 
 7. Return `bounds`.
 
-(#example-9bbe24bd) In this example the
+Tests
+
+- [DOMQuad-001.html](https://wpt.fyi/results/css/geometry/DOMQuad-001.html "css/geometry/DOMQuad-001.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMQuad-001.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMQuad-001.html)
+- [DOMQuad-002.html](https://wpt.fyi/results/css/geometry/DOMQuad-002.html "css/geometry/DOMQuad-002.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMQuad-002.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMQuad-002.html)
+- [DOMQuad-nan.html](https://wpt.fyi/results/css/geometry/DOMQuad-nan.html "css/geometry/DOMQuad-nan.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMQuad-nan.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMQuad-nan.html)
+
+In this example the
 [`DOMQuad`](#domquad)
 constructor is called with arguments of type
 [`DOMPoint`](#dompoint) and
@@ -731,7 +788,7 @@ var rect = new DOMRect(2, 0, 10, 10);
 var quad2 = DOMQuad.fromRect(rect);
 ```
 
-(#example-b13b531b) This is an example of an irregular
+This is an example of an irregular
 quadrilateral:
 
 ``` highlight
@@ -990,6 +1047,17 @@ The [`DOMMatrix`](#dommatrix) and
 [`DOMMatrixReadOnly`](#dommatrixreadonly) interfaces replace the `SVGMatrix` interface from SVG.
 [\[SVG11\]](#biblio-svg11 "Scalable Vector Graphics (SVG) 1.1 (Second Edition)")
 
+Tests
+
+- [WebKitCSSMatrix.html](https://wpt.fyi/results/css/geometry/WebKitCSSMatrix.html "css/geometry/WebKitCSSMatrix.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/WebKitCSSMatrix.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/WebKitCSSMatrix.html)
+- [WebKitCSSMatrix.worker.js](https://wpt.fyi/results/css/geometry/WebKitCSSMatrix.worker.js "css/geometry/WebKitCSSMatrix.worker.js")
+ [[(live
+ test)]](http://wpt.live/css/geometry/WebKitCSSMatrix.worker.js)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/WebKitCSSMatrix.worker.js)
+
 ### 6.1. DOMMatrix2DInit and DOMMatrixInit dictionaries
 
 To [validate and fixup (2D)] a
@@ -998,7 +1066,7 @@ To [validate and fixup (2D)] a
 
 1. If if at least one of the following conditions are true for
  `dict`, then throw a
- [`TypeError`](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-native-error-types-used-in-this-standard-typeerror) exception and abort these steps.
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror) exception and abort these steps.
 
  - [`a`](#dom-dommatrix2dinit-a) and
  [`m11`](#dom-dommatrix2dinit-m11) are both present and
@@ -1062,7 +1130,7 @@ To [validate and fixup (2D)] a
 
  The
 [SameValueZero](https://tc39.github.io/ecma262/#sec-samevaluezero) comparison algorithm returns `true` for two
-[NaN](https://drafts.csswg.org/css-values-4/#valdef-calc-nan) values, and also for [0] and [-0].
+[NaN](https://www.w3.org/TR/css-values-4/#valdef-calc-nan) values, and also for [0] and [-0].
 [\[ECMA-262\]](#biblio-ecma-262 "ECMAScript Language Specification")
 
 To [validate and fixup] a
@@ -1085,7 +1153,7 @@ To [validate and fixup] a
  [`m33`](#dom-dommatrixinit-m33),
  [`m44`](#dom-dommatrixinit-m44) are present with a value other than [1], then
  throw a
- [`TypeError`](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-native-error-types-used-in-this-standard-typeerror) exception and abort these steps.
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror) exception and abort these steps.
 
 3. If
  [`is2D`](#dom-dommatrixinit-is2d) is not present and at least one of
@@ -1105,6 +1173,17 @@ To [validate and fixup] a
 4. If
  [`is2D`](#dom-dommatrixinit-is2d) is still not present, set it to `true`.
 
+Tests
+
+- [DOMMatrix2DInit-validate-fixup.html](https://wpt.fyi/results/css/geometry/DOMMatrix2DInit-validate-fixup.html "css/geometry/DOMMatrix2DInit-validate-fixup.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix2DInit-validate-fixup.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix2DInit-validate-fixup.html)
+- [DOMMatrixInit-validate-fixup.html](https://wpt.fyi/results/css/geometry/DOMMatrixInit-validate-fixup.html "css/geometry/DOMMatrixInit-validate-fixup.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrixInit-validate-fixup.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrixInit-validate-fixup.html)
+
 ### 6.2. Parsing a string into an abstract matrix
 
 To [parse a string into an abstract
@@ -1115,21 +1194,21 @@ matrix](#4x4-abstract-matrix) and a boolean `2dTransform`, or failure.
 1. If `transformList` is the empty string, set it to the
  string \"`matrix(1, 0, 0, 1, 0, 0)`\".
 
-2. [Parse](https://drafts.csswg.org/css-syntax-3/#css-parse-something-according-to-a-css-grammar) `transformList` into
+2. [Parse](https://www.w3.org/TR/css-syntax-3/#css-parse-something-according-to-a-css-grammar) `transformList` into
  `parsedValue` given the grammar for the CSS
- [transform](https://drafts.csswg.org/css-transforms-1/#propdef-transform) property. The result will be a
- [\<transform-list\>](https://drafts.csswg.org/css-transforms-1/#typedef-transform-list), the keyword [none], or
+ [transform](https://www.w3.org/TR/css-transforms-1/#propdef-transform) property. The result will be a
+ [\<transform-list\>](https://www.w3.org/TR/css-transforms-1/#typedef-transform-list), the keyword [none], or
  failure. If `parsedValue` is failure, or any
- [\<transform-function\>](https://drafts.csswg.org/css-transforms-2/#typedef-transform-function) has
- [\<length\>](https://drafts.csswg.org/css-values-4/#length-value) values without [absolute
- length](https://drafts.csswg.org/css-values-4/#absolute-length) units, or any keyword other than [none] is
+ [\<transform-function\>](https://www.w3.org/TR/css-transforms-2/#typedef-transform-function) has
+ [\<length\>](https://www.w3.org/TR/css-values-4/#length-value) values without [absolute
+ length](https://www.w3.org/TR/css-values-4/#absolute-length) units, or any keyword other than [none] is
  used, then return failure.
  [\[CSS3-SYNTAX\]](#biblio-css3-syntax "CSS Syntax Module Level 3")
  [\[CSS3-TRANSFORMS\]](#biblio-css3-transforms "CSS Transforms Module Level 1")
 
 3. If `parsedValue` is [none], set
  `parsedValue` to a
- [\<transform-list\>](https://drafts.csswg.org/css-transforms-1/#typedef-transform-list) containing a single identity
+ [\<transform-list\>](https://www.w3.org/TR/css-transforms-1/#typedef-transform-list) containing a single identity
  matrix.
 
 4. Let `2dTransform` track the 2D/3D dimension status of
@@ -1144,7 +1223,7 @@ matrix](#4x4-abstract-matrix) and a boolean `2dTransform`, or failure.
  : Set `2dTransform` to `true`.
 
 5. Transform all
- [\<transform-function\>](https://drafts.csswg.org/css-transforms-2/#typedef-transform-function)s to [4x4 abstract
+ [\<transform-function\>](https://www.w3.org/TR/css-transforms-2/#typedef-transform-function)s to [4x4 abstract
  matrices](#4x4-abstract-matrix) by following the "[Mathematical Description of
  Transform
  Functions](https://drafts.csswg.org/css-transforms-1/#mathematical-description)".
@@ -1223,13 +1302,13 @@ If `init` is a [`DOMString`](https://webidl.spec.whatwg.org/#idl-DOMString)
 : 1. If [current global
  object](https://html.spec.whatwg.org/multipage/webappapis.html#current-global-object) is not a
  [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) object, then throw a
- [`TypeError`](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-native-error-types-used-in-this-standard-typeerror) exception.
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror) exception.
 
  2. [Parse `init` into an abstract
  matrix](#parse-a-string-into-an-abstract-matrix), and let `matrix` and
  `2dTransform` be the result. If the result is
  failure, then throw a
- \"[`SyntaxError`](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-native-error-types-used-in-this-standard-syntaxerror)\"
+ \"[`SyntaxError`](https://webidl.spec.whatwg.org/#syntaxerror)\"
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException).
 
  3.
@@ -1272,7 +1351,14 @@ If `init` is a sequence with 16 elements
 Otherwise
 
 : Throw a
- [`TypeError`](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-native-error-types-used-in-this-standard-typeerror) exception.
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror) exception.
+
+Tests
+
+- [DOMMatrix-001.html](https://wpt.fyi/results/css/geometry/DOMMatrix-001.html "css/geometry/DOMMatrix-001.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-001.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-001.html)
 
 The
 [`fromMatrix(``other``)`] static
@@ -1369,7 +1455,7 @@ If `array32` has 16 elements
 Otherwise
 
 : Throw a
- [`TypeError`](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-native-error-types-used-in-this-standard-typeerror) exception.
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror) exception.
 
 The
 [`fromFloat64Array(``array64``)`] static method on
@@ -1397,7 +1483,7 @@ If `array32` has 16 elements
 Otherwise
 
 : Throw a
- [`TypeError`](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-native-error-types-used-in-this-standard-typeerror) exception.
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror) exception.
 
 ### 6.4. DOMMatrix attributes
 
@@ -1594,6 +1680,15 @@ The
 [`f`](#dom-dommatrixreadonly-f) attribute is an alias to the
 [`m42`](#dom-dommatrixreadonly-m42) attribute.
 
+- [DOMMatrix-a-f-alias.html](https://wpt.fyi/results/css/geometry/DOMMatrix-a-f-alias.html "css/geometry/DOMMatrix-a-f-alias.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-a-f-alias.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-a-f-alias.html)
+- [DOMMatrix-attributes.html](https://wpt.fyi/results/css/geometry/DOMMatrix-attributes.html "css/geometry/DOMMatrix-attributes.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-attributes.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-attributes.html)
+
 The following attributes provide status information about
 [`DOMMatrixReadOnly`](#dommatrixreadonly).
 
@@ -1619,7 +1714,6 @@ element](#matrix-m22-element), [m33
 element](#matrix-m33-element), [m44
 element](#matrix-m44-element) are [1]. Otherwise it must return `false`.
 
-Every
 [`DOMMatrixReadOnly`](#dommatrixreadonly) object must be flagged with a boolean [is
 2D]. This flag indicates that:
 
@@ -1824,6 +1918,17 @@ object.
 
  The current matrix is not modified.
 
+Tests
+
+- [DOMMatrix-002.html](https://wpt.fyi/results/css/geometry/DOMMatrix-002.html "css/geometry/DOMMatrix-002.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-002.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-002.html)
+- [DOMMatrix-newobject.html](https://wpt.fyi/results/css/geometry/DOMMatrix-newobject.html "css/geometry/DOMMatrix-newobject.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-newobject.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-newobject.html)
+
 The following methods do not modify the current matrix.
 
 [`transformPoint(``point``)`]
@@ -1858,8 +1963,8 @@ The following methods do not modify the current matrix.
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException).
 
  The CSS syntax cannot represent
- [NaN](https://drafts.csswg.org/css-values-4/#valdef-calc-nan) or
- [Infinity](https://drafts.csswg.org/css-values-4/#valdef-calc-infinity) values.
+ [NaN](https://www.w3.org/TR/css-values-4/#valdef-calc-nan) or
+ [Infinity](https://www.w3.org/TR/css-values-4/#valdef-calc-infinity) values.
 
  2. Let `string` be the empty string.
 
@@ -1911,7 +2016,7 @@ The following methods do not modify the current matrix.
 
  The string will be in the form of a a CSS
  Transforms
- [\<matrix()\>](https://drafts.csswg.org/css-transforms-1/#funcdef-transform-matrix) function.
+ [\<matrix()\>](https://www.w3.org/TR/css-transforms-1/#funcdef-transform-matrix) function.
  [\[CSS3-TRANSFORMS\]](#biblio-css3-transforms "CSS Transforms Module Level 1")
 
  4. Otherwise:
@@ -2004,12 +2109,25 @@ The following methods do not modify the current matrix.
 
  The string will be in the form of a a CSS
  Transforms
- [\<matrix3d()\>](https://drafts.csswg.org/css-transforms-2/#funcdef-matrix3d) function.
+ [\<matrix3d()\>](https://www.w3.org/TR/css-transforms-2/#funcdef-matrix3d) function.
  [\[CSS3-TRANSFORMS\]](#biblio-css3-transforms "CSS Transforms Module Level 1")
 
  5. Return `string`.
 
-(#example-c07c5bc8) In this example, a matrix is created
+ Tests
+ - [DOMMatrix-stringifier.html](https://wpt.fyi/results/css/geometry/DOMMatrix-stringifier.html "css/geometry/DOMMatrix-stringifier.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-stringifier.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-stringifier.html)
+
+Tests
+
+- [DOMMatrix-003.html](https://wpt.fyi/results/css/geometry/DOMMatrix-003.html "css/geometry/DOMMatrix-003.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-003.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-003.html)
+
+In this example, a matrix is created
 and several 2D transformation methods are called:
 
 ``` highlight
@@ -2020,7 +2138,7 @@ console.assert(matrix.toString() ===
  "matrix(2, 0, 0, 2, 40, 40)");
 ```
 
-(#example-92755fec) In the following example, a matrix is
+In the following example, a matrix is
 created and several 3D transformation methods are called:
 
 ``` highlight
@@ -2033,7 +2151,7 @@ console.assert(matrix.toString() ===
 For 3D operations, the stringifier returns a string representing a 3D
 matrix.
 
-(#example-733d794b) This example will throw an exception
+This example will throw an exception
 because there are non-finite values in the matrix.
 
 ``` highlight
@@ -2047,7 +2165,7 @@ The following methods modify the current matrix, so that each method
 returns the matrix where it was invoked on. The primary benefit of this
 is allowing content creators to chain method calls.
 
-(#example-15e8ec9d) The following code example:
+The following code example:
 
 ``` highlight
 var matrix = new DOMMatrix();
@@ -2271,11 +2389,29 @@ objects in user agents.
 : 1. Invert the current matrix.
 
  2. If the current matrix is not invertible set all attributes to
- [NaN](https://drafts.csswg.org/css-values-4/#valdef-calc-nan) and set [is
+ [NaN](https://www.w3.org/TR/css-values-4/#valdef-calc-nan) and set [is
  2D](#matrix-is-2d) to
  `false`.
 
  3. Return the current matrix.
+
+ Tests
+ - [DOMMatrix-invert-invertible.html](https://wpt.fyi/results/css/geometry/DOMMatrix-invert-invertible.html "css/geometry/DOMMatrix-invert-invertible.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-invert-invertible.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-invert-invertible.html)
+ - [DOMMatrix-invert-non-invertible.html](https://wpt.fyi/results/css/geometry/DOMMatrix-invert-non-invertible.html "css/geometry/DOMMatrix-invert-non-invertible.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-invert-non-invertible.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-invert-non-invertible.html)
+ - [DOMMatrix-invert-preserves-2d.html](https://wpt.fyi/results/css/geometry/DOMMatrix-invert-preserves-2d.html "css/geometry/DOMMatrix-invert-preserves-2d.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-invert-preserves-2d.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-invert-preserves-2d.html)
+ - [DOMMatrix-invertSelf.html](https://wpt.fyi/results/css/geometry/DOMMatrix-invertSelf.html "css/geometry/DOMMatrix-invertSelf.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-invertSelf.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-invertSelf.html)
 
 [`setMatrixValue(``transformList``)`]
 
@@ -2283,7 +2419,7 @@ objects in user agents.
  matrix](#parse-a-string-into-an-abstract-matrix), and let `matrix` and
  `2dTransform` be the result. If the result is
  failure, then throw a
- \"[`SyntaxError`](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-native-error-types-used-in-this-standard-syntaxerror)\"
+ \"[`SyntaxError`](https://webidl.spec.whatwg.org/#syntaxerror)\"
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException).
 
  2. Set [is 2D](#matrix-is-2d) to the value of `2dTransform`.
@@ -2294,6 +2430,12 @@ objects in user agents.
  column-major order.
 
  4. Return the current matrix.
+
+ Tests
+ - [DOMMatrix-css-string.worker.js](https://wpt.fyi/results/css/geometry/DOMMatrix-css-string.worker.js "css/geometry/DOMMatrix-css-string.worker.js")
+ [[(live
+ test)]](http://wpt.live/css/geometry/DOMMatrix-css-string.worker.js)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/DOMMatrix-css-string.worker.js)
 
 ## 7. Structured serialization
 
@@ -2613,6 +2755,13 @@ given `value` and `serialized`, are:
  2D](#matrix-is-2d)
  to `false`.
 
+Tests
+
+- [structured-serialization.html](https://wpt.fyi/results/css/geometry/structured-serialization.html "css/geometry/structured-serialization.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/structured-serialization.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/structured-serialization.html)
+
 ## 8. Security Considerations
 
 The [`DOMMatrix`](#dommatrix) and
@@ -2622,7 +2771,7 @@ considerations](https://drafts.csswg.org/css-syntax/#security) of the
 CSS Syntax specification apply.
 [\[CSS3-SYNTAX\]](#biblio-css3-syntax "CSS Syntax Module Level 3")
 
-(#example-2f98d29f) This could potentially be used to
+This could potentially be used to
 exploit bugs in the CSS parser in a user agent.
 
 There are no other known security or privacy impacts of the interfaces
@@ -2632,8 +2781,8 @@ potentially introduce security or privacy issues.
 
 ## 9. Privacy Considerations
 
-(#example-8bb3622b) For example, the
-[`getBoundingClientRect()`](https://drafts.csswg.org/cssom-view-1/#dom-element-getboundingclientrect) API defined in CSSOM View returns a
+For example, the
+[`getBoundingClientRect()`](https://www.w3.org/TR/cssom-view-1/#dom-element-getboundingclientrect) API defined in CSSOM View returns a
 [`DOMRect`](#domrect) that
 could be used to measure the size of an inline element containing some
 text of a particular font, which exposes information about whether the
@@ -2683,6 +2832,13 @@ defined in this specification as an alias to
 Some user agents supported a `MSCSSMatrix` interface. Implementations
 conforming to this specification will not support `MSCSSMatrix`.
 
+Tests
+
+- [historical.html](https://wpt.fyi/results/css/geometry/historical.html "css/geometry/historical.html")
+ [[(live
+ test)]](http://wpt.live/css/geometry/historical.html)
+ [[(source)]](https://github.com/web-platform-tests/wpt/blob/master/css/geometry/historical.html)
+
 ## [Document conventions]
 The [NaN-safe minimum] of a non-empty list of
 [`unrestricted double`](https://webidl.spec.whatwg.org/#idl-unrestricted-double) values is NaN if any member of the list is NaN, or the
@@ -2716,6 +2872,8 @@ Recommendation](https://www.w3.org/TR/2018/CR-geometry-1-20181204/).
  [#350](https://github.com/w3c/fxtf-drafts/issues/350)
 
 - Added explicit \[Exposed\] to DOMRectList
+
+- Added Web Platform Tests coverage
 
 The following changes were made since the [25 November 2014 Candidate
 Recommendation](https://www.w3.org/TR/2014/CR-geometry-1-20141125/).
@@ -2822,7 +2980,7 @@ Working Draft](https://www.w3.org/TR/2014/WD-geometry-1-20140626/).
 
 - Replace
  [`IndexSizeError`](https://webidl.spec.whatwg.org/#indexsizeerror) exception with
- [`TypeError`](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-native-error-types-used-in-this-standard-typeerror).
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
 
 The following changes were made since the [22 May 2014 First Public
 Working Draft](https://www.w3.org/TR/2014/WD-geometry-1-20140522/).

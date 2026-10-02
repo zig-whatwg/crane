@@ -6,13 +6,13 @@ height="48" width="72"}](https://www.w3.org/)
 
 ## Interacting with Permissions for Powerful Features
 
-[W3C Working Draft](https://www.w3.org/standards/types#WD) 06 October
+[W3C Editor\'s Draft](https://www.w3.org/standards/types#ED) 06 October
 2025
 
 More details about this document
 
 This version:
-: [https://www.w3.org/TR/2025/WD-permissions-20251006/](https://www.w3.org/TR/2025/WD-permissions-20251006/)
+: [https://w3c.github.io/permissions/](https://w3c.github.io/permissions/)
 
 Latest published version:
 : <https://www.w3.org/TR/permissions/>
@@ -136,11 +136,10 @@ index](https://www.w3.org/TR/).*
 This is a work in progress.
 
 This document was published by the [Web Application Security Working
-Group](https://www.w3.org/groups/wg/webappsec) as a Working Draft using
-the [Recommendation
-track](https://www.w3.org/policies/process/20250818/#recs-and-notes).
+Group](https://www.w3.org/groups/wg/webappsec) as an Editor\'s Draft.
 
-Publication as a Working Draft does not imply endorsement by [W3C] and its Members.
+Publication as an Editor\'s Draft does not imply endorsement by
+[W3C] and its Members.
 
 This is a draft document and may be updated, replaced, or obsoleted by
 other documents at any time. It is inappropriate to cite this document

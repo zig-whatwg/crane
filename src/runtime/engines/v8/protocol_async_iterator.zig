@@ -93,6 +93,8 @@ const Finalizer = struct {
 
     const allocator = std.heap.c_allocator;
 
+    /// V8's second pass, after the collection (v8_Global_SetWeakFinalizer):
+    /// `finalize` may touch the engine.
     fn collected(raw: ?*anyopaque, _: usize) callconv(.c) void {
         const self: *Finalizer = @ptrCast(@alignCast(raw.?));
         defer allocator.destroy(self);
@@ -152,7 +154,7 @@ pub fn createAsyncIterator(realm: Context, steps: *const engine.AsyncIteratorSte
             return error.OutOfMemory;
         };
         finalizer.* = .{ .steps = steps, .data = data, .handle = handle };
-        ffi.v8_Global_SetWeak(handle, finalizer, Finalizer.collected);
+        ffi.v8_Global_SetWeakFinalizer(handle, finalizer, null, Finalizer.collected);
     }
     return support.owned(object);
 }

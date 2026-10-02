@@ -232,3 +232,74 @@ test "disposing an isolate leaves another isolate's detached records alone" {
     try testing.expect(detach_pair.other_isolate == null);
     try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
 }
+
+// ---------------------------------------------------------------------------
+// Finalizers: V8's second pass (v8_Global_SetWeakFinalizer)
+// ---------------------------------------------------------------------------
+
+const PassProbe = struct {
+    unlinks: u32 = 0,
+    unlink_in_first_pass: bool = false,
+    finalizes: u32 = 0,
+    finalize_in_first_pass: bool = true,
+    /// The handle the unlink disposes, for the cancellation case.
+    dispose_in_unlink: ?*ffi.Object = null,
+};
+var pass_probe: PassProbe = .{};
+
+fn probeUnlink(_: ?*anyopaque, _: usize) callconv(.c) void {
+    pass_probe.unlinks += 1;
+    pass_probe.unlink_in_first_pass = ffi.v8_Debug_InFirstPassWeakCallback();
+    if (pass_probe.dispose_in_unlink) |h| {
+        ffi.v8_Object_Dispose(h);
+        pass_probe.dispose_in_unlink = null;
+    }
+}
+
+fn probeFinalize(_: ?*anyopaque, _: usize) callconv(.c) void {
+    pass_probe.finalizes += 1;
+    pass_probe.finalize_in_first_pass = ffi.v8_Debug_InFirstPassWeakCallback();
+}
+
+test "a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it" {
+    const e = try env();
+    const baseline = ffi.v8_Debug_LiveWeakCallbackData();
+    pass_probe = .{};
+
+    const scope = ffi.v8_HandleScope_New(e.isolate);
+    const obj = ffi.v8_Object_New(e.isolate) orelse return error.ObjectCreationFailed;
+    if (scope) |s| ffi.v8_HandleScope_Dispose(s);
+    var user_data: u32 = 0xC0FFEE;
+    ffi.v8_Global_SetWeakFinalizer(@ptrCast(obj), @ptrCast(&user_data), probeUnlink, probeFinalize);
+    try testing.expectEqual(baseline + 1, ffi.v8_Debug_LiveWeakCallbackData());
+
+    // A forced collection runs its second pass before it returns.
+    ffi.v8_Isolate_RequestGarbageCollection(e.isolate);
+    try testing.expectEqual(@as(u32, 1), pass_probe.unlinks);
+    try testing.expect(pass_probe.unlink_in_first_pass);
+    try testing.expectEqual(@as(u32, 1), pass_probe.finalizes);
+    try testing.expect(!pass_probe.finalize_in_first_pass);
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+    // The handle, Reset by the first pass, is still its owner's to dispose.
+    ffi.v8_Object_Dispose(obj);
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+}
+
+test "disposing a handle before its second pass cancels the finalizer and frees its record" {
+    const e = try env();
+    const baseline = ffi.v8_Debug_LiveWeakCallbackData();
+    pass_probe = .{};
+
+    const scope = ffi.v8_HandleScope_New(e.isolate);
+    const obj = ffi.v8_Object_New(e.isolate) orelse return error.ObjectCreationFailed;
+    if (scope) |s| ffi.v8_HandleScope_Dispose(s);
+    var user_data: u32 = 0xC0FFEE;
+    // Its owner ends it between the passes - here, from the unlink itself.
+    pass_probe.dispose_in_unlink = obj;
+    ffi.v8_Global_SetWeakFinalizer(@ptrCast(obj), @ptrCast(&user_data), probeUnlink, probeFinalize);
+
+    ffi.v8_Isolate_RequestGarbageCollection(e.isolate);
+    try testing.expectEqual(@as(u32, 1), pass_probe.unlinks);
+    try testing.expectEqual(@as(u32, 0), pass_probe.finalizes);
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+}

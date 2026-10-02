@@ -239,10 +239,9 @@ src/runtime/engines/v8/shadow_realm.zig g_in_callback 1 G C decl:4b877655cb3bb36
 src/runtime/engines/v8/snapshot_loader.zig tracked_snapshot_allocator 1 G P-res decl:72369f58d4c42d35
 src/runtime/engines/v8/snapshot_loader.zig tracked_snapshot_data 1 G P-res decl:25bf0c215167358c
 src/runtime/engines/v8/template_registry.zig cache_generation 1 G I/engine decl:1dfcee87d8da8735
-src/runtime/engines/v8/template_registry.zig initialized 1 G I/engine decl:4b877655cb3bb361
 src/runtime/engines/v8/template_registry.zig snapshot_mode 1 G P-res decl:4b877655cb3bb361
-src/runtime/engines/v8/template_registry.zig template_count 1 G I/engine decl:3796f88280404836
-src/runtime/engines/v8/template_registry.zig templates 1 G I/engine decl:34709bdd6fb50d57
+src/runtime/engines/v8/template_registry.zig templates 1 G I/engine decl:ee13fd4472182e31
+src/runtime/engines/v8/template_registry.zig templates_lock 1 G P-res decl:ee0617868871b920
 src/runtime/engines/v8/v8_wrapper.cpp CallbackManager.Invoke.error_buffer 1 C++TL C decl:9fe3210bfb15ead3
 src/runtime/engines/v8/v8_wrapper.cpp CallbackManager::instance_ 1 C++G I/engine decl:499b5ab058a36d8b
 src/runtime/engines/v8/v8_wrapper.cpp CallbackManager::instance_mutex_ 1 C++G I/engine decl:d547818066d8fbfc
@@ -251,6 +250,7 @@ src/runtime/engines/v8/v8_wrapper.cpp detachedWeakData.set 1 C++G I/engine decl:
 src/runtime/engines/v8/v8_wrapper.cpp g_async_iterator_isolate 1 C++G I/engine decl:6ef4db107f8581d1
 src/runtime/engines/v8/v8_wrapper.cpp g_async_iterator_template 1 C++G I/engine decl:71399fd2bc8bbbcc
 src/runtime/engines/v8/v8_wrapper.cpp g_dynamic_import_callback 1 C++G I/engine decl:5421920f35467ce0
+src/runtime/engines/v8/v8_wrapper.cpp g_first_pass_depth 1 C++TL P-res decl:746e7217153a7bc3
 src/runtime/engines/v8/v8_wrapper.cpp g_import_meta_url_callback 1 C++G H decl:bdb238b10c84913a
 src/runtime/engines/v8/v8_wrapper.cpp g_in_context_new 1 C++TL C decl:17788f3524420f43
 src/runtime/engines/v8/v8_wrapper.cpp g_in_shadow_realm_callback 1 C++TL C decl:acd89515e6012ee0
@@ -275,6 +275,7 @@ src/runtime/engines/v8/v8_wrapper.cpp g_site_pc 1 C++G D decl:cccefce67abe09da
 src/runtime/engines/v8/v8_wrapper.cpp g_snapshot_handles 1 C++G P-res decl:d397b20955bc45b2
 src/runtime/engines/v8/v8_wrapper.cpp g_snapshot_mode 1 C++G P-res decl:0acdd9ebc0be07f3
 src/runtime/engines/v8/v8_wrapper.cpp g_synthetic_json_exports 1 C++G I/engine decl:92fc866aae855c1f
+src/runtime/engines/v8/v8_wrapper.cpp pendingFinalizers.map 1 C++TL P-res decl:31bfaa4815cc0ccb
 src/runtime/engines/v8/v8_wrapper.cpp realmTaggedHandles.map 1 C++G I/engine decl:e76b1987744db7cb
 src/runtime/engines/v8/v8_wrapper.cpp t_protocol_resolver 1 C++TL C decl:e2dc91ee6bfc953e
 src/runtime/engines/v8/v8_wrapper.cpp v8_initialized 1 C++G P-res decl:352ad78f4487ca19
@@ -286,6 +287,7 @@ src/runtime/engines/v8/wrapper_cache.zig live_caches 1 TL I/engine decl:647404af
 src/runtime/engines/v8/wrapper_cache.zig tree_hooks_installed 1 G H decl:de58a3b1f5ff5e75
 src/runtime/engines/v8/wrapper_type_info.zig global_registry 1 G P-const decl:eb2faada9e73e22b
 src/runtime/gc_integration.zig GCStats.global 1 G D decl:c19a53c965c1a883
+src/runtime/instance.zig TypeIdHolder.marker 1 G P-res decl:f33e1c60fc8c8315
 src/runtime/instance_lifecycle.zig default_flags 1 G C decl:06e7bf07bf5a2cc5
 src/runtime/instance_lifecycle.zig registry 1 TL I/engine decl:3d237443b4822326
 src/runtime/instance_lifecycle.zig registry_allocator 1 TL I/engine decl:72369f58d4c42d35

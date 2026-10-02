@@ -726,6 +726,26 @@ pub const IFrameIntegration = struct {
             // Set to null to prevent double-free in IFrameIntegration.deinit()
             self.browsing_context = null;
         }
+        // What the navigable kept goes with it: its target name and the
+        // origin its Windows were created with. A navigable made when the
+        // element is inserted again records its own (iframePostConnectionSteps
+        // sets the name, attachRealm the origin); nothing reads them while
+        // the element has none. Not left to deinit: an iframe that script
+        // never wrapped, removed by innerHTML, is never deinit'd, and these
+        // copies leaked with it (leaks lane, 2026-10-02: 25 + 25 in
+        // custom-elements/form-associated/ElementInternals-setFormValue.html).
+        if (self.window_origin) |origin| self.allocator.free(origin);
+        self.window_origin = null;
+        if (self.name.len > 0) self.allocator.free(self.name);
+        self.name = "";
+        // A destroyed navigable no longer lives: it leaves the engine's list
+        // of live navigables now (`deinit_callback`, which deinit calls too;
+        // leaving twice is a no-op), and a navigable made on re-insertion
+        // joins again. Left to deinit, the integration of an iframe that is
+        // never deinit'd stayed listed past its Browser, and the next
+        // Browser's iframe insertion read the freed block (SIGSEGV in
+        // integrationOfBrowsingContext, two Browsers in one process).
+        if (self.deinit_callback) |gone| gone(self);
         self.state = .discarded;
     }
 

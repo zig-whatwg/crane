@@ -219,13 +219,21 @@ pub const Instance = struct {
 /// A runtime-comparable identity for a comptime type.
 ///
 /// `type` cannot cross the runtime boundary, so each state type gets a unique address:
-/// one zero-sized static per instantiation of `TypeIdHolder`. Pointer comparison is
-/// exact, unlike comparing `@typeName` strings.
+/// one static per instantiation of `TypeIdHolder`. Pointer comparison is exact, unlike
+/// comparing `@typeName` strings.
+///
+/// The static is a `var`. Zig gives distinct variables distinct addresses, but not
+/// equal constants: as `const marker: u8 = 0` every holder was the same value, and a
+/// ReleaseSafe build merged them into ONE symbol (`nm`: 1 TypeIdHolder marker against
+/// Debug's 1,068), so every `stateAs` brand check matched its first ancestor - an
+/// XMLHttpRequest passed as a Window and its ProgressEvent as an ErrorEvent
+/// (crane/td-event-handler-brand.html crashed the ReleaseSafe runner).
 pub const TypeId = *const anyopaque;
 
 fn TypeIdHolder(comptime T: type) type {
     return struct {
-        const marker: u8 = 0;
+        // process-wide: a unique address per type, never written - a type's identity, not state.
+        var marker: u8 = 0;
         comptime {
             _ = T;
         }

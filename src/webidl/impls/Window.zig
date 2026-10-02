@@ -317,7 +317,8 @@ pub const InternalState = struct {
             self.allocator.free(self.name);
         }
 
-        // Free origin if allocated (not the default "null" string literal)
+        // Free origin if allocated: never "null", which is always the literal
+        // (`setOrigin` keeps it so).
         if (!std.mem.eql(u8, self.origin, "null")) {
             self.allocator.free(self.origin);
         }
@@ -342,10 +343,20 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// This should be called when the document's origin is established.
 pub fn setOrigin(instance: *runtime.Instance, origin: []const u8) !void {
     const internal = getInternal(instance) orelse return error.InvalidState;
+    // `internal.origin` is a copy of its own exactly when it is not "null":
+    // the default is the literal, and so is every "null" set here. The free
+    // below and InternalState.deinit's decide by that. Copying "null" too made
+    // a copy they never freed - a frame nested in a sandboxed document gets
+    // the opaque origin's "null" (leaks lane, 2026-10-02: 2 per
+    // cookies/samesite/sandbox-iframe-nested.https.html run alone).
+    const opaque_origin = "null";
     // Copy the origin string since it may be from temporary storage
-    const origin_copy = try internal.allocator.dupe(u8, origin);
-    // Free the old origin if it was allocated (not the default "null")
-    if (!std.mem.eql(u8, internal.origin, "null")) {
+    const origin_copy: []const u8 = if (std.mem.eql(u8, origin, opaque_origin))
+        opaque_origin
+    else
+        try internal.allocator.dupe(u8, origin);
+    // Free the old origin if it was allocated (not "null")
+    if (!std.mem.eql(u8, internal.origin, opaque_origin)) {
         internal.allocator.free(internal.origin);
     }
     internal.origin = origin_copy;

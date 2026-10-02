@@ -234,3 +234,209 @@ test "a page on a fresh thread fetches before any AbortSignal exists, navigates 
     defer std.heap.c_allocator.free(result);
     try std.testing.expectEqualStrings("entries:1,fetch:fetched,frame-timeout,navigated:#here", result);
 }
+
+// dom/nodes/name-validation.html leaked 13,702 allocations alone (leaks lane,
+// 2026-10-02): HTMLUnknownElement's deinit was the codegen stub's no-op while
+// its init chained to HTMLElement's, so an unknown element whose wrapper V8
+// collected kept its NodeBase, local name and namespace, keyed by its address,
+// until a node made at the reused address overwrote them. The teardown sweep
+// frees only the elements still alive at the end, so the rounds here make the
+// collector take each round's elements and the next round reuse their slab
+// addresses. Few elements: the testing allocator unwinds a stack trace for
+// every allocation and every free (2,400 elements ran past 18 minutes).
+test "an unknown element the collector takes frees its node state" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+    // An HTML document: createElement makes HTML elements only there.
+    try ctx.loadHTML("<!DOCTYPE html><html><body></body></html>", .{ .base_url = "http://localhost/unknown-elements.html" });
+
+    const script =
+        \\(function () {
+        \\  for (let round = 0; round < 3; round++) {
+        \\    (function () {
+        \\      for (let i = 0; i < 12; i++) document.createElement('x' + round + 'y' + i);
+        \\    })();
+        \\    TestUtils.gc();
+        \\  }
+        \\  return Object.prototype.toString.call(document.createElement('x0y0'));
+        \\})()
+    ;
+    const result = try ctx.evaluateScriptToString(script, allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("[object HTMLUnknownElement]", result);
+}
+
+// When a worker ends, each of its entangled ports is disentangled and its
+// peer is sent `close` from a task of the PEER's realm (MessagePort's
+// scheduleClose). Browser.deinit ends the workers first, so that task is
+// queued on the page's loop, which never runs again, and the loop dropped the
+// task's memory unfreed (leaks lane, 2026-10-02: 6 per sharedworker-import
+// file run alone). HTML "destroy a document" removes the document's tasks
+// without running them; the page's unloading cleanup frees them.
+test "a port's close task the browser's end never runs is freed with its page" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+
+    const html =
+        \\<!DOCTYPE html><html><body><script>
+        \\  var reply = 'none';
+        \\  var shared = new SharedWorker('data:text/javascript,onconnect = function (e) { self.kept = e.ports[0]; self.kept.postMessage("kept"); };');
+        \\  shared.port.onmessage = function (e) { reply = e.data; };
+        \\</script></body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/port-close-task.html" });
+
+    // The shared worker keeps its connect event's port and answers through
+    // it; both ends are kept (the page's `shared.port`, the worker's `kept`)
+    // to the browser's end. A shared worker, not a dedicated one: a Worker
+    // makes the process's default timer backend from the first allocator it
+    // meets and nothing frees it (a leak of its own, reported).
+    var turns: usize = 0;
+    while (turns < 200) : (turns += 1) {
+        _ = try browser.runEventLoopBlocking(20);
+        const now = try ctx.evaluateScriptToString("reply", allocator);
+        defer allocator.free(now);
+        if (std.mem.eql(u8, now, "kept")) break;
+    }
+    const result = try ctx.evaluateScriptToString("reply", allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("kept", result);
+}
+
+// A frame's window keeps a copy of the origin it is created with
+// (Window.setOrigin). Whether the copy was allocated was decided by its
+// contents - anything but "null" - so the copy of "null" a frame nested in a
+// sandboxed document gets was never freed (leaks lane, 2026-10-02: 2 per
+// cookies/samesite/sandbox-iframe-nested.https.html run alone).
+test "a frame nested in a sandboxed document frees its copy of the opaque origin" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+
+    const html =
+        \\<!DOCTYPE html><html><body>
+        \\<iframe sandbox="allow-scripts" srcdoc="<iframe srcdoc='inner'></iframe>"></iframe>
+        \\</body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/sandboxed-frame.html" });
+    _ = try browser.runEventLoopBlocking(100);
+
+    const result = try ctx.evaluateScriptToString("String(frames.length)", allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("1", result);
+}
+
+// An iframe inserted by innerHTML and removed by the next innerHTML is never
+// wrapped, so nothing ever deinit's it: no wrapper is collected, and final
+// teardown sweeps Element's registries, not the iframe's own state. Its
+// integration's copies of the destroyed navigable's target name and window
+// origin leaked with it (leaks lane, 2026-10-02: 25 + 25 in
+// custom-elements/form-associated/ElementInternals-setFormValue.html alone).
+// "Destroy a child navigable" now frees them with the navigable.
+test "a removed frame's navigable takes its target name and window origin with it" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+
+    const html =
+        \\<!DOCTYPE html><html><body><div id="d"></div>
+        \\<script>
+        \\  var d = document.getElementById('d');
+        \\  d.innerHTML = '<iframe name="if1"></iframe>';
+        \\  d.innerHTML = '';
+        \\</script>
+        \\</body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/removed-frame.html" });
+    _ = try browser.runEventLoopBlocking(100);
+
+    const result = try ctx.evaluateScriptToString("String(frames.length)", allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("0", result);
+}
+
+// indexedDB.open() and deleteDatabase() take the backend's open request - and
+// open's connection, the request's result, which the backend keeps nowhere -
+// and do not connect them to the IDBOpenDBRequest they return yet, so each
+// call leaked them (leaks lane, 2026-10-02: every IndexedDB/ file whose
+// support code deletes its database first, 56 in 29 files of one shard).
+// Only deleteDatabase is driven: open() throws a TypeError before it reaches
+// the impl today (reported).
+test "indexedDB.deleteDatabase frees the backend request it does not keep" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+    try ctx.loadHTML("<!DOCTYPE html><html><body></body></html>", .{ .base_url = "http://localhost/indexeddb.html" });
+
+    const script =
+        \\(function () {
+        \\  const first = indexedDB.deleteDatabase('lk-db');
+        \\  const second = indexedDB.deleteDatabase('lk-db');
+        \\  return [first, second].map(r => Object.prototype.toString.call(r)).join();
+        \\})()
+    ;
+    const result = try ctx.evaluateScriptToString(script, allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("[object IDBOpenDBRequest],[object IDBOpenDBRequest]", result);
+}
+
+/// One Browser that loads `first`, ends, and then a second, in the same
+/// process, that inserts an iframe: HTMLIFrameElement's live navigables are
+/// thread-wide, so an integration the first Browser left listed is walked by
+/// the second's insertion after the first's arena is gone.
+fn expectSecondBrowserMakesAFrame(first: []const u8) !void {
+    const allocator = std.testing.allocator;
+    {
+        const browser = try Browser.init(allocator, .{});
+        defer browser.deinit();
+        const ctx = browser.current_context orelse return error.NoContext;
+        try ctx.loadHTML(first, .{ .base_url = "http://localhost/first-browser.html" });
+        _ = try browser.runEventLoopBlocking(100);
+    }
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+    const html =
+        \\<!DOCTYPE html><html><body><div id="d"></div>
+        \\<script>document.getElementById('d').innerHTML = '<iframe name="second"></iframe>';</script>
+        \\</body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/second-browser.html" });
+    _ = try browser.runEventLoopBlocking(100);
+    const result = try ctx.evaluateScriptToString("String(frames.length)", allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("1", result);
+}
+
+// A removed iframe that script never wrapped is never deinit'd, and its
+// integration stayed in the thread's live navigables - left only by deinit -
+// past its Browser: the next Browser's iframe insertion read the freed block
+// (SIGSEGV in integrationOfBrowsingContext; leaks lane, 2026-10-02). "Destroy
+// a child navigable" now takes it off the list.
+test "a removed, never-wrapped frame leaves the live navigables with its navigable" {
+    try expectSecondBrowserMakesAFrame(
+        \\<!DOCTYPE html><html><body><div id="d"></div>
+        \\<script>
+        \\  var d = document.getElementById('d');
+        \\  d.innerHTML = '<iframe name="first"></iframe>';
+        \\  d.innerHTML = '';
+        \\</script>
+        \\</body></html>
+    );
+}
+
+// The same, for a frame still in its document when the Browser ends.
+test "a frame still attached when its Browser ends leaves the live navigables" {
+    try expectSecondBrowserMakesAFrame(
+        \\<!DOCTYPE html><html><body><div id="d"></div>
+        \\<script>document.getElementById('d').innerHTML = '<iframe name="first"></iframe>';</script>
+        \\</body></html>
+    );
+}
