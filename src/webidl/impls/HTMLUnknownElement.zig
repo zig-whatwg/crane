@@ -7,7 +7,6 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
-const HTMLElementImpl = @import("HTMLElement.zig");
 const HTMLUnknownElement = interfaces.HTMLUnknownElement;
 
 pub const State = HTMLUnknownElement.State;
@@ -41,11 +40,20 @@ pub fn init(
     //
     // Same shape as 82784123d (CDATASection, ProcessingInstruction) and the
     // AGENTS.md lesson "stub inits produce stateless nodes".
-    return try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    return try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
 }
 
-/// Deinitialize instance
+/// Deinitialize instance: HTMLUnknownElement keeps no state of its own, so
+/// this is HTMLElement's deinit, which frees the HTMLElement, Element, Node
+/// and EventTarget parts the init above made.
+///
+/// It was the codegen stub's no-op while init chained, so an unknown element
+/// whose wrapper V8 collected kept its NodeBase, local name and namespace
+/// (keyed by the instance's address) until a node made at the reused address
+/// overwrote them: 3 leaked allocations per collected element,
+/// dom/nodes/name-validation.html 13,702 alone. The teardown sweep frees only
+/// the elements still alive when the page ends.
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    // The GC layer frees the slab; never runtime.Instance.deinit() here.
+    interfaces.HTMLElement.deinit(instance);
 }

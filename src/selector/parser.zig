@@ -842,6 +842,9 @@ pub const Parser = struct {
         // Per HTML spec and Selectors spec: attribute names are ASCII case-insensitive in HTML
         // Normalize to lowercase for consistent matching
         const name = try std.ascii.allocLowerString(self.allocator, name_token.value);
+        // Every failure below - no value, no ']', a stray token - returns
+        // after the name was lowered into an allocation of its own.
+        errdefer self.allocator.free(name);
         try self.advance();
 
         // Check for matcher operator
@@ -1013,18 +1016,22 @@ pub const Parser = struct {
             kind = PseudoClassKind{ .NthLastOfType = pattern };
         } else if (std.mem.eql(u8, name, "not")) {
             const selector_list = try self.allocator.create(SelectorList);
+            errdefer self.allocator.destroy(selector_list);
             selector_list.* = try self.parseSelectorList();
             kind = PseudoClassKind{ .Not = selector_list };
         } else if (std.mem.eql(u8, name, "is")) {
             const selector_list = try self.allocator.create(SelectorList);
+            errdefer self.allocator.destroy(selector_list);
             selector_list.* = try self.parseForgivingSelectorList();
             kind = PseudoClassKind{ .Is = selector_list };
         } else if (std.mem.eql(u8, name, "where")) {
             const selector_list = try self.allocator.create(SelectorList);
+            errdefer self.allocator.destroy(selector_list);
             selector_list.* = try self.parseForgivingSelectorList();
             kind = PseudoClassKind{ .Where = selector_list };
         } else if (std.mem.eql(u8, name, "has")) {
             const selector_list = try self.allocator.create(SelectorList);
+            errdefer self.allocator.destroy(selector_list);
             selector_list.* = try self.parseForgivingSelectorList();
             kind = PseudoClassKind{ .Has = selector_list };
         } else if (std.mem.eql(u8, name, "lang")) {
@@ -1035,6 +1042,13 @@ pub const Parser = struct {
             kind = PseudoClassKind{ .Dir = direction };
         } else {
             return error.InvalidSelector;
+        }
+        // From here the kind owns what its argument parsed into - a selector
+        // list and its block, :nth-child's `of` list - and a missing ')'
+        // returns with it.
+        errdefer {
+            var parsed = PseudoClassSelector{ .kind = kind };
+            parsed.deinit(self.allocator);
         }
 
         self.skipWhitespace();
@@ -1391,4 +1405,54 @@ test "the specificity of :nth-child(An+B of S) adds S's most specific selector" 
     const spec = selector.selectors[0].calculateSpecificity();
     try testing.expectEqual(@as(u32, 1), spec.id);
     try testing.expectEqual(@as(u32, 1), spec.class);
+}
+
+/// Parse `input`, which must be an invalid selector: whatever the parse made
+/// before it failed is freed (std.testing.allocator fails the test if not).
+fn expectInvalidSelector(input: []const u8) !void {
+    if (parseSelector(testing.allocator, input)) |parsed| {
+        var list = parsed;
+        list.deinit();
+        std.debug.print("parsed as valid: \"{s}\"\n", .{input});
+        return error.TestUnexpectedResult;
+    } else |_| {}
+}
+
+test "an attribute selector that fails after its name frees the lowered name" {
+    // parseAttribute lowers the name into an allocation first; each of these
+    // fails after that (leaks lane, 2026-10-02: 42 in
+    // dom/nodes/ParentNode-querySelector-All.html alone).
+    try expectInvalidSelector("[Foo");
+    try expectInvalidSelector("[foo=]");
+    try expectInvalidSelector("[foo bar]");
+    try expectInvalidSelector("[foo=bar");
+    try expectInvalidSelector("[foo='bar' x]");
+    try expectInvalidSelector("div [foo~=]");
+    // The success path still hands the name to the selector.
+    var valid = try parseSelector(testing.allocator, "[Foo='bar' i]");
+    defer valid.deinit();
+    const attribute = valid.selectors[0].compound.simple_selectors[0].Attribute;
+    try testing.expectEqualStrings("foo", attribute.name);
+    try testing.expect(!attribute.case_sensitive);
+}
+
+test "a functional pseudo-class that fails frees its selector list and its block" {
+    // parseFunctionalPseudoClass makes the list's block before parsing into
+    // it, and the kind before its ')' (leaks lane, 2026-10-02: 18 in
+    // dom/nodes/ParentNode-querySelector-All.html alone).
+    try expectInvalidSelector(":not(");
+    try expectInvalidSelector(":not([)");
+    try expectInvalidSelector(":not(.a");
+    try expectInvalidSelector(":not(.a .b");
+    try expectInvalidSelector(":is(.a");
+    try expectInvalidSelector(":where(.a");
+    try expectInvalidSelector(":has(> .a");
+    try expectInvalidSelector(":nth-child(2 of .a");
+    try expectInvalidSelector(":nth-child(2 of [)");
+    try expectInvalidSelector(":nth-last-child(2n+1 of .a");
+    try expectInvalidSelector("div:not([foo=]):is(.a)");
+    // The success path still owns each list.
+    var valid = try parseSelector(testing.allocator, ":not(.a, [b]):is(.c):where(.d):has(> .e):nth-child(2 of .f)");
+    defer valid.deinit();
+    try testing.expectEqual(@as(usize, 5), valid.selectors[0].compound.simple_selectors.len);
 }

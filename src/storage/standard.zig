@@ -215,8 +215,10 @@ pub const StorageProxyMap = struct {
 
     /// Set a value in the map
     pub fn set(self: Self, key: []const u8, value: []const u8) !void {
-        // Remove old value if exists
+        // Remove the old entry if it exists: its key copy too - the put below
+        // stores a new one (freeing only the value leaked a key per overwrite).
         if (self.backing_map.fetchRemove(key)) |old| {
+            self.allocator.free(old.key);
             self.allocator.free(old.value);
         }
 
@@ -807,6 +809,23 @@ test "StorageBottle - basic operations" {
     try std.testing.expect(proxy.delete("key1"));
     try std.testing.expect(!proxy.has("key1"));
     try std.testing.expectEqual(@as(usize, 0), proxy.count());
+}
+
+test "StorageProxyMap - setting a key again frees the copies it replaces" {
+    // Storage.setItem on a key that is already there: set() used to free the
+    // old value but not the old key copy (leaks lane, 2026-10-02: one per
+    // overwriting setItem, e.g. unload-main-frame-same-origin.window.js).
+    const allocator = std.testing.allocator;
+
+    var bottle = StorageBottle.init(allocator, FIVE_MEBIBYTES);
+    defer bottle.deinit();
+
+    var proxy = bottle.createProxyMap();
+    try proxy.set("key", "first");
+    try proxy.set("key", "second");
+    try proxy.set("key", "third");
+    try std.testing.expectEqualStrings("third", proxy.get("key").?);
+    try std.testing.expectEqual(@as(usize, 1), proxy.count());
 }
 
 test "StorageBucket - init with bottles" {
