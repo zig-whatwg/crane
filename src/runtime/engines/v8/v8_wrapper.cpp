@@ -310,7 +310,7 @@ static std::unordered_set<WeakCallbackData*>& detachedWeakData() {
 /// too, so each thread's isolates keep their own (Browsers and workers run on
 /// threads of their own).
 static std::unordered_map<const void*, WeakCallbackData*>& pendingFinalizers() {
-    // thread-local: an isolate's pending finalizers, on the thread that runs its callbacks.
+    // process-wide: thread_local - each thread's isolates' pending finalizers, read and written only on the thread that runs those isolates' callbacks.
     static thread_local std::unordered_map<const void*, WeakCallbackData*> map;
     return map;
 }
@@ -318,7 +318,7 @@ static std::unordered_map<const void*, WeakCallbackData*>& pendingFinalizers() {
 /// How deep this thread is in first-pass weak callbacks: what
 /// v8_Debug_InFirstPassWeakCallback reads, so a test can tell that a finalizer
 /// ran outside the collection.
-// thread-local: whether THIS thread is inside V8's first pass.
+// process-wide: thread_local - whether THIS thread is inside V8's first-pass weak callbacks (a diagnostic for tests).
 static thread_local int g_first_pass_depth = 0;
 
 extern "C" bool v8_Debug_InFirstPassWeakCallback() {
