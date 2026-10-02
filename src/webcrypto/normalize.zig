@@ -40,12 +40,16 @@ pub const Algorithm = struct {
 };
 
 pub fn algorithm(realm: runtime.Context, input: Input, operation: registry.Operation) anyerror!Algorithm {
-    // String branch: a new Algorithm dictionary has only name. Converting it
-    // has no observable getters; required algorithm-specific members are absent.
+    // §18.4.4 string branch: convert the new Algorithm dictionary to an
+    // ordinary object, then normalize it. WebIDL §3.2.17 means the later
+    // dictionary conversion can observe inherited members and their getters.
     if (input == .string) {
-        const registration = try registry.lookup(input.string, operation);
-        if (registration.dictionary != .algorithm and registration.dictionary != .rsa_oaep) return error.TypeError;
-        return .{ .allocator = realm.allocator, .id = registration.id };
+        const object = try engine.createDictionaryObject(engine.currentRealm() orelse realm, &.{.{
+            .name = "name",
+            .value = runtime.JSValue.fromStringRef(input.string),
+        }});
+        defer object.release();
+        return algorithm(realm, .{ .object = object.borrow() }, operation);
     }
     const object = input.object;
     // Object branch steps 1-5: convert Algorithm and look up its first name.
