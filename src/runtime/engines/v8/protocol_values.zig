@@ -232,6 +232,98 @@ pub fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
     return support.owned(ffi.v8_Value_ToGlobal(entered.isolate, @ptrCast(local)) orelse return error.OperationFailed);
 }
 
+/// ECMAScript JSON.parse "in the context of a new global object" (WebCrypto
+/// "parse a JWK" step 4). OWNED.
+///
+/// The new global is a throwaway V8 context - ECMAScript's intrinsics, no
+/// platform objects - made in `realm`'s isolate and given `realm`'s security
+/// token. Its handle goes before this returns: the context lives exactly as
+/// long as something refers to its objects (the result's prototypes, its
+/// Object.prototype), and a dropped result lets the collector take it. A
+/// SyntaxError is caught under a TryCatch and thrown again as `realm`'s own
+/// SyntaxError, with the new global's message, so script sees the caller's
+/// SyntaxError: ExceptionPending.
+pub fn parseJsonInNewGlobal(realm: Context, bytes: []const u8) Error!Owned {
+    const entered = try support.enter(realm);
+    defer entered.leave();
+    // 1-3. UTF-8 decode, a leading BOM dropped (as parseJsonToValue): V8's
+    //      decoding replaces every error with U+FFFD.
+    const text = if (std.mem.startsWith(u8, bytes, "\xEF\xBB\xBF")) bytes[3..] else bytes;
+    if (text.len > std.math.maxInt(c_int)) return error.OperationFailed;
+    // A new global object.
+    const fresh = ffi.v8_Context_New(entered.isolate) orelse return error.OperationFailed;
+    defer ffi.v8_Context_Dispose(fresh);
+    if (ffi.v8_Context_GetSecurityToken(entered.context())) |token| {
+        defer ffi.v8_Value_Dispose(token);
+        ffi.v8_Context_SetSecurityToken(fresh, token);
+    }
+    // 4. JSON.parse, the new global's intrinsic, with the new global entered:
+    //    v8_JSON_Parse_FromBuffer parses in the CURRENT context.
+    const Parse = struct {
+        isolate: *ffi.Isolate,
+        context: *ffi.Context,
+        text: []const u8,
+        result: ?*ffi.Value = null,
+
+        pub fn run(self: *@This()) void {
+            ffi.v8_Context_Enter(self.context);
+            defer ffi.v8_Context_Exit(self.context);
+            // A Local in the TryCatch's scope: held past it as a Global.
+            const local = ffi.v8_JSON_Parse_FromBuffer(self.context, self.text.ptr, @intCast(self.text.len)) orelse return;
+            self.result = ffi.v8_Value_ToGlobal(self.isolate, @ptrCast(local));
+        }
+    };
+    var parse = Parse{ .isolate = entered.isolate, .context = fresh, .text = text };
+    var thrown: ?*ffi.Value = null;
+    if (support.catching(entered.isolate, &parse, &thrown)) {
+        if (parse.result) |result| ffi.v8_Global_Dispose(result);
+        return syntaxErrorInCaller(entered, thrown);
+    }
+    return support.owned(parse.result orelse return error.OperationFailed);
+}
+
+/// Throw, in the entered realm, a SyntaxError carrying the message of
+/// `thrown` - what a new global's JSON.parse threw - and answer
+/// ExceptionPending. Takes `thrown`. A throw that is no SyntaxError's (none
+/// is expected of JSON.parse) is thrown as it is.
+fn syntaxErrorInCaller(entered: Entered, thrown: ?*ffi.Value) Error {
+    const exception = thrown orelse return error.ExceptionPending;
+    defer ffi.v8_Global_Dispose(exception);
+    const message = messageOf(entered, exception) orelse {
+        ffi.v8_Isolate_ThrowException(entered.isolate, exception);
+        return error.ExceptionPending;
+    };
+    defer ffi.v8_String_Dispose(message);
+    const own = ffi.v8_Exception_SyntaxErrorInContext(entered.context(), message) orelse return error.OperationFailed;
+    return support.rethrow(entered.isolate, own);
+}
+
+/// The `message` of an error object, as a string; null for anything else.
+/// Read under a TryCatch: nothing pending either way. OWNED.
+fn messageOf(entered: Entered, exception: *ffi.Value) ?*ffi.String {
+    if (!ffi.v8_Value_IsObject(exception)) return null;
+    const Read = struct {
+        entered: Entered,
+        exception: *ffi.Value,
+        message: ?*ffi.String = null,
+
+        pub fn run(self: *@This()) void {
+            const value = support.get(self.entered, self.exception, "message") catch return;
+            defer ffi.v8_Value_Dispose(value);
+            if (!ffi.v8_Value_IsString(value)) return;
+            self.message = ffi.v8_Value_ToString(value, self.entered.context());
+        }
+    };
+    var read = Read{ .entered = entered, .exception = exception };
+    var thrown: ?*ffi.Value = null;
+    if (support.catching(entered.isolate, &read, &thrown)) {
+        if (thrown) |t| ffi.v8_Global_Dispose(t);
+        if (read.message) |m| ffi.v8_String_Dispose(m);
+        return null;
+    }
+    return read.message;
+}
+
 /// Infra "serialize a JavaScript value to JSON bytes". OWNED (`allocator`).
 pub fn serializeJsonToBytes(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error![]u8 {
     const entered = try support.enter(realm);

@@ -1004,6 +1004,22 @@ pub inline fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
     return impl.parseJsonToValue(realm, bytes);
 }
 
+/// ECMAScript JSON.parse "in the context of a new global object" (WebCrypto
+/// "parse a JWK" step 4): `bytes` UTF-8 decoded (a leading BOM dropped, as
+/// Infra's "parse JSON bytes" does) and parsed by a NEW global's intrinsic
+/// JSON.parse, so the result's objects and arrays inherit that global's
+/// Object.prototype and Array.prototype - nothing `realm`'s script did to its
+/// own prototypes (`Object.prototype.kty = "oct"`) shows through them. OWNED.
+/// The new global lives as long as the result refers to it; the operation
+/// keeps nothing of it.
+///
+/// A SyntaxError is thrown in `realm` - the CALLER's SyntaxError, with the
+/// new global's message - and left pending: ExceptionPending. NotSupported
+/// where an adapter cannot make a new global (QuickJS, the test adapter).
+pub inline fn parseJsonInNewGlobal(realm: Context, bytes: []const u8) Error!Owned {
+    return impl.parseJsonInNewGlobal(realm, bytes);
+}
+
 /// Infra "serialize a JavaScript value to JSON bytes": ? Call(%JSON.stringify%,
 /// undefined, « value ») - the intrinsic, whatever script did to the global
 /// JSON - UTF-8 encoded. TypeError when it returns undefined (`value` has no

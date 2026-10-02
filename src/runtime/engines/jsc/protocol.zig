@@ -261,6 +261,15 @@ pub fn completionOf(_: Context, _: *const fn (data: ?*anyopaque) Error!void, _: 
 pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {
     return error.NotSupported;
 }
+/// JSC: JSGlobalContextCreateInGroup(the realm's context group, null) - a new
+/// global object - then JSValueMakeFromJSONString in it, JSValueProtect the
+/// result and JSGlobalContextRelease the context (the result keeps its
+/// global alive). JSValueMakeFromJSONString answers null with no exception for
+/// invalid JSON, so the caller's SyntaxError is made in the caller's context
+/// (a generic message) and thrown there.
+pub fn parseJsonInNewGlobal(_: Context, _: []const u8) Error!Owned {
+    return error.NotSupported;
+}
 /// JSC: JSValueCreateJSONString(ctx, value, 0, &exception) - null with no
 /// exception is JSON.stringify's undefined (TypeError) - then
 /// JSStringGetUTF8CString.
