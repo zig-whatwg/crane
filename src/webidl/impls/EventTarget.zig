@@ -725,10 +725,10 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
 /// content attribute steps), so there is no uncompiled value to compile here.
 pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8) Handler {
     const address = (eventHandlerValue(target, event_type) orelse return null).address;
-    // The address is a tagged Global, deliberately misaligned for a function
-    // pointer, so no cast will make one of it; a byte copy performs no
-    // alignment check (the same as conversions.zig). Everything that uses the
-    // value untags it first.
+    // The address is the function's Global (conversions.zig stores it
+    // untagged, aligned as a function pointer must be). No pointer cast turns
+    // it into the callback type, so it is copied byte for byte, as
+    // conversions.zig does.
     const Callable = @typeInfo(Handler).optional.child;
     comptime std.debug.assert(@sizeOf(Callable) == @sizeOf(usize));
     var handler: Callable = undefined;
