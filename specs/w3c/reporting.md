@@ -1,25 +1,25 @@
-::::: section
-## [1. ]{.secno}[Introduction]{.content}[](#intro){.self-link} {#intro .heading .settled level="1"}
+
+## 1. Introduction
 
 This document provides three pieces of infrastructure for generic
 reporting, which may be used or extended by other specifications:
 
-1.  A generic framework for defining report types and reporting
-    endpoints, and a document format for sending reports to endpoints
-    over HTTP.
+1. A generic framework for defining report types and reporting
+ endpoints, and a document format for sending reports to endpoints
+ over HTTP.
 
-2.  A specific mechanism for configuring reporting endpoints in a
-    document or worker, and for delivering reports whose lifetime is
-    tied to that document or worker.
+2. A specific mechanism for configuring reporting endpoints in a
+ document or worker, and for delivering reports whose lifetime is
+ tied to that document or worker.
 
-3.  A JavaScript interface for observing reports generated within a
-    document or worker.
+3. A JavaScript interface for observing reports generated within a
+ document or worker.
 
 Other specifications may extend or make use of these pieces, for
 instance by defining concrete report types, or alternative configuration
 or delivery mechanisms for non-document-based reports.
 
-### [1.1. ]{.secno}[Guarantees]{.content}[](#guarantees){.self-link} {#guarantees .heading .settled level="1.1"}
+### 1.1. Guarantees
 
 This specification aims to provide a best-effort report delivery system
 that executes out-of-band with website activity. The user agent will be
@@ -34,525 +34,436 @@ conditions may prevent reports from reaching their destination at all,
 and user agents are permitted to reject and not deliver a report for any
 reason.
 
-### [1.2. ]{.secno}[Examples]{.content}[](#examples){.self-link} {#examples .heading .settled level="1.2"}
+### 1.2. Examples
 
-::: {#example-bd21f0f9 .example}
-[](#example-bd21f0f9){.self-link} MegaCorp Inc. wants to collect Content
+MegaCorp Inc. wants to collect Content
 Security Policy and Key Pinning violation reports. It can do so by
 delivering the following header to define a set of reporting endpoints
 named \"`endpoint-1`\":
 
-    Reporting-Endpoints: endpoint-1="https://example.com/reports"
+ Reporting-Endpoints: endpoint-1="https://example.com/reports"
 
 And the following headers, which direct CSP and HPKP reports to that
 endpoint:
 
-    Content-Security-Policy: ...; report-to endpoint-1
-    Public-Key-Pins: ...; report-to=endpoint-1
-:::
+ Content-Security-Policy: ...; report-to endpoint-1
+ Public-Key-Pins: ...; report-to=endpoint-1
 
-::: {#example-b1cea891 .example}
-[](#example-b1cea891){.self-link} After processing reports for a little
+After processing reports for a little
 while, MegaCorp Inc. decides to split the processing of these two types
 of reports out into two distinct endpoints in order to make the
 processing scripts simpler. It can do so by delivering the following
 header to define two reporting endpoints:
 
-    Reporting-Endpoints: csp-endpoint="https://example.com/csp-reports",
-                         hpkp-endpoint="https://example.com/hpkp-reports"
+ Reporting-Endpoints: csp-endpoint="https://example.com/csp-reports",
+ hpkp-endpoint="https://example.com/hpkp-reports"
 
 And the following headers, which direct CSP and HPKP reports to those
 named endpoints:
 
-    Content-Security-Policy: ...; report-to csp-endpoint
-    Public-Key-Pins: ...; report-to=hpkp-endpoint
-:::
-:::::
+ Content-Security-Policy: ...; report-to csp-endpoint
+ Public-Key-Pins: ...; report-to=hpkp-endpoint
 
-::: section
-## [2. ]{.secno}[Generic Reporting Framework]{.content}[](#generic-reporting){.self-link} {#generic-reporting .heading .settled level="2"}
+## 2. Generic Reporting Framework
 
 This section defines the generic concepts of reports and endpoints, and
 how reports are serialized into the
 [`application/reports+json`](#media-type) format.
 
-### [2.1. ]{.secno}[Concepts]{.content}[](#concept){.self-link} {#concept .heading .settled level="2.1"}
+### 2.1. Concepts
 
-#### [2.1.1. ]{.secno}[Endpoints]{.content}[](#concept-endpoints){.self-link} {#concept-endpoints .heading .settled level="2.1.1"}
+#### 2.1.1. Endpoints
 
-An [endpoint]{#endpoint .dfn .dfn-paneled dfn-type="dfn" export=""} is
+An [endpoint] is
 location to which
-[reports](#windoworworkerglobalscope-reports){#ref-for-windoworworkerglobalscope-reports
-link-type="dfn"} for a particular
-[origin](https://html.spec.whatwg.org/multipage/browsers.html#origin){#ref-for-origin
-link-type="dfn"} may be sent.
+[reports](#windoworworkerglobalscope-reports) for a particular
+[origin](https://html.spec.whatwg.org/multipage/browsers.html#origin) may be sent.
 
-Each [endpoint](#endpoint){#ref-for-endpoint link-type="dfn"} has a
-[`name`]{#dom-endpoint-name .dfn .dfn-paneled .idl-code
-dfn-for="endpoint" dfn-type="attribute" export=""}, which is an ASCII
+Each [endpoint](#endpoint) has a
+[`name`], which is an ASCII
 string.
 
-Each [endpoint](#endpoint){#ref-for-endpoint① link-type="dfn"} has a
-[`url`]{#dom-endpoint-url .dfn .dfn-paneled .idl-code dfn-for="endpoint"
-dfn-type="attribute" export=""}, which is a
-[`URL`{.idl}](https://url.spec.whatwg.org/#concept-url){#ref-for-concept-url
-link-type="idl"}.
+Each [endpoint](#endpoint) has a
+[`url`], which is a
+[`URL`](https://url.spec.whatwg.org/#concept-url).
 
-Each [endpoint](#endpoint){#ref-for-endpoint② link-type="dfn"} has a
-[`failures`]{#dom-endpoint-failures .dfn .dfn-paneled .idl-code
-dfn-for="endpoint" dfn-type="attribute" export=""}, which is a
+Each [endpoint](#endpoint) has a
+[`failures`], which is a
 non-negative integer representing the number of consecutive times this
 endpoint has failed to respond to a request.
 
-#### [2.1.2. ]{.secno}[Report Type]{.content}[](#concept-report-type){.self-link} {#concept-report-type .heading .settled level="2.1.2"}
+#### 2.1.2. Report Type
 
-A [report type]{#report-type .dfn .dfn-paneled dfn-type="dfn" export=""}
+A [report type]
 is a non-empty string that specifies the set of data that is contained
-in the [body](#report-body){#ref-for-report-body link-type="dfn"} of a
-[report](#report){#ref-for-report link-type="dfn"}.
+in the [body](#report-body) of a
+[report](#report).
 
-When a [report type](#report-type){#ref-for-report-type link-type="dfn"}
+When a [report type](#report-type)
 is defined (in this spec or others), it can be specified to be [visible
-to `ReportingObserver`s]{#visible-to-reportingobservers .dfn
-.dfn-paneled dfn-type="dfn" export=""}, meaning that
-[reports](#windoworworkerglobalscope-reports){#ref-for-windoworworkerglobalscope-reports①
-link-type="dfn"} of that type can be observed by a [reporting
-observer](#reporting-observer){#ref-for-reporting-observer
-link-type="dfn"}. By default, [report
-types](#report-type){#ref-for-report-type① link-type="dfn"} are not
+to `ReportingObserver`s], meaning that
+[reports](#windoworworkerglobalscope-reports) of that type can be observed by a [reporting
+observer](#reporting-observer). By default, [report
+types](#report-type) are not
 [visible to
-`ReportingObserver`s](#visible-to-reportingobservers){#ref-for-visible-to-reportingobservers
-link-type="dfn"}.
+`ReportingObserver`s](#visible-to-reportingobservers).
 
-#### [2.1.3. ]{.secno}[Reports]{.content}[](#concept-reports){.self-link} {#concept-reports .heading .settled level="2.1.3"}
+#### 2.1.3. Reports
 
-A [report]{#report .dfn .dfn-paneled dfn-type="dfn" export=""} is a
+A [report] is a
 collection of arbitrary data which the user agent is expected to deliver
 to a specified endpoint.
 
-Each [report](#report){#ref-for-report① link-type="dfn"} has a
-[body]{#report-body .dfn .dfn-paneled dfn-for="report" dfn-type="dfn"
-export=""}, which is either `null` or an object which can be serialized
+Each [report](#report) has a
+[body], which is either `null` or an object which can be serialized
 into a [JSON
-text](https://tools.ietf.org/html/rfc8259#section-2){#ref-for-section-2
-link-type="dfn"}. The fields contained in a
-[report](#report){#ref-for-report② link-type="dfn"}'s
-[body](#report-body){#ref-for-report-body① link-type="dfn"} are
-determined by the [report](#report){#ref-for-report③ link-type="dfn"}'s
-[type](#report-reporttype){#ref-for-report-reporttype link-type="dfn"}.
+text](https://tools.ietf.org/html/rfc8259#section-2). The fields contained in a
+[report](#report)'s
+[body](#report-body) are
+determined by the [report](#report)'s
+[type](#report-reporttype).
 
-Each [report](#report){#ref-for-report④ link-type="dfn"} has a
-[url]{#report-url .dfn .dfn-paneled dfn-for="report" dfn-type="dfn"
-export=""}, which is typically the address of the `Document` or `Worker`
+Each [report](#report) has a
+[url], which is typically the address of the `Document` or `Worker`
 from which the report was generated.
 
-[Note:]{.marker} We strip the username, password, and fragment from this
+ We strip the username, password, and fragment from this
 serialized URL. See [§ 8.1 Capability URLs](#capability-urls).
 
-Each [report](#report){#ref-for-report⑤ link-type="dfn"} has a [user
-agent]{#report-user-agent .dfn .dfn-paneled dfn-for="report"
-dfn-type="dfn" export=""}, which is the value of the `User-Agent`
-[header](https://fetch.spec.whatwg.org/#concept-header){#ref-for-concept-header
-link-type="dfn"} of the
-[request](https://fetch.spec.whatwg.org/#concept-request){#ref-for-concept-request
-link-type="dfn"} from which the report was generated.
+Each [report](#report) has a [user
+agent], which is the value of the `User-Agent`
+[header](https://fetch.spec.whatwg.org/#concept-header) of the
+[request](https://fetch.spec.whatwg.org/#concept-request) from which the report was generated.
 
-[Note:]{.marker} The [user
-agent](#report-user-agent){#ref-for-report-user-agent link-type="dfn"}
-of a [report](#report){#ref-for-report⑥ link-type="dfn"} represents the
+ The [user
+agent](#report-user-agent)
+of a [report](#report) represents the
 `User-Agent` sent by the browser for the page which generated the
-[report](#report){#ref-for-report⑦ link-type="dfn"}. This is potentially
+[report](#report). This is potentially
 distinct from the `User-Agent` sent in the HTTP headers when uploading
 the report to a collector --- for instance, where the browser has chosen
 to use a non-default `User-Agent` string such as the \"request desktop
 site\" feature.
 
-Each [report](#report){#ref-for-report⑧ link-type="dfn"} has a
-[destination]{#report-destination .dfn .dfn-paneled dfn-for="report"
-dfn-type="dfn" export=""}, which is a string representing the
-[`name`{.idl}](#dom-endpoint-name){#ref-for-dom-endpoint-name
-link-type="idl"} of the [endpoint](#endpoint){#ref-for-endpoint③
-link-type="dfn"} that the report will be sent to.
+Each [report](#report) has a
+[destination], which is a string representing the
+[`name`](#dom-endpoint-name) of the [endpoint](#endpoint) that the report will be sent to.
 
-Each [report](#report){#ref-for-report⑨ link-type="dfn"} has a
-[type]{#report-reporttype .dfn .dfn-paneled dfn-for="report"
-dfn-type="dfn" export=""}, which is a [report
-type](#report-type){#ref-for-report-type② link-type="dfn"}.
+Each [report](#report) has a
+[type], which is a [report
+type](#report-type).
 
-Each [report](#report){#ref-for-report①⓪ link-type="dfn"} has a
-[timestamp]{#report-timestamp .dfn .dfn-paneled dfn-for="report"
-dfn-type="dfn" export=""}, which records the time at which the report
+Each [report](#report) has a
+[timestamp], which records the time at which the report
 was generated, in milliseconds since the unix epoch.
 
-Each [report](#report){#ref-for-report①① link-type="dfn"} has an
-[attempts]{#report-attempts .dfn .dfn-paneled dfn-for="report"
-dfn-type="dfn" export=""} counter, which is a non-negative integer
+Each [report](#report) has an
+[attempts] counter, which is a non-negative integer
 representing the number of times the user agent attempted to deliver the
 report.
 
-### [2.2. ]{.secno}[Media Type]{.content}[](#media-type){.self-link} {#media-type .heading .settled level="2.2"}
+### 2.2. Media Type
 
 The media type used when POSTing reports to a specified endpoint is
 `application/reports+json`.
 
-### [2.3. ]{.secno}[ Queue `data`{.variable} as `type`{.variable} for `destination`{.variable} ]{.content}[](#queue-report){.self-link} {#queue-report .heading .settled .algorithm algorithm="Queue data as type for destination" level="2.3"}
+### 2.3. Queue `data` as `type` for `destination`
 
-To [generate a report]{#generate-a-report .dfn .dfn-paneled
-dfn-type="dfn" noexport=""} given a serializable object
-(`data`{.variable}), a string (`type`{.variable}), another string
-(`destination`{.variable}), an optional [environment settings
-object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-settings-object){#ref-for-environment-settings-object
-link-type="dfn"} (`settings`{.variable}), and an optional
-[`URL`{.idl}](https://url.spec.whatwg.org/#concept-url){#ref-for-concept-url①
-link-type="idl"} (`url`{.variable}):
+To [generate a report] given a serializable object
+(`data`), a string (`type`), another string
+(`destination`), and an [environment settings
+object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-settings-object) (`settings`):
 
-1.  Let `report`{.variable} be a new [report](#report){#ref-for-report①②
-    link-type="dfn"} object with its values initialized as follows:
+1. Let `report` be a new [report](#report) object with its values initialized as follows:
 
-    [body](#report-body){#ref-for-report-body② link-type="dfn"}
+ [body](#report-body)
 
-    :   `data`{.variable}
+ : `data`
 
-    [user agent](#report-user-agent){#ref-for-report-user-agent① link-type="dfn"}
+ [user agent](#report-user-agent)
 
-    :   The current value of
-        [`navigator.userAgent`](https://html.spec.whatwg.org/multipage/system-state.html#dom-navigator-useragent){#ref-for-dom-navigator-useragent
-        link-type="dfn"}
+ : The current value of
+ [`navigator.userAgent`](https://html.spec.whatwg.org/multipage/system-state.html#dom-navigator-useragent)
 
-    [destination](#report-destination){#ref-for-report-destination link-type="dfn"}
+ [destination](#report-destination)
 
-    :   `destination`{.variable}
+ : `destination`
 
-    [type](#report-reporttype){#ref-for-report-reporttype① link-type="dfn"}
+ [type](#report-reporttype)
 
-    :   `type`{.variable}
+ : `type`
 
-    [timestamp](#report-timestamp){#ref-for-report-timestamp link-type="dfn"}
+ [timestamp](#report-timestamp)
 
-    :   The current timestamp.
+ : The current timestamp.
 
-    [attempts](#report-attempts){#ref-for-report-attempts link-type="dfn"}
+ [attempts](#report-attempts)
 
-    :   0
+ : 0
 
-2.  If `url`{.variable} was not provided by the caller, let
-    `url`{.variable} be `settings`{.variable}'s [creation
-    URL](https://html.spec.whatwg.org/multipage/webappapis.html#creation-url){#ref-for-creation-url
-    link-type="dfn"}.
+2. Let `url` be `settings`'s [creation
+ URL](https://html.spec.whatwg.org/multipage/webappapis.html#creation-url).
 
-3.  Set `url`{.variable}'s
-    [`username`{.idl}](https://url.spec.whatwg.org/#dom-url-username){#ref-for-dom-url-username
-    link-type="idl"} to the empty string, and its
-    [`password`{.idl}](https://url.spec.whatwg.org/#dom-url-password){#ref-for-dom-url-password
-    link-type="idl"} to `null`.
+3. Set `url`'s
+ [`username`](https://url.spec.whatwg.org/#dom-url-username) to the empty string, and its
+ [`password`](https://url.spec.whatwg.org/#dom-url-password) to `null`.
 
-4.  Set `report`{.variable}'s [url](#report-url){#ref-for-report-url
-    link-type="dfn"} to the result of executing the [URL
-    serializer](https://url.spec.whatwg.org/#concept-url-serializer){#ref-for-concept-url-serializer
-    link-type="dfn"} on `url`{.variable} with the *exclude fragment
-    flag* set.
+4. Set `report`'s [url](#report-url) to the result of [stripping URL for use in
+ reports](#strip-url-for-use-in-reports), given `url`.
 
-5.  Return `report`{.variable}.
+5. Return `report`.
 
-[Note:]{.marker} [reporting
-observers](#reporting-observer){#ref-for-reporting-observer①
-link-type="dfn"} can only observe reports from the same [environment
+ [reporting
+observers](#reporting-observer) can only observe reports from the same [environment
 settings
-object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-settings-object){#ref-for-environment-settings-object①
-link-type="dfn"}.
+object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-settings-object).
 
-[Note:]{.marker} We strip the username, password, and fragment from the
+ We strip the username, password, and fragment from the
 serialized URL in the report. See [§ 8.1 Capability
 URLs](#capability-urls).
 
-[Note:]{.marker} The user agent MAY reject reports for any reason. This
+ The user agent MAY reject reports for any reason. This
 API does not guarantee delivery of arbitrary amounts of data, for
 instance.
 
-[Note:]{.marker} Non user agent clients (with no JavaScript engine)
+ Non user agent clients (with no JavaScript engine)
 should not interact with [reporting
-observers](#reporting-observer){#ref-for-reporting-observer②
-link-type="dfn"}, and thus should return in step 6.
+observers](#reporting-observer), and thus should return in step 6.
 
-### [2.4. ]{.secno}[Serialize Reports]{.content}[](#serialize-reports){.self-link} {#serialize-reports .heading .settled .algorithm algorithm="Serialize Reports" level="2.4"}
+### 2.4. Serialize Reports
 
-To [serialize a list of `reports`{.variable} to
-JSON]{#serialize-a-list-of-reports-to-json .dfn .dfn-paneled
-dfn-type="dfn" noexport=""},
+To [serialize a list of `reports` to
+JSON],
 
-1.  Let `collection`{.variable} be an empty list.
+1. Let `collection` be an empty list.
 
-2.  For each `report`{.variable} in `reports`{.variable}:
+2. For each `report` in `reports`:
 
-    1.  Let `data`{.variable} be a map with the following key/value
-        pairs:
+ 1. Let `data` be a map with the following key/value
+ pairs:
 
-        `age`
+ `age`
 
-        :   The number of milliseconds between `report`{.variable}'s
-            [timestamp](#report-timestamp){#ref-for-report-timestamp①
-            link-type="dfn"} and the current time.
+ : The number of milliseconds between `report`'s
+ [timestamp](#report-timestamp) and the current time.
 
-        `type`
+ `type`
 
-        :   `report`{.variable}'s
-            [type](#report-reporttype){#ref-for-report-reporttype②
-            link-type="dfn"}
+ : `report`'s
+ [type](#report-reporttype)
 
-        `url`
+ `url`
 
-        :   `report`{.variable}'s
-            [url](#report-url){#ref-for-report-url① link-type="dfn"}
+ : `report`'s
+ [url](#report-url)
 
-        `user_agent`
+ `user_agent`
 
-        :   `report`{.variable}'s [user
-            agent](#report-user-agent){#ref-for-report-user-agent②
-            link-type="dfn"}
+ : `report`'s [user
+ agent](#report-user-agent)
 
-        `body`
+ `body`
 
-        :   `report`{.variable}'s
-            [body](#report-body){#ref-for-report-body③ link-type="dfn"}
+ : `report`'s
+ [body](#report-body)
 
-        [Note:]{.marker} Client clocks are unreliable and subject to
-        skew. We therefore deliver an `age` attribute rather than an
-        absolute timestamp. See also [§ 9.2 Clock
-        Skew](#fingerprinting-clock-skew)
+ Client clocks are unreliable and subject to
+ skew. We therefore deliver an `age` attribute rather than an
+ absolute timestamp. See also [§ 9.2 Clock
+ Skew](#fingerprinting-clock-skew)
 
-    2.  Increment `report`{.variable}'s
-        [attempts](#report-attempts){#ref-for-report-attempts①
-        link-type="dfn"}.
+ 2. Increment `report`'s
+ [attempts](#report-attempts).
 
-    3.  Append `data`{.variable} to `collection`{.variable}.
+ 3. Append `data` to `collection`.
 
-3.  Return the [byte
-    sequence](https://infra.spec.whatwg.org/#byte-sequence){#ref-for-byte-sequence
-    link-type="dfn"} resulting from executing [serialize an Infra value
-    to JSON
-    bytes](https://infra.spec.whatwg.org/#serialize-an-infra-value-to-json-bytes){#ref-for-serialize-an-infra-value-to-json-bytes
-    link-type="dfn"} on `collection`{.variable}.
-:::
+3. Return the [byte
+ sequence](https://infra.spec.whatwg.org/#byte-sequence) resulting from executing [serialize an Infra value
+ to JSON
+ bytes](https://infra.spec.whatwg.org/#serialize-an-infra-value-to-json-bytes) on `collection`.
 
-::: section
-## [3. ]{.secno}[Document Centered Reporting]{.content}[](#document-reporting){.self-link} {#document-reporting .heading .settled level="3"}
+## 3. Document Centered Reporting
 
 This section defines the mechanism for configuring reporting endpoints
 for reports generated by actions in a document (or in a worker script).
 Such reports have a lifetime which is tied to that of the document or
 worker where they were generated.
 
-### [3.1. ]{.secno}[Document configuration]{.content}[](#document-configuration){.self-link} {#document-configuration .heading .settled level="3.1"}
+### 3.1. Document configuration
 
 Each object implementing
-[`WindowOrWorkerGlobalScope`{.idl}](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope){#ref-for-windoworworkerglobalscope
-link-type="idl"} has an [endpoints]{#windoworworkerglobalscope-endpoints
-.dfn .dfn-paneled dfn-for="WindowOrWorkerGlobalScope" dfn-type="dfn"
-export=""} list, which is a list of
-[endpoints](#endpoint){#ref-for-endpoint④ link-type="dfn"}, each of
+[`WindowOrWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope) has an [endpoints] list, which is a list of
+[endpoints](#endpoint), each of
 which MUST have a distinct
-[`name`{.idl}](#dom-endpoint-name){#ref-for-dom-endpoint-name①
-link-type="idl"}. (Uniqueness is guaranteed by the algorithm in [§ 3.3
+[`name`](#dom-endpoint-name). (Uniqueness is guaranteed by the algorithm in [§ 3.3
 Process reporting endpoints for response](#process-header).)
 
 Each object implementing
-[`WindowOrWorkerGlobalScope`{.idl}](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope){#ref-for-windoworworkerglobalscope①
-link-type="idl"} has an [reports]{#windoworworkerglobalscope-reports
-.dfn .dfn-paneled dfn-for="WindowOrWorkerGlobalScope" dfn-type="dfn"
-export=""} list, which is a list of [reports](#report){#ref-for-report①③
-link-type="dfn"}.
+[`WindowOrWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope) has an [reports] list, which is a list of [reports](#report).
 
 To [initialize a global's endpoint
-list]{#initialize-a-globals-endpoint-list .dfn .dfn-paneled
-dfn-type="dfn" export=""}, given a
-[`WindowOrWorkerGlobalScope`{.idl}](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope){#ref-for-windoworworkerglobalscope②
-link-type="idl"} (`scope`{.variable}) and a
-[response](https://fetch.spec.whatwg.org/#concept-response){#ref-for-concept-response
-link-type="dfn"} (`response`{.variable}), set `scope`{.variable}'s
-[endpoints](#windoworworkerglobalscope-endpoints){#ref-for-windoworworkerglobalscope-endpoints
-link-type="dfn"} to the result of executing [§ 3.3 Process reporting
-endpoints for response](#process-header) given `response`{.variable}.
+list], given a
+[`WindowOrWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope) (`scope`) and a
+[response](https://fetch.spec.whatwg.org/#concept-response) (`response`), set `scope`'s
+[endpoints](#windoworworkerglobalscope-endpoints) to the result of executing [§ 3.3 Process reporting
+endpoints for response](#process-header) given `response`.
 
-### [3.2. ]{.secno}[The `Reporting-Endpoints` HTTP Response Header Field]{.content}[](#header){.self-link} {#header .heading .settled level="3.2"}
+### 3.2. The `Reporting-Endpoints` HTTP Response Header Field
 
 A server MAY define a set of reporting endpoints for a document or a
 worker script resource it returns, via the
-[`Reporting-Endpoints`](#reporting-endpoints){#ref-for-reporting-endpoints②
-link-type="dfn"} HTTP response header field. This mechanism is defined
+[`Reporting-Endpoints`](#reporting-endpoints) HTTP response header field. This mechanism is defined
 in [§ 3.2 The Reporting-Endpoints HTTP Response Header Field](#header),
 and its processing in [§ 3.3 Process reporting endpoints for
 response](#process-header).
 
-The value of the [`Reporting-Endpoints`]{#reporting-endpoints .dfn
-.dfn-paneled dfn-type="dfn" export=""} HTTP response header field is
+The value of the [`Reporting-Endpoints`] HTTP response header field is
 used to construct the reporting configuration for a resource.
 
-[`Reporting-Endpoints`](#reporting-endpoints){#ref-for-reporting-endpoints③
-link-type="dfn"} is a Dictionary Structured Field
-[\[STRUCTURED-FIELDS\]](#biblio-structured-fields "Structured Field Values for HTTP"){link-type="biblio"}.
+[`Reporting-Endpoints`](#reporting-endpoints) is a Dictionary Structured Field
+[\[STRUCTURED-FIELDS\]](#biblio-structured-fields "Structured Field Values for HTTP").
 Each entry in the dictionary defines an
-[endpoint](#endpoint){#ref-for-endpoint⑤ link-type="dfn"} to which
+[endpoint](#endpoint) to which
 reports may be delivered. The entry value MUST be a string.
 
-Each [endpoint](#endpoint){#ref-for-endpoint⑥ link-type="dfn"} is
+Each [endpoint](#endpoint) is
 defined by a String Item, which is interpreted as a URI-reference. If
 its value is not a valid URI-reference, that
-[endpoint](#endpoint){#ref-for-endpoint⑦ link-type="dfn"} member MUST be
+[endpoint](#endpoint) member MUST be
 ignored.
 
 Moreover, the URL that the member's value represents MUST be
 [potentially
-trustworthy](https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy){#ref-for-is-origin-trustworthy
-link-type="dfn"}
-[\[SECURE-CONTEXTS\]](#biblio-secure-contexts "Secure Contexts"){link-type="biblio"}.
+trustworthy](https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy)
+[\[SECURE-CONTEXTS\]](#biblio-secure-contexts "Secure Contexts").
 Non-secure endpoints will be ignored.
 
-No parameters are defined for [endpoints](#endpoint){#ref-for-endpoint⑧
-link-type="dfn"}, and any parameters which are specified will be
+No parameters are defined for [endpoints](#endpoint), and any parameters which are specified will be
 silently ignored.
 
 The header is represented by the following ABNF grammar
-[\[RFC5234\]](#biblio-rfc5234 "Augmented BNF for Syntax Specifications: ABNF"){link-type="biblio"}:
+[\[RFC5234\]](#biblio-rfc5234 "Augmented BNF for Syntax Specifications: ABNF"):
 
 ``` abnf
 Reporting-Endpoints = sf-dictionary
 ```
 
-### [3.3. ]{.secno}[ Process reporting endpoints for `response`{.variable} ]{.content}[](#process-header){.self-link} {#process-header .heading .settled .algorithm algorithm="Process reporting endpoints for response" level="3.3"}
+Specifications that define Structured Fields or parameters (such as
+`report-to`) referencing an endpoint by its
+[`name`](#dom-endpoint-name) SHOULD specify that the value is an
+[sf-token](https://www.rfc-editor.org/rfc/rfc8941.html#section-3.3.4)
+[\[STRUCTURED-FIELDS\]](#biblio-structured-fields "Structured Field Values for HTTP").
+
+Because the Structured Fields ABNF for `member-key` is a subset of the
+ABNF for `token`
+[\[STRUCTURED-FIELDS\]](#biblio-structured-fields "Structured Field Values for HTTP"),
+any endpoint named by a dictionary key in
+[`Reporting-Endpoints`](#reporting-endpoints) can be referenced as an
+[sf-token](https://www.rfc-editor.org/rfc/rfc8941.html#section-3.3.4).
+
+### 3.3. Process reporting endpoints for `response`
 
 Given a
-[response](https://fetch.spec.whatwg.org/#concept-response){#ref-for-concept-response①
-link-type="dfn"} (`response`{.variable}), this algorithm extracts and
-returns a list of [endpoints](#endpoint){#ref-for-endpoint⑨
-link-type="dfn"}.
+[response](https://fetch.spec.whatwg.org/#concept-response) (`response`), this algorithm extracts and
+returns a list of [endpoints](#endpoint).
 
-1.  Abort these steps if `response`{.variable}'s [HTTPS
-    state](https://fetch.spec.whatwg.org/#concept-response-https-state){#ref-for-concept-response-https-state
-    .idl-code link-type="attribute"} is not \"`modern`\", and the
-    [origin](https://url.spec.whatwg.org/#concept-url-origin){#ref-for-concept-url-origin
-    link-type="dfn"} of `response`{.variable}'s
-    [url](https://fetch.spec.whatwg.org/#concept-response-url){#ref-for-concept-response-url
-    .idl-code link-type="attribute"} is not [potentially
-    trustworthy](https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy){#ref-for-is-origin-trustworthy①
-    link-type="dfn"}.
+1. Abort these steps if `response`'s [HTTPS
+ state](https://fetch.spec.whatwg.org/#concept-response-https-state) is not \"`modern`\", and the
+ [origin](https://url.spec.whatwg.org/#concept-url-origin) of `response`'s
+ [url](https://fetch.spec.whatwg.org/#concept-response-url) is not [potentially
+ trustworthy](https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy).
 
-2.  Let `parsed header`{.variable} be the result of executing [get a
-    structured field
-    value](https://fetch.spec.whatwg.org/#concept-header-list-get-structured-header){#ref-for-concept-header-list-get-structured-header
-    link-type="dfn"} given \"Reporting-Endpoints\" and \"dictionary\"
-    from `response`{.variable}'s [header
-    list](https://fetch.spec.whatwg.org/#concept-response-header-list){#ref-for-concept-response-header-list
-    .idl-code link-type="attribute"}.
+2. Let `parsed header` be the result of executing [get a
+ structured field
+ value](https://fetch.spec.whatwg.org/#concept-header-list-get-structured-header) given \"Reporting-Endpoints\" and \"dictionary\"
+ from `response`'s [header
+ list](https://fetch.spec.whatwg.org/#concept-response-header-list).
 
-3.  If `parsed header`{.variable} is null, abort these steps.
+3. If `parsed header` is null, abort these steps.
 
-4.  Let `endpoints`{.variable} be an empty list.
+4. Let `endpoints` be an empty list.
 
-5.  For each `name`{.variable} → `value_and_parameters`{.variable} of
-    `parsed header`{.variable}:
+5. For each `name` → `value_and_parameters` of
+ `parsed header`:
 
-    1.  Let `endpoint url string`{.variable} be the first element of the
-        tuple `value_and_parameters`{.variable}. If
-        `endpoint url string`{.variable} is not a string, then
-        [continue](https://infra.spec.whatwg.org/#iteration-continue){#ref-for-iteration-continue
-        link-type="dfn"}.
+ 1. Let `endpoint url string` be the first element of the
+ tuple `value_and_parameters`. If
+ `endpoint url string` is not a string, then
+ [continue](https://infra.spec.whatwg.org/#iteration-continue).
 
-    2.  Let `endpoint url`{.variable} be the result of executing the
-        [URL
-        parser](https://url.spec.whatwg.org/#concept-url-parser){#ref-for-concept-url-parser
-        link-type="dfn"} on `endpoint url string`{.variable}, with [base
-        URL](https://url.spec.whatwg.org/#concept-base-url){#ref-for-concept-base-url
-        link-type="dfn"} set to `response`{.variable}'s
-        [url](https://fetch.spec.whatwg.org/#concept-response-url){#ref-for-concept-response-url①
-        .idl-code link-type="attribute"}. If `endpoint url`{.variable}
-        is failure, then
-        [continue](https://infra.spec.whatwg.org/#iteration-continue){#ref-for-iteration-continue①
-        link-type="dfn"}.
+ 2. Let `endpoint url` be the result of executing the
+ [URL
+ parser](https://url.spec.whatwg.org/#concept-url-parser) on `endpoint url string`, with [base
+ URL](https://url.spec.whatwg.org/#concept-base-url) set to `response`'s
+ [url](https://fetch.spec.whatwg.org/#concept-response-url). If `endpoint url`
+ is failure, then
+ [continue](https://infra.spec.whatwg.org/#iteration-continue).
 
-    3.  If `endpoint url`{.variable}'s
-        [origin](https://html.spec.whatwg.org/multipage/browsers.html#origin){#ref-for-origin①
-        link-type="dfn"} is not [potentially
-        trustworthy](https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy){#ref-for-is-origin-trustworthy②
-        link-type="dfn"}, then
-        [continue](https://infra.spec.whatwg.org/#iteration-continue){#ref-for-iteration-continue②
-        link-type="dfn"}.
+ 3. If `endpoint url`'s
+ [origin](https://html.spec.whatwg.org/multipage/browsers.html#origin) is not [potentially
+ trustworthy](https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy), then
+ [continue](https://infra.spec.whatwg.org/#iteration-continue).
 
-    4.  Let `endpoint`{.variable} be a new
-        [endpoint](#endpoint){#ref-for-endpoint①⓪ link-type="dfn"} whose
-        properties are set as follows:
+ 4. Let `endpoint` be a new
+ [endpoint](#endpoint) whose
+ properties are set as follows:
 
-        [`name`{.idl}](#dom-endpoint-name){#ref-for-dom-endpoint-name② link-type="idl"}
+ [`name`](#dom-endpoint-name)
 
-        :   `name`{.variable}
+ : `name`
 
-        [`url`{.idl}](#dom-endpoint-url){#ref-for-dom-endpoint-url link-type="idl"}
+ [`url`](#dom-endpoint-url)
 
-        :   `endpoint url`{.variable}
+ : `endpoint url`
 
-        [`failures`{.idl}](#dom-endpoint-failures){#ref-for-dom-endpoint-failures link-type="idl"}
+ [`failures`](#dom-endpoint-failures)
 
-        :   0
+ : 0
 
-    5.  Add `endpoint`{.variable} to `endpoints`{.variable}.
+ 5. Add `endpoint` to `endpoints`.
 
-6.  Return `endpoints`{.variable}.
+6. Return `endpoints`.
 
-### [3.4. ]{.secno}[Report Generation]{.content}[](#report-generation){.self-link} {#report-generation .heading .settled level="3.4"}
+### 3.4. Report Generation
 
-#### [3.4.1. ]{.secno}[Generate report of `type`{.variable} with `data`{.variable}]{.content}[](#generate-report){.self-link} {#generate-report .heading .settled .algorithm algorithm="Generate report of type with
-  data" export="" level="3.4.1"}
+#### 3.4.1. Generate report of `type` with `data`
 
 When the user agent is to [generate and queue a
-report]{#generate-and-queue-a-report .dfn .dfn-paneled dfn-type="dfn"
-export=""} for a
-[`Document`{.idl}](https://dom.spec.whatwg.org/#document){#ref-for-document
-link-type="idl"} or
-[`WorkerGlobalScope`{.idl}](https://html.spec.whatwg.org/multipage/workers.html#workerglobalscope){#ref-for-workerglobalscope
-link-type="idl"} object
-([`context`{.variable}]{#generate-and-queue-a-report-context .dfn
-.dfn-paneled dfn-for="generate and queue a report" dfn-type="dfn"
-export=""}), given a string
-([`type`{.variable}]{#generate-and-queue-a-report-type .dfn .dfn-paneled
-dfn-for="generate and queue a report" dfn-type="dfn" export=""}), a
+report] for a
+[`Document`](https://dom.spec.whatwg.org/#document) or
+[`WorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#workerglobalscope) object
+([`context`]), given a string
+([`type`]), a
 string
-([`destination`{.variable}]{#generate-and-queue-a-report-destination
-.dfn .dfn-paneled dfn-for="generate and queue a report" dfn-type="dfn"
-export=""}), and a serializable object
-([`data`{.variable}]{#generate-and-queue-a-report-data .dfn .dfn-paneled
-dfn-for="generate and queue a report" dfn-type="dfn" export=""}), it
+([`destination`]), and a serializable object
+([`data`]), it
 must run the following steps:
 
-1.  Let `settings`{.variable} be `context`{.variable}'s [relevant
-    settings
-    object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object){#ref-for-relevant-settings-object
-    link-type="dfn"}.
+1. Let `settings` be `context`'s [relevant
+ settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object).
 
-2.  Let `report`{.variable} be the result of running [generate a
-    report](#generate-a-report){#ref-for-generate-a-report
-    link-type="dfn"} with `data`{.variable}, `type`{.variable},
-    `destination`{.variable} and `settings`{.variable}.
+2. Let `report` be the result of running [generate a
+ report](#generate-a-report) with `data`, `type`,
+ `destination` and `settings`.
 
-3.  If `settings`{.variable} is given, then
+3. If `settings` is given, then
 
-    1.  Let `scope`{.variable} be `settings`{.variable}'s [global
-        object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-global){#ref-for-concept-settings-object-global
-        link-type="dfn"}.
+ 1. Let `scope` be `settings`'s [global
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-global).
 
-    2.  If `scope`{.variable} is an object implementing
-        [`WindowOrWorkerGlobalScope`{.idl}](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope){#ref-for-windoworworkerglobalscope③
-        link-type="idl"}, then execute [§ 4.2 Notify reporting observers
-        on scope with report](#notify-observers) with `scope`{.variable}
-        and `report`{.variable}.
+ 2. If `scope` is an object implementing
+ [`WindowOrWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope), then execute [§ 4.2 Notify reporting observers
+ on scope with report](#notify-observers) with `scope`
+ and `report`.
 
-4.  Append `report`{.variable} to `context`{.variable}'s
-    [reports](#windoworworkerglobalscope-reports){#ref-for-windoworworkerglobalscope-reports②
-    link-type="dfn"}.
+4. Append `report` to `context`'s
+ [reports](#windoworworkerglobalscope-reports).
 
-### [3.5. ]{.secno}[Report Delivery]{.content}[](#report-delivery){.self-link} {#report-delivery .heading .settled level="3.5"}
+### 3.5. Report Delivery
 
 Over time, various features will queue up a list of
-[reports](#windoworworkerglobalscope-reports){#ref-for-windoworworkerglobalscope-reports③
-link-type="dfn"} in documents and workers. The user agent will
+[reports](#windoworworkerglobalscope-reports) in documents and workers. The user agent will
 periodically grab the list of currently queued reports, and deliver them
 to the associated endpoints. This document does not define a schedule
 for the user agent to follow, and assumes that the user agent will have
@@ -564,602 +475,462 @@ as possible after queuing, as a report's data might be significantly
 more useful in the period directly after its generation than it would be
 a day or a week later.
 
-#### [3.5.1. ]{.secno}[Send reports]{.content}[](#send-reports){.self-link} {#send-reports .heading .settled .algorithm algorithm="Send reports" level="3.5.1"}
+#### 3.5.1. Send reports
 
 A user agent sends a list of
-[reports](#windoworworkerglobalscope-reports){#ref-for-windoworworkerglobalscope-reports④
-link-type="dfn"} (`reports`{.variable}) for
-[`WindowOrWorkerGlobalScope`{.idl}](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope){#ref-for-windoworworkerglobalscope④
-link-type="idl"} object (`context`{.variable}) by executing the
+[reports](#windoworworkerglobalscope-reports) (`reports`) for
+[`WindowOrWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope) object (`context`) by executing the
 following steps:
 
-1.  Let `endpoint map`{.variable} be an empty map of
-    [endpoint](#endpoint){#ref-for-endpoint①① link-type="dfn"} objects
-    to lists of [report](#report){#ref-for-report①④ link-type="dfn"}
-    objects.
+1. Let `endpoint map` be an empty map of
+ [endpoint](#endpoint) objects
+ to lists of [report](#report)
+ objects.
 
-2.  For each `report`{.variable} in `reports`{.variable}:
+2. For each `report` in `reports`:
 
-    1.  If there exists an [endpoint](#endpoint){#ref-for-endpoint①②
-        link-type="dfn"} (`endpoint`{.variable}) in
-        `context`{.variable}'s
-        [endpoints](#windoworworkerglobalscope-endpoints){#ref-for-windoworworkerglobalscope-endpoints①
-        link-type="dfn"} list whose
-        [`name`{.idl}](#dom-endpoint-name){#ref-for-dom-endpoint-name③
-        link-type="idl"} is `report`{.variable}'s
-        [destination](#report-destination){#ref-for-report-destination①
-        link-type="dfn"}:
+ 1. If there exists an [endpoint](#endpoint) (`endpoint`) in
+ `context`'s
+ [endpoints](#windoworworkerglobalscope-endpoints) list whose
+ [`name`](#dom-endpoint-name) is `report`'s
+ [destination](#report-destination):
 
-        1.  Append `report`{.variable} to `endpoint map`{.variable}'s
-            list of reports for `endpoint`{.variable}.
+ 1. Append `report` to `endpoint map`'s
+ list of reports for `endpoint`.
 
-        2.  Otherwise, remove `report`{.variable} from
-            `reports`{.variable}.
+ 2. Otherwise, remove `report` from
+ `reports`.
 
-3.  For each (`endpoint`{.variable}, `report list`{.variable}) pair in
-    `endpoint map`{.variable}:
+3. For each (`endpoint`, `report list`) pair in
+ `endpoint map`:
 
-    1.  Let `origin map`{.variable} be an empty map of
-        [origins](https://html.spec.whatwg.org/multipage/browsers.html#origin){#ref-for-origin②
-        link-type="dfn"} to lists of [report](#report){#ref-for-report①⑤
-        link-type="dfn"} objects.
+ 1. Let `origin map` be an empty map of
+ [origins](https://html.spec.whatwg.org/multipage/browsers.html#origin) to lists of [report](#report) objects.
 
-    2.  For each `report`{.variable} in `report list`{.variable}:
+ 2. For each `report` in `report list`:
 
-        1.  Let `origin`{.variable} be the
-            [origin](https://html.spec.whatwg.org/multipage/browsers.html#origin){#ref-for-origin③
-            link-type="dfn"} of `report`{.variable}'s
-            [url](#report-url){#ref-for-report-url② link-type="dfn"}.
+ 1. Let `origin` be the
+ [origin](https://html.spec.whatwg.org/multipage/browsers.html#origin) of `report`'s
+ [url](#report-url).
 
-        2.  Append `report`{.variable} to `origin map`{.variable}'s list
-            of reports for `origin`{.variable}.
+ 2. Append `report` to `origin map`'s list
+ of reports for `origin`.
 
-    3.  For each (`origin`{.variable}, `per-origin reports`{.variable})
-        pair in `origin map`{.variable}, execute the following steps
-        asynchronously:
+ 3. For each (`origin`, `per-origin reports`)
+ pair in `origin map`, execute the following steps
+ asynchronously:
 
-        1.  Let `result`{.variable} be the result of executing [§ 3.5.2
-            Attempt to deliver reports to endpoint](#try-delivery) on
-            `endpoint`{.variable}, `origin`{.variable}, and
-            `per-origin reports`{.variable}.
+ 1. Let `result` be the result of executing [§ 3.5.2
+ Attempt to deliver reports to endpoint](#try-delivery) on
+ `endpoint`, `origin`, and
+ `per-origin reports`.
 
-        2.  If `result`{.variable} is \"`Failure`\":
+ 2. If `result` is \"`Failure`\":
 
-            1.  Increment `endpoint`{.variable}'s
-                [`failures`{.idl}](#dom-endpoint-failures){#ref-for-dom-endpoint-failures①
-                link-type="idl"}.
+ 1. Increment `endpoint`'s
+ [`failures`](#dom-endpoint-failures).
 
-        3.  If `result`{.variable} is \"`Remove Endpoint`\":
+ 3. If `result` is \"`Remove Endpoint`\":
 
-            1.  Remove `endpoint`{.variable} from `context`{.variable}'s
-                [endpoints](#windoworworkerglobalscope-endpoints){#ref-for-windoworworkerglobalscope-endpoints②
-                link-type="dfn"} list.
+ 1. Remove `endpoint` from `context`'s
+ [endpoints](#windoworworkerglobalscope-endpoints) list.
 
-        4.  Remove each [report](#report){#ref-for-report①⑥
-            link-type="dfn"} from `reports`{.variable}.
+ 4. Remove each [report](#report) from `reports`.
 
-        [](#issue-7f6dd3bd){.self-link} We don't specify any retry
-        mechanism here for failed reports. We may want to add one here,
-        or provide some indication that the delivery failed.
+ (#issue-7f6dd3bd) We don't specify any retry
+ mechanism here for failed reports. We may want to add one here,
+ or provide some indication that the delivery failed.
 
-[Note:]{.marker} User agents MAY decide to attempt delivery for only a
+ User agents MAY decide to attempt delivery for only a
 subset of the collected reports or endpoints (because, for example,
 sending all the reports at once would consume an unreasonable amount of
 bandwidth, etc). As reports are only removed from the cache after
 delivery has been attempted, skipped reports will simply be delivered
 later.
 
-#### [3.5.2. ]{.secno}[ Attempt to deliver `reports`{.variable} to `endpoint`{.variable} ]{.content}[](#try-delivery){.self-link} {#try-delivery .heading .settled .algorithm algorithm="Attempt to deliver reports to endpoint" level="3.5.2"}
+#### 3.5.2. Attempt to deliver `reports` to `endpoint`
 
-Given an [endpoint](#endpoint){#ref-for-endpoint①③ link-type="dfn"}
-(`endpoint`{.variable}), an
-[origin](https://html.spec.whatwg.org/multipage/browsers.html#origin){#ref-for-origin④
-link-type="dfn"} (`origin`{.variable}), and a list of
-[reports](#windoworworkerglobalscope-reports){#ref-for-windoworworkerglobalscope-reports⑤
-link-type="dfn"} (`reports`{.variable}), this algorithm will construct a
-[request](https://fetch.spec.whatwg.org/#concept-request){#ref-for-concept-request①
-link-type="dfn"}, and attempt to deliver it to `endpoint`{.variable}. It
+Given an [endpoint](#endpoint)
+(`endpoint`), an
+[origin](https://html.spec.whatwg.org/multipage/browsers.html#origin) (`origin`), and a list of
+[reports](#windoworworkerglobalscope-reports) (`reports`), this algorithm will construct a
+[request](https://fetch.spec.whatwg.org/#concept-request), and attempt to deliver it to `endpoint`. It
 returns \"`Success`\" if that delivery succeeds, \"`Remove Endpoint`\"
 if the endpoint explicitly removes itself as a reporting endpoint by
 sending a 410 response, and \"`Failure`\" otherwise.
 
-1.  Let `body`{.variable} be the result of executing [serialize a list
-    of reports to
-    JSON](#serialize-a-list-of-reports-to-json){#ref-for-serialize-a-list-of-reports-to-json
-    link-type="dfn"} on `reports`{.variable}.
+1. Let `body` be the result of executing [serialize a list
+ of reports to
+ JSON](#serialize-a-list-of-reports-to-json) on `reports`.
 
-2.  Let `request`{.variable} be a new
-    [request](https://fetch.spec.whatwg.org/#concept-request){#ref-for-concept-request②
-    link-type="dfn"} with the following properties
-    [\[FETCH\]](#biblio-fetch "Fetch Standard"){link-type="biblio"}:
+2. Let `request` be a new
+ [request](https://fetch.spec.whatwg.org/#concept-request) with the following properties
+ [\[FETCH\]](#biblio-fetch "Fetch Standard"):
 
-    `method`
+ `method`
 
-    :   \"`POST`\"
+ : \"`POST`\"
 
-    `url`
+ `url`
 
-    :   `endpoint`{.variable}'s
-        [`url`{.idl}](#dom-endpoint-url){#ref-for-dom-endpoint-url①
-        link-type="idl"}
+ : `endpoint`'s
+ [`url`](#dom-endpoint-url)
 
-    `origin`
+ `origin`
 
-    :   `origin`{.variable}
+ : `origin`
 
-    `header list`
+ `header list`
 
-    :   A new [header
-        list](https://fetch.spec.whatwg.org/#concept-header-list){#ref-for-concept-header-list
-        link-type="dfn"} containing a
-        [header](https://fetch.spec.whatwg.org/#concept-header){#ref-for-concept-header①
-        link-type="dfn"} named \``Content-Type`\` whose value is
-        \``application/reports+json`\`
+ : A new [header
+ list](https://fetch.spec.whatwg.org/#concept-header-list) containing a
+ [header](https://fetch.spec.whatwg.org/#concept-header) named \``Content-Type`\` whose value is
+ \``application/reports+json`\`
 
-    `client`
+ `client`
 
-    :   `null`
+ : `null`
 
-    `window`
+ `window`
 
-    :   \"`no-window`\"
+ : \"`no-window`\"
 
-    `service-workers mode`
+ `service-workers mode`
 
-    :   \"`none`\"
+ : \"`none`\"
 
-    `initiator`
+ `initiator`
 
-    :   \"\"
+ : \"\"
 
-    `destination`
+ `destination`
 
-    :   \"`report`\"
+ : \"`report`\"
 
-    `mode`
+ `mode`
 
-    :   \"`cors`\"
+ : \"`cors`\"
 
-    `unsafe-request` flag
+ `unsafe-request` flag
 
-    :   set
+ : set
 
-    `credentials`
+ `credentials`
 
-    :   \"`same-origin`\"
+ : \"`same-origin`\"
 
-    `body`
+ `body`
 
-    :   A
-        [body](https://fetch.spec.whatwg.org/#concept-body){#ref-for-concept-body
-        link-type="dfn"} whose
-        [source](https://fetch.spec.whatwg.org/#concept-body-source){#ref-for-concept-body-source
-        link-type="dfn"} is `body`{.variable}.
+ : A
+ [body](https://fetch.spec.whatwg.org/#concept-body) whose
+ [source](https://fetch.spec.whatwg.org/#concept-body-source) is `body`.
 
-    [Note:]{.marker} Reports are sent with credentials set to
-    `same-origin`. This allows reporting endpoints which are same-origin
-    with the reporting page to get extra context about the nature of the
-    report: for example, to understand whether a given user's account is
-    triggering errors consistently, or if a certain sequence of actions
-    taken on other pages is triggering a report on this page. This does
-    not leak any new information to the reporting endpoint that it could
-    not obtain in other ways. That is not the case for cross-origin
-    reporting endpoints, so they do not receive credentials.
+ Reports are sent with credentials set to
+ `same-origin`. This allows reporting endpoints which are same-origin
+ with the reporting page to get extra context about the nature of the
+ report: for example, to understand whether a given user's account is
+ triggering errors consistently, or if a certain sequence of actions
+ taken on other pages is triggering a report on this page. This does
+ not leak any new information to the reporting endpoint that it could
+ not obtain in other ways. That is not the case for cross-origin
+ reporting endpoints, so they do not receive credentials.
 
-3.  [Queue a
-    task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task){#ref-for-queue-a-task
-    link-type="dfn"} to
-    [fetch](https://fetch.spec.whatwg.org/#concept-fetch){#ref-for-concept-fetch
-    link-type="dfn"} `request`{.variable}.
+3. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to
+ [fetch](https://fetch.spec.whatwg.org/#concept-fetch) `request`.
 
-4.  [Wait for a
-    response](https://fetch.spec.whatwg.org/#wait-for-a-response){#ref-for-wait-for-a-response
-    link-type="dfn"} (`response`{.variable}).
+4. [Wait for a
+ response](https://fetch.spec.whatwg.org/#wait-for-a-response) (`response`).
 
-5.  If `response`{.variable}'s `status` is an [OK
-    status](https://fetch.spec.whatwg.org/#ok-status){#ref-for-ok-status
-    link-type="dfn"} (200-299), return \"`Success`\".
+5. If `response`'s `status` is an [OK
+ status](https://fetch.spec.whatwg.org/#ok-status) (200-299), return \"`Success`\".
 
-6.  If `response`{.variable}'s `status` is `410 Gone`
-    [\[RFC9110\]](#biblio-rfc9110 "HTTP Semantics"){link-type="biblio"},
-    return \"`Remove Endpoint`\".
+6. If `response`'s `status` is `410 Gone`
+ [\[RFC9110\]](#biblio-rfc9110 "HTTP Semantics"),
+ return \"`Remove Endpoint`\".
 
-7.  Return \"`Failure`\".
+7. Return \"`Failure`\".
 
-### [3.6. ]{.secno}[Strip URL for use in reports]{.content}[](#strip-url-for-use-in-reports-heading){.self-link} {#strip-url-for-use-in-reports-heading .heading .settled level="3.6"}
+### 3.6. Strip URL for use in reports
 
-To [strip URL for use in reports]{#strip-url-for-use-in-reports .dfn
-.dfn-paneled .algorithm algorithm="strip URL for use in reports"
-dfn-type="dfn" export=""} given a
-[URL](https://url.spec.whatwg.org/#concept-url){#ref-for-concept-url②
-link-type="dfn" refhint-key="https://url.spec.whatwg.org/#concept-url"}
-`url`{.variable}, perform the following steps. They return a string
+To [strip URL for use in reports] given a
+[URL](https://url.spec.whatwg.org/#concept-url)
+`url`, perform the following steps. They return a string
 representing the URL for use in reports.
 
-1.  If `url`{.variable}'s
-    [scheme](https://url.spec.whatwg.org/#concept-url-scheme){#ref-for-concept-url-scheme
-    link-type="dfn"} is not an [HTTP(S)
-    scheme](https://fetch.spec.whatwg.org/#http-scheme){#ref-for-http-scheme
-    link-type="dfn"}, then return `url`{.variable}'s
-    [scheme](https://url.spec.whatwg.org/#concept-url-scheme){#ref-for-concept-url-scheme①
-    link-type="dfn"}.
+1. If `url`'s
+ [scheme](https://url.spec.whatwg.org/#concept-url-scheme) is not an [HTTP(S)
+ scheme](https://fetch.spec.whatwg.org/#http-scheme), then return `url`'s
+ [scheme](https://url.spec.whatwg.org/#concept-url-scheme).
 
-2.  Set `url`{.variable}'s
-    [fragment](https://url.spec.whatwg.org/#concept-url-fragment){#ref-for-concept-url-fragment
-    link-type="dfn"} to the empty string.
+2. Set `url`'s
+ [fragment](https://url.spec.whatwg.org/#concept-url-fragment) to the empty string.
 
-3.  Set `url`{.variable}'s
-    [username](https://url.spec.whatwg.org/#concept-url-username){#ref-for-concept-url-username
-    link-type="dfn"} to the empty string.
+3. Set `url`'s
+ [username](https://url.spec.whatwg.org/#concept-url-username) to the empty string.
 
-4.  Set `url`{.variable}'s
-    [password](https://url.spec.whatwg.org/#concept-url-password){#ref-for-concept-url-password
-    link-type="dfn"} to the empty string.
+4. Set `url`'s
+ [password](https://url.spec.whatwg.org/#concept-url-password) to the empty string.
 
-5.  Return the result of executing the [URL
-    serializer](https://url.spec.whatwg.org/#concept-url-serializer){#ref-for-concept-url-serializer①
-    link-type="dfn"} on `url`{.variable}.
-:::
+5. Return the result of executing the [URL
+ serializer](https://url.spec.whatwg.org/#concept-url-serializer) on `url`.
 
-::: section
-## [4. ]{.secno}[Reporting Observers]{.content}[](#observers){.self-link} {#observers .heading .settled level="4"}
+## 4. Reporting Observers
 
-A [reporting observer]{#reporting-observer .dfn .dfn-paneled
-dfn-type="dfn" noexport=""} observes some types of
-[reports](#windoworworkerglobalscope-reports){#ref-for-windoworworkerglobalscope-reports⑥
-link-type="dfn"} from JavaScript, and is represented in JavaScript by
+A [reporting observer] observes some types of
+[reports](#windoworworkerglobalscope-reports) from JavaScript, and is represented in JavaScript by
 the
-[`ReportingObserver`{.idl}](#reportingobserver){#ref-for-reportingobserver
-link-type="idl"} object.
+[`ReportingObserver`](#reportingobserver) object.
 
 Each object implementing
-[`WindowOrWorkerGlobalScope`{.idl}](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope){#ref-for-windoworworkerglobalscope⑤
-link-type="idl"} has a [registered reporting observer
-list]{#windoworworkerglobalscope-registered-reporting-observer-list .dfn
-.dfn-paneled dfn-for="WindowOrWorkerGlobalScope" dfn-type="dfn"
-noexport=""}, which is an [ordered
-set](https://infra.spec.whatwg.org/#ordered-set){#ref-for-ordered-set
-link-type="dfn"} of [reporting
-observers](#reporting-observer){#ref-for-reporting-observer③
-link-type="dfn"}.
+[`WindowOrWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope) has a [registered reporting observer
+list], which is an [ordered
+set](https://infra.spec.whatwg.org/#ordered-set) of [reporting
+observers](#reporting-observer).
 
 Any [reporting
-observer](#reporting-observer){#ref-for-reporting-observer④
-link-type="dfn"} that is in a [registered reporting observer
-list](#windoworworkerglobalscope-registered-reporting-observer-list){#ref-for-windoworworkerglobalscope-registered-reporting-observer-list
-link-type="dfn"} is considered [registered]{#registered .dfn
-.dfn-paneled dfn-type="dfn" noexport=""}.
+observer](#reporting-observer) that is in a [registered reporting observer
+list](#windoworworkerglobalscope-registered-reporting-observer-list) is considered [registered].
 
 Each object implementing
-[`WindowOrWorkerGlobalScope`{.idl}](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope){#ref-for-windoworworkerglobalscope⑥
-link-type="idl"} has a [report
-buffer]{#windoworworkerglobalscope-report-buffer .dfn .dfn-paneled
-dfn-for="WindowOrWorkerGlobalScope" dfn-type="dfn" noexport=""}, which
-is a [list](https://infra.spec.whatwg.org/#list){#ref-for-list
-link-type="dfn"} of
-[reports](#windoworworkerglobalscope-reports){#ref-for-windoworworkerglobalscope-reports⑦
-link-type="dfn"} that have been generated in that
-[`WindowOrWorkerGlobalScope`{.idl}](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope){#ref-for-windoworworkerglobalscope⑦
-link-type="idl"}. This list is initially empty, and the reports are
+[`WindowOrWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope) has a [report
+buffer], which
+is a [list](https://infra.spec.whatwg.org/#list) of
+[reports](#windoworworkerglobalscope-reports) that have been generated in that
+[`WindowOrWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope). This list is initially empty, and the reports are
 stored in the same order in which they are generated.
 
-[Note:]{.marker} The purpose of the [report
-buffer](#windoworworkerglobalscope-report-buffer){#ref-for-windoworworkerglobalscope-report-buffer
-link-type="dfn"} is to allow [reporting
-observers](#reporting-observer){#ref-for-reporting-observer⑤
-link-type="dfn"} to observe reports that were generated earlier than
+ The purpose of the [report
+buffer](#windoworworkerglobalscope-report-buffer) is to allow [reporting
+observers](#reporting-observer) to observe reports that were generated earlier than
 that observer could be created (via the
-[`buffered`{.idl}](#dom-reportingobserveroptions-buffered){#ref-for-dom-reportingobserveroptions-buffered
-link-type="idl"} option). For example, some reports might be generated
+[`buffered`](#dom-reportingobserveroptions-buffered) option). For example, some reports might be generated
 during an earlier stage of page loading than when an observer could
 first be created, or before a JavaScript library is loaded that wishes
 to observe these reports.
 
-[Note:]{.marker} [Reporting
-observers](#reporting-observer){#ref-for-reporting-observer⑥
-link-type="dfn"} are only relevant for user agents with JavaScript
+ [Reporting
+observers](#reporting-observer) are only relevant for user agents with JavaScript
 engines.
 
-### [4.1. ]{.secno}[Interface [`ReportingObserver`{.idl}](#reportingobserver){#ref-for-reportingobserver① link-type="idl"}]{.content}[](#interface-reporting-observer){.self-link} {#interface-reporting-observer .heading .settled level="4.1"}
-
-``` {.idl .highlight .def}
-dictionary ReportBody {
-};
+### 4.1. Interface [`ReportingObserver`]
+```
+dictionary ReportBody ;
 
 dictionary Report {
-  DOMString type;
-  DOMString url;
-  ReportBody? body;
+ DOMString type;
+ DOMString url;
+ ReportBody? body;
 };
 
 [Exposed=(Window,Worker)]
 interface ReportingObserver {
-  constructor(ReportingObserverCallback callback, optional ReportingObserverOptions options = {});
-  undefined observe();
-  undefined disconnect();
-  ReportList takeRecords();
+ constructor(ReportingObserverCallback callback, optional ReportingObserverOptions options = );
+ undefined observe();
+ undefined disconnect();
+ ReportList takeRecords();
 };
 
 callback ReportingObserverCallback = undefined (sequence<Report> reports, ReportingObserver observer);
 
 dictionary ReportingObserverOptions {
-  sequence<DOMString> types;
-  boolean buffered = false;
+ sequence<DOMString> types;
+ boolean buffered = false;
 };
 
 typedef sequence<Report> ReportList;
 ```
 
-A [`Report`]{#dom-report .dfn .dfn-paneled .idl-code
-dfn-type="dictionary" export=""} is the application-exposed
-representation of a [report](#report){#ref-for-report①⑦
-link-type="dfn"}.
+A [`Report`] is the application-exposed
+representation of a [report](#report).
 
-[`ReportBody`]{#reportbody .dfn .dfn-paneled .idl-code
-dfn-type="dictionary" export=""} is an abstract
-[dictionary](https://webidl.spec.whatwg.org/#dfn-dictionary){#ref-for-dfn-dictionary
-link-type="dfn"} type from which specific report types should
-[inherit](https://webidl.spec.whatwg.org/#dfn-inherit-dictionary){#ref-for-dfn-inherit-dictionary
-link-type="dfn"}.
+[`ReportBody`] is an abstract
+[dictionary](https://webidl.spec.whatwg.org/#dfn-dictionary) type from which specific report types should
+[inherit](https://webidl.spec.whatwg.org/#dfn-inherit-dictionary).
 
 Each
-[`ReportingObserver`{.idl}](#reportingobserver){#ref-for-reportingobserver③
-link-type="idl"} object has these associated concepts:
+[`ReportingObserver`](#reportingobserver) object has these associated concepts:
 
-- A [callback]{#reportingobserver-callback .dfn .dfn-paneled
-  dfn-for="ReportingObserver" dfn-type="dfn" noexport=""} function set
-  on creation.
+- A [callback] function set
+ on creation.
 
 - A
-  [`ReportingObserverOptions`{.idl}](#dictdef-reportingobserveroptions){#ref-for-dictdef-reportingobserveroptions①
-  link-type="idl"} dictionary called
-  [options]{#reportingobserver-options .dfn .dfn-paneled
-  dfn-for="ReportingObserver" dfn-type="dfn" noexport=""}.
+ [`ReportingObserverOptions`](#dictdef-reportingobserveroptions) dictionary called
+ [options].
 
-- A list of [`Report`{.idl}](#dom-report){#ref-for-dom-report③
-  link-type="idl"} objects called the [report
-  queue]{#reportingobserver-report-queue .dfn .dfn-paneled
-  dfn-for="ReportingObserver" dfn-type="dfn" lt="report queue"
-  noexport=""}, which is initially empty.
+- A list of [`Report`](#dom-report) objects called the [report
+ queue], which is initially empty.
 
 A
-[`ReportList`{.idl}](#typedefdef-reportlist){#ref-for-typedefdef-reportlist①
-link-type="idl"} represents a sequence of
-[`Report`{.idl}](#dom-report){#ref-for-dom-report④ link-type="idl"}s,
+[`ReportList`](#typedefdef-reportlist) represents a sequence of
+[`Report`](#dom-report)s,
 providing developers with all the convenience methods found on
 JavaScript arrays.
 
 The
-[` ReportingObserver(``callback`{.variable}`, ``options`{.variable}`)`]{#dom-reportingobserver-reportingobserver
-.dfn .dfn-paneled .idl-code dfn-for="ReportingObserver"
-dfn-type="constructor" export=""
-lt="ReportingObserver(callback, options)|constructor(callback, options)|ReportingObserver(callback)|constructor(callback)"}
+[` ReportingObserver(``callback``, ``options``)`]
 constructor, when invoked, must run these steps:
 
-1.  Create a new
-    [`ReportingObserver`{.idl}](#reportingobserver){#ref-for-reportingobserver④
-    link-type="idl"} object `observer`{.variable}.
+1. Create a new
+ [`ReportingObserver`](#reportingobserver) object `observer`.
 
-2.  Set `observer`{.variable}'s
-    [callback](#reportingobserver-callback){#ref-for-reportingobserver-callback
-    link-type="dfn"} to `callback`{.variable}.
+2. Set `observer`'s
+ [callback](#reportingobserver-callback) to `callback`.
 
-3.  Set `observer`{.variable}'s
-    [options](#reportingobserver-options){#ref-for-reportingobserver-options
-    link-type="dfn"} to `options`{.variable}.
+3. Set `observer`'s
+ [options](#reportingobserver-options) to `options`.
 
-4.  Return `observer`{.variable}.
+4. Return `observer`.
 
-The [`observe()`]{#dom-reportingobserver-observe .dfn .dfn-paneled
-.idl-code dfn-for="ReportingObserver" dfn-type="method" export=""}
+The [`observe()`]
 method, when invoked, must run these steps:
 
-1.  Let `global`{.variable} be the be the [relevant global
-    object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global){#ref-for-concept-relevant-global
-    link-type="dfn"} of
-    [this](https://webidl.spec.whatwg.org/#this){#ref-for-this
-    link-type="dfn"}.
+1. Let `global` be the be the [relevant global
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global) of
+ [this](https://webidl.spec.whatwg.org/#this).
 
-2.  Append [this](https://webidl.spec.whatwg.org/#this){#ref-for-this①
-    link-type="dfn"} to the `global`{.variable}'s [registered reporting
-    observer
-    list](#windoworworkerglobalscope-registered-reporting-observer-list){#ref-for-windoworworkerglobalscope-registered-reporting-observer-list①
-    link-type="dfn"}.
+2. Append [this](https://webidl.spec.whatwg.org/#this) to the `global`'s [registered reporting
+ observer
+ list](#windoworworkerglobalscope-registered-reporting-observer-list).
 
-3.  If [this](https://webidl.spec.whatwg.org/#this){#ref-for-this②
-    link-type="dfn"}'s
-    [`buffered`{.idl}](#dom-reportingobserveroptions-buffered){#ref-for-dom-reportingobserveroptions-buffered①
-    link-type="idl"}
-    [option](#reportingobserver-options){#ref-for-reportingobserver-options①
-    link-type="dfn"} is false, return.
+3. If [this](https://webidl.spec.whatwg.org/#this)'s
+ [`buffered`](#dom-reportingobserveroptions-buffered)
+ [option](#reportingobserver-options) is false, return.
 
-4.  Set [this](https://webidl.spec.whatwg.org/#this){#ref-for-this③
-    link-type="dfn"}'s
-    [`buffered`{.idl}](#dom-reportingobserveroptions-buffered){#ref-for-dom-reportingobserveroptions-buffered②
-    link-type="idl"}
-    [option](#reportingobserver-options){#ref-for-reportingobserver-options②
-    link-type="dfn"} to false.
+4. Set [this](https://webidl.spec.whatwg.org/#this)'s
+ [`buffered`](#dom-reportingobserveroptions-buffered)
+ [option](#reportingobserver-options) to false.
 
-5.  For each `report`{.variable} in `global`{.variable}'s [report
-    buffer](#windoworworkerglobalscope-report-buffer){#ref-for-windoworworkerglobalscope-report-buffer①
-    link-type="dfn"}, [queue a
-    task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task){#ref-for-queue-a-task①
-    link-type="dfn"} to execute [§ 4.3 Add report to
-    observer](#add-report) with `report`{.variable} and
-    [this](https://webidl.spec.whatwg.org/#this){#ref-for-this④
-    link-type="dfn"}.
+5. For each `report` in `global`'s [report
+ buffer](#windoworworkerglobalscope-report-buffer), [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to execute [§ 4.3 Add report to
+ observer](#add-report) with `report` and
+ [this](https://webidl.spec.whatwg.org/#this).
 
-The [`disconnect()`]{#dom-reportingobserver-disconnect .dfn .dfn-paneled
-.idl-code dfn-for="ReportingObserver" dfn-type="method" export=""}
+The [`disconnect()`]
 method, when invoked, must run these steps:
 
-1.  If [this](https://webidl.spec.whatwg.org/#this){#ref-for-this⑤
-    link-type="dfn"} is not
-    [registered](#registered){#ref-for-registered link-type="dfn"},
-    return.
+1. If [this](https://webidl.spec.whatwg.org/#this) is not
+ [registered](#registered),
+ return.
 
-2.  Let `global`{.variable} be the [relevant global
-    object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global){#ref-for-concept-relevant-global①
-    link-type="dfn"} of
-    [this](https://webidl.spec.whatwg.org/#this){#ref-for-this⑥
-    link-type="dfn"}.
+2. Let `global` be the [relevant global
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global) of
+ [this](https://webidl.spec.whatwg.org/#this).
 
-3.  Remove [this](https://webidl.spec.whatwg.org/#this){#ref-for-this⑦
-    link-type="dfn"} from `global`{.variable}'s [registered reporting
-    observer
-    list](#windoworworkerglobalscope-registered-reporting-observer-list){#ref-for-windoworworkerglobalscope-registered-reporting-observer-list②
-    link-type="dfn"}.
+3. Remove [this](https://webidl.spec.whatwg.org/#this) from `global`'s [registered reporting
+ observer
+ list](#windoworworkerglobalscope-registered-reporting-observer-list).
 
-The [`takeRecords()`]{#dom-reportingobserver-takerecords .dfn
-.dfn-paneled .idl-code dfn-for="ReportingObserver" dfn-type="method"
-export=""} method, when invoked, must run these steps:
+The [`takeRecords()`] method, when invoked, must run these steps:
 
-1.  Let `reports`{.variable} be a copy of
-    [this](https://webidl.spec.whatwg.org/#this){#ref-for-this⑧
-    link-type="dfn"}'s [report
-    queue](#reportingobserver-report-queue){#ref-for-reportingobserver-report-queue
-    link-type="dfn"}.
+1. Let `reports` be a copy of
+ [this](https://webidl.spec.whatwg.org/#this)'s [report
+ queue](#reportingobserver-report-queue).
 
-2.  Empty [this](https://webidl.spec.whatwg.org/#this){#ref-for-this⑨
-    link-type="dfn"}'s [report
-    queue](#reportingobserver-report-queue){#ref-for-reportingobserver-report-queue①
-    link-type="dfn"}.
+2. Empty [this](https://webidl.spec.whatwg.org/#this)'s [report
+ queue](#reportingobserver-report-queue).
 
-3.  Return `reports`{.variable}.
+3. Return `reports`.
 
-### [4.2. ]{.secno}[ Notify reporting observers on `scope`{.variable} with `report`{.variable} ]{.content}[](#notify-observers){.self-link} {#notify-observers .heading .settled .algorithm algorithm="Notify reporting observers on scope with report" level="4.2"}
+### 4.2. Notify reporting observers on `scope` with `report`
 
-This algorithm makes `report`{.variable}'s contents available to any
-[registered](#registered){#ref-for-registered① link-type="dfn"}
-[reporting observers](#reporting-observer){#ref-for-reporting-observer⑦
-link-type="dfn"} on the provided
-[`WindowOrWorkerGlobalScope`{.idl}](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope){#ref-for-windoworworkerglobalscope⑧
-link-type="idl"}.
+This algorithm makes `report`'s contents available to any
+[registered](#registered)
+[reporting observers](#reporting-observer) on the provided
+[`WindowOrWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/webappapis.html#windoworworkerglobalscope).
 
-1.  For each
-    [`ReportingObserver`{.idl}](#reportingobserver){#ref-for-reportingobserver⑤
-    link-type="idl"} `observer`{.variable}
-    [registered](#registered){#ref-for-registered② link-type="dfn"} with
-    `scope`{.variable}, execute [§ 4.3 Add report to
-    observer](#add-report) on `report`{.variable} and
-    `observer`{.variable}.
+1. For each
+ [`ReportingObserver`](#reportingobserver) `observer`
+ [registered](#registered) with
+ `scope`, execute [§ 4.3 Add report to
+ observer](#add-report) on `report` and
+ `observer`.
 
-2.  Append `report`{.variable} to `scope`{.variable}'s [report
-    buffer](#windoworworkerglobalscope-report-buffer){#ref-for-windoworworkerglobalscope-report-buffer②
-    link-type="dfn"}.
+2. Append `report` to `scope`'s [report
+ buffer](#windoworworkerglobalscope-report-buffer).
 
-3.  Let `type`{.variable} be `report`{.variable}'s
-    [type](#report-reporttype){#ref-for-report-reporttype③
-    link-type="dfn"}.
+3. Let `type` be `report`'s
+ [type](#report-reporttype).
 
-4.  If `scope`{.variable}'s [report
-    buffer](#windoworworkerglobalscope-report-buffer){#ref-for-windoworworkerglobalscope-report-buffer③
-    link-type="dfn"} now contains more than 100 reports with
-    [type](#report-reporttype){#ref-for-report-reporttype④
-    link-type="dfn"} equal to `type`{.variable}, remove the earliest
-    item with [type](#report-reporttype){#ref-for-report-reporttype⑤
-    link-type="dfn"} equal to `type`{.variable} in the [report
-    buffer](#windoworworkerglobalscope-report-buffer){#ref-for-windoworworkerglobalscope-report-buffer④
-    link-type="dfn"}.
+4. If `scope`'s [report
+ buffer](#windoworworkerglobalscope-report-buffer) now contains more than 100 reports with
+ [type](#report-reporttype) equal to `type`, remove the earliest
+ item with [type](#report-reporttype) equal to `type` in the [report
+ buffer](#windoworworkerglobalscope-report-buffer).
 
-### [4.3. ]{.secno}[ Add `report`{.variable} to `observer`{.variable} ]{.content}[](#add-report){.self-link} {#add-report .heading .settled .algorithm algorithm="Add report to observer" level="4.3"}
+### 4.3. Add `report` to `observer`
 
-Given a [report](#report){#ref-for-report①⑧ link-type="dfn"}
-`report`{.variable} and a
-[`ReportingObserver`{.idl}](#reportingobserver){#ref-for-reportingobserver⑥
-link-type="idl"} `observer`{.variable}, this algorithm adds
-`report`{.variable} to `observer`{.variable}'s [report
-queue](#reportingobserver-report-queue){#ref-for-reportingobserver-report-queue②
-link-type="dfn"}, so long as `report`{.variable}'s
-[type](#report-reporttype){#ref-for-report-reporttype⑥ link-type="dfn"}
-is observable by `observer`{.variable}.
+Given a [report](#report)
+`report` and a
+[`ReportingObserver`](#reportingobserver) `observer`, this algorithm adds
+`report` to `observer`'s [report
+queue](#reportingobserver-report-queue), so long as `report`'s
+[type](#report-reporttype)
+is observable by `observer`.
 
-1.  If `report`{.variable}'s
-    [type](#report-reporttype){#ref-for-report-reporttype⑦
-    link-type="dfn"} is not [visible to
-    `ReportingObserver`s](#visible-to-reportingobservers){#ref-for-visible-to-reportingobservers①
-    link-type="dfn"}, return.
+1. If `report`'s
+ [type](#report-reporttype) is not [visible to
+ `ReportingObserver`s](#visible-to-reportingobservers), return.
 
-2.  If `observer`{.variable}'s
-    [options](#reportingobserver-options){#ref-for-reportingobserver-options③
-    link-type="dfn"} has a non-empty
-    [`types`{.idl}](#dom-reportingobserveroptions-types){#ref-for-dom-reportingobserveroptions-types
-    link-type="idl"} member which does not contain `report`{.variable}'s
-    [type](#report-reporttype){#ref-for-report-reporttype⑧
-    link-type="dfn"}, return.
+2. If `observer`'s
+ [options](#reportingobserver-options) has a non-empty
+ [`types`](#dom-reportingobserveroptions-types) member which does not contain `report`'s
+ [type](#report-reporttype), return.
 
-3.  Create a new [`Report`{.idl}](#dom-report){#ref-for-dom-report⑤
-    link-type="idl"} `r`{.variable} with
-    [`type`{.idl}](#dom-report-type){#ref-for-dom-report-type
-    link-type="idl"} initialized to `report`{.variable}'s
-    [type](#report-reporttype){#ref-for-report-reporttype⑨
-    link-type="dfn"},
-    [`url`{.idl}](#dom-report-url){#ref-for-dom-report-url
-    link-type="idl"} initialized to `report`{.variable}'s
-    [url](#report-url){#ref-for-report-url③ link-type="dfn"}, and
-    [`body`{.idl}](#dom-report-body){#ref-for-dom-report-body
-    link-type="idl"} initialized to `report`{.variable}'s
-    [body](#report-body){#ref-for-report-body④ link-type="dfn"}.
+3. Create a new [`Report`](#dom-report) `r` with
+ [`type`](#dom-report-type) initialized to `report`'s
+ [type](#report-reporttype),
+ [`url`](#dom-report-url) initialized to `report`'s
+ [url](#report-url), and
+ [`body`](#dom-report-body) initialized to `report`'s
+ [body](#report-body).
 
-[](#issue-6311d126){.self-link} how to polymorphically initialize body?
+how to polymorphically initialize body?
 
-3.  Append `r`{.variable} to `observer`{.variable}'s [report
-    queue](#reportingobserver-report-queue){#ref-for-reportingobserver-report-queue③
-    link-type="dfn"}.
+3. Append `r` to `observer`'s [report
+ queue](#reportingobserver-report-queue).
 
-4.  If the size of `observer`{.variable}'s [report
-    queue](#reportingobserver-report-queue){#ref-for-reportingobserver-report-queue④
-    link-type="dfn"} is 1:
+4. If the size of `observer`'s [report
+ queue](#reportingobserver-report-queue) is 1:
 
-    1.  Let `global`{.variable} be `observer`{.variable}'s [relevant
-        global
-        object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global){#ref-for-concept-relevant-global②
-        link-type="dfn"}.
+ 1. Let `global` be `observer`'s [relevant
+ global
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global).
 
-    2.  [Queue a
-        task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task){#ref-for-queue-a-task②
-        link-type="dfn"} to [§ 4.4 Invoke reporting observers with
-        notify list](#invoke-observers) with a copy of
-        `global`{.variable}'s [registered reporting observer
-        list](#windoworworkerglobalscope-registered-reporting-observer-list){#ref-for-windoworworkerglobalscope-registered-reporting-observer-list③
-        link-type="dfn"}.
+ 2. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to [§ 4.4 Invoke reporting observers with
+ notify list](#invoke-observers) with a copy of
+ `global`'s [registered reporting observer
+ list](#windoworworkerglobalscope-registered-reporting-observer-list).
 
-### [4.4. ]{.secno}[ Invoke reporting observers with `notify list`{.variable} ]{.content}[](#invoke-observers){.self-link} {#invoke-observers .heading .settled .algorithm algorithm="Invoke reporting observers with notify list" level="4.4"}
+### 4.4. Invoke reporting observers with `notify list`
 
 This algorithm invokes observer callback functions for reports of
 previously observed behavior.
 
-1.  For each
-    [`ReportingObserver`{.idl}](#reportingobserver){#ref-for-reportingobserver⑦
-    link-type="idl"} `observer`{.variable} in `notify list`{.variable}:
+1. For each
+ [`ReportingObserver`](#reportingobserver) `observer` in `notify list`:
 
-    1.  If `observer`{.variable}'s [report
-        queue](#reportingobserver-report-queue){#ref-for-reportingobserver-report-queue⑤
-        link-type="dfn"} is empty, then continue.
+ 1. If `observer`'s [report
+ queue](#reportingobserver-report-queue) is empty, then continue.
 
-    2.  Let `reports`{.variable} be a copy of `observer`{.variable}'s
-        [report
-        queue](#reportingobserver-report-queue){#ref-for-reportingobserver-report-queue⑥
-        link-type="dfn"}
+ 2. Let `reports` be a copy of `observer`'s
+ [report
+ queue](#reportingobserver-report-queue)
 
-    3.  Empty `observer`{.variable}'s [report
-        queue](#reportingobserver-report-queue){#ref-for-reportingobserver-report-queue⑦
-        link-type="dfn"}
+ 3. Empty `observer`'s [report
+ queue](#reportingobserver-report-queue)
 
-    4.  [Invoke](https://webidl.spec.whatwg.org/#invoke-a-callback-function){#ref-for-invoke-a-callback-function
-        link-type="dfn"} `observer`{.variable}'s
-        [callback](#reportingobserver-callback){#ref-for-reportingobserver-callback①
-        link-type="dfn"} with « `reports`{.variable},
-        `observer`{.variable} » and \"`report`\", and with
-        `observer`{.variable} as the [callback this
-        value](https://webidl.spec.whatwg.org/#dfn-callback-this-value){#ref-for-dfn-callback-this-value
-        link-type="dfn"}.
-:::
+ 4. [Invoke](https://webidl.spec.whatwg.org/#invoke-a-callback-function) `observer`'s
+ [callback](#reportingobserver-callback) with « `reports`,
+ `observer` » and \"`report`\", and with
+ `observer` as the [callback this
+ value](https://webidl.spec.whatwg.org/#dfn-callback-this-value).
 
-::: section
-## [5. ]{.secno}[Implementation Considerations]{.content}[](#implementation){.self-link} {#implementation .heading .settled level="5"}
+## 5. Implementation Considerations
 
-### [5.1. ]{.secno}[Delivery]{.content}[](#delivery){.self-link} {#delivery .heading .settled level="5.1"}
+### 5.1. Delivery
 
 The user agent SHOULD attempt to deliver reports as soon as possible to
 provide feedback to developers as quickly as possible. However, when
@@ -1178,33 +949,27 @@ cost.
 The user agent MAY choose to prioritize reports from particular origins
 over others (perhaps those that the user visits most often?)
 
-### [5.2. ]{.secno}[Garbage Collection]{.content}[](#gc){.self-link} {#gc .heading .settled level="5.2"}
+### 5.2. Garbage Collection
 
 Periodically, the user agent SHOULD walk through the cached
-[reports](#report){#ref-for-report①⑨ link-type="dfn"} and
-[endpoints](#endpoint){#ref-for-endpoint①④ link-type="dfn"}, and discard
+[reports](#report) and
+[endpoints](#endpoint), and discard
 those that are no longer relevant. These include:
 
-- [endpoints](#endpoint){#ref-for-endpoint①⑤ link-type="dfn"} whose
-  [`failures`{.idl}](#dom-endpoint-failures){#ref-for-dom-endpoint-failures②
-  link-type="idl"} exceed some user-agent-defined threshold (\~5 seems
-  reasonable)
+- [endpoints](#endpoint) whose
+ [`failures`](#dom-endpoint-failures) exceed some user-agent-defined threshold (\~5 seems
+ reasonable)
 
-- [reports](#report){#ref-for-report②⓪ link-type="dfn"} which have not
-  been delivered in some arbitrary period of time (perhaps \~2 days?)
+- [reports](#report) which have not
+ been delivered in some arbitrary period of time (perhaps \~2 days?)
 
-For any [reports](#report){#ref-for-report②① link-type="dfn"} that are
+For any [reports](#report) that are
 discarded, these
-[reports](#windoworworkerglobalscope-reports){#ref-for-windoworworkerglobalscope-reports⑧
-link-type="dfn"} should also be removed from the [report
-buffer](#windoworworkerglobalscope-report-buffer){#ref-for-windoworworkerglobalscope-report-buffer⑤
-link-type="dfn"} of any [reporting
-observer](#reporting-observer){#ref-for-reporting-observer⑧
-link-type="dfn"}.
-:::
+[reports](#windoworworkerglobalscope-reports) should also be removed from the [report
+buffer](#windoworworkerglobalscope-report-buffer) of any [reporting
+observer](#reporting-observer).
 
-:::: {.section .non-normative}
-## [6. ]{.secno}[Sample Reports]{.content}[](#sample-reports){.self-link} {#sample-reports .heading .settled level="6"}
+## 6. Sample Reports
 
 *This section is non-normative.*
 
@@ -1215,207 +980,168 @@ request. (The report types and bodies themselves are not intended to be
 representative of any actual feature, as those are outside of the scope
 of this specification).
 
-::: {#example-3cfcdab2 .example}
-[](#example-3cfcdab2){.self-link}
+POST / HTTP/1.1
+ Host: example.com
+ ...
+ Content-Type: application/reports+json
 
-    POST / HTTP/1.1
-    Host: example.com
-    ...
-    Content-Type: application/reports+json
+ [{
+ "type": "security-violation",
+ "age": 10,
+ "url": "https://example.com/vulnerable-page/",
+ "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0",
+ "body": {
+ "blocked": "https://evil.com/evil.js",
+ "policy": "bad-behavior 'none'",
+ "status": 200,
+ "referrer": "https://evil.com/"
+ }
+ }, {
+ "type": "certificate-issue",
+ "age": 32,
+ "url": "https://www.example.com/",
+ "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0",
+ "body": {
+ "date-time": "2014-04-06T13:00:50Z",
+ "hostname": "www.example.com",
+ "port": 443,
+ "effective-expiration-date": "2014-05-01T12:40:50Z",
+ "served-certificate-chain": [
+ "-----BEGIN CERTIFICATE-----\n
+ MIIEBDCCAuygAwIBAgIDAjppMA0GCSqGSIb3DQEBBQUAMEIxCzAJBgNVBAYTAlVT\n
+ ...
+ HFa9llF7b1cq26KqltyMdMKVvvBulRP/F/A8rLIQjcxz++iPAsbw+zOzlTvjwsto\n
+ WHPbqCRiOwY1nQ2pM714A5AuTHhdUDqB1O6gyHA43LL5Z/qHQF1hwFGPa4NrzQU6\n
+ yuGnBXj8ytqU0CwIPX4WecigUCAkVDNx\n
+ -----END CERTIFICATE-----",
+ ...
+ ]
+ }
+ }, {
+ "type": "cpu-on-fire",
+ "age": 29,
+ "url": "https://example.com/thing.js",
+ "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0",
+ "body": {
+ "temperature": 614.0
+ }
+ }]
 
-    [{
-      "type": "security-violation",
-      "age": 10,
-      "url": "https://example.com/vulnerable-page/",
-      "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0",
-      "body": {
-        "blocked": "https://evil.com/evil.js",
-        "policy": "bad-behavior 'none'",
-        "status": 200,
-        "referrer": "https://evil.com/"
-      }
-    }, {
-      "type": "certificate-issue",
-      "age": 32,
-      "url": "https://www.example.com/",
-      "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0",
-      "body": {
-        "date-time": "2014-04-06T13:00:50Z",
-        "hostname": "www.example.com",
-        "port": 443,
-        "effective-expiration-date": "2014-05-01T12:40:50Z",
-        "served-certificate-chain": [
-          "-----BEGIN CERTIFICATE-----\n
-          MIIEBDCCAuygAwIBAgIDAjppMA0GCSqGSIb3DQEBBQUAMEIxCzAJBgNVBAYTAlVT\n
-          ...
-          HFa9llF7b1cq26KqltyMdMKVvvBulRP/F/A8rLIQjcxz++iPAsbw+zOzlTvjwsto\n
-          WHPbqCRiOwY1nQ2pM714A5AuTHhdUDqB1O6gyHA43LL5Z/qHQF1hwFGPa4NrzQU6\n
-          yuGnBXj8ytqU0CwIPX4WecigUCAkVDNx\n
-          -----END CERTIFICATE-----",
-          ...
-        ]
-      }
-    }, {
-      "type": "cpu-on-fire",
-      "age": 29,
-      "url": "https://example.com/thing.js",
-      "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0",
-      "body": {
-        "temperature": 614.0
-      }
-    }]
-:::
-::::
-
-::: section
-## [7. ]{.secno}[Automation]{.content}[](#automation){.self-link} {#automation .heading .settled level="7"}
+## 7. Automation
 
 For the purposes of user-agent automation and application testing, this
 document defines a number of [extension
-commands](https://w3c.github.io/webdriver/#dfn-extension-command){#ref-for-dfn-extension-command
-link-type="dfn"} for the
-[\[WebDriver\]](#biblio-webdriver "WebDriver"){link-type="biblio"}
+commands](https://w3c.github.io/webdriver/#dfn-extension-command) for the
+[\[WebDriver\]](#biblio-webdriver "WebDriver")
 specification.
 
-### [7.1. ]{.secno}[Generate Test Report]{.content}[](#generate-test-report-command){.self-link} {#generate-test-report-command .heading .settled level="7.1"}
+### 7.1. Generate Test Report
 
-The [Generate Test Report]{#generate-test-report .dfn .dfn-paneled
-dfn-type="dfn" export=""} [extension
-command](https://w3c.github.io/webdriver/#dfn-extension-command){#ref-for-dfn-extension-command①
-link-type="dfn"} simulates the generation of a
-[report](#report){#ref-for-report②② link-type="dfn"} for the purposes of
+The [Generate Test Report] [extension
+command](https://w3c.github.io/webdriver/#dfn-extension-command) simulates the generation of a
+[report](#report) for the purposes of
 testing. This report will be observed by any
-[registered](#registered){#ref-for-registered③ link-type="dfn"}
-[reporting observers](#reporting-observer){#ref-for-reporting-observer⑨
-link-type="dfn"}.
+[registered](#registered)
+[reporting observers](#reporting-observer).
 
 The [extension
-command](https://w3c.github.io/webdriver/#dfn-extension-command){#ref-for-dfn-extension-command②
-link-type="dfn"} is defined as follows:
+command](https://w3c.github.io/webdriver/#dfn-extension-command) is defined as follows:
 
-``` {.idl .highlight .def}
+```
 dictionary GenerateTestReportParameters {
-  required DOMString message;
-  DOMString group = "default";
+ required DOMString message;
+ DOMString group = "default";
 };
 ```
 
 HTTP Method
 
 [URI
-Template](https://w3c.github.io/webdriver/#dfn-extension-command-uri-template){#ref-for-dfn-extension-command-uri-template
-link-type="dfn"}
+Template](https://w3c.github.io/webdriver/#dfn-extension-command-uri-template)
 
 `POST`
 
 `/session/{session id}/reporting/generate_test_report`
 
 The [remote end
-steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps){#ref-for-dfn-remote-end-steps
-link-type="dfn"} are:
+steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) are:
 
-1.  If `parameters`{.variable} is not a JSON
-    [Object](https://www.w3.org/TR/rdf12-concepts/#dfn-object){#ref-for-dfn-object
-    link-type="dfn"}, return a [WebDriver
-    error](https://w3c.github.io/webdriver/#dfn-error){#ref-for-dfn-error
-    link-type="dfn"} with [WebDriver error
-    code](https://w3c.github.io/webdriver/#dfn-error-code){#ref-for-dfn-error-code
-    link-type="dfn"} [invalid
-    argument](https://w3c.github.io/webdriver/#dfn-invalid-argument){#ref-for-dfn-invalid-argument
-    link-type="dfn"}.
+1. If `parameters` is not a JSON
+ [Object](https://w3c.github.io/rdf-concepts/spec/#dfn-object), return a [WebDriver
+ error](https://w3c.github.io/webdriver/#dfn-error) with [WebDriver error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [invalid
+ argument](https://w3c.github.io/webdriver/#dfn-invalid-argument).
 
-2.  Let `message`{.variable} be the result of
-    [trying](https://w3c.github.io/webdriver/#dfn-try){#ref-for-dfn-try
-    link-type="dfn"} to get `parameters`{.variable}'s
-    [`message`{.idl}](#dom-generatetestreportparameters-message){#ref-for-dom-generatetestreportparameters-message
-    link-type="idl"} property.
+2. Let `message` be the result of
+ [trying](https://w3c.github.io/webdriver/#dfn-try) to get `parameters`'s
+ [`message`](#dom-generatetestreportparameters-message) property.
 
-3.  If `message`{.variable} is not present, return a [WebDriver
-    error](https://w3c.github.io/webdriver/#dfn-error){#ref-for-dfn-error①
-    link-type="dfn"} with [WebDriver error
-    code](https://w3c.github.io/webdriver/#dfn-error-code){#ref-for-dfn-error-code①
-    link-type="dfn"} [invalid
-    argument](https://w3c.github.io/webdriver/#dfn-invalid-argument){#ref-for-dfn-invalid-argument①
-    link-type="dfn"}.
+3. If `message` is not present, return a [WebDriver
+ error](https://w3c.github.io/webdriver/#dfn-error) with [WebDriver error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [invalid
+ argument](https://w3c.github.io/webdriver/#dfn-invalid-argument).
 
-4.  If the [current browsing
-    context](https://w3c.github.io/webdriver/#dfn-current-browsing-context){#ref-for-dfn-current-browsing-context
-    link-type="dfn"} is no longer open, return a [WebDriver
-    error](https://w3c.github.io/webdriver/#dfn-error){#ref-for-dfn-error②
-    link-type="dfn"} with [WebDriver error
-    code](https://w3c.github.io/webdriver/#dfn-error-code){#ref-for-dfn-error-code②
-    link-type="dfn"} [no such
-    window](https://w3c.github.io/webdriver/#dfn-no-such-window){#ref-for-dfn-no-such-window
-    link-type="dfn"}.
+4. If the [current browsing
+ context](https://w3c.github.io/webdriver/#dfn-current-browsing-context) is no longer open, return a [WebDriver
+ error](https://w3c.github.io/webdriver/#dfn-error) with [WebDriver error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [no such
+ window](https://w3c.github.io/webdriver/#dfn-no-such-window).
 
-5.  [Handle any user
-    prompts](https://w3c.github.io/webdriver/#dfn-handle-any-user-prompts){#ref-for-dfn-handle-any-user-prompts
-    link-type="dfn"} and return its value if it is a [WebDriver
-    error](https://w3c.github.io/webdriver/#dfn-error){#ref-for-dfn-error③
-    link-type="dfn"}.
+5. [Handle any user
+ prompts](https://w3c.github.io/webdriver/#dfn-handle-any-user-prompts) and return its value if it is a [WebDriver
+ error](https://w3c.github.io/webdriver/#dfn-error).
 
-6.  Let `group`{.variable} be `parameters`{.variable}'s
-    [`group`{.idl}](#dom-generatetestreportparameters-group){#ref-for-dom-generatetestreportparameters-group
-    link-type="idl"} property.
+6. Let `group` be `parameters`'s
+ [`group`](#dom-generatetestreportparameters-group) property.
 
-7.  Let `body`{.variable} be a new object that can be serialized into a
-    [JSON
-    text](https://tools.ietf.org/html/rfc8259#section-2){#ref-for-section-2①
-    link-type="dfn"}, containing a single string field,
-    `body_message`{.variable}.
+7. Let `body` be a new object that can be serialized into a
+ [JSON
+ text](https://tools.ietf.org/html/rfc8259#section-2), containing a single string field,
+ `body_message`.
 
-8.  Set `body_message`{.variable} to `message`{.variable}.
+8. Set `body_message` to `message`.
 
-9.  Let `settings`{.variable} be the [environment settings
-    object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-settings-object){#ref-for-environment-settings-object②
-    link-type="dfn"} of the [current browsing
-    context](https://w3c.github.io/webdriver/#dfn-current-browsing-context){#ref-for-dfn-current-browsing-context①
-    link-type="dfn"}'s [active
-    document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document){#ref-for-nav-document
-    link-type="dfn"}.
+9. Let `settings` be the [environment settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-settings-object) of the [current browsing
+ context](https://w3c.github.io/webdriver/#dfn-current-browsing-context)'s [active
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document).
 
 10. Execute [generate and queue a
-    report](#generate-and-queue-a-report){#ref-for-generate-and-queue-a-report
-    link-type="dfn"} with `body`{.variable}, \"test\",
-    `group`{.variable}, and `settings`{.variable}.
+ report](#generate-and-queue-a-report) with `body`, \"test\",
+ `group`, and `settings`.
 
 11. Return
-    [success](https://w3c.github.io/webdriver/#dfn-success){#ref-for-dfn-success
-    link-type="dfn"} with data null.
-:::
+ [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
-::: section
-## [8. ]{.secno}[Security Considerations]{.content}[](#security){.self-link} {#security .heading .settled level="8"}
+## 8. Security Considerations
 
-### [8.1. ]{.secno}[Capability URLs]{.content}[](#capability-urls){.self-link} {#capability-urls .heading .settled level="8.1"}
+### 8.1. Capability URLs
 
 Some URLs are valuable in and of themselves. They may contain explicit
 credentials in the username and password portion of the URL, or may
 grant access to some resource to anyone with knowledge of the URL path.
 Additionally, they may contain information which was never intended
 leave the user's browser in the URL fragment. See
-[\[CAPABILITY-URLS\]](#biblio-capability-urls "Good Practices for Capability URLs"){link-type="biblio"}
+[\[CAPABILITY-URLS\]](#biblio-capability-urls "Good Practices for Capability URLs")
 for more information.
 
 To mitigate the possibility that such URLs will be leaked via this
 reporting mechanism, the algorithms here strip out credential
 information and fragment data from the URL sent as a
-[report](#report){#ref-for-report②③ link-type="dfn"}'s originator. It is
+[report](#report)'s originator. It is
 still possible, however, for sensitive information in the URL's path to
 be leaked this way. Sites which use such URLs may need to operate their
 own reporting endpoints.
 
 Additionally, such URLs may be present in a report's
-[body](#report-body){#ref-for-report-body⑤ link-type="dfn"}.
+[body](#report-body).
 Specifications which extend this API and which include any URLs in a
-report's [body](#report-body){#ref-for-report-body⑥ link-type="dfn"}
+report's [body](#report-body)
 SHOULD require that they be similarly stripped.
-:::
 
-::: section
-## [9. ]{.secno}[Privacy Considerations]{.content}[](#privacy){.self-link} {#privacy .heading .settled level="9"}
+## 9. Privacy Considerations
 
-### [9.1. ]{.secno}[Network Leakage]{.content}[](#network-leakage){.self-link} {#network-leakage .heading .settled level="9.1"}
+### 9.1. Network Leakage
 
 Because there is a delay between a page being loaded and a report being
 generated and sent, it's entirely possible for a report generated while
@@ -1428,12 +1154,12 @@ traffic on the new network through other means in any case, even after
 the document is closed, through mechanisms such as
 `navigator.sendBeacon`.
 
-[](#issue-acba119f){.self-link} Consider mitigations. For example, we
+Consider mitigations. For example, we
 could drop reports if we change from one network to another.
 [\[WICG/background-sync Issue
 #107\]](https://github.com/WICG/background-sync/issues/107)
 
-### [9.2. ]{.secno}[Clock Skew]{.content}[](#fingerprinting-clock-skew){.self-link} {#fingerprinting-clock-skew .heading .settled level="9.2"}
+### 9.2. Clock Skew
 
 Each report is delivered along with an `age` property, rather than the
 timestamp at which it was generated. We do this because each user's
@@ -1442,7 +1168,7 @@ amount. The difference between the time the report was generated and the
 time it was sent will be stable, regardless of clock skew, and we can
 avoid the fingerprinting risk of exposing the clock skew via this API.
 
-### [9.3. ]{.secno}[Cross-origin correlation]{.content}[](#correlation){.self-link} {#correlation .heading .settled level="9.3"}
+### 9.3. Cross-origin correlation
 
 If multiple origins all use the same reporting endpoint, that endpoint
 may learn that a particular user has interacted with a certain set of
@@ -1451,7 +1177,7 @@ doesn't seem worse than the status quo ability to track the same
 information from cooperative origins, and doesn't grant any new tracking
 ability above and beyond what's possible with `<img>` today.
 
-### [9.4. ]{.secno}[Disabling Reporting]{.content}[](#disable){.self-link} {#disable .heading .settled level="9.4"}
+### 9.4. Disabling Reporting
 
 Reporting is, to some extent, a question of commons. In the aggregate,
 it seems useful for everyone for reports to be delivered. There is
@@ -1472,107 +1198,104 @@ take priority over the ability of a user to individually opt-out of such
 a system. Sending reports costs bandwidth, and potentially could reveal
 some small amount of additional information above and beyond what a
 website can obtain in-band
-([\[NETWORK-ERROR-LOGGING\]](#biblio-network-error-logging "Network Error Logging"){link-type="biblio"},
+([\[NETWORK-ERROR-LOGGING\]](#biblio-network-error-logging "Network Error Logging"),
 for instance). User agents MUST allow users to disable reporting with
 some reasonable amount of granularity in order to maintain the priority
 of constituencies espoused in
-[\[HTML-DESIGN-PRINCIPLES\]](#biblio-html-design-principles "HTML Design Principles"){link-type="biblio"}.
-:::
+[\[HTML-DESIGN-PRINCIPLES\]](#biblio-html-design-principles "HTML Design Principles").
 
-::: section
-## [10. ]{.secno}[IANA Considerations]{.content}[](#iana-considerations){.self-link} {#iana-considerations .heading .settled level="10"}
+## 10. IANA Considerations
 
-### [10.1. ]{.secno}[The `Reporting-Endpoints` Header]{.content}[](#header-field-registration){.self-link} {#header-field-registration .heading .settled level="10.1"}
+### 10.1. The `Reporting-Endpoints` Header
 
 The permanent message header field registry should be updated with the
 following registration:
-[\[RFC3864\]](#biblio-rfc3864 "Registration Procedures for Message Header Fields"){link-type="biblio"}
+[\[RFC3864\]](#biblio-rfc3864 "Registration Procedures for Message Header Fields")
 
 Header field name
 
-:   `Reporting-Endpoints`
+: `Reporting-Endpoints`
 
 Applicable protocol
 
-:   http
+: http
 
 Status
 
-:   standard
+: standard
 
 Author/Change controller
 
-:   W3C
+: W3C
 
 Specification document
 
-:   This specification (see [§ 3.2 The Reporting-Endpoints HTTP Response
-    Header Field](#header))
+: This specification (see [§ 3.2 The Reporting-Endpoints HTTP Response
+ Header Field](#header))
 
-### [10.2. ]{.secno}[The `application/reports+json` Media Type]{.content}[](#media-type-registration){.self-link} {#media-type-registration .heading .settled level="10.2"}
+### 10.2. The `application/reports+json` Media Type
 
 Type name
 
-:   application
+: application
 
 Subtype name
 
-:   reports+json
+: reports+json
 
 Required parameters
 
-:   N/A
+: N/A
 
 Optional parameters
 
-:   N/A
+: N/A
 
 Encoding considerations
 
-:   Encoding considerations are identical to those specified for the
-    \"application/json\" media type. See
-    [\[RFC8259\]](#biblio-rfc8259 "The JavaScript Object Notation (JSON) Data Interchange Format"){link-type="biblio"}.
+: Encoding considerations are identical to those specified for the
+ \"application/json\" media type. See
+ [\[RFC8259\]](#biblio-rfc8259 "The JavaScript Object Notation (JSON) Data Interchange Format").
 
 Security considerations
 
-:   See [§ 8 Security Considerations](#security).
+: See [§ 8 Security Considerations](#security).
 
 Interoperability considerations
 
-:   This document specifies the format of conforming messages and the
-    interpretation thereof.
+: This document specifies the format of conforming messages and the
+ interpretation thereof.
 
 Published specification
 
-:   [§ 2.2 Media Type](#media-type)
+: [§ 2.2 Media Type](#media-type)
 
 Applications that use this media type\
 Fragment identifier considerations\
 Additional information
 
-:   N/A
+: N/A
 
 Person and email address to contact for further information
 
-:   This document's editors.
+: This document's editors.
 
 Intended usage:
 
-:   COMMON
+: COMMON
 
 Restrictions on usage:
 
-:   N/A
+: N/A
 
 Author
 
-:   This document's editors.
+: This document's editors.
 
 Change controller
 
-:   W3C
+: W3C
 
 Provisional registration?
 
-:   Yes.
-:::
+: Yes.
