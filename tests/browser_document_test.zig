@@ -248,3 +248,27 @@ test "a port's close task the browser's end never runs is freed with its page" {
     defer allocator.free(result);
     try std.testing.expectEqualStrings("kept", result);
 }
+
+// A frame's window keeps a copy of the origin it is created with
+// (Window.setOrigin). Whether the copy was allocated was decided by its
+// contents - anything but "null" - so the copy of "null" a frame nested in a
+// sandboxed document gets was never freed (leaks lane, 2026-10-02: 2 per
+// cookies/samesite/sandbox-iframe-nested.https.html run alone).
+test "a frame nested in a sandboxed document frees its copy of the opaque origin" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+
+    const html =
+        \\<!DOCTYPE html><html><body>
+        \\<iframe sandbox="allow-scripts" srcdoc="<iframe srcdoc='inner'></iframe>"></iframe>
+        \\</body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/sandboxed-frame.html" });
+    _ = try browser.runEventLoopBlocking(100);
+
+    const result = try ctx.evaluateScriptToString("String(frames.length)", allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("1", result);
+}
