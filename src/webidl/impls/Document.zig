@@ -2423,15 +2423,19 @@ fn createAnElement(instance: *runtime.Instance, local_name: []const u8, namespac
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ElementImpl = @import("Element.zig");
     const is_html = if (namespace) |ns| std.mem.eql(u8, ns, html_namespace) else false;
-    const is_svg_script = if (namespace) |ns|
-        std.mem.eql(u8, ns, svg_namespace) and std.mem.eql(u8, local_name, "script")
-    else
-        false;
+    const is_svg = if (namespace) |ns| std.mem.eql(u8, ns, svg_namespace) else false;
+    const is_svg_script = is_svg and std.mem.eql(u8, local_name, "script");
+    // An SVG a is an SVGAElement: its activation behaviour follows its
+    // hyperlink (SVG 2 "a"). Other SVG elements stay plain Elements until
+    // their interfaces' impls chain (stated).
+    const is_svg_a = is_svg and std.mem.eql(u8, local_name, "a");
 
     const element = if (is_html)
         try createHTMLElement(internal.allocator, instance.ctx, local_name)
     else if (is_svg_script)
         try interfaces.SVGScriptElement.init(internal.allocator, instance.ctx)
+    else if (is_svg_a)
+        try interfaces.SVGAElement.init(internal.allocator, instance.ctx)
     else
         try interfaces.Element.init(internal.allocator, instance.ctx);
     errdefer runtime.Instance.deinit(element);

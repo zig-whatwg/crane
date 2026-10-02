@@ -541,6 +541,12 @@ pub fn createForeignElement(
     if (namespace == .svg and std.mem.eql(u8, local_name, "script")) {
         return interfaces.SVGScriptElement.init(allocator, ctx);
     }
+    // An SVG a is an SVGAElement, whose activation behaviour follows its
+    // hyperlink - as Document.createElementNS makes it. Other SVG elements
+    // are still plain Elements (stated: their impls do not chain yet).
+    if (namespace == .svg and std.mem.eql(u8, local_name, "a")) {
+        return interfaces.SVGAElement.init(allocator, ctx);
+    }
     return interfaces.Element.init(allocator, ctx);
 }
 
