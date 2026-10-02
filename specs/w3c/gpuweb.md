@@ -1563,27 +1563,22 @@ steps:
  [set](https://infra.spec.whatwg.org/#ordered-set) of values in
  `descriptor`.[`requiredFeatures`](#dom-gpudevicedescriptor-requiredfeatures).
 
-2. If `features` contains
- [`"texture-formats-tier2"`](#texture-formats-tier2):
-
- 1. [Append](https://infra.spec.whatwg.org/#set-append)
- [`"texture-formats-tier1"`](#texture-formats-tier1) to `features`.
-
-3. If `features` contains
- [`"texture-formats-tier1"`](#texture-formats-tier1):
-
- 1. [Append](https://infra.spec.whatwg.org/#set-append)
- [`"rg11b10ufloat-renderable"`](#rg11b10ufloat-renderable) to `features`.
-
-4. Append any default
- [`GPUFeatureName`](#gpufeaturename)s to `features` as defined by the
+2. [Extend](https://infra.spec.whatwg.org/#set-extend) `features` with any default
+ [`GPUFeatureName`](#gpufeaturename)s as defined by the
  `adapter`.[`[[default feature level]]`](#dom-adapter-default-feature-level-slot).
 
-5. Let `limits` be a new [supported
+3. For each `feature` in `features`:
+
+ 1. [Extend](https://infra.spec.whatwg.org/#set-extend) `features` with the set of features
+ required (directly or indirectly) by `feature`, as
+ defined in [§ 3.6.1.2 Feature
+ Dependencies](#feature-dependencies).
+
+4. Let `limits` be a new [supported
  limits](#supported-limits) object with the default limits as defined by the
  `adapter`.[`[[default feature level]]`](#dom-adapter-default-feature-level-slot).
 
-6. For each (`key`, `value`) pair in
+5. For each (`key`, `value`) pair in
  `descriptor`.[`requiredLimits`](#dom-gpudevicedescriptor-requiredlimits):
 
  1. If `value` is not `undefined` and `value`
@@ -1592,19 +1587,19 @@ steps:
  1. Set `limits`\[`key`\] to
  `value`.
 
-7. Set
+6. Set
  `limits`.[`maxStorageBuffersPerShaderStage`](#dom-supported-limits-maxstoragebufferspershaderstage) to
  max(`limits`.[`maxStorageBuffersPerShaderStage`](#dom-supported-limits-maxstoragebufferspershaderstage),
  `limits`.[`maxStorageBuffersInVertexStage`](#dom-supported-limits-maxstoragebuffersinvertexstage),
  `limits`.[`maxStorageBuffersInFragmentStage`](#dom-supported-limits-maxstoragebuffersinfragmentstage)).
 
-8. Set
+7. Set
  `limits`.[`maxStorageTexturesPerShaderStage`](#dom-supported-limits-maxstoragetexturespershaderstage) to
  max(`limits`.[`maxStorageTexturesPerShaderStage`](#dom-supported-limits-maxstoragetexturespershaderstage),
  `limits`.[`maxStorageTexturesInVertexStage`](#dom-supported-limits-maxstoragetexturesinvertexstage),
  `limits`.[`maxStorageTexturesInFragmentStage`](#dom-supported-limits-maxstoragetexturesinfragmentstage)).
 
-9. If `features`
+8. If `features`
  [contains](https://infra.spec.whatwg.org/#list-contain)
  [`"core-features-and-limits"`](#core-features-and-limits):
 
@@ -1618,18 +1613,18 @@ steps:
  `limits`.[`maxStorageTexturesInFragmentStage`](#dom-supported-limits-maxstoragetexturesinfragmentstage) to
  `limits`.[`maxStorageTexturesPerShaderStage`](#dom-supported-limits-maxstoragetexturespershaderstage).
 
-10. Let `device` be a [device](#device) object.
+9. Let `device` be a [device](#device) object.
 
-11. Set
+10. Set
  `device`.[`[[adapter]]`](#dom-device-adapter-slot) to `adapter`.
 
-12. Set
+11. Set
  `device`.[`[[features]]`](#dom-device-features-slot) to `features`.
 
-13. Set
+12. Set
  `device`.[`[[limits]]`](#dom-device-limits-slot) to `limits`.
 
-14. Return `device`.
+13. Return `device`.
 
 Any time the user agent needs to revoke access to a device, it calls
 [lose the device](#lose-the-device)(`device`,
@@ -1737,24 +1732,21 @@ Capability Guarantees](#adapter-capability-guarantees)).
 A [device](#device) supports the
 exact set of features determined at creation (see [§ 3.6 Optional
 Capabilities](#optional-capabilities)). API calls perform validation
-according to these features (not the
+according to the device's features (not the
 [adapter](#adapter)'s features):
 
-- Using existing API surfaces in a new way **typically** results in a
- [validation
+- Using existing API surfaces in a non-enabled way **typically** results
+ in a [validation
  error](#abstract-opdef-generate-a-validation-error).
 
-- There are several types of [optional API
- surface]:
-
- - Using a new method or enum value always throws a
+- Using a non-enabled method or enum value always throws a
  [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
 
- - Using a new dictionary member with a (correctly-typed) non-default
- value **typically** results in a [validation
+- Using a non-enabled dictionary member with a (correctly-typed)
+ non-default value **typically** results in a [validation
  error](#abstract-opdef-generate-a-validation-error).
 
- - Using a new WGSL `enable` directive always results in a
+- Using a non-enabled WGSL `enable` directive always results in a
  [`createShaderModule()`](#dom-gpudevice-createshadermodule) [validation
  error](#abstract-opdef-generate-a-validation-error).
 
@@ -1771,6 +1763,77 @@ necessarily desirable, as doing so may have a performance impact.
 Because of this, and to improve portability across devices and
 implementations, applications should generally only request features
 that they may actually require.
+
+##### 3.6.1.1. `GPUFeatureName`
+
+Each [`GPUFeatureName`](#gpufeaturename) identifies a set of functionality which, if available,
+allows additional usages of WebGPU that would have otherwise been
+invalid.
+
+```
+enum GPUFeatureName {
+ "atomic-vec2u-min-max",
+ "core-features-and-limits",
+ "depth-clip-control",
+ "depth32float-stencil8",
+ "texture-compression-bc",
+ "texture-compression-bc-sliced-3d",
+ "texture-compression-etc2",
+ "texture-compression-astc",
+ "texture-compression-astc-sliced-3d",
+ "timestamp-query",
+ "indirect-first-instance",
+ "shader-f16",
+ "rg11b10ufloat-renderable",
+ "bgra8unorm-storage",
+ "float32-filterable",
+ "float32-blendable",
+ "clip-distances",
+ "dual-source-blending",
+ "subgroups",
+ "texture-formats-tier1",
+ "texture-formats-tier2",
+ "primitive-index",
+ "texture-component-swizzle",
+ "subgroup-size-control",
+ "texture-compression-unaligned",
+};
+```
+
+##### 3.6.1.2. Feature Dependencies
+
+A more-advanced feature `F2` may require a less-advanced feature `F1`.
+
+- In [§ 4.2.1 Adapter Capability
+ Guarantees](#adapter-capability-guarantees), adapters with `F2` are
+ guaranteed to also have `F1`.
+
+- In [a new device](#a-new-device), devices created with `F2` will also implicitly
+ enable `F1`.
+
+This feature\...
+
+requires these features and their dependencies.
+
+[`"texture-formats-tier2"`](#texture-formats-tier2)
+
+- [`"texture-formats-tier1"`](#texture-formats-tier1)
+
+[`"texture-formats-tier1"`](#texture-formats-tier1)
+
+- [`"rg11b10ufloat-renderable"`](#rg11b10ufloat-renderable)
+
+[`"texture-compression-bc-sliced-3d"`](#texture-compression-bc-sliced-3d)
+
+- [`"texture-compression-bc"`](#texture-compression-bc)
+
+[`"texture-compression-astc-sliced-3d"`](#texture-compression-astc-sliced-3d)
+
+- [`"texture-compression-astc"`](#texture-compression-astc)
+
+[`"subgroup-size-control"`](#dom-gpufeaturename-subgroup-size-control)
+
+- [`"subgroups"`](#subgroups)
 
 #### 3.6.2. Limits
 
@@ -1928,6 +1991,18 @@ simultaneously, counting any empty slots below the highest index.
 Validated in
 [`createRenderPipeline()`](#dom-gpudevice-createrenderpipeline) and [in draw
 calls](#abstract-opdef-valid-to-draw).
+
+[`maxImmediateSize`]
+
+[`GPUSize32`](#typedefdef-gpusize32)
+
+[maximum](#limit-class-maximum)
+
+64
+
+The maximum size, in bytes, of immediate data range used in a pipeline.
+
+ 64 bytes is the size of a 4×4 matrix of f32 values.
 
 [`maxBindingsPerBindGroup`]
 
@@ -2087,7 +2162,7 @@ checked against just one of the three limits.
 
 [maximum](#limit-class-maximum)
 
-8
+4
 
 0
 
@@ -2102,8 +2177,6 @@ limits](#exceeds-the-binding-slot-limits).
 [`GPUSize32`](#typedefdef-gpusize32)
 
 [maximum](#limit-class-maximum)
-
-8
 
 4
 
@@ -2372,6 +2445,7 @@ interface GPUSupportedLimits {
  readonly attribute unsigned long maxTextureArrayLayers;
  readonly attribute unsigned long maxBindGroups;
  readonly attribute unsigned long maxBindGroupsPlusVertexBuffers;
+ readonly attribute unsigned long maxImmediateSize;
  readonly attribute unsigned long maxBindingsPerBindGroup;
  readonly attribute unsigned long maxDynamicUniformBuffersPerPipelineLayout;
  readonly attribute unsigned long maxDynamicStorageBuffersPerPipelineLayout;
@@ -2633,7 +2707,7 @@ following pattern:
 
 `[a-z0-9]+(-[a-z0-9]+)*`
 
-!(data:image/svg+xml;base64,PHN2ZyBjbGFzcz0icmFpbHJvYWQtZGlhZ3JhbSIgaGVpZ2h0PSIxMDEiIHZpZXdib3g9IjAgMCAyMTkuNSAxMDEiIHdpZHRoPSIyMTkuNSI+CiAgICAgIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC41IC41KSI+CiAgICAgICA8Zz4KICAgICAgICA8cGF0aCBkPSJNMjAgMjF2MjBtMTAgLTIwdjIwbS0xMCAtMTBoMjAiIC8+CiAgICAgICA8L2c+CiAgICAgICA8cGF0aCBkPSJNNDAgMzFoMTAiIC8+CiAgICAgICA8Zz4KICAgICAgICA8cGF0aCBkPSJNNTAgMzFoMC4wIiAvPgogICAgICAgIDxwYXRoIGQ9Ik0xNjkuNSAzMWgwLjAiIC8+CiAgICAgICAgPHBhdGggZD0iTTUwLjAgMzFoMTAiIC8+CiAgICAgICAgPGc+CiAgICAgICAgIDxwYXRoIGQ9Ik02MC4wIDMxaDAuMCIgLz4KICAgICAgICAgPHBhdGggZD0iTTE1OS41IDMxaDAuMCIgLz4KICAgICAgICAgPHBhdGggZD0iTTYwLjAgMzFoMTAiIC8+CiAgICAgICAgIDxnIGNsYXNzPSJ0ZXJtaW5hbCAiPgogICAgICAgICAgPHBhdGggZD0iTTcwLjAgMzFoMC4wIiAvPgogICAgICAgICAgPHBhdGggZD0iTTE0OS41IDMxaDAuMCIgLz4KICAgICAgICAgIDxyZWN0IGhlaWdodD0iMjIiIHJ4PSIxMCIgcnk9IjEwIiB3aWR0aD0iNzkuNSIgeD0iNzAiIHk9IjIwIiAvPgogICAgICAgICAgPHRleHQgeD0iMTA5Ljc1IiB5PSIzNSI+YS16IDAtOTwvdGV4dD4KICAgICAgICAgPC9nPgogICAgICAgICA8cGF0aCBkPSJNMTQ5LjUgMzFoMTAiIC8+CiAgICAgICAgIDxwYXRoIGQ9Ik03MC4wIDMxYTEwIDEwIDAgMCAwIC0xMCAxMHYwYTEwIDEwIDAgMCAwIDEwIDEwIiAvPgogICAgICAgICA8Zz4KICAgICAgICAgIDxwYXRoIGQ9Ik03MC4wIDUxaDc5LjUiIC8+CiAgICAgICAgIDwvZz4KICAgICAgICAgPHBhdGggZD0iTTE0OS41IDUxYTEwIDEwIDAgMCAwIDEwIC0xMHYwYTEwIDEwIDAgMCAwIC0xMCAtMTAiIC8+CiAgICAgICAgPC9nPgogICAgICAgIDxwYXRoIGQ9Ik0xNTkuNSAzMWgxMCIgLz4KICAgICAgICA8cGF0aCBkPSJNNjAuMCAzMWExMCAxMCAwIDAgMCAtMTAgMTB2MTlhMTAgMTAgMCAwIDAgMTAgMTAiIC8+CiAgICAgICAgPGcgY2xhc3M9InRlcm1pbmFsICI+CiAgICAgICAgIDxwYXRoIGQ9Ik02MC4wIDcwaDM1LjUiIC8+CiAgICAgICAgIDxwYXRoIGQ9Ik0xMjQuMCA3MGgzNS41IiAvPgogICAgICAgICA8cmVjdCBoZWlnaHQ9IjIyIiByeD0iMTAiIHJ5PSIxMCIgd2lkdGg9IjI4LjUiIHg9Ijk1LjUiIHk9IjU5IiAvPgogICAgICAgICA8dGV4dCB4PSIxMDkuNzUiIHk9Ijc0Ij4tPC90ZXh0PgogICAgICAgIDwvZz4KICAgICAgICA8cGF0aCBkPSJNMTU5LjUgNzBhMTAgMTAgMCAwIDAgMTAgLTEwdi0xOWExMCAxMCAwIDAgMCAtMTAgLTEwIiAvPgogICAgICAgPC9nPgogICAgICAgPHBhdGggZD0iTTE2OS41IDMxaDEwIiAvPgogICAgICAgPHBhdGggZD0iTSAxNzkuNSAzMSBoIDIwIG0gLTEwIC0xMCB2IDIwIG0gMTAgLTIwIHYgMjAiIC8+CiAgICAgIDwvZz4KICAgICA8L3N2Zz4=)
+!(data:image/svg+xml;base64,PHN2ZyBjbGFzcz0icmFpbHJvYWQtZGlhZ3JhbSIgaGVpZ2h0PSIxMDEiIHZpZXdib3g9IjAgMCAyMTkuNSAxMDEiIHdpZHRoPSIyMTkuNSI+CiAgICAgIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC41IC41KSI+CiAgICAgICA8Zz4KICAgICAgICA8cGF0aCBkPSJNMjAgMjF2MjBtMTAgLTIwdjIwbS0xMCAtMTBoMjAiIC8+CiAgICAgICA8L2c+CiAgICAgICA8cGF0aCBkPSJNNDAgMzFoMTAiIC8+CiAgICAgICA8Zz4KICAgICAgICA8cGF0aCBkPSJNNTAgMzFoMC4wIiAvPgogICAgICAgIDxwYXRoIGQ9Ik0xNjkuNSAzMWgwLjAiIC8+CiAgICAgICAgPHBhdGggZD0iTTUwLjAgMzFoMTAiIC8+CiAgICAgICAgPGc+CiAgICAgICAgIDxwYXRoIGQ9Ik02MC4wIDMxaDAuMCIgLz4KICAgICAgICAgPHBhdGggZD0iTTE1OS41IDMxaDAuMCIgLz4KICAgICAgICAgPHBhdGggZD0iTTYwLjAgMzFoMTAiIC8+CiAgICAgICAgIDxnIGNsYXNzPSJ0ZXJtaW5hbCI+CiAgICAgICAgICA8cGF0aCBkPSJNNzAuMCAzMWgwLjAiIC8+CiAgICAgICAgICA8cGF0aCBkPSJNMTQ5LjUgMzFoMC4wIiAvPgogICAgICAgICAgPHJlY3QgaGVpZ2h0PSIyMiIgcng9IjEwIiByeT0iMTAiIHdpZHRoPSI3OS41IiB4PSI3MCIgeT0iMjAiIC8+CiAgICAgICAgICA8dGV4dCB4PSIxMDkuNzUiIHk9IjM1Ij5hLXogMC05PC90ZXh0PgogICAgICAgICA8L2c+CiAgICAgICAgIDxwYXRoIGQ9Ik0xNDkuNSAzMWgxMCIgLz4KICAgICAgICAgPHBhdGggZD0iTTcwLjAgMzFhMTAgMTAgMCAwIDAgLTEwIDEwdjBhMTAgMTAgMCAwIDAgMTAgMTAiIC8+CiAgICAgICAgIDxnPgogICAgICAgICAgPHBhdGggZD0iTTcwLjAgNTFoNzkuNSIgLz4KICAgICAgICAgPC9nPgogICAgICAgICA8cGF0aCBkPSJNMTQ5LjUgNTFhMTAgMTAgMCAwIDAgMTAgLTEwdjBhMTAgMTAgMCAwIDAgLTEwIC0xMCIgLz4KICAgICAgICA8L2c+CiAgICAgICAgPHBhdGggZD0iTTE1OS41IDMxaDEwIiAvPgogICAgICAgIDxwYXRoIGQ9Ik02MC4wIDMxYTEwIDEwIDAgMCAwIC0xMCAxMHYxOWExMCAxMCAwIDAgMCAxMCAxMCIgLz4KICAgICAgICA8ZyBjbGFzcz0idGVybWluYWwiPgogICAgICAgICA8cGF0aCBkPSJNNjAuMCA3MGgzNS41IiAvPgogICAgICAgICA8cGF0aCBkPSJNMTI0LjAgNzBoMzUuNSIgLz4KICAgICAgICAgPHJlY3QgaGVpZ2h0PSIyMiIgcng9IjEwIiByeT0iMTAiIHdpZHRoPSIyOC41IiB4PSI5NS41IiB5PSI1OSIgLz4KICAgICAgICAgPHRleHQgeD0iMTA5Ljc1IiB5PSI3NCI+LTwvdGV4dD4KICAgICAgICA8L2c+CiAgICAgICAgPHBhdGggZD0iTTE1OS41IDcwYTEwIDEwIDAgMCAwIDEwIC0xMHYtMTlhMTAgMTAgMCAwIDAgLTEwIC0xMCIgLz4KICAgICAgIDwvZz4KICAgICAgIDxwYXRoIGQ9Ik0xNjkuNSAzMWgxMCIgLz4KICAgICAgIDxwYXRoIGQ9Ik0gMTc5LjUgMzEgaCAyMCBtIC0xMCAtMTAgdiAyMCBtIDEwIC0yMCB2IDIwIiAvPgogICAgICA8L2c+CiAgICAgPC9zdmc+)
 
 Examples of valid normalized
 identifier strings include:
@@ -3294,13 +3368,11 @@ Any [`GPUAdapter`](#gpuadapter) returned by
  [`"texture-compression-etc2"`](#texture-compression-etc2) and
  [`"texture-compression-astc"`](#texture-compression-astc) are supported.
 
-- If
- [`"texture-compression-bc-sliced-3d"`](#texture-compression-bc-sliced-3d) is supported, then
- [`"texture-compression-bc"`](#texture-compression-bc) must be supported.
+- For each `feature` supported by the device:
 
-- If
- [`"texture-compression-astc-sliced-3d"`](#texture-compression-astc-sliced-3d) is supported, then
- [`"texture-compression-astc"`](#texture-compression-astc) must be supported.
+ - The adapter must also support all of the features required (directly
+ or indirectly) by `feature`, as defined in [§ 3.6.1.2
+ Feature Dependencies](#feature-dependencies).
 
 - All supported limits must be either the
  [default](#limit-default)
@@ -3364,6 +3436,8 @@ Any [`GPUAdapter`](#gpuadapter) returned by
  [`maxComputeWorkgroupSizeX`](#dom-supported-limits-maxcomputeworkgroupsizex) ×
  [`maxComputeWorkgroupSizeY`](#dom-supported-limits-maxcomputeworkgroupsizey) ×
  [`maxComputeWorkgroupSizeZ`](#dom-supported-limits-maxcomputeworkgroupsizez).
+
+- [`maxImmediateSize`](#dom-supported-limits-maximmediatesize) must be a multiple of 4 bytes.
 
 #### 4.2.2. Adapter Selection
 
@@ -3747,9 +3821,11 @@ has the following methods:
  device](#a-new-device) from `adapter` with
  `descriptor`.
 
- 2. [Expire](#abstract-opdef-expire) `adapter`.
+ 2. Set
+ `adapter`.[`[[adapter]]`](#dom-gpuadapter-adapter-slot).[`[[state]]`](#dom-adapter-state-slot) to
 
- 4. Issue the subsequent steps on `contentTimeline`.
+ [`"consumed"`](#dom-adapter-state-consumed).
+ 1. Issue the subsequent steps on `contentTimeline`.
  :::
 
  ::: {timeline="content"}
@@ -3854,7 +3930,7 @@ with a higher
 const gpuAdapter = await navigator.gpu.requestAdapter();
 
 if (gpuAdapter.limits.maxColorAttachmentBytesPerSample < 64) {
- // When the desired limit isn’t supported, take action to either fall back to a code
+ // When the desired limit isn't supported, take action to either fall back to a code
  // path that does not require the higher limit or notify the user that their device
  // does not meet minimum requirements.
 }
@@ -3863,39 +3939,6 @@ if (gpuAdapter.limits.maxColorAttachmentBytesPerSample < 64) {
 const gpuDevice = await gpuAdapter.requestDevice({
  requiredLimits: { maxColorAttachmentBytesPerSample: 64 },
 });
-```
-
-##### 4.3.1.1. `GPUFeatureName`
-
-Each [`GPUFeatureName`](#gpufeaturename) identifies a set of functionality which, if available,
-allows additional usages of WebGPU that would have otherwise been
-invalid.
-
-```
-enum GPUFeatureName {
- "core-features-and-limits",
- "depth-clip-control",
- "depth32float-stencil8",
- "texture-compression-bc",
- "texture-compression-bc-sliced-3d",
- "texture-compression-etc2",
- "texture-compression-astc",
- "texture-compression-astc-sliced-3d",
- "timestamp-query",
- "indirect-first-instance",
- "shader-f16",
- "rg11b10ufloat-renderable",
- "bgra8unorm-storage",
- "float32-filterable",
- "float32-blendable",
- "clip-distances",
- "dual-source-blending",
- "subgroups",
- "texture-formats-tier1",
- "texture-formats-tier2",
- "primitive-index",
- "texture-component-swizzle",
-};
 ```
 
 ### 4.4. `GPUDevice`
@@ -4052,7 +4095,8 @@ A [`GPUDevice`](#gpudevice)'s [allowed texture usages] are:
  [`COPY_DST`](#dom-gputextureusage-copy_dst),
  [`TEXTURE_BINDING`](#dom-gputextureusage-texture_binding),
  [`STORAGE_BINDING`](#dom-gputextureusage-storage_binding),
- [`RENDER_ATTACHMENT`](#dom-gputextureusage-render_attachment)
+ [`RENDER_ATTACHMENT`](#dom-gputextureusage-render_attachment),
+ [`TRANSIENT_ATTACHMENT`](#dom-gputextureusage-transient_attachment)
 
 ### 4.5. Example
 
@@ -4066,7 +4110,7 @@ let gpuDevice = null;
 async function initializeWebGPU() {
  // Check to ensure the user agent supports WebGPU.
  if (!('gpu' in navigator)) {
- console.error("User agent doesn’t support WebGPU.");
+ console.error("User agent doesn't support WebGPU.");
  return false;
  }
 
@@ -4085,10 +4129,10 @@ async function initializeWebGPU() {
  // against the adapters features and limits prior to calling requestDevice().
  gpuDevice = await gpuAdapter.requestDevice();
 
- // requestDevice will never return null, but if a valid device request can’t be
+ // requestDevice will never return null, but if a valid device request can't be
  // fulfilled for some reason it may resolve to a device which has already been lost.
  // Additionally, devices can be lost at any time after creation for a variety of reasons
- // (ie: browser resource management, driver updates), so it’s a good idea to always
+ // (ie: browser resource management, driver updates), so it's a good idea to always
  // handle lost devices gracefully.
  gpuDevice.lost.then((info) => {
  console.error(`WebGPU device was lost: ${info.message}`);
@@ -5695,6 +5739,7 @@ namespace GPUTextureUsage {
  const GPUFlagsConstant TEXTURE_BINDING = 0x04;
  const GPUFlagsConstant STORAGE_BINDING = 0x08;
  const GPUFlagsConstant RENDER_ATTACHMENT = 0x10;
+ const GPUFlagsConstant TRANSIENT_ATTACHMENT = 0x20;
 };
 ```
 
@@ -5736,6 +5781,11 @@ may be used after its creation:
  render pass. (Example: as a
  [`GPURenderPassColorAttachment`](#dictdef-gpurenderpasscolorattachment).[`view`](#dom-gpurenderpasscolorattachment-view) or
  [`GPURenderPassDepthStencilAttachment`](#dictdef-gpurenderpassdepthstencilattachment).[`view`](#dom-gpurenderpassdepthstencilattachment-view).)
+
+[`TRANSIENT_ATTACHMENT`]
+
+: The texture is intended to be temporary (a hint for optimization),
+ as it is only used within a render pass.
 
 [maximum mipLevel count](`dimension`,
 `size`)
@@ -6025,12 +6075,20 @@ GPUTextureDescriptor](`this`,
  [`"cube"`](#dom-gputextureviewdimension-cube),
  `this`.[`size`](#dom-gputexturedescriptor-size).[depthOrArrayLayers](#gpuextent3d-depthorarraylayers) must be 6.
 
+ 3. `descriptor`.[`textureBindingViewDimension`](#dom-gputexturedescriptor-texturebindingviewdimension) must not be
+ [`"cube-array"`](#dom-gputextureviewdimension-cube-array).
+
  this validation only applies to a user-specified
  textureBindingViewDimension. If no value is provided, the
  texture's textureBindingViewDimension is set as described in
  [`createTexture()`](#dom-gpudevice-createtexture). That algorithm cannot produce invalid values, so
  the above validation is not required.
  :::
+
+ - If
+ `this`.[`[[features]]`](#dom-device-features-slot) does not
+ [contain](https://infra.spec.whatwg.org/#list-contain)
+ [`"texture-compression-unaligned"`](#dom-gpufeaturename-texture-compression-unaligned):
 
  - `descriptor`.[`size`](#dom-gputexturedescriptor-size).[width](#gpuextent3d-width) must be multiple of [texel block
  width](#texel-block-width).
@@ -6076,6 +6134,23 @@ GPUTextureDescriptor](`this`,
  - `descriptor`.[`format`](#dom-gputexturedescriptor-format) must be listed in [§ 26.1.1 Plain color
  formats](#plain-color-formats) table with
  [`STORAGE_BINDING`](#dom-gputextureusage-storage_binding) capability for at least one access mode.
+
+ - If
+ `descriptor`.[`usage`](#dom-gputexturedescriptor-usage) includes the
+ [`TRANSIENT_ATTACHMENT`](#dom-gputextureusage-transient_attachment) bit:
+
+ - `descriptor`.[`usage`](#dom-gputexturedescriptor-usage) must be equal to
+ [`TRANSIENT_ATTACHMENT`](#dom-gputextureusage-transient_attachment) \|
+ [`RENDER_ATTACHMENT`](#dom-gputextureusage-render_attachment).
+
+ - `descriptor`.[`viewFormats`](#dom-gputexturedescriptor-viewformats) must be equal to its default value of ``.
+
+ - `descriptor`.[`dimension`](#dom-gputexturedescriptor-dimension) must be equal to
+ [`"2d"`](#dom-gputexturedimension-2d).
+
+ - `descriptor`.[`mipLevelCount`](#dom-gputexturedescriptor-miplevelcount) must be 1.
+
+ - `descriptor`.[`size`](#dom-gputexturedescriptor-size).[depthOrArrayLayers](#gpuextent3d-depthorarraylayers) must be 1.
 
  - For each `viewFormat` in
  `descriptor`.[`viewFormats`](#dom-gputexturedescriptor-viewformats),
@@ -6555,6 +6630,13 @@ enum GPUTextureAspect {
  `this`.[`[[device]]`](#dom-gpuobjectbase-device-slot).
 
  - `descriptor`.[`usage`](#dom-gputextureviewdescriptor-usage) must be a subset of
+ `this`.[`usage`](#dom-gputexture-usage).
+
+ - If
+ `this`.[`usage`](#dom-gputexture-usage) includes the
+ [`TRANSIENT_ATTACHMENT`](#dom-gputextureusage-transient_attachment) bit:
+
+ - `descriptor`.[`usage`](#dom-gputextureviewdescriptor-usage) must be exactly
  `this`.[`usage`](#dom-gputexture-usage).
 
  - If
@@ -8760,6 +8842,18 @@ resource, and has the following members:
 
  - `storageTextureView`.[`[[descriptor]]`](#dom-gputextureview-descriptor-slot).[`swizzle`](#dom-gputextureviewdescriptor-swizzle) must be `"rgba"`.
 
+ - ::: compatmode
+ If
+ `texture`.[`textureBindingViewDimension`](#dom-gputexture-texturebindingviewdimension) is not `undefined`:
+ - [Assert](https://infra.spec.whatwg.org/#assert)
+ `this`.[`[[device]]`](#dom-gpuobjectbase-device-slot).[`[[features]]`](#dom-device-features-slot) does not
+ [contain](https://infra.spec.whatwg.org/#list-contain)
+ [`"core-features-and-limits"`](#core-features-and-limits).
+
+ - `texture`.[`textureBindingViewDimension`](#dom-gputexture-texturebindingviewdimension) must be equal to
+ `storageTextureView`.[`dimension`](#dom-gputextureviewdescriptor-dimension).
+ :::
+
  [`buffer`](#dom-gpubindgrouplayoutentry-buffer)
 
  : - `resource` is either a
@@ -9032,6 +9126,13 @@ properties](#device-timeline-property):
  [`GPUBindGroupLayout`](#gpubindgrouplayout) objects provided at creation in
  [`GPUPipelineLayoutDescriptor.bindGroupLayouts`](#dom-gpupipelinelayoutdescriptor-bindgrouplayouts).
 
+[`[[immediateSize]]`], of type [`GPUSize32`](#typedefdef-gpusize32), readonly
+
+: The size in bytes of the immediate data range, provided at creation
+ in
+ [`GPUPipelineLayoutDescriptor.immediateSize`](#dom-gpupipelinelayoutdescriptor-immediatesize) (or by the [default pipeline
+ layout](#abstract-opdef-default-pipeline-layout)).
+
  using the same
 [`GPUPipelineLayout`](#gpupipelinelayout) for many
 [`GPURenderPipeline`](#gpurenderpipeline) or
@@ -9085,6 +9186,7 @@ A
 dictionary GPUPipelineLayoutDescriptor
  : GPUObjectDescriptorBase {
  required sequence<GPUBindGroupLayout?> bindGroupLayouts;
+ GPUSize32 immediateSize = 0;
 };
 ```
 
@@ -9099,6 +9201,11 @@ dictionary GPUPipelineLayoutDescriptor
  [\@group](https://gpuweb.github.io/gpuweb/wgsl/#attribute-group) attribute in the
  [`GPUShaderModule`](#gpushadermodule), with the `N`th element corresponding with
  `@group(N)`.
+
+[`immediateSize`], of type [GPUSize32](#typedefdef-gpusize32), defaulting to `0`
+
+: The size, in bytes, of the immediate data range used by the
+ pipeline.
 
 <!-- -->
 
@@ -9187,10 +9294,19 @@ dictionary GPUPipelineLayoutDescriptor
 
  - `allEntries` must not [exceed the binding slot
  limits](#exceeds-the-binding-slot-limits) of `limits`.
+
+ - `descriptor`.[`immediateSize`](#dom-gpupipelinelayoutdescriptor-immediatesize) must be ≤
+ `limits`.[`maxImmediateSize`](#dom-supported-limits-maximmediatesize).
+
+ - `descriptor`.[`immediateSize`](#dom-gpupipelinelayoutdescriptor-immediatesize) must be a multiple of 4.
  :::
 
  6. Set the
  `pl`.[`[[bindGroupLayouts]]`](#dom-gpupipelinelayout-bindgrouplayouts-slot) to `bindGroupLayouts`.
+
+ 7. Set the
+ `pl`.[`[[immediateSize]]`](#dom-gpupipelinelayout-immediatesize-slot) to
+ `descriptor`.[`immediateSize`](#dom-gpupipelinelayoutdescriptor-immediatesize).
  :::
  :::::
 
@@ -9199,7 +9315,8 @@ dictionary GPUPipelineLayoutDescriptor
 their internal
 [`[[bindGroupLayouts]]`](#dom-gpupipelinelayout-bindgrouplayouts-slot) sequences contain
 [`GPUBindGroupLayout`](#gpubindgrouplayout) objects that are
-[group-equivalent](#group-equivalent).
+[group-equivalent](#group-equivalent) and their
+[`[[immediateSize]]`](#dom-gpupipelinelayout-immediatesize-slot) values are equal.
 
 ### 8.4. Example
 
@@ -10031,17 +10148,19 @@ steps:
 
 1. Let `groupCount` be 0.
 
-2. Let `groupDescs` be a sequence of
+2. Let `immediateSize` be 0.
+
+3. Let `groupDescs` be a sequence of
  `device`.[`[[limits]]`](#dom-device-limits-slot).[`maxBindGroups`](#dom-supported-limits-maxbindgroups) new
  [`GPUBindGroupLayoutDescriptor`](#dictdef-gpubindgrouplayoutdescriptor) objects.
 
-3. For each `groupDesc` in `groupDescs`:
+4. For each `groupDesc` in `groupDescs`:
 
  1. Set
  `groupDesc`.[`entries`](#dom-gpubindgrouplayoutdescriptor-entries) to an empty
  [sequence](https://webidl.spec.whatwg.org/#idl-sequence).
 
-4. For each
+5. For each
  [`GPUProgrammableStage`](#gpuprogrammablestage) `stageDesc` in the descriptor used to
  create `pipeline`:
 
@@ -10262,10 +10381,22 @@ steps:
  1. Append `entry` to
  `groupDescs`\[`group`\].
 
-5. Let `groupLayouts` be a new
+ 4. If there is an immediate data variable that is [statically
+ used](#statically-used) by `entryPoint`
+ ([assert](https://infra.spec.whatwg.org/#assert) there is at most one):
+
+ 1. Let `T` be the [store
+ type](https://gpuweb.github.io/gpuweb/wgsl/#store-type) of the immediate data variable.
+
+ 2. Set `immediateSize` to
+ max(`immediateSize`,
+ [roundUp](https://gpuweb.github.io/gpuweb/wgsl/#roundup)(4,
+ [SizeOf](https://gpuweb.github.io/gpuweb/wgsl/#sizeof)(`T`))).
+
+6. Let `groupLayouts` be a new
  [list](https://infra.spec.whatwg.org/#list).
 
-6. For each `i` from 0 to `groupCount` - 1,
+7. For each `i` from 0 to `groupCount` - 1,
  inclusive:
 
  1. Let `groupDesc` be
@@ -10280,13 +10411,16 @@ steps:
  4. Append `bindGroupLayout` to
  `groupLayouts`.
 
-7. Let `desc` be a new
+8. Let `desc` be a new
  [`GPUPipelineLayoutDescriptor`](#dictdef-gpupipelinelayoutdescriptor).
 
-8. Set
+9. Set
  `desc`.[`bindGroupLayouts`](#dom-gpupipelinelayoutdescriptor-bindgrouplayouts) to `groupLayouts`.
 
-9. Return
+10. Set
+ `desc`.[`immediateSize`](#dom-gpupipelinelayoutdescriptor-immediatesize) to `immediateSize`.
+
+11. Return
  `device`.[`createPipelineLayout()`](#dom-gpudevice-createpipelinelayout)(`desc`).
 
 #### 10.1.2. `GPUProgrammableStage`
@@ -10537,12 +10671,25 @@ If any are unmet, return `false`; otherwise, return `true`.
  `descriptor`.[`constants`](#dom-gpuprogrammablestage-constants) `must`
  [contain](https://infra.spec.whatwg.org/#map-exists) `key`.
 
-8. [Pipeline-creation](https://gpuweb.github.io/gpuweb/wgsl/#pipeline-creation-error) [program
+8. If there is an immediate data variable that is [statically
+ used](#statically-used)
+ by `entryPoint`
+ ([assert](https://infra.spec.whatwg.org/#assert) there is at most one):
+
+ - Let `T` be the [store
+ type](https://gpuweb.github.io/gpuweb/wgsl/#store-type) of the immediate data variable.
+
+ - Let `requiredSize` be
+ [SizeOf](https://gpuweb.github.io/gpuweb/wgsl/#sizeof)(`T`).
+
+ - `layout`.[`[[immediateSize]]`](#dom-gpupipelinelayout-immediatesize-slot) must be ≥ `requiredSize`.
+
+9. [Pipeline-creation](https://gpuweb.github.io/gpuweb/wgsl/#pipeline-creation-error) [program
  errors](https://gpuweb.github.io/gpuweb/wgsl/#program-error) `must` not result from the rules of the
  [\[WGSL\]](#biblio-wgsl "WebGPU Shading Language")
  specification.
 
-9. ::: compatmode
+10. ::: compatmode
  If
  `device`.[`[[features]]`](#dom-device-features-slot) does not
  [contain](https://infra.spec.whatwg.org/#list-contain)
@@ -10792,7 +10939,21 @@ The [minimum buffer binding size] for a buffer binding variable
  element, which allows array indices to be clamped to the length of
  the array resulting in an in-memory access.
 
-3. Return
+3. If `T` is a
+ [runtime-sized](https://gpuweb.github.io/gpuweb/wgsl/#runtime-sized) buffer, then
+
+ 1. Find all `bufferView` and `bufferArrayView` built-in function
+ calls where the buffer variable is the originating variable for
+ the pointer argument. Let the template parameter be
+ `RT`.
+
+ 2. Return the maximum value of
+ [MinTypeSize](https://gpuweb.github.io/gpuweb/wgsl/#mintypesize)(`RT`) among all the calls.
+
+ This ensures there's always enough memory for a
+ minimally sized `RT` (with `offset`=0).
+
+4. Return
  [SizeOf](https://gpuweb.github.io/gpuweb/wgsl/#sizeof)(`T`).
 
  Enforcing this lower bound ensures reads and writes via
@@ -13041,6 +13202,7 @@ enum GPUVertexFormat {
  "sint32x4",
  "unorm10-10-10-2",
  "unorm8x4-bgra",
+ "snorm10-10-10-2",
 };
 ```
 
@@ -13457,6 +13619,16 @@ unsigned normalized
 [`"unorm8x4-bgra"`]
 
 unsigned normalized
+
+4
+
+4
+
+`vec4<f32>`
+
+[`"snorm10-10-10-2"`]
+
+signed normalized
 
 4
 
@@ -16113,6 +16285,9 @@ interface mixin GPUBindingCommandsMixin {
  [AllowShared] Uint32Array dynamicOffsetsData,
  GPUSize64 dynamicOffsetsDataStart,
  GPUSize32 dynamicOffsetsDataLength);
+
+ undefined setImmediates(GPUSize32 rangeOffset, AllowSharedBufferSource data,
+ optional GPUSize64 dataOffset = 0, optional GPUSize64 dataSize);
 };
 ```
 
@@ -16129,10 +16304,25 @@ properties](#device-timeline-property):
 : The current
  [`GPUBindGroup`](#gpubindgroup) for each index.
 
-[`[[dynamic_offsets]]`], of type [ordered map](https://infra.spec.whatwg.org/#ordered-map)\<[`GPUIndex32`](#typedefdef-gpuindex32), [list](https://infra.spec.whatwg.org/#list)\<[`GPUBufferDynamicOffset`](#typedefdef-gpubufferdynamicoffset)\>\>, initally empty
+[`[[dynamic_offsets]]`], of type [ordered map](https://infra.spec.whatwg.org/#ordered-map)\<[`GPUIndex32`](#typedefdef-gpuindex32), [list](https://infra.spec.whatwg.org/#list)\<[`GPUBufferDynamicOffset`](#typedefdef-gpubufferdynamicoffset)\>\>, initially empty
 
 : The current dynamic offsets for each
  [`[[bind_groups]]`](#dom-gpubindingcommandsmixin-bind_groups-slot) entry.
+
+[`[[immediate_data]]`], of type [byte sequence](https://infra.spec.whatwg.org/#byte-sequence)
+
+: The current immediate data bytes. Initially a [byte
+ sequence](https://infra.spec.whatwg.org/#byte-sequence) of length equal to the device's
+ [`maxImmediateSize`](#dom-supported-limits-maximmediatesize), with all bytes set to zero. Values are set by
+ [`setImmediates()`](#dom-gpubindingcommandsmixin-setimmediates).
+
+[`[[immediate_slots_set]]`], of type [list](https://infra.spec.whatwg.org/#list)\<[`boolean`](https://webidl.spec.whatwg.org/#idl-boolean)\>
+
+: Tracks which 32-bit word slots of immediate data have been set.
+ Initially a
+ [list](https://infra.spec.whatwg.org/#list) of length equal to the device's
+ [`maxImmediateSize`](#dom-supported-limits-maximmediatesize) divided by 4, with all entries set to `false`. Each
+ entry corresponds to a 4-byte slot.
 
 ### 14.1. Bind Groups
 
@@ -16359,7 +16549,7 @@ For a
 
 ``` highlight
 // Note the bindings are listed out-of-order in this array, but it
-// doesn’t matter because they will be sorted by binding index.
+// doesn't matter because they will be sorted by binding index.
 let layout = gpuDevice.createBindGroupLayout({
  entries: [{
  binding: 1,
@@ -16377,8 +16567,8 @@ let layout = gpuDevice.createBindGroupLayout({
 Used by a [`GPUBindGroup`](#gpubindgroup) created with the following call:
 
 ``` highlight
-// Like above, the array order doesn’t matter here.
-// It doesn’t even need to match the order used in the layout.
+// Like above, the array order doesn't matter here.
+// It doesn't even need to match the order used in the layout.
 let bindGroup = gpuDevice.createBindGroup({
  layout: layout,
  entries: [{
@@ -16626,6 +16816,44 @@ groups](encoder, pipeline)
 
 Otherwise return `true`.
 
+[Validate immediate data](encoder, pipeline)
+
+**Arguments:**
+
+[`GPUBindingCommandsMixin`](#gpubindingcommandsmixin) `encoder`
+
+: Encoder whose immediate data is being validated.
+
+[`GPUPipelineBase`](#gpupipelinebase) `pipeline`
+
+: Pipeline to validate `encoder`'s immediate data is
+ compatible with.
+
+[Device timeline](#device-timeline) steps:
+
+1. If any of the following conditions are unsatisfied, return `false`:
+
+ ::: validusage
+ - `pipeline` must not be `null`.
+
+ - For each immediate data variable that is [statically
+ used](#statically-used)
+ by any entry point in `pipeline`:
+
+ - Let `T` be the [store
+ type](https://gpuweb.github.io/gpuweb/wgsl/#store-type) of the immediate data variable.
+
+ - Let `accessibleSlots` be
+ [AccessibleSlots](https://gpuweb.github.io/gpuweb/wgsl/#accessible-slots)(`T`) as defined in
+ [\[WGSL\]](#biblio-wgsl "WebGPU Shading Language").
+
+ - For each `slotIndex` in `accessibleSlots`:
+
+ - `encoder`.[`[[immediate_slots_set]]`](#dom-gpubindingcommandsmixin-immediate_slots_set-slot)\[`slotIndex`\] must be `true`.
+ :::
+
+ Otherwise return `true`.
+
 [Encoder bind groups alias a writable
 resource](`encoder`, `pipeline`) if any writable
 buffer binding range overlaps with any other binding range of the same
@@ -16742,6 +16970,133 @@ exception](#usage-scope-storage-exception).
 
  Implementations are strongly encouraged to optimize
 this algorithm.
+
+### 14.2. Immediate Data
+
+[`setImmediates(rangeOffset, data, dataOffset, dataSize)`]
+
+: Sets immediate data for subsequent render or compute commands.
+
+ :::::
+ ::: {timeline="content"}
+ **Called on:**
+ [`GPUBindingCommandsMixin`](#gpubindingcommandsmixin) `this`.
+ **Arguments:**
+
+ Arguments for the
+ [GPUBindingCommandsMixin.setImmediates(rangeOffset, data,
+ dataOffset,
+ dataSize)](#dom-gpubindingcommandsmixin-setimmediates) method.
+ Parameter
+ Type
+ Nullable
+ Optional
+ Description
+ [`rangeOffset`]
+ [`GPUSize32`](#typedefdef-gpusize32)
+ [✘]
+ [✘]
+ Offset in bytes into the immediate data range to begin writing at.
+ [`data`]
+ [`AllowSharedBufferSource`](https://webidl.spec.whatwg.org/#AllowSharedBufferSource)
+ [✘]
+ [✘]
+ Data to write into the immediate data range.
+ [`dataOffset`]
+ [`GPUSize64`](#typedefdef-gpusize64)
+ [✘]
+ [✔]
+ Offset into `data` to begin writing from. Given in
+ elements if `data` is a
+ [`TypedArray`](https://tc39.es/ecma262/multipage/indexed-collections.html#sec-typedarray-objects) and bytes otherwise.
+ [`dataSize`]
+ [`GPUSize64`](#typedefdef-gpusize64)
+ [✘]
+ [✔]
+ Size of content to write from `data`. Given in elements
+ if `data` is a
+ [`TypedArray`](https://tc39.es/ecma262/multipage/indexed-collections.html#sec-typedarray-objects) and bytes otherwise.
+ **Returns:**
+ [`undefined`](https://webidl.spec.whatwg.org/#idl-undefined)
+
+ [Content timeline](#content-timeline) steps:
+
+ 1. If `data` is an
+ [`ArrayBuffer`](https://webidl.spec.whatwg.org/#idl-ArrayBuffer) or
+ [`DataView`](https://webidl.spec.whatwg.org/#idl-DataView), let the element type be \"byte\". Otherwise,
+ `data` is a TypedArray; let the element type be the
+ type of the TypedArray.
+
+ 2. Let `dataElementCount` be the size of
+ `data`, in elements.
+
+ 3. If `dataSize` is missing, let
+ `contentsSize` be `dataElementCount` −
+ `dataOffset`. Otherwise, let
+ `contentsSize` be `dataSize`.
+
+ 4. If any of the following conditions are unsatisfied, throw an
+ [`OperationError`](https://webidl.spec.whatwg.org/#operationerror) and return.
+
+ ::: validusage
+ - `contentsSize` ≥ 0.
+
+ - `dataOffset` + `contentsSize` ≤
+ `dataElementCount`.
+
+ - `contentsSize`, converted to bytes, is a multiple
+ of 4.
+ :::
+
+ 5. Let `dataContents` be [a copy of the bytes held by
+ the buffer
+ source](https://webidl.spec.whatwg.org/#dfn-get-buffer-source-copy) `data`.
+
+ 6. Let `contents` be the `contentsSize`
+ elements of `dataContents` starting at an offset of
+ `dataOffset` elements.
+
+ 7. Let `contentsBytes` be `contentsSize`
+ converted to bytes.
+
+ 8. Issue the subsequent steps on the [Device
+ timeline](#device-timeline) of
+ `this`.[`[[device]]`](#dom-gpuobjectbase-device-slot).
+ :::
+
+ ::: {timeline="device"}
+ [Device timeline](#device-timeline) steps:
+ 1. [Validate the encoder
+ state](#abstract-opdef-validate-the-encoder-state) of `this`. If it returns
+ false, return.
+
+ 2. If any of the following conditions are unsatisfied,
+ [invalidate](#abstract-opdef-invalidate) `this` and return.
+
+ ::: validusage
+ - `rangeOffset` is a multiple of 4.
+
+ - `rangeOffset` + `contentsBytes` ≤
+ `this`.[`[[device]]`](#dom-gpuobjectbase-device-slot).[`[[limits]]`](#dom-device-limits-slot).[`maxImmediateSize`](#dom-supported-limits-maximmediatesize).
+ :::
+
+ 3. For each byte `b` at index `i` in
+ `contents`:
+
+ 1. Let `byteIndex` be `rangeOffset` +
+ `i`.
+
+ 2. Let `slotIndex` be floor(`byteIndex` ÷
+ 4).
+
+ 3. Set
+ `this`.[`[[immediate_data]]`](#dom-gpubindingcommandsmixin-immediate_data-slot)\[`byteIndex`\] to
+ `b`.
+
+ 4. Set
+ `this`.[`[[immediate_slots_set]]`](#dom-gpubindingcommandsmixin-immediate_slots_set-slot)\[`slotIndex`\] to true.
+ :::
+ :::::
 
 ## 15. Debug Markers
 
@@ -17126,10 +17481,30 @@ dictionary GPUComputePassDescriptor
  groups](#abstract-opdef-validate-encoder-bind-groups)(`this`,
  `this`.[`[[pipeline]]`](#dom-gpucomputepassencoder-pipeline-slot)) is `true`.
 
+ - [Validate immediate
+ data](#abstract-opdef-validate-immediate-data)(`this`,
+ `this`.[`[[pipeline]]`](#dom-gpucomputepassencoder-pipeline-slot)) is `true`.
+
  - all of `workgroupCountX`,
  `workgroupCountY` and `workgroupCountZ`
  are ≤
  `this`.device.limits.[`maxComputeWorkgroupsPerDimension`](#dom-supported-limits-maxcomputeworkgroupsperdimension).
+
+ - let `workgroupSize` be the computed workgroup size
+ for
+ `bindingState`.[`[[pipeline]]`](#dom-gpucomputepassencoder-pipeline-slot).
+
+ - the entry point uses the
+ [workgroup_index](https://gpuweb.github.io/gpuweb/wgsl/#built-in-values-workgroup_index) built-in value and
+ `workgroupCountX` × `workgroupCountY` ×
+ `workgroupCountZ` is out of range of an unsigned
+ 32-bit integer.
+
+ - the entry point uses the
+ [global_invocation_index](https://gpuweb.github.io/gpuweb/wgsl/#built-in-values-global_invocation_index) built-in value and
+ `workgroupCountX` × `workgroupCountY` ×
+ `workgroupCountZ` × `workgroupSize` is
+ out of range of an unsigned 32-bit integer.
  :::
 
  5. Let `bindingState` be a snapshot of
@@ -17237,6 +17612,10 @@ dictionary GPUComputePassDescriptor
  groups](#abstract-opdef-validate-encoder-bind-groups)(`this`,
  `this`.[`[[pipeline]]`](#dom-gpucomputepassencoder-pipeline-slot)) is `true`.
 
+ - [Validate immediate
+ data](#abstract-opdef-validate-immediate-data)(`this`,
+ `this`.[`[[pipeline]]`](#dom-gpucomputepassencoder-pipeline-slot)) is `true`.
+
  - `indirectBuffer` is [valid to use
  with](#abstract-opdef-valid-to-use-with) `this`.
 
@@ -17273,11 +17652,26 @@ dictionary GPUComputePassDescriptor
  read from `indirectBuffer` at
  (`indirectOffset` + 8) bytes.
 
- 4. If `workgroupCountX`, `workgroupCountY`,
+ 4. Let `workgroupSize` be the computed workgroup size
+ for
+ `bindingState`.[`[[pipeline]]`](#dom-gpucomputepassencoder-pipeline-slot)
+
+ 5. If `workgroupCountX`, `workgroupCountY`,
  or `workgroupCountZ` is greater than
  `this`.device.limits.[`maxComputeWorkgroupsPerDimension`](#dom-supported-limits-maxcomputeworkgroupsperdimension), return.
 
- 5. Execute a grid of workgroups with dimensions
+ 6. If the entry point uses the
+ [workgroup_index](https://gpuweb.github.io/gpuweb/wgsl/#built-in-values-workgroup_index) built-in value and `workgroupCountX`
+ × `workgroupCountY` × `workgroupCountZ` is
+ out of range of an unsigned 32-bit integer return.
+
+ 7. If the entry point uses the
+ [global_invocation_index](https://gpuweb.github.io/gpuweb/wgsl/#built-in-values-global_invocation_index) built-in value and `workgroupCountX`
+ × `workgroupCountY` × `workgroupCountZ` ×
+ `workgroupSize` is out of range of an unsigned 32-bit
+ integer return.
+
+ 8. Execute a grid of workgroups with dimensions
  \[`workgroupCountX`, `workgroupCountY`,
  `workgroupCountZ`\] with
  `bindingState`.[`[[pipeline]]`](#dom-gpucomputepassencoder-pipeline-slot) using
@@ -17779,6 +18173,16 @@ Given a
  provided](https://infra.spec.whatwg.org/#map-exists).
 
  4. If
+ `renderViewDescriptor`.[`usage`](#dom-gputextureviewdescriptor-usage) includes the
+ [`TRANSIENT_ATTACHMENT`](#dom-gputextureusage-transient_attachment) bit:
+
+ 1. `this`.[`loadOp`](#dom-gpurenderpasscolorattachment-loadop) `must` be
+ [`"clear"`](#dom-gpuloadop-clear).
+
+ 2. `this`.[`storeOp`](#dom-gpurenderpasscolorattachment-storeop) `must` be
+ [`"discard"`](#dom-gpustoreop-discard).
+
+ 5. If
  `this`.[`loadOp`](#dom-gpurenderpasscolorattachment-loadop) is
  [`"clear"`](#dom-gpuloadop-clear):
 
@@ -17792,7 +18196,7 @@ Given a
  out-of-range for the format but in-range for the
  corresponding WGSL primitive type (`f32`, `i32`, or `u32`).
 
- 5. If
+ 6. If
  `this`.[`resolveTarget`](#dom-gpurenderpasscolorattachment-resolvetarget) is
  [provided](https://infra.spec.whatwg.org/#map-exists):
 
@@ -17821,6 +18225,9 @@ Given a
 
  9. `resolveViewDescriptor`.[`format`](#dom-gputextureviewdescriptor-format) `must` support resolve according
  to [§ 26.1.1 Plain color formats](#plain-color-formats).
+
+ 10. `resolveViewDescriptor`.[`usage`](#dom-gputextureviewdescriptor-usage) `must` not include the
+ [`TRANSIENT_ATTACHMENT`](#dom-gputextureusage-transient_attachment) bit.
  :::
 
 A [`GPUTextureView`](#gputextureview) `view` is a [renderable texture
@@ -17975,57 +18382,89 @@ dictionary GPURenderPassDepthStencilAttachment {
 Usage]
 
 Given a
-[`GPURenderPassDepthStencilAttachment`](#dictdef-gpurenderpassdepthstencilattachment) `this`, the following validation rules
-apply:
+[`GPURenderPassDepthStencilAttachment`](#dictdef-gpurenderpassdepthstencilattachment) `this`:
 
-- `this`.[`view`](#dom-gpurenderpassdepthstencilattachment-view) must have a [depth-or-stencil
- format](#depth-or-stencil-format).
-
-- `this`.[`view`](#dom-gpurenderpassdepthstencilattachment-view) must be a [renderable texture
- view](#abstract-opdef-renderable-texture-view).
-
-- Let `format` be
+1. Let `format` be
  `this`.[`view`](#dom-gpurenderpassdepthstencilattachment-view).[`[[descriptor]]`](#dom-gputextureview-descriptor-slot).[`format`](#dom-gputextureviewdescriptor-format).
 
-- If
+2. Let `usage` be
+ `this`.[`view`](#dom-gpurenderpassdepthstencilattachment-view).[`[[descriptor]]`](#dom-gputextureview-descriptor-slot).[`usage`](#dom-gputextureviewdescriptor-usage).
+
+3. All of the requirements in the following steps `must` be
+ met.
+
+ ::: validusage
+ 1. `this`.[`view`](#dom-gpurenderpassdepthstencilattachment-view) `must` have a [depth-or-stencil
+ format](#depth-or-stencil-format).
+
+ 2. `this`.[`view`](#dom-gpurenderpassdepthstencilattachment-view) `must` be a [renderable texture
+ view](#abstract-opdef-renderable-texture-view).
+
+ 3. If
  `this`.[`depthLoadOp`](#dom-gpurenderpassdepthstencilattachment-depthloadop) is
  [`"clear"`](#dom-gpuloadop-clear),
- `this`.[`depthClearValue`](#dom-gpurenderpassdepthstencilattachment-depthclearvalue) must [be
- provided](https://infra.spec.whatwg.org/#map-exists) and must be between 0.0 and 1.0, inclusive.
+ `this`.[`depthClearValue`](#dom-gpurenderpassdepthstencilattachment-depthclearvalue) `must` [be
+ provided](https://infra.spec.whatwg.org/#map-exists) and `must` be between 0.0 and 1.0,
+ inclusive.
 
-- If `format` has a depth aspect and
+ 4. If `format` has a
+ [depth](#aspect-depth)
+ aspect and
  `this`.[`depthReadOnly`](#dom-gpurenderpassdepthstencilattachment-depthreadonly) is `false`:
 
- - `this`.[`depthLoadOp`](#dom-gpurenderpassdepthstencilattachment-depthloadop) must [be
+ 1. `this`.[`depthLoadOp`](#dom-gpurenderpassdepthstencilattachment-depthloadop) `must` [be
  provided](https://infra.spec.whatwg.org/#map-exists).
 
- - `this`.[`depthStoreOp`](#dom-gpurenderpassdepthstencilattachment-depthstoreop) must [be
+ 2. `this`.[`depthStoreOp`](#dom-gpurenderpassdepthstencilattachment-depthstoreop) `must` [be
  provided](https://infra.spec.whatwg.org/#map-exists).
 
  Otherwise:
 
- - `this`.[`depthLoadOp`](#dom-gpurenderpassdepthstencilattachment-depthloadop) must not [be
+ 1. `this`.[`depthLoadOp`](#dom-gpurenderpassdepthstencilattachment-depthloadop) `must` not [be
  provided](https://infra.spec.whatwg.org/#map-exists).
 
- - `this`.[`depthStoreOp`](#dom-gpurenderpassdepthstencilattachment-depthstoreop) must not [be
+ 2. `this`.[`depthStoreOp`](#dom-gpurenderpassdepthstencilattachment-depthstoreop) `must` not [be
  provided](https://infra.spec.whatwg.org/#map-exists).
 
-- If `format` has a stencil aspect and
+ 5. If `format` has a
+ [stencil](#aspect-stencil) aspect and
  `this`.[`stencilReadOnly`](#dom-gpurenderpassdepthstencilattachment-stencilreadonly) is `false`:
 
- - `this`.[`stencilLoadOp`](#dom-gpurenderpassdepthstencilattachment-stencilloadop) must [be
+ 1. `this`.[`stencilLoadOp`](#dom-gpurenderpassdepthstencilattachment-stencilloadop) `must` [be
  provided](https://infra.spec.whatwg.org/#map-exists).
 
- - `this`.[`stencilStoreOp`](#dom-gpurenderpassdepthstencilattachment-stencilstoreop) must [be
+ 2. `this`.[`stencilStoreOp`](#dom-gpurenderpassdepthstencilattachment-stencilstoreop) `must` [be
  provided](https://infra.spec.whatwg.org/#map-exists).
 
  Otherwise:
 
- - `this`.[`stencilLoadOp`](#dom-gpurenderpassdepthstencilattachment-stencilloadop) must not [be
+ 1. `this`.[`stencilLoadOp`](#dom-gpurenderpassdepthstencilattachment-stencilloadop) `must` not [be
  provided](https://infra.spec.whatwg.org/#map-exists).
 
- - `this`.[`stencilStoreOp`](#dom-gpurenderpassdepthstencilattachment-stencilstoreop) must not [be
+ 2. `this`.[`stencilStoreOp`](#dom-gpurenderpassdepthstencilattachment-stencilstoreop) `must` not [be
  provided](https://infra.spec.whatwg.org/#map-exists).
+
+ 6. If `usage` includes the
+ [`TRANSIENT_ATTACHMENT`](#dom-gputextureusage-transient_attachment) bit:
+
+ 1. If `format` has a
+ [depth](#aspect-depth) aspect:
+
+ 1. `this`.[`depthLoadOp`](#dom-gpurenderpassdepthstencilattachment-depthloadop) `must` be
+ [`"clear"`](#dom-gpuloadop-clear).
+
+ 2. `this`.[`depthStoreOp`](#dom-gpurenderpassdepthstencilattachment-depthstoreop) `must` be
+ [`"discard"`](#dom-gpustoreop-discard).
+
+ 2. If `format` has a
+ [stencil](#aspect-stencil) aspect:
+
+ 1. `this`.[`stencilLoadOp`](#dom-gpurenderpassdepthstencilattachment-stencilloadop) `must` be
+ [`"clear"`](#dom-gpuloadop-clear).
+
+ 2. `this`.[`stencilStoreOp`](#dom-gpurenderpassdepthstencilattachment-stencilstoreop) `must` be
+ [`"discard"`](#dom-gpustoreop-discard).
+ :::
 
 ##### 17.1.1.3. Load & Store Operations
 
@@ -19349,6 +19788,10 @@ steps:
  groups](#abstract-opdef-validate-encoder-bind-groups)(`encoder`,
  `encoder`.[`[[pipeline]]`](#dom-gpurendercommandsmixin-pipeline-slot)) must be `true`.
 
+ - [Validate immediate
+ data](#abstract-opdef-validate-immediate-data)(`encoder`,
+ `encoder`.[`[[pipeline]]`](#dom-gpurendercommandsmixin-pipeline-slot)) must be `true`.
+
  - Let `pipelineDescriptor` be
  `encoder`.[`[[pipeline]]`](#dom-gpurendercommandsmixin-pipeline-slot).[`[[descriptor]]`](#dom-gpurenderpipeline-descriptor-slot).
 
@@ -19848,10 +20291,11 @@ rasterized to attachments used by this encoder.
 
  When a
  [`GPURenderBundle`](#gpurenderbundle) is executed, it does not inherit the render pass's
- pipeline, bind groups, or vertex and index buffers. After a
+ pipeline, bind groups, immediate data, or vertex and index buffers.
+ After a
  [`GPURenderBundle`](#gpurenderbundle) has executed, the render pass's pipeline, bind
- group, and vertex/index buffer state is cleared (to the initial,
- empty values).
+ group, immediate data, and vertex/index buffer state is cleared (to
+ the initial, empty values).
 
  The state is cleared, not restored to the previous
  state. This occurs even if zero
@@ -19957,13 +20401,16 @@ steps:
 1. [Clear](https://infra.spec.whatwg.org/#map-clear)
  `encoder`.[`[[bind_groups]]`](#dom-gpubindingcommandsmixin-bind_groups-slot).
 
-2. Set
- `encoder`.[`[[pipeline]]`](#dom-gpurendercommandsmixin-pipeline-slot) to `null`.
+2. Set each entry of
+ `encoder`.[`[[immediate_slots_set]]`](#dom-gpubindingcommandsmixin-immediate_slots_set-slot) to `false`.
 
 3. Set
+ `encoder`.[`[[pipeline]]`](#dom-gpurendercommandsmixin-pipeline-slot) to `null`.
+
+4. Set
  `encoder`.[`[[index_buffer]]`](#dom-gpurendercommandsmixin-index_buffer-slot) to `null`.
 
-4. [Clear](https://infra.spec.whatwg.org/#map-clear)
+5. [Clear](https://infra.spec.whatwg.org/#map-clear)
  `encoder`.[`[[vertex_buffers]]`](#dom-gpurendercommandsmixin-vertex_buffers-slot).
 
 ## 18. Bundles
@@ -21473,11 +21920,16 @@ properties](#content-timeline-property):
  `configuration`.[`format`](#dom-gpucanvasconfiguration-format), throw a
  [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
 
- 5. Let `descriptor` be the [GPUTextureDescriptor for the
+ 5. If
+ `configuration`.[`usage`](#dom-gpucanvasconfiguration-usage) includes the
+ [`TRANSIENT_ATTACHMENT`](#dom-gputextureusage-transient_attachment) bit, throw a
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+ 6. Let `descriptor` be the [GPUTextureDescriptor for the
  canvas and
  configuration](#abstract-opdef-gputexturedescriptor-for-the-canvas-and-configuration)(`this`.[`canvas`](#dom-gpucanvascontext-canvas), `configuration`).
 
- 6. Set
+ 7. Set
  `this`.[`[[configuration]]`](#dom-gpucanvascontext-configuration-slot) to `configuration`.
 
  This exposes only the members defined in an
@@ -21486,13 +21938,13 @@ properties](#content-timeline-property):
  notes about [feature
  detection](#feature-detection).
 
- 7. Set
+ 8. Set
  `this`.[`[[textureDescriptor]]`](#dom-gpucanvascontext-texturedescriptor-slot) to `descriptor`.
 
- 8. [Replace the drawing
+ 9. [Replace the drawing
  buffer](#abstract-opdef-replace-the-drawing-buffer) of `this`.
 
- 9. Issue the subsequent steps on the [Device
+ 10. Issue the subsequent steps on the [Device
  timeline](#device-timeline) of `device`.
  :::
 
@@ -24527,515 +24979,556 @@ syntax:
 
 ## 25. Feature Index
 
+*This section is non-normative.*
+
+This section describes what is enabled by each feature in
+[`GPUFeatureName`](#gpufeaturename). Normative behavior is found in the relevant spec
+sections.
+
+Dependencies between features are described in [§ 3.6.1.2 Feature
+Dependencies](#feature-dependencies) and enforced in [§ 4.2.1 Adapter
+Capability Guarantees](#adapter-capability-guarantees) and [a new
+device](#a-new-device).
+
 ### 25.1. `"core-features-and-limits"`
 
-Allows all Core WebGPU features and limits to be used.
+When enabled:
 
-This is always available unless
+- Lifts extra validation rules that are specific to WebGPU
+ [\"compatibility\"](#feature-level-string-compatibility) mode. These are not enumerated here; see references
+ to
+ [`"core-features-and-limits"`](#core-features-and-limits) throughout the spec.
+
+- Ensures all limits are set to their
+ [default](#limit-default)
+ value (rather than their [compatibility mode
+ default](#limit-compatibility-mode-default) value), or
+ [better](#limit-better) if
+ requested.
+
+ This feature is always available when calling
+[`requestAdapter()`](#dom-gpu-requestadapter) with no arguments. It may only be unavailable if
 [`featureLevel`](#dom-gpurequestadapteroptions-featurelevel) is set to
-[\"compatibility\"](#feature-level-string-compatibility), in which case it may or may not be available (see
-those definitions for information).
+[\"compatibility\"](#feature-level-string-compatibility), in which case its availability depends on the system.
+See those definitions for details.
 
 ### 25.2. `"depth-clip-control"`
 
-Allows [depth clipping](#depth-clipping) to be disabled.
+When enabled:
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+- Allows [depth clipping](#depth-clipping) to be disabled.
 
-- New
- [`GPUPrimitiveState`](#dictdef-gpuprimitivestate) dictionary members:
+New
+[`GPUPrimitiveState`](#dictdef-gpuprimitivestate) dictionary members:
 
- - [`unclippedDepth`](#dom-gpuprimitivestate-unclippeddepth)
+- [`unclippedDepth`](#dom-gpuprimitivestate-unclippeddepth)
 
 ### 25.3. `"depth32float-stencil8"`
 
-Allows for explicit creation of textures of format
-[`"depth32float-stencil8"`](#dom-gputextureformat-depth32float-stencil8).
+When enabled:
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+- Allows for explicit creation of textures of format
+ [`"depth32float-stencil8"`](#dom-gputextureformat-depth32float-stencil8).
 
-- New
- [`GPUTextureFormat`](#enumdef-gputextureformat) enum values:
+New
+[`GPUTextureFormat`](#enumdef-gputextureformat) enum values:
 
- - [`"depth32float-stencil8"`](#dom-gputextureformat-depth32float-stencil8)
+- [`"depth32float-stencil8"`](#dom-gputextureformat-depth32float-stencil8)
 
 ### 25.4. `"texture-compression-bc"`
 
-Allows for explicit creation of textures of [BC compressed
-formats](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#_compressed_texture_image_formats) which include the \"S3TC\", \"RGTC\", and \"BPTC\"
-formats. Only supports 2D textures.
+When enabled:
 
- Adapters which support
-[`"texture-compression-bc"`](#texture-compression-bc) do not always support
-[`"texture-compression-bc-sliced-3d"`](#texture-compression-bc-sliced-3d). To use
-[`"texture-compression-bc-sliced-3d"`](#texture-compression-bc-sliced-3d),
-[`"texture-compression-bc"`](#texture-compression-bc) must be enabled explicitly as this feature does not
-enable the BC formats.
+- Allows for explicit creation of textures of [BC compressed
+ formats](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#_compressed_texture_image_formats) which include the \"S3TC\", \"RGTC\", and \"BPTC\"
+ formats.
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+ This feature only supports 2D textures. If 3D
+ textures are needed, use
+ [`"texture-compression-bc-sliced-3d"`](#texture-compression-bc-sliced-3d).
 
-- New
- [`GPUTextureFormat`](#enumdef-gputextureformat) enum values:
+New
+[`GPUTextureFormat`](#enumdef-gputextureformat) enum values:
 
- - [`"bc1-rgba-unorm"`](#dom-gputextureformat-bc1-rgba-unorm)
+- [`"bc1-rgba-unorm"`](#dom-gputextureformat-bc1-rgba-unorm)
 
- - [`"bc1-rgba-unorm-srgb"`](#dom-gputextureformat-bc1-rgba-unorm-srgb)
+- [`"bc1-rgba-unorm-srgb"`](#dom-gputextureformat-bc1-rgba-unorm-srgb)
 
- - [`"bc2-rgba-unorm"`](#dom-gputextureformat-bc2-rgba-unorm)
+- [`"bc2-rgba-unorm"`](#dom-gputextureformat-bc2-rgba-unorm)
 
- - [`"bc2-rgba-unorm-srgb"`](#dom-gputextureformat-bc2-rgba-unorm-srgb)
+- [`"bc2-rgba-unorm-srgb"`](#dom-gputextureformat-bc2-rgba-unorm-srgb)
 
- - [`"bc3-rgba-unorm"`](#dom-gputextureformat-bc3-rgba-unorm)
+- [`"bc3-rgba-unorm"`](#dom-gputextureformat-bc3-rgba-unorm)
 
- - [`"bc3-rgba-unorm-srgb"`](#dom-gputextureformat-bc3-rgba-unorm-srgb)
+- [`"bc3-rgba-unorm-srgb"`](#dom-gputextureformat-bc3-rgba-unorm-srgb)
 
- - [`"bc4-r-unorm"`](#dom-gputextureformat-bc4-r-unorm)
+- [`"bc4-r-unorm"`](#dom-gputextureformat-bc4-r-unorm)
 
- - [`"bc4-r-snorm"`](#dom-gputextureformat-bc4-r-snorm)
+- [`"bc4-r-snorm"`](#dom-gputextureformat-bc4-r-snorm)
 
- - [`"bc5-rg-unorm"`](#dom-gputextureformat-bc5-rg-unorm)
+- [`"bc5-rg-unorm"`](#dom-gputextureformat-bc5-rg-unorm)
 
- - [`"bc5-rg-snorm"`](#dom-gputextureformat-bc5-rg-snorm)
+- [`"bc5-rg-snorm"`](#dom-gputextureformat-bc5-rg-snorm)
 
- - [`"bc6h-rgb-ufloat"`](#dom-gputextureformat-bc6h-rgb-ufloat)
+- [`"bc6h-rgb-ufloat"`](#dom-gputextureformat-bc6h-rgb-ufloat)
 
- - [`"bc6h-rgb-float"`](#dom-gputextureformat-bc6h-rgb-float)
+- [`"bc6h-rgb-float"`](#dom-gputextureformat-bc6h-rgb-float)
 
- - [`"bc7-rgba-unorm"`](#dom-gputextureformat-bc7-rgba-unorm)
+- [`"bc7-rgba-unorm"`](#dom-gputextureformat-bc7-rgba-unorm)
 
- - [`"bc7-rgba-unorm-srgb"`](#dom-gputextureformat-bc7-rgba-unorm-srgb)
+- [`"bc7-rgba-unorm-srgb"`](#dom-gputextureformat-bc7-rgba-unorm-srgb)
 
 ### 25.5. `"texture-compression-bc-sliced-3d"`
 
-Allows the
-[`3d`](#dom-gputexturedimension-3d) dimension for textures with [BC compressed
-formats](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#_compressed_texture_image_formats).
+When enabled:
 
- Adapters which support
-[`"texture-compression-bc"`](#texture-compression-bc) do not always support
-[`"texture-compression-bc-sliced-3d"`](#texture-compression-bc-sliced-3d). To use
-[`"texture-compression-bc-sliced-3d"`](#texture-compression-bc-sliced-3d),
-[`"texture-compression-bc"`](#texture-compression-bc) must be enabled explicitly as this feature does not
-enable the BC formats.
-
-This feature adds no [optional API
-surfaces](#optional-api-surface).
+- Allows the
+ [`3d`](#dom-gputexturedimension-3d) dimension for textures with [BC compressed
+ formats](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#_compressed_texture_image_formats).
 
 ### 25.6. `"texture-compression-etc2"`
 
-Allows for explicit creation of textures of [ETC2 compressed
-formats](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#ETC2). Only supports 2D textures.
+When enabled:
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+- Allows for explicit creation of textures of [ETC2 compressed
+ formats](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#ETC2).
 
-- New
- [`GPUTextureFormat`](#enumdef-gputextureformat) enum values:
+ This feature only supports 2D textures.
 
- - [`"etc2-rgb8unorm"`](#dom-gputextureformat-etc2-rgb8unorm)
+New
+[`GPUTextureFormat`](#enumdef-gputextureformat) enum values:
 
- - [`"etc2-rgb8unorm-srgb"`](#dom-gputextureformat-etc2-rgb8unorm-srgb)
+- [`"etc2-rgb8unorm"`](#dom-gputextureformat-etc2-rgb8unorm)
 
- - [`"etc2-rgb8a1unorm"`](#dom-gputextureformat-etc2-rgb8a1unorm)
+- [`"etc2-rgb8unorm-srgb"`](#dom-gputextureformat-etc2-rgb8unorm-srgb)
 
- - [`"etc2-rgb8a1unorm-srgb"`](#dom-gputextureformat-etc2-rgb8a1unorm-srgb)
+- [`"etc2-rgb8a1unorm"`](#dom-gputextureformat-etc2-rgb8a1unorm)
 
- - [`"etc2-rgba8unorm"`](#dom-gputextureformat-etc2-rgba8unorm)
+- [`"etc2-rgb8a1unorm-srgb"`](#dom-gputextureformat-etc2-rgb8a1unorm-srgb)
 
- - [`"etc2-rgba8unorm-srgb"`](#dom-gputextureformat-etc2-rgba8unorm-srgb)
+- [`"etc2-rgba8unorm"`](#dom-gputextureformat-etc2-rgba8unorm)
 
- - [`"eac-r11unorm"`](#dom-gputextureformat-eac-r11unorm)
+- [`"etc2-rgba8unorm-srgb"`](#dom-gputextureformat-etc2-rgba8unorm-srgb)
 
- - [`"eac-r11snorm"`](#dom-gputextureformat-eac-r11snorm)
+- [`"eac-r11unorm"`](#dom-gputextureformat-eac-r11unorm)
 
- - [`"eac-rg11unorm"`](#dom-gputextureformat-eac-rg11unorm)
+- [`"eac-r11snorm"`](#dom-gputextureformat-eac-r11snorm)
 
- - [`"eac-rg11snorm"`](#dom-gputextureformat-eac-rg11snorm)
+- [`"eac-rg11unorm"`](#dom-gputextureformat-eac-rg11unorm)
+
+- [`"eac-rg11snorm"`](#dom-gputextureformat-eac-rg11snorm)
 
 ### 25.7. `"texture-compression-astc"`
 
-Allows for explicit creation of textures of [ASTC compressed
-formats](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#ASTC). Only supports 2D textures.
+When enabled:
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+- Allows for explicit creation of textures of [ASTC compressed
+ formats](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#ASTC).
 
-- New
- [`GPUTextureFormat`](#enumdef-gputextureformat) enum values:
+ This feature only supports 2D textures. If 3D
+ textures are needed, use
+ [`"texture-compression-astc-sliced-3d"`](#texture-compression-astc-sliced-3d).
 
- - [`"astc-4x4-unorm"`](#dom-gputextureformat-astc-4x4-unorm)
+New
+[`GPUTextureFormat`](#enumdef-gputextureformat) enum values:
 
- - [`"astc-4x4-unorm-srgb"`](#dom-gputextureformat-astc-4x4-unorm-srgb)
+- [`"astc-4x4-unorm"`](#dom-gputextureformat-astc-4x4-unorm)
 
- - [`"astc-5x4-unorm"`](#dom-gputextureformat-astc-5x4-unorm)
+- [`"astc-4x4-unorm-srgb"`](#dom-gputextureformat-astc-4x4-unorm-srgb)
 
- - [`"astc-5x4-unorm-srgb"`](#dom-gputextureformat-astc-5x4-unorm-srgb)
+- [`"astc-5x4-unorm"`](#dom-gputextureformat-astc-5x4-unorm)
 
- - [`"astc-5x5-unorm"`](#dom-gputextureformat-astc-5x5-unorm)
+- [`"astc-5x4-unorm-srgb"`](#dom-gputextureformat-astc-5x4-unorm-srgb)
 
- - [`"astc-5x5-unorm-srgb"`](#dom-gputextureformat-astc-5x5-unorm-srgb)
+- [`"astc-5x5-unorm"`](#dom-gputextureformat-astc-5x5-unorm)
 
- - [`"astc-6x5-unorm"`](#dom-gputextureformat-astc-6x5-unorm)
+- [`"astc-5x5-unorm-srgb"`](#dom-gputextureformat-astc-5x5-unorm-srgb)
 
- - [`"astc-6x5-unorm-srgb"`](#dom-gputextureformat-astc-6x5-unorm-srgb)
+- [`"astc-6x5-unorm"`](#dom-gputextureformat-astc-6x5-unorm)
 
- - [`"astc-6x6-unorm"`](#dom-gputextureformat-astc-6x6-unorm)
+- [`"astc-6x5-unorm-srgb"`](#dom-gputextureformat-astc-6x5-unorm-srgb)
 
- - [`"astc-6x6-unorm-srgb"`](#dom-gputextureformat-astc-6x6-unorm-srgb)
+- [`"astc-6x6-unorm"`](#dom-gputextureformat-astc-6x6-unorm)
 
- - [`"astc-8x5-unorm"`](#dom-gputextureformat-astc-8x5-unorm)
+- [`"astc-6x6-unorm-srgb"`](#dom-gputextureformat-astc-6x6-unorm-srgb)
 
- - [`"astc-8x5-unorm-srgb"`](#dom-gputextureformat-astc-8x5-unorm-srgb)
+- [`"astc-8x5-unorm"`](#dom-gputextureformat-astc-8x5-unorm)
 
- - [`"astc-8x6-unorm"`](#dom-gputextureformat-astc-8x6-unorm)
+- [`"astc-8x5-unorm-srgb"`](#dom-gputextureformat-astc-8x5-unorm-srgb)
 
- - [`"astc-8x6-unorm-srgb"`](#dom-gputextureformat-astc-8x6-unorm-srgb)
+- [`"astc-8x6-unorm"`](#dom-gputextureformat-astc-8x6-unorm)
 
- - [`"astc-8x8-unorm"`](#dom-gputextureformat-astc-8x8-unorm)
+- [`"astc-8x6-unorm-srgb"`](#dom-gputextureformat-astc-8x6-unorm-srgb)
 
- - [`"astc-8x8-unorm-srgb"`](#dom-gputextureformat-astc-8x8-unorm-srgb)
+- [`"astc-8x8-unorm"`](#dom-gputextureformat-astc-8x8-unorm)
 
- - [`"astc-10x5-unorm"`](#dom-gputextureformat-astc-10x5-unorm)
+- [`"astc-8x8-unorm-srgb"`](#dom-gputextureformat-astc-8x8-unorm-srgb)
 
- - [`"astc-10x5-unorm-srgb"`](#dom-gputextureformat-astc-10x5-unorm-srgb)
+- [`"astc-10x5-unorm"`](#dom-gputextureformat-astc-10x5-unorm)
 
- - [`"astc-10x6-unorm"`](#dom-gputextureformat-astc-10x6-unorm)
+- [`"astc-10x5-unorm-srgb"`](#dom-gputextureformat-astc-10x5-unorm-srgb)
 
- - [`"astc-10x6-unorm-srgb"`](#dom-gputextureformat-astc-10x6-unorm-srgb)
+- [`"astc-10x6-unorm"`](#dom-gputextureformat-astc-10x6-unorm)
 
- - [`"astc-10x8-unorm"`](#dom-gputextureformat-astc-10x8-unorm)
+- [`"astc-10x6-unorm-srgb"`](#dom-gputextureformat-astc-10x6-unorm-srgb)
 
- - [`"astc-10x8-unorm-srgb"`](#dom-gputextureformat-astc-10x8-unorm-srgb)
+- [`"astc-10x8-unorm"`](#dom-gputextureformat-astc-10x8-unorm)
 
- - [`"astc-10x10-unorm"`](#dom-gputextureformat-astc-10x10-unorm)
+- [`"astc-10x8-unorm-srgb"`](#dom-gputextureformat-astc-10x8-unorm-srgb)
 
- - [`"astc-10x10-unorm-srgb"`](#dom-gputextureformat-astc-10x10-unorm-srgb)
+- [`"astc-10x10-unorm"`](#dom-gputextureformat-astc-10x10-unorm)
 
- - [`"astc-12x10-unorm"`](#dom-gputextureformat-astc-12x10-unorm)
+- [`"astc-10x10-unorm-srgb"`](#dom-gputextureformat-astc-10x10-unorm-srgb)
 
- - [`"astc-12x10-unorm-srgb"`](#dom-gputextureformat-astc-12x10-unorm-srgb)
+- [`"astc-12x10-unorm"`](#dom-gputextureformat-astc-12x10-unorm)
 
- - [`"astc-12x12-unorm"`](#dom-gputextureformat-astc-12x12-unorm)
+- [`"astc-12x10-unorm-srgb"`](#dom-gputextureformat-astc-12x10-unorm-srgb)
 
- - [`"astc-12x12-unorm-srgb"`](#dom-gputextureformat-astc-12x12-unorm-srgb)
+- [`"astc-12x12-unorm"`](#dom-gputextureformat-astc-12x12-unorm)
+
+- [`"astc-12x12-unorm-srgb"`](#dom-gputextureformat-astc-12x12-unorm-srgb)
 
 ### 25.8. `"texture-compression-astc-sliced-3d"`
 
-Allows the
-[`3d`](#dom-gputexturedimension-3d) dimension for textures with [ASTC compressed
-formats](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#ASTC).
+When enabled:
 
- Adapters which support
-[`"texture-compression-astc"`](#texture-compression-astc) do not always support
-[`"texture-compression-astc-sliced-3d"`](#texture-compression-astc-sliced-3d). To use
-[`"texture-compression-astc-sliced-3d"`](#texture-compression-astc-sliced-3d),
-[`"texture-compression-astc"`](#texture-compression-astc) must be enabled explicitly as this feature does not
-enable the ASTC formats.
-
-This feature adds no [optional API
-surfaces](#optional-api-surface).
+- Allows the
+ [`3d`](#dom-gputexturedimension-3d) dimension for textures with [ASTC compressed
+ formats](https://registry.khronos.org/DataFormat/specs/1.3/dataformat.1.3.html#ASTC).
 
 ### 25.9. `"timestamp-query"`
 
-Adds the ability to query timestamps from GPU command buffers. See
-[§ 20.4 Timestamp Query](#timestamp).
+When enabled:
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+- Adds the ability to query timestamps from GPU command buffers. See
+ [§ 20.4 Timestamp Query](#timestamp).
 
-- New
- [`GPUQueryType`](#enumdef-gpuquerytype) values:
+New
+[`GPUQueryType`](#enumdef-gpuquerytype) values:
 
- - [`"timestamp"`](#dom-gpuquerytype-timestamp)
+- [`"timestamp"`](#dom-gpuquerytype-timestamp)
 
-- New
- [`GPUComputePassDescriptor`](#dictdef-gpucomputepassdescriptor) members:
+New
+[`GPUComputePassDescriptor`](#dictdef-gpucomputepassdescriptor) members:
 
- - [`timestampWrites`](#dom-gpucomputepassdescriptor-timestampwrites)
+- [`timestampWrites`](#dom-gpucomputepassdescriptor-timestampwrites)
 
-- New
- [`GPURenderPassDescriptor`](#dictdef-gpurenderpassdescriptor) members:
+New
+[`GPURenderPassDescriptor`](#dictdef-gpurenderpassdescriptor) members:
 
- - [`timestampWrites`](#dom-gpurenderpassdescriptor-timestampwrites)
+- [`timestampWrites`](#dom-gpurenderpassdescriptor-timestampwrites)
 
 ### 25.10. `"indirect-first-instance"`
 
-Allows the use of non-zero `firstInstance` values in [indirect draw
-parameters](#indirect-draw-parameters) and [indirect drawIndexed
-parameters](#indirect-drawindexed-parameters).
+When enabled:
 
-This feature adds no [optional API
-surfaces](#optional-api-surface).
+- Allows the use of non-zero `firstInstance` values in [indirect draw
+ parameters](#indirect-draw-parameters) and [indirect drawIndexed
+ parameters](#indirect-drawindexed-parameters).
 
 ### 25.11. `"shader-f16"`
 
-Allows the use of the half-precision floating-point type
-[f16](https://gpuweb.github.io/gpuweb/wgsl/#f16) in WGSL.
+When enabled:
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+- Allows the use of the half-precision floating-point type
+ [f16](https://gpuweb.github.io/gpuweb/wgsl/#f16) in WGSL.
 
-- New WGSL extensions:
+New WGSL extensions:
 
- - [f16](https://gpuweb.github.io/gpuweb/wgsl/#extension-f16)
+- [f16](https://gpuweb.github.io/gpuweb/wgsl/#extension-f16)
 
 ### 25.12. `"rg11b10ufloat-renderable"`
 
-Allows the
-[`RENDER_ATTACHMENT`](#dom-gputextureusage-render_attachment) usage on textures with format
-[`"rg11b10ufloat"`](#dom-gputextureformat-rg11b10ufloat), and also allows textures of that format to be blended,
-multisampled, and resolved.
+When enabled:
 
-Implicitly allows
-[`"rg11b10ufloat"`](#dom-gputextureformat-rg11b10ufloat) as a destination format in
-[`copyExternalImageToTexture()`](#dom-gpuqueue-copyexternalimagetotexture).
+- Allows the
+ [`RENDER_ATTACHMENT`](#dom-gputextureusage-render_attachment) usage on textures with format
+ [`"rg11b10ufloat"`](#dom-gputextureformat-rg11b10ufloat), and also allows textures of that format to be
+ blended, multisampled, and resolved.
 
-This feature adds no [optional API
-surfaces](#optional-api-surface).
-
- This feature is automatically enabled by
-[`"texture-formats-tier1"`](#texture-formats-tier1), which is automatically enabled by
-[`"texture-formats-tier2"`](#texture-formats-tier2).
+ Implicitly, this allows
+ [`"rg11b10ufloat"`](#dom-gputextureformat-rg11b10ufloat) as a destination format in
+ [`copyExternalImageToTexture()`](#dom-gpuqueue-copyexternalimagetotexture).
 
 ### 25.13. `"bgra8unorm-storage"`
 
-Allows the
-[`STORAGE_BINDING`](#dom-gputextureusage-storage_binding) usage on textures with format
-[`"bgra8unorm"`](#dom-gputextureformat-bgra8unorm).
+When enabled:
 
-This feature adds no [optional API
-surfaces](#optional-api-surface).
+- Allows the
+ [`STORAGE_BINDING`](#dom-gputextureusage-storage_binding) usage on textures with format
+ [`"bgra8unorm"`](#dom-gputextureformat-bgra8unorm).
 
 ### 25.14. `"float32-filterable"`
 
-Makes textures with formats
-[`"r32float"`](#dom-gputextureformat-r32float),
-[`"rg32float"`](#dom-gputextureformat-rg32float), and
-[`"rgba32float"`](#dom-gputextureformat-rgba32float) [filterable](#filterable).
+When enabled:
+
+- Makes textures with the following formats
+ [filterable](#filterable):
+
+ - [`"r32float"`](#dom-gputextureformat-r32float)
+
+ - [`"rg32float"`](#dom-gputextureformat-rg32float)
+
+ - [`"rgba32float"`](#dom-gputextureformat-rgba32float)
 
 ### 25.15. `"float32-blendable"`
 
-Makes textures with formats
-[`"r32float"`](#dom-gputextureformat-r32float),
-[`"rg32float"`](#dom-gputextureformat-rg32float), and
-[`"rgba32float"`](#dom-gputextureformat-rgba32float) [blendable](#blendable).
+When enabled:
+
+- Makes textures with the following formats
+ [blendable](#blendable):
+
+ - [`"r32float"`](#dom-gputextureformat-r32float)
+
+ - [`"rg32float"`](#dom-gputextureformat-rg32float)
+
+ - [`"rgba32float"`](#dom-gputextureformat-rgba32float)
 
 ### 25.16. `"clip-distances"`
 
-Allows the use of
-[clip_distances](https://gpuweb.github.io/gpuweb/wgsl/#built-in-values-clip_distances) in WGSL.
+When enabled:
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+- Allows the use of
+ [clip_distances](https://gpuweb.github.io/gpuweb/wgsl/#built-in-values-clip_distances) in WGSL.
 
-- New WGSL extensions:
+New WGSL extensions:
 
- - [clip_distances](https://gpuweb.github.io/gpuweb/wgsl/#extension-clip_distances)
+- [clip_distances](https://gpuweb.github.io/gpuweb/wgsl/#extension-clip_distances)
 
 ### 25.17. `"dual-source-blending"`
 
-Allows the use of
-[blend_src](https://gpuweb.github.io/gpuweb/wgsl/#input-output-locations) in WGSL and simultaneously using
-both pixel shader outputs (`@blend_src(0)` and `@blend_src(1)`) as
-inputs to a blending operation with the single color attachment at
-[location](https://gpuweb.github.io/gpuweb/wgsl/#input-output-locations) `0`.
+When enabled:
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+- Allows the use of
+ [blend_src](https://gpuweb.github.io/gpuweb/wgsl/#input-output-locations) in WGSL and simultaneously
+ using both pixel shader outputs (`@blend_src(0)` and `@blend_src(1)`)
+ as inputs to a blending operation with the single color attachment at
+ [location](https://gpuweb.github.io/gpuweb/wgsl/#input-output-locations) `0`.
 
-- Allows the use of the below
- [`GPUBlendFactor`](#enumdef-gpublendfactor)s:
+New
+[`GPUBlendFactor`](#enumdef-gpublendfactor) values:
 
- - [`"src1"`](#dom-gpublendfactor-src1)
+- [`"src1"`](#dom-gpublendfactor-src1)
 
- - [`"one-minus-src1"`](#dom-gpublendfactor-one-minus-src1)
+- [`"one-minus-src1"`](#dom-gpublendfactor-one-minus-src1)
 
- - [`"src1-alpha"`](#dom-gpublendfactor-src1-alpha)
+- [`"src1-alpha"`](#dom-gpublendfactor-src1-alpha)
 
- - [`"one-minus-src1-alpha"`](#dom-gpublendfactor-one-minus-src1-alpha)
+- [`"one-minus-src1-alpha"`](#dom-gpublendfactor-one-minus-src1-alpha)
 
-- New WGSL extensions:
+New WGSL extensions:
 
- - [dual_source_blending](https://gpuweb.github.io/gpuweb/wgsl/#extension-dual_source_blending)
+- [dual_source_blending](https://gpuweb.github.io/gpuweb/wgsl/#extension-dual_source_blending)
 
 ### 25.18. `"subgroups"`
 
-Allows the use of the subgroup and quad operations in WGSL.
+When enabled:
 
-This feature adds no [optional API
-surfaces](#optional-api-surface), but the following entries of
-[`GPUAdapterInfo`](#gpuadapterinfo) expose real values whenever the feature is available on
-the adapter:
+- Allows the use of the subgroup and quad operations in WGSL.
 
-- [`subgroupMinSize`](#dom-gpuadapterinfo-subgroupminsize)
+- The following entries of
+ [`GPUAdapterInfo`](#gpuadapterinfo) expose real values whenever the feature is available
+ on the adapter:
 
-- [`subgroupMaxSize`](#dom-gpuadapterinfo-subgroupmaxsize)
+ - [`subgroupMinSize`](#dom-gpuadapterinfo-subgroupminsize)
 
-- New WGSL extensions:
+ - [`subgroupMaxSize`](#dom-gpuadapterinfo-subgroupmaxsize)
 
- - [subgroups](https://gpuweb.github.io/gpuweb/wgsl/#extension-subgroups)
+New WGSL extensions:
+
+- [subgroups](https://gpuweb.github.io/gpuweb/wgsl/#extension-subgroups)
 
 ### 25.19. `"texture-formats-tier1"`
 
-Enabling
-[`"texture-formats-tier1"`](#texture-formats-tier1) at device creation will enable
-[`"rg11b10ufloat-renderable"`](#rg11b10ufloat-renderable). The following items are in addition to that.
+When enabled:
 
-Supports the below new
-[`GPUTextureFormat`](#enumdef-gputextureformat)s with the
-[`RENDER_ATTACHMENT`](#dom-gputextureusage-render_attachment), [blendable](#blendable), `multisampling` capabilities and the
-[`STORAGE_BINDING`](#dom-gputextureusage-storage_binding) capability with the
-[`"read-only"`](#dom-gpustoragetextureaccess-read-only) and
-[`"write-only"`](#dom-gpustoragetextureaccess-write-only)
-[`GPUStorageTextureAccess`](#enumdef-gpustoragetextureaccess)es:
+- Enables
+ [`"rg11b10ufloat-renderable"`](#rg11b10ufloat-renderable).
 
-- [`"r16unorm"`](#dom-gputextureformat-r16unorm)
+- Supports the below new
+ [`GPUTextureFormat`](#enumdef-gputextureformat)s with the
+ [`RENDER_ATTACHMENT`](#dom-gputextureusage-render_attachment), [blendable](#blendable), `multisampling` capabilities and the
+ [`STORAGE_BINDING`](#dom-gputextureusage-storage_binding) capability with the
+ [`"read-only"`](#dom-gpustoragetextureaccess-read-only) and
+ [`"write-only"`](#dom-gpustoragetextureaccess-write-only)
+ [`GPUStorageTextureAccess`](#enumdef-gpustoragetextureaccess) values:
 
-- [`"r16snorm"`](#dom-gputextureformat-r16snorm)
+ - [`"r16unorm"`](#dom-gputextureformat-r16unorm)
 
-- [`"rg16unorm"`](#dom-gputextureformat-rg16unorm)
+ - [`"r16snorm"`](#dom-gputextureformat-r16snorm)
 
-- [`"rg16snorm"`](#dom-gputextureformat-rg16snorm)
+ - [`"rg16unorm"`](#dom-gputextureformat-rg16unorm)
 
-- [`"rgba16unorm"`](#dom-gputextureformat-rgba16unorm)
+ - [`"rg16snorm"`](#dom-gputextureformat-rg16snorm)
 
-- [`"rgba16snorm"`](#dom-gputextureformat-rgba16snorm)
+ - [`"rgba16unorm"`](#dom-gputextureformat-rgba16unorm)
 
-Allows the
-[`RENDER_ATTACHMENT`](#dom-gputextureusage-render_attachment), [blendable](#blendable), `multisampling` and `resolve` capabilities on below
-[`GPUTextureFormat`](#enumdef-gputextureformat)s:
+ - [`"rgba16snorm"`](#dom-gputextureformat-rgba16snorm)
 
-- [`"r8snorm"`](#dom-gputextureformat-r8snorm)
+ Implicitly, this allows the following new destination formats in
+ [`copyExternalImageToTexture()`](#dom-gpuqueue-copyexternalimagetotexture):
 
-- [`"rg8snorm"`](#dom-gputextureformat-rg8snorm)
+ - [`"r16unorm"`](#dom-gputextureformat-r16unorm)
 
-- [`"rgba8snorm"`](#dom-gputextureformat-rgba8snorm)
+ - [`"rg16unorm"`](#dom-gputextureformat-rg16unorm)
 
-Allows the
-[`"read-only"`](#dom-gpustoragetextureaccess-read-only) or
-[`"write-only"`](#dom-gpustoragetextureaccess-write-only)
-[`GPUStorageTextureAccess`](#enumdef-gpustoragetextureaccess) on below
-[`GPUTextureFormat`](#enumdef-gputextureformat)s:
+ - [`"rgba16unorm"`](#dom-gputextureformat-rgba16unorm)
 
-- [`"r8unorm"`](#dom-gputextureformat-r8unorm)
+- Supports the
+ [`RENDER_ATTACHMENT`](#dom-gputextureusage-render_attachment), [blendable](#blendable), `multisampling` and `resolve` capabilities on below
+ [`GPUTextureFormat`](#enumdef-gputextureformat)s:
 
-- [`"r8snorm"`](#dom-gputextureformat-r8snorm)
+ - [`"r8snorm"`](#dom-gputextureformat-r8snorm)
 
-- [`"r8uint"`](#dom-gputextureformat-r8uint)
+ - [`"rg8snorm"`](#dom-gputextureformat-rg8snorm)
 
-- [`"r8sint"`](#dom-gputextureformat-r8sint)
+ - [`"rgba8snorm"`](#dom-gputextureformat-rgba8snorm)
 
-- [`"rg8unorm"`](#dom-gputextureformat-rg8unorm)
+- Supports the
+ [`STORAGE_BINDING`](#dom-gputextureusage-storage_binding) capability with the
+ [`"read-only"`](#dom-gpustoragetextureaccess-read-only) and
+ [`"write-only"`](#dom-gpustoragetextureaccess-write-only)
+ [`GPUStorageTextureAccess`](#enumdef-gpustoragetextureaccess)es on below
+ [`GPUTextureFormat`](#enumdef-gputextureformat)s:
 
-- [`"rg8snorm"`](#dom-gputextureformat-rg8snorm)
+ - [`"r8unorm"`](#dom-gputextureformat-r8unorm)
 
-- [`"rg8uint"`](#dom-gputextureformat-rg8uint)
+ - [`"r8snorm"`](#dom-gputextureformat-r8snorm)
 
-- [`"rg8sint"`](#dom-gputextureformat-rg8sint)
+ - [`"r8uint"`](#dom-gputextureformat-r8uint)
 
-- [`"r16uint"`](#dom-gputextureformat-r16uint)
+ - [`"r8sint"`](#dom-gputextureformat-r8sint)
 
-- [`"r16sint"`](#dom-gputextureformat-r16sint)
+ - [`"rg8unorm"`](#dom-gputextureformat-rg8unorm)
 
-- [`"r16float"`](#dom-gputextureformat-r16float)
+ - [`"rg8snorm"`](#dom-gputextureformat-rg8snorm)
 
-- [`"rg16uint"`](#dom-gputextureformat-rg16uint)
+ - [`"rg8uint"`](#dom-gputextureformat-rg8uint)
 
-- [`"rg16sint"`](#dom-gputextureformat-rg16sint)
+ - [`"rg8sint"`](#dom-gputextureformat-rg8sint)
 
-- [`"rg16float"`](#dom-gputextureformat-rg16float)
+ - [`"r16uint"`](#dom-gputextureformat-r16uint)
 
-- [`"rgb10a2uint"`](#dom-gputextureformat-rgb10a2uint)
+ - [`"r16sint"`](#dom-gputextureformat-r16sint)
 
-- [`"rgb10a2unorm"`](#dom-gputextureformat-rgb10a2unorm)
+ - [`"r16float"`](#dom-gputextureformat-r16float)
 
-- [`"rg11b10ufloat"`](#dom-gputextureformat-rg11b10ufloat)
+ - [`"rg16uint"`](#dom-gputextureformat-rg16uint)
 
-Implicitly allows the following new destination formats in
-[`copyExternalImageToTexture()`](#dom-gpuqueue-copyexternalimagetotexture):
+ - [`"rg16sint"`](#dom-gputextureformat-rg16sint)
 
-- [`"r16unorm"`](#dom-gputextureformat-r16unorm)
+ - [`"rg16float"`](#dom-gputextureformat-rg16float)
 
-- [`"rg16unorm"`](#dom-gputextureformat-rg16unorm)
+ - [`"rgb10a2uint"`](#dom-gputextureformat-rgb10a2uint)
 
-- [`"rgba16unorm"`](#dom-gputextureformat-rgba16unorm)
+ - [`"rgb10a2unorm"`](#dom-gputextureformat-rgb10a2unorm)
 
- This feature is automatically enabled by
-[`"texture-formats-tier2"`](#texture-formats-tier2).
+ - [`"rg11b10ufloat"`](#dom-gputextureformat-rg11b10ufloat)
 
 ### 25.20. `"texture-formats-tier2"`
 
-Enabling
-[`"texture-formats-tier2"`](#texture-formats-tier2) at device creation will enable
-[`"texture-formats-tier1"`](#texture-formats-tier1). The following items are in addition to that.
+When enabled:
 
-Allows the
-[`"read-write"`](#dom-gpustoragetextureaccess-read-write)
-[`GPUStorageTextureAccess`](#enumdef-gpustoragetextureaccess) on below
-[`GPUTextureFormat`](#enumdef-gputextureformat)s:
+- Enables
+ [`"texture-formats-tier1"`](#texture-formats-tier1).
 
-- [`"r8unorm"`](#dom-gputextureformat-r8unorm)
+- Allows the
+ [`"read-write"`](#dom-gpustoragetextureaccess-read-write)
+ [`GPUStorageTextureAccess`](#enumdef-gpustoragetextureaccess) on below
+ [`GPUTextureFormat`](#enumdef-gputextureformat)s:
 
-- [`"r8uint"`](#dom-gputextureformat-r8uint)
+ - [`"r8unorm"`](#dom-gputextureformat-r8unorm)
 
-- [`"r8sint"`](#dom-gputextureformat-r8sint)
+ - [`"r8uint"`](#dom-gputextureformat-r8uint)
 
-- [`"rgba8unorm"`](#dom-gputextureformat-rgba8unorm)
+ - [`"r8sint"`](#dom-gputextureformat-r8sint)
 
-- [`"rgba8uint"`](#dom-gputextureformat-rgba8uint)
+ - [`"rgba8unorm"`](#dom-gputextureformat-rgba8unorm)
 
-- [`"rgba8sint"`](#dom-gputextureformat-rgba8sint)
+ - [`"rgba8uint"`](#dom-gputextureformat-rgba8uint)
 
-- [`"r16uint"`](#dom-gputextureformat-r16uint)
+ - [`"rgba8sint"`](#dom-gputextureformat-rgba8sint)
 
-- [`"r16sint"`](#dom-gputextureformat-r16sint)
+ - [`"r16uint"`](#dom-gputextureformat-r16uint)
 
-- [`"r16float"`](#dom-gputextureformat-r16float)
+ - [`"r16sint"`](#dom-gputextureformat-r16sint)
 
-- [`"rgba16uint"`](#dom-gputextureformat-rgba16uint)
+ - [`"r16float"`](#dom-gputextureformat-r16float)
 
-- [`"rgba16sint"`](#dom-gputextureformat-rgba16sint)
+ - [`"rgba16uint"`](#dom-gputextureformat-rgba16uint)
 
-- [`"rgba16float"`](#dom-gputextureformat-rgba16float)
+ - [`"rgba16sint"`](#dom-gputextureformat-rgba16sint)
 
-- [`"rgba32uint"`](#dom-gputextureformat-rgba32uint)
+ - [`"rgba16float"`](#dom-gputextureformat-rgba16float)
 
-- [`"rgba32sint"`](#dom-gputextureformat-rgba32sint)
+ - [`"rgba32uint"`](#dom-gputextureformat-rgba32uint)
 
-- [`"rgba32float"`](#dom-gputextureformat-rgba32float)
+ - [`"rgba32sint"`](#dom-gputextureformat-rgba32sint)
+
+ - [`"rgba32float"`](#dom-gputextureformat-rgba32float)
 
 ### 25.21. `"primitive-index"`
 
-Allows the use of
-[primitive_index](https://gpuweb.github.io/gpuweb/wgsl/#built-in-values-primitive_index) in WGSL.
+When enabled:
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+- Allows the use of
+ [primitive_index](https://gpuweb.github.io/gpuweb/wgsl/#built-in-values-primitive_index) in WGSL.
 
-- New WGSL extensions:
+New WGSL extensions:
 
- - [primitive_index](https://gpuweb.github.io/gpuweb/wgsl/#extension-primitive_index)
+- [primitive_index](https://gpuweb.github.io/gpuweb/wgsl/#extension-primitive_index)
 
 ### 25.22. `"texture-component-swizzle"`
 
-Allows
-[`GPUTextureView`](#gputextureview)s to rearrange or replace the color components from
-texture's red/green/blue/alpha channels when used as a
-[`TEXTURE_BINDING`](#dom-gputextureusage-texture_binding).
+When enabled:
 
-Also defines previously-implementation-defined behavior when [§ 26.1.2.1
-Reading and Sampling Depth/Stencil Textures](#reading-depth-stencil).
+- Allows
+ [`GPUTextureView`](#gputextureview)s to rearrange or replace the color components from
+ texture's red/green/blue/alpha channels when used as a
+ [`TEXTURE_BINDING`](#dom-gputextureusage-texture_binding).
 
-This feature adds the following [optional API
-surfaces](#optional-api-surface):
+- Defines previously-implementation-defined behavior when [§ 26.1.2.1
+ Reading and Sampling Depth/Stencil Textures](#reading-depth-stencil).
 
-- New
- [`GPUTextureViewDescriptor`](#dictdef-gputextureviewdescriptor) dictionary members:
+New
+[`GPUTextureViewDescriptor`](#dictdef-gputextureviewdescriptor) dictionary members:
 
- - [`swizzle`](#dom-gputextureviewdescriptor-swizzle)
+- [`swizzle`](#dom-gputextureviewdescriptor-swizzle)
+
+### 25.23. `"subgroup-size-control"`
+
+When enabled:
+
+- Enables [`"subgroups"`](#subgroups).
+
+- Allows the use of the
+ [subgroup_size](https://gpuweb.github.io/gpuweb/wgsl/#subgroup-size-attr) attribute in WGSL to control compute pipeline
+ subgroup size.
+
+New WGSL extensions:
+
+- [subgroup_size_control](https://gpuweb.github.io/gpuweb/wgsl/#extension-subgroup_size_control)
+
+### 25.24. `"texture-compression-unaligned"`
+
+When enabled:
+
+- Allows the creation of textures with block-based compressed
+ [`GPUTextureFormat`](#enumdef-gputextureformat)s whose
+ [`size`](#dom-gputexturedescriptor-size) is not a multiple of the [texel block
+ width](#texel-block-width) and [texel block
+ height](#texel-block-height).
+
+### 25.25. `"atomic-vec2u-min-max"`
+
+When enabled:
+
+- Allows the use of 64-bit atomic minimum and maximum operations on
+ `atomic<vec2u>` in WGSL.
+
+New WGSL extensions:
+
+- [atomic_vec2u_min_max](https://gpuweb.github.io/gpuweb/wgsl/#extension-atomic_vec2u_min_max)
 
 ## 26. Appendices
 

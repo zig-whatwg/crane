@@ -22,6 +22,13 @@
  provided. The underlying codec implementation *MUST* emit all
  outputs in response to a flush.
 
+[Priming Samples]
+
+: Audio samples produced at the start of decoding that represent
+ encoder delay or filter warm-up and are not part of the original
+ audio content. Also commonly referred to as \"encoder delay\" or
+ \"pre-skip\".
+
 [Codec System Resources]
 
 : Resources including CPU memory, GPU memory, and exclusive handles to
@@ -323,6 +330,12 @@ callback AudioDataOutputCallback = undefined(AudioData output);
  [`dequeue`](#eventdef-audiodecoder-dequeue) event is already scheduled to fire. Used to avoid
  event spam.
 
+[`[[priming samples to discard]]`]
+
+: An integer representing the number of [priming
+ samples](#priming-samples)
+ remaining to be discarded from decoded audio outputs.
+
 ### 3.2. Constructors
 
 [` AudioDecoder(init) `]
@@ -369,7 +382,10 @@ callback AudioDataOutputCallback = undefined(AudioData output);
 13. Assign `false` to
  [`[[dequeue event scheduled]]`](#dom-audiodecoder-dequeue-event-scheduled-slot).
 
-14. Return d.
+14. Assign `0` to
+ [`[[priming samples to discard]]`](#dom-audiodecoder-priming-samples-to-discard-slot).
+
+15. Return d.
 
 ### 3.3. Attributes
 
@@ -461,7 +477,15 @@ callback AudioDataOutputCallback = undefined(AudioData output);
  4. Configure
  [`[[codec implementation]]`](#dom-audiodecoder-codec-implementation-slot) with `config`.
 
- 5. [queue a
+ 5. Assign
+ [`[[priming samples to discard]]`](#dom-audiodecoder-priming-samples-to-discard-slot) with the number of [priming
+ samples](#priming-samples) indicated by
+ `config`.[`description`](#dom-audiodecoderconfig-description), as defined by the codec's registration in
+ the
+ [\[WEBCODECS-CODEC-REGISTRY\]](#biblio-webcodecs-codec-registry "WebCodecs Codec Registry"),
+ or `0` if not specified.
+
+ 6. [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the following steps:
 
  1. Assign `false` to
@@ -529,15 +553,21 @@ callback AudioDataOutputCallback = undefined(AudioData output);
  4. Enqueue the following steps to the
  [`[[codec work queue]]`](#dom-audiodecoder-codec-work-queue-slot):
 
- 1. Attempt to use
+ 1. If `chunk` contains [priming
+ samples](#priming-samples) information, update
+ [`[[priming samples to discard]]`](#dom-audiodecoder-priming-samples-to-discard-slot) as defined by the codec's registration in
+ the
+ [\[WEBCODECS-CODEC-REGISTRY\]](#biblio-webcodecs-codec-registry "WebCodecs Codec Registry").
+
+ 2. Attempt to use
  [`[[codec implementation]]`](#dom-audiodecoder-codec-implementation-slot) to decode the chunk.
 
- 2. If decoding results in an error, [queue a
+ 3. If decoding results in an error, [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the [Close
  AudioDecoder](#close-audiodecoder) algorithm with
  [`EncodingError`](https://webidl.spec.whatwg.org/#encodingerror) and return.
 
- 3. If
+ 4. If
  [`[[codec saturated]]`](#dom-audiodecoder-codec-saturated-slot) equals `true` and
  [`[[codec implementation]]`](#dom-audiodecoder-codec-implementation-slot) is no longer
  [saturated](#saturated), [queue a
@@ -549,11 +579,11 @@ callback AudioDataOutputCallback = undefined(AudioData output);
  2. [Process the control message
  queue](#process-the-control-message-queue).
 
- 4. Let `decoded outputs` be a
+ 5. Let `decoded outputs` be a
  [list](https://infra.spec.whatwg.org/#list) of decoded audio data outputs emitted by
  [`[[codec implementation]]`](#dom-audiodecoder-codec-implementation-slot).
 
- 5. If `decoded outputs` is not empty, [queue a
+ 6. If `decoded outputs` is not empty, [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the [Output
  AudioData](#output-audiodata) algorithm with
  `decoded outputs`.
@@ -617,7 +647,7 @@ callback AudioDataOutputCallback = undefined(AudioData output);
  2. Remove `promise` from
  [`[[pending flush promises]]`](#dom-audiodecoder-pending-flush-promises-slot).
 
- 3. Resolve `promise`.
+ 3. [Resolve](https://webidl.spec.whatwg.org/#resolve) `promise`.
 
  2. Return `"processed"`.
 
@@ -686,7 +716,8 @@ callback AudioDataOutputCallback = undefined(AudioData output);
  2. Set
  [`supported`](#dom-audiodecodersupport-supported) to `supported`.
 
- 2. Resolve `p` with `decoderSupport`.
+ 2. [Resolve](https://webidl.spec.whatwg.org/#resolve) `p` with
+ `decoderSupport`.
 
  5. Return `p`.
 
@@ -714,6 +745,19 @@ callback AudioDataOutputCallback = undefined(AudioData output);
 : Run these steps:
  1. For each `output` in `outputs`:
 
+ 1. Let `discardedFrames` be the lesser of the number
+ of frames of `output` and
+ [`[[priming samples to discard]]`](#dom-audiodecoder-priming-samples-to-discard-slot).
+
+ 2. Decrement
+ [`[[priming samples to discard]]`](#dom-audiodecoder-priming-samples-to-discard-slot) by `discardedFrames`.
+
+ 3. Remove the first `discardedFrames` frames from
+ `output`.
+
+ 4. If the number of frames of `output` is greater
+ than 0:
+
  1. Let `data` be an
  [`AudioData`](#audiodata), initialized as follows:
 
@@ -731,20 +775,32 @@ callback AudioDataOutputCallback = undefined(AudioData output);
 
  5. Let `timestamp` be the
  [`[[timestamp]]`](#dom-encodedaudiochunk-timestamp-slot) of the
- [`EncodedAudioChunk`](#encodedaudiochunk) associated with `output`.
+ [`EncodedAudioChunk`](#encodedaudiochunk) associated with
+ `output`.
 
- 6. Assign `timestamp` to
+ 6. If `discardedFrames` is greater than 0:
+
+ 1. Let `discardedDuration` be the result
+ of dividing `discardedFrames` by the
+ sample rate of `output`, multiplied
+ by 1,000,000 and rounded to the nearest integer.
+
+ 2. Increment `timestamp` by
+ `discardedDuration`.
+
+ 7. Assign `timestamp` to
  [`[[timestamp]]`](#dom-audiodata-timestamp-slot).
 
- 7. If `output` uses a recognized
+ 8. If `output` uses a recognized
  [`AudioSampleFormat`](#enumdef-audiosampleformat), assign that format to
  [`[[format]]`](#dom-audiodata-format-slot). Otherwise, assign `null` to
  [`[[format]]`](#dom-audiodata-format-slot).
 
- 8. Assign values to
+ 9. Assign values to
  [`[[sample rate]]`](#dom-audiodata-sample-rate-slot),
  [`[[number of frames]]`](#dom-audiodata-number-of-frames-slot), and
- [`[[number of channels]]`](#dom-audiodata-number-of-channels-slot) as determined by `output`.
+ [`[[number of channels]]`](#dom-audiodata-number-of-channels-slot) as determined by
+ `output`.
 
  2. Invoke
  [`[[output callback]]`](#dom-audiodecoder-output-callback-slot) with `data`.
@@ -778,10 +834,14 @@ callback AudioDataOutputCallback = undefined(AudioData output);
  6. For each `promise` in
  [`[[pending flush promises]]`](#dom-audiodecoder-pending-flush-promises-slot):
 
- 1. Reject `promise` with `exception`.
+ 1. [Reject](https://webidl.spec.whatwg.org/#reject) `promise` with
+ `exception`.
 
  2. Remove `promise` from
  [`[[pending flush promises]]`](#dom-audiodecoder-pending-flush-promises-slot).
+
+ 7. Set
+ [`[[priming samples to discard]]`](#dom-audiodecoder-priming-samples-to-discard-slot) to `0`.
 
 [Close AudioDecoder] (with `exception`)
 : Run these steps:
@@ -1047,7 +1107,10 @@ callback VideoFrameOutputCallback = undefined(VideoFrame output);
  4. Configure
  [`[[codec implementation]]`](#dom-videodecoder-codec-implementation-slot) with `config`.
 
- 5. [queue a
+ 5. Assign `config` to
+ [`[[active decoder config]]`](#dom-videodecoder-active-decoder-config-slot).
+
+ 6. [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the following steps:
 
  1. Assign `false` to
@@ -1218,7 +1281,7 @@ callback VideoFrameOutputCallback = undefined(VideoFrame output);
  2. Remove `promise` from
  [`[[pending flush promises]]`](#dom-videodecoder-pending-flush-promises-slot).
 
- 3. Resolve `promise`.
+ 3. [Resolve](https://webidl.spec.whatwg.org/#resolve) `promise`.
 
  2. Return `"processed"`.
 
@@ -1287,7 +1350,8 @@ callback VideoFrameOutputCallback = undefined(VideoFrame output);
  2. Set
  [`supported`](#dom-videodecodersupport-supported) to `supported`.
 
- 2. Resolve `p` with `decoderSupport`.
+ 2. [Resolve](https://webidl.spec.whatwg.org/#resolve) `p` with
+ `decoderSupport`.
 
  5. Return `p`.
 
@@ -1350,7 +1414,10 @@ callback VideoFrameOutputCallback = undefined(VideoFrame output);
  [`colorSpace`](#dom-videodecoderconfig-colorspace)
  [exists](https://infra.spec.whatwg.org/#map-exists) in the
  [`[[active decoder config]]`](#dom-videodecoder-active-decoder-config-slot), assign its value to
- `colorSpace`.
+ `colorSpace`. In that case, User Agents MAY
+ replace `null` members of `colorSpace` with the
+ corresponding values detected by the codec implementation.
+ FIXME: Properly specify the case of `null` members.
 
  6. Assign the values of
  [`rotation`](#dom-videodecoderconfig-rotation) and
@@ -1397,7 +1464,8 @@ callback VideoFrameOutputCallback = undefined(VideoFrame output);
  6. For each `promise` in
  [`[[pending flush promises]]`](#dom-videodecoder-pending-flush-promises-slot):
 
- 1. Reject `promise` with `exception`.
+ 1. [Reject](https://webidl.spec.whatwg.org/#reject) `promise` with
+ `exception`.
 
  2. Remove `promise` from
  [`[[pending flush promises]]`](#dom-videodecoder-pending-flush-promises-slot).
@@ -1665,7 +1733,10 @@ callback EncodedAudioChunkOutputCallback =
  4. Configure
  [`[[codec implementation]]`](#dom-audioencoder-codec-implementation-slot) with `config`.
 
- 5. [queue a
+ 5. Assign `config` to
+ [`[[active encoder config]]`](#dom-audioencoder-active-encoder-config-slot).
+
+ 6. [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the following steps:
 
  1. Assign `false` to
@@ -1809,7 +1880,7 @@ callback EncodedAudioChunkOutputCallback =
  2. Remove `promise` from
  [`[[pending flush promises]]`](#dom-audioencoder-pending-flush-promises-slot).
 
- 3. Resolve `promise`.
+ 3. [Resolve](https://webidl.spec.whatwg.org/#resolve) `promise`.
 
  2. Return `"processed"`.
 
@@ -1878,7 +1949,8 @@ callback EncodedAudioChunkOutputCallback =
  2. Set
  [`supported`](#dom-audioencodersupport-supported) to `supported`.
 
- 2. Resolve `p` with `encoderSupport`.
+ 2. [Resolve](https://webidl.spec.whatwg.org/#resolve) `p` with
+ `encoderSupport`.
 
  5. Return `p`.
 
@@ -2013,7 +2085,8 @@ callback EncodedAudioChunkOutputCallback =
  8. For each `promise` in
  [`[[pending flush promises]]`](#dom-audioencoder-pending-flush-promises-slot):
 
- 1. Reject `promise` with `exception`.
+ 1. [Reject](https://webidl.spec.whatwg.org/#reject) `promise` with
+ `exception`.
 
  2. Remove `promise` from
  [`[[pending flush promises]]`](#dom-audioencoder-pending-flush-promises-slot).
@@ -2311,7 +2384,10 @@ callback EncodedVideoChunkOutputCallback =
  4. Configure
  [`[[codec implementation]]`](#dom-videoencoder-codec-implementation-slot) with `config`.
 
- 5. [queue a
+ 5. Assign `config` to
+ [`[[active encoder config]]`](#dom-videoencoder-active-encoder-config-slot).
+
+ 6. [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the following steps:
 
  1. Assign `false` to
@@ -2467,7 +2543,7 @@ callback EncodedVideoChunkOutputCallback =
  2. Remove `promise` from
  [`[[pending flush promises]]`](#dom-videoencoder-pending-flush-promises-slot).
 
- 3. Resolve `promise`.
+ 3. [Resolve](https://webidl.spec.whatwg.org/#resolve) `promise`.
 
  2. Return `"processed"`.
 
@@ -2536,7 +2612,8 @@ callback EncodedVideoChunkOutputCallback =
  2. Set
  [`supported`](#dom-videoencodersupport-supported) to `supported`.
 
- 3. Resolve `p` with `encoderSupport`.
+ 3. [Resolve](https://webidl.spec.whatwg.org/#resolve) `p` with
+ `encoderSupport`.
 
  5. Return `p`.
 
@@ -2709,7 +2786,8 @@ callback EncodedVideoChunkOutputCallback =
  8. For each `promise` in
  [`[[pending flush promises]]`](#dom-videoencoder-pending-flush-promises-slot):
 
- 1. Reject `promise` with `exception`.
+ 1. [Reject](https://webidl.spec.whatwg.org/#reject) `promise` with
+ `exception`.
 
  2. Remove `promise` from
  [`[[pending flush promises]]`](#dom-videoencoder-pending-flush-promises-slot).
@@ -2994,7 +3072,11 @@ AudioDecoderConfig], run these steps:
  [`description`](#dom-audiodecoderconfig-description) is
  \[[detached](https://webidl.spec.whatwg.org/#buffersource-detached)\], return false.
 
-3. Return `true`.
+3. If
+ [`sampleRate`](#dom-audiodecoderconfig-samplerate) or
+ [`numberOfChannels`](#dom-audiodecoderconfig-numberofchannels) are equal to zero, return `false`.
+
+4. Return `true`.
 
 [`codec`], of type [DOMString](https://webidl.spec.whatwg.org/#idl-DOMString)
 : Contains a [codec string](#codec-string) in `config`.codec describing the codec.
@@ -3027,7 +3109,7 @@ dictionary VideoDecoderConfig {
  [EnforceRange] unsigned long displayAspectHeight;
  VideoColorSpaceInit colorSpace;
  HardwareAcceleration hardwareAcceleration = "no-preference";
- boolean optimizeForLatency;
+ boolean optimizeForLatency = false;
  double rotation = 0;
  boolean flip = false;
 };
@@ -3121,7 +3203,7 @@ VideoDecoderConfig], run these steps:
 : Hint that configures hardware acceleration for this codec. See
  [`HardwareAcceleration`](#enumdef-hardwareacceleration).
 
-[`optimizeForLatency`], of type [boolean](https://webidl.spec.whatwg.org/#idl-boolean)
+[`optimizeForLatency`], of type [boolean](https://webidl.spec.whatwg.org/#idl-boolean), defaulting to `false`
 
 : Hint that the selected decoder *SHOULD* be configured to minimize
  the number of
@@ -4052,7 +4134,7 @@ dictionary AudioDataInit {
  [EnforceRange] required unsigned long numberOfFrames;
  [EnforceRange] required unsigned long numberOfChannels;
  [EnforceRange] required long long timestamp; // microseconds
- required BufferSource data;
+ required AllowSharedBufferSource data;
  sequence<ArrayBuffer> transfer = ;
 };
 ```
@@ -4606,7 +4688,7 @@ dictionary AudioDataCopyToOptions {
  [`f32-planar`](#dom-audiosampleformat-f32-planar) *MUST* always be supported.
 
  [NOTE:] Authors seeking to integrate with
- [\[WEBAUDIO\]](#biblio-webaudio "Web Audio API")
+ [\[WEBAUDIO\]](#biblio-webaudio "Web Audio API 1.1")
  can request
  [`f32-planar`](#dom-audiosampleformat-f32-planar) and use the resulting copy to create and
  [`AudioBuffer`](https://webaudio.github.io/web-audio-api/#AudioBuffer) or render via
@@ -4743,7 +4825,7 @@ has a number of planes equal to the
 [`[[number of frames]]`](#dom-audiodata-number-of-frames-slot) elements.
 
 [NOTE:] The [Web Audio
-API](#biblio-webaudio "Web Audio API") currently
+API](#biblio-webaudio "Web Audio API 1.1") currently
 uses
 [`f32-planar`](#dom-audiosampleformat-f32-planar) exclusively.
 
@@ -5076,7 +5158,7 @@ dictionary VideoFrameMetadata {
 
  - [`HTMLImageElement`](https://html.spec.whatwg.org/multipage/embedded-content.html#htmlimageelement)
 
- - [`SVGImageElement`](https://svgwg.org/svg2-draft/embedded.html#InterfaceSVGImageElement)
+ - [`SVGImageElement`](https://w3c.github.io/svgwg/svg2-draft/embedded.html#InterfaceSVGImageElement)
 
  1. If
  [`timestamp`](#dom-videoframeinit-timestamp) does not
@@ -5302,13 +5384,13 @@ dictionary VideoFrameMetadata {
  [exists](https://infra.spec.whatwg.org/#map-exists):
 
  1. Let `truncatedVisibleWidth` be the value of
- [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`width`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-width) after truncating.
+ [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`width`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-width) after truncating.
 
  2. Assign `truncatedVisibleWidth` to
  [`[[visible width]]`](#dom-videoframe-visible-width-slot).
 
  3. Let `truncatedVisibleHeight` be the value of
- [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`height`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-height) after truncating.
+ [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`height`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-height) after truncating.
 
  4. Assign `truncatedVisibleHeight` to
  [`[[visible height]]`](#dom-videoframe-visible-height-slot).
@@ -5423,16 +5505,16 @@ dictionary VideoFrameMetadata {
  [`codedHeight`](#dom-videoframe-codedheight) getter steps are to return
  [`[[coded height]]`](#dom-videoframe-coded-height-slot).
 
-[`codedRect`], of type [DOMRectReadOnly](https://drafts.fxtf.org/geometry-1/#domrectreadonly), readonly, nullable
+[`codedRect`], of type [DOMRectReadOnly](https://drafts.csswg.org/geometry-1/#domrectreadonly), readonly, nullable
 
 : A
- [`DOMRectReadOnly`](https://drafts.fxtf.org/geometry-1/#domrectreadonly) with
- [`width`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-width) and
- [`height`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-height) matching
+ [`DOMRectReadOnly`](https://drafts.csswg.org/geometry-1/#domrectreadonly) with
+ [`width`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-width) and
+ [`height`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-height) matching
  [`codedWidth`](#dom-videoframe-codedwidth) and
  [`codedHeight`](#dom-videoframe-codedheight) and
- [`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-x) and
- [`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-y) at `(0,0)`. Offered for convenience for use with
+ [`x`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-x) and
+ [`y`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-y) at `(0,0)`. Offered for convenience for use with
  [`allocationSize()`](#dom-videoframe-allocationsize) and
  [`copyTo()`](#dom-videoframe-copyto).
 
@@ -5443,24 +5525,24 @@ dictionary VideoFrameMetadata {
  [`[[Detached]]`](https://html.spec.whatwg.org/multipage/structured-data.html#detached) is `true`, return `null`.
 
  2. Let `rect` be a new
- [`DOMRectReadOnly`](https://drafts.fxtf.org/geometry-1/#domrectreadonly), initialized as follows:
+ [`DOMRectReadOnly`](https://drafts.csswg.org/geometry-1/#domrectreadonly), initialized as follows:
 
  1. Assign `0` to
- [`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-x) and
- [`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-y).
+ [`x`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-x) and
+ [`y`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-y).
 
  2. Assign
  [`[[coded width]]`](#dom-videoframe-coded-width-slot) and
  [`[[coded height]]`](#dom-videoframe-coded-height-slot) to
- [`width`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-width) and
- [`height`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-height) respectively.
+ [`width`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-width) and
+ [`height`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-height) respectively.
 
  3. Return `rect`.
 
-[`visibleRect`], of type [DOMRectReadOnly](https://drafts.fxtf.org/geometry-1/#domrectreadonly), readonly, nullable
+[`visibleRect`], of type [DOMRectReadOnly](https://drafts.csswg.org/geometry-1/#domrectreadonly), readonly, nullable
 
 : A
- [`DOMRectReadOnly`](https://drafts.fxtf.org/geometry-1/#domrectreadonly) describing the visible rectangle of pixels for this
+ [`DOMRectReadOnly`](https://drafts.csswg.org/geometry-1/#domrectreadonly) describing the visible rectangle of pixels for this
  [`VideoFrame`](#videoframe).
 
  The
@@ -5470,17 +5552,17 @@ dictionary VideoFrameMetadata {
  [`[[Detached]]`](https://html.spec.whatwg.org/multipage/structured-data.html#detached) is `true`, return `null`.
 
  2. Let `rect` be a new
- [`DOMRectReadOnly`](https://drafts.fxtf.org/geometry-1/#domrectreadonly), initialized as follows:
+ [`DOMRectReadOnly`](https://drafts.csswg.org/geometry-1/#domrectreadonly), initialized as follows:
 
  1. Assign
  [`[[visible left]]`](#dom-videoframe-visible-left-slot),
  [`[[visible top]]`](#dom-videoframe-visible-top-slot),
  [`[[visible width]]`](#dom-videoframe-visible-width-slot), and
  [`[[visible height]]`](#dom-videoframe-visible-height-slot) to
- [`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-x),
- [`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-y),
- [`width`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-width), and
- [`height`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-height) respectively.
+ [`x`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-x),
+ [`y`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-y),
+ [`width`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-width), and
+ [`height`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-height) respectively.
 
  3. Return `rect`.
 
@@ -5601,7 +5683,9 @@ A [computed plane layout] is a
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException).
 
  2. If
- [`[[format]]`](#dom-videoframe-format-slot) is `null`, throw a
+ [`[[format]]`](#dom-videoframe-format-slot) is `null` and
+ `options`.[`format`](#dom-videoframecopytooptions-format) does not
+ [exist](https://infra.spec.whatwg.org/#map-exists), throw a
  [`NotSupportedError`](https://webidl.spec.whatwg.org/#notsupportederror)
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException).
 
@@ -5638,7 +5722,9 @@ A [computed plane layout] is a
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException).
 
  2. If
- [`[[format]]`](#dom-videoframe-format-slot) is `null`, return a promise rejected with a
+ [`[[format]]`](#dom-videoframe-format-slot) is `null` and
+ `options`.[`format`](#dom-videoframecopytooptions-format) does not
+ [exist](https://infra.spec.whatwg.org/#map-exists), return a promise rejected with a
  [`NotSupportedError`](https://webidl.spec.whatwg.org/#notsupportederror)
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException).
 
@@ -5760,7 +5846,8 @@ A [computed plane layout] is a
  11. Append `layout` to `planeLayouts`.
 
  5. [Queue a
- task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to resolve `p` with
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to
+ [resolve](https://webidl.spec.whatwg.org/#resolve) `p` with
  `planeLayouts`.
 
  11. Return `p`.
@@ -5914,17 +6001,17 @@ A [computed plane layout] is a
  [`visibleRect`](#dom-videoframeinit-visiblerect) is negative or not finite, return `false`.
 
  4. If
- [`visibleRect`](#dom-videoframeinit-visiblerect).[`width`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-width) == `0` or
- [`visibleRect`](#dom-videoframeinit-visiblerect).[`height`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-height) == `0` return `false`.
+ [`visibleRect`](#dom-videoframeinit-visiblerect).[`width`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-width) == `0` or
+ [`visibleRect`](#dom-videoframeinit-visiblerect).[`height`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-height) == `0` return `false`.
 
  5. If
- [`visibleRect`](#dom-videoframeinit-visiblerect).[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y) +
- [`visibleRect`](#dom-videoframeinit-visiblerect).[`height`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-height) \> `codedHeight`, return
+ [`visibleRect`](#dom-videoframeinit-visiblerect).[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y) +
+ [`visibleRect`](#dom-videoframeinit-visiblerect).[`height`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-height) \> `codedHeight`, return
  `false`.
 
  6. If
- [`visibleRect`](#dom-videoframeinit-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) +
- [`visibleRect`](#dom-videoframeinit-visiblerect).[`width`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-width) \> `codedWidth`, return `false`.
+ [`visibleRect`](#dom-videoframeinit-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) +
+ [`visibleRect`](#dom-videoframeinit-visiblerect).[`width`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-width) \> `codedWidth`, return `false`.
 
  2. If `codedWidth` = 0 or `codedHeight` =
  0,return `false`.
@@ -5950,13 +6037,13 @@ To check if a [`VideoFrameBufferInit`](#dictdef-videoframebufferinit) is a [vali
  [`visibleRect`](#dom-videoframebufferinit-visiblerect) is negative or not finite, return `false`.
 
  3. If
- [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y) +
- [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`height`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-height) \>
+ [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y) +
+ [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`height`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-height) \>
  [`codedHeight`](#dom-videoframebufferinit-codedheight), return `false`.
 
  4. If
- [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) +
- [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`width`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-width) \>
+ [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) +
+ [`visibleRect`](#dom-videoframebufferinit-visiblerect).[`width`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-width) \>
  [`codedWidth`](#dom-videoframebufferinit-codedwidth), return `false`.
 
  5. If only one of
@@ -6086,7 +6173,7 @@ To check if a [`VideoFrameBufferInit`](#dictdef-videoframebufferinit) is a [vali
  [`[[coded height]]`](#dom-videoframe-coded-height-slot) respectively.
 
  9. Let `defaultVisibleRect` be a new
- [`DOMRect`](https://drafts.fxtf.org/geometry-1/#domrect) constructed with «\[ \"x:\" → `0`, \"y\" → `0`,
+ [`DOMRect`](https://drafts.csswg.org/geometry-1/#domrect) constructed with «\[ \"x:\" → `0`, \"y\" → `0`,
  \"width\" → `codedWidth`, \"height\" →
  `codedHeight` \]»
 
@@ -6119,13 +6206,20 @@ To check if a [`VideoFrameBufferInit`](#dictdef-videoframebufferinit) is a [vali
 
  2. If
  `init`.[`visibleRect`](#dom-videoframeinit-visiblerect)
- [exists](https://infra.spec.whatwg.org/#map-exists), assign it to `visibleRect`.
+ [exists](https://infra.spec.whatwg.org/#map-exists):
+
+ 1. If any attribute of
+ `init`.[`visibleRect`](#dom-videoframeinit-visiblerect) is negative or not finite, throw a
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+ 2. Assign
+ `init`.[`visibleRect`](#dom-videoframeinit-visiblerect) to `visibleRect`.
 
  3. Assign `visibleRect`'s
- [`x`](https://drafts.fxtf.org/geometry-1/#dom-domrect-x),
- [`y`](https://drafts.fxtf.org/geometry-1/#dom-domrect-y),
- [`width`](https://drafts.fxtf.org/geometry-1/#dom-domrect-width), and
- [`height`](https://drafts.fxtf.org/geometry-1/#dom-domrect-height), to `frame`'s
+ [`x`](https://drafts.csswg.org/geometry-1/#dom-domrect-x),
+ [`y`](https://drafts.csswg.org/geometry-1/#dom-domrect-y),
+ [`width`](https://drafts.csswg.org/geometry-1/#dom-domrect-width), and
+ [`height`](https://drafts.csswg.org/geometry-1/#dom-domrect-height), to `frame`'s
  [`[[visible left]]`](#dom-videoframe-visible-left-slot),
  [`[[visible top]]`](#dom-videoframe-visible-top-slot),
  [`[[visible width]]`](#dom-videoframe-visible-width-slot), and
@@ -6160,21 +6254,21 @@ To check if a [`VideoFrameBufferInit`](#dictdef-videoframebufferinit) is a [vali
 
  1. Let `widthScale` be the result of dividing
  `defaultDisplayWidth` by
- `defaultVisibleRect`.[`width`](https://drafts.fxtf.org/geometry-1/#dom-domrect-width).
+ `defaultVisibleRect`.[`width`](https://drafts.csswg.org/geometry-1/#dom-domrect-width).
 
  2. Let `heightScale` be the result of dividing
  `defaultDisplayHeight` by
- `defaultVisibleRect`.[`height`](https://drafts.fxtf.org/geometry-1/#dom-domrect-height).
+ `defaultVisibleRect`.[`height`](https://drafts.csswg.org/geometry-1/#dom-domrect-height).
 
  2. Otherwise:
 
  1. Let `widthScale` be the result of dividing
  `defaultDisplayHeight` by
- `defaultVisibleRect`.[`width`](https://drafts.fxtf.org/geometry-1/#dom-domrect-width).
+ `defaultVisibleRect`.[`width`](https://drafts.csswg.org/geometry-1/#dom-domrect-width).
 
  2. Let `heightScale` be the result of dividing
  `defaultDisplayWidth` by
- `defaultVisibleRect`.[`height`](https://drafts.fxtf.org/geometry-1/#dom-domrect-height).
+ `defaultVisibleRect`.[`height`](https://drafts.csswg.org/geometry-1/#dom-domrect-height).
 
  3. Let `displayWidth` be
  `|frame|'s {{VideoFrame/[[visible width]]}} * |widthScale|`,
@@ -6351,11 +6445,11 @@ To check if a [`VideoFrameBufferInit`](#dictdef-videoframebufferinit) is a [vali
  factor](#sub-sampling-factor) of each subsample for `plane`.
 
  4. If
- `rect`.[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-x) is not a multiple of
+ `rect`.[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-x) is not a multiple of
  `sampleWidth`, return `false`.
 
  5. If
- `rect`.[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectreadonly-y) is not a multiple of
+ `rect`.[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectreadonly-y) is not a multiple of
  `sampleHeight`, return `false`.
 
  6. Increment `planeIndex` by `1`.
@@ -6368,24 +6462,28 @@ To check if a [`VideoFrameBufferInit`](#dictdef-videoframebufferinit) is a [vali
 
  2. If `overrideRect` is not `undefined`:
 
- 1. If either of
- `overrideRect`.[`width`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-width) or
- [`height`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-height) is `0`, return a
+ 1. If any attribute of `overrideRect` is negative or
+ not finite, return a
  [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
 
- 2. If the sum of
- `overrideRect`.[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) and
- `overrideRect`.[`width`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-width) is greater than `codedWidth`,
- return a
+ 2. If either of
+ `overrideRect`.[`width`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-width) or
+ [`height`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-height) is `0`, return a
  [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
 
  3. If the sum of
- `overrideRect`.[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y) and
- `overrideRect`.[`height`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-height) is greater than `codedHeight`,
+ `overrideRect`.[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) and
+ `overrideRect`.[`width`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-width) is greater than `codedWidth`,
  return a
  [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
 
- 4. Assign `overrideRect` to `sourceRect`.
+ 4. If the sum of
+ `overrideRect`.[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y) and
+ `overrideRect`.[`height`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-height) is greater than `codedHeight`,
+ return a
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+ 5. Assign `overrideRect` to `sourceRect`.
 
  3. Let `validAlignment` be the result of running the
  [Verify Rect Offset
@@ -6435,24 +6533,24 @@ To check if a [`VideoFrameBufferInit`](#dictdef-videoframebufferinit) is a [vali
 
  6. Set `computedLayout`'s
  [sourceTop](#computed-plane-layout-sourcetop) to the result of the division of truncated
- `parsedRect`.[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y) by `sampleHeight`, rounded up to
+ `parsedRect`.[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y) by `sampleHeight`, rounded up to
  the nearest integer.
 
  7. Set `computedLayout`'s
  [sourceHeight](#computed-plane-layout-sourceheight) to the result of the division of truncated
- `parsedRect`.[`height`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-height) by `sampleHeight`, rounded up to
+ `parsedRect`.[`height`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-height) by `sampleHeight`, rounded up to
  the nearest integer.
 
  8. Set `computedLayout`'s
  [sourceLeftBytes](#computed-plane-layout-sourceleftbytes) to the result of the integer division of
  truncated
- `parsedRect`.[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) by `sampleWidth`, multiplied by
+ `parsedRect`.[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) by `sampleWidth`, multiplied by
  `sampleBytes`.
 
  9. Set `computedLayout`'s
  [sourceWidthBytes](#computed-plane-layout-sourcewidthbytes) to the result of the integer division of
  truncated
- `parsedRect`.[`width`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-width) by `sampleWidth`, multiplied by
+ `parsedRect`.[`width`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-width) by `sampleWidth`, multiplied by
  `sampleBytes`.
 
  10. If `layout` is not `undefined`:
@@ -6744,10 +6842,10 @@ NOTE: The steps of
  [exists](https://infra.spec.whatwg.org/#map-exists), a
  [`PlaneLayout`](#dictdef-planelayout) is provided for all planes.
 
-[`rect`], of type [DOMRectInit](https://drafts.fxtf.org/geometry-1/#dictdef-domrectinit)
+[`rect`], of type [DOMRectInit](https://drafts.csswg.org/geometry-1/#dictdef-domrectinit)
 
 : A
- [`DOMRectInit`](https://drafts.fxtf.org/geometry-1/#dictdef-domrectinit) describing the rectangle of pixels to copy from the
+ [`DOMRectInit`](https://drafts.csswg.org/geometry-1/#dictdef-domrectinit) describing the rectangle of pixels to copy from the
  [`VideoFrame`](#videoframe). If unspecified, the
  [`visibleRect`](#dom-videoframe-visiblerect) will be used.
 
@@ -6800,9 +6898,9 @@ NOTE: The steps of
 ### 9.6. DOMRects in VideoFrame
 
 The [`VideoFrame`](#videoframe) interface uses
-[`DOMRect`](https://drafts.fxtf.org/geometry-1/#domrect)s to specify the position and dimensions for a rectangle
+[`DOMRect`](https://drafts.csswg.org/geometry-1/#domrect)s to specify the position and dimensions for a rectangle
 of pixels.
-[`DOMRectInit`](https://drafts.fxtf.org/geometry-1/#dictdef-domrectinit) is used with
+[`DOMRectInit`](https://drafts.csswg.org/geometry-1/#dictdef-domrectinit) is used with
 [`copyTo()`](#dom-videoframe-copyto) and
 [`allocationSize()`](#dom-videoframe-allocationsize) to describe the dimensions of the source rectangle.
 [`VideoFrame`](#videoframe)
@@ -6813,7 +6911,7 @@ region respectively.
 
 [NOTE:] VideoFrame pixels are only addressable by integer
 numbers. All floating point values provided to
-[`DOMRectInit`](https://drafts.fxtf.org/geometry-1/#dictdef-domrectinit) will be truncated.
+[`DOMRectInit`](https://drafts.csswg.org/geometry-1/#dictdef-domrectinit) will be truncated.
 
 ### 9.7. Plane Layout
 
@@ -6947,8 +7045,8 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) and
- [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) and
+ [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
 
 [`I420P10`]
 
@@ -6979,8 +7077,8 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) and
- [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) and
+ [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
 
 [`I420P12`]
 
@@ -7011,8 +7109,8 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) and
- [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) and
+ [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
 
 [`I420A`]
 
@@ -7043,8 +7141,8 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) and
- [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) and
+ [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
 
  [`I420A`](#dom-videopixelformat-i420a)'s [equivalent opaque
  format](#equivalent-opaque-format) is
@@ -7079,8 +7177,8 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) and
- [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) and
+ [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
 
  [`I420AP10`](#dom-videopixelformat-i420ap10)'s [equivalent opaque
  format](#equivalent-opaque-format) is
@@ -7115,8 +7213,8 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) and
- [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) and
+ [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
 
  [`I420AP12`](#dom-videopixelformat-i420ap12)'s [equivalent opaque
  format](#equivalent-opaque-format) is
@@ -7151,7 +7249,7 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle horizontal offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
 
 [`I422P10`]
 
@@ -7181,7 +7279,7 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle horizontal offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
 
 [`I422P12`]
 
@@ -7211,7 +7309,7 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle horizontal offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
 
 [`I422A`]
 
@@ -7241,7 +7339,7 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle horizontal offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
 
  [`I422A`](#dom-videopixelformat-i422a)'s [equivalent opaque
  format](#equivalent-opaque-format) is
@@ -7275,7 +7373,7 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle horizontal offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
 
  [`I422AP10`](#dom-videopixelformat-i422ap10)'s [equivalent opaque
  format](#equivalent-opaque-format) is
@@ -7309,7 +7407,7 @@ Integer values are unsigned unless otherwise specified.
  are arranged starting at the top left of the image.
 
  The visible rectangle horizontal offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x)) *MUST* be even.
 
  [`I422AP10`](#dom-videopixelformat-i422ap10)'s [equivalent opaque
  format](#equivalent-opaque-format) is
@@ -7469,8 +7567,8 @@ Integer values are unsigned unless otherwise specified.
  image.
 
  The visible rectangle offset
- ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-x) and
- [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.fxtf.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
+ ([`visibleRect`](#dom-videoframe-visiblerect).[`x`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-x) and
+ [`visibleRect`](#dom-videoframe-visiblerect).[`y`](https://drafts.csswg.org/geometry-1/#dom-domrectinit-y)) *MUST* be even.
 
  :::
  (#example-26ede914) An image in the NV12 pixel format
@@ -7971,6 +8069,10 @@ interface ImageDecoder {
  2. Assign `-1` to
  [`[[selected index]]`](#dom-imagetracklist-selected-index-slot).
 
+ 3. Assign a new promise to
+ [`[[ready promise]]`](#dom-imagetracklist-ready-promise-slot) and [mark it as
+ handled](https://webidl.spec.whatwg.org/#mark-a-promise-as-handled).
+
  9. Assign
  [`type`](#dom-imagedecoderinit-type) to
  [`[[type]]`](#dom-imagedecoder-type-slot).
@@ -7983,24 +8085,28 @@ interface ImageDecoder {
  [`[[prefer animation]]`](#dom-imagedecoder-prefer-animation-slot) internal slot. Otherwise, assign \'null\' to
  [`[[prefer animation]]`](#dom-imagedecoder-prefer-animation-slot) internal slot.
 
- 12. Assign a new
+ 12. Assign a new promise to
+ [`[[completed promise]]`](#dom-imagedecoder-completed-promise-slot) and [mark it as
+ handled](https://webidl.spec.whatwg.org/#mark-a-promise-as-handled).
+
+ 13. Assign a new
  [list](https://infra.spec.whatwg.org/#list) to
  [`[[pending decode promises]]`](#dom-imagedecoder-pending-decode-promises-slot).
 
- 13. Assign `-1` to
+ 14. Assign `-1` to
  [`[[internal selected track index]]`](#dom-imagedecoder-internal-selected-track-index-slot).
 
- 14. Assign `false` to
+ 15. Assign `false` to
  [`[[tracks established]]`](#dom-imagedecoder-tracks-established-slot).
 
- 15. Assign `false` to
+ 16. Assign `false` to
  [`[[closed]]`](#dom-imagedecoder-closed-slot).
 
- 16. Assign a new
+ 17. Assign a new
  [map](https://infra.spec.whatwg.org/#ordered-map) to
  [`[[progressive frame generations]]`](#dom-imagedecoder-progressive-frame-generations-slot).
 
- 17. If `init`'s
+ 18. If `init`'s
  [`data`](#dom-imagedecoderinit-data) member is of type
  [`ReadableStream`](https://streams.spec.whatwg.org/#readablestream):
 
@@ -8025,7 +8131,7 @@ interface ImageDecoder {
  6. In parallel, perform the [Fetch Stream Data
  Loop](#imagedecoder-fetch-stream-data-loop) on `d` with `reader`.
 
- 18. Otherwise:
+ 19. Otherwise:
 
  1. Assert that `init.data` is of type
  [`BufferSource`](https://webidl.spec.whatwg.org/#BufferSource).
@@ -8047,7 +8153,7 @@ interface ImageDecoder {
  4. Assign `true` to
  [`[[complete]]`](#dom-imagedecoder-complete-slot).
 
- 5. Resolve
+ 5. [Resolve](https://webidl.spec.whatwg.org/#resolve)
  [`[[completed promise]]`](#dom-imagedecoder-completed-promise-slot).
 
  6. Queue a control message to [configure the image
@@ -8059,14 +8165,14 @@ interface ImageDecoder {
  8. [Process the control message
  queue](#process-the-control-message-queue).
 
- 19. For each `transferable` in
+ 20. For each `transferable` in
  `init`.[`transfer`](#dom-imagedecoderinit-transfer):
 
  1. Perform
  [DetachArrayBuffer](https://tc39.es/ecma262/#sec-detacharraybuffer)
  on `transferable`
 
- 20. return `d`.
+ 21. return `d`.
 
  [Running a control
  message](#running-a-control-message) to [configure the image
@@ -8250,9 +8356,17 @@ interface ImageDecoder {
  2. Let `p` be a new
  [`Promise`](https://webidl.spec.whatwg.org/#idl-promise).
 
- 3. In parallel, resolve `p` with the result of running
- the [Check Type
+ 3. Run the following steps [in
+ parallel](https://html.spec.whatwg.org/multipage/infrastructure.html#in-parallel):
+
+ 1. Let `isSupported` be the result of running the
+ [Check Type
  Support](#imagedecoder-check-type-support) algorithm with `type`.
+
+ 2. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to
+ [resolve](https://webidl.spec.whatwg.org/#resolve) `p` with
+ `isSupported`.
 
  4. Return `p`.
 
@@ -8298,7 +8412,7 @@ interface ImageDecoder {
  : 1. Assign `true` to
  [`[[complete]]`](#dom-imagedecoder-complete-slot)
 
- 2. Resolve
+ 2. [Resolve](https://webidl.spec.whatwg.org/#resolve)
  [`[[completed promise]]`](#dom-imagedecoder-completed-promise-slot).
 
  [error steps](https://streams.spec.whatwg.org/#read-request-error-steps)
@@ -8411,7 +8525,7 @@ interface ImageDecoder {
  [`tracks`](#dom-imagedecoder-tracks)
  [`[[selected index]]`](#dom-imagetracklist-selected-index-slot).
 
- 3. Resolve
+ 3. [Resolve](https://webidl.spec.whatwg.org/#resolve)
  [`[[ready promise]]`](#dom-imagetracklist-ready-promise-slot).
 
 [Get Default Selected Track Index] (with `trackList`)
@@ -8717,7 +8831,8 @@ interface ImageDecoder {
  19. Remove `promise` from
  [`[[pending decode promises]]`](#dom-imagedecoder-pending-decode-promises-slot).
 
- 20. Resolve `promise` with `decodeResult`.
+ 20. [Resolve](https://webidl.spec.whatwg.org/#resolve) `promise` with
+ `decodeResult`.
 
 [Resolve Decode] (with `promise` and `result`)
 
@@ -8733,7 +8848,8 @@ interface ImageDecoder {
  3. Remove `promise` from
  [`[[pending decode promises]]`](#dom-imagedecoder-pending-decode-promises-slot).
 
- 4. Resolve `promise` with `result`.
+ 4. [Resolve](https://webidl.spec.whatwg.org/#resolve) `promise` with
+ `result`.
 
 [Reject Infeasible Decode] (with `promise`)
 
@@ -8759,7 +8875,8 @@ interface ImageDecoder {
  3. Remove `promise` from
  [`[[pending decode promises]]`](#dom-imagedecoder-pending-decode-promises-slot).
 
- 4. Reject `promise` with `exception`.
+ 4. [Reject](https://webidl.spec.whatwg.org/#reject) `promise` with
+ `exception`.
 
 [Fatally Reject Bad Data]
 
@@ -8789,7 +8906,7 @@ interface ImageDecoder {
  2. For each `decodePromise` in
  [`[[pending decode promises]]`](#dom-imagedecoder-pending-decode-promises-slot):
 
- 1. Reject `decodePromise` with
+ 1. [Reject](https://webidl.spec.whatwg.org/#reject) `decodePromise` with
  `exception`.
 
  2. Remove `decodePromise` from
@@ -8808,7 +8925,8 @@ interface ImageDecoder {
  resources](#system-resources).
 
  4. If
- [`[[ImageTrackList]]`](#dom-imagedecoder-imagetracklist-slot) is empty, reject
+ [`[[ImageTrackList]]`](#dom-imagedecoder-imagetracklist-slot) is empty,
+ [reject](https://webidl.spec.whatwg.org/#reject)
  [`[[ready promise]]`](#dom-imagetracklist-ready-promise-slot) with `exception`. Otherwise perform
  these steps,
 
@@ -8820,7 +8938,8 @@ interface ImageDecoder {
  [`[[selected index]]`](#dom-imagetracklist-selected-index-slot).
 
  5. If
- [`[[complete]]`](#dom-imagedecoder-complete-slot) is false resolve
+ [`[[complete]]`](#dom-imagedecoder-complete-slot) is false,
+ [reject](https://webidl.spec.whatwg.org/#reject)
  [`[[completed promise]]`](#dom-imagedecoder-completed-promise-slot) with `exception`.
 
 ### 10.3. ImageDecoderInit Interface
@@ -9259,14 +9378,14 @@ Additionally, User Agents *MUST NOT* reclaim an
  [`VideoEncoder`](#videoencoder) in the same [global
  object](https://html.spec.whatwg.org/multipage/webappapis.html#global-object).
 
- [NOTE:] This prevents prevents breaking long running
- transcoding tasks.
+ [NOTE:] This prevents breaking long running transcoding
+ tasks.
 
 - An [`AudioDecoder`](#audiodecoder), when its tab is audibly playing audio.
 
 ## 12. Security Considerations
 
-::::: non-normative
+::: non-normative
 This section is non-normative.
 
 The primary security impact is that features of this API make it easier
@@ -9277,7 +9396,7 @@ sequence of control operations.
 
 Platform codecs are historically an internal detail of APIs like
 [`HTMLMediaElement`](https://html.spec.whatwg.org/multipage/media.html#htmlmediaelement),
-[\[WEBAUDIO\]](#biblio-webaudio "Web Audio API"),
+[\[WEBAUDIO\]](#biblio-webaudio "Web Audio API 1.1"),
 and
 [\[WebRTC\]](#biblio-webrtc "WebRTC: Real-Time Communication in Browsers").
 In this way, it has always been possible to attack the underlying codecs
@@ -9311,7 +9430,7 @@ interfaces are immutable.
 
 ## 13. Privacy Considerations
 
-:::: non-normative
+::: non-normative
 This section is non-normative.
 
 The primary privacy impact is an increased ability to fingerprint users

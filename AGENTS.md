@@ -64,6 +64,15 @@ load the complete algorithm section from `specs/` before writing. Never work
 from grep fragments — every algorithm has edge cases that live in the
 surrounding prose.
 
+**Specs are cached in `specs/`, and kept fresh** (the user, 2026-10-02). A spec
+you need that is not there: fetch it and save it (`specs/get <url> <dir>`:
+`specs/w3c/` for W3C, WICG and CSSWG drafts, `specs/whatwg/` for WHATWG), as its
+own commit. A cached spec six months old or more: compare it with upstream before
+relying on it, and update it when a newer version exists, as its own commit.
+`specs/whatwg/` is gitignored (local only; worktrees link it). `specs/idl/` is
+different: a pinned webref snapshot that codegen depends on, updated only by the
+procedure in specs/idl/WEBREF.md.
+
 **Engine work** (V8 handle ownership, allocator lifetimes, teardown order, the
 FFI boundary, build/codegen): there is no spec. Read the code, and prefer a
 measurement over an assumption — `gc_bench`, `leaks --atExit`, the live-handle

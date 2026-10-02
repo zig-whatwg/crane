@@ -4,8 +4,8 @@ height="48" width="72"}](https://www.w3.org/)
 
 # Media Source Extensions™
 
-[W3C Editor\'s Draft](https://www.w3.org/standards/types#ED) 04 November
-2025
+[W3C Editor\'s Draft](https://www.w3.org/standards/types#ED) 07 August
+2026
 
 More details about this document
 
@@ -54,7 +54,7 @@ Feedback:
 Browser support:
 : [caniuse.com](https://caniuse.com/mediasource)
 
-[Copyright](https://www.w3.org/policies/#copyright) © 2025 [World Wide
+[Copyright](https://www.w3.org/policies/#copyright) © 2026 [World Wide
 Web Consortium](https://www.w3.org/). [W3C]^®^
 [liability](https://www.w3.org/policies/#Legal_Disclaimer),
 [trademark](https://www.w3.org/policies/#W3C_Trademarks) and [permissive
@@ -1078,19 +1078,28 @@ Removes a
  event](https://dom.spec.whatwg.org/#concept-event-fire)
  named [`updateend`](#dfn-updateend) at
  `sourceBuffer`.
-3. Let `SourceBuffer audioTracks list` equal the
- [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist) object returned by `sourceBuffer`.[`audioTracks`](#dom-sourcebuffer-audiotracks).
-4. If the `SourceBuffer audioTracks list` is not empty, then run the following
- steps:
- 1. For each
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object in the
- `SourceBuffer audioTracks list`, run the following steps:
+3. Run the appropriate steps from the following list:
+
+ If the [`MediaSource`](#dom-mediasource) was constructed in a [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window):
+
+ : 1. Let `SourceBuffer audioTracks list` equal the
+ [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist) object returned by
+ `sourceBuffer`.[`audioTracks`](#dom-sourcebuffer-audiotracks).
+ 2. Let `media element`
+ be the media element that `sourceBuffer`\'s [parent media
+ source](#parent-media-source) is attached to.
+ 3. Let `HTMLMediaElement audioTracks list` equal the
+ [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist) object returned by the
+ [`audioTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-audiotracks)
+ attribute on `media element`.
+ 4. For each `audio track` in
+ the `SourceBuffer audioTracks list`, run the
+ following steps:
  1. Set the
- [`sourceBuffer`](#dom-audiotrack-sourcebuffer) attribute on the
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object to null.
- 2. Remove the
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object from the
- `SourceBuffer audioTracks list`.
+ [`sourceBuffer`](#dom-audiotrack-sourcebuffer) attribute on
+ `audio track` to null.
+ 2. Remove `audio track`
+ from the `SourceBuffer audioTracks list`.
 
  ::::
  :::
@@ -1108,13 +1117,11 @@ Removes a
  using
  [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
  [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
- attribute initialized to the
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object, at the
+ attribute initialized to `audio track`, at the
  `SourceBuffer audioTracks list`. If the
  [`enabled`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-enabled)
- attribute on the
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object was true at the beginning of this
- removal step, then this should also trigger
+ attribute on `audio track` was true at the beginning of
+ this removal step, then this should also trigger
  [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist)
  \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
@@ -1124,22 +1131,8 @@ Removes a
  [change](https://html.spec.whatwg.org/multipage/media.html#event-media-change)
  at the `SourceBuffer audioTracks list`.
  ::::
- 3. Use the [mirror if
- necessary](#dfn-mirror-if-necessary) algorithm to run
- the following steps in
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window), to remove the
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object (or instead, the
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) mirror of it if the
- [`MediaSource`](#dom-mediasource) object was
- constructed in a
- [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope)) from the media element:
- 1. Let `HTMLMediaElement audioTracks list` equal the
- [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist) object returned by the
- [`audioTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-audiotracks)
- attribute on the HTMLMediaElement.
- 2. Remove the
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object from the
- `HTMLMediaElement audioTracks list`.
+ 3. Remove `audio track`
+ from the `HTMLMediaElement audioTracks list`.
 
  ::::
  :::
@@ -1157,12 +1150,10 @@ Removes a
  using
  [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
  [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
- attribute initialized to the
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object, at the
+ attribute initialized to `audio track`, at the
  `HTMLMediaElement audioTracks list`. If the
  [`enabled`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-enabled)
- attribute on the
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object was true at the beginning of
+ attribute on `audio track` was true at the beginning of
  this removal step, then this should also trigger
  [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist)
  \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
@@ -1173,19 +1164,77 @@ Removes a
  [change](https://html.spec.whatwg.org/multipage/media.html#event-media-change)
  at the `HTMLMediaElement audioTracks list`.
  ::::
-5. Let `SourceBuffer videoTracks list` equal the
- [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) object returned by `sourceBuffer`.[`videoTracks`](#dom-sourcebuffer-videotracks).
-6. If the `SourceBuffer videoTracks list` is not empty, then run the following
- steps:
- 1. For each
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object in the
- `SourceBuffer videoTracks list`, run the following steps:
+
+ Otherwise:
+ : Post an internal `remove track` message to
+ [`[[port to main]]`](#dfn-port-to-main) whose
+ implicit handler in
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) runs the following steps:
+ 1. Let `media element`
+ be the media element that `sourceBuffer`\'s [parent media
+ source](#parent-media-source) is attached to.
+ 2. Let `HTMLMediaElement audioTracks list` equal the
+ [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist) object returned by the
+ [`audioTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-audiotracks)
+ attribute on `media element`.
+ 3. For each `audio track` in
+ the `HTMLMediaElement audioTracks list` that was
+ created by `sourceBuffer`, run the following steps:
+ 1. Remove `audio track`
+ from the `HTMLMediaElement audioTracks list`.
+
+ ::::
+ :::
+ Note
+ :::
+
+ This should trigger
+ [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [removetrack](https://html.spec.whatwg.org/multipage/media.html#event-media-removetrack)
+ using
+ [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
+ [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
+ attribute initialized to `audio track`, at the
+ `HTMLMediaElement audioTracks list`. If the
+ [`enabled`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-enabled)
+ attribute on `audio track` was true at the beginning of
+ this removal step, then this should also trigger
+ [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [change](https://html.spec.whatwg.org/multipage/media.html#event-media-change)
+ at the `HTMLMediaElement audioTracks list`.
+ ::::
+4. Run the appropriate steps from the following list:
+
+ If the [`MediaSource`](#dom-mediasource) was constructed in a [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window):
+
+ : 1. Let `SourceBuffer videoTracks list` equal the
+ [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) object returned by
+ `sourceBuffer`.[`videoTracks`](#dom-sourcebuffer-videotracks).
+ 2. Let `media element`
+ be the media element that `sourceBuffer`\'s [parent media
+ source](#parent-media-source) is attached to.
+ 3. Let `HTMLMediaElement videoTracks list` equal the
+ [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) object returned by the
+ [`videoTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-videotracks)
+ attribute on `media element`.
+ 4. For each `video track` in
+ the `SourceBuffer videoTracks list`, run the
+ following steps:
  1. Set the
- [`sourceBuffer`](#dom-videotrack-sourcebuffer) attribute on the
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object to null.
- 2. Remove the
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object from the
- `SourceBuffer videoTracks list`.
+ [`sourceBuffer`](#dom-videotrack-sourcebuffer) attribute on
+ `video track` to null.
+ 2. Remove `video track`
+ from the `SourceBuffer videoTracks list`.
 
  ::::
  :::
@@ -1203,13 +1252,11 @@ Removes a
  using
  [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
  [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
- attribute initialized to the
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object, at the
+ attribute initialized to `video track`, at the
  `SourceBuffer videoTracks list`. If the
  [`selected`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-selected)
- attribute on the
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object was true at the beginning of this
- removal step, then this should also trigger
+ attribute on `video track` was true at the beginning of
+ this removal step, then this should also trigger
  [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist)
  \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
@@ -1219,22 +1266,8 @@ Removes a
  [change](https://html.spec.whatwg.org/multipage/media.html#event-media-change)
  at the `SourceBuffer videoTracks list`.
  ::::
- 3. Use the [mirror if
- necessary](#dfn-mirror-if-necessary) algorithm to run
- the following steps in
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window), to remove the
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object (or instead, the
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) mirror of it if the
- [`MediaSource`](#dom-mediasource) object was
- constructed in a
- [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope)) from the media element:
- 1. Let `HTMLMediaElement videoTracks list` equal the
- [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) object returned by the
- [`videoTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-videotracks)
- attribute on the HTMLMediaElement.
- 2. Remove the
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object from the
- `HTMLMediaElement videoTracks list`.
+ 3. Remove `video track`
+ from the `HTMLMediaElement videoTracks list`.
 
  ::::
  :::
@@ -1252,12 +1285,10 @@ Removes a
  using
  [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
  [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
- attribute initialized to the
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object, at the
+ attribute initialized to `video track`, at the
  `HTMLMediaElement videoTracks list`. If the
  [`selected`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-selected)
- attribute on the
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object was true at the beginning of
+ attribute on `video track` was true at the beginning of
  this removal step, then this should also trigger
  [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist)
  \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
@@ -1268,19 +1299,76 @@ Removes a
  [change](https://html.spec.whatwg.org/multipage/media.html#event-media-change)
  at the `HTMLMediaElement videoTracks list`.
  ::::
-7. Let `SourceBuffer textTracks list` equal the
- [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist) object returned by `sourceBuffer`.[`textTracks`](#dom-sourcebuffer-texttracks).
-8. If the `SourceBuffer textTracks list` is not empty, then run the following
- steps:
- 1. For each
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object in the
- `SourceBuffer textTracks list`, run the following steps:
+
+ Otherwise:
+ : Post an internal `remove track` message to
+ [`[[port to main]]`](#dfn-port-to-main) whose
+ implicit handler in
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) runs the following steps:
+ 1. Let `media element`
+ be the media element that `sourceBuffer`\'s [parent media
+ source](#parent-media-source) is attached to.
+ 2. Let `HTMLMediaElement videoTracks list` equal the
+ [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) object returned by the
+ [`videoTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-videotracks)
+ attribute on `media element`.
+ 3. For each `video track` in
+ the `HTMLMediaElement videoTracks list` that was
+ created by `sourceBuffer`, run the following steps:
+ 1. Remove `video track`
+ from the `HTMLMediaElement videoTracks list`.
+
+ ::::
+ :::
+ Note
+ :::
+
+ This should trigger
+ [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [removetrack](https://html.spec.whatwg.org/multipage/media.html#event-media-removetrack)
+ using
+ [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
+ [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
+ attribute initialized to `video track`, at the
+ `HTMLMediaElement videoTracks list`. If the
+ [`selected`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-selected)
+ attribute on `video track` was true at the beginning of
+ this removal step, then this should also trigger
+ [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [change](https://html.spec.whatwg.org/multipage/media.html#event-media-change)
+ at the `HTMLMediaElement videoTracks list`.
+ ::::
+5. Run the appropriate steps from the following list:
+
+ If the [`MediaSource`](#dom-mediasource) was constructed in a [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window):
+
+ : 1. Let `SourceBuffer textTracks list` equal the
+ [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist) object returned by
+ `sourceBuffer`.[`textTracks`](#dom-sourcebuffer-texttracks).
+ 2. Let `media element`
+ be the media element that `sourceBuffer`\'s [parent media
+ source](#parent-media-source) is attached to.
+ 3. Let `HTMLMediaElement textTracks list` equal the
+ [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist) object returned by the
+ [`textTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-texttracks)
+ attribute on `media element`.
+ 4. For each `text track` in
+ the `SourceBuffer textTracks list`, run the following steps:
  1. Set the
- [`sourceBuffer`](#dom-texttrack-sourcebuffer) attribute on the
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object to null.
- 2. Remove the
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object from the
- `SourceBuffer textTracks list`.
+ [`sourceBuffer`](#dom-texttrack-sourcebuffer) attribute on
+ `text track` to null.
+ 2. Remove `text track`
+ from the `SourceBuffer textTracks list`.
 
  ::::
  :::
@@ -1298,17 +1386,15 @@ Removes a
  using
  [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
  [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
- attribute initialized to the
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object, at the
+ attribute initialized to `text track`, at the
  `SourceBuffer textTracks list`. If the
  [`mode`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-mode)
- attribute on the
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object was
+ attribute on `text track` was
  [`"showing"`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-showing)
  or
  [`"hidden"`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-hidden)
- at the beginning of this removal step, then this should also
- trigger
+ at the beginning of this removal step, then this should
+ also trigger
  [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist)
  \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
@@ -1318,22 +1404,8 @@ Removes a
  [change](https://html.spec.whatwg.org/multipage/media.html#event-media-change)
  at the `SourceBuffer textTracks list`.
  ::::
- 3. Use the [mirror if
- necessary](#dfn-mirror-if-necessary) algorithm to run
- the following steps in
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window), to remove the
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object (or instead, the
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) mirror of it if the
- [`MediaSource`](#dom-mediasource) object was
- constructed in a
- [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope)) from the media element:
- 1. Let `HTMLMediaElement textTracks list` equal the
- [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist) object returned by the
- [`textTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-texttracks)
- attribute on the HTMLMediaElement.
- 2. Remove the
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object from the
- `HTMLMediaElement textTracks list`.
+ 3. Remove `text track`
+ from the `HTMLMediaElement textTracks list`.
 
  ::::
  :::
@@ -1351,12 +1423,10 @@ Removes a
  using
  [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
  [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
- attribute initialized to the
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object, at the
+ attribute initialized to `text track`, at the
  `HTMLMediaElement textTracks list`. If the
  [`mode`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-mode)
- attribute on the
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object was
+ attribute on `text track` was
  [`"showing"`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-showing)
  or
  [`"hidden"`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-hidden)
@@ -1371,7 +1441,60 @@ Removes a
  [change](https://html.spec.whatwg.org/multipage/media.html#event-media-change)
  at the `HTMLMediaElement textTracks list`.
  ::::
-9. If `sourceBuffer` is in
+
+ Otherwise:
+ : Post an internal `remove track` message to
+ [`[[port to main]]`](#dfn-port-to-main) whose
+ implicit handler in
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) runs the following steps:
+ 1. Let `media element`
+ be the media element that `sourceBuffer`\'s [parent media
+ source](#parent-media-source) is attached to.
+ 2. Let `HTMLMediaElement textTracks list` equal the
+ [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist) object returned by the
+ [`textTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-texttracks)
+ attribute on `media element`.
+ 3. For each `text track` in
+ the `HTMLMediaElement textTracks list` that was
+ created by `sourceBuffer`, run the following steps:
+ 1. Remove `text track`
+ from the `HTMLMediaElement textTracks list`.
+
+ ::::
+ :::
+ Note
+ :::
+
+ This should trigger
+ [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [removetrack](https://html.spec.whatwg.org/multipage/media.html#event-media-removetrack)
+ using
+ [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
+ [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
+ attribute initialized to `text track`, at the
+ `HTMLMediaElement textTracks list`. If the
+ [`mode`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-mode)
+ attribute on `text track` was
+ [`"showing"`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-showing)
+ or
+ [`"hidden"`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-hidden)
+ at the beginning of this removal step, then this should
+ also trigger
+ [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [change](https://html.spec.whatwg.org/multipage/media.html#event-media-change)
+ at the `HTMLMediaElement textTracks list`.
+ ::::
+6. If `sourceBuffer` is in
  [`activeSourceBuffers`](#dom-mediasource-activesourcebuffers), then remove `sourceBuffer` from
  [`activeSourceBuffers`](#dom-mediasource-activesourcebuffers) and [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
@@ -1381,7 +1504,7 @@ Removes a
  [`removesourcebuffer`](#dfn-removesourcebuffer) at the
  [`SourceBufferList`](#dom-sourcebufferlist) returned by
  [`activeSourceBuffers`](#dom-mediasource-activesourcebuffers).
-10. Remove `sourceBuffer` from
+7. Remove `sourceBuffer` from
  [`sourceBuffers`](#dom-mediasource-sourcebuffers) and [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
  to [fire an
@@ -1390,7 +1513,7 @@ Removes a
  [`removesourcebuffer`](#dfn-removesourcebuffer) at the
  [`SourceBufferList`](#dom-sourcebufferlist) returned by
  [`sourceBuffers`](#dom-mediasource-sourcebuffers).
-11. Destroy all resources for `sourceBuffer`.
+8. Destroy all resources for `sourceBuffer`.
 
 ::: header-wrapper
 ### 3.9 [`endOfStream()`] method
@@ -2250,23 +2373,27 @@ video track, the
 audio track(s), or a text track
 [`mode`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-mode)
 changes. When one or more of these changes occur the following steps
-need to be followed. Also, when
+need to be followed. Because the
+[`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack),
+[`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) and
+[`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) objects and their
+[`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist),
+[`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) and
+[`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist) are only exposed on the
+[`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window)
+[`HTMLMediaElement`](https://html.spec.whatwg.org/multipage/media.html#htmlmediaelement), these changes always occur in the
+[`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) context. When the
 [`MediaSource`](#dom-mediasource) was constructed in a
-[`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope), then each change that occurs to a
-[`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) mirror of a track created previously by the implicit
-handler for the internal `create track mirror` message *MUST* also be
-made to the corresponding
-[`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope) track using an internal
-`update track state` message posted to
-[`[[port to worker]]`](#dfn-port-to-worker) whose
-implicit handler makes the change and runs the following steps.
-Likewise, each change that occurs to a
-[`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope) track *MUST* also be made to the
-corresponding
-[`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) mirror of the track using an internal `update track state`
+[`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope), then each such change *MUST* be
+communicated to the
+[`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope) using an internal `update track state`
 message posted to
-[`[[port to main]]`](#dfn-port-to-main) whose implicit
-handler makes the change to the mirror.
+[`[[port to worker]]`](#dfn-port-to-worker) whose
+implicit handler runs the following steps with respect to the
+[`SourceBuffer`](#dom-sourcebuffer) that created the
+affected track. When the
+[`MediaSource`](#dom-mediasource) was constructed in a
+[`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window), the following steps run directly.
 
 If the selected video track changes, then run the following steps:
 
@@ -2724,9 +2851,9 @@ interface SourceBuffer : EventTarget {
  readonly attribute boolean updating;
  readonly attribute TimeRanges buffered;
  attribute double timestampOffset;
- readonly attribute AudioTrackList audioTracks;
- readonly attribute VideoTrackList videoTracks;
- readonly attribute TextTrackList textTracks;
+ [Exposed=Window] readonly attribute AudioTrackList audioTracks;
+ [Exposed=Window] readonly attribute VideoTrackList videoTracks;
+ [Exposed=Window] readonly attribute TextTrackList textTracks;
  attribute double appendWindowStart;
  attribute unrestricted double appendWindowEnd;
 
@@ -2743,16 +2870,17 @@ interface SourceBuffer : EventTarget {
 };
 ```
 
-[[Issue
-280]](https://github.com/w3c/media-source/issues/280)[:
-MSE-in-Workers: {Audio,Video,Text}Track{,List} IDL in HTML need
-additional DedicatedWorker in Exposed
-[mse-in-workers](https://github.com/w3c/media-source/issues/?q=is%3Aissue+is%3Aopen+label%3A%22mse-in-workers%22)]
-
-\[[HTML](#bib-html "HTML Standard")\]
-[`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist),
-[`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) and
-[`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist) need Window+DedicatedWorker exposure.
+[`audioTracks`](#dom-sourcebuffer-audiotracks),
+[`videoTracks`](#dom-sourcebuffer-videotracks) and
+[`textTracks`](#dom-sourcebuffer-texttracks) attributes are only exposed to
+[`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) contexts. When a
+[`SourceBuffer`](#dom-sourcebuffer) is used from a
+[`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope), its tracks are instead created on and
+owned by the
+[`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window)
+[`HTMLMediaElement`](https://html.spec.whatwg.org/multipage/media.html#htmlmediaelement) it is attached to, as described in the
+[initialization segment
+received](#dfn-initialization-segment-received) algorithm.
 
 ::: header-wrapper
 ### 5.1 Attributes
@@ -2949,15 +3077,27 @@ additional DedicatedWorker in Exposed
 
 [`audioTracks`] of type [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist), readonly
 : The list of
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) objects created by this object.
+ [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) objects created by this object. This attribute is
+ only exposed to
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) contexts; it is not available when the
+ [`SourceBuffer`](#dom-sourcebuffer) was created in a
+ [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope).
 
 [`videoTracks`] of type [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist), readonly
 : The list of
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) objects created by this object.
+ [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) objects created by this object. This attribute is
+ only exposed to
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) contexts; it is not available when the
+ [`SourceBuffer`](#dom-sourcebuffer) was created in a
+ [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope).
 
 [`textTracks`] of type [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist), readonly
 : The list of
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) objects created by this object.
+ [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) objects created by this object. This attribute is
+ only exposed to
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) contexts; it is not available when the
+ [`SourceBuffer`](#dom-sourcebuffer) was created in a
+ [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope).
 
 [`appendWindowStart`] of type [`double`](https://webidl.spec.whatwg.org/#idl-double)
 
@@ -3389,6 +3529,34 @@ internal slot that keeps track of whether
 accept more bytes. It is set to false when the
 [`SourceBuffer`](#dom-sourcebuffer) object is created and
 gets updated as data is appended and removed.
+
+Each [`SourceBuffer`](#dom-sourcebuffer) object has an [\[\[audio
+track added flag\]\]] internal slot that keeps track of
+whether an
+[`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) has already been created for this
+[`SourceBuffer`](#dom-sourcebuffer) object. It is set to
+false when the
+[`SourceBuffer`](#dom-sourcebuffer) object is created and is
+used by the [initialization segment
+received](#dfn-initialization-segment-received) algorithm to determine whether
+a newly created
+[`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) is
+[`enabled`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-enabled)
+by default.
+
+Each [`SourceBuffer`](#dom-sourcebuffer) object has an [\[\[video
+track added flag\]\]] internal slot that keeps track of
+whether a
+[`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) has already been created for this
+[`SourceBuffer`](#dom-sourcebuffer) object. It is set to
+false when the
+[`SourceBuffer`](#dom-sourcebuffer) object is created and is
+used by the [initialization segment
+received](#dfn-initialization-segment-received) algorithm to determine whether
+a newly created
+[`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) is
+[`selected`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-selected)
+by default.
 
 Each [`SourceBuffer`](#dom-sourcebuffer) object has a [\[\[group
 start timestamp\]\]] internal slot that keeps track of
@@ -3941,86 +4109,51 @@ by the algorithm below.
  `audio kinds`
  for this iteration of the loop.
 
- 2. Let `new audio track`
- be a new
- [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object.
+ 2. Let `audio track default enabled flag` be
+ false.
 
- 3. Generate a unique ID and assign it to the
- [`id`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-id)
- property on `new audio track`.
-
- 4. Assign `audio language`
- to the
- [`language`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-language)
- property on `new audio track`.
-
- 5. Assign `audio label` to
- the
- [`label`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-label)
- property on `new audio track`.
-
- 6. Assign `current audio kind` to the
- [`kind`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-kind)
- property on `new audio track`.
-
- 7. If this
+ 3. If this
  [`SourceBuffer`](#dom-sourcebuffer)
  object\'s
- [`audioTracks`](#dom-sourcebuffer-audiotracks)\'s
- [`length`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotracklist-length)
- equals 0, then run the following steps:
-
- 1. Set the
- [`enabled`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-enabled)
- property on `new audio track` to true.
+ [`[[audio track added flag]]`](#dfn-audio-track-added-flag) internal slot is false,
+ then run the following steps:
+ 1. Set `audio track default enabled flag` to
+ true.
  2. Set `active track flag` to true.
 
- 8. Add `new audio track`
- to the
- [`audioTracks`](#dom-sourcebuffer-audiotracks) attribute on this
- [`SourceBuffer`](#dom-sourcebuffer) object.
+ 4. Set this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object\'s
+ [`[[audio track added flag]]`](#dfn-audio-track-added-flag) internal slot to true.
 
- ::::
- :::
- Note
- :::
+ 5. Create the
+ [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) on the
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window)
+ [`HTMLMediaElement`](https://html.spec.whatwg.org/multipage/media.html#htmlmediaelement), running the following steps in
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window):
 
- This should trigger
- [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist)
- \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
- task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
- to [fire an
- event](https://dom.spec.whatwg.org/#concept-event-fire)
- named
- [addtrack](https://html.spec.whatwg.org/multipage/media.html#event-media-addtrack)
- using
- [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
- [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
- attribute initialized to `new audio track`, at the
- [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist) object referenced by the
- [`audioTracks`](#dom-sourcebuffer-audiotracks) attribute on this
- [`SourceBuffer`](#dom-sourcebuffer) object.
- ::::
+ If the [parent media source](#parent-media-source) was constructed in a [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window):
 
- 9.
-
- If the [parent media source](#parent-media-source) was constructed in a [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope):
- : Post an internal `create track mirror` message to
- [`[[port to main]]`](#dfn-port-to-main) whose implicit handler in
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) runs the following steps:
- 1. Let `mirrored audio track` be a new
+ : 1. Let `new audio track` be a new
  [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object.
- 2. Assign the same property values to
- `mirrored audio track` as were determined for
- `new audio track`.
- 3. Add `mirrored audio track` to the
- [`audioTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-audiotracks)
- attribute on the HTMLMediaElement.
-
- Otherwise:
- : Add `new audio track` to the
- [`audioTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-audiotracks)
- attribute on the HTMLMediaElement.
+ 2. Generate a unique ID and assign it to the
+ [`id`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-id)
+ property on `new audio track`.
+ 3. Assign `audio language`, `audio label` and
+ `current audio kind` to the
+ [`language`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-language),
+ [`label`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-label)
+ and
+ [`kind`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-kind)
+ properties on `new audio track` respectively.
+ 4. If `audio track default enabled flag`
+ is true, then set the
+ [`enabled`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-enabled)
+ property on `new audio track` to true.
+ 5. Add `new audio track` to the
+ [`audioTracks`](#dom-sourcebuffer-audiotracks) attribute on this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object.
 
  ::::
  :::
@@ -4039,12 +4172,96 @@ by the algorithm below.
  [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
  [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
  attribute initialized to
- `mirrored audio track`
- or `new audio track`,
- at the
+ `new audio track`, at the
+ [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist) object referenced by the
+ [`audioTracks`](#dom-sourcebuffer-audiotracks) attribute on this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object.
+ ::::
+ 6. Let `media element` be the media
+ element that this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object\'s [parent media
+ source](#parent-media-source) is
+ attached to.
+ 7. Add `new audio track` to the
+ [`audioTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-audiotracks)
+ attribute on `media element`.
+
+ ::::
+ :::
+ Note
+ :::
+
+ This should trigger
+ [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [addtrack](https://html.spec.whatwg.org/multipage/media.html#event-media-addtrack)
+ using
+ [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
+ [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
+ attribute initialized to
+ `new audio track`, at the
  [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist) object referenced by the
  [`audioTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-audiotracks)
- attribute on the HTMLMediaElement.
+ attribute on `media element`.
+ ::::
+
+ Otherwise:
+ : Post an internal `create track` message to
+ [`[[port to main]]`](#dfn-port-to-main) whose implicit handler in
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) runs the following steps:
+ 1. Let `new audio track` be a new
+ [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) object.
+ 2. Generate a unique ID and assign it to the
+ [`id`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-id)
+ property on `new audio track`.
+ 3. Assign `audio language`, `audio label` and
+ `current audio kind` to the
+ [`language`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-language),
+ [`label`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-label)
+ and
+ [`kind`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-kind)
+ properties on `new audio track` respectively.
+ 4. If `audio track default enabled flag`
+ is true, then set the
+ [`enabled`](https://html.spec.whatwg.org/multipage/media.html#dom-audiotrack-enabled)
+ property on `new audio track` to true.
+ 5. Let `media element` be the media
+ element that this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object\'s [parent media
+ source](#parent-media-source) is
+ attached to.
+ 6. Add `new audio track` to the
+ [`audioTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-audiotracks)
+ attribute on `media element`.
+
+ ::::
+ :::
+ Note
+ :::
+
+ This should trigger
+ [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [addtrack](https://html.spec.whatwg.org/multipage/media.html#event-media-addtrack)
+ using
+ [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
+ [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
+ attribute initialized to
+ `new audio track`, at the
+ [`AudioTrackList`](https://html.spec.whatwg.org/multipage/media.html#audiotracklist) object referenced by the
+ [`audioTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-audiotracks)
+ attribute on `media element`.
  ::::
  7. Create a new [track
  buffer](#track-buffer) to store [coded
@@ -4082,86 +4299,52 @@ by the algorithm below.
  `video kinds`
  for this iteration of the loop.
 
- 2. Let `new video track`
- be a new
- [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object.
+ 2. Let `video track default selected flag` be
+ false.
 
- 3. Generate a unique ID and assign it to the
- [`id`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-id)
- property on `new video track`.
-
- 4. Assign `video language`
- to the
- [`language`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-language)
- property on `new video track`.
-
- 5. Assign `video label` to
- the
- [`label`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-label)
- property on `new video track`.
-
- 6. Assign `current video kind` to the
- [`kind`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-kind)
- property on `new video track`.
-
- 7. If this
+ 3. If this
  [`SourceBuffer`](#dom-sourcebuffer)
  object\'s
- [`videoTracks`](#dom-sourcebuffer-videotracks)\'s
- [`length`](https://html.spec.whatwg.org/multipage/media.html#dom-videotracklist-length)
- equals 0, then run the following steps:
-
- 1. Set the
- [`selected`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-selected)
- property on `new video track` to true.
+ [`[[video track added flag]]`](#dfn-video-track-added-flag) internal slot is false,
+ then run the following steps:
+ 1. Set `video track default selected flag`
+ to true.
  2. Set `active track flag` to true.
 
- 8. Add `new video track`
- to the
- [`videoTracks`](#dom-sourcebuffer-videotracks) attribute on this
- [`SourceBuffer`](#dom-sourcebuffer) object.
+ 4. Set this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object\'s
+ [`[[video track added flag]]`](#dfn-video-track-added-flag) internal slot to true.
 
- ::::
- :::
- Note
- :::
+ 5. Create the
+ [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) on the
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window)
+ [`HTMLMediaElement`](https://html.spec.whatwg.org/multipage/media.html#htmlmediaelement), running the following steps in
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window):
 
- This should trigger
- [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist)
- \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
- task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
- to [fire an
- event](https://dom.spec.whatwg.org/#concept-event-fire)
- named
- [addtrack](https://html.spec.whatwg.org/multipage/media.html#event-media-addtrack)
- using
- [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
- [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
- attribute initialized to `new video track`, at the
- [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) object referenced by the
- [`videoTracks`](#dom-sourcebuffer-videotracks) attribute on this
- [`SourceBuffer`](#dom-sourcebuffer) object.
- ::::
+ If the [parent media source](#parent-media-source) was constructed in a [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window):
 
- 9.
-
- If the [parent media source](#parent-media-source) was constructed in a [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope):
- : Post an internal `create track mirror` message to
- [`[[port to main]]`](#dfn-port-to-main) whose implicit handler in
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) runs the following steps:
- 1. Let `mirrored video track` be a new
+ : 1. Let `new video track` be a new
  [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object.
- 2. Assign the same property values to
- `mirrored video track` as were determined for
- `new video track`.
- 3. Add `mirrored video track` to the
- [`videoTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-videotracks)
- attribute on the HTMLMediaElement.
-
- Otherwise:
- : Add `new video track` to the
- [`videoTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-videotracks)
- attribute on the HTMLMediaElement.
+ 2. Generate a unique ID and assign it to the
+ [`id`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-id)
+ property on `new video track`.
+ 3. Assign `video language`, `video label` and
+ `current video kind` to the
+ [`language`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-language),
+ [`label`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-label)
+ and
+ [`kind`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-kind)
+ properties on `new video track` respectively.
+ 4. If
+ `video track default selected flag`
+ is true, then set the
+ [`selected`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-selected)
+ property on `new video track` to true.
+ 5. Add `new video track` to the
+ [`videoTracks`](#dom-sourcebuffer-videotracks) attribute on this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object.
 
  ::::
  :::
@@ -4180,12 +4363,97 @@ by the algorithm below.
  [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
  [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
  attribute initialized to
- `mirrored video track`
- or `new video track`,
- at the
+ `new video track`, at the
+ [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) object referenced by the
+ [`videoTracks`](#dom-sourcebuffer-videotracks) attribute on this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object.
+ ::::
+ 6. Let `media element` be the media
+ element that this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object\'s [parent media
+ source](#parent-media-source) is
+ attached to.
+ 7. Add `new video track` to the
+ [`videoTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-videotracks)
+ attribute on `media element`.
+
+ ::::
+ :::
+ Note
+ :::
+
+ This should trigger
+ [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [addtrack](https://html.spec.whatwg.org/multipage/media.html#event-media-addtrack)
+ using
+ [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
+ [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
+ attribute initialized to
+ `new video track`, at the
  [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) object referenced by the
  [`videoTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-videotracks)
- attribute on the HTMLMediaElement.
+ attribute on `media element`.
+ ::::
+
+ Otherwise:
+ : Post an internal `create track` message to
+ [`[[port to main]]`](#dfn-port-to-main) whose implicit handler in
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) runs the following steps:
+ 1. Let `new video track` be a new
+ [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) object.
+ 2. Generate a unique ID and assign it to the
+ [`id`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-id)
+ property on `new video track`.
+ 3. Assign `video language`, `video label` and
+ `current video kind` to the
+ [`language`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-language),
+ [`label`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-label)
+ and
+ [`kind`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-kind)
+ properties on `new video track` respectively.
+ 4. If
+ `video track default selected flag`
+ is true, then set the
+ [`selected`](https://html.spec.whatwg.org/multipage/media.html#dom-videotrack-selected)
+ property on `new video track` to true.
+ 5. Let `media element` be the media
+ element that this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object\'s [parent media
+ source](#parent-media-source) is
+ attached to.
+ 6. Add `new video track` to the
+ [`videoTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-videotracks)
+ attribute on `media element`.
+
+ ::::
+ :::
+ Note
+ :::
+
+ This should trigger
+ [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [addtrack](https://html.spec.whatwg.org/multipage/media.html#event-media-addtrack)
+ using
+ [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
+ [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
+ attribute initialized to
+ `new video track`, at the
+ [`VideoTrackList`](https://html.spec.whatwg.org/multipage/media.html#videotracklist) object referenced by the
+ [`videoTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-videotracks)
+ attribute on `media element`.
  ::::
  7. Create a new [track
  buffer](#track-buffer) to store [coded
@@ -4223,45 +4491,50 @@ by the algorithm below.
  equal the value from `text kinds` for this iteration of
  the loop.
 
- 2. Let `new text track` be
- a new
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object.
-
- 3. Generate a unique ID and assign it to the
- [`id`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-id)
- property on `new text track`.
-
- 4. Assign `text language`
- to the
- [`language`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-language)
- property on `new text track`.
-
- 5. Assign `text label` to
- the
- [`label`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-label)
- property on `new text track`.
-
- 6. Assign `current text kind` to the
- [`kind`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-kind)
- property on `new text track`.
-
- 7. Populate the remaining properties on
- `new text track` with
- the appropriate information from the [initialization
+ 2. Let `text track mode` be the
+ [`mode`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-mode)
+ value determined for this track from the [initialization
  segment](#dfn-initialization-segment).
 
- 8. If the
- [`mode`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-mode)
- property on `new text track` equals
+ 3. If `text track mode` equals
  [`"showing"`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-showing)
  or
  [`"hidden"`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-hidden),
  then set `active track flag` to true.
 
- 9. Add `new text track` to
- the
+ 4. Create the
+ [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) on the
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window)
+ [`HTMLMediaElement`](https://html.spec.whatwg.org/multipage/media.html#htmlmediaelement), running the following steps in
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window):
+
+ If the [parent media source](#parent-media-source) was constructed in a [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window):
+
+ : 1. Let `new text track` be a new
+ [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object.
+ 2. Generate a unique ID and assign it to the
+ [`id`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-id)
+ property on `new text track`.
+ 3. Assign `text language`, `text label` and
+ `current text kind` to the
+ [`language`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-language),
+ [`label`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-label)
+ and
+ [`kind`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-kind)
+ properties on `new text track` respectively.
+ 4. Set the
+ [`mode`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-mode)
+ property on `new text track` to
+ `text track mode`, and populate the
+ remaining properties on
+ `new text track` with the appropriate
+ information determined from the [initialization
+ segment](#dfn-initialization-segment) for
+ this track.
+ 5. Add `new text track` to the
  [`textTracks`](#dom-sourcebuffer-texttracks) attribute on this
- [`SourceBuffer`](#dom-sourcebuffer) object.
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object.
 
  ::::
  :::
@@ -4279,31 +4552,80 @@ by the algorithm below.
  using
  [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
  [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
- attribute initialized to `new text track`, at the
+ attribute initialized to
+ `new text track`, at the
  [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist) object referenced by the
  [`textTracks`](#dom-sourcebuffer-texttracks) attribute on this
- [`SourceBuffer`](#dom-sourcebuffer) object.
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object.
  ::::
-
- 10.
-
- If the [parent media source](#parent-media-source) was constructed in a [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope):
- : Post an internal `create track mirror` message to
- [`[[port to main]]`](#dfn-port-to-main) whose implicit handler in
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) runs the following steps:
- 1. Let `mirrored text track` be a new
- [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object.
- 2. Assign the same property values to
- `mirrored text track` as were determined for
- `new text track`.
- 3. Add `mirrored text track` to the
+ 6. Let `media element` be the media
+ element that this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object\'s [parent media
+ source](#parent-media-source) is
+ attached to.
+ 7. Add `new text track` to the
  [`textTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-texttracks)
- attribute on the HTMLMediaElement.
+ attribute on `media element`.
+
+ ::::
+ :::
+ Note
+ :::
+
+ This should trigger
+ [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist)
+ \[[HTML](#bib-html "HTML Standard")\] logic to [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task)
+ to [fire an
+ event](https://dom.spec.whatwg.org/#concept-event-fire)
+ named
+ [addtrack](https://html.spec.whatwg.org/multipage/media.html#event-media-addtrack)
+ using
+ [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
+ [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
+ attribute initialized to
+ `new text track`, at the
+ [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist) object referenced by the
+ [`textTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-texttracks)
+ attribute on `media element`.
+ ::::
 
  Otherwise:
- : Add `new text track` to the
+ : Post an internal `create track` message to
+ [`[[port to main]]`](#dfn-port-to-main) whose implicit handler in
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) runs the following steps:
+ 1. Let `new text track` be a new
+ [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) object.
+ 2. Generate a unique ID and assign it to the
+ [`id`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-id)
+ property on `new text track`.
+ 3. Assign `text language`, `text label` and
+ `current text kind` to the
+ [`language`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-language),
+ [`label`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-label)
+ and
+ [`kind`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-kind)
+ properties on `new text track` respectively.
+ 4. Set the
+ [`mode`](https://html.spec.whatwg.org/multipage/media.html#dom-texttrack-mode)
+ property on `new text track` to
+ `text track mode`, and populate the
+ remaining properties on
+ `new text track` with the appropriate
+ information determined from the [initialization
+ segment](#dfn-initialization-segment) for
+ this track.
+ 5. Let `media element` be the media
+ element that this
+ [`SourceBuffer`](#dom-sourcebuffer)
+ object\'s [parent media
+ source](#parent-media-source) is
+ attached to.
+ 6. Add `new text track` to the
  [`textTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-texttracks)
- attribute on the HTMLMediaElement.
+ attribute on `media element`.
 
  ::::
  :::
@@ -4321,10 +4643,11 @@ by the algorithm below.
  using
  [`TrackEvent`](https://html.spec.whatwg.org/multipage/media.html#trackevent) with the
  [`track`](https://html.spec.whatwg.org/multipage/media.html#dom-trackevent-track)
- attribute initialized to `mirrored text track` or `new text track`, at the
+ attribute initialized to
+ `new text track`, at the
  [`TextTrackList`](https://html.spec.whatwg.org/multipage/media.html#texttracklist) object referenced by the
  [`textTracks`](https://html.spec.whatwg.org/multipage/media.html#dom-media-texttracks)
- attribute on the HTMLMediaElement.
+ attribute on `media element`.
  ::::
  7. Create a new [track
  buffer](#track-buffer) to store [coded
@@ -5974,20 +6297,11 @@ This section specifies extensions to the
 [`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) definition.
 
 ```
-WebIDL[Exposed=(Window,DedicatedWorker)]
+WebIDL[Exposed=Window]
 partial interface AudioTrack {
  readonly attribute SourceBuffer? sourceBuffer;
 };
 ```
-
-[[Issue
-280]](https://github.com/w3c/media-source/issues/280)[:
-MSE-in-Workers: {Audio,Video,Text}Track{,List} IDL in HTML need
-additional DedicatedWorker in Exposed
-[mse-in-workers](https://github.com/w3c/media-source/issues/?q=is%3Aissue+is%3Aopen+label%3A%22mse-in-workers%22)]
-
-\[[HTML](#bib-html "HTML Standard")\]
-[`AudioTrack`](https://html.spec.whatwg.org/multipage/media.html#audiotrack) needs Window+DedicatedWorker exposure.
 
 ::: header-wrapper
 ### Attributes
@@ -6010,12 +6324,17 @@ additional DedicatedWorker in Exposed
  :::
 
  :::
- For example, if a
- [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope)
- [`SourceBuffer`](#dom-sourcebuffer) notified its
- internal `create track mirror` handler in
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) to create this track, then the
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) copy of the track would return null for this attribute.
+ For example, when the
+ [`MediaSource`](#dom-mediasource) was constructed in a
+ [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope), this track is created on the
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window)
+ [`HTMLMediaElement`](https://html.spec.whatwg.org/multipage/media.html#htmlmediaelement) by the internal `create track` handler while
+ the
+ [`SourceBuffer`](#dom-sourcebuffer) that created it
+ lives in the
+ [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope). Because they are not on the same
+ [realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-global-object-realm),
+ this attribute returns null.
  :::
  :::::
 
@@ -6027,20 +6346,11 @@ This section specifies extensions to the
 [`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) definition.
 
 ```
-WebIDL[Exposed=(Window,DedicatedWorker)]
+WebIDL[Exposed=Window]
 partial interface VideoTrack {
  readonly attribute SourceBuffer? sourceBuffer;
 };
 ```
-
-[[Issue
-280]](https://github.com/w3c/media-source/issues/280)[:
-MSE-in-Workers: {Audio,Video,Text}Track{,List} IDL in HTML need
-additional DedicatedWorker in Exposed
-[mse-in-workers](https://github.com/w3c/media-source/issues/?q=is%3Aissue+is%3Aopen+label%3A%22mse-in-workers%22)]
-
-\[[HTML](#bib-html "HTML Standard")\]
-[`VideoTrack`](https://html.spec.whatwg.org/multipage/media.html#videotrack) needs Window+DedicatedWorker exposure.
 
 ::: header-wrapper
 ### Attributes
@@ -6063,12 +6373,17 @@ additional DedicatedWorker in Exposed
  :::
 
  :::
- For example, if a
- [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope)
- [`SourceBuffer`](#dom-sourcebuffer) notified its
- internal `create track mirror` handler in
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) to create this track, then the
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) copy of the track would return null for this attribute.
+ For example, when the
+ [`MediaSource`](#dom-mediasource) was constructed in a
+ [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope), this track is created on the
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window)
+ [`HTMLMediaElement`](https://html.spec.whatwg.org/multipage/media.html#htmlmediaelement) by the internal `create track` handler while
+ the
+ [`SourceBuffer`](#dom-sourcebuffer) that created it
+ lives in the
+ [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope). Because they are not on the same
+ [realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-global-object-realm),
+ this attribute returns null.
  :::
  :::::
 
@@ -6080,20 +6395,11 @@ This section specifies extensions to the
 [`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) definition.
 
 ```
-WebIDL[Exposed=(Window,DedicatedWorker)]
+WebIDL[Exposed=Window]
 partial interface TextTrack {
  readonly attribute SourceBuffer? sourceBuffer;
 };
 ```
-
-[[Issue
-280]](https://github.com/w3c/media-source/issues/280)[:
-MSE-in-Workers: {Audio,Video,Text}Track{,List} IDL in HTML need
-additional DedicatedWorker in Exposed
-[mse-in-workers](https://github.com/w3c/media-source/issues/?q=is%3Aissue+is%3Aopen+label%3A%22mse-in-workers%22)]
-
-\[[HTML](#bib-html "HTML Standard")\]
-[`TextTrack`](https://html.spec.whatwg.org/multipage/media.html#texttrack) needs Window+DedicatedWorker exposure.
 
 ::: header-wrapper
 ### Attributes
@@ -6116,12 +6422,17 @@ additional DedicatedWorker in Exposed
  :::
 
  :::
- For example, if a
- [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope)
- [`SourceBuffer`](#dom-sourcebuffer) notified its
- internal `create track mirror` handler in
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) to create this track, then the
- [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window) copy of the track would return null for this attribute.
+ For example, when the
+ [`MediaSource`](#dom-mediasource) was constructed in a
+ [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope), this track is created on the
+ [`Window`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window)
+ [`HTMLMediaElement`](https://html.spec.whatwg.org/multipage/media.html#htmlmediaelement) by the internal `create track` handler while
+ the
+ [`SourceBuffer`](#dom-sourcebuffer) that created it
+ lives in the
+ [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope). Because they are not on the same
+ [realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-global-object-realm),
+ this attribute returns null.
  :::
  :::::
 
@@ -6551,9 +6862,6 @@ revisions.
 - [Issue 276](#issue-container-number-276)[: MSE-in-Workers: Consider
  adding a \"closing\" readyState to explain new \`InvalidStateError\`
  exception when closing underway]{style="text-transform: none"}
-- [Issue 280](#issue-container-number-280)[: MSE-in-Workers:
- {Audio,Video,Text}Track{,List} IDL in HTML need additional
- DedicatedWorker in Exposed]{style="text-transform: none"}
 - [Issue 289](#issue-container-number-289)[: Editorial? Coded Frame
  eviction algorithm needs to note that \"buffer full flag\" may be
  updated immediately based on \|new
@@ -6566,91 +6874,7 @@ revisions.
  (eventually) transitioning attached element to error upon termination
  of MediaSource\'s worker/what should media element
  do?]{style="text-transform: none"}
-- [Issue](#issue-container-generatedID-89)
-- [Issue 280](#issue-container-number-280-0)[: MSE-in-Workers:
- {Audio,Video,Text}Track{,List} IDL in HTML need additional
- DedicatedWorker in Exposed]{style="text-transform: none"}
-- [Issue 280](#issue-container-number-280-1)[: MSE-in-Workers:
- {Audio,Video,Text}Track{,List} IDL in HTML need additional
- DedicatedWorker in Exposed]{style="text-transform: none"}
-- [Issue 280](#issue-container-number-280-2)[: MSE-in-Workers:
- {Audio,Video,Text}Track{,List} IDL in HTML need additional
- DedicatedWorker in Exposed]{style="text-transform: none"}
-
-::: header-wrapper
-## C. References
-
-::: header-wrapper
-### C.1 Normative references
-
-\[dom\]
-: [DOM Standard](https://dom.spec.whatwg.org/). Anne van Kesteren.
- WHATWG. Living Standard. URL: <https://dom.spec.whatwg.org/>
-
-\[ECMASCRIPT\]
-: [ECMAScript Language
- Specification](https://tc39.es/ecma262/multipage/). Ecma
- International. URL: <https://tc39.es/ecma262/multipage/>
-
-\[FILEAPI\]
-: [File API](https://www.w3.org/TR/FileAPI/). Marijn Kruisselbrink.
- W3C. 4 December 2024. W3C Working Draft. URL:
- <https://www.w3.org/TR/FileAPI/>
-
-\[HTML\]
-: [HTML Standard](https://html.spec.whatwg.org/multipage/). Anne van
- Kesteren; Domenic Denicola; Dominic Farolino; Ian Hickson; Philip
- Jägenstedt; Simon Pieters. WHATWG. Living Standard. URL:
- <https://html.spec.whatwg.org/multipage/>
-
-\[infra\]
-: [Infra Standard](https://infra.spec.whatwg.org/). Anne van Kesteren;
- Domenic Denicola. WHATWG. Living Standard. URL:
- <https://infra.spec.whatwg.org/>
-
-\[MSE-REGISTRY\]
-: [Media Source Extensions™ Byte Stream Format
- Registry](https://w3c.github.io/mse-byte-stream-format-registry/).
- Matthew Wolenetz; Jerry Smith; Aaron Colwell. W3C. URL:
- <https://w3c.github.io/mse-byte-stream-format-registry/>
-
-\[RFC2119\]
-: [Key words for use in RFCs to Indicate Requirement
- Levels](https://www.rfc-editor.org/rfc/rfc2119). S. Bradner. IETF.
- March 1997. Best Current Practice. URL:
- <https://www.rfc-editor.org/rfc/rfc2119>
-
-\[RFC8174\]
-: [Ambiguity of Uppercase vs Lowercase in RFC 2119 Key
- Words](https://www.rfc-editor.org/rfc/rfc8174). B. Leiba. IETF.
- May 2017. Best Current Practice. URL:
- <https://www.rfc-editor.org/rfc/rfc8174>
-
-\[WEBIDL\]
-: [Web IDL Standard](https://webidl.spec.whatwg.org/). Edgar Chen;
- Timothy Gu. WHATWG. Living Standard. URL:
- <https://webidl.spec.whatwg.org/>
-
-::: header-wrapper
-### C.2 Informative references
-
-\[INBANDTRACKS\]
-: [Sourcing In-band Media Resource Tracks from Media Containers into
- HTML](https://dev.w3.org/html5/html-sourcing-inband-tracks/). Silvia
- Pfeiffer; Bob Lund. W3C. 26 April 2015. Unofficial Draft. URL:
- <https://dev.w3.org/html5/html-sourcing-inband-tracks/>
-
-\[MEDIA-PLAYBACK-QUALITY\]
-: [Media Playback
- Quality](https://w3c.github.io/media-playback-quality/). Mounir
- Lamouri; Chris Cunningham. W3C. W3C Editor\'s Draft. URL:
- <https://w3c.github.io/media-playback-quality/>
-
-\[url\]
-: [URL Standard](https://url.spec.whatwg.org/). Anne van Kesteren.
- WHATWG. Living Standard. URL: <https://url.spec.whatwg.org/>
-
-[[↑]](#title)
+- [Issue](#issue-container-generatedID-96)
 
 [Permalink](#dfn-active-track-buffers)
 
@@ -6844,15 +7068,17 @@ revisions.
  [(20)](#ref-for-dfn-initialization-segment-30 "Reference 20")
  [(21)](#ref-for-dfn-initialization-segment-31 "Reference 21")
  [(22)](#ref-for-dfn-initialization-segment-32 "Reference 22")
+ [(23)](#ref-for-dfn-initialization-segment-33 "Reference 23")
+ [(24)](#ref-for-dfn-initialization-segment-34 "Reference 24")
 - [§ 14. Byte Stream
- Formats](#ref-for-dfn-initialization-segment-33 "§ 14. Byte Stream Formats")
- [(2)](#ref-for-dfn-initialization-segment-34 "Reference 2")
- [(3)](#ref-for-dfn-initialization-segment-35 "Reference 3")
- [(4)](#ref-for-dfn-initialization-segment-36 "Reference 4")
- [(5)](#ref-for-dfn-initialization-segment-37 "Reference 5")
- [(6)](#ref-for-dfn-initialization-segment-38 "Reference 6")
- [(7)](#ref-for-dfn-initialization-segment-39 "Reference 7")
- [(8)](#ref-for-dfn-initialization-segment-40 "Reference 8")
+ Formats](#ref-for-dfn-initialization-segment-35 "§ 14. Byte Stream Formats")
+ [(2)](#ref-for-dfn-initialization-segment-36 "Reference 2")
+ [(3)](#ref-for-dfn-initialization-segment-37 "Reference 3")
+ [(4)](#ref-for-dfn-initialization-segment-38 "Reference 4")
+ [(5)](#ref-for-dfn-initialization-segment-39 "Reference 5")
+ [(6)](#ref-for-dfn-initialization-segment-40 "Reference 6")
+ [(7)](#ref-for-dfn-initialization-segment-41 "Reference 7")
+ [(8)](#ref-for-dfn-initialization-segment-42 "Reference 8")
 
 [Permalink](#dfn-media-segment)
 [exported]
@@ -6909,43 +7135,56 @@ revisions.
 
 **Referenced in:**
 
-- [§ 5.1 Attributes](#ref-for-parent-media-source-1 "§ 5.1 Attributes")
+- [§ 3.8 removeSourceBuffer()
+ method](#ref-for-parent-media-source-1 "§ 3.8 removeSourceBuffer() method")
  [(2)](#ref-for-parent-media-source-2 "Reference 2")
  [(3)](#ref-for-parent-media-source-3 "Reference 3")
  [(4)](#ref-for-parent-media-source-4 "Reference 4")
  [(5)](#ref-for-parent-media-source-5 "Reference 5")
  [(6)](#ref-for-parent-media-source-6 "Reference 6")
- [(7)](#ref-for-parent-media-source-7 "Reference 7")
- [(8)](#ref-for-parent-media-source-8 "Reference 8")
- [(9)](#ref-for-parent-media-source-9 "Reference 9")
- [(10)](#ref-for-parent-media-source-10 "Reference 10")
- [(11)](#ref-for-parent-media-source-11 "Reference 11")
-- [§ 5.2 Methods](#ref-for-parent-media-source-12 "§ 5.2 Methods")
- [(2)](#ref-for-parent-media-source-13 "Reference 2")
- [(3)](#ref-for-parent-media-source-14 "Reference 3")
- [(4)](#ref-for-parent-media-source-15 "Reference 4")
- [(5)](#ref-for-parent-media-source-16 "Reference 5")
- [(6)](#ref-for-parent-media-source-17 "Reference 6")
- [(7)](#ref-for-parent-media-source-18 "Reference 7")
- [(8)](#ref-for-parent-media-source-19 "Reference 8")
- [(9)](#ref-for-parent-media-source-20 "Reference 9")
- [(10)](#ref-for-parent-media-source-21 "Reference 10")
- [(11)](#ref-for-parent-media-source-22 "Reference 11")
+- [§ 5.1 Attributes](#ref-for-parent-media-source-7 "§ 5.1 Attributes")
+ [(2)](#ref-for-parent-media-source-8 "Reference 2")
+ [(3)](#ref-for-parent-media-source-9 "Reference 3")
+ [(4)](#ref-for-parent-media-source-10 "Reference 4")
+ [(5)](#ref-for-parent-media-source-11 "Reference 5")
+ [(6)](#ref-for-parent-media-source-12 "Reference 6")
+ [(7)](#ref-for-parent-media-source-13 "Reference 7")
+ [(8)](#ref-for-parent-media-source-14 "Reference 8")
+ [(9)](#ref-for-parent-media-source-15 "Reference 9")
+ [(10)](#ref-for-parent-media-source-16 "Reference 10")
+ [(11)](#ref-for-parent-media-source-17 "Reference 11")
+- [§ 5.2 Methods](#ref-for-parent-media-source-18 "§ 5.2 Methods")
+ [(2)](#ref-for-parent-media-source-19 "Reference 2")
+ [(3)](#ref-for-parent-media-source-20 "Reference 3")
+ [(4)](#ref-for-parent-media-source-21 "Reference 4")
+ [(5)](#ref-for-parent-media-source-22 "Reference 5")
+ [(6)](#ref-for-parent-media-source-23 "Reference 6")
+ [(7)](#ref-for-parent-media-source-24 "Reference 7")
+ [(8)](#ref-for-parent-media-source-25 "Reference 8")
+ [(9)](#ref-for-parent-media-source-26 "Reference 9")
+ [(10)](#ref-for-parent-media-source-27 "Reference 10")
+ [(11)](#ref-for-parent-media-source-28 "Reference 11")
 - [§ 5.5.4 Prepare
- Append](#ref-for-parent-media-source-23 "§ 5.5.4 Prepare Append")
- [(2)](#ref-for-parent-media-source-24 "Reference 2")
- [(3)](#ref-for-parent-media-source-25 "Reference 3")
- [(4)](#ref-for-parent-media-source-26 "Reference 4")
+ Append](#ref-for-parent-media-source-29 "§ 5.5.4 Prepare Append")
+ [(2)](#ref-for-parent-media-source-30 "Reference 2")
+ [(3)](#ref-for-parent-media-source-31 "Reference 3")
+ [(4)](#ref-for-parent-media-source-32 "Reference 4")
 - [§ 5.5.7 Initialization Segment
- Received](#ref-for-parent-media-source-27 "§ 5.5.7 Initialization Segment Received")
- [(2)](#ref-for-parent-media-source-28 "Reference 2")
- [(3)](#ref-for-parent-media-source-29 "Reference 3")
- [(4)](#ref-for-parent-media-source-30 "Reference 4")
- [(5)](#ref-for-parent-media-source-31 "Reference 5")
- [(6)](#ref-for-parent-media-source-32 "Reference 6")
-- [§ Attributes](#ref-for-parent-media-source-33 "§ Attributes")
+ Received](#ref-for-parent-media-source-33 "§ 5.5.7 Initialization Segment Received")
  [(2)](#ref-for-parent-media-source-34 "Reference 2")
  [(3)](#ref-for-parent-media-source-35 "Reference 3")
+ [(4)](#ref-for-parent-media-source-36 "Reference 4")
+ [(5)](#ref-for-parent-media-source-37 "Reference 5")
+ [(6)](#ref-for-parent-media-source-38 "Reference 6")
+ [(7)](#ref-for-parent-media-source-39 "Reference 7")
+ [(8)](#ref-for-parent-media-source-40 "Reference 8")
+ [(9)](#ref-for-parent-media-source-41 "Reference 9")
+ [(10)](#ref-for-parent-media-source-42 "Reference 10")
+ [(11)](#ref-for-parent-media-source-43 "Reference 11")
+ [(12)](#ref-for-parent-media-source-44 "Reference 12")
+- [§ Attributes](#ref-for-parent-media-source-45 "§ Attributes")
+ [(2)](#ref-for-parent-media-source-46 "Reference 2")
+ [(3)](#ref-for-parent-media-source-47 "Reference 3")
 
 [Permalink](#presentation-start-time)
 
@@ -7214,38 +7453,42 @@ revisions.
  [(7)](#ref-for-dom-mediasource-85 "Reference 7")
 - [§ 3.15.5 Changes to selected/enabled track
  state](#ref-for-dom-mediasource-86 "§ 3.15.5 Changes to selected/enabled track state")
+ [(2)](#ref-for-dom-mediasource-87 "Reference 2")
 - [§ 3.15.7 End of
- stream](#ref-for-dom-mediasource-87 "§ 3.15.7 End of stream")
+ stream](#ref-for-dom-mediasource-88 "§ 3.15.7 End of stream")
 - [§ 3.15.8 Mirror if
- necessary](#ref-for-dom-mediasource-88 "§ 3.15.8 Mirror if necessary")
- [(2)](#ref-for-dom-mediasource-89 "Reference 2")
+ necessary](#ref-for-dom-mediasource-89 "§ 3.15.8 Mirror if necessary")
+ [(2)](#ref-for-dom-mediasource-90 "Reference 2")
 - [§ 4. MediaSourceHandle
- interface](#ref-for-dom-mediasource-90 "§ 4. MediaSourceHandle interface")
- [(2)](#ref-for-dom-mediasource-91 "Reference 2")
- [(3)](#ref-for-dom-mediasource-92 "Reference 3")
- [(4)](#ref-for-dom-mediasource-93 "Reference 4")
-- [§ 4.1 Transfer](#ref-for-dom-mediasource-94 "§ 4.1 Transfer")
- [(2)](#ref-for-dom-mediasource-95 "Reference 2")
- [(3)](#ref-for-dom-mediasource-96 "Reference 3")
- [(4)](#ref-for-dom-mediasource-97 "Reference 4")
+ interface](#ref-for-dom-mediasource-91 "§ 4. MediaSourceHandle interface")
+ [(2)](#ref-for-dom-mediasource-92 "Reference 2")
+ [(3)](#ref-for-dom-mediasource-93 "Reference 3")
+ [(4)](#ref-for-dom-mediasource-94 "Reference 4")
+- [§ 4.1 Transfer](#ref-for-dom-mediasource-95 "§ 4.1 Transfer")
+ [(2)](#ref-for-dom-mediasource-96 "Reference 2")
+ [(3)](#ref-for-dom-mediasource-97 "Reference 3")
+ [(4)](#ref-for-dom-mediasource-98 "Reference 4")
 - [§ 5.5.4 Prepare
- Append](#ref-for-dom-mediasource-98 "§ 5.5.4 Prepare Append")
+ Append](#ref-for-dom-mediasource-99 "§ 5.5.4 Prepare Append")
 - [§ 7. ManagedMediaSource
- interface](#ref-for-dom-mediasource-99 "§ 7. ManagedMediaSource interface")
- [(2)](#ref-for-dom-mediasource-100 "Reference 2")
- [(3)](#ref-for-dom-mediasource-101 "Reference 3")
+ interface](#ref-for-dom-mediasource-100 "§ 7. ManagedMediaSource interface")
+ [(2)](#ref-for-dom-mediasource-101 "Reference 2")
+ [(3)](#ref-for-dom-mediasource-102 "Reference 3")
 - [§ 7.3.1 ManagedSourceBuffer
- Monitoring](#ref-for-dom-mediasource-102 "§ 7.3.1 ManagedSourceBuffer Monitoring")
+ Monitoring](#ref-for-dom-mediasource-103 "§ 7.3.1 ManagedSourceBuffer Monitoring")
 - [§ 10. HTMLMediaElement
- Extensions](#ref-for-dom-mediasource-103 "§ 10. HTMLMediaElement Extensions")
+ Extensions](#ref-for-dom-mediasource-104 "§ 10. HTMLMediaElement Extensions")
 - [§ 10.1 HTMLMediaElement\'s
- seekable](#ref-for-dom-mediasource-104 "§ 10.1 HTMLMediaElement's seekable")
- [(2)](#ref-for-dom-mediasource-105 "Reference 2")
- [(3)](#ref-for-dom-mediasource-106 "Reference 3")
+ seekable](#ref-for-dom-mediasource-105 "§ 10.1 HTMLMediaElement's seekable")
+ [(2)](#ref-for-dom-mediasource-106 "Reference 2")
+ [(3)](#ref-for-dom-mediasource-107 "Reference 3")
 - [§ 10.2 HTMLMediaElement\'s
- buffered](#ref-for-dom-mediasource-107 "§ 10.2 HTMLMediaElement's buffered")
- [(2)](#ref-for-dom-mediasource-108 "Reference 2")
- [(3)](#ref-for-dom-mediasource-109 "Reference 3")
+ buffered](#ref-for-dom-mediasource-108 "§ 10.2 HTMLMediaElement's buffered")
+ [(2)](#ref-for-dom-mediasource-109 "Reference 2")
+ [(3)](#ref-for-dom-mediasource-110 "Reference 3")
+- [§ Attributes](#ref-for-dom-mediasource-111 "§ Attributes")
+ [(2)](#ref-for-dom-mediasource-112 "Reference 2")
+ [(3)](#ref-for-dom-mediasource-113 "Reference 3")
 
 [Permalink](#dfn-live-seekable-range)
 
@@ -7818,25 +8061,27 @@ revisions.
 
 **Referenced in:**
 
+- [§ 3.8 removeSourceBuffer()
+ method](#ref-for-dfn-port-to-main-1 "§ 3.8 removeSourceBuffer() method")
+ [(2)](#ref-for-dfn-port-to-main-2 "Reference 2")
+ [(3)](#ref-for-dfn-port-to-main-3 "Reference 3")
 - [§ 3.14 Cross-context communication
- model](#ref-for-dfn-port-to-main-1 "§ 3.14 Cross-context communication model")
+ model](#ref-for-dfn-port-to-main-4 "§ 3.14 Cross-context communication model")
 - [§ 3.15.1 Attaching to a media
- element](#ref-for-dfn-port-to-main-2 "§ 3.15.1 Attaching to a media element")
- [(2)](#ref-for-dfn-port-to-main-3 "Reference 2")
+ element](#ref-for-dfn-port-to-main-5 "§ 3.15.1 Attaching to a media element")
+ [(2)](#ref-for-dfn-port-to-main-6 "Reference 2")
 - [§ 3.15.2 Detaching from a media
- element](#ref-for-dfn-port-to-main-4 "§ 3.15.2 Detaching from a media element")
-- [§ 3.15.5 Changes to selected/enabled track
- state](#ref-for-dfn-port-to-main-5 "§ 3.15.5 Changes to selected/enabled track state")
+ element](#ref-for-dfn-port-to-main-7 "§ 3.15.2 Detaching from a media element")
 - [§ 3.15.8 Mirror if
- necessary](#ref-for-dfn-port-to-main-6 "§ 3.15.8 Mirror if necessary")
+ necessary](#ref-for-dfn-port-to-main-8 "§ 3.15.8 Mirror if necessary")
 - [§ 5.5.7 Initialization Segment
- Received](#ref-for-dfn-port-to-main-7 "§ 5.5.7 Initialization Segment Received")
- [(2)](#ref-for-dfn-port-to-main-8 "Reference 2")
- [(3)](#ref-for-dfn-port-to-main-9 "Reference 3")
+ Received](#ref-for-dfn-port-to-main-9 "§ 5.5.7 Initialization Segment Received")
+ [(2)](#ref-for-dfn-port-to-main-10 "Reference 2")
+ [(3)](#ref-for-dfn-port-to-main-11 "Reference 3")
 - [§ 10.1 HTMLMediaElement\'s
- seekable](#ref-for-dfn-port-to-main-10 "§ 10.1 HTMLMediaElement's seekable")
+ seekable](#ref-for-dfn-port-to-main-12 "§ 10.1 HTMLMediaElement's seekable")
 - [§ 10.2 HTMLMediaElement\'s
- buffered](#ref-for-dfn-port-to-main-11 "§ 10.2 HTMLMediaElement's buffered")
+ buffered](#ref-for-dfn-port-to-main-13 "§ 10.2 HTMLMediaElement's buffered")
 
 [Permalink](#dfn-port-to-worker)
 
@@ -7949,18 +8194,14 @@ revisions.
 
 **Referenced in:**
 
-- [§ 3.8 removeSourceBuffer()
- method](#ref-for-dfn-mirror-if-necessary-1 "§ 3.8 removeSourceBuffer() method")
- [(2)](#ref-for-dfn-mirror-if-necessary-2 "Reference 2")
- [(3)](#ref-for-dfn-mirror-if-necessary-3 "Reference 3")
 - [§ 3.15.6 Duration
- change](#ref-for-dfn-mirror-if-necessary-4 "§ 3.15.6 Duration change")
+ change](#ref-for-dfn-mirror-if-necessary-1 "§ 3.15.6 Duration change")
 - [§ 3.15.7 End of
- stream](#ref-for-dfn-mirror-if-necessary-5 "§ 3.15.7 End of stream")
- [(2)](#ref-for-dfn-mirror-if-necessary-6 "Reference 2")
+ stream](#ref-for-dfn-mirror-if-necessary-2 "§ 3.15.7 End of stream")
+ [(2)](#ref-for-dfn-mirror-if-necessary-3 "Reference 2")
 - [§ 5.5.7 Initialization Segment
- Received](#ref-for-dfn-mirror-if-necessary-7 "§ 5.5.7 Initialization Segment Received")
- [(2)](#ref-for-dfn-mirror-if-necessary-8 "Reference 2")
+ Received](#ref-for-dfn-mirror-if-necessary-4 "§ 5.5.7 Initialization Segment Received")
+ [(2)](#ref-for-dfn-mirror-if-necessary-5 "Reference 2")
 
 [Permalink](#dom-mediasourcehandle)
 [exported]
@@ -8027,7 +8268,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8084,123 +8325,142 @@ revisions.
  [(10)](#ref-for-dom-sourcebuffer-40 "Reference 10")
  [(11)](#ref-for-dom-sourcebuffer-41 "Reference 11")
  [(12)](#ref-for-dom-sourcebuffer-42 "Reference 12")
+ [(13)](#ref-for-dom-sourcebuffer-43 "Reference 13")
 - [§ 3.15.6 Duration
- change](#ref-for-dom-sourcebuffer-43 "§ 3.15.6 Duration change")
- [(2)](#ref-for-dom-sourcebuffer-44 "Reference 2")
+ change](#ref-for-dom-sourcebuffer-44 "§ 3.15.6 Duration change")
+ [(2)](#ref-for-dom-sourcebuffer-45 "Reference 2")
 - [§ 3.15.7 End of
- stream](#ref-for-dom-sourcebuffer-45 "§ 3.15.7 End of stream")
+ stream](#ref-for-dom-sourcebuffer-46 "§ 3.15.7 End of stream")
 - [§ 5. SourceBuffer
- interface](#ref-for-dom-sourcebuffer-46 "§ 5. SourceBuffer interface")
-- [§ 5.1 Attributes](#ref-for-dom-sourcebuffer-47 "§ 5.1 Attributes")
+ interface](#ref-for-dom-sourcebuffer-47 "§ 5. SourceBuffer interface")
  [(2)](#ref-for-dom-sourcebuffer-48 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-49 "Reference 3")
- [(4)](#ref-for-dom-sourcebuffer-50 "Reference 4")
-- [§ 5.2 Methods](#ref-for-dom-sourcebuffer-51 "§ 5.2 Methods")
- [(2)](#ref-for-dom-sourcebuffer-52 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-53 "Reference 3")
- [(4)](#ref-for-dom-sourcebuffer-54 "Reference 4")
- [(5)](#ref-for-dom-sourcebuffer-55 "Reference 5")
- [(6)](#ref-for-dom-sourcebuffer-56 "Reference 6")
- [(7)](#ref-for-dom-sourcebuffer-57 "Reference 7")
- [(8)](#ref-for-dom-sourcebuffer-58 "Reference 8")
- [(9)](#ref-for-dom-sourcebuffer-59 "Reference 9")
+- [§ 5.1 Attributes](#ref-for-dom-sourcebuffer-49 "§ 5.1 Attributes")
+ [(2)](#ref-for-dom-sourcebuffer-50 "Reference 2")
+ [(3)](#ref-for-dom-sourcebuffer-51 "Reference 3")
+ [(4)](#ref-for-dom-sourcebuffer-52 "Reference 4")
+ [(5)](#ref-for-dom-sourcebuffer-53 "Reference 5")
+ [(6)](#ref-for-dom-sourcebuffer-54 "Reference 6")
+ [(7)](#ref-for-dom-sourcebuffer-55 "Reference 7")
+- [§ 5.2 Methods](#ref-for-dom-sourcebuffer-56 "§ 5.2 Methods")
+ [(2)](#ref-for-dom-sourcebuffer-57 "Reference 2")
+ [(3)](#ref-for-dom-sourcebuffer-58 "Reference 3")
+ [(4)](#ref-for-dom-sourcebuffer-59 "Reference 4")
+ [(5)](#ref-for-dom-sourcebuffer-60 "Reference 5")
+ [(6)](#ref-for-dom-sourcebuffer-61 "Reference 6")
+ [(7)](#ref-for-dom-sourcebuffer-62 "Reference 7")
+ [(8)](#ref-for-dom-sourcebuffer-63 "Reference 8")
+ [(9)](#ref-for-dom-sourcebuffer-64 "Reference 9")
 - [§ 5.3 Track
- Buffers](#ref-for-dom-sourcebuffer-60 "§ 5.3 Track Buffers")
- [(2)](#ref-for-dom-sourcebuffer-61 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-62 "Reference 3")
+ Buffers](#ref-for-dom-sourcebuffer-65 "§ 5.3 Track Buffers")
+ [(2)](#ref-for-dom-sourcebuffer-66 "Reference 2")
+ [(3)](#ref-for-dom-sourcebuffer-67 "Reference 3")
 - [§ 5.4 Event
- Summary](#ref-for-dom-sourcebuffer-63 "§ 5.4 Event Summary")
- [(2)](#ref-for-dom-sourcebuffer-64 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-65 "Reference 3")
- [(4)](#ref-for-dom-sourcebuffer-66 "Reference 4")
- [(5)](#ref-for-dom-sourcebuffer-67 "Reference 5")
- [(6)](#ref-for-dom-sourcebuffer-68 "Reference 6")
+ Summary](#ref-for-dom-sourcebuffer-68 "§ 5.4 Event Summary")
+ [(2)](#ref-for-dom-sourcebuffer-69 "Reference 2")
+ [(3)](#ref-for-dom-sourcebuffer-70 "Reference 3")
+ [(4)](#ref-for-dom-sourcebuffer-71 "Reference 4")
+ [(5)](#ref-for-dom-sourcebuffer-72 "Reference 5")
+ [(6)](#ref-for-dom-sourcebuffer-73 "Reference 6")
 - [§ 5.5.1 Segment Parser
- Loop](#ref-for-dom-sourcebuffer-69 "§ 5.5.1 Segment Parser Loop")
- [(2)](#ref-for-dom-sourcebuffer-70 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-71 "Reference 3")
- [(4)](#ref-for-dom-sourcebuffer-72 "Reference 4")
- [(5)](#ref-for-dom-sourcebuffer-73 "Reference 5")
- [(6)](#ref-for-dom-sourcebuffer-74 "Reference 6")
- [(7)](#ref-for-dom-sourcebuffer-75 "Reference 7")
- [(8)](#ref-for-dom-sourcebuffer-76 "Reference 8")
- [(9)](#ref-for-dom-sourcebuffer-77 "Reference 9")
- [(10)](#ref-for-dom-sourcebuffer-78 "Reference 10")
- [(11)](#ref-for-dom-sourcebuffer-79 "Reference 11")
+ Loop](#ref-for-dom-sourcebuffer-74 "§ 5.5.1 Segment Parser Loop")
+ [(2)](#ref-for-dom-sourcebuffer-75 "Reference 2")
+ [(3)](#ref-for-dom-sourcebuffer-76 "Reference 3")
+ [(4)](#ref-for-dom-sourcebuffer-77 "Reference 4")
+ [(5)](#ref-for-dom-sourcebuffer-78 "Reference 5")
+ [(6)](#ref-for-dom-sourcebuffer-79 "Reference 6")
+ [(7)](#ref-for-dom-sourcebuffer-80 "Reference 7")
+ [(8)](#ref-for-dom-sourcebuffer-81 "Reference 8")
+ [(9)](#ref-for-dom-sourcebuffer-82 "Reference 9")
+ [(10)](#ref-for-dom-sourcebuffer-83 "Reference 10")
+ [(11)](#ref-for-dom-sourcebuffer-84 "Reference 11")
+ [(12)](#ref-for-dom-sourcebuffer-85 "Reference 12")
+ [(13)](#ref-for-dom-sourcebuffer-86 "Reference 13")
+ [(14)](#ref-for-dom-sourcebuffer-87 "Reference 14")
+ [(15)](#ref-for-dom-sourcebuffer-88 "Reference 15")
+ [(16)](#ref-for-dom-sourcebuffer-89 "Reference 16")
+ [(17)](#ref-for-dom-sourcebuffer-90 "Reference 17")
 - [§ 5.5.3 Append
- Error](#ref-for-dom-sourcebuffer-80 "§ 5.5.3 Append Error")
- [(2)](#ref-for-dom-sourcebuffer-81 "Reference 2")
+ Error](#ref-for-dom-sourcebuffer-91 "§ 5.5.3 Append Error")
+ [(2)](#ref-for-dom-sourcebuffer-92 "Reference 2")
 - [§ 5.5.4 Prepare
- Append](#ref-for-dom-sourcebuffer-82 "§ 5.5.4 Prepare Append")
- [(2)](#ref-for-dom-sourcebuffer-83 "Reference 2")
+ Append](#ref-for-dom-sourcebuffer-93 "§ 5.5.4 Prepare Append")
+ [(2)](#ref-for-dom-sourcebuffer-94 "Reference 2")
 - [§ 5.5.5 Buffer
- Append](#ref-for-dom-sourcebuffer-84 "§ 5.5.5 Buffer Append")
- [(2)](#ref-for-dom-sourcebuffer-85 "Reference 2")
+ Append](#ref-for-dom-sourcebuffer-95 "§ 5.5.5 Buffer Append")
+ [(2)](#ref-for-dom-sourcebuffer-96 "Reference 2")
 - [§ 5.5.6 Range
- Removal](#ref-for-dom-sourcebuffer-86 "§ 5.5.6 Range Removal")
- [(2)](#ref-for-dom-sourcebuffer-87 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-88 "Reference 3")
+ Removal](#ref-for-dom-sourcebuffer-97 "§ 5.5.6 Range Removal")
+ [(2)](#ref-for-dom-sourcebuffer-98 "Reference 2")
+ [(3)](#ref-for-dom-sourcebuffer-99 "Reference 3")
 - [§ 5.5.7 Initialization Segment
- Received](#ref-for-dom-sourcebuffer-89 "§ 5.5.7 Initialization Segment Received")
- [(2)](#ref-for-dom-sourcebuffer-90 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-91 "Reference 3")
- [(4)](#ref-for-dom-sourcebuffer-92 "Reference 4")
- [(5)](#ref-for-dom-sourcebuffer-93 "Reference 5")
- [(6)](#ref-for-dom-sourcebuffer-94 "Reference 6")
- [(7)](#ref-for-dom-sourcebuffer-95 "Reference 7")
- [(8)](#ref-for-dom-sourcebuffer-96 "Reference 8")
- [(9)](#ref-for-dom-sourcebuffer-97 "Reference 9")
- [(10)](#ref-for-dom-sourcebuffer-98 "Reference 10")
- [(11)](#ref-for-dom-sourcebuffer-99 "Reference 11")
- [(12)](#ref-for-dom-sourcebuffer-100 "Reference 12")
- [(13)](#ref-for-dom-sourcebuffer-101 "Reference 13")
- [(14)](#ref-for-dom-sourcebuffer-102 "Reference 14")
- [(15)](#ref-for-dom-sourcebuffer-103 "Reference 15")
+ Received](#ref-for-dom-sourcebuffer-100 "§ 5.5.7 Initialization Segment Received")
+ [(2)](#ref-for-dom-sourcebuffer-101 "Reference 2")
+ [(3)](#ref-for-dom-sourcebuffer-102 "Reference 3")
+ [(4)](#ref-for-dom-sourcebuffer-103 "Reference 4")
+ [(5)](#ref-for-dom-sourcebuffer-104 "Reference 5")
+ [(6)](#ref-for-dom-sourcebuffer-105 "Reference 6")
+ [(7)](#ref-for-dom-sourcebuffer-106 "Reference 7")
+ [(8)](#ref-for-dom-sourcebuffer-107 "Reference 8")
+ [(9)](#ref-for-dom-sourcebuffer-108 "Reference 9")
+ [(10)](#ref-for-dom-sourcebuffer-109 "Reference 10")
+ [(11)](#ref-for-dom-sourcebuffer-110 "Reference 11")
+ [(12)](#ref-for-dom-sourcebuffer-111 "Reference 12")
+ [(13)](#ref-for-dom-sourcebuffer-112 "Reference 13")
+ [(14)](#ref-for-dom-sourcebuffer-113 "Reference 14")
+ [(15)](#ref-for-dom-sourcebuffer-114 "Reference 15")
+ [(16)](#ref-for-dom-sourcebuffer-115 "Reference 16")
+ [(17)](#ref-for-dom-sourcebuffer-116 "Reference 17")
+ [(18)](#ref-for-dom-sourcebuffer-117 "Reference 18")
+ [(19)](#ref-for-dom-sourcebuffer-118 "Reference 19")
+ [(20)](#ref-for-dom-sourcebuffer-119 "Reference 20")
+ [(21)](#ref-for-dom-sourcebuffer-120 "Reference 21")
+ [(22)](#ref-for-dom-sourcebuffer-121 "Reference 22")
+ [(23)](#ref-for-dom-sourcebuffer-122 "Reference 23")
 - [§ 5.5.9 Coded Frame
- Removal](#ref-for-dom-sourcebuffer-104 "§ 5.5.9 Coded Frame Removal")
+ Removal](#ref-for-dom-sourcebuffer-123 "§ 5.5.9 Coded Frame Removal")
 - [§ 5.5.10 Coded Frame
- Eviction](#ref-for-dom-sourcebuffer-105 "§ 5.5.10 Coded Frame Eviction")
- [(2)](#ref-for-dom-sourcebuffer-106 "Reference 2")
+ Eviction](#ref-for-dom-sourcebuffer-124 "§ 5.5.10 Coded Frame Eviction")
+ [(2)](#ref-for-dom-sourcebuffer-125 "Reference 2")
 - [§ 6. SourceBufferList
- interface](#ref-for-dom-sourcebuffer-107 "§ 6. SourceBufferList interface")
- [(2)](#ref-for-dom-sourcebuffer-108 "Reference 2")
-- [§ 6.1 Attributes](#ref-for-dom-sourcebuffer-109 "§ 6.1 Attributes")
-- [§ 6.2 Methods](#ref-for-dom-sourcebuffer-110 "§ 6.2 Methods")
+ interface](#ref-for-dom-sourcebuffer-126 "§ 6. SourceBufferList interface")
+ [(2)](#ref-for-dom-sourcebuffer-127 "Reference 2")
+- [§ 6.1 Attributes](#ref-for-dom-sourcebuffer-128 "§ 6.1 Attributes")
+- [§ 6.2 Methods](#ref-for-dom-sourcebuffer-129 "§ 6.2 Methods")
 - [§ 6.3 Event
- Summary](#ref-for-dom-sourcebuffer-111 "§ 6.3 Event Summary")
- [(2)](#ref-for-dom-sourcebuffer-112 "Reference 2")
+ Summary](#ref-for-dom-sourcebuffer-130 "§ 6.3 Event Summary")
+ [(2)](#ref-for-dom-sourcebuffer-131 "Reference 2")
 - [§ 9. ManagedSourceBuffer
- interface](#ref-for-dom-sourcebuffer-113 "§ 9. ManagedSourceBuffer interface")
+ interface](#ref-for-dom-sourcebuffer-132 "§ 9. ManagedSourceBuffer interface")
 - [§ 10.2 HTMLMediaElement\'s
- buffered](#ref-for-dom-sourcebuffer-114 "§ 10.2 HTMLMediaElement's buffered")
- [(2)](#ref-for-dom-sourcebuffer-115 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-116 "Reference 3")
- [(4)](#ref-for-dom-sourcebuffer-117 "Reference 4")
+ buffered](#ref-for-dom-sourcebuffer-133 "§ 10.2 HTMLMediaElement's buffered")
+ [(2)](#ref-for-dom-sourcebuffer-134 "Reference 2")
+ [(3)](#ref-for-dom-sourcebuffer-135 "Reference 3")
+ [(4)](#ref-for-dom-sourcebuffer-136 "Reference 4")
 - [§ 11. AudioTrack
- extensions](#ref-for-dom-sourcebuffer-118 "§ 11. AudioTrack extensions")
-- [§ Attributes](#ref-for-dom-sourcebuffer-119 "§ Attributes")
- [(2)](#ref-for-dom-sourcebuffer-120 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-121 "Reference 3")
- [(4)](#ref-for-dom-sourcebuffer-122 "Reference 4")
- [(5)](#ref-for-dom-sourcebuffer-123 "Reference 5")
- [(6)](#ref-for-dom-sourcebuffer-125 "Reference 6")
- [(7)](#ref-for-dom-sourcebuffer-126 "Reference 7")
- [(8)](#ref-for-dom-sourcebuffer-127 "Reference 8")
- [(9)](#ref-for-dom-sourcebuffer-128 "Reference 9")
- [(10)](#ref-for-dom-sourcebuffer-129 "Reference 10")
- [(11)](#ref-for-dom-sourcebuffer-131 "Reference 11")
- [(12)](#ref-for-dom-sourcebuffer-132 "Reference 12")
- [(13)](#ref-for-dom-sourcebuffer-133 "Reference 13")
- [(14)](#ref-for-dom-sourcebuffer-134 "Reference 14")
- [(15)](#ref-for-dom-sourcebuffer-135 "Reference 15")
+ extensions](#ref-for-dom-sourcebuffer-137 "§ 11. AudioTrack extensions")
+- [§ Attributes](#ref-for-dom-sourcebuffer-138 "§ Attributes")
+ [(2)](#ref-for-dom-sourcebuffer-139 "Reference 2")
+ [(3)](#ref-for-dom-sourcebuffer-140 "Reference 3")
+ [(4)](#ref-for-dom-sourcebuffer-141 "Reference 4")
+ [(5)](#ref-for-dom-sourcebuffer-142 "Reference 5")
+ [(6)](#ref-for-dom-sourcebuffer-144 "Reference 6")
+ [(7)](#ref-for-dom-sourcebuffer-145 "Reference 7")
+ [(8)](#ref-for-dom-sourcebuffer-146 "Reference 8")
+ [(9)](#ref-for-dom-sourcebuffer-147 "Reference 9")
+ [(10)](#ref-for-dom-sourcebuffer-148 "Reference 10")
+ [(11)](#ref-for-dom-sourcebuffer-150 "Reference 11")
+ [(12)](#ref-for-dom-sourcebuffer-151 "Reference 12")
+ [(13)](#ref-for-dom-sourcebuffer-152 "Reference 13")
+ [(14)](#ref-for-dom-sourcebuffer-153 "Reference 14")
+ [(15)](#ref-for-dom-sourcebuffer-154 "Reference 15")
 - [§ 12. VideoTrack
- extensions](#ref-for-dom-sourcebuffer-124 "§ 12. VideoTrack extensions")
+ extensions](#ref-for-dom-sourcebuffer-143 "§ 12. VideoTrack extensions")
 - [§ 13. TextTrack
- extensions](#ref-for-dom-sourcebuffer-130 "§ 13. TextTrack extensions")
+ extensions](#ref-for-dom-sourcebuffer-149 "§ 13. TextTrack extensions")
 - [§ 14. Byte Stream
- Formats](#ref-for-dom-sourcebuffer-136 "§ 14. Byte Stream Formats")
- [(2)](#ref-for-dom-sourcebuffer-137 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-138 "Reference 3")
+ Formats](#ref-for-dom-sourcebuffer-155 "§ 14. Byte Stream Formats")
+ [(2)](#ref-for-dom-sourcebuffer-156 "Reference 2")
+ [(3)](#ref-for-dom-sourcebuffer-157 "Reference 3")
 
 [Permalink](#dom-appendmode)
 [exported]
@@ -8256,7 +8516,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-mode)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8286,7 +8546,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-updating)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8326,7 +8586,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-buffered)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8350,7 +8610,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-timestampoffset)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8371,7 +8631,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-audiotracks)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8379,14 +8639,14 @@ revisions.
  method](#ref-for-dom-sourcebuffer-audiotracks-1 "§ 3.8 removeSourceBuffer() method")
 - [§ 5. SourceBuffer
  interface](#ref-for-dom-sourcebuffer-audiotracks-2 "§ 5. SourceBuffer interface")
+ [(2)](#ref-for-dom-sourcebuffer-audiotracks-3 "Reference 2")
 - [§ 5.5.7 Initialization Segment
- Received](#ref-for-dom-sourcebuffer-audiotracks-3 "§ 5.5.7 Initialization Segment Received")
- [(2)](#ref-for-dom-sourcebuffer-audiotracks-4 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-audiotracks-5 "Reference 3")
+ Received](#ref-for-dom-sourcebuffer-audiotracks-4 "§ 5.5.7 Initialization Segment Received")
+ [(2)](#ref-for-dom-sourcebuffer-audiotracks-5 "Reference 2")
 
 [Permalink](#dom-sourcebuffer-videotracks)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8394,14 +8654,14 @@ revisions.
  method](#ref-for-dom-sourcebuffer-videotracks-1 "§ 3.8 removeSourceBuffer() method")
 - [§ 5. SourceBuffer
  interface](#ref-for-dom-sourcebuffer-videotracks-2 "§ 5. SourceBuffer interface")
+ [(2)](#ref-for-dom-sourcebuffer-videotracks-3 "Reference 2")
 - [§ 5.5.7 Initialization Segment
- Received](#ref-for-dom-sourcebuffer-videotracks-3 "§ 5.5.7 Initialization Segment Received")
- [(2)](#ref-for-dom-sourcebuffer-videotracks-4 "Reference 2")
- [(3)](#ref-for-dom-sourcebuffer-videotracks-5 "Reference 3")
+ Received](#ref-for-dom-sourcebuffer-videotracks-4 "§ 5.5.7 Initialization Segment Received")
+ [(2)](#ref-for-dom-sourcebuffer-videotracks-5 "Reference 2")
 
 [Permalink](#dom-sourcebuffer-texttracks)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8409,13 +8669,14 @@ revisions.
  method](#ref-for-dom-sourcebuffer-texttracks-1 "§ 3.8 removeSourceBuffer() method")
 - [§ 5. SourceBuffer
  interface](#ref-for-dom-sourcebuffer-texttracks-2 "§ 5. SourceBuffer interface")
+ [(2)](#ref-for-dom-sourcebuffer-texttracks-3 "Reference 2")
 - [§ 5.5.7 Initialization Segment
- Received](#ref-for-dom-sourcebuffer-texttracks-3 "§ 5.5.7 Initialization Segment Received")
- [(2)](#ref-for-dom-sourcebuffer-texttracks-4 "Reference 2")
+ Received](#ref-for-dom-sourcebuffer-texttracks-4 "§ 5.5.7 Initialization Segment Received")
+ [(2)](#ref-for-dom-sourcebuffer-texttracks-5 "Reference 2")
 
 [Permalink](#dom-sourcebuffer-appendwindowstart)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8435,7 +8696,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-appendwindowend)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8454,7 +8715,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-onupdatestart)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8463,7 +8724,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-onupdate)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8472,7 +8733,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-onupdateend)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8481,7 +8742,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-onerror)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8490,7 +8751,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-onabort)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8499,7 +8760,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-appendbuffer)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8529,7 +8790,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-abort)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8542,7 +8803,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-changetype)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8574,7 +8835,7 @@ revisions.
 
 [Permalink](#dom-sourcebuffer-remove)
 [exported]
-[IDL](#webidl-544711679 "Jump to IDL declaration")
+[IDL](#webidl-101261014 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -8883,6 +9144,22 @@ revisions.
  Eviction](#ref-for-dfn-buffer-full-flag-5 "§ 5.5.10 Coded Frame Eviction")
  [(2)](#ref-for-dfn-buffer-full-flag-6 "Reference 2")
 
+[Permalink](#dfn-audio-track-added-flag)
+
+**Referenced in:**
+
+- [§ 5.5.7 Initialization Segment
+ Received](#ref-for-dfn-audio-track-added-flag-1 "§ 5.5.7 Initialization Segment Received")
+ [(2)](#ref-for-dfn-audio-track-added-flag-2 "Reference 2")
+
+[Permalink](#dfn-video-track-added-flag)
+
+**Referenced in:**
+
+- [§ 5.5.7 Initialization Segment
+ Received](#ref-for-dfn-video-track-added-flag-1 "§ 5.5.7 Initialization Segment Received")
+ [(2)](#ref-for-dfn-video-track-added-flag-2 "Reference 2")
+
 [Permalink](#dfn-group-start-timestamp)
 
 **Referenced in:**
@@ -8992,10 +9269,14 @@ revisions.
 
 **Referenced in:**
 
+- [§ 5. SourceBuffer
+ interface](#ref-for-dfn-initialization-segment-received-1 "§ 5. SourceBuffer interface")
 - [§ 5.5.1 Segment Parser
- Loop](#ref-for-dfn-initialization-segment-received-1 "§ 5.5.1 Segment Parser Loop")
+ Loop](#ref-for-dfn-initialization-segment-received-2 "§ 5.5.1 Segment Parser Loop")
+ [(2)](#ref-for-dfn-initialization-segment-received-3 "Reference 2")
+ [(3)](#ref-for-dfn-initialization-segment-received-4 "Reference 3")
 - [§ 14. Byte Stream
- Formats](#ref-for-dfn-initialization-segment-received-2 "§ 14. Byte Stream Formats")
+ Formats](#ref-for-dfn-initialization-segment-received-5 "§ 14. Byte Stream Formats")
 
 [Permalink](#dfn-first-initialization-segment-received-flag)
 
@@ -9404,7 +9685,7 @@ revisions.
 
 [Permalink](#dom-audiotrack-sourcebuffer)
 [exported]
-[IDL](#webidl-935490083 "Jump to IDL declaration")
+[IDL](#webidl-195516253 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -9415,7 +9696,7 @@ revisions.
 
 [Permalink](#dom-videotrack-sourcebuffer)
 [exported]
-[IDL](#webidl-251527976 "Jump to IDL declaration")
+[IDL](#webidl-879478360 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -9426,7 +9707,7 @@ revisions.
 
 [Permalink](#dom-texttrack-sourcebuffer)
 [exported]
-[IDL](#webidl-959897060 "Jump to IDL declaration")
+[IDL](#webidl-1689117796 "Jump to IDL declaration")
 
 **Referenced in:**
 
@@ -9457,3 +9738,78 @@ revisions.
  Processing](#ref-for-byte-stream-format-specs-6 "§ 5.5.8 Coded Frame Processing")
 - [§ 14. Byte Stream
  Formats](#ref-for-byte-stream-format-specs-7 "§ 14. Byte Stream Formats")
+
+::: header-wrapper
+## C. References
+
+::: header-wrapper
+### C.1 Normative references
+
+\[dom\]
+: [DOM Standard](https://dom.spec.whatwg.org/). Anne van Kesteren.
+ WHATWG. Living Standard. URL: <https://dom.spec.whatwg.org/>
+
+\[ECMASCRIPT\]
+: [ECMAScript Language
+ Specification](https://tc39.es/ecma262/multipage/). Ecma
+ International. URL: <https://tc39.es/ecma262/multipage/>
+
+\[FILEAPI\]
+: [File API](https://www.w3.org/TR/FileAPI/). Marijn Kruisselbrink.
+ W3C. 4 June 2026. W3C Working Draft. URL:
+ <https://www.w3.org/TR/FileAPI/>
+
+\[HTML\]
+: [HTML Standard](https://html.spec.whatwg.org/multipage/). Anne van
+ Kesteren; Domenic Denicola; Dominic Farolino; Ian Hickson; Philip
+ Jägenstedt; Simon Pieters. WHATWG. Living Standard. URL:
+ <https://html.spec.whatwg.org/multipage/>
+
+\[infra\]
+: [Infra Standard](https://infra.spec.whatwg.org/). Anne van Kesteren;
+ Domenic Denicola. WHATWG. Living Standard. URL:
+ <https://infra.spec.whatwg.org/>
+
+\[MSE-REGISTRY\]
+: [Media Source Extensions™ Byte Stream Format
+ Registry](https://w3c.github.io/mse-byte-stream-format-registry/).
+ Matthew Wolenetz; Jerry Smith; Aaron Colwell. W3C. URL:
+ <https://w3c.github.io/mse-byte-stream-format-registry/>
+
+\[RFC2119\]
+: [Key words for use in RFCs to Indicate Requirement
+ Levels](https://www.rfc-editor.org/info/rfc2119/). S. Bradner. IETF.
+ March 1997. Best Current Practice. URL:
+ <https://www.rfc-editor.org/info/rfc2119/>
+
+\[RFC8174\]
+: [Ambiguity of Uppercase vs Lowercase in RFC 2119 Key
+ Words](https://www.rfc-editor.org/info/rfc8174/). B. Leiba. IETF.
+ May 2017. Best Current Practice. URL:
+ <https://www.rfc-editor.org/info/rfc8174/>
+
+\[WEBIDL\]
+: [Web IDL Standard](https://webidl.spec.whatwg.org/). Edgar Chen;
+ Timothy Gu. WHATWG. Living Standard. URL:
+ <https://webidl.spec.whatwg.org/>
+
+::: header-wrapper
+### C.2 Informative references
+
+\[INBANDTRACKS\]
+: [Sourcing In-band Media Resource Tracks from Media Containers into
+ HTML](https://dev.w3.org/html5/html-sourcing-inband-tracks/). Silvia
+ Pfeiffer; Bob Lund. W3C. 26 April 2015. Unofficial Draft. URL:
+ <https://dev.w3.org/html5/html-sourcing-inband-tracks/>
+
+\[MEDIA-PLAYBACK-QUALITY\]
+: [Media Playback
+ Quality](https://w3c.github.io/media-playback-quality/). Mounir
+ Lamouri; Chris Cunningham. W3C. W3C Editor\'s Draft. URL:
+ <https://w3c.github.io/media-playback-quality/>
+
+\[url\]
+: [URL Standard](https://url.spec.whatwg.org/). Anne van Kesteren.
+ WHATWG. Living Standard. URL: <https://url.spec.whatwg.org/>
+
+[[↑]](#title)

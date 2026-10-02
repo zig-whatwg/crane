@@ -4,13 +4,13 @@ height="48" width="72"}](https://www.w3.org/)
 
 # WebDriver
 
-[W3C Working Draft](https://www.w3.org/standards/types#WD) 28 October
-2025
+[W3C Editor\'s Draft](https://www.w3.org/standards/types#ED) 09 July
+2026
 
 More details about this document
 
 This version:
-: [https://www.w3.org/TR/2025/WD-webdriver2-20251028/](https://www.w3.org/TR/2025/WD-webdriver2-20251028/)
+: [https://w3c.github.io/webdriver/](https://w3c.github.io/webdriver/)
 
 Latest published version:
 : <https://www.w3.org/TR/webdriver2/>
@@ -41,7 +41,7 @@ Feedback:
 Channel
 : [#webdriver on irc.w3.org](https://www.w3.org/wiki/IRC)
 
-[Copyright](https://www.w3.org/policies/#copyright) © 2025 [World Wide
+[Copyright](https://www.w3.org/policies/#copyright) © 2026 [World Wide
 Web Consortium](https://www.w3.org/). [W3C]^®^
 [liability](https://www.w3.org/policies/#Legal_Disclaimer),
 [trademark](https://www.w3.org/policies/#W3C_Trademarks) and [permissive
@@ -73,11 +73,11 @@ of this technical report can be found in the [[W3C] standards and drafts
 index](https://www.w3.org/TR/).*
 
 This document was published by the [Browser Testing and Tools Working
-Group](https://www.w3.org/groups/wg/browser-tools-testing) as a Working
-Draft using the [Recommendation
-track](https://www.w3.org/policies/process/20250818/#recs-and-notes).
+Group](https://www.w3.org/groups/wg/browser-tools-testing) as an
+Editor\'s Draft.
 
-Publication as a Working Draft does not imply endorsement by [W3C] and its Members.
+Publication as an Editor\'s Draft does not imply endorsement by
+[W3C] and its Members.
 
 This is a draft document and may be updated, replaced, or obsoleted by
 other documents at any time. It is inappropriate to cite this document
@@ -240,16 +240,19 @@ Document](https://www.w3.org/policies/process/20250818/).
  Screenshot](#take-element-screenshot)
 20. [18. Print](#print)
  1. [18.1 Print Page](#print-page)
-21. [A. Privacy](#privacy)
-22. [B. Security](#security)
-23. [C. Element displayedness](#element-displayedness)
-24. [D. Acknowledgements](#acknowledgements)
-25. [E. Index](#index)
+21. [19. Appendices](#appendices)
+ 1. [19.1 External
+ Specifications](#external-specifications)
+22. [A. Privacy](#privacy)
+23. [B. Security](#security)
+24. [C. Element displayedness](#element-displayedness)
+25. [D. Acknowledgements](#acknowledgements)
+26. [E. Index](#index)
  1. [E.1 Terms defined by this
  specification](#index-defined-here)
  2. [E.2 Terms defined by
  reference](#index-defined-elsewhere)
-26. [F. References](#references)
+27. [F. References](#references)
  1. [F.1 Normative references](#normative-references)
 
 ::: header-wrapper
@@ -462,7 +465,8 @@ If the [intermediary
 node](#dfn-intermediary-nodes) is a multiplexer that manages multiple
 [endpoint nodes](#dfn-endpoint-node), this might indicate
 its ability to purvey more
-[sessions](#dfn-sessions), for example if it has hit its maximum capacity.
+[sessions](#dfn-webdriver-session), for example if it has hit its maximum
+capacity.
 
 ::: header-wrapper
 ## 6. Protocol
@@ -615,7 +619,8 @@ end](#dfn-remote-ends) must run the following steps:
  [Status](#dfn-status)
  [commands](#dfn-commands) and any [extension
  commands](#dfn-extension-commands) which do not operate on a
- particular [session](#dfn-sessions).
+ particular
+ [session](#dfn-webdriver-session).
  ::::
 
  1. Let `session id` be
@@ -640,7 +645,8 @@ end](#dfn-remote-ends) must run the following steps:
  end](#dfn-remote-ends)\'s [request
  queue](#dfn-request-queue) to run the following steps:
 
- 1. If [session](#dfn-sessions) is no longer in the list of
+ 1. If
+ [session](#dfn-webdriver-session) is no longer in the list of
  [active
  sessions](#dfn-active-sessions), then [send an
  error](#dfn-send-an-error) with [error
@@ -944,7 +950,8 @@ object bearing three, and sometimes four, fields:
 [Example 3](#example-3)
 
 A `GET` request to `/session/1234/url`, where `1234` is not the [session
-id](#dfn-session-id) of a [session](#dfn-sessions) would return an [HTTP
+id](#dfn-session-id) of a
+[session](#dfn-webdriver-session) would return an [HTTP
 response](#dfn-http-response) with the status 404 and a body of the form:
 
 ```
@@ -994,7 +1001,7 @@ code](#dfn-error-code).
  [invalid cookie domain] 400 `invalid cookie domain` An illegal attempt was made to set a cookie under a different domain than the current page.
  [invalid element state] 400 `invalid element state` A [command](#dfn-commands) could not be completed because the element is in an invalid state, e.g. attempting to [clear](#dfn-element-clear) an element that isn\'t both [editable](#dfn-editable) and [resettable](#dfn-resettable-elements).
  [invalid selector] 400 `invalid selector` Argument was an invalid selector.
- [invalid session id] 404 `invalid session id` Occurs if the given [session id](#dfn-session-id) is not in the list of [active sessions](#dfn-active-sessions), meaning the [session](#dfn-sessions) either does not exist or that it\'s not active.
+ [invalid session id] 404 `invalid session id` Occurs if the given [session id](#dfn-session-id) is not in the list of [active sessions](#dfn-active-sessions), meaning the [session](#dfn-webdriver-session) either does not exist or that it\'s not active.
  [javascript error] 500 `javascript error` An error occurred while executing JavaScript supplied by the user.
  [move target out of bounds] 500 `move target out of bounds` The target for mouse interaction is not in the browser\'s viewport and cannot be brought into that viewport.
  [no such alert] 404 `no such alert` An attempt was made to operate on a modal dialog when one was not open.
@@ -1004,7 +1011,7 @@ code](#dfn-error-code).
  [no such window] 404 `no such window` A [command](#dfn-commands) to switch to a window could not be satisfied because the window could not be found.
  [no such shadow root] 404 `no such shadow root` The element does not have a shadow root.
  [script timeout error] 500 `script timeout` A script did not complete before its timeout expired.
- [session not created] 500 `session not created` A new [session](#dfn-sessions) could not be created.
+ [session not created] 500 `session not created` A new [session](#dfn-webdriver-session) could not be created.
  [stale element reference] 404 `stale element reference` A [command](#dfn-commands) failed because the referenced [element](https://dom.spec.whatwg.org/#concept-element) is no longer attached to the DOM.
  [detached shadow root] 404 `detached shadow root` A [command](#dfn-commands) failed because the referenced [shadow root](#dfn-shadow-roots) is no longer attached to the DOM.
  [timeout] 500 `timeout` An operation did not complete before its timeout expired.
@@ -1062,7 +1069,8 @@ identifier.
 If the [extension command URI
 Template](#dfn-extension-command-uri-template) includes a variable named
 `session id`, the value of this variable will be used to
-define the [session](#dfn-sessions) during command processing.
+define the
+[session](#dfn-webdriver-session) during command processing.
 
 [Example 4](#example-4)
 
@@ -1162,7 +1170,7 @@ end](#dfn-local-ends) may use capabilities to define which features it
 requires the [remote end](#dfn-remote-ends) to satisfy when creating a [new
 session](#dfn-new-sessions). Likewise, the [remote
 end](#dfn-remote-ends) uses capabilities to describe the full feature set for
-a [session](#dfn-sessions).
+a [session](#dfn-webdriver-session).
 
 The following [table of standard
 capabilities] enumerates the capabilities each
@@ -1184,17 +1192,17 @@ capabilities with a \"`moz:`\" prefix:
 ```
 
  Capability Key Value Type Description
- -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- --------------------------------- -------------------------------------------------------------------------------- --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- --------------------------------- -------------------------------------------------------------------------------- --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Browser name \"`browserName`\" string Identifies the user agent.
  Browser version \"`browserVersion`\" string Identifies the version of the user agent.
  [Platform name] \"`platformName`\" string Identifies the operating system of the [endpoint node](#dfn-endpoint-node).
- [Accept insecure TLS certificates] \"`acceptInsecureCerts`\" boolean Indicates whether untrusted and self-signed TLS certificates are implicitly trusted on [navigation](#dfn-navigating) for the duration of the [session](#dfn-sessions).
- [Page load strategy] \"`pageLoadStrategy`\" string Defines the [session](#dfn-sessions)\'s [page load strategy](#dfn-page-load-strategy).
- Proxy configuration \"`proxy`\" JSON [Object](#dfn-object) Defines the [session](#dfn-sessions)\'s [proxy configuration](#dfn-proxy-configuration).
+ [Accept insecure TLS certificates] \"`acceptInsecureCerts`\" boolean Indicates whether untrusted and self-signed TLS certificates are implicitly trusted on [navigation](#dfn-navigating) for the duration of the [session](#dfn-webdriver-session).
+ [Page load strategy] \"`pageLoadStrategy`\" string Defines the [session](#dfn-webdriver-session)\'s [page load strategy](#dfn-page-load-strategy).
+ Proxy configuration \"`proxy`\" JSON [Object](#dfn-object) Defines the [session](#dfn-webdriver-session)\'s [proxy configuration](#dfn-proxy-configuration).
  [Window dimensioning/positioning] \"`setWindowRect`\" boolean Indicates whether the remote end supports all of the [resizing and repositioning](#resizing-and-positioning-windows) [commands](#dfn-commands).
  [Session timeouts](#dfn-session-timeouts) \"`timeouts`\" JSON [Object](#dfn-object) Describes the [timeouts](#timeouts) imposed on certain session operations.
- [Strict file interactability](#dfn-strict-file-interactability) \"`strictFileInteractability`\" boolean Defines the [session](#dfn-sessions)\'s [strict file interactability](#dfn-strict-file-interactability).
- Unhandled prompt behavior \"`unhandledPromptBehavior`\" string Describes the [session](#dfn-sessions)\'s [user prompt handler](#dfn-user-prompt-handler). Defaults to \"`dismiss and notify`\".
+ [Strict file interactability](#dfn-strict-file-interactability) \"`strictFileInteractability`\" boolean Defines the [session](#dfn-webdriver-session)\'s [strict file interactability](#dfn-strict-file-interactability).
+ Unhandled prompt behavior \"`unhandledPromptBehavior`\" string Describes the [session](#dfn-webdriver-session)\'s [user prompt handler](#dfn-user-prompt-handler). Defaults to \"`dismiss and notify`\".
  User Agent \"`userAgent`\" string Identifies the [default User-Agent value](#dfn-default-user-agent-value) of the [endpoint node](#dfn-endpoint-node).
 
 ::: header-wrapper
@@ -1388,8 +1396,8 @@ node](#dfn-endpoint-node) must take the following steps:
 
 9. Return [success](#dfn-success) with data [`null`](#dfn-null).
 
-When required to [validate capabilities] with argument
-`capabilities`:
+When required to [validate capabilities]
+with argument `capabilities`:
 
 1. If `capabilities` is not a JSON
  [Object](#dfn-object) return an [error](#dfn-error) with [error
@@ -1821,33 +1829,34 @@ node](#dfn-endpoint-node) must take the following steps:
 A WebDriver [session] represents the
 logical connection between a [local
 end](#dfn-local-ends) and a specific [remote
-end](#dfn-remote-ends). The [session](#dfn-sessions) object holds state specific to that
+end](#dfn-remote-ends). The
+[session](#dfn-webdriver-session) object holds state specific to that
 connection.
 
 An [intermediary
 node](#dfn-intermediary-nodes) will maintain an [associated
 session] for each active
-[session](#dfn-sessions). This is the
-[session](#dfn-sessions) on the
+[session](#dfn-webdriver-session). This is the
+[session](#dfn-webdriver-session) on the
 [upstream](#dfn-upstream) neighbor that is created when the [intermediary
 node](#dfn-intermediary-nodes) executes the [New
 Session](#dfn-new-sessions) [command](#dfn-commands). Closing a
-[session](#dfn-sessions) on an [intermediary
+[session](#dfn-webdriver-session) on an [intermediary
 node](#dfn-intermediary-nodes) will also [close the
 session](#dfn-close-the-session) of the [associated
 session](#dfn-associated-session).
 
-A [session](#dfn-sessions) has a [session ID], which is the string
+A [session](#dfn-webdriver-session) has a [session ID], which is the string
 representation of a [UUID](#dfn-uuid) used to uniquely identify the session. This is set when
 creating the session.
 
-A [session](#dfn-sessions) has a boolean [HTTP flag] which is set when
-the session is created. A session with this flag set is an [HTTP
+A [session](#dfn-webdriver-session) has a boolean [HTTP flag] which is set
+when the session is created. A session with this flag set is an [HTTP
 session].
 
 A [remote end](#dfn-remote-ends) has an associated list of [active
 sessions], which is a list of all
-[session](#dfn-sessions)s that are currently started.
+[session](#dfn-webdriver-session)s that are currently started.
 
 A [remote end](#dfn-remote-ends) has an associated list of [active HTTP
 sessions], which is a list of
@@ -1884,8 +1893,8 @@ An [HTTP session](#dfn-http-session) has an associated [strict file
 interactability] state which is a boolean. This is
 initially set to false.
 
-A [session](#dfn-sessions) has an associated [browsing context input state
-map], which is a [weak
+A [session](#dfn-webdriver-session) has an associated [browsing context input
+state map], which is a [weak
 map](#dfn-weak-map) with [top-level browsing
 contexts](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-browsing-context) as keys, and [input
 state](#dfn-input-state) objects as values. This is initially set to an empty
@@ -1933,7 +1942,7 @@ flags](#dfn-session-configuration-flags) `flags`:
  UUID](#dfn-generating-a-uuid).
 
 2. Let `session` be a new
- [session](#dfn-sessions) with [session
+ [session](#dfn-webdriver-session) with [session
  ID](#dfn-session-id) `session id`, and [HTTP
  flag](#dfn-http-flag) `flags` contains \"`http`\".
 
@@ -1987,7 +1996,7 @@ flags](#dfn-session-configuration-flags) `flags`:
  \"`pageLoadStrategy`\" from `capabilities`.
 
  If `strategy` is a string, set the
- [session](#dfn-sessions)\'s [page loading
+ [session](#dfn-webdriver-session)\'s [page loading
  strategy](#dfn-page-loading-strategy) to `strategy`.
  Otherwise, set the [page loading
  strategy](#dfn-page-loading-strategy) to *normal* and [set a
@@ -1998,7 +2007,7 @@ flags](#dfn-session-configuration-flags) `flags`:
  getting property \"`strictFileInteractability`\" from
  `capabilities`. If
  `strictFileInteractability` is a boolean, set
- [session](#dfn-sessions)\'s [strict file
+ [session](#dfn-webdriver-session)\'s [strict file
  interactability](#dfn-strict-file-interactability) to
  `strictFileInteractability`.
 
@@ -2082,10 +2091,12 @@ To [close the session], given `session` a
  [error](#dfn-error), otherwise return
  [success](#dfn-success) with data [`null`](#dfn-null).
 
-Closing a [session](#dfn-sessions) might cause the associated browser process to be
-killed. It is assumed that any implementation-specific cleanup steps are
-performed *after* the response has been sent back to the client so that
-the [connection](#dfn-connection) is not prematurely closed.
+Closing a
+[session](#dfn-webdriver-session) might cause the associated browser process
+to be killed. It is assumed that any implementation-specific cleanup
+steps are performed *after* the response has been sent back to the
+client so that the
+[connection](#dfn-connection) is not prematurely closed.
 
 ::: header-wrapper
 ### 8.2 [New Session]
@@ -2097,7 +2108,7 @@ the [connection](#dfn-connection) is not prematurely closed.
 
 The [New Session](#dfn-new-sessions)
 [command](#dfn-commands) creates a new WebDriver
-[session](#dfn-sessions) with the [endpoint
+[session](#dfn-webdriver-session) with the [endpoint
 node](#dfn-endpoint-node). If the creation fails, a [session not
 created](#dfn-session-not-created) [error](#dfn-error) is returned.
 
@@ -2195,7 +2206,7 @@ steps](#dfn-remote-end-steps), given `session`,
  [remote ends](#dfn-remote-ends) according to the rest of this
  algorithm. If an [error](#dfn-error) is not returned, the [intermediary
  node](#dfn-intermediary-nodes) must retain a reference to the
- [session](#dfn-sessions) created on the
+ [session](#dfn-webdriver-session) created on the
  [upstream](#dfn-upstream) node as the [associated
  session](#dfn-associated-session) such that commands may be forwarded to
  this [associated
@@ -2460,7 +2471,7 @@ steps](#dfn-remote-end-steps), given `session`,
 
 1. Let `timeouts` be [serialize the timeouts
  configuration](#dfn-serialize-the-timeouts-configuration) with
- [session](#dfn-sessions)\'s [timeouts
+ [session](#dfn-webdriver-session)\'s [timeouts
  configuration](#dfn-timeouts-configuration)
 
 2. Return [success](#dfn-success) with data `timeouts`.
@@ -2510,7 +2521,7 @@ steps](#dfn-remote-end-steps), given `session`,
 ## 10. Navigation
 
 The [commands](#dfn-commands) in this section allow navigation of the
-[session](#dfn-sessions)\'s [current top-level browsing
+[session](#dfn-webdriver-session)\'s [current top-level browsing
 context](#dfn-current-top-level-browsing-context) to new URLs and introspection of the
 document currently loaded in this [browsing
 context](#dfn-browsing-contexts).
@@ -2666,7 +2677,8 @@ Otherwise
  ------------- ----------------------------------------
 
 The command causes the user agent to
-[navigate](#dfn-navigating) the [session](#dfn-sessions)\'s [current top-level browsing
+[navigate](#dfn-navigating) the
+[session](#dfn-webdriver-session)\'s [current top-level browsing
 context](#dfn-current-top-level-browsing-context) to a new location.
 
 If the [remote end](#dfn-remote-ends)\'s [accept insecure
@@ -2678,8 +2690,8 @@ are to hinder navigation to the requested address.
 
 To navigate the [current top-level browsing
 context](#dfn-current-top-level-browsing-context) of the
-[session](#dfn-sessions) with ID *1* to `https://example.com`, the [local
-end](#dfn-local-ends) would POST to */session/1/url* with the body:
+[session](#dfn-webdriver-session) with ID *1* to `https://example.com`, the
+[local end](#dfn-local-ends) would POST to */session/1/url* with the body:
 
 ``` {aria-busy="false"}
 {"url": "https://example.com"}
@@ -2712,7 +2724,7 @@ steps](#dfn-remote-end-steps), given `session`,
  prompts](#dfn-handle-any-user-prompts) with `session`.
 
 5. Let `timeout` be
- [session](#dfn-sessions)\'s [session
+ [session](#dfn-webdriver-session)\'s [session
  timeouts](#dfn-session-timeouts) [page load
  timeout](#dfn-page-load-timeout).
 
@@ -3683,7 +3695,8 @@ steps](#dfn-remote-end-steps), given `session`,
  [handle any user
  prompts](#dfn-handle-any-user-prompts) with `session`.
 
-4. If [session](#dfn-sessions)\'s [current parent browsing
+4. If
+ [session](#dfn-webdriver-session)\'s [current parent browsing
  context](#dfn-current-parent-browsing-context) is not
  [null](#dfn-null), [set the current browsing
  context](#dfn-set-the-current-browsing-context) with `session` and [current
@@ -4211,7 +4224,7 @@ property](#dfn-own-properties).
 
 The [WebDriver node id] is a globally unique string
 representing a handle to a DOM node in a specific WebDriver
-[session](#dfn-sessions).
+[session](#dfn-webdriver-session).
 
 A [weak map] is a
 [map](https://infra.spec.whatwg.org/#ordered-map) in which keys are held weakly i.e. items are removed if
@@ -4224,7 +4237,8 @@ Unlike the ECMAScript
 map](#dfn-weak-map) can participate in the full set of operations available
 for a Map.
 
-A WebDriver [session](#dfn-sessions) has a [browsing context group node
+A WebDriver
+[session](#dfn-webdriver-session) has a [browsing context group node
 map], which is a [weak
 map](#dfn-weak-map) between a [browsing context
 group](#dfn-browsing-context-group) and a [node id
@@ -4234,7 +4248,8 @@ A [node id map] is [weak
 map](#dfn-weak-map) between nodes and their corresponding [WebDriver node
 id](#dfn-webdriver-node-id).
 
-A WebDriver [session](#dfn-sessions) has a [navigable seen nodes
+A WebDriver
+[session](#dfn-webdriver-session) has a [navigable seen nodes
 map] which is a [weak
 map](#dfn-weak-map) between a
 [navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigable) and a set.
@@ -4609,7 +4624,7 @@ Because the option is a
 first second third fourth
 
 An
-[`element`](https://dom.spec.whatwg.org/#concept-element)\'s [pointer-interactable paint
+[element](https://dom.spec.whatwg.org/#concept-element) `element`\'s [pointer-interactable paint
 tree] is produced this way:
 
 1. If `element` is [not in the same
@@ -4620,14 +4635,14 @@ tree] is produced this way:
 
 2. Let `rectangles` be the
  [`DOMRect`](https://www.w3.org/TR/geometry-1/#domrect) sequence returned by calling
- [`getClientRects`](https://www.w3.org/TR/cssom-view-1/#dom-element-getclientrects)`()`.
+ [`getClientRects`](https://www.w3.org/TR/cssom-view-1/#dom-element-getclientrects)`()` on
+ `element`.
 
 3. If `rectangles` has the length of 0, return an empty
  sequence.
 
 4. Let `center point` be the [in-view center
- point](#dfn-center-point) of the first indexed element in
- `rectangles`.
+ point](#dfn-center-point) of `element`.
 
 5. Return the [elements from
  point](#dfn-paint-order) given the coordinates `center point`.
@@ -5439,17 +5454,17 @@ position] given `session` and
 
 5. Return a pair of (`x`, `y`).
 
-To determine if
-[node](https://dom.spec.whatwg.org/#concept-node) is [not in the same tree] as another
-[node](https://dom.spec.whatwg.org/#concept-node), `other`, run the following substeps:
+To determine if a
+[`Node`](https://dom.spec.whatwg.org/#node) `node` is [not in the same
+tree] as a
+[`Node`](https://dom.spec.whatwg.org/#node) `other`, run the following
+substeps:
 
-1. If the
- [node](https://dom.spec.whatwg.org/#concept-node)\'s [node
+1. If `node`\'s [node
  document](https://dom.spec.whatwg.org/#concept-node-document) is not `other`\'s [node
  document](https://dom.spec.whatwg.org/#concept-node-document), return true.
 
-2. Return true if the result of calling the
- [node](https://dom.spec.whatwg.org/#concept-node)\'s
+2. Return true if the result of calling `node`\'s
  [`compareDocumentPosition`](https://dom.spec.whatwg.org/#dom-node-comparedocumentposition)`()` with
  `other` as argument is
  [`DOCUMENT_POSITION_DISCONNECTED`](https://dom.spec.whatwg.org/#dom-node-document_position_disconnected) (1), otherwise return false.
@@ -5834,9 +5849,9 @@ steps](#dfn-remote-end-steps), given `session`,
  element](#dfn-get-a-known-element) with
  `URL variables`\[\"`element id`\"\].
 
-4. Let `qualified name` be the result of getting
- `element`\'s
- [`tagName`](https://dom.spec.whatwg.org/#dom-element-tagname) IDL attribute.
+4. Let `qualified name` be `element`\'s
+ [qualified
+ name](https://dom.spec.whatwg.org/#concept-element-qualified-name).
 
 5. Return [success](#dfn-success) with data `qualified name`.
 
@@ -6762,7 +6777,7 @@ steps](#dfn-remote-end-steps), given `session`,
  state](#dfn-file-upload-state), or false otherwise.
 
 7. If `file` is false or the
- [session](#dfn-sessions)\'s [strict file
+ [session](#dfn-webdriver-session)\'s [strict file
  interactability](#dfn-strict-file-interactability), is true run the following substeps:
 
  1. [Scroll into
@@ -7693,21 +7708,8 @@ steps](#dfn-remote-end-steps), given `session`,
  [handle any user
  prompts](#dfn-handle-any-user-prompts) with `session`.
 
-5. If `session`\'s [current browsing
- context](#dfn-current-browsing-context)\'s [document
- element](https://dom.spec.whatwg.org/#document-element) is a [cookie-averse `Document`
- object](#dfn-cookie-averse-document-object), return
- [error](#dfn-error) with [error
- code](#dfn-error-code) [invalid cookie
- domain](#dfn-invalid-cookie-domain).
-
-6. If [cookie name](#dfn-cookie-name) or [cookie
- value](#dfn-cookie-value) is [`null`](#dfn-null), [cookie
- domain](#dfn-cookie-domain) is not equal to
- `session`\'s [current browsing
- context](#dfn-current-browsing-context)\'s [active
- document](#dfn-active-document)\'s
- [domain](#dfn-domains), [cookie secure
+5. If [cookie name](#dfn-cookie-name) or [cookie
+ value](#dfn-cookie-value) is [`null`](#dfn-null), [cookie secure
  only](#dfn-cookie-secure-only) or [cookie HTTP
  only](#dfn-cookie-http-only) are not boolean types, or [cookie
  expiry
@@ -7717,6 +7719,18 @@ steps](#dfn-remote-end-steps), given `session`,
  [error](#dfn-error) with [error
  code](#dfn-error-code) [invalid
  argument](#dfn-invalid-argument).
+
+6. If `session`\'s [current browsing
+ context](#dfn-current-browsing-context)\'s [document
+ element](https://dom.spec.whatwg.org/#document-element) is a [cookie-averse `Document`
+ object](#dfn-cookie-averse-document-object) or [cookie
+ domain](#dfn-cookie-domain) is not equal to
+ `session`\'s [current browsing
+ context](#dfn-current-browsing-context)\'s [active
+ document](#dfn-active-document)\'s
+ [domain](#dfn-domains), return [error](#dfn-error) with [error
+ code](#dfn-error-code) [invalid cookie
+ domain](#dfn-invalid-cookie-domain).
 
 7. [Create a
  cookie](#dfn-creating-a-cookie) in the [cookie
@@ -8321,7 +8335,7 @@ context](#dfn-browsing-contexts) `context`, and a
 `list of events` and their properties. These steps must be
 equivalent to performing the given input device manipulations on
 `context`, such that trusted events corresponding to the
-entries in `list of events`are dispatched.
+entries in `list of events` are dispatched.
 
 The list of events is not comprehensive; in particular the default
 action of the [input
@@ -10271,7 +10285,7 @@ steps](#dfn-remote-end-steps), given `session`,
 
 3. Let `input state` be the result of [get the input
  state](#dfn-get-the-input-state) with
- [session](#dfn-sessions) and [current top-level browsing
+ [session](#dfn-webdriver-session) and [current top-level browsing
  context](#dfn-current-top-level-browsing-context).
 
 4. Let `actions options` be a new [actions
@@ -10849,15 +10863,16 @@ steps](#dfn-remote-end-steps), given `session`,
 ## 17. Screen capture
 
 Screenshots are a mechanism for providing additional visual diagnostic
-information. They work by dumping a snapshot of the [initial
-viewport](#dfn-viewport)\'s framebuffer as a lossless PNG image. It is returned
-to the [local end](#dfn-local-ends) as a Base64 encoded string.
+information. They work by dumping a snapshot of the [visual
+viewport](#dfn-visual-viewport)\'s framebuffer as a lossless PNG image. It
+is returned to the [local
+end](#dfn-local-ends) as a Base64 encoded string.
 
 WebDriver provides the [Take
 Screenshot](#dfn-take-screenshot)
 [command](#dfn-commands) to capture the [top-level browsing
-context](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-browsing-context)\'s [initial
-viewport](#dfn-viewport), and a
+context](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-browsing-context)\'s [visual
+viewport](#dfn-visual-viewport), and a
 [command](#dfn-commands) [Take Element
 Screenshot](#dfn-take-element-screenshot) for doing the same with the visible region
 of an
@@ -10869,20 +10884,22 @@ In order to [draw a bounding box from the
 framebuffer], given a
 [rectangle](#dfn-bounding-rectangle):
 
-1. If either the [initial
- viewport](#dfn-viewport)\'s width or height is 0 [CSS
+1. If either the [visual
+ viewport](#dfn-visual-viewport)\'s width or height is 0 [CSS
  pixels](#dfn-css-pixels), return [error](#dfn-error) with [error
  code](#dfn-error-code) [unable to capture
  screen](#dfn-unable-to-capture-screen).
 
-2. Let `paint width` be the [initial
- viewport](#dfn-viewport)\'s width -- [min](#dfn-min)([rectangle x
+2. Let `paint width` be the [visual
+ viewport](#dfn-visual-viewport)\'s width --
+ [min](#dfn-min)([rectangle x
  coordinate](#dfn-x-coordinate), [rectangle x
  coordinate](#dfn-x-coordinate) + [rectangle width
  dimension](#dfn-width-dimension)).
 
-3. Let `paint height` be the [initial
- viewport](#dfn-viewport)\'s height -- [min](#dfn-min)([rectangle y
+3. Let `paint height` be the [visual
+ viewport](#dfn-visual-viewport)\'s height --
+ [min](#dfn-min)([rectangle y
  coordinate](#dfn-y-coordinate), [rectangle y
  coordinate](#dfn-y-coordinate) + [rectangle height
  dimension](#dfn-height-dimension)).
@@ -11340,14 +11357,47 @@ steps](#dfn-remote-end-steps), given `session`,
 27. Return [success](#dfn-success) with data `encoded string`
 
 ::: header-wrapper
+## 19. Appendices
+
+*This section is non-normative.*
+
+::: header-wrapper
+### 19.1 External Specifications
+
+The list is not exhaustive and might not be up to date.
+
+The following external specifications define additional WebDriver
+modules:
+
+1. [Compute
+ Pressure](https://www.w3.org/TR/compute-pressure/#automation)
+2. [Custom Scheme
+ Handlers](https://html.spec.whatwg.org/multipage/system-state.html#user-agent-automation)
+3. [Device Posture
+ API](https://www.w3.org/TR/device-posture/#automation)
+4. [Federated Credential Management
+ API](https://www.w3.org/TR/fedcm/#automation)
+5. [Generic Sensor
+ API](https://www.w3.org/TR/generic-sensor/#automation)
+6. [Global Privacy Control](https://www.w3.org/TR/gpc/#automation)
+7. [Permissions](https://www.w3.org/TR/permissions/#automation-webdriver)
+8. [Reporting API](https://www.w3.org/TR/reporting-1/#automation)
+9. [Secure Payment
+ Confirmation](https://www.w3.org/TR/secure-payment-confirmation/#sctn-automation)
+10. [Storage Access
+ API](https://privacycg.github.io/storage-access/#automation)
+11. [Web
+ Authentication](https://www.w3.org/TR/webauthn-3/#sctn-automation)
+
+::: header-wrapper
 ## A. Privacy
 
 It is advisable that [remote
 ends](#dfn-remote-ends) create a new profile when [creating a new
 session](#dfn-new-sessions). This prevents potentially sensitive
 session data from being accessible to new
-[sessions](#dfn-sessions), ensuring both privacy and preventing state from
-bleeding through to the next session.
+[sessions](#dfn-webdriver-session), ensuring both privacy and preventing
+state from bleeding through to the next session.
 
 ::: header-wrapper
 ## B. Security
@@ -11363,8 +11413,9 @@ action to enable WebDriver, and that WebDriver remains disabled in
 publicly consumed versions of the user agent.
 
 To prevent arbitrary machines on the network from connecting and
-creating [sessions](#dfn-sessions), it is suggested that only connections from loopback
-devices are allowed by default.
+creating
+[sessions](#dfn-webdriver-session), it is suggested that only connections
+from loopback devices are allowed by default.
 
 The [remote end](#dfn-remote-ends) can include a configuration option to
 limit the accepted IP range allowed to connect and make requests. The
@@ -11471,14 +11522,14 @@ ARIA and related specifications
 
 : The following terms are defined in the Accessible Rich Internet
  Applications (WAI-ARIA) 1.2 specification:
- \[[wai-aria-1.2](#bib-wai-aria-1.2 "Accessible Rich Internet Applications (WAI-ARIA) 1.2")\]
+ \[[wai-aria-1.2](#bib-wai-aria-1-2 "Accessible Rich Internet Applications (WAI-ARIA) 1.2")\]
 
  - [[WAI-ARIA
  role](https://w3c.github.io/aria/#introroles)]
 
 : The following terms are defined in the Accessible Name and
  Description Computation 1.1 specification:
- \[[accname-1.1](#bib-accname-1.1 "Accessible Name and Description Computation 1.1")\]
+ \[[accname-1.1](#bib-accname-1-1 "Accessible Name and Description Computation 1.1")\]
 
  - [[Accessible
  Name](https://www.w3.org/TR/accname-1.1/#dfn-accessible-name)]
@@ -11959,6 +12010,8 @@ Styling
  \"`block`\"](https://drafts.csswg.org/cssom-view/#dom-scrollintoviewoptions-block)]
  - [[Logical scroll position
  \"`inline`\"](https://drafts.csswg.org/cssom-view/#dom-scrollintoviewoptions-inline)]
+ - [[visual
+ viewport](https://drafts.csswg.org/cssom-view/#visual-viewport)]
 : The following terms are defined in
  \[[mediaqueries-4](#bib-mediaqueries-4 "Media Queries Level 4")\]:
  - [[media
@@ -12929,7 +12982,7 @@ XPATH
  [§14.]
 - [serializeToString method](#dfn-serializing-to-string)
  [§E.]
-- [session](#dfn-sessions) [§8.]
+- [session](#dfn-webdriver-session) [§8.]
 - [session configuration
  flags](#dfn-session-configuration-flags)
  [§8.]
@@ -13092,6 +13145,8 @@ XPATH
  [§E.]
 - [Visibility state visible](#dfn-visibility-visible)
  [§E.]
+- [visual viewport](#dfn-visual-viewport)
+ [§E.]
 - [WAI-ARIA role](#dfn-wai-aria-role) [§E.]
 - [wait for an action queue
  token](#dfn-wait-for-an-action-queue-token)
@@ -13189,15 +13244,15 @@ XPATH
  `tree`)]
  - [`isTrusted` attribute (for
  `Event`)]
- - [node]
+ - [`Node` interface]
  - [node document (for `Node`)]
  - [`NodeList` interface]
+ - [qualified name (for
+ `Element`)]
  - [`querySelectorAll()` (for
  `ParentNode`)]
  - [remove]
  - [`ShadowRoot` interface]
- - [`tagName` attribute (for
- `Element`)]
  - [`textContent` attribute (for
  `Node`)]
  - [type (for `Document`)]
@@ -13284,285 +13339,6 @@ XPATH
  - [a new Promise]
  - [reject]
  - [resolve]
-
-::: header-wrapper
-## F. References
-
-::: header-wrapper
-### F.1 Normative references
-
-\[accname-1.1\]
-: [Accessible Name and Description Computation
- 1.1](https://www.w3.org/TR/accname-1.1/). Joanmarie Diggs; Bryan
- Garaventa; Michael Cooper. W3C. 18 December 2018. W3C
- Recommendation. URL: <https://www.w3.org/TR/accname-1.1/>
-
-\[CSP3\]
-: [Content Security Policy Level 3](https://www.w3.org/TR/CSP3/). Mike
- West; Antonio Sartori. W3C. 11 July 2025. W3C Working Draft. URL:
- <https://www.w3.org/TR/CSP3/>
-
-\[CSS-CASCADE-4\]
-: [CSS Cascading and Inheritance Level
- 4](https://www.w3.org/TR/css-cascade-4/). Elika Etemad; Tab Atkins
- Jr. W3C. 13 January 2022. W3C Candidate Recommendation. URL:
- <https://www.w3.org/TR/css-cascade-4/>
-
-\[CSS-DEVICE-ADAPT\]
-: [CSS Device Adaptation Module Level
- 1](https://www.w3.org/TR/css-device-adapt-1/). Rune Lillesveen;
- Florian Rivoal; Matt Rakow. W3C. 29 March 2016. W3C Working Draft.
- URL: <https://www.w3.org/TR/css-device-adapt-1/>
-
-\[CSS21\]
-: [Cascading Style Sheets Level 2 Revision 1 (CSS 2.1)
- Specification](https://www.w3.org/TR/CSS2/). Bert Bos; Tantek Çelik;
- Ian Hickson; Håkon Wium Lie. W3C. 7 June 2011. W3C Recommendation.
- URL: <https://www.w3.org/TR/CSS2/>
-
-\[CSS3-BOX\]
-: [CSS Box Model Module Level 3](https://www.w3.org/TR/css-box-3/).
- Elika Etemad. W3C. 11 April 2024. W3C Recommendation. URL:
- <https://www.w3.org/TR/css-box-3/>
-
-\[CSS3-DISPLAY\]
-: [CSS Display Module Level 3](https://www.w3.org/TR/css-display-3/).
- Elika Etemad; Tab Atkins Jr. W3C. 30 March 2023. W3C Candidate
- Recommendation. URL: <https://www.w3.org/TR/css-display-3/>
-
-\[CSS3-VALUES\]
-: [CSS Values and Units Module Level
- 3](https://www.w3.org/TR/css-values-3/). Tab Atkins Jr.; Elika
- Etemad. W3C. 22 March 2024. CRD. URL:
- <https://www.w3.org/TR/css-values-3/>
-
-\[CSSOM\]
-: [CSS Object Model (CSSOM)](https://www.w3.org/TR/cssom-1/). Daniel
- Glazman; Emilio Cobos Álvarez. W3C. 26 August 2021. W3C Working
- Draft. URL: <https://www.w3.org/TR/cssom-1/>
-
-\[CSSOM-VIEW\]
-: [CSSOM View Module](https://www.w3.org/TR/cssom-view-1/). Simon
- Fraser; Emilio Cobos Álvarez. W3C. 16 September 2025. W3C Working
- Draft. URL: <https://www.w3.org/TR/cssom-view-1/>
-
-\[DOM\]
-: [DOM Standard](https://dom.spec.whatwg.org/). Anne van Kesteren.
- WHATWG. Living Standard. URL: <https://dom.spec.whatwg.org/>
-
-\[DOM-PARSING\]
-: [DOM Parsing and Serialization](https://www.w3.org/TR/DOM-Parsing/).
- Travis Leithead. W3C. 17 May 2016. W3C Working Draft. URL:
- <https://www.w3.org/TR/DOM-Parsing/>
-
-\[ECMA-262\]
-: [ECMAScript Language
- Specification](https://tc39.es/ecma262/multipage/). Ecma
- International. URL: <https://tc39.es/ecma262/multipage/>
-
-\[EDITING\]
-: [HTML Editing
- APIs](https://dvcs.w3.org/hg/editing/raw-file/tip/editing.html). A.
- Gregor. W3C. URL:
- <https://dvcs.w3.org/hg/editing/raw-file/tip/editing.html>
-
-\[ENCODING\]
-: [Encoding Standard](https://encoding.spec.whatwg.org/). Anne van
- Kesteren. WHATWG. Living Standard. URL:
- <https://encoding.spec.whatwg.org/>
-
-\[FETCH\]
-: [Fetch Standard](https://fetch.spec.whatwg.org/). Anne van Kesteren.
- WHATWG. Living Standard. URL: <https://fetch.spec.whatwg.org/>
-
-\[fileapi\]
-: [File API](https://www.w3.org/TR/FileAPI/). Marijn Kruisselbrink.
- W3C. 4 December 2024. W3C Working Draft. URL:
- <https://www.w3.org/TR/FileAPI/>
-
-\[FULLSCREEN\]
-: [Fullscreen API Standard](https://fullscreen.spec.whatwg.org/).
- Philip Jägenstedt. WHATWG. Living Standard. URL:
- <https://fullscreen.spec.whatwg.org/>
-
-\[GEOMETRY-1\]
-: [Geometry Interfaces Module Level
- 1](https://www.w3.org/TR/geometry-1/). Simon Pieters; Chris
- Harrelson. W3C. 4 December 2018. W3C Candidate Recommendation. URL:
- <https://www.w3.org/TR/geometry-1/>
-
-\[HTML\]
-: [HTML Standard](https://html.spec.whatwg.org/multipage/). Anne van
- Kesteren; Domenic Denicola; Dominic Farolino; Ian Hickson; Philip
- Jägenstedt; Simon Pieters. WHATWG. Living Standard. URL:
- <https://html.spec.whatwg.org/multipage/>
-
-\[INFRA\]
-: [Infra Standard](https://infra.spec.whatwg.org/). Anne van Kesteren;
- Domenic Denicola. WHATWG. Living Standard. URL:
- <https://infra.spec.whatwg.org/>
-
-\[mediaqueries-4\]
-: [Media Queries Level 4](https://www.w3.org/TR/mediaqueries-4/).
- Florian Rivoal; Tab Atkins Jr. W3C. 25 December 2021. CRD. URL:
- <https://www.w3.org/TR/mediaqueries-4/>
-
-\[PAGE-VISIBILITY\]
-: [Page Visibility (Second
- Edition)](https://www.w3.org/TR/page-visibility/). Jatinder Mann;
- Arvind Jain. W3C. 29 October 2013. W3C Recommendation. URL:
- <https://www.w3.org/TR/page-visibility/>
-
-\[POINTER-EVENTS\]
-: [Pointer Events](https://www.w3.org/TR/pointerevents/). Jacob Rossi;
- Matt Brubeck. W3C. 4 April 2019. W3C Recommendation. URL:
- <https://www.w3.org/TR/pointerevents/>
-
-\[PROMISES-GUIDE\]
-: [Writing Promise-Using
- Specifications](https://www.w3.org/2001/tag/doc/promises-guide).
- Domenic Denicola. W3C. 9 November 2018. TAG Finding. URL:
- <https://www.w3.org/2001/tag/doc/promises-guide>
-
-\[RFC1928\]
-: [SOCKS Protocol Version
- 5](https://www.rfc-editor.org/rfc/rfc1928). M. Leech; M. Ganis; Y.
- Lee; R. Kuris; D. Koblas; L. Jones. IETF. March 1996. Proposed
- Standard. URL: <https://www.rfc-editor.org/rfc/rfc1928>
-
-\[RFC2397\]
-: [The \"data\" URL
- scheme](https://www.rfc-editor.org/rfc/rfc2397). L. Masinter. IETF.
- August 1998. Proposed Standard. URL:
- <https://www.rfc-editor.org/rfc/rfc2397>
-
-\[RFC3514\]
-: [The Security Flag in the IPv4
- Header](https://www.rfc-editor.org/rfc/rfc3514). S. Bellovin. IETF.
- 1 April 2003. Informational. URL:
- <https://www.rfc-editor.org/rfc/rfc3514>
-
-\[RFC4122\]
-: [A Universally Unique IDentifier (UUID) URN
- Namespace](https://www.rfc-editor.org/rfc/rfc4122). P. Leach; M.
- Mealling; R. Salz. IETF. July 2005. Proposed Standard. URL:
- <https://www.rfc-editor.org/rfc/rfc4122>
-
-\[RFC4632\]
-: [Classless Inter-domain Routing (CIDR): The Internet Address
- Assignment and Aggregation
- Plan](https://www.rfc-editor.org/rfc/rfc4632). V. Fuller; T. Li.
- IETF. August 2006. Best Current Practice. URL:
- <https://www.rfc-editor.org/rfc/rfc4632>
-
-\[RFC4648\]
-: [The Base16, Base32, and Base64 Data
- Encodings](https://www.rfc-editor.org/rfc/rfc4648). S. Josefsson.
- IETF. October 2006. Proposed Standard. URL:
- <https://www.rfc-editor.org/rfc/rfc4648>
-
-\[RFC6265\]
-: [HTTP State Management
- Mechanism](https://httpwg.org/specs/rfc6265.html). A. Barth. IETF.
- April 2011. Proposed Standard. URL:
- <https://httpwg.org/specs/rfc6265.html>
-
-\[RFC6265bis\]
-: [Cookies: HTTP State Management
- Mechanism](https://tools.ietf.org/html/draft-ietf-httpbis-rfc6265bis-05). M.
- West; J. Wilander. IETF. Draft. URL:
- <https://tools.ietf.org/html/draft-ietf-httpbis-rfc6265bis-05>
-
-\[RFC7230\]
-: [Hypertext Transfer Protocol (HTTP/1.1): Message Syntax and
- Routing](https://httpwg.org/specs/rfc7230.html). R. Fielding,
- Ed.; J. Reschke, Ed. IETF. June 2014. Proposed Standard. URL:
- <https://httpwg.org/specs/rfc7230.html>
-
-\[RFC7231\]
-: [Hypertext Transfer Protocol (HTTP/1.1): Semantics and
- Content](https://httpwg.org/specs/rfc7231.html). R. Fielding,
- Ed.; J. Reschke, Ed. IETF. June 2014. Proposed Standard. URL:
- <https://httpwg.org/specs/rfc7231.html>
-
-\[RFC7232\]
-: [Hypertext Transfer Protocol (HTTP/1.1): Conditional
- Requests](https://httpwg.org/specs/rfc7232.html). R. Fielding,
- Ed.; J. Reschke, Ed. IETF. June 2014. Proposed Standard. URL:
- <https://httpwg.org/specs/rfc7232.html>
-
-\[RFC7234\]
-: [Hypertext Transfer Protocol (HTTP/1.1):
- Caching](https://httpwg.org/specs/rfc7234.html). R. Fielding,
- Ed.; M. Nottingham, Ed.; J. Reschke, Ed. IETF. June 2014. Proposed
- Standard. URL: <https://httpwg.org/specs/rfc7234.html>
-
-\[RFC7235\]
-: [Hypertext Transfer Protocol (HTTP/1.1):
- Authentication](https://httpwg.org/specs/rfc7235.html). R. Fielding,
- Ed.; J. Reschke, Ed. IETF. June 2014. Proposed Standard. URL:
- <https://httpwg.org/specs/rfc7235.html>
-
-\[UAX29\]
-: [Unicode Text
- Segmentation](https://www.unicode.org/reports/tr29/tr29-47.html).
- Josh Hadley. Unicode Consortium. 17 August 2025. Unicode Standard
- Annex #29. URL: <https://www.unicode.org/reports/tr29/tr29-47.html>
-
-\[UAX44\]
-: [Unicode Character
- Database](https://www.unicode.org/reports/tr44/tr44-36.html). Ken
- Whistler. Unicode Consortium. 27 August 2025. Unicode Standard Annex
- #44. URL: <https://www.unicode.org/reports/tr44/tr44-36.html>
-
-\[UI-EVENTS\]
-: [UI Events](https://www.w3.org/TR/uievents/). Gary Kacmarcik; Travis
- Leithead. W3C. 7 September 2024. W3C Working Draft. URL:
- <https://www.w3.org/TR/uievents/>
-
-\[UIEVENTS-KEY\]
-: [UI Events KeyboardEvent key
- Values](https://www.w3.org/TR/uievents-key/). Travis Leithead; Gary
- Kacmarcik. W3C. 22 April 2025. W3C Recommendation. URL:
- <https://www.w3.org/TR/uievents-key/>
-
-\[Unicode\]
-: [The Unicode Standard](https://www.unicode.org/versions/latest/).
- Unicode Consortium. URL: <https://www.unicode.org/versions/latest/>
-
-\[URI-TEMPLATE\]
-: [URI Template](https://www.rfc-editor.org/rfc/rfc6570). J.
- Gregorio; R. Fielding; M. Hadley; M. Nottingham; D. Orchard. IETF.
- March 2012. Proposed Standard. URL:
- <https://www.rfc-editor.org/rfc/rfc6570>
-
-\[URL\]
-: [URL Standard](https://url.spec.whatwg.org/). Anne van Kesteren.
- WHATWG. Living Standard. URL: <https://url.spec.whatwg.org/>
-
-\[wai-aria-1.2\]
-: [Accessible Rich Internet Applications (WAI-ARIA)
- 1.2](https://www.w3.org/TR/wai-aria-1.2/). Joanmarie Diggs; James
- Nurthen; Michael Cooper; Carolyn MacLeod. W3C. 6 June 2023. W3C
- Recommendation. URL: <https://www.w3.org/TR/wai-aria-1.2/>
-
-\[WebDriver-BiDi\]
-: [WebDriver BiDi](https://www.w3.org/TR/webdriver-bidi/). James
- Graham; Alex Rudenko; Maksim Sadym. W3C. 21 October 2025. W3C
- Working Draft. URL: <https://www.w3.org/TR/webdriver-bidi/>
-
-\[WEBIDL\]
-: [Web IDL Standard](https://webidl.spec.whatwg.org/). Edgar Chen;
- Timothy Gu. WHATWG. Living Standard. URL:
- <https://webidl.spec.whatwg.org/>
-
-\[XPATH\]
-: [XML Path Language (XPath) Version
- 1.0](https://www.w3.org/TR/xpath-10/). James Clark; Steven DeRose.
- W3C. 16 November 1999. W3C Recommendation. URL:
- <https://www.w3.org/TR/xpath-10/>
-
-[[↑]](#title)
 
 [Permalink](#dfn-min)
 
@@ -13860,6 +13636,7 @@ XPATH
  [(2)](#ref-for-dfn-upstream-3 "Reference 2")
 
 [Permalink](#dfn-endpoint-node)
+[exported]
 
 **Referenced in:**
 
@@ -16148,6 +15925,7 @@ XPATH
  [(2)](#ref-for-dfn-capabilities-processing-2 "Reference 2")
 
 [Permalink](#dfn-validate-capabilities)
+[exported]
 
 **Referenced in:**
 
@@ -16165,6 +15943,7 @@ XPATH
  Session](#ref-for-dfn-merging-capabilities-2 "§ 8.2 New Session")
 
 [Permalink](#dfn-matching-capabilities)
+[exported]
 
 **Referenced in:**
 
@@ -16173,54 +15952,62 @@ XPATH
  [(2)](#ref-for-dfn-matching-capabilities-2 "Reference 2")
  [(3)](#ref-for-dfn-matching-capabilities-3 "Reference 3")
 
-[Permalink](#dfn-sessions)
+[Permalink](#dfn-webdriver-session)
+[exported]
 
 **Referenced in:**
 
-- [§ 5. Nodes](#ref-for-dfn-sessions-1 "§ 5. Nodes")
+- [§ 5. Nodes](#ref-for-dfn-webdriver-session-1 "§ 5. Nodes")
 - [§ 6.3 Processing
- model](#ref-for-dfn-sessions-2 "§ 6.3 Processing model")
- [(2)](#ref-for-dfn-sessions-3 "Reference 2")
-- [§ 6.6 Errors](#ref-for-dfn-sessions-4 "§ 6.6 Errors")
- [(2)](#ref-for-dfn-sessions-5 "Reference 2")
- [(3)](#ref-for-dfn-sessions-6 "Reference 3")
-- [§ 6.7 Extensions](#ref-for-dfn-sessions-7 "§ 6.7 Extensions")
-- [§ 7. Capabilities](#ref-for-dfn-sessions-8 "§ 7. Capabilities")
- [(2)](#ref-for-dfn-sessions-9 "Reference 2")
- [(3)](#ref-for-dfn-sessions-10 "Reference 3")
- [(4)](#ref-for-dfn-sessions-11 "Reference 4")
- [(5)](#ref-for-dfn-sessions-12 "Reference 5")
- [(6)](#ref-for-dfn-sessions-13 "Reference 6")
-- [§ 8. Sessions](#ref-for-dfn-sessions-14 "§ 8. Sessions")
- [(2)](#ref-for-dfn-sessions-15 "Reference 2")
- [(3)](#ref-for-dfn-sessions-16 "Reference 3")
- [(4)](#ref-for-dfn-sessions-17 "Reference 4")
- [(5)](#ref-for-dfn-sessions-18 "Reference 5")
- [(6)](#ref-for-dfn-sessions-19 "Reference 6")
- [(7)](#ref-for-dfn-sessions-20 "Reference 7")
- [(8)](#ref-for-dfn-sessions-21 "Reference 8")
-- [§ 8.1 Global State](#ref-for-dfn-sessions-22 "§ 8.1 Global State")
- [(2)](#ref-for-dfn-sessions-23 "Reference 2")
- [(3)](#ref-for-dfn-sessions-24 "Reference 3")
- [(4)](#ref-for-dfn-sessions-25 "Reference 4")
-- [§ 8.2 New Session](#ref-for-dfn-sessions-26 "§ 8.2 New Session")
- [(2)](#ref-for-dfn-sessions-27 "Reference 2")
-- [§ 9.1 Get Timeouts](#ref-for-dfn-sessions-28 "§ 9.1 Get Timeouts")
-- [§ 10. Navigation](#ref-for-dfn-sessions-29 "§ 10. Navigation")
-- [§ 10.1 Navigate To](#ref-for-dfn-sessions-30 "§ 10.1 Navigate To")
- [(2)](#ref-for-dfn-sessions-31 "Reference 2")
- [(3)](#ref-for-dfn-sessions-32 "Reference 3")
+ model](#ref-for-dfn-webdriver-session-2 "§ 6.3 Processing model")
+ [(2)](#ref-for-dfn-webdriver-session-3 "Reference 2")
+- [§ 6.6 Errors](#ref-for-dfn-webdriver-session-4 "§ 6.6 Errors")
+ [(2)](#ref-for-dfn-webdriver-session-5 "Reference 2")
+ [(3)](#ref-for-dfn-webdriver-session-6 "Reference 3")
+- [§ 6.7
+ Extensions](#ref-for-dfn-webdriver-session-7 "§ 6.7 Extensions")
+- [§ 7.
+ Capabilities](#ref-for-dfn-webdriver-session-8 "§ 7. Capabilities")
+ [(2)](#ref-for-dfn-webdriver-session-9 "Reference 2")
+ [(3)](#ref-for-dfn-webdriver-session-10 "Reference 3")
+ [(4)](#ref-for-dfn-webdriver-session-11 "Reference 4")
+ [(5)](#ref-for-dfn-webdriver-session-12 "Reference 5")
+ [(6)](#ref-for-dfn-webdriver-session-13 "Reference 6")
+- [§ 8. Sessions](#ref-for-dfn-webdriver-session-14 "§ 8. Sessions")
+ [(2)](#ref-for-dfn-webdriver-session-15 "Reference 2")
+ [(3)](#ref-for-dfn-webdriver-session-16 "Reference 3")
+ [(4)](#ref-for-dfn-webdriver-session-17 "Reference 4")
+ [(5)](#ref-for-dfn-webdriver-session-18 "Reference 5")
+ [(6)](#ref-for-dfn-webdriver-session-19 "Reference 6")
+ [(7)](#ref-for-dfn-webdriver-session-20 "Reference 7")
+ [(8)](#ref-for-dfn-webdriver-session-21 "Reference 8")
+- [§ 8.1 Global
+ State](#ref-for-dfn-webdriver-session-22 "§ 8.1 Global State")
+ [(2)](#ref-for-dfn-webdriver-session-23 "Reference 2")
+ [(3)](#ref-for-dfn-webdriver-session-24 "Reference 3")
+ [(4)](#ref-for-dfn-webdriver-session-25 "Reference 4")
+- [§ 8.2 New
+ Session](#ref-for-dfn-webdriver-session-26 "§ 8.2 New Session")
+ [(2)](#ref-for-dfn-webdriver-session-27 "Reference 2")
+- [§ 9.1 Get
+ Timeouts](#ref-for-dfn-webdriver-session-28 "§ 9.1 Get Timeouts")
+- [§ 10.
+ Navigation](#ref-for-dfn-webdriver-session-29 "§ 10. Navigation")
+- [§ 10.1 Navigate
+ To](#ref-for-dfn-webdriver-session-30 "§ 10.1 Navigate To")
+ [(2)](#ref-for-dfn-webdriver-session-31 "Reference 2")
+ [(3)](#ref-for-dfn-webdriver-session-32 "Reference 3")
 - [§ 11.7 Switch To Parent
- Frame](#ref-for-dfn-sessions-33 "§ 11.7 Switch To Parent Frame")
-- [§ 12. Elements](#ref-for-dfn-sessions-34 "§ 12. Elements")
- [(2)](#ref-for-dfn-sessions-35 "Reference 2")
- [(3)](#ref-for-dfn-sessions-36 "Reference 3")
+ Frame](#ref-for-dfn-webdriver-session-33 "§ 11.7 Switch To Parent Frame")
+- [§ 12. Elements](#ref-for-dfn-webdriver-session-34 "§ 12. Elements")
+ [(2)](#ref-for-dfn-webdriver-session-35 "Reference 2")
+ [(3)](#ref-for-dfn-webdriver-session-36 "Reference 3")
 - [§ 12.5.3 Element Send
- Keys](#ref-for-dfn-sessions-37 "§ 12.5.3 Element Send Keys")
+ Keys](#ref-for-dfn-webdriver-session-37 "§ 12.5.3 Element Send Keys")
 - [§ 15.8 Release
- Actions](#ref-for-dfn-sessions-38 "§ 15.8 Release Actions")
-- [§ A. Privacy](#ref-for-dfn-sessions-39 "§ A. Privacy")
-- [§ B. Security](#ref-for-dfn-sessions-40 "§ B. Security")
+ Actions](#ref-for-dfn-webdriver-session-38 "§ 15.8 Release Actions")
+- [§ A. Privacy](#ref-for-dfn-webdriver-session-39 "§ A. Privacy")
+- [§ B. Security](#ref-for-dfn-webdriver-session-40 "§ B. Security")
 
 [Permalink](#dfn-associated-session)
 
@@ -21341,13 +21128,8 @@ XPATH
  [(2)](#ref-for-dfn-viewport-2 "Reference 2")
 - [§ 12.5.1 Element
  Click](#ref-for-dfn-viewport-3 "§ 12.5.1 Element Click")
-- [§ 17. Screen capture](#ref-for-dfn-viewport-4 "§ 17. Screen capture")
- [(2)](#ref-for-dfn-viewport-5 "Reference 2")
- [(3)](#ref-for-dfn-viewport-6 "Reference 3")
- [(4)](#ref-for-dfn-viewport-7 "Reference 4")
- [(5)](#ref-for-dfn-viewport-8 "Reference 5")
 - [§ C. Element
- displayedness](#ref-for-dfn-viewport-9 "§ C. Element displayedness")
+ displayedness](#ref-for-dfn-viewport-4 "§ C. Element displayedness")
 
 [Permalink](#dfn-display)
 
@@ -21541,6 +21323,17 @@ XPATH
 
 - [§ 12.
  Elements](#ref-for-dfn-logical-scroll-position-inline-1 "§ 12. Elements")
+
+[Permalink](#dfn-visual-viewport)
+
+**Referenced in:**
+
+- [§ 17. Screen
+ capture](#ref-for-dfn-visual-viewport-1 "§ 17. Screen capture")
+ [(2)](#ref-for-dfn-visual-viewport-2 "Reference 2")
+ [(3)](#ref-for-dfn-visual-viewport-3 "Reference 3")
+ [(4)](#ref-for-dfn-visual-viewport-4 "Reference 4")
+ [(5)](#ref-for-dfn-visual-viewport-5 "Reference 5")
 
 [Permalink](#dfn-media-type)
 
@@ -21997,14 +21790,12 @@ XPATH
 - [§ 15.4
  Ticks](#ref-for-index-term-istrusted-attribute-for-event-1 "§ 15.4 Ticks")
 
-[Permalink](https://dom.spec.whatwg.org/#concept-node)
+[Permalink](https://dom.spec.whatwg.org/#node)
 
 **Referenced in:**
 
-- [§ 12.4 State](#ref-for-index-term-node-1 "§ 12.4 State")
- [(2)](#ref-for-index-term-node-2 "Reference 2")
- [(3)](#ref-for-index-term-node-3 "Reference 3")
- [(4)](#ref-for-index-term-node-4 "Reference 4")
+- [§ 12.4 State](#ref-for-index-term-node-interface-1 "§ 12.4 State")
+ [(2)](#ref-for-index-term-node-interface-2 "Reference 2")
 
 [Permalink](https://dom.spec.whatwg.org/#concept-node-document)
 
@@ -22030,6 +21821,13 @@ XPATH
  XPath](#ref-for-index-term-nodelist-interface-3 "§ 12.3.1.5 XPath")
 - [§ 13.2 Executing
  Script](#ref-for-index-term-nodelist-interface-4 "§ 13.2 Executing Script")
+
+[Permalink](https://dom.spec.whatwg.org/#concept-element-qualified-name)
+
+**Referenced in:**
+
+- [§ 12.4.6 Get Element Tag
+ Name](#ref-for-index-term-qualified-name-for-element-1 "§ 12.4.6 Get Element Tag Name")
 
 [Permalink](https://dom.spec.whatwg.org/#dom-parentnode-queryselectorall)
 
@@ -22058,13 +21856,6 @@ XPATH
  [(2)](#ref-for-index-term-shadowroot-interface-2 "Reference 2")
 - [§ 13.2 Executing
  Script](#ref-for-index-term-shadowroot-interface-3 "§ 13.2 Executing Script")
-
-[Permalink](https://dom.spec.whatwg.org/#dom-element-tagname)
-
-**Referenced in:**
-
-- [§ 12.4.6 Get Element Tag
- Name](#ref-for-index-term-tagname-attribute-for-element-1 "§ 12.4.6 Get Element Tag Name")
 
 [Permalink](https://dom.spec.whatwg.org/#dom-node-textcontent)
 
@@ -22614,3 +22405,282 @@ XPATH
  Script](#ref-for-index-term-resolve-1 "§ 13.2.1 Execute Script")
 - [§ 13.2.2 Execute Async
  Script](#ref-for-index-term-resolve-2 "§ 13.2.2 Execute Async Script")
+
+::: header-wrapper
+## F. References
+
+::: header-wrapper
+### F.1 Normative references
+
+\[accname-1.1\]
+: [Accessible Name and Description Computation
+ 1.1](https://www.w3.org/TR/accname-1.1/). Joanmarie Diggs; Bryan
+ Garaventa; Michael Cooper. W3C. 18 December 2018. W3C
+ Recommendation. URL: <https://www.w3.org/TR/accname-1.1/>
+
+\[CSP3\]
+: [Content Security Policy Level 3](https://www.w3.org/TR/CSP3/). Mike
+ West; Antonio Sartori. W3C. 5 May 2026. W3C Working Draft. URL:
+ <https://www.w3.org/TR/CSP3/>
+
+\[CSS-CASCADE-4\]
+: [CSS Cascading and Inheritance Level
+ 4](https://www.w3.org/TR/css-cascade-4/). Elika Etemad; Tab Atkins
+ Jr. W3C. 13 January 2022. W3C Candidate Recommendation. URL:
+ <https://www.w3.org/TR/css-cascade-4/>
+
+\[CSS-DEVICE-ADAPT\]
+: [CSS Device Adaptation Module Level
+ 1](https://www.w3.org/TR/css-device-adapt-1/). Rune Lillesveen;
+ Florian Rivoal; Matt Rakow. W3C. 29 March 2016. W3C Working Draft.
+ URL: <https://www.w3.org/TR/css-device-adapt-1/>
+
+\[CSS21\]
+: [Cascading Style Sheets Level 2 Revision 1 (CSS 2.1)
+ Specification](https://www.w3.org/TR/CSS2/). Bert Bos; Tantek Çelik;
+ Ian Hickson; Håkon Wium Lie. W3C. 7 June 2011. W3C Recommendation.
+ URL: <https://www.w3.org/TR/CSS2/>
+
+\[CSS3-BOX\]
+: [CSS Box Model Module Level 3](https://www.w3.org/TR/css-box-3/).
+ Elika Etemad. W3C. 11 April 2024. W3C Recommendation. URL:
+ <https://www.w3.org/TR/css-box-3/>
+
+\[CSS3-DISPLAY\]
+: [CSS Display Module Level 3](https://www.w3.org/TR/css-display-3/).
+ Tab Atkins Jr.; Elika Etemad. W3C. 5 June 2026. CRD. URL:
+ <https://www.w3.org/TR/css-display-3/>
+
+\[CSS3-VALUES\]
+: [CSS Values and Units Module Level
+ 3](https://www.w3.org/TR/css-values-3/). Tab Atkins Jr.; Elika
+ Etemad. W3C. 22 March 2024. CRD. URL:
+ <https://www.w3.org/TR/css-values-3/>
+
+\[CSSOM\]
+: [CSS Object Model (CSSOM)](https://www.w3.org/TR/cssom-1/). Daniel
+ Glazman; Emilio Cobos Álvarez. W3C. 26 August 2021. W3C Working
+ Draft. URL: <https://www.w3.org/TR/cssom-1/>
+
+\[CSSOM-VIEW\]
+: [CSSOM View Module](https://www.w3.org/TR/cssom-view-1/). Simon
+ Fraser; Emilio Cobos Álvarez. W3C. 16 September 2025. W3C Working
+ Draft. URL: <https://www.w3.org/TR/cssom-view-1/>
+
+\[dom\]
+: [DOM Standard](https://dom.spec.whatwg.org/). Anne van Kesteren.
+ WHATWG. Living Standard. URL: <https://dom.spec.whatwg.org/>
+
+\[DOM-PARSING\]
+: [DOM Parsing and Serialization](https://www.w3.org/TR/DOM-Parsing/).
+ Travis Leithead. W3C. 17 May 2016. W3C Working Draft. URL:
+ <https://www.w3.org/TR/DOM-Parsing/>
+
+\[ECMA-262\]
+: [ECMAScript Language
+ Specification](https://tc39.es/ecma262/multipage/). Ecma
+ International. URL: <https://tc39.es/ecma262/multipage/>
+
+\[EDITING\]
+: [HTML Editing
+ APIs](https://dvcs.w3.org/hg/editing/raw-file/tip/editing.html). A.
+ Gregor. W3C. URL:
+ <https://dvcs.w3.org/hg/editing/raw-file/tip/editing.html>
+
+\[ENCODING\]
+: [Encoding Standard](https://encoding.spec.whatwg.org/). Anne van
+ Kesteren. WHATWG. Living Standard. URL:
+ <https://encoding.spec.whatwg.org/>
+
+\[FETCH\]
+: [Fetch Standard](https://fetch.spec.whatwg.org/). Anne van Kesteren.
+ WHATWG. Living Standard. URL: <https://fetch.spec.whatwg.org/>
+
+\[fileapi\]
+: [File API](https://www.w3.org/TR/FileAPI/). Marijn Kruisselbrink.
+ W3C. 4 June 2026. W3C Working Draft. URL:
+ <https://www.w3.org/TR/FileAPI/>
+
+\[FULLSCREEN\]
+: [Fullscreen API Standard](https://fullscreen.spec.whatwg.org/).
+ Philip Jägenstedt. WHATWG. Living Standard. URL:
+ <https://fullscreen.spec.whatwg.org/>
+
+\[GEOMETRY-1\]
+: [Geometry Interfaces Module Level
+ 1](https://www.w3.org/TR/geometry-1/). Sebastian Zartner; Yehonatan
+ Daniv. W3C. 4 December 2025. CRD. URL:
+ <https://www.w3.org/TR/geometry-1/>
+
+\[HTML\]
+: [HTML Standard](https://html.spec.whatwg.org/multipage/). Anne van
+ Kesteren; Domenic Denicola; Dominic Farolino; Ian Hickson; Philip
+ Jägenstedt; Simon Pieters. WHATWG. Living Standard. URL:
+ <https://html.spec.whatwg.org/multipage/>
+
+\[INFRA\]
+: [Infra Standard](https://infra.spec.whatwg.org/). Anne van Kesteren;
+ Domenic Denicola. WHATWG. Living Standard. URL:
+ <https://infra.spec.whatwg.org/>
+
+\[mediaqueries-4\]
+: [Media Queries Level 4](https://www.w3.org/TR/mediaqueries-4/). Tab
+ Atkins Jr.; Florian Rivoal. W3C. 19 February 2026. CRD. URL:
+ <https://www.w3.org/TR/mediaqueries-4/>
+
+\[PAGE-VISIBILITY\]
+: [Page Visibility (Second
+ Edition)](https://www.w3.org/TR/page-visibility/). Jatinder Mann;
+ Arvind Jain. W3C. 29 October 2013. W3C Recommendation. URL:
+ <https://www.w3.org/TR/page-visibility/>
+
+\[POINTER-EVENTS\]
+: [Pointer Events](https://www.w3.org/TR/pointerevents4/). Patrick
+ Lauke; Robert Flack. W3C. 1 July 2026. W3C Working Draft. URL:
+ <https://www.w3.org/TR/pointerevents4/>
+
+\[PROMISES-GUIDE\]
+: [Writing Promise-Using
+ Specifications](https://www.w3.org/2001/tag/doc/promises-guide).
+ Domenic Denicola. W3C. 9 November 2018. TAG Finding. URL:
+ <https://www.w3.org/2001/tag/doc/promises-guide>
+
+\[RFC1928\]
+: [SOCKS Protocol Version
+ 5](https://www.rfc-editor.org/info/rfc1928/). M. Leech; M. Ganis; Y.
+ Lee; R. Kuris; D. Koblas; L. Jones. IETF. March 1996. Proposed
+ Standard. URL: <https://www.rfc-editor.org/info/rfc1928/>
+
+\[RFC2397\]
+: [The \"data\" URL
+ scheme](https://www.rfc-editor.org/info/rfc2397/). L. Masinter.
+ IETF. August 1998. Proposed Standard. URL:
+ <https://www.rfc-editor.org/info/rfc2397/>
+
+\[RFC3514\]
+: [The Security Flag in the IPv4
+ Header](https://www.rfc-editor.org/info/rfc3514/). S. Bellovin.
+ IETF. 1 April 2003. Informational. URL:
+ <https://www.rfc-editor.org/info/rfc3514/>
+
+\[RFC4122\]
+: [A Universally Unique IDentifier (UUID) URN
+ Namespace](https://www.rfc-editor.org/info/rfc4122/). P. Leach; M.
+ Mealling; R. Salz. IETF. July 2005. Proposed Standard. URL:
+ <https://www.rfc-editor.org/info/rfc4122/>
+
+\[RFC4632\]
+: [Classless Inter-domain Routing (CIDR): The Internet Address
+ Assignment and Aggregation
+ Plan](https://www.rfc-editor.org/info/rfc4632/). V. Fuller; T. Li.
+ IETF. August 2006. Best Current Practice. URL:
+ <https://www.rfc-editor.org/info/rfc4632/>
+
+\[RFC4648\]
+: [The Base16, Base32, and Base64 Data
+ Encodings](https://www.rfc-editor.org/info/rfc4648/). S. Josefsson.
+ IETF. October 2006. Proposed Standard. URL:
+ <https://www.rfc-editor.org/info/rfc4648/>
+
+\[RFC6265\]
+: [HTTP State Management
+ Mechanism](https://httpwg.org/specs/rfc6265.html). A. Barth. IETF.
+ April 2011. Proposed Standard. URL:
+ <https://httpwg.org/specs/rfc6265.html>
+
+\[RFC6265bis\]
+: [Cookies: HTTP State Management
+ Mechanism](https://tools.ietf.org/html/draft-ietf-httpbis-rfc6265bis-05). M.
+ West; J. Wilander. IETF. Draft. URL:
+ <https://tools.ietf.org/html/draft-ietf-httpbis-rfc6265bis-05>
+
+\[RFC7230\]
+: [Hypertext Transfer Protocol (HTTP/1.1): Message Syntax and
+ Routing](https://httpwg.org/specs/rfc7230.html). R. Fielding,
+ Ed.; J. Reschke, Ed. IETF. June 2014. Proposed Standard. URL:
+ <https://httpwg.org/specs/rfc7230.html>
+
+\[RFC7231\]
+: [Hypertext Transfer Protocol (HTTP/1.1): Semantics and
+ Content](https://httpwg.org/specs/rfc7231.html). R. Fielding,
+ Ed.; J. Reschke, Ed. IETF. June 2014. Proposed Standard. URL:
+ <https://httpwg.org/specs/rfc7231.html>
+
+\[RFC7232\]
+: [Hypertext Transfer Protocol (HTTP/1.1): Conditional
+ Requests](https://httpwg.org/specs/rfc7232.html). R. Fielding,
+ Ed.; J. Reschke, Ed. IETF. June 2014. Proposed Standard. URL:
+ <https://httpwg.org/specs/rfc7232.html>
+
+\[RFC7234\]
+: [Hypertext Transfer Protocol (HTTP/1.1):
+ Caching](https://httpwg.org/specs/rfc7234.html). R. Fielding,
+ Ed.; M. Nottingham, Ed.; J. Reschke, Ed. IETF. June 2014. Proposed
+ Standard. URL: <https://httpwg.org/specs/rfc7234.html>
+
+\[RFC7235\]
+: [Hypertext Transfer Protocol (HTTP/1.1):
+ Authentication](https://httpwg.org/specs/rfc7235.html). R. Fielding,
+ Ed.; J. Reschke, Ed. IETF. June 2014. Proposed Standard. URL:
+ <https://httpwg.org/specs/rfc7235.html>
+
+\[UAX29\]
+: [Unicode Text
+ Segmentation](https://www.unicode.org/reports/tr29/tr29-47.html).
+ Josh Hadley. Unicode Consortium. 17 August 2025. Unicode Standard
+ Annex #29. URL: <https://www.unicode.org/reports/tr29/tr29-47.html>
+
+\[UAX44\]
+: [Unicode Character
+ Database](https://www.unicode.org/reports/tr44/tr44-36.html). Ken
+ Whistler. Unicode Consortium. 27 August 2025. Unicode Standard Annex
+ #44. URL: <https://www.unicode.org/reports/tr44/tr44-36.html>
+
+\[UI-EVENTS\]
+: [UI Events](https://www.w3.org/TR/uievents/). Xiaoqian Wu. W3C. 21
+ February 2026. W3C Working Draft. URL:
+ <https://www.w3.org/TR/uievents/>
+
+\[UIEVENTS-KEY\]
+: [UI Events KeyboardEvent key
+ Values](https://www.w3.org/TR/uievents-key/). Travis Leithead; Gary
+ Kacmarcik. W3C. 22 April 2025. W3C Recommendation. URL:
+ <https://www.w3.org/TR/uievents-key/>
+
+\[Unicode\]
+: [The Unicode Standard](https://www.unicode.org/versions/latest/).
+ Unicode Consortium. URL: <https://www.unicode.org/versions/latest/>
+
+\[URI-TEMPLATE\]
+: [URI Template](https://www.rfc-editor.org/info/rfc6570/). J.
+ Gregorio; R. Fielding; M. Hadley; M. Nottingham; D. Orchard. IETF.
+ March 2012. Proposed Standard. URL:
+ <https://www.rfc-editor.org/info/rfc6570/>
+
+\[URL\]
+: [URL Standard](https://url.spec.whatwg.org/). Anne van Kesteren.
+ WHATWG. Living Standard. URL: <https://url.spec.whatwg.org/>
+
+\[wai-aria-1.2\]
+: [Accessible Rich Internet Applications (WAI-ARIA)
+ 1.2](https://www.w3.org/TR/wai-aria-1.2/). Joanmarie Diggs; James
+ Nurthen; Michael Cooper; Carolyn MacLeod. W3C. 6 June 2023. W3C
+ Recommendation. URL: <https://www.w3.org/TR/wai-aria-1.2/>
+
+\[WebDriver-BiDi\]
+: [WebDriver BiDi](https://www.w3.org/TR/webdriver-bidi/). James
+ Graham; Alex Rudenko; Maksim Sadym. W3C. 29 June 2026. W3C Working
+ Draft. URL: <https://www.w3.org/TR/webdriver-bidi/>
+
+\[WEBIDL\]
+: [Web IDL Standard](https://webidl.spec.whatwg.org/). Edgar Chen;
+ Timothy Gu. WHATWG. Living Standard. URL:
+ <https://webidl.spec.whatwg.org/>
+
+\[XPATH\]
+: [XML Path Language (XPath) Version
+ 1.0](https://www.w3.org/TR/xpath-10/). James Clark; Steven DeRose.
+ W3C. 16 November 1999. W3C Recommendation. URL:
+ <https://www.w3.org/TR/xpath-10/>
+
+[[↑]](#title)

@@ -176,19 +176,26 @@ behaviors, and may be applied to a
 [`WorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#workerglobalscope), or
 [`WorkletGlobalScope`](https://html.spec.whatwg.org/multipage/worklets.html#workletglobalscope).
 
-Each policy has an associated [directive set], which is an
-[ordered
+Each policy has an associated [directive
+set],
+which is an [ordered
 set](https://infra.spec.whatwg.org/#ordered-set) of [directives](#directives) that define the policy's implications when applied.
 
-Each policy has an associated [disposition], which is either
-\"`enforce`\" or \"`report`\".
+Each policy has an associated
+[disposition], which is either \"`enforce`\" or \"`report`\".
 
-Each policy has an associated [source], which is either \"`header`\"
-or \"`meta`\".
+Each policy has an associated
+[source],
+which is either \"`header`\" or \"`meta`\".
 
-Each policy has an associated [self-origin], which is an
-[origin](https://html.spec.whatwg.org/#concept-origin) that is used when matching the
-[`'self'`](#grammardef-self) keyword.
+Multiple
+[policies](#content-security-policy-object) can be applied to a single resource. A [CSP
+list] is a
+[struct](https://infra.spec.whatwg.org/#struct) consisting of [policies] (a
+[list](https://infra.spec.whatwg.org/#list) of
+[policies](#content-security-policy-object)) and a [self-origin] (an
+[origin](https://html.spec.whatwg.org/#concept-origin) which is used when matching the
+[`'self'`](#grammardef-self) keyword).
 
  This is needed to facilitate the
 [`'self'`](#grammardef-self) checks of [local
@@ -199,16 +206,13 @@ settings
 object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-settings-object)'s
 [origin](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-origin).
 
-Multiple
-[policies](#content-security-policy-object) can be applied to a single resource, and are collected
-into a [list](https://infra.spec.whatwg.org/#list) of
-[policies](#content-security-policy-object) known as a [CSP list].
-
 A [CSP list](#csp-list) [contains a
 header-delivered Content Security
-Policy] if it
-[contains](https://infra.spec.whatwg.org/#list-contain) a
-[policy](#content-security-policy-object) whose [source](#policy-source) is \"`header`\".
+Policy] if its
+[policies](#csp-list-policies)
+[contain](https://infra.spec.whatwg.org/#list-contain) a
+[policy](#content-security-policy-object) whose
+[source](#content-security-policy-object-source) is \"`header`\".
 
 A [serialized CSP] is an [ASCII
 string](https://infra.spec.whatwg.org/#ascii-string) consisting of a semicolon-delimited series of
@@ -235,14 +239,13 @@ adhering to the following ABNF grammar
 To [parse a serialized CSP], given a [byte
 sequence](https://infra.spec.whatwg.org/#byte-sequence) or
 [string](https://infra.spec.whatwg.org/#string) `serialized`, a
-[source](#policy-source)
-`source`, and a
-[disposition](#policy-disposition) `disposition`, execute the following steps.
+[source](#content-security-policy-object-source) `source`, and a
+[disposition](#content-security-policy-object-disposition) `disposition`, execute the following steps.
 
 This algorithm returns a [Content Security Policy
 object](#content-security-policy-object). If `serialized` could not be parsed, the
 object's [directive
-set](#policy-directive-set) will be empty.
+set](#content-security-policy-object-directive-set) will be empty.
 
 1. If `serialized` is a [byte
  sequence](https://infra.spec.whatwg.org/#byte-sequence), then set `serialized` to be the result
@@ -251,8 +254,9 @@ set](#policy-directive-set) will be empty.
 
 2. Let `policy` be a new
  [policy](#content-security-policy-object) with an empty [directive
- set](#policy-directive-set), a [source](#policy-source) of `source`, and a
- [disposition](#policy-disposition) of `disposition`.
+ set](#content-security-policy-object-directive-set), a
+ [source](#content-security-policy-object-source) of `source`, and a
+ [disposition](#content-security-policy-object-disposition) of `disposition`.
 
 3. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `token` returned by [strictly
@@ -280,7 +284,7 @@ set](#policy-directive-set) will be empty.
  `script-SRC 'none'` and `ScRiPt-sRc 'none'` are equivalent.
 
  5. If `policy`'s [directive
- set](#policy-directive-set) contains a
+ set](#content-security-policy-object-directive-set) contains a
  [directive](#directives)
  whose [name](#directive-name) is `directive name`,
  [continue](https://infra.spec.whatwg.org/#iteration-continue).
@@ -300,7 +304,7 @@ set](#policy-directive-set) will be empty.
 
  8. [Append](https://infra.spec.whatwg.org/#set-append) `directive` to `policy`'s
  [directive
- set](#policy-directive-set).
+ set](#content-security-policy-object-directive-set).
 
 4. Return `policy`.
 
@@ -310,10 +314,9 @@ To [parse a response's Content Security
 Policies] given a
 [response](https://fetch.spec.whatwg.org/#concept-response) `response`, execute the following steps.
 
-This algorithm returns a
-[list](https://infra.spec.whatwg.org/#list) of [Content Security Policy
-objects](#content-security-policy-object). If the policies cannot be parsed, the returned list
-will be empty.
+This algorithm returns a [CSP list](#csp-list). If the policies cannot be parsed, the returned list
+will have empty
+[policies](#csp-list-policies).
 
 1. Let `policies` be an empty
  [list](https://infra.spec.whatwg.org/#list).
@@ -327,11 +330,11 @@ will be empty.
 
  1. Let `policy` be the result of
  [parsing](#abstract-opdef-parse-a-serialized-csp) `token`, with a
- [source](#policy-source) of \"`header`\", and a
- [disposition](#policy-disposition) of \"`enforce`\".
+ [source](#content-security-policy-object-source) of \"`header`\", and a
+ [disposition](#content-security-policy-object-disposition) of \"`enforce`\".
 
  2. If `policy`'s [directive
- set](#policy-directive-set) is not empty, append `policy` to
+ set](#content-security-policy-object-directive-set) is not empty, append `policy` to
  `policies`.
 
 3. [For
@@ -343,22 +346,18 @@ will be empty.
 
  1. Let `policy` be the result of
  [parsing](#abstract-opdef-parse-a-serialized-csp) `token`, with a
- [source](#policy-source) of \"`header`\", and a
- [disposition](#policy-disposition) of \"`report`\".
+ [source](#content-security-policy-object-source) of \"`header`\", and a
+ [disposition](#content-security-policy-object-disposition) of \"`report`\".
 
  2. If `policy`'s [directive
- set](#policy-directive-set) is not empty, append `policy` to
+ set](#content-security-policy-object-directive-set) is not empty, append `policy` to
  `policies`.
 
-4. [For
- each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `policies`:
-
- 1. Set `policy`'s
- [self-origin](#policy-self-origin) to `response`'s
+4. Return a [CSP list](#csp-list)
+ whose [policies](#csp-list-policies) is `policies` and
+ [self-origin](#csp-list-self-origin) is `response`'s
  [url](https://fetch.spec.whatwg.org/#concept-response-url)'s
  [origin](https://url.spec.whatwg.org/#concept-url-origin).
-
-5. Return `policies`.
 
  When [parsing a response's Content Security
 Policies](#abstract-opdef-parse-a-responses-content-security-policies), if the resulting `policies` end up
@@ -372,7 +371,7 @@ Policy](#contains-a-header-delivered-content-security-policy) algorithm.
 Each
 [policy](#content-security-policy-object) contains an [ordered
 set](https://infra.spec.whatwg.org/#ordered-set) of [directives] (its [directive
-set](#policy-directive-set)), each of which controls a specific behavior. The
+set](#content-security-policy-object-directive-set)), each of which controls a specific behavior. The
 directives defined in this document are described in detail in [§ 6
 Content Security Policy Directives](#csp-directives).
 
@@ -408,8 +407,9 @@ and adhering to the following ABNF
 number of associated algorithms:
 
 1. A [pre-request check], which takes a
- [request](https://fetch.spec.whatwg.org/#concept-request) and a
- [policy](#content-security-policy-object) as an argument, and is executed during [§ 4.1.2
+ [request](https://fetch.spec.whatwg.org/#concept-request), a
+ [policy](#content-security-policy-object), and an
+ [origin](https://html.spec.whatwg.org/#concept-origin) as an argument, and is executed during [§ 4.1.2
  Should request be blocked by Content Security
  Policy?](#should-block-request). This
  algorithm returns \"`Allowed`\" unless otherwise specified.
@@ -417,8 +417,9 @@ number of associated algorithms:
 2. A [post-request check], which
  takes a
  [request](https://fetch.spec.whatwg.org/#concept-request), a
- [response](https://fetch.spec.whatwg.org/#concept-response), and a
- [policy](#content-security-policy-object) as arguments, and is executed during [§ 4.1.3
+ [response](https://fetch.spec.whatwg.org/#concept-response), a
+ [policy](#content-security-policy-object) and an
+ [origin](https://html.spec.whatwg.org/#concept-origin) as arguments, and is executed during [§ 4.1.3
  Should response to request be blocked by Content Security
  Policy?](#should-block-response).
  This algorithm returns \"`Allowed`\" unless otherwise specified.
@@ -449,8 +450,9 @@ number of associated algorithms:
 5. A [pre-navigation check], which
  takes a
  [request](https://fetch.spec.whatwg.org/#concept-request), a navigation type string (\"`form-submission`\" or
- \"`other`\"), and a
- [policy](#content-security-policy-object) as arguments, and is executed during [§ 4.2.4
+ \"`other`\"), a
+ [policy](#content-security-policy-object) and an
+ [origin](https://html.spec.whatwg.org/#concept-origin) as arguments, and is executed during [§ 4.2.4
  Should navigation request of type be blocked by Content Security
  Policy?](#should-block-navigation-request).
  It returns \"`Allowed`\" unless otherwise specified.
@@ -461,8 +463,9 @@ number of associated algorithms:
  \"`other`\"), a
  [response](https://fetch.spec.whatwg.org/#concept-response), a
  [navigable](https://html.spec.whatwg.org/#navigable), a check type string (\"`source`\" or
- \"`response`\"), and a
- [policy](#content-security-policy-object) as arguments, and is executed during [§ 4.2.5
+ \"`response`\"), a
+ [policy](#content-security-policy-object), and an
+ [origin](https://html.spec.whatwg.org/#concept-origin) as arguments, and is executed during [§ 4.2.5
  Should navigation response to navigation request of type in target
  be blocked by Content Security
  Policy?](#should-block-navigation-response).
@@ -499,8 +502,8 @@ expression]:
 
 4. Hosts such as `example.com` (which matches any resource on the host,
  regardless of scheme) or `*.example.com` (which matches any resource
- on the host's subdomains (and any of its subdomains\' subdomains,
- and so on))
+ on the host's subdomains, and any of its subdomains\' subdomains,
+ and so on)
 
 5. Nonces such as `'nonce-ch4hvvbHDpv7xCSvXCs3BrNggHdTzxUA'` (which can
  match specific elements on a page)
@@ -536,7 +539,7 @@ expressions](#source-expression), adhering to the following ABNF grammar
  / "'report-sample'" / "'unsafe-allow-redirects'"
  / "'wasm-unsafe-eval'" / "'trusted-types-eval'"
  / "'report-sha256'" / "'report-sha384'"
- / "'report-sha512'"
+ / "'report-sha512'" / "'unsafe-webtransport-hashes'"
 
  ISSUE: Bikeshed unsafe-allow-redirects.
 
@@ -625,7 +628,7 @@ Each [violation](#violation) has a
 
 Each [violation](#violation) has a
 [disposition], which is the
-[disposition](#policy-disposition) of the
+[disposition](#content-security-policy-object-disposition) of the
 [policy](#content-security-policy-object) that has been violated.
 
 Each [violation](#violation) has
@@ -917,15 +920,18 @@ list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-
  list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-list).
 
 2. [For
- each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `CSP list`:
+ each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `CSP list`'s
+ [policies](#csp-list-policies):
 
  1. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", then skip to the next
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", then skip to the next
  `policy`.
 
  2. Let `violates` be the result of executing [§ 6.7.2.1
  Does request violate policy?](#does-request-violate-policy) on
- `request` and `policy`.
+ `request`, `policy`, and
+ `CSP list`'s
+ [self-origin](#csp-list-self-origin).
 
  3. If `violates` is not \"`Does Not Violate`\", then
  execute [§ 5.5 Report a violation](#report-violation) on the
@@ -949,15 +955,18 @@ list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-
 2. Let `result` be \"`Allowed`\".
 
 3. [For
- each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `CSP list`:
+ each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `CSP list`'s
+ [policies](#csp-list-policies):
 
  1. If `policy`'s
- [disposition](#policy-disposition) is \"`report`\", then skip to the next
+ [disposition](#content-security-policy-object-disposition) is \"`report`\", then skip to the next
  `policy`.
 
  2. Let `violates` be the result of executing [§ 6.7.2.1
  Does request violate policy?](#does-request-violate-policy) on
- `request` and `policy`.
+ `request`, `policy`, and
+ `CSP list`'s
+ [self-origin](#csp-list-self-origin).
 
  3. If `violates` is not \"`Does Not Violate`\", then:
 
@@ -987,14 +996,18 @@ list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-
 2. Let `result` be \"`Allowed`\".
 
 3. [For
- each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `CSP list`:
+ each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `CSP list`'s
+ [policies](#csp-list-policies):
 
  1. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `directive` of `policy`:
 
  1. If the result of executing `directive`'s
  [post-request
- check](#directive-post-request-check) is \"`Blocked`\", then:
+ check](#directive-post-request-check) on `request`,
+ `response`, `policy`, and
+ `CSP list`'s
+ [self-origin](#csp-list-self-origin) is \"`Blocked`\", then:
 
  1. Execute [§ 5.5 Report a violation](#report-violation) on
  the result of executing [§ 2.4.2 Create a violation
@@ -1003,7 +1016,7 @@ list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-
  `request`, and `policy`.
 
  2. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", then set
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", then set
  `result` to \"`Blocked`\".
 
  This portion of the check verifies that the page
@@ -1070,14 +1083,14 @@ object](#content-security-policy-object) `policy`, run the following steps:
  [URL](https://dom.spec.whatwg.org/#concept-document-url).
 
 11. If `policy`'s [directive
- set](#policy-directive-set) does not contain a
+ set](#content-security-policy-object-directive-set) does not contain a
  [directive](#directives) named
  \"report-to\", return.
 
 12. Let `report-to directive` be a
  [directive](#directives)
  named \"report-to\" from `policy`'s [directive
- set](#policy-directive-set).
+ set](#content-security-policy-object-directive-set).
 
 13. Let `body` be a [csp hash report
  body](#csp-hash-report-body) with `stripped document URL` as its
@@ -1089,7 +1102,7 @@ object](#content-security-policy-object) `policy`, run the following steps:
  [type](#csp-hash-report-body-type).
 
 14. [Generate and queue a
- report](https://www.w3.org/TR/reporting-1/#generate-and-queue-a-report) with the following arguments:
+ report](https://w3c.github.io/reporting/#generate-and-queue-a-report) with the following arguments:
 
  `context`
 
@@ -1211,8 +1224,9 @@ following steps in order to initialize CSP for `document`:
  each](https://infra.spec.whatwg.org/#list-iterate) `directive` of `policy`:
 
  1. Execute `directive`'s
- [initialization](#directive-initialization) algorithm on `document`, and
- assert: its returned value is \"`Allowed`\".
+ [initialization](#directive-initialization) algorithm on `document` and
+ `policy`, and assert: its returned value is
+ \"`Allowed`\".
 
 #### 4.2.2. Retrieve the [CSP list of an `object` ]
 To obtain `object`'s [CSP
@@ -1254,12 +1268,13 @@ and \"`Blocked`\" otherwise:
  each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `element`'s
  [`Document`](https://dom.spec.whatwg.org/#document)'s [global
  object](https://html.spec.whatwg.org/multipage/webappapis.html#global-object)'s [CSP
- list](#global-object-csp-list):
+ list](#global-object-csp-list)'s
+ [policies](#csp-list-policies):
 
  1. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `directive` of `policy`'s
  [directive
- set](#policy-directive-set):
+ set](#content-security-policy-object-directive-set):
 
  1. If `directive`'s [inline
  check](#directive-inline-check) returns \"`Allowed`\" when executed upon
@@ -1297,7 +1312,7 @@ and \"`Blocked`\" otherwise:
  `violation`.
 
  8. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", then set
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", then set
  `result` to \"`Blocked`\".
 
 4. Return `result`.
@@ -1312,19 +1327,24 @@ navigation, and \"`Allowed`\" otherwise:
 
 1. Let `result` be \"`Allowed`\".
 
-2. [For
- each](https://infra.spec.whatwg.org/#list-iterate) `policy` of
- `navigation request`'s [policy
+2. Let `CSP list` be `navigation request`'s
+ [policy
  container](https://fetch.spec.whatwg.org/#concept-request-policy-container)'s [CSP
- list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-list):
+ list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-list)'s
+ [policies](#csp-list-policies).
+
+3. [For
+ each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `CSP list`'s
+ [policies](#csp-list-policies):
 
  1. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `directive` of `policy`:
 
  1. If `directive`'s [pre-navigation
  check](#directive-pre-navigation-check) returns \"`Allowed`\" when executed upon
- `navigation request`, `type`, and
- `policy` skip to the next `directive`.
+ `navigation request`, `type`,
+ `policy`, and `CSP list`'s
+ [self-origin](#csp-list-self-origin) skip to the next `directive`.
 
  2. Otherwise, let `violation` be the result of
  executing [§ 2.4.1 Create a violation object for global,
@@ -1343,10 +1363,10 @@ navigation, and \"`Allowed`\" otherwise:
  `violation`.
 
  5. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", then set
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", then set
  `result` to \"`Blocked`\".
 
-3. If `result` is \"`Allowed`\", and if
+4. If `result` is \"`Allowed`\", and if
  `navigation request`'s [current
  URL](https://fetch.spec.whatwg.org/#concept-request-current-url)'s
  [scheme](https://url.spec.whatwg.org/#concept-url-scheme) is `javascript`:
@@ -1355,7 +1375,8 @@ navigation, and \"`Allowed`\" otherwise:
  each](https://infra.spec.whatwg.org/#list-iterate) `policy` of
  `navigation request`'s [policy
  container](https://fetch.spec.whatwg.org/#concept-request-policy-container)'s [CSP
- list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-list):
+ list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-list)'s
+ [policies](#csp-list-policies):
 
  1. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `directive` of
@@ -1368,7 +1389,7 @@ navigation, and \"`Allowed`\" otherwise:
 
  2. If `directive`'s [inline
  check](#directive-inline-check) returns \"`Allowed`\" when executed
- upon null, \"`navigation`\" and
+ upon null, \"`navigation`\", `policy`, and
  `navigation request`'s [current
  URL](https://fetch.spec.whatwg.org/#concept-request-current-url), skip to the next
  `directive`.
@@ -1388,10 +1409,10 @@ navigation, and \"`Allowed`\" otherwise:
  `violation`.
 
  6. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", then set
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", then set
  `result` to \"`Blocked`\".
 
-4. Return `result`.
+5. Return `result`.
 
 #### 4.2.5. Should `navigation response` to `navigation request` of `type` in `target` be blocked by Content Security Policy?
 
@@ -1409,7 +1430,8 @@ list](#csp-list)
 
 2. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `policy` of
- `response CSP list`:
+ `response CSP list`'s
+ [policies](#csp-list-policies):
 
  Some directives (like
  [frame-ancestors](#frame-ancestors)) allow a `response`'s [Content Security
@@ -1422,8 +1444,9 @@ list](#csp-list)
  check](#directive-navigation-response-check) returns \"`Allowed`\" when executed upon
  `navigation request`, `type`,
  `navigation response`, `target`,
- \"`response`\", and `policy` skip to the next
- `directive`.
+ \"`response`\", `policy`, and
+ `response CSP list`'s
+ [self-origin](#csp-list-self-origin), skip to the next `directive`.
 
  2. Otherwise, let `violation` be the result of
  executing [§ 2.4.1 Create a violation object for global,
@@ -1443,14 +1466,15 @@ list](#csp-list)
  `violation`.
 
  5. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", then set
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", then set
  `result` to \"`Blocked`\".
 
 3. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `policy` of
  `navigation request`'s [policy
  container](https://fetch.spec.whatwg.org/#concept-request-policy-container)'s [CSP
- list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-list):
+ list](https://html.spec.whatwg.org/multipage/browsers.html#policy-container-csp-list)'s
+ [policies](#csp-list-policies):
 
  Some directives in the
  `navigation request`'s context (like
@@ -1464,8 +1488,9 @@ list](#csp-list)
  check](#directive-navigation-response-check) returns \"`Allowed`\" when executed upon
  `navigation request`, `type`,
  `navigation response`, `target`,
- \"`source`\", and `policy` skip to the next
- `directive`.
+ \"`source`\", `policy`, and
+ `response CSP list`'s
+ [self-origin](#csp-list-self-origin), skip to the next `directive`.
 
  2. Otherwise, let `violation` be the result of
  executing [§ 2.4.1 Create a violation object for global,
@@ -1484,7 +1509,7 @@ list](#csp-list)
  `violation`.
 
  5. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", then set
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", then set
  `result` to \"`Blocked`\".
 
 4. Return `result`.
@@ -1501,15 +1526,16 @@ algorithm returns \"`Allowed`\" if `global` is allowed, and
 
 2. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `global`'s [CSP
- list](#global-object-csp-list):
+ list](#global-object-csp-list)'s
+ [policies](#csp-list-policies):
 
  1. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `directive` of `policy`:
 
  1. Execute `directive`'s
- [initialization](#directive-initialization) algorithm on `global`. If its
- returned value is \"`Blocked`\", then set
- `result` to \"`Blocked`\".
+ [initialization](#directive-initialization) algorithm on `global` and
+ `policy`. If its returned value is \"`Blocked`\",
+ then set `result` to \"`Blocked`\".
 
 3. Return `result`.
 
@@ -1531,13 +1557,15 @@ connections, and \"`Allowed`\" otherwise:
 
 2. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `global`'s [CSP
- list](#global-object-csp-list):
+ list](#global-object-csp-list)'s
+ [policies](#csp-list-policies):
 
  1. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `directive` of `policy`:
 
  1. If `directive`'s [webrtc pre-connect
- check](#directive-webrtc-pre-connect-check) returns \"`Allowed`\",
+ check](#directive-webrtc-pre-connect-check) returns \"`Allowed`\" when executed upon
+ `policy`,
  [continue](https://infra.spec.whatwg.org/#iteration-continue).
 
  2. Otherwise, let `violation` be the result of
@@ -1554,7 +1582,7 @@ connections, and \"`Allowed`\" otherwise:
  `violation`.
 
  5. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", then set
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", then set
  `result` to \"`Blocked`\".
 
 3. Return `result`.
@@ -1579,11 +1607,9 @@ an ECMAScript language value (`bodyArg`), this algorithm
 returns normally if string compilation is allowed, and throws an
 \"`EvalError`\" if not:
 
-1. If `compilationType` is \"`TIMER`\", then:
+1. Let `sourceString` be `codeString`.
 
- 1. Let `sourceString` be `codeString`.
-
-2. Else:
+2. If `compilationType` is not \"`TIMER`\", then:
 
  1. Let `compilationSink` be \"Function\" if
  `compilationType` is \"`FUNCTION`\", and \"eval\"
@@ -1591,57 +1617,50 @@ returns normally if string compilation is allowed, and throws an
 
  2. Let `isTrusted` be `true` if `bodyArg`
  [implements](https://webidl.spec.whatwg.org/#implements)
- [`TrustedScript`](https://www.w3.org/TR/trusted-types/#trustedscript), and `false` otherwise.
+ [`TrustedScript`](https://w3c.github.io/trusted-types/dist/spec/#trustedscript), and `false` otherwise.
 
- 3. If `isTrusted` is `true` then:
+ 3. If `isTrusted` is `true`, then:
 
- 1. If `bodyString` is not equal to
+ 1. Assert: `bodyString` is equal to
  `bodyArg`'s
- [data](https://www.w3.org/TR/trusted-types/#trustedscript-data), set `isTrusted` to `false`.
+ [data](https://w3c.github.io/trusted-types/dist/spec/#trustedscript-data).
 
- 4. If `isTrusted` is `true`, then:
-
- 1. Assert: `parameterArgs`' \[list/size=\] is equal
- to \[parameterStrings\]\'
+ 2. Assert: `parameterArgs`'
+ [size](https://infra.spec.whatwg.org/#list-size) is equal to `parameterStrings`'
  [size](https://infra.spec.whatwg.org/#list-size).
 
- 2. [For
+ 3. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `index` of [the
- range](https://infra.spec.whatwg.org/#the-range) 0 to \|parameterArgs\]\' \[list/size=\]:
+ range](https://infra.spec.whatwg.org/#the-range) 0 to `parameterArgs`'
+ [size](https://infra.spec.whatwg.org/#list-size):
 
  1. Let `arg` be
  `parameterArgs`\[`index`\].
 
  2. If `arg`
  [implements](https://webidl.spec.whatwg.org/#implements)
- [`TrustedScript`](https://www.w3.org/TR/trusted-types/#trustedscript), then:
+ [`TrustedScript`](https://w3c.github.io/trusted-types/dist/spec/#trustedscript), then:
 
- 1. if
+ 1. Assert:
  `parameterStrings`\[`index`\]
- is not equal to `arg`'s
- [data](https://www.w3.org/TR/trusted-types/#trustedscript-data), set `isTrusted` to
- `false`.
+ is equal to `arg`'s
+ [data](https://w3c.github.io/trusted-types/dist/spec/#trustedscript-data).
 
  3. Otherwise, set `isTrusted` to `false`.
 
- 5. Let `sourceToValidate` be a
- [new](https://webidl.spec.whatwg.org/#new)
- [`TrustedScript`](https://www.w3.org/TR/trusted-types/#trustedscript) object created in `realm` whose
- [data](https://www.w3.org/TR/trusted-types/#trustedscript-data) is set to `codeString` if
- `isTrusted` is `true`, and `codeString`
- otherwise.
+ 4. If `isTrusted` is `false`, then:
 
- 6. Let `sourceString` be the result of executing the
+ 1. Set `sourceString` to the result of executing the
  [get trusted type compliant
- string](https://www.w3.org/TR/trusted-types/#get-trusted-type-compliant-string) algorithm, with
- [`TrustedScript`](https://www.w3.org/TR/trusted-types/#trustedscript), `realm`,
- `sourceToValidate`, `compilationSink`, and
+ string](https://w3c.github.io/trusted-types/dist/spec/#get-trusted-type-compliant-string) algorithm, with
+ [`TrustedScript`](https://w3c.github.io/trusted-types/dist/spec/#trustedscript), `realm`,
+ `codeString`, `compilationSink`, and
  `'script'`.
 
- 7. If the algorithm throws an error, throw an
+ 2. If the algorithm throws an error, throw an
  [`EvalError`](https://webidl.spec.whatwg.org/#exceptiondef-evalerror).
 
- 8. If `sourceString` is not equal to
+ 3. If `sourceString` is not equal to
  `codeString`, throw an
  [`EvalError`](https://webidl.spec.whatwg.org/#exceptiondef-evalerror).
 
@@ -1652,7 +1671,8 @@ returns normally if string compilation is allowed, and throws an
 
 5. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `global`'s [CSP
- list](#global-object-csp-list):
+ list](#global-object-csp-list)'s
+ [policies](#csp-list-policies):
 
  1. Let `source-list` be null.
 
@@ -1673,7 +1693,7 @@ returns normally if string compilation is allowed, and throws an
 
  1. Let `trustedTypesRequired` be the result of
  executing [does sink type require trusted
- types?](https://www.w3.org/TR/trusted-types/#does-sink-type-require-trusted-types), with `realm`, `'script'`, and
+ types?](https://w3c.github.io/trusted-types/dist/spec/#does-sink-type-require-trusted-types), with `realm`, `'script'`, and
  `false`.
 
  2. If `trustedTypesRequired` is `true` and
@@ -1707,7 +1727,7 @@ returns normally if string compilation is allowed, and throws an
  `violation`.
 
  8. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", then set
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", then set
  `result` to \"`Blocked`\".
 
 6. If `result` is \"`Blocked`\", throw an `EvalError`
@@ -1736,7 +1756,8 @@ compilation is allowed, and throws a
 
 3. [For
  each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `global`'s [CSP
- list](#global-object-csp-list):
+ list](#global-object-csp-list)'s
+ [policies](#csp-list-policies):
 
  1. Let `source-list` be null.
 
@@ -1775,7 +1796,7 @@ compilation is allowed, and throws a
  `violation`.
 
  4. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", then set
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", then set
  `result` to \"`Blocked`\".
 
 4. If `result` is \"`Blocked`\", throw a
@@ -1977,7 +1998,7 @@ directive.
  \"`disposition`\"
 
  : The
- [disposition](#policy-disposition) of `violation`'s
+ [disposition](#content-security-policy-object-disposition) of `violation`'s
  [policy](#violation-policy)
 
  \"`status-code`\"
@@ -2196,13 +2217,13 @@ object](#violation-global-object) as described below:
 
  4. If `violation`'s
  [policy](#violation-policy)'s [directive
- set](#policy-directive-set) contains a
+ set](#content-security-policy-object-directive-set) contains a
  [directive](#directives)
  named \"[`report-uri`](#report-uri)\" `directive`:
 
  1. If `violation`'s
  [policy](#violation-policy)'s [directive
- set](#policy-directive-set) contains a
+ set](#content-security-policy-object-directive-set) contains a
  [directive](#directives) named
  \"[`report-to`](#report-to)\", skip the remaining substeps.
 
@@ -2301,7 +2322,7 @@ object](#violation-global-object) as described below:
 
  5. If `violation`'s
  [policy](#violation-policy)'s [directive
- set](#policy-directive-set) contains a
+ set](#content-security-policy-object-directive-set) contains a
  [directive](#directives)
  named \"[`report-to`](#report-to)\" `directive`:
 
@@ -2381,7 +2402,7 @@ object](#violation-global-object) as described below:
  object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object).
 
  3. [Generate and queue a
- report](https://www.w3.org/TR/reporting-1/#generate-and-queue-a-report) with the following arguments:
+ report](https://w3c.github.io/reporting/#generate-and-queue-a-report) with the following arguments:
 
  `context`
 
@@ -2459,7 +2480,7 @@ This directive controls
 - [destination](https://fetch.spec.whatwg.org/#concept-request-destination) is either \"`serviceworker`\", \"`sharedworker`\", or
  \"`worker`\" (which are fed to the [run a
  worker](https://html.spec.whatwg.org/multipage/workers.html#run-a-worker) algorithm for
- [`ServiceWorker`](https://www.w3.org/TR/service-workers/#serviceworker),
+ [`ServiceWorker`](https://w3c.github.io/ServiceWorker/#serviceworker),
  [`SharedWorker`](https://html.spec.whatwg.org/multipage/workers.html#sharedworker), and
  [`Worker`](https://html.spec.whatwg.org/multipage/workers.html#worker), respectively).
 
@@ -2485,8 +2506,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -2500,9 +2522,9 @@ Given a
 3. Return the result of executing the [pre-request
  check](#directive-pre-request-check) for the
  [directive](#directives)
- whose [name](#directive-name) is `name` on `request` and
- `policy`, using this directive's
- [value](#directive-value) for the comparison.
+ whose [name](#directive-name) is `name` on `request`,
+ `policy`, and `self-origin` using this
+ directive's [value](#directive-value) for the comparison.
 
 ##### 6.1.1.2. `child-src` Post-request check
 
@@ -2511,8 +2533,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -2527,8 +2550,9 @@ Given a
  check](#directive-post-request-check) for the
  [directive](#directives)
  whose [name](#directive-name) is `name` on `request`,
- `response`, and `policy`, using this
- directive's [value](#directive-value) for the comparison.
+ `response`, `policy`, and
+ `self-origin`, using this directive's
+ [value](#directive-value) for the comparison.
 
 #### 6.1.2. `connect-src`
 
@@ -2592,8 +2616,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -2604,12 +2629,30 @@ Given a
  `connect-src` and `policy` is \"`No`\", return
  \"`Allowed`\".
 
-3. If the result of executing [§ 6.7.2.5 Does request match source
- list?](#match-request-to-source-list) on `request`, this
- directive's [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+3. Let `source list` be directive's
+ [value](#directive-value).
 
-4. Return \"`Allowed`\".
+4. If `request`'s
+ [mode](https://fetch.spec.whatwg.org/#concept-request-mode) is \"`webtransport`\" and `request`'s
+ [WebTransport-hash
+ list](https://fetch.spec.whatwg.org/#request-webtransport-hash-list) [is not
+ empty](https://infra.spec.whatwg.org/#list-is-empty):
+
+ 1. If `source list`
+ [contains](https://infra.spec.whatwg.org/#list-contain) a [source
+ expression](#source-expression) which is an [ASCII
+ case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) match for the
+ [`keyword-source`](#grammardef-keyword-source)
+ \"[`'unsafe-webtransport-hashes'`](#grammardef-unsafe-webtransport-hashes)\", return \"`Allowed`\".
+
+ 2. Return \"`Blocked`\".
+
+5. If the result of executing [§ 6.7.2.5 Does request match source
+ list?](#match-request-to-source-list) on `request`,
+ `source list`, and `self-origin`, is
+ \"`Matches`\", return \"`Allowed`\".
+
+6. Return \"`Blocked`\".
 
 ##### 6.1.2.2. `connect-src` Post-request check
 
@@ -2618,8 +2661,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -2630,13 +2674,31 @@ Given a
  `connect-src` and `policy` is \"`No`\", return
  \"`Allowed`\".
 
-3. If the result of executing [§ 6.7.2.6 Does response to request match
- source list?](#match-response-to-source-list) on
- `response`, `request`, this directive's
- [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+3. Let `source list` be directive's
+ [value](#directive-value).
 
-4. Return \"`Allowed`\".
+4. If `request`'s
+ [mode](https://fetch.spec.whatwg.org/#concept-request-mode) is \"`webtransport`\" and `request`'s
+ [WebTransport-hash
+ list](https://fetch.spec.whatwg.org/#request-webtransport-hash-list) [is not
+ empty](https://infra.spec.whatwg.org/#list-is-empty):
+
+ 1. If `source list`
+ [contains](https://infra.spec.whatwg.org/#list-contain) a [source
+ expression](#source-expression) which is an [ASCII
+ case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) match for the
+ [`keyword-source`](#grammardef-keyword-source)
+ \"[`'unsafe-webtransport-hashes'`](#grammardef-unsafe-webtransport-hashes)\", return \"`Allowed`\".
+
+ 2. Return \"`Blocked`\".
+
+5. If the result of executing [§ 6.7.2.6 Does response to request match
+ source list?](#match-response-to-source-list) on
+ `response`, `request`,
+ `source list`, and `self-origin`, is
+ \"`Matches`\", return \"`Allowed`\".
+
+6. Return \"`Blocked`\".
 
 #### 6.1.3. `default-src`
 
@@ -2726,8 +2788,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -2741,9 +2804,9 @@ Given a
 3. Return the result of executing the [pre-request
  check](#directive-pre-request-check) for the
  [directive](#directives)
- whose [name](#directive-name) is `name` on `request` and
- `policy`, using this directive's
- [value](#directive-value) for the comparison.
+ whose [name](#directive-name) is `name` on `request`,
+ `policy`, and `self-origin`, using this
+ directive's [value](#directive-value) for the comparison.
 
 ##### 6.1.3.2. `default-src` Post-request check
 
@@ -2752,8 +2815,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -2768,8 +2832,9 @@ Given a
  check](#directive-post-request-check) for the
  [directive](#directives)
  whose [name](#directive-name) is `name` on `request`,
- `response`, and `policy`, using this
- directive's [value](#directive-value) for the comparison.
+ `response`, `policy`, and
+ `self-origin`, using this directive's
+ [value](#directive-value) for the comparison.
 
 ##### 6.1.3.3. `default-src` Inline Check
 
@@ -2834,8 +2899,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -2847,8 +2913,8 @@ Given a
 
 3. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`, this
- directive's [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ directive's [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -2859,8 +2925,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -2873,8 +2940,8 @@ Given a
 3. If the result of executing [§ 6.7.2.6 Does response to request match
  source list?](#match-response-to-source-list) on
  `response`, `request`, this directive's
- [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -2908,8 +2975,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -2922,8 +2990,8 @@ Given a
 
 3. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`, this
- directive's [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ directive's [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -2934,8 +3002,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -2949,8 +3018,8 @@ Given a
 3. If the result of executing [§ 6.7.2.6 Does response to request match
  source list?](#match-response-to-source-list) on
  `response`, `request`, this directive's
- [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -2989,8 +3058,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3002,8 +3072,8 @@ Given a
 
 3. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`, this
- directive's [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ directive's [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -3014,8 +3084,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3028,8 +3099,8 @@ Given a
 3. If the result of executing [§ 6.7.2.6 Does response to request match
  source list?](#match-response-to-source-list) on
  `response`, `request`, this directive's
- [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -3063,8 +3134,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3077,8 +3149,8 @@ Given a
 
 3. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`, this
- directive's [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ directive's [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -3089,8 +3161,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3104,8 +3177,8 @@ Given a
 3. If the result of executing [§ 6.7.2.6 Does response to request match
  source list?](#match-response-to-source-list) on
  `response`, `request`, this directive's
- [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -3141,8 +3214,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3155,8 +3229,8 @@ Given a
 
 3. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`, this
- directive's [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ directive's [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -3167,8 +3241,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3182,8 +3257,8 @@ Given a
 3. If the result of executing [§ 6.7.2.6 Does response to request match
  source list?](#match-response-to-source-list) on
  `response`, `request`, this directive's
- [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -3248,8 +3323,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3262,8 +3338,8 @@ Given a
 
 3. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`, this
- directive's [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ directive's [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -3274,8 +3350,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3289,8 +3366,8 @@ Given a
 3. If the result of executing [§ 6.7.2.6 Does response to request match
  source list?](#match-response-to-source-list) on
  `response`, `request`, this directive's
- [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -3391,8 +3468,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3405,7 +3483,7 @@ Given a
 
 3. Return the result of executing [§ 6.7.1.1 Script directives
  pre-request check](#script-pre-request) on `request`,
- this directive, and `policy`.
+ this directive, `policy`, and `self-origin`.
 
 ##### 6.1.10.2. `script-src` Post-request check
 
@@ -3414,8 +3492,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3428,7 +3507,8 @@ Given a
 
 3. Return the result of executing [§ 6.7.1.2 Script directives
  post-request check](#script-post-request) on `request`,
- `response`, this directive, and `policy`.
+ `response`, this directive, `policy`, and
+ `self-origin`.
 
 ##### 6.1.10.3. `script-src` Inline Check
 
@@ -3492,8 +3572,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3506,7 +3587,7 @@ Given a
 
 3. Return the result of executing [§ 6.7.1.1 Script directives
  pre-request check](#script-pre-request) on `request`,
- this directive, and `policy`.
+ this directive, `policy`, and `self-origin`.
 
 ##### 6.1.11.2. `script-src-elem` Post-request check
 
@@ -3515,8 +3596,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy` and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3529,7 +3611,8 @@ Given a
 
 3. Return the result of executing [§ 6.7.1.2 Script directives
  post-request check](#script-post-request) on `request`,
- `response`, this directive, and `policy`.
+ `response`, this directive, `policy`, and
+ `self-origin`.
 
 ##### 6.1.11.3. `script-src-elem` Inline Check
 
@@ -3622,7 +3705,7 @@ The `style-src` directive governs several things:
  [`link`](https://html.spec.whatwg.org/multipage/semantics.html#the-link-element) element.
 
  2. Stylesheet requests originating from the
- [`@import`](https://www.w3.org/TR/css-cascade-5/#at-ruledef-import) rule.
+ [`@import`](https://drafts.csswg.org/css-cascade-6/#at-ruledef-import) rule.
 
  3. Stylesheet requests originating from a `Link` HTTP response
  header field
@@ -3646,16 +3729,16 @@ The `style-src` directive governs several things:
  expression:
 
  1. [insert a CSS
- rule](https://www.w3.org/TR/cssom-1/#insert-a-css-rule)
+ rule](https://drafts.csswg.org/cssom-1/#insert-a-css-rule)
 
  2. [parse a CSS
- rule](https://www.w3.org/TR/cssom-1/#parse-a-css-rule),
+ rule](https://drafts.csswg.org/cssom-1/#parse-a-css-rule),
 
  3. [parse a CSS declaration
- block](https://www.w3.org/TR/cssom-1/#parse-a-css-declaration-block)
+ block](https://drafts.csswg.org/cssom-1/#parse-a-css-declaration-block)
 
  4. [parse a group of
- selectors](https://www.w3.org/TR/cssom-1/#parse-a-group-of-selectors)
+ selectors](https://drafts.csswg.org/cssom-1/#parse-a-group-of-selectors)
 
  This would include, for example, all invocations of CSSOM's various
  `cssText` setters and `insertRule` methods
@@ -3672,8 +3755,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3692,8 +3776,8 @@ Given a
 
 4. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`, this
- directive's [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ directive's [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 5. Return \"`Allowed`\".
 
@@ -3704,8 +3788,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3725,8 +3810,8 @@ Given a
 4. If the result of executing [§ 6.7.2.6 Does response to request match
  source list?](#match-response-to-source-list) on
  `response`, `request`, this directive's
- [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 5. Return \"`Allowed`\".
 
@@ -3781,8 +3866,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3801,8 +3887,8 @@ Given a
 
 4. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`, this
- directive's [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ directive's [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 5. Return \"`Allowed`\".
 
@@ -3813,8 +3899,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -3834,8 +3921,8 @@ Given a
 4. If the result of executing [§ 6.7.2.6 Does response to request match
  source list?](#match-response-to-source-list) on
  `response`, `request`, this directive's
- [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 5. Return \"`Allowed`\".
 
@@ -3967,7 +4054,7 @@ The [worker-src]
 directive restricts the URLs which may be loaded as a
 [`Worker`](https://html.spec.whatwg.org/multipage/workers.html#worker),
 [`SharedWorker`](https://html.spec.whatwg.org/multipage/workers.html#sharedworker), or
-[`ServiceWorker`](https://www.w3.org/TR/service-workers/#serviceworker). The syntax for the directive's name and value is
+[`ServiceWorker`](https://w3c.github.io/ServiceWorker/#serviceworker). The syntax for the directive's name and value is
 described by the following ABNF:
 
  directive-name = "worker-src"
@@ -3996,8 +4083,9 @@ This directive's [pre-request
 check](#directive-pre-request-check) is as follows:
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`:
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -4010,8 +4098,8 @@ Given a
 
 3. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`, this
- directive's [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ directive's [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -4022,8 +4110,9 @@ check](#directive-post-request-check) is as follows:
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
-[response](https://fetch.spec.whatwg.org/#concept-response) `response`, and a
-[policy](#content-security-policy-object) `policy`:
+[response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. Let `name` be the result of executing [§ 6.8.1 Get the
  effective directive for request](#effective-directive-for-a-request)
@@ -4037,8 +4126,8 @@ Given a
 3. If the result of executing [§ 6.7.2.6 Does response to request match
  source list?](#match-response-to-source-list) on
  `response`, `request`, this directive's
- [value](#directive-value), and `policy`, is \"`Does Not Match`\",
- return \"`Blocked`\".
+ [value](#directive-value), and `self-origin`, is
+ \"`Does Not Match`\", return \"`Blocked`\".
 
 4. Return \"`Allowed`\".
 
@@ -4071,18 +4160,20 @@ Given a [`URL`](https://url.spec.whatwg.org/#url) `base`, and a
 [`base`](https://html.spec.whatwg.org/multipage/semantics.html#the-base-element) element's
 [`href`](https://html.spec.whatwg.org/multipage/semantics.html#attr-base-href) attribute, and \"`Blocked`\" otherwise:
 
-1. [For
- each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `document`'s
- [global
+1. Let `CSP list` be `document`'s [global
  object](https://html.spec.whatwg.org/multipage/webappapis.html#global-object)'s [csp
- list](#global-object-csp-list):
+ list](#global-object-csp-list)
+
+2. [For
+ each](https://infra.spec.whatwg.org/#list-iterate) `policy` of `CSP list`'s
+ [policies](#csp-list-policies):
 
  1. Let `source list` be null.
 
  2. If a [directive](#directives) whose
  [name](#directive-name) is \"`base-uri`\" is present in
  `policy`'s [directive
- set](#policy-directive-set), set `source list` to that
+ set](#content-security-policy-object-directive-set), set `source list` to that
  [directive](#directives)'s
  [value](#directive-value).
 
@@ -4092,8 +4183,8 @@ Given a [`URL`](https://url.spec.whatwg.org/#url) `base`, and a
  4. If the result of executing [§ 6.7.2.7 Does url match source list
  in origin with redirect count?](#match-url-to-source-list) on
  `base`, `source list`,
- `policy`'s
- [self-origin](#policy-self-origin), and `0` is \"`Does Not Match`\":
+ `CSP list`'s
+ [self-origin](#csp-list-self-origin), and `0` is \"`Does Not Match`\":
 
  1. Let `violation` be the result of executing
  [§ 2.4.1 Create a violation object for global, policy, and
@@ -4109,13 +4200,13 @@ Given a [`URL`](https://url.spec.whatwg.org/#url) `base`, and a
  `violation`.
 
  4. If `policy`'s
- [disposition](#policy-disposition) is \"`enforce`\", return \"`Blocked`\".
+ [disposition](#content-security-policy-object-disposition) is \"`enforce`\", return \"`Blocked`\".
 
  We compare against the fallback base URL in order
  to deal correctly with things like [an iframe `srcdoc`
  `Document`](https://html.spec.whatwg.org/multipage/iframe-embed-object.html#an-iframe-srcdoc-document) which has been sandboxed into an opaque origin.
 
-2. Return \"`Allowed`\".
+3. Return \"`Allowed`\".
 
 #### 6.3.2. `sandbox`
 
@@ -4159,7 +4250,7 @@ object](https://html.spec.whatwg.org/multipage/webappapis.html#global-object) `c
 [policy](#content-security-policy-object) `policy`:
 
 1. If `policy`'s
- [disposition](#policy-disposition) is not \"`enforce`\", or `context` is
+ [disposition](#content-security-policy-object-disposition) is not \"`enforce`\", or `context` is
  not a
  [`WorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#workerglobalscope), then abort this algorithm.
 
@@ -4200,9 +4291,9 @@ directive-value = serialized-source-list
 
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a string
-`navigation type` (\"`form-submission`\" or \"`other`\"), and
-a
-[policy](#content-security-policy-object) `policy` this algorithm returns
+`navigation type` (\"`form-submission`\" or \"`other`\"), a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`, this algorithm returns
 \"`Blocked`\" if a form submission violates the `form-action`
 directive's constraints, and \"`Allowed`\" otherwise. This constitutes
 the `form-action` directive's [pre-navigation
@@ -4215,7 +4306,7 @@ check](#directive-pre-navigation-check):
  1. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`,
  this directive's
- [value](#directive-value), and a `policy`, is
+ [value](#directive-value), and `self-origin`, is
  \"`Does Not Match`\", return \"`Blocked`\".
 
 3. Return \"`Allowed`\".
@@ -4259,8 +4350,9 @@ Given a
 `navigation type` (\"`form-submission`\" or \"`other`\"), a
 [response](https://fetch.spec.whatwg.org/#concept-response) `navigation response`, a
 [navigable](https://html.spec.whatwg.org/#navigable) `target`, a string `check type`
-(\"`source`\" or \"`response`\"), and a
-[policy](#content-security-policy-object) `policy` this algorithm returns
+(\"`source`\" or \"`response`\"), a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`, this algorithm returns
 \"`Blocked`\" if one or more of the ancestors of `target`
 violate the `frame-ancestors` directive delivered with the response, and
 \"`Allowed`\" otherwise. This constitutes the `frame-ancestors`
@@ -4304,8 +4396,8 @@ check](#directive-navigation-response-check):
  3. If [§ 6.7.2.7 Does url match source list in origin with redirect
  count?](#match-url-to-source-list) returns `Does Not Match` when
  executed upon `origin`, this directive's
- [value](#directive-value), `policy`'s
- [self-origin](#policy-self-origin), and `0`, return \"`Blocked`\".
+ [value](#directive-value), `self-origin`, and `0`, return
+ \"`Blocked`\".
 
  4. Set `current` to `document`'s [node
  navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#node-navigable).
@@ -4326,7 +4418,7 @@ with a
 [policy](#content-security-policy-object) that includes a
 [directive](#directives) named
 [`frame-ancestors`](#frame-ancestors) and whose
-[disposition](#policy-disposition) is \"`enforce`\", then the
+[disposition](#content-security-policy-object-disposition) is \"`enforce`\", then the
 \``` ` ``[`X-Frame-Options`](https://html.spec.whatwg.org/multipage/speculative-loading.html#x-frame-options)`` ` ``\` header will be ignored, per HTML's
 processing model.
 
@@ -4364,7 +4456,7 @@ combination with other directives.
 
 The [`report-to`]
 directive defines a [reporting
-endpoint](https://www.w3.org/TR/reporting-1/#endpoint) to which violation reports ought to be sent
+endpoint](https://w3c.github.io/reporting/#endpoint) to which violation reports ought to be sent
 [\[REPORTING\]](#biblio-reporting "Reporting API").
 The directive's behavior is defined in [§ 5.5 Report a
 violation](#report-violation). The directive's name and value are
@@ -4405,8 +4497,9 @@ HTML.
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
 [directive](#directives)
-`directive`, and a
-[policy](#content-security-policy-object) `policy`:
+`directive`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
 1. If `request`'s
  [destination](https://fetch.spec.whatwg.org/#concept-request-destination) is
@@ -4443,7 +4536,7 @@ Given a
  4. If the result of executing [§ 6.7.2.5 Does request match source
  list?](#match-request-to-source-list) on `request`,
  `directive`'s
- [value](#directive-value), and `policy`, is
+ [value](#directive-value), and `self-origin`, is
  \"`Does Not Match`\", return \"`Blocked`\".
 
 2. Return \"`Allowed`\".
@@ -4457,8 +4550,9 @@ Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
 [response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
 [directive](#directives)
-`directive`, and a
-[policy](#content-security-policy-object) `policy`:
+`directive`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`:
 
  This check needs both `request` and
 `response` as input parameters since if
@@ -4509,7 +4603,7 @@ skipped.
  match source list?](#match-response-to-source-list) on
  `response`, `request`,
  `directive`'s
- [value](#directive-value), and `policy`, is
+ [value](#directive-value), and `self-origin`, is
  \"`Does Not Match`\", return \"`Blocked`\".
 
 2. Return \"`Allowed`\".
@@ -4519,8 +4613,9 @@ skipped.
 ##### 6.7.2.1. Does `request` violate `policy`?
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`, this algorithm returns the
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`, a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`, this algorithm returns the
 violated [directive](#directives)
 if the request violates the policy, and \"`Does Not Violate`\"
 otherwise.
@@ -4528,8 +4623,9 @@ otherwise.
 1. If `request`'s
  [initiator](https://fetch.spec.whatwg.org/#concept-request-initiator) is \"`prefetch`\", then return the result of
  executing [§ 6.7.2.2 Does resource hint request violate
- policy?](#does-resource-hint-violate-policy) on `request`
- and `policy`.
+ policy?](#does-resource-hint-violate-policy) on
+ `request`, `policy`, and
+ `self-origin`.
 
 2. Let `violates` be \"`Does Not Violate`\".
 
@@ -4538,8 +4634,8 @@ otherwise.
 
  1. Let `result` be the result of executing
  `directive`'s [pre-request
- check](#directive-pre-request-check) on `request` and
- `policy`.
+ check](#directive-pre-request-check) on `request`, `policy`,
+ and `self-origin`.
 
  2. If `result` is \"`Blocked`\", then let
  `violates` be `directive`.
@@ -4549,10 +4645,11 @@ otherwise.
 ##### 6.7.2.2. Does resource hint `request` violate `policy`?
 
 Given a
-[request](https://fetch.spec.whatwg.org/#concept-request) `request` and a
-[policy](#content-security-policy-object) `policy`, this algorithm returns the default
-[directive](#directives) if the
-resource-hint request violates all the policies, and
+[request](https://fetch.spec.whatwg.org/#concept-request) `request`,a
+[policy](#content-security-policy-object) `policy`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`, this algorithm returns the
+default [directive](#directives)
+if the resource-hint request violates all the policies, and
 \"`Does Not Violate`\" otherwise.
 
 1. Let `defaultDirective` be `policy`'s first
@@ -4603,7 +4700,7 @@ resource-hint request violates all the policies, and
  3. Let `result` be the result of executing [§ 6.7.2.5
  Does request match source list?](#match-request-to-source-list)
  on `request`, `directive`'s
- [value](#directive-value), and `policy`.
+ [value](#directive-value), and `self-origin`.
 
  4. If `result` is \"`Allowed`\", then return
  \"`Does Not Violate`\".
@@ -4657,7 +4754,7 @@ and \"`Does Not Match`\" otherwise:
  \"`Does Not Match`\".
 
 4. Let `integrity sources` be the result of [parsing
- metadata](https://www.w3.org/TR/sri-2/#parse-metadata) given `integrity metadata`.
+ metadata](https://w3c.github.io/webappsec-subresource-integrity/#parse-metadata) given `integrity metadata`.
  [\[SRI\]](#biblio-sri "Subresource Integrity")
 
 5. If `integrity sources` is \"`no metadata`\" or an empty
@@ -4690,13 +4787,13 @@ block non-matching resources upon response.
 Given a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a [source
 list](#source-lists)
-`source list`, and a
-[policy](#content-security-policy-object) `policy`, this algorithm returns the result
-of executing [§ 6.7.2.7 Does url match source list in origin with
+`source list`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`, this algorithm returns the
+result of executing [§ 6.7.2.7 Does url match source list in origin with
 redirect count?](#match-url-to-source-list) on `request`'s
 [current
-url](https://fetch.spec.whatwg.org/#concept-request-current-url), `source list`, `policy`'s
-[self-origin](#policy-self-origin), and `request`'s [redirect
+url](https://fetch.spec.whatwg.org/#concept-request-current-url), `source list`, `self-origin`,
+and `request`'s [redirect
 count](https://fetch.spec.whatwg.org/#concept-request-redirect-count).
 
  This is generally used in
@@ -4711,12 +4808,12 @@ Given a
 [response](https://fetch.spec.whatwg.org/#concept-response) `response`, a
 [request](https://fetch.spec.whatwg.org/#concept-request) `request`, a [source
 list](#source-lists)
-`source list`, and a
-[policy](#content-security-policy-object) `policy`, this algorithm returns the result
-of executing [§ 6.7.2.7 Does url match source list in origin with
+`source list`, and an
+[origin](https://html.spec.whatwg.org/#concept-origin) `self-origin`, this algorithm returns the
+result of executing [§ 6.7.2.7 Does url match source list in origin with
 redirect count?](#match-url-to-source-list) on `response`'s
-[url](https://fetch.spec.whatwg.org/#concept-response-url), `source list`, `policy`'s
-[self-origin](#policy-self-origin), and `request`'s [redirect
+[url](https://fetch.spec.whatwg.org/#concept-response-url), `source list`, `self-origin`,
+and `request`'s [redirect
 count](https://fetch.spec.whatwg.org/#concept-request-redirect-count).
 
  This is generally used in
@@ -4855,11 +4952,17 @@ will have distinct meaning depending on that bit of context.
  7. Return \"`Matches`\".
 
 4. If `expression` is an [ASCII
- case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) match for \"`'self'`\", return \"`Matches`\" if one
- or more of the following conditions is met:
+ case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) match for \"`'self'`\", then:
 
- 1. `origin` is the same as `url`'s
- [origin](https://url.spec.whatwg.org/#concept-url-origin)
+ 1. If `url`'s
+ [scheme](https://url.spec.whatwg.org/#concept-url-scheme) is \"`blob`\", return \"`Does Not Match`\".
+
+ 2. Return \"`Matches`\" if one or more of the following conditions
+ is met:
+
+ 1. `origin` and `url`'s
+ [origin](https://url.spec.whatwg.org/#concept-url-origin) are [same
+ origin](https://html.spec.whatwg.org/multipage/browsers.html#same-origin)
 
  2. `origin`'s
  [`host`](https://url.spec.whatwg.org/#dom-url-host) is the same as `url`'s
@@ -4867,8 +4970,8 @@ will have distinct meaning depending on that bit of context.
  [`port`](https://url.spec.whatwg.org/#dom-url-port) and `url`'s
  [`port`](https://url.spec.whatwg.org/#dom-url-port) are either the same or the [default
  ports](https://url.spec.whatwg.org/#default-port) for their respective
- [scheme](https://url.spec.whatwg.org/#concept-url-scheme)s, and one or more of the following conditions
- is met:
+ [scheme](https://url.spec.whatwg.org/#concept-url-scheme)s, and one or more of the following
+ conditions is met:
 
  1. `url`'s
  [scheme](https://url.spec.whatwg.org/#concept-url-scheme) is \"`https`\" or \"`wss`\"
@@ -5109,12 +5212,12 @@ Given an
  list](https://dom.spec.whatwg.org/#concept-element-attribute):
 
  1. If `attribute`'s name contains an [ASCII
- case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) match for \"`<script`\" or \"`<style`\", return
- \"`Not Nonceable`\".
+ case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) match for \"`<link`\", \"`<script`\", or
+ \"`<style`\", return \"`Not Nonceable`\".
 
  2. If `attribute`'s value contains an [ASCII
- case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) match for \"`<script`\" or \"`<style`\", return
- \"`Not Nonceable`\".
+ case-insensitive](https://infra.spec.whatwg.org/#ascii-case-insensitive) match for \"`<link`\", \"`<script`\", or
+ \"`<style`\", return \"`Not Nonceable`\".
 
 3. If `element` had a
  [duplicate-attribute](https://html.spec.whatwg.org/multipage/parsing.html#parse-error-duplicate-attribute) [parse
@@ -5387,6 +5490,7 @@ directive]:
  : 1. Return `worker-src`.
 
  \"`json`\"\
+ \"`text`\"\
  \"`webidentity`\"
 
  : 1. Return `connect-src`.

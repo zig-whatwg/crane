@@ -4,8 +4,8 @@ height="48" width="72"}](https://www.w3.org/)
 
 # Accessible Rich Internet Applications (WAI-ARIA) 1.3
 
-[W3C Editor\'s Draft](https://www.w3.org/standards/types#ED) 23 October
-2025
+[W3C Editor\'s Draft](https://www.w3.org/standards/types#ED) 02 October
+2026
 
 More details about this document
 
@@ -26,10 +26,13 @@ Latest Recommendation:
 : <https://www.w3.org/TR/wai-aria/>
 
 Editors:
-: [James Nurthen] ([Adobe](https://www.adobe.com/))
+: [James Nurthen]
+ ([Evinced](https://www.evinced.com))
 : [Peter Krautzberger] ([krautzource
  UG](https://www.krautzource.com))
 : [Daniel Montalvo] ([W3C](https://www.w3.org))
+: [Giacomo Petri]
+ ([UsableNet](https://usablenet.com/))
 
 Former editors:
 : [Michael Cooper] ([W3C](https://www.w3.org)) (Editor until 2023)
@@ -51,7 +54,7 @@ Feedback:
  issue](https://github.com/w3c/aria/issues/new/choose), [open
  issues](https://github.com/w3c/aria/issues/))
 
-[Copyright](https://www.w3.org/policies/#copyright) © 2013-2025 [World
+[Copyright](https://www.w3.org/policies/#copyright) © 2013-2026 [World
 Wide Web Consortium](https://www.w3.org/). [W3C]^®^
 [liability](https://www.w3.org/policies/#Legal_Disclaimer),
 [trademark](https://www.w3.org/policies/#W3C_Trademarks) and [permissive
@@ -72,8 +75,8 @@ used to improve the accessibility and interoperability of web content
 and applications. These semantics are designed to allow an author to
 properly convey user interface behaviors and structural information to
 assistive technologies in document-level markup. This version adds
-features new since [WAI-ARIA] 1.1
-\[[wai-aria-1.1](#bib-wai-aria-1.1 "Accessible Rich Internet Applications (WAI-ARIA) 1.1")\] to improve interoperability with assistive
+features new since [WAI-ARIA] 1.2
+\[[wai-aria-1.2](#bib-wai-aria-1-2 "Accessible Rich Internet Applications (WAI-ARIA) 1.2")\] to improve interoperability with assistive
 technologies to form a more consistent accessibility model for
 \[[HTML](#bib-html "HTML Standard")\] and
 \[[SVG2](#bib-svg2 "Scalable Vector Graphics (SVG) 2")\]. This specification complements both
@@ -238,9 +241,9 @@ Document](https://www.w3.org/policies/process/20250818/).
  5. [6.5 Global States and Properties](#global_states)
  6. [6.6 Taxonomy of [WAI-ARIA] States and
  Properties](#state_prop_taxonomy)
- 1. [6.6.1 Widget Attributes](#attrs_widgets)
- 2. [6.6.2 Live Region Attributes](#attrs_liveregions)
- 3. [6.6.3 Drag-and-Drop Attributes](#attrs_dragdrop)
+ 1. [6.6.1 Naming Attributes](#attrs_naming)
+ 2. [6.6.2 Widget Attributes](#attrs_widgets)
+ 3. [6.6.3 Live Region Attributes](#attrs_liveregions)
  4. [6.6.4 Relationship
  Attributes](#attrs_relationships)
  7. [6.7 State change notification](#state_changes)
@@ -254,7 +257,7 @@ Document](https://www.w3.org/policies/process/20250818/).
  3. [7.3 Relationships in the Accessibility
  Tree](#tree_relationships)
 10. [8. Implementation in Host Languages](#host_languages)
- 1. [8.1 Role Attribute](#host_general_role)
+ 1. [8.1 [Role Attribute]](#host_general_role)
  2. [8.2 State and Property
  Attributes](#host_general_attrs)
  3. [8.3 Focus Navigation](#host_general_focus)
@@ -266,8 +269,6 @@ Document](https://www.w3.org/policies/process/20250818/).
  Processing](#state_property_processing)
  1. [8.6.1 ID Reference Error
  Processing](#mapping_additional_relations_error_processing)
- 7. [8.7 [CSS]
- Selectors](#document-handling_css-selectors)
 11. [9. Handling Author
  Errors](#document-handling_author-errors)
  1. [9.1 Roles](#document-handling_author-errors_roles)
@@ -275,17 +276,23 @@ Document](https://www.w3.org/policies/process/20250818/).
  Properties](#document-handling_author-errors_states-properties)
  3. [9.3 Presentational Roles Conflict
  Resolution](#conflict_resolution_presentation_none)
-12. [10. IDL Interface](#idl-interface)
+12. [10. IDL Interfaces](#idl-interface)
  1. [10.1 Interface Mixin [`ARIAMixin`]{
  idl="interface mixin"
  }](#ARIAMixin)
- 2. [10.2 [ARIA] Attribute
+ 2. [10.2 Interface Mixin [`ARIANotifyMixin`]{
+ idl="interface mixin"
+
+ }](#ARIANotifyMixin)
+ 1. [10.2.1 Permissions Policy
+ Integration](#arianotify-permissions-policy)
+ 3. [10.3 [ARIA] Attribute
  Correspondence](#accessibilityroleandproperties-correspondence)
- 1. [10.2.1 Disambiguation
+ 1. [10.3.1 Disambiguation
  Pattern](#idl_attr_disambiguation)
- 2. [10.2.2 IDL Attribute Name Notes or
+ 2. [10.3.2 IDL Attribute Name Notes or
  Exceptions](#idl_attr_exceptions)
- 3. [10.3 Example IDL Attribute Usage](#idl_example_usage)
+ 4. [10.4 Example IDL Attribute Usage](#idl_example_usage)
 13. [11. Security Considerations](#security-considerations)
 14. [12. Privacy Considerations](#privacy-considerations)
 15. [A. Mapping [WAI-ARIA] Value types to
@@ -429,8 +436,8 @@ Model describes inheritance and details the
 each role supports. Information about mapping of roles to accessibility
 [APIs] is provided by
 the [Core Accessibility [API]
-Mappings](https://w3c.github.io/core-aam/)
-\[[CORE-AAM-1.2](#bib-core-aam-1.2 "Core Accessibility API Mappings 1.2")\].
+Mappings](https://w3c.github.io/aria/core-aam/)
+\[[CORE-AAM-1.2](#bib-core-aam-1-2 "Core Accessibility API Mappings 1.2")\].
 
 Roles are element types and will not change with time or user actions.
 Role information is used by assistive technologies, through interaction
@@ -454,10 +461,10 @@ Model](https://dom.spec.whatwg.org/)
 preferred mechanism is for the user agent to map the states and
 properties to the accessibility [API] of the operating system. See
 the [Core Accessibility [API]
-Mappings](https://w3c.github.io/core-aam/)
-\[[CORE-AAM-1.2](#bib-core-aam-1.2 "Core Accessibility API Mappings 1.2")\] and the [Accessible Name and Description
-Computation](https://w3c.github.io/accname/)
-\[[ACCNAME-1.2](#bib-accname-1.2 "Accessible Name and Description Computation 1.2")\] for details.
+Mappings](https://w3c.github.io/aria/core-aam/)
+\[[CORE-AAM-1.2](#bib-core-aam-1-2 "Core Accessibility API Mappings 1.2")\] and the [Accessible Name and Description
+Computation](https://w3c.github.io/aria/accname/)
+\[[ACCNAME-1.2](#bib-accname-1-2 "Accessible Name and Description Computation 1.2")\] for details.
 
 [Figure
 1](#fig-contractmodel "The contract model with accessibility APIs")
@@ -509,10 +516,11 @@ multiple selections, such as list boxes and grids.
 
 Speech-based command and control systems can benefit from
 [WAI-ARIA]
-semantics like the `role` attribute to assist in conveying audio
-information to the user. For example, upon encountering an element with
-a role of [`menu`](https://w3c.github.io/aria/#menu)
-with child elements of role
+semantics like the [`role` attribute](#attr-role) to assist in conveying audio information
+to the user. For example, upon encountering an element with a role of
+[`menu`](https://w3c.github.io/aria/#menu) with
+[accessibility
+children](#dfn-accessibility-child) of role
 [`menuitem`](https://w3c.github.io/aria/#menuitem) each
 containing text content representing a different flavor, a speech system
 might state to the user, \"Select one of three choices: chocolate,
@@ -589,7 +597,7 @@ on user agent support for its features in two ways:
  alter how host language features are exposed to [accessibility
  [APIs]](#dfn-accessibility-api) in order to improve accessibility. The
  mechanism for this is defined in the [Core Accessibility [API]
- Mappings](https://w3c.github.io/core-aam/).
+ Mappings](https://w3c.github.io/aria/core-aam/).
 - [Assistive
  technologies](#assistive-technology) use the enhanced information available
  in an accessibility [API], or uses the
@@ -893,7 +901,7 @@ used throughout this document.
 
 : Translated to platform-specific [accessibility [APIs]](#dfn-accessibility-api) as defined in
  the [Core Accessibility [API]
- Mappings](https://w3c.github.io/core-aam/).
+ Mappings](https://w3c.github.io/aria/core-aam/).
 
 [Focusable]
 
@@ -1001,10 +1009,13 @@ used throughout this document.
  [state](#dfn-state) that is controlled by the user agent, such as focus
  and selection. These are contrasted with \"unmanaged states\" that
  are typically controlled by the author. Nevertheless, authors can
- override some managed states, such as aria-posinset and
- aria-setsize. Many managed states have corresponding [CSS] pseudo-classes, such as :focus, and
- pseudo-elements, such as ::selection, that are also updated by the
- user agent.
+ override some managed states, such as
+ [`aria-posinset`](https://w3c.github.io/aria/#aria-posinset)
+ and
+ [`aria-setsize`](https://w3c.github.io/aria/#aria-setsize).
+ Many managed states have corresponding [CSS] pseudo-classes, such as `:focus`,
+ and pseudo-elements, such as `::selection`, that are also updated by
+ the user agent.
 
 [Nemeth Braille]
 
@@ -1103,8 +1114,8 @@ used throughout this document.
 [Target Element]
 
 : An element specified in a [WAI-ARIA] relation. For example,
- in ` <div aria-controls=”elem1”>`, where `“elem1”` is the ID for the
- target element.
+ given ` <div aria-controls=”elem1”>`, the element with ID `“elem1”`
+ is the target element.
 
 [Unicode Braille Patterns]
 
@@ -1164,14 +1175,8 @@ agent](https://infra.spec.whatwg.org/#user-agent) *MUST
 NOT* interfere with the normal operation of the built-in features of the
 host language.
 
-If a [CSS] selector includes a
-[WAI-ARIA] attribute
-(e.g., [`input`][`[aria-invalid=`[`"true"`]`]`]), user agents *MUST* update the
-visual display of any elements matching (or no longer matching) the
-selector any time the attribute is added/changed/removed in the
-[DOM]. The user agent *MAY* alter
-the mapping of the host language features into an [accessibility
-[API]](#dfn-accessibility-api), but the user agent *MUST NOT* alter the
+User agents *MAY* alter the mapping of host language features into an
+[accessibility [API]](#dfn-accessibility-api), but the user agent *MUST NOT* alter the
 [DOM] in order to remap
 [WAI-ARIA] markup
 into host language features.
@@ -1182,13 +1187,13 @@ into host language features.
 A conforming [user
 agent](https://infra.spec.whatwg.org/#user-agent) which
 implements a document object model that does not conform to the
-[W3C] [DOM] specification *MUST* include the content
-attribute for role and its [[WAI-ARIA] role
+[W3C] [DOM] specification *MUST* include the [`role`
+attribute](#attr-role) and its [[WAI-ARIA] role
 values](#roles_categorization), as well as the [[WAI-ARIA] States and
 Properties](#states_and_properties) in the [DOM] as specified by the author, even though
-processing might affect how the elements are exposed to accessibility
-[APIs]. Doing so
-ensures that each role attribute and all [WAI-ARIA] states and properties,
+processing might affect how the elements are
+[exposed](#dfn-expose) to accessibility [APIs]. Doing so ensures that each
+[`role` attribute](#attr-role) and all [WAI-ARIA] states and properties,
 including their values, are in the document in an unmodified form so
 other tools, such as assistive technologies, can access them. A
 conforming [W3C] [DOM] meets this criterion.
@@ -1262,8 +1267,9 @@ during its life-cycle, unless the elements already have the appropriate
 [implicit [WAI-ARIA]
 semantics](#implicit_semantics) for states and properties. In these
 instances the equivalent host language states and properties take
-precedence to avoid a conflict while the role attribute will take
-precedence over the implicit role of the host language element.
+precedence to avoid a conflict while the [`role`
+attribute](#attr-role) will take precedence over the implicit role of the host
+language element.
 
 ::: header-wrapper
 ### 4.1 [WAI-ARIA] Roles
@@ -1272,10 +1278,8 @@ A [WAI-ARIA]
 [role](#dfn-role) is
 set on an
 [element](https://dom.spec.whatwg.org/#concept-element)
-using a `role`
-[attribute](https://dom.spec.whatwg.org/#concept-attribute),
-similar to the `role` attribute defined in [Role
-Attribute](https://www.w3.org/TR/role-attribute/)
+using a [`role` attribute](#attr-role), similar to the `role` attribute defined in [Role
+Attribute](https://www.w3.org/TR/role-attribute/#s_role_module_attributes)
 \[[ROLE-ATTRIBUTE](#bib-role-attribute "Role Attribute 1.0")\].
 
 [Example 1](#example-1)
@@ -1310,12 +1314,12 @@ language semantics, there are no changes in the [DOM], only in the [accessibilit
 tree](#dfn-accessibility-tree).
 
 User agents *MUST* use the first token in the sequence of tokens in the
-`role`
-[attribute](https://dom.spec.whatwg.org/#concept-attribute)
-value that matches the name of any non-abstract [WAI-ARIA]
+[`role` attribute](#attr-role) value that matches the name of any non-abstract
+[WAI-ARIA]
 [role](#dfn-role).
-Refer to the section on [`role` attribute implementation in Host
-Languages](#host_general_role) for further details.
+Refer to the section on [`role`
+attribute](#attr-role) implementation in [Host Languages](#host_general_role)
+for further details.
 
 ::: header-wrapper
 ### 4.2 [WAI-ARIA] States and Properties
@@ -1369,9 +1373,9 @@ but the author can override them if the [DOM] is incomplete and would cause the 
 agent calculation to be incorrect. User agents map both managed and
 unmanaged states to the platform accessibility [APIs].
 
-Most modern user agents support [[CSS] attribute
-selectors](https://www.w3.org/TR/css3-selectors/#attribute-selectors)
-(\[[CSS3-SELECTORS](#bib-css3-selectors "Selectors Level 3")\]), and can allow the author to create [UI] changes based on [WAI-ARIA] attribute information,
+Most modern user agents support [CSS] [attribute
+selectors](https://www.w3.org/TR/selectors-4/#attribute-selector)
+(\[[SELECTORS-4](#bib-selectors-4 "Selectors Level 4")\]) and allow the author to create [UI] changes based on [WAI-ARIA] attribute information,
 reducing the amount of scripts necessary to achieve equivalent
 functionality. In the following example, a [CSS] selector is used to determine whether or
 not the text is bold and an image of a check mark is shown, based on the
@@ -1479,7 +1483,8 @@ are [focusable](#dfn-focusable) and that all parts of composite widgets are eith
 focusable or have a documented alternative method to achieve their
 function.
 
-Authors *MUST* manage focus on the following container roles:
+Authors *MUST* manage focus for the expected interactive elements of the
+following container roles:
 
 - [`grid`](https://w3c.github.io/aria/#grid)
 - [`listbox`](https://w3c.github.io/aria/#listbox)
@@ -1526,7 +1531,8 @@ author cannot use `:`[`focus`] to style the currently
 active descendant since the actual focus is on the container.
 
 More information on managing focus can be found in the [Developing a
-Keyboard Interface](https://www.w3.org/WAI/ARIA/apg/keyboard-interface)
+Keyboard
+Interface](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/)
 section of the [WAI-ARIA] Authoring Practices.
 
 ::: header-wrapper
@@ -1578,10 +1584,11 @@ The user agent *MUST* do the following to implement
  [role](#dfn-role). The element needs to be focusable
  because it could be referenced by the
  [`aria-activedescendant`](https://w3c.github.io/aria/#aria-activedescendant)
- attribute. Native elements that have no
- [role](#dfn-role) attribute do not need to be
- checked; their native semantics determine the focusable state.
- 2. Focused, whenever the element is the target of the
+ attribute. Native elements that have no [`role`
+ attribute](#attr-role) do not need to be checked; their native
+ semantics determine the focusable state.
+ 2. Focused, whenever the element is the
+ [target](#dfn-target) of the
  [`aria-activedescendant`](https://w3c.github.io/aria/#aria-activedescendant)
  attribute and the element with the
  [`aria-activedescendant`](https://w3c.github.io/aria/#aria-activedescendant)
@@ -1634,8 +1641,8 @@ change of focus, user agents *MUST* do the following:
  The inability to set [DOM]
  focus to the containing element indicates an author error.
  ::::
- 3. Otherwise, the user agent *MAY* attempt to set [DOM] focus to the child element
- itself.
+ 3. Otherwise, the user agent *MAY* attempt to set [DOM] focus to the [accessibility
+ child](#dfn-accessibility-child) itself.
 3. If the element being focused has an ID and is an [accessibility
  descendant](#dfn-accessibility-descendant) of either a container element with
  both an `aria-activedescendant` attribute and has [DOM] focus, or by a container element that
@@ -1658,10 +1665,11 @@ The roles, their characteristics, the states and properties they
 support, and specification of how they can be used in markup, shall be
 considered normative.
 
-In order to reflect the content in the [DOM], user agents *SHOULD* map the role
-attribute to the appropriate value in the implemented accessibility
-[API], and user agents
-*SHOULD* update the mapping when the role attribute changes.
+In order to reflect the content in the [DOM], user agents *SHOULD* map the [`role`
+attribute](#attr-role) to the appropriate value in the implemented
+accessibility [API],
+and user agents *SHOULD* update the mapping when the [`role`
+attribute](#attr-role) changes.
 
 ::: header-wrapper
 ### 5.1 Relationships Between Concepts
@@ -1797,7 +1805,7 @@ accessibility [API]. If
 the state or property is undefined and it has a default value for the
 role, [user
 agents](https://infra.spec.whatwg.org/#user-agent)
-*SHOULD* expose the default value.
+*SHOULD* [expose](#dfn-expose) the default value.
 
 A host language attribute with the appropriate [implicit
 [WAI-ARIA]
@@ -1835,27 +1843,26 @@ in this section.
 #### 5.2.6 Allowed Accessibility Child Roles
 
 A list of roles which are allowed on an [accessibility
-child](#dfn-accessibility-child) (simplified as \"child\") of the element
-with this [role](#dfn-role). Authors *MUST* only add child element with allowed
-roles. For example, an element with the role
-[`list`](https://w3c.github.io/aria/#list) can own
-child elements with the role
+child](#dfn-accessibility-child) of the element with this
+[role](#dfn-role). If
+the list is not empty, authors *MUST* only add [accessibility
+children](#dfn-accessibility-child) with allowed roles. For example, an
+element with the role
+[`list`](https://w3c.github.io/aria/#list) allows
+[accessibility
+children](#dfn-accessibility-child) with the role
 [`listitem`](https://w3c.github.io/aria/#listitem), but
-cannot own elements with the role
-[`option`](https://w3c.github.io/aria/#option).
-
-To determine whether an element is the
-[child](#dfn-accessibility-child) of an element, [user
-agents](https://infra.spec.whatwg.org/#user-agent)
-*MUST* ignore any intervening elements with the role
-[`generic`](https://w3c.github.io/aria/#generic) or
-[`none`](https://w3c.github.io/aria/#none).
+does not allow [accessibility
+children](#dfn-accessibility-child) with the role
+[`option`](https://w3c.github.io/aria/#option). If the
+list is empty, then there are no restrictions on accessibility child
+roles.
 
 Descendants which are not children of an element ancestor are not
 constrained by *allowed accessibility child roles*. For example, an
-`image` is not an allowed child of a `list`, but it is a valid
-descendant if it is also a descendant of the `list`\'s allowed child
-`listitem`.
+`image` is not an [allowed accessibility child](#mustContain) of a
+`list`, but it is a valid descendant if it is also a descendant of the
+`list`\'s [allowed accessibility child](#mustContain) `listitem`.
 
 A role that has \'allowed accessibility child roles\' does not imply the
 reverse relationship. Elements with roles in this list do not always
@@ -1867,14 +1874,16 @@ An element with a [subclass role](#subclassroles) of the \'allowed
 accessibility child role\' does not fulfill this requirement. For
 example, the
 [`listbox`](https://w3c.github.io/aria/#listbox) role
-allows a child element using the
+allows an [accessibility
+child](#dfn-accessibility-child) using the
 [`option`](https://w3c.github.io/aria/#option) or
 [`group`](https://w3c.github.io/aria/#group) role.
 Although the
 [`group`](https://w3c.github.io/aria/#group) role is
 the superclass of
-[`row`](https://w3c.github.io/aria/#row), adding a
-child element with a role of
+[`row`](https://w3c.github.io/aria/#row), adding an
+[accessibility
+child](#dfn-accessibility-child) with a role of
 [`row`](https://w3c.github.io/aria/#row) will not
 fulfill the requirement that
 [`listbox`](https://w3c.github.io/aria/#listbox) allows
@@ -1884,6 +1893,8 @@ children with
 
 An element with the appropriate [implicit [WAI-ARIA]
 semantic](#implicit_semantics) fulfills this requirement.
+
+Host languages may further restrict accessibility child roles.
 
 Examples of valid ways to mark up allowed accessibility child roles
 include:
@@ -1949,36 +1960,31 @@ include:
 ::: header-wrapper
 #### 5.2.7 Required Accessibility Parent Role
 
-The required [accessibility
-parent](#dfn-accessibility-parent) (simplified as \"parent\") role defines
-the container where this [role](#dfn-role) is allowed. If a role has a required
-accessibility parent, authors *MUST* ensure that an element with the
-role is an [accessibility
-child](#dfn-accessibility-child) of an element with the required
-accessibility parent role. For example, an element with role `listitem`
-is only meaningful when it is a child of an element with role `list`.
+Lists all roles that are allowed for the [accessibility
+parent](#dfn-accessibility-parent) of an element with the current
+[role](#dfn-role). If
+the list is not empty, authors *MUST* ensure that an element with the
+current role is an [accessibility
+child](#dfn-accessibility-child) of an element with a role from this list.
+For example, an element with role `listitem` is only meaningful when it
+is a child of an element with role `list`.
 
-To determine whether an element has a parent with the required role,
-[user
+[User
 agents](https://infra.spec.whatwg.org/#user-agent)
-*MUST* ignore any elements with the role
-[`generic`](https://w3c.github.io/aria/#generic) or
-[`none`](https://w3c.github.io/aria/#none).
+*SHOULD* ignore the current role if the role of the [accessibility
+parent](#dfn-accessibility-parent) is not in this list.
 
-Also, [user
-agents](https://infra.spec.whatwg.org/#user-agent)
-*SHOULD* ignore the role if it occurs outside the context of a required
-accessibility parent role.
-
-An element with the appropriate [implicit [WAI-ARIA]
+An [accessibility
+parent](#dfn-accessibility-parent) with the appropriate [implicit
+[WAI-ARIA]
 semantic](#implicit_semantics) fulfills this requirement.
 
 ::: header-wrapper
 #### 5.2.8 Name From
 
 Determines which content contributes to the [Accessible Name and
-Description Computation](https://w3c.github.io/accname/)
-\[[ACCNAME-1.2](#bib-accname-1.2 "Accessible Name and Description Computation 1.2")\].
+Description Computation](https://w3c.github.io/aria/accname/)
+\[[ACCNAME-1.2](#bib-accname-1-2 "Accessible Name and Description Computation 1.2")\].
 
 One of the following values:
 
@@ -1996,8 +2002,8 @@ One of the following values:
  some [roles](#dfn-role), this is used in content only if higher priority
  \"author\" features are not provided. Priority is defined by the
  [Accessible Name and Description
- Computation](https://w3c.github.io/accname/)
- \[[ACCNAME-1.2](#bib-accname-1.2 "Accessible Name and Description Computation 1.2")\].
+ Computation](https://w3c.github.io/aria/accname/)
+ \[[ACCNAME-1.2](#bib-accname-1-2 "Accessible Name and Description Computation 1.2")\].
 3. prohibited: the element does not support name from author. Authors
  *MUST NOT* use the
  [`aria-label`](https://w3c.github.io/aria/#aria-label)
@@ -2032,7 +2038,8 @@ One of the following values:
 - [`gridcell`](#gridcell)
 - [`group`](#group)
 - [`heading`](#heading) (name required)
-- [`image`](#image) (name required)
+- [`image`](#image) (name required) (synonymous:
+ [`img`](https://w3c.github.io/aria/#img))
 - [`link`](#link) (name required)
 - [`list`](#list)
 - [`listbox`](#listbox) (name required)
@@ -2075,7 +2082,6 @@ One of the following values:
 - [`textbox`](#textbox) (name required)
 - [`timer`](#timer)
 - [`toolbar`](#toolbar)
-- [`tooltip`](#tooltip)
 - [`tree`](#tree) (name required)
 - [`treegrid`](#treegrid) (name required)
 - [`treeitem`](#treeitem) (name required)
@@ -2101,7 +2107,6 @@ One of the following values:
 - [`rowheader`](#rowheader) (name required)
 - [`switch`](#switch) (name required)
 - [`tab`](#tab) (name required)
-- [`tooltip`](#tooltip)
 - [`treeitem`](#treeitem) (name required)
 
 ::: header-wrapper
@@ -2115,7 +2120,8 @@ One of the following values:
 - [`generic`](#generic)
 - [`insertion`](#insertion)
 - [`mark`](#mark)
-- [`none`](#none)
+- [`none`](#none) (synonymous:
+ [`presentation`](https://w3c.github.io/aria/#presentation))
 - [`paragraph`](#paragraph)
 - [`strong`](#strong)
 - [`subscript`](#subscript)
@@ -2123,6 +2129,7 @@ One of the following values:
 - [`superscript`](#superscript)
 - [`term`](#term)
 - [`time`](#time)
+- [`tooltip`](#tooltip)
 
 ::: header-wrapper
 #### 5.2.9 Children Presentational
@@ -2130,7 +2137,7 @@ One of the following values:
 Indicates whether [DOM] descendants
 are presentational. [user
 agents](https://infra.spec.whatwg.org/#user-agent)
-*SHOULD NOT* expose descendants of this
+*SHOULD NOT* [expose](#dfn-expose) descendants of this
 [element](https://dom.spec.whatwg.org/#concept-element)
 through the platform [accessibility [API]](#dfn-accessibility-api). If [user
 agents](https://infra.spec.whatwg.org/#user-agent) do
@@ -2262,7 +2269,9 @@ Document structures are not usually interactive.
 - [`generic`](https://w3c.github.io/aria/#generic)
 - [`group`](https://w3c.github.io/aria/#group)
 - [`heading`](https://w3c.github.io/aria/#heading)
-- [`img`](https://w3c.github.io/aria/#img)
+- [`image`](https://w3c.github.io/aria/#image)
+ (synonymous:
+ [`img`](https://w3c.github.io/aria/#img))
 - [`insertion`](https://w3c.github.io/aria/#insertion)
 - [`list`](https://w3c.github.io/aria/#list)
 - [`listitem`](https://w3c.github.io/aria/#listitem)
@@ -2270,9 +2279,10 @@ Document structures are not usually interactive.
 - [`math`](https://w3c.github.io/aria/#math)
 - [`meter`](https://w3c.github.io/aria/#meter)
 - [`none`](https://w3c.github.io/aria/#none)
+ (synonymous:
+ [`presentation`](https://w3c.github.io/aria/#presentation))
 - [`note`](https://w3c.github.io/aria/#note)
 - [`paragraph`](https://w3c.github.io/aria/#paragraph)
-- [`presentation`](https://w3c.github.io/aria/#presentation)
 - [`row`](https://w3c.github.io/aria/#row)
 - [`rowgroup`](https://w3c.github.io/aria/#rowgroup)
 - [`rowheader`](https://w3c.github.io/aria/#rowheader)
@@ -2328,9 +2338,7 @@ is rendered on the page and when the content changes.
 
 - [`alert`](https://w3c.github.io/aria/#alert)
 - [`log`](https://w3c.github.io/aria/#log)
-- [`marquee`](https://w3c.github.io/aria/#marquee)
 - [`status`](https://w3c.github.io/aria/#status)
-- [`timer`](https://w3c.github.io/aria/#timer)
 
 ::: header-wrapper
 #### 5.3.6 Window Roles
@@ -2520,8 +2528,8 @@ abstract roles in content.
  [`treegrid`](https://w3c.github.io/aria/#treegrid).
 
 [`group`](#group)
-: A set of user interface [objects](#dfn-object) that is not intended to be included in a page
- summary or table of contents by [assistive
+: A set of user interface [objects](#dfn-object) and information that is not intended to be included
+ in a page summary or table of contents by [assistive
  technologies](#assistive-technology).
 
 [`heading`](#heading)
@@ -2581,8 +2589,7 @@ abstract roles in content.
 
 [`log`](#log)
 : A type of [live region](#dfn-live-region) where new information is added in meaningful order
- and old information can disappear. See related
- [`marquee`](https://w3c.github.io/aria/#marquee).
+ and old information can disappear.
 
 [`main`](#main)
 : A
@@ -2594,9 +2601,8 @@ abstract roles in content.
  purposes, due to the content\'s relevance in the enclosing context.
 
 [`marquee`](#marquee)
-: A type of [live region](#dfn-live-region) where non-essential information changes frequently.
- See related
- [`log`](https://w3c.github.io/aria/#log).
+: A section of content where non-essential information changes
+ frequently.
 
 [`math`](#math)
 : Content that represents a mathematical expression.
@@ -2834,8 +2840,8 @@ abstract roles in content.
 : An element that represents a specific point in time.
 
 [`timer`](#timer)
-: A type of [live region](#dfn-live-region) containing a numerical counter which indicates an
- amount of elapsed time from a start point, or the time remaining
+: A section of content containing a numerical counter which indicates
+ an amount of elapsed time from a start point, or the time remaining
  until an end point.
 
 [`toolbar`](#toolbar)
@@ -2865,8 +2871,9 @@ abstract roles in content.
 [`window` (abstract role)](#window)
 : A browser or application window.
 
-#### `alert` [role]
+#### `alert` role
 
+::: role-description
 A type of [live region](#dfn-live-region) with important, and usually
 time-sensitive, information. See related
 [`alertdialog`](https://w3c.github.io/aria/#alertdialog)
@@ -2946,8 +2953,9 @@ value of `true`.
 
 : Characteristics:
 
-#### `alertdialog` [role]
+#### `alertdialog` role
 
+::: role-description
 A type of dialog that contains an alert message, where initial focus
 goes to an
 [element](https://dom.spec.whatwg.org/#concept-element)
@@ -3035,8 +3043,9 @@ mechanism to determine the contents of the alert message.
 
 : Characteristics:
 
-#### `application` [role]
+#### `application` role
 
+::: role-description
 A [`structure`](https://w3c.github.io/aria/#structure)
 containing one or more
 [focusable](#dfn-focusable) elements requiring user input, such as keyboard or
@@ -3136,8 +3145,9 @@ static text or image content inside an application is accessible:
 
 : Characteristics:
 
-#### `article` [role]
+#### `article` role
 
+::: role-description
 A section of a page that consists of a composition that forms an
 independent part of a document, page, or site.
 
@@ -3221,8 +3231,9 @@ and
 
 : Characteristics:
 
-#### `banner` [role]
+#### `banner` role
 
+::::: role-description
 A [`landmark`](https://w3c.github.io/aria/#landmark)
 that contains mostly site-oriented content, rather than page-specific
 content.
@@ -3300,8 +3311,9 @@ by use of the
 
 : Characteristics:
 
-#### `blockquote` [role]
+#### `blockquote` role
 
+::: role-description
 A section of content that is quoted from another source.
 
 +-----------------------------------+--------------------------------------------------------------------------------------------------------------------------------+
@@ -3345,8 +3357,9 @@ A section of content that is quoted from another source.
 
 : Characteristics:
 
-#### `button` [role]
+#### `button` role
 
+::: role-description
 An input that allows for user-triggered actions when clicked or pressed.
 See related [`link`](https://w3c.github.io/aria/#link).
 
@@ -3419,8 +3432,9 @@ button is a simple command button.
 
 : Characteristics:
 
-#### `caption` [role]
+#### `caption` role
 
+::::::::::: role-description
 Visible content that names, or describes a
 [`figure`](https://w3c.github.io/aria/#figure),
 [`grid`](https://w3c.github.io/aria/#grid),
@@ -3586,8 +3600,9 @@ treated solely as descriptive content, referenced via
 
 : Characteristics:
 
-#### `cell` [role]
+#### `cell` role
 
+::: role-description
 A cell in a tabular container. See related
 [`gridcell`](https://w3c.github.io/aria/#gridcell).
 
@@ -3655,8 +3670,9 @@ children](#dfn-accessibility-child) of an element with the
 
 : Characteristics:
 
-#### `checkbox` [role]
+#### `checkbox` role
 
+::::: role-description
 A checkable input that has three possible values: `true`, `false`, or
 `mixed`.
 
@@ -3728,8 +3744,9 @@ respectively.
 
 : Characteristics:
 
-#### `code` [role]
+#### `code` role
 
+::: role-description
 A section whose content represents a fragment of computer code.
 
 The primary purpose of the code role is to inform assistive technologies
@@ -3782,8 +3799,9 @@ verbosity to ensure common symbols (e.g., \"-\") are spoken.
 
 : Characteristics:
 
-#### `columnheader` [role]
+#### `columnheader` role
 
+::::::: role-description
 A cell containing header information for a column.
 
 `columnheader` can be used as a column header in a table or grid. It
@@ -3823,7 +3841,7 @@ or
 [`aria-readonly`](https://w3c.github.io/aria/#aria-readonly)
 in a `columnheader` that descends from a
 [`table`](https://w3c.github.io/aria/#table), and user
-agents *SHOULD NOT* expose either property to [assistive
+agents *SHOULD NOT* [expose](#dfn-expose) either property to [assistive
 technologies](#assistive-technology) unless the `columnheader` descends from a
 [`grid`](https://w3c.github.io/aria/#grid).
 
@@ -3903,8 +3921,9 @@ except when the element is in the context of a
 
 : Characteristics:
 
-#### `combobox` [role]
+#### `combobox` role
 
+:::::::::::: role-description
 An [`input`](https://w3c.github.io/aria/#input) that
 controls another element, such as a
 [`listbox`](https://w3c.github.io/aria/#listbox) or
@@ -3954,7 +3973,8 @@ than [`listbox`](https://w3c.github.io/aria/#listbox),
 authors *MUST* specify an
 [`aria-haspopup`](https://w3c.github.io/aria/#aria-haspopup)
 value of [`tree`](https://w3c.github.io/aria/#tree),
-[`grid`](https://w3c.github.io/aria/#grid), or
+[`grid`](https://w3c.github.io/aria/#grid),
+[`menu`](https://w3c.github.io/aria/#menu), or
 [`dialog`](https://w3c.github.io/aria/#dialog) that
 corresponds to the role of its popup.
 
@@ -3979,8 +3999,8 @@ active, authors *MAY* set
 on the `combobox` to a value that refers to the active element within
 the popup while focus remains on the `combobox` element.
 
-User agents *MUST* expose the value of elements with role `combobox` to
-[assistive
+User agents *MUST* [expose](#dfn-expose) the value of elements with role `combobox`
+to [assistive
 technologies](#assistive-technology). The value of a `combobox` is represented
 by one of the following:
 
@@ -4094,8 +4114,9 @@ details on implementing combobox design patterns.
 
 : Characteristics:
 
-#### `command` [abstract role]
+#### `command` abstract role
 
+::: role-description
 A form of widget that performs an action but does not receive input
 data.
 
@@ -4145,8 +4166,9 @@ Authors *MUST NOT* use `command` role in content.
 
 : Characteristics:
 
-#### `comment` [role]
+#### `comment` role
 
+::: role-description
 A comment contains content expressing reaction to other content.
 
 Comments can annotate any visible content, from small spans of text, to
@@ -4170,7 +4192,7 @@ relationships between comments and the commented content, as follows:
  - Provide
  [`aria-details`](https://w3c.github.io/aria/#aria-details)
  on the element containing the commented content with a value
- refering to the element with role `comment`.
+ referring to the element with role `comment`.
  - If there are multiple comments related to the same commented
  content, either provide a value for
  [`aria-details`](https://w3c.github.io/aria/#aria-details)
@@ -4191,7 +4213,7 @@ If the author has not explicitly declared
 or
 [`aria-setsize`](https://w3c.github.io/aria/#aria-setsize)
 for a `comment` element, user agents *MUST* automatically compute the
-missing values and expose them to assistive technologies.
+missing values and [expose](#dfn-expose) them to assistive technologies.
 
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Characteristic | Value |
@@ -4237,8 +4259,9 @@ missing values and expose them to assistive technologies.
 
 : Characteristics:
 
-#### `complementary` [role]
+#### `complementary` role
 
+::: role-description
 A [`landmark`](https://w3c.github.io/aria/#landmark)
 that is designed to be complementary to the main content that it is a
 sibling to, or a direct descendant of. The contents of a complementary
@@ -4304,8 +4327,9 @@ agents](https://infra.spec.whatwg.org/#user-agent)
 
 : Characteristics:
 
-#### `composite` [abstract role]
+#### `composite` abstract role
 
+::: role-description
 A [widget](#dfn-widget) that can contain navigable [accessibility
 descendants](#dfn-accessibility-descendant).
 
@@ -4365,8 +4389,9 @@ Authors *MUST NOT* use `composite` role in content.
 
 : Characteristics:
 
-#### `contentinfo` [role]
+#### `contentinfo` role
 
+::::: role-description
 A [`landmark`](https://w3c.github.io/aria/#landmark)
 that contains information about the parent document.
 
@@ -4442,8 +4467,9 @@ attribute.
 
 : Characteristics:
 
-#### `definition` [role]
+#### `definition` role
 
+:::::: role-description
 A definition of a term or concept. See related
 [`term`](https://w3c.github.io/aria/#term).
 
@@ -4452,9 +4478,12 @@ Authors *MUST* identify the
 being defined and assign that element a role of
 [`term`](https://w3c.github.io/aria/#term).
 
-Authors *SHOULD NOT* use the `definition` role on interactive elements
-such as form controls because doing so could prevent users of assistive
-technologies from interacting with those elements.
+The relationship between a
+[`term`](https://w3c.github.io/aria/#term) and its
+`definition` is conveyed on the
+[`term`](https://w3c.github.io/aria/#term) element; see
+the [`term`](https://w3c.github.io/aria/#term) role for
+more information.
 
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Characteristic | Value |
@@ -4496,8 +4525,9 @@ technologies from interacting with those elements.
 
 : Characteristics:
 
-#### `deletion` [role]
+#### `deletion` role
 
+::: role-description
 A deletion represents content that is marked as removed, content that is
 being suggested for removal, or content that is no longer relevant in
 the context of its accompanying content. See related
@@ -4552,8 +4582,9 @@ scenarios where multiple people are revising content.
 
 : Characteristics:
 
-#### `dialog` [role]
+#### `dialog` role
 
+::::::::::: role-description
 A dialog is a descendant window of the primary window of a web
 application. For [HTML] pages,
 the primary application window is the entire web document.
@@ -4612,8 +4643,8 @@ missed.
 In the following example, the first text field will receive initial
 focus when the dialog is rendered. As this means focus will be set
 \"after\" the preceding content that provides instructions for the form
-fields, an `aria-describedby` attribute is used to expose this content
-as a description for the `dialog`.
+fields, an `aria-describedby` attribute is used to
+[expose](#dfn-expose) this content as a description for the `dialog`.
 
 [Example](#example-14-0)
 
@@ -4675,12 +4706,13 @@ role, which specifies specific assistive technology behaviors.
 
 : Characteristics:
 
-#### `directory` [role]
+#### `directory` role
 
+::::: role-description
 \[Deprecated in [ARIA] 1.2\] A list of
 references to members of a group, such as a static table of contents.
 
-As exposed by accessibility [APIs], the `directory`
+As [exposed](#dfn-expose) by accessibility [APIs], the `directory`
 [role](#dfn-role) is
 essentially equivalent to the `list`
 [role](#dfn-role).
@@ -4734,8 +4766,10 @@ instead.
 
 : Characteristics:
 
-#### `document` [role]
+#### `document` role
 
+::: role-description
+An
 [element](https://dom.spec.whatwg.org/#concept-element)
 containing content that [assistive
 technology](#assistive-technology) users might want to browse in a reading
@@ -4756,7 +4790,8 @@ mode for all elements except for those with either a
 [`application`](https://w3c.github.io/aria/#application)
 role, the only circumstance where the `document` role is useful for
 changing assistive technology behavior is when the element with role
-`document` is a [focusable](#dfn-focusable) child element of a
+`document` is a [focusable](#dfn-focusable) [accessibility
+child](#dfn-accessibility-child) of a
 [`widget`](https://w3c.github.io/aria/#widget) or
 [`application`](https://w3c.github.io/aria/#application).
 For example, given an
@@ -4808,8 +4843,9 @@ the screen reader\'s reading cursor.
 
 : Characteristics:
 
-#### `emphasis` [role]
+#### `emphasis` role
 
+::: role-description
 One or more emphasized characters. See related
 [`strong`](https://w3c.github.io/aria/#strong).
 
@@ -4867,8 +4903,9 @@ more appropriate.
 
 : Characteristics:
 
-#### `feed` [role]
+#### `feed` role
 
+::: role-description
 A scrollable [`list`](https://w3c.github.io/aria/#list)
 of [`articles`](https://w3c.github.io/aria/#article)
 where scrolling might cause
@@ -5038,8 +5075,9 @@ additional details on implementing a feed design pattern.
 
 : Characteristics:
 
-#### `figure` [role]
+#### `figure` role
 
+::: role-description
 A perceivable
 [`section`](https://w3c.github.io/aria/#section) of
 content that typically contains a [graphical
@@ -5114,8 +5152,9 @@ agents](https://infra.spec.whatwg.org/#user-agent)
 
 : Characteristics:
 
-#### `form` [role]
+#### `form` role
 
+::: role-description
 A [`landmark`](https://w3c.github.io/aria/#landmark)
 region that contains a collection of items and objects that, as a whole,
 combine to create a form. See related
@@ -5194,8 +5233,9 @@ agents](https://infra.spec.whatwg.org/#user-agent)
 
 : Characteristics:
 
-#### `generic` [role]
+#### `generic` role
 
+::: role-description
 A nameless container
 [element](https://dom.spec.whatwg.org/#concept-element)
 that has no semantic meaning on its own.
@@ -5217,8 +5257,8 @@ accessible states and properties for its descendants, such as
 [`aria-live`](https://w3c.github.io/aria/#aria-live)
 attributes.
 
-However, unlike elements with role `presentation`, user agents expose
-`generic` elements in [accessibility [APIs]](#dfn-accessibility-api) when permitted accessibility attributes
+However, unlike elements with role `presentation`, user agents
+[expose](#dfn-expose) `generic` elements in [accessibility [APIs]](#dfn-accessibility-api) when permitted accessibility attributes
 have been specified. User agents *MAY* otherwise ignore `generic`
 elements if such permitted attributes have not been specified.
 
@@ -5267,8 +5307,9 @@ elements if such permitted attributes have not been specified.
 
 : Characteristics:
 
-#### `grid` [role]
+#### `grid` role
 
+::: role-description
 A composite
 [`widget`](https://w3c.github.io/aria/#widget)
 containing a collection of one or more rows with one or more cells where
@@ -5306,7 +5347,7 @@ children](#dfn-accessibility-child) of an element with role
 `grid`.
 
 To be [keyboard
-accessible](#dfn-keyboard-accessible), authors *SHOULD* manage focus of
+accessible](#dfn-keyboard-accessible), authors *MUST* manage focus of
 descendants of a `grid` as described in [Managing
 Focus](#managingfocus). When a user is navigating the `grid` content
 with a keyboard, authors *SHOULD* set focus as follows:
@@ -5370,9 +5411,9 @@ agents](https://infra.spec.whatwg.org/#user-agent)
 *MUST* propagate the value to all
 [`gridcell`](https://w3c.github.io/aria/#gridcell)
 elements that are [accessibility
-descendants](#dfn-accessibility-descendant) of that `grid` and expose the value in the
-accessibility [API]. An
-author *MAY* override the propagated value of
+descendants](#dfn-accessibility-descendant) of that `grid` and
+[expose](#dfn-expose) the value in the accessibility [API]. An author *MAY* override the
+propagated value of
 [`aria-readonly`](https://w3c.github.io/aria/#aria-readonly)
 for an individual
 [`gridcell`](https://w3c.github.io/aria/#gridcell)
@@ -5500,8 +5541,9 @@ additional details on implementing grid design patterns.
 
 : Characteristics:
 
-#### `gridcell` [role]
+#### `gridcell` role
 
+::: role-description
 A [`cell`](https://w3c.github.io/aria/#cell) in a
 [`grid`](https://w3c.github.io/aria/#grid) or
 [`treegrid`](https://w3c.github.io/aria/#treegrid).
@@ -5599,16 +5641,17 @@ children](#dfn-accessibility-child) of an element with the
 
 : Characteristics:
 
-#### `group` [role]
+#### `group` role
 
-A set of user interface [objects](#dfn-object) that is not intended to be included in a
-page summary or table of contents by [assistive
+::: role-description
+A set of user interface [objects](#dfn-object) and information that is not intended to be
+included in a page summary or table of contents by [assistive
 technologies](#assistive-technology).
 
 Contrast with
 [`region`](https://w3c.github.io/aria/#region), which
-is a grouping of user interface objects that will be included in a page
-summary or table of contents.
+is a grouping of user interface objects and information that will be
+included in a page summary or table of contents.
 
 Authors *SHOULD* use a `group` to form a logical collection of items in
 a [widget](#dfn-widget), such as children in a tree widget forming a collection
@@ -5673,8 +5716,9 @@ to warrant inclusion in the web page\'s table of contents, the author
 
 : Characteristics:
 
-#### `heading` [role]
+#### `heading` role
 
+::: role-description
 A heading for a section of the page.
 
 To ensure elements with a role of `heading` are organized into a logical
@@ -5734,8 +5778,9 @@ attribute to indicate the proper nesting level.
 
 : Characteristics:
 
-#### `image` [role]
+#### `image` role
 
+:::::: role-description
 A container for a collection of
 [elements](https://dom.spec.whatwg.org/#concept-element)
 that form an image. See synonym
@@ -5806,18 +5851,22 @@ roles, which are complete words or concatenations of complete words.
 +-----------------------------------+------------------------------------------------------------------------------------------------------------------+
 | Children Presentational: | True |
 +-----------------------------------+------------------------------------------------------------------------------------------------------------------+
+| Synonym roles | [`img`](https://w3c.github.io/aria/#img) |
++-----------------------------------+------------------------------------------------------------------------------------------------------------------+
 
 : Characteristics:
 
-#### `img` [role]
+#### `img` role
 
+::: role-description
 A container for a collection of
 [elements](https://dom.spec.whatwg.org/#concept-element)
 that form an image. See synonym
 [`image`](https://w3c.github.io/aria/#image).
 
-#### `input` [abstract role]
+#### `input` abstract role
 
+::: role-description
 A generic type of [widget](#dfn-widget) that allows user input.
 
 `input` is an [abstract role](#isAbstract) used for the ontology.
@@ -5870,8 +5919,9 @@ Authors *MUST NOT* use `input` role in content.
 
 : Characteristics:
 
-#### `insertion` [role]
+#### `insertion` role
 
+::: role-description
 An insertion contains content that is marked as added or content that is
 being suggested for addition. See related
 [`deletion`](https://w3c.github.io/aria/#deletion).
@@ -5923,8 +5973,9 @@ scenarios where multiple people are revising content.
 
 : Characteristics:
 
-#### `landmark` [abstract role]
+#### `landmark` abstract role
 
+::: role-description
 A perceivable
 [`section`](https://w3c.github.io/aria/#section)
 containing content that is relevant to a specific, author-specified
@@ -5997,8 +6048,9 @@ agents](https://infra.spec.whatwg.org/#user-agent)
 
 : Characteristics:
 
-#### `link` [role]
+#### `link` role
 
+::::: role-description
 An interactive reference to an internal or external resource that, when
 activated, causes the user agent to navigate to that resource. See
 related [`button`](https://w3c.github.io/aria/#button).
@@ -6061,8 +6113,9 @@ instead of the `link` role.
 
 : Characteristics:
 
-#### `list` [role]
+#### `list` role
 
+::: role-description
 A [`section`](https://w3c.github.io/aria/#section)
 containing
 [`listitem`](https://w3c.github.io/aria/#listitem)
@@ -6122,8 +6175,9 @@ Lists contain children whose [role](#dfn-role) is
 
 : Characteristics:
 
-#### `listbox` [role]
+#### `listbox` role
 
+::: role-description
 A [widget](#dfn-widget) that allows the user to select one or more items from a
 list of choices. See related
 [`combobox`](https://w3c.github.io/aria/#combobox) and
@@ -6140,7 +6194,7 @@ turn contain children whose [role](#dfn-role) is
 [`option`](https://w3c.github.io/aria/#option).
 
 To be [keyboard
-accessible](#dfn-keyboard-accessible), authors *SHOULD* manage focus of
+accessible](#dfn-keyboard-accessible), authors *MUST* manage focus of
 [`option`](https://w3c.github.io/aria/#option)
 descendants for all instances of this
 [role](#dfn-role), as
@@ -6206,8 +6260,9 @@ value of `vertical`.
 
 : Characteristics:
 
-#### `listitem` [role]
+#### `listitem` role
 
+::: role-description
 A single item in a list or directory.
 
 Authors *MUST* ensure
@@ -6268,11 +6323,11 @@ whose [role](#dfn-role) is
 
 : Characteristics:
 
-#### `log` [role]
+#### `log` role
 
+::: role-description
 A type of [live region](#dfn-live-region) where new information is added in
-meaningful order and old information can disappear. See related
-[`marquee`](https://w3c.github.io/aria/#marquee).
+meaningful order and old information can disappear.
 
 Examples include chat logs, messaging history, game log, or an error
 log. In contrast to other live regions, in this
@@ -6327,8 +6382,9 @@ value of `polite`.
 
 : Characteristics:
 
-#### `main` [role]
+#### `main` role
 
+::::: role-description
 A [`landmark`](https://w3c.github.io/aria/#landmark)
 containing the main content of a document.
 
@@ -6410,8 +6466,9 @@ attribute.
 
 : Characteristics:
 
-#### `mark` [role]
+#### `mark` role
 
+::: role-description
 Content which is marked or highlighted for reference or notation
 purposes, due to the content\'s relevance in the enclosing context.
 
@@ -6470,21 +6527,12 @@ syntax highlighting.
 
 : Characteristics:
 
-#### `marquee` [role]
+#### `marquee` role
 
-A type of [live region](#dfn-live-region) where non-essential information changes
-frequently. See related
-[`log`](https://w3c.github.io/aria/#log).
+::: role-description
+A section of content where non-essential information changes frequently.
 
-Common usages of `marquee` include stock tickers and ad banners. The
-primary difference between a `marquee` and a
-[`log`](https://w3c.github.io/aria/#log) is that logs
-usually have a meaningful order or sequence of important content
-changes.
-
-Elements with the role `marquee` have an implicit
-[`aria-live`](https://w3c.github.io/aria/#aria-live)
-value of `off`.
+Common usages of `marquee` include stock tickers and ad banners.
 
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Characteristic | Value |
@@ -6525,8 +6573,9 @@ value of `off`.
 
 : Characteristics:
 
-#### `math` [role]
+#### `math` role
 
+:::::::::::: role-description
 Content that represents a mathematical expression.
 
 Content with the role `math` is intended to be marked up in an
@@ -6656,8 +6705,9 @@ a data URI and plain text alternative.
 
 : Characteristics:
 
-#### `menu` [role]
+#### `menu` role
 
+::: role-description
 A type of [widget](#dfn-widget) that offers a list of choices to the user.
 
 A menu is a container, generally rendered as a popup or overlay, for a
@@ -6675,7 +6725,7 @@ to render sub-menus for items of a
 another `menu` popup.
 
 To be [keyboard
-accessible](#dfn-keyboard-accessible), authors *SHOULD* manage focus of
+accessible](#dfn-keyboard-accessible), authors *MUST* manage focus of
 descendants for all instances of this
 [role](#dfn-role), as
 described in [Managing Focus](#managingfocus).
@@ -6745,8 +6795,9 @@ value of `vertical`.
 
 : Characteristics:
 
-#### `menubar` [role]
+#### `menubar` role
 
+::: role-description
 A presentation of
 [`menu`](https://w3c.github.io/aria/#menu) that usually
 remains visible and is usually presented horizontally.
@@ -6758,7 +6809,7 @@ ensure that `menubar` interaction is similar to the typical menu bar
 interaction in a desktop graphical user interface.
 
 To be [keyboard
-accessible](#dfn-keyboard-accessible), authors *SHOULD* manage focus of
+accessible](#dfn-keyboard-accessible), authors *MUST* manage focus of
 descendants for all instances of this
 [role](#dfn-role), as
 described in [Managing Focus](#managingfocus).
@@ -6826,8 +6877,9 @@ value of `horizontal`.
 
 : Characteristics:
 
-#### `menuitem` [role]
+#### `menuitem` role
 
+::: role-description
 An option in a set of choices contained by a
 [`menu`](https://w3c.github.io/aria/#menu) or
 [`menubar`](https://w3c.github.io/aria/#menubar).
@@ -6922,8 +6974,9 @@ an element with an equivalent role from the native markup language.
 
 : Characteristics:
 
-#### `menuitemcheckbox` [role]
+#### `menuitemcheckbox` role
 
+::: role-description
 A [`menuitem`](https://w3c.github.io/aria/#menuitem)
 with a checkable state whose possible values are `true`, `false`, or
 `mixed`.
@@ -7017,8 +7070,9 @@ an element with an equivalent role from the native markup language.
 
 : Characteristics:
 
-#### `menuitemradio` [role]
+#### `menuitemradio` role
 
+::: role-description
 A checkable
 [`menuitem`](https://w3c.github.io/aria/#menuitem) in a
 set of elements with the same role, only one of which can be checked at
@@ -7121,8 +7175,10 @@ language.
 
 : Characteristics:
 
-#### `meter` [role]
+#### `meter` role
 
+::::: role-description
+An
 [element](https://dom.spec.whatwg.org/#concept-element)
 that represents a scalar measurement within a known range, or a
 fractional value. See related
@@ -7216,8 +7272,9 @@ of these properties will be considered for [ARIA] version 1.3.
 
 : Characteristics:
 
-#### `navigation` [role]
+#### `navigation` role
 
+::: role-description
 A [`landmark`](https://w3c.github.io/aria/#landmark)
 containing a collection of navigational
 [elements](https://dom.spec.whatwg.org/#concept-element)
@@ -7275,8 +7332,10 @@ agents](https://infra.spec.whatwg.org/#user-agent)
 
 : Characteristics:
 
-#### `none` [role]
+#### `none` role
 
+::::::::::::::::::::: role-description
+An
 [element](https://dom.spec.whatwg.org/#concept-element)
 whose implicit native role semantics will not be mapped to the
 [accessibility [API]](#dfn-accessibility-api). See synonym
@@ -7316,9 +7375,9 @@ Example use cases:
 
 For any element with a role of
 [`none`](https://w3c.github.io/aria/#none)/[`presentation`](https://w3c.github.io/aria/#presentation)
-and which is not [focusable](#dfn-focusable), the user agent *MUST NOT* expose the
-implicit native semantics of the element (the role and its states and
-properties) to accessibility [APIs]. However, the user agent
+and which is not [focusable](#dfn-focusable), the user agent *MUST NOT*
+[expose](#dfn-expose) the implicit native semantics of the element (the role
+and its states and properties) to accessibility [APIs]. However, the user agent
 *MUST* expose content and descendant elements that do not have an
 explicit or inherited role of
 [`none`](https://w3c.github.io/aria/#none)/[`presentation`](https://w3c.github.io/aria/#presentation).
@@ -7480,9 +7539,10 @@ none role) and identical content.
 ```
 
 There are other [WAI-ARIA] roles with specific
-allowed children for which this situation is applicable (e.g., feeds and
-listboxes), but tables and lists are the most common real-world cases in
-which the none/presentation inheritance is likely to apply.
+[allowed accessibility children](#mustContain) for which this situation
+is applicable (e.g., feeds and listboxes), but tables and lists are the
+most common real-world cases in which the none/presentation inheritance
+is likely to apply.
 
 For any element with an explicit or inherited role of
 [`none`](https://w3c.github.io/aria/#none)/[`presentation`](https://w3c.github.io/aria/#presentation),
@@ -7538,11 +7598,14 @@ role](#conflict_resolution_presentation_none) has been moved to
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Name From: | prohibited |
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
+| Synonym roles | [`presentation`](https://w3c.github.io/aria/#presentation) |
++-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 
 : Characteristics:
 
-#### `note` [role]
+#### `note` role
 
+::::::: role-description
 A [`section`](https://w3c.github.io/aria/#section)
 whose content represents additional information or parenthetical context
 to the primary content it supplements.
@@ -7633,8 +7696,9 @@ associate the elements:
 
 : Characteristics:
 
-#### `option` [role]
+#### `option` role
 
+::: role-description
 An item in a
 [`listbox`](https://w3c.github.io/aria/#listbox).
 
@@ -7791,8 +7855,9 @@ are met:
 
 : Characteristics:
 
-#### `paragraph` [role]
+#### `paragraph` role
 
+::: role-description
 A paragraph of content.
 
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
@@ -7838,8 +7903,10 @@ A paragraph of content.
 
 : Characteristics:
 
-#### `presentation` [role]
+#### `presentation` role
 
+:::::: role-description
+An
 [element](https://dom.spec.whatwg.org/#concept-element)
 whose implicit native role semantics will not be mapped to the
 [accessibility [API]](#dfn-accessibility-api). See synonym
@@ -7859,8 +7926,10 @@ erroneously consider `` to be synonymous with
 `aria-hidden="true"`, and the [ARIA] Working Group believes
 `` conveys the actual meaning more unambiguously.
 
-#### `progressbar` [role]
+#### `progressbar` role
 
+::::: role-description
+An
 [element](https://dom.spec.whatwg.org/#concept-element)
 that displays the progress status for tasks that take a long time.
 
@@ -7962,8 +8031,9 @@ is specified.
 
 : Characteristics:
 
-#### `radio` [role]
+#### `radio` role
 
+::: role-description
 A checkable input in a group of elements with the same role, only one of
 which can be checked at a time.
 
@@ -8031,8 +8101,9 @@ element to indicate the
 
 : Characteristics:
 
-#### `radiogroup` [role]
+#### `radiogroup` role
 
+:::::: role-description
 A group of [`radio`](https://w3c.github.io/aria/#radio)
 buttons.
 
@@ -8054,6 +8125,25 @@ or
 attribute. Authors *SHOULD* reference a visible label with
 [`aria-labelledby`](https://w3c.github.io/aria/#aria-labelledby)
 if a visible label is present for the `radiogroup`.
+
+Note[: Radiogroups containing other non-radio content]
+
+While a `radiogroup` is primarily meant to group and thus associate
+related `radio` buttons, a `radiogroup` can contain other non-`radio`
+button elements. For instance, descriptive text beyond what serves as
+the radio button\'s label, or even in some cases, form controls or other
+information that are enabled, revealed or both when a specific radio
+button has been chosen (checked).
+
+However, including non-radio button content into a `radiogroup` is not
+without its potential UX drawbacks. As it is generally expected to use
+arrow keys to navigate between radio buttons, any non-radio button
+content could go unnoticed by some users, as arrowing through the radio
+buttons would mean that any other tabbable elements (e.g., hyperlinks or
+other form fields) would be skipped. When creating a `radiogroup` with
+other arbitrary content, consider if the non-radio content could be just
+as impactful if it was presented as an immediate sibling *after* the
+`radiogroup`.
 
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Characteristic | Value |
@@ -8098,8 +8188,9 @@ if a visible label is present for the `radiogroup`.
 
 : Characteristics:
 
-#### `range` [abstract role]
+#### `range` abstract role
 
+::: role-description
 An element representing a range of values.
 
 `range` is an [abstract role](#isAbstract) used for the ontology.
@@ -8155,8 +8246,9 @@ Authors *MUST NOT* use `range` role in content.
 
 : Characteristics:
 
-#### `region` [role]
+#### `region` role
 
+::: role-description
 A [`landmark`](https://w3c.github.io/aria/#landmark)
 containing content that is relevant to a specific, author-specified
 purpose and sufficiently important that users will likely want to be
@@ -8234,8 +8326,9 @@ agents](https://infra.spec.whatwg.org/#user-agent)
 
 : Characteristics:
 
-#### `roletype` [abstract role]
+#### `roletype` abstract role
 
+::: role-description
 The base [role](#dfn-role) from which all other roles inherit.
 
 Properties of this role describe the structural and functional purpose
@@ -8266,17 +8359,17 @@ Authors *MUST NOT* use `roletype` role in content.
 | | - [`aria-description`](https://w3c.github.io/aria/#aria-description) |
 | | - [`aria-details`](https://w3c.github.io/aria/#aria-details) |
 | | - [`aria-disabled (state)`](https://w3c.github.io/aria/#aria-disabled) (Global use deprecated |
-| | in ARIA 1.2) |
+| | in [ARIA] 1.2) |
 | | - [`aria-dropeffect`](https://w3c.github.io/aria/#aria-dropeffect) |
 | | - [`aria-errormessage`](https://w3c.github.io/aria/#aria-errormessage) (Global use |
-| | deprecated in ARIA 1.2) |
+| | deprecated in [ARIA] 1.2) |
 | | - [`aria-flowto`](https://w3c.github.io/aria/#aria-flowto) |
 | | - [`aria-grabbed (state)`](https://w3c.github.io/aria/#aria-grabbed) |
 | | - [`aria-haspopup`](https://w3c.github.io/aria/#aria-haspopup) (Global use deprecated in |
-| | ARIA 1.2) |
+| | [ARIA] 1.2) |
 | | - [`aria-hidden (state)`](https://w3c.github.io/aria/#aria-hidden) |
 | | - [`aria-invalid (state)`](https://w3c.github.io/aria/#aria-invalid) (Global use deprecated |
-| | in ARIA 1.2) |
+| | in [ARIA] 1.2) |
 | | - [`aria-keyshortcuts`](https://w3c.github.io/aria/#aria-keyshortcuts) |
 | | - [`aria-label`](https://w3c.github.io/aria/#aria-label) (Except where prohibited) |
 | | - [`aria-labelledby`](https://w3c.github.io/aria/#aria-labelledby) (Except where |
@@ -8290,8 +8383,9 @@ Authors *MUST NOT* use `roletype` role in content.
 
 : Characteristics:
 
-#### `row` [role]
+#### `row` role
 
+::::: role-description
 A row of cells in a tabular container.
 
 Rows contain [`cell`](https://w3c.github.io/aria/#cell)
@@ -8323,7 +8417,7 @@ to a [`row`](https://w3c.github.io/aria/#row) that
 descends from a
 [`table`](https://w3c.github.io/aria/#table) or
 [`grid`](https://w3c.github.io/aria/#grid), and user
-agents *SHOULD NOT* expose any of these four properties to assistive
+agents *SHOULD NOT* [expose](#dfn-expose) any of these four properties to assistive
 technologies unless the
 [`row`](https://w3c.github.io/aria/#row) descends from
 a [`treegrid`](https://w3c.github.io/aria/#treegrid).
@@ -8411,8 +8505,9 @@ the element is in the context of a
 
 : Characteristics:
 
-#### `rowgroup` [role]
+#### `rowgroup` role
 
+::::::: role-description
 A structure containing one or more row elements in a tabular container.
 
 The `rowgroup` role establishes a
@@ -8490,8 +8585,9 @@ This role does not differentiate between types of row groups (e.g.,
 
 : Characteristics:
 
-#### `rowheader` [role]
+#### `rowheader` role
 
+::::: role-description
 A cell containing header information for a row.
 
 The
@@ -8535,7 +8631,7 @@ or
 [`aria-required`](https://w3c.github.io/aria/#aria-required)
 in a `rowheader` that descends from a
 [`table`](https://w3c.github.io/aria/#table), and user
-agents *SHOULD NOT* expose these properties to [assistive
+agents *SHOULD NOT* [expose](#dfn-expose) these properties to [assistive
 technologies](#assistive-technology) unless the `rowheader` descends from a
 [`grid`](https://w3c.github.io/aria/#grid) or
 [`treegrid`](https://w3c.github.io/aria/#treegrid).
@@ -8610,8 +8706,9 @@ except when the element is in the context of a
 
 : Characteristics:
 
-#### `scrollbar` [role]
+#### `scrollbar` role
 
+::::: role-description
 A graphical object that controls the scrolling of content within a
 viewing area, regardless of whether the content is fully displayed
 within the viewing area.
@@ -8684,8 +8781,6 @@ in a manner that is appropriate for this calculation.
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Supported States and Properties: | - [`aria-disabled`](https://w3c.github.io/aria/#aria-disabled) |
 | | - [`aria-orientation`](https://w3c.github.io/aria/#aria-orientation) |
-| | - [`aria-valuemax`](https://w3c.github.io/aria/#aria-valuemax) |
-| | - [`aria-valuemin`](https://w3c.github.io/aria/#aria-valuemin) |
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Inherited States and Properties: | - [`aria-atomic`](https://w3c.github.io/aria/#aria-atomic) |
 | | - [`aria-braillelabel`](https://w3c.github.io/aria/#aria-braillelabel) |
@@ -8713,6 +8808,8 @@ in a manner that is appropriate for this calculation.
 | | - [`aria-owns`](https://w3c.github.io/aria/#aria-owns) |
 | | - [`aria-relevant`](https://w3c.github.io/aria/#aria-relevant) |
 | | - [`aria-roledescription`](https://w3c.github.io/aria/#aria-roledescription) |
+| | - [`aria-valuemax`](https://w3c.github.io/aria/#aria-valuemax) |
+| | - [`aria-valuemin`](https://w3c.github.io/aria/#aria-valuemin) |
 | | - [`aria-valuetext`](https://w3c.github.io/aria/#aria-valuetext) |
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Name From: | author |
@@ -8729,8 +8826,9 @@ in a manner that is appropriate for this calculation.
 
 : Characteristics:
 
-#### `search` [role]
+#### `search` role
 
+::: role-description
 A [`landmark`](https://w3c.github.io/aria/#landmark)
 region that contains a collection of items and objects that, as a whole,
 combine to create a search facility. See related
@@ -8791,8 +8889,9 @@ agents](https://infra.spec.whatwg.org/#user-agent)
 
 : Characteristics:
 
-#### `searchbox` [role]
+#### `searchbox` role
 
+::: role-description
 A type of textbox intended for specifying search criteria. See related
 [`textbox`](https://w3c.github.io/aria/#textbox) and
 [`search`](https://w3c.github.io/aria/#search).
@@ -8843,8 +8942,9 @@ A type of textbox intended for specifying search criteria. See related
 
 : Characteristics:
 
-#### `section` [abstract role]
+#### `section` abstract role
 
+::: role-description
 A renderable structural containment unit on a page.
 
 `section` is an [abstract role](#isAbstract) used for the ontology.
@@ -8923,8 +9023,9 @@ Authors *MUST NOT* use `section` role in content.
 
 : Characteristics:
 
-#### `sectionfooter` [role]
+#### `sectionfooter` role
 
+::: role-description
 A set of user interface objects and information representing information
 about its closest ancestral content group. For instance, a
 `sectionfooter` can include information about who wrote the specific
@@ -8981,8 +9082,9 @@ role would be more appropriate.
 
 : Characteristics:
 
-#### `sectionhead` [abstract role]
+#### `sectionhead` abstract role
 
+::: role-description
 A structure that labels or summarizes the topic of its related section.
 
 `sectionhead` is an [abstract role](#isAbstract) used for the ontology.
@@ -9032,8 +9134,9 @@ Authors *MUST NOT* use `sectionhead` role in content.
 
 : Characteristics:
 
-#### `sectionheader` [role]
+#### `sectionheader` role
 
+::: role-description
 A set of user interface objects and information that represents a
 collection of introductory items for the element\'s closest ancestral
 content group. For instance, a `sectionheader` can include the heading,
@@ -9090,8 +9193,9 @@ would be more appropriate.
 
 : Characteristics:
 
-#### `select` [abstract role]
+#### `select` abstract role
 
+::: role-description
 A form widget that allows the user to make selections from a set of
 choices.
 
@@ -9145,8 +9249,9 @@ Authors *MUST NOT* use `select` role in content.
 
 : Characteristics:
 
-#### `separator` [role]
+#### `separator` role
 
+::: role-description
 A divider that separates and distinguishes sections of content or groups
 of menuitems.
 
@@ -9249,8 +9354,9 @@ value of `horizontal`.
 
 : Characteristics:
 
-#### `slider` [role]
+#### `slider` role
 
+::: role-description
 An input where the user selects a value from within a given range.
 
 A slider represents the current value and range of possible values via
@@ -9298,8 +9404,6 @@ value of `horizontal`.
 | | - [`aria-invalid`](https://w3c.github.io/aria/#aria-invalid) |
 | | - [`aria-orientation`](https://w3c.github.io/aria/#aria-orientation) |
 | | - [`aria-readonly`](https://w3c.github.io/aria/#aria-readonly) |
-| | - [`aria-valuemax`](https://w3c.github.io/aria/#aria-valuemax) |
-| | - [`aria-valuemin`](https://w3c.github.io/aria/#aria-valuemin) |
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Inherited States and Properties: | - [`aria-atomic`](https://w3c.github.io/aria/#aria-atomic) |
 | | - [`aria-braillelabel`](https://w3c.github.io/aria/#aria-braillelabel) |
@@ -9322,6 +9426,8 @@ value of `horizontal`.
 | | - [`aria-owns`](https://w3c.github.io/aria/#aria-owns) |
 | | - [`aria-relevant`](https://w3c.github.io/aria/#aria-relevant) |
 | | - [`aria-roledescription`](https://w3c.github.io/aria/#aria-roledescription) |
+| | - [`aria-valuemax`](https://w3c.github.io/aria/#aria-valuemax) |
+| | - [`aria-valuemin`](https://w3c.github.io/aria/#aria-valuemin) |
 | | - [`aria-valuetext`](https://w3c.github.io/aria/#aria-valuetext) |
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Name From: | author |
@@ -9340,8 +9446,9 @@ value of `horizontal`.
 
 : Characteristics:
 
-#### `spinbutton` [role]
+#### `spinbutton` role
 
+::: role-description
 A form of [`range`](https://w3c.github.io/aria/#range)
 that expects the user to select from among discrete choices.
 
@@ -9447,8 +9554,9 @@ attribute when there is a maximum value.
 
 : Characteristics:
 
-#### `status` [role]
+#### `status` role
 
+::: role-description
 A type of [live region](#dfn-live-region) whose content is advisory information for
 the user but is not important enough to justify an
 [`alert`](https://w3c.github.io/aria/#alert), often but
@@ -9521,8 +9629,9 @@ value of `true`.
 
 : Characteristics:
 
-#### `strong` [role]
+#### `strong` role
 
+::: role-description
 Content that is important, serious, or urgent. See related
 [`emphasis`](https://w3c.github.io/aria/#emphasis).
 
@@ -9580,8 +9689,9 @@ is more appropriate.
 
 : Characteristics:
 
-#### `structure` [abstract role]
+#### `structure` abstract role
 
+::: role-description
 A document structural
 [element](https://dom.spec.whatwg.org/#concept-element).
 
@@ -9646,8 +9756,9 @@ Authors *MUST NOT* use `structure` role in content.
 
 : Characteristics:
 
-#### `subscript` [role]
+#### `subscript` role
 
+::: role-description
 One or more subscripted characters. See related
 [`superscript`](https://w3c.github.io/aria/#superscript).
 
@@ -9702,24 +9813,28 @@ the meaning of the content.
 
 : Characteristics:
 
-#### `suggestion` [role]
+#### `suggestion` role
 
+::::: role-description
 A single proposed change to content.
 
 For example, in an editing system that supports multiple users, one user
 can suggest a change, and another user would be responsible for
 accepting or rejecting the suggestion.
 
-Authors *MUST* ensure that a `suggestion` contains either one
+Authors *MUST* ensure that a `suggestion` has either exactly one
 [`insertion`](https://w3c.github.io/aria/#insertion)
-child or one
+[accessibility
+child](#dfn-accessibility-child) or exactly one
 [`deletion`](https://w3c.github.io/aria/#deletion)
-child or ensure that it contains two children where one is an
+[accessibility
+child](#dfn-accessibility-child), or exactly two [accessibility
+children](#dfn-accessibility-child) where one is an
 [`insertion`](https://w3c.github.io/aria/#insertion)
 and the other is a
 [`deletion`](https://w3c.github.io/aria/#deletion).
-Authors *MUST* ensure a `suggestion` does not contain any other
-children.
+Authors *MUST NOT* include any additional [accessibility
+children](#dfn-accessibility-child) in a `suggestion`.
 
 Authors *MAY* use
 [`aria-details`](https://w3c.github.io/aria/#aria-details)
@@ -9791,8 +9906,9 @@ with the revised content.
 
 : Characteristics:
 
-#### `superscript` [role]
+#### `superscript` role
 
+::: role-description
 One or more superscripted characters. See related
 [`subscript`](https://w3c.github.io/aria/#subscript).
 
@@ -9847,8 +9963,9 @@ change the meaning of the content.
 
 : Characteristics:
 
-#### `switch` [role]
+#### `switch` role
 
+::::: role-description
 A type of checkbox that represents on/off values, as opposed to
 checked/unchecked values. See related
 [`checkbox`](https://w3c.github.io/aria/#checkbox).
@@ -9913,8 +10030,9 @@ appearance.
 
 : Characteristics:
 
-#### `tab` [role]
+#### `tab` role
 
+::: role-description
 A grouping label providing a mechanism for selecting the tab content
 that is to be rendered to the user.
 
@@ -9943,6 +10061,15 @@ children](#dfn-accessibility-child) of an element with the role
 
 Authors *MUST* ensure that if a `tab` is active, a corresponding
 `tabpanel` that represents the active `tab` is rendered.
+
+Authors *SHOULD* associate a `tabpanel`
+[element](https://dom.spec.whatwg.org/#concept-element)
+with its [`tab`](https://w3c.github.io/aria/#tab), by
+using the
+[`aria-controls`](https://w3c.github.io/aria/#aria-controls)
+attribute on the tab to reference the tab panel, and/or by using the
+[`aria-labelledby`](https://w3c.github.io/aria/#aria-labelledby)
+attribute on the tab panel to reference the tab.
 
 Authors *SHOULD* ensure the
 [`tabpanel`](https://w3c.github.io/aria/#tabpanel)
@@ -10051,8 +10178,9 @@ met before providing an implicit value:
 
 : Characteristics:
 
-#### `table` [role]
+#### `table` role
 
+::: role-description
 A [`section`](https://w3c.github.io/aria/#section)
 containing data arranged in rows and columns. See related
 [`grid`](https://w3c.github.io/aria/#grid).
@@ -10133,8 +10261,9 @@ element in [HTML].
 
 : Characteristics:
 
-#### `tablist` [role]
+#### `tablist` role
 
+::: role-description
 A list of [`tab`](https://w3c.github.io/aria/#tab)
 [elements](https://dom.spec.whatwg.org/#concept-element),
 which are references to
@@ -10142,7 +10271,7 @@ which are references to
 elements.
 
 To be [keyboard
-accessible](#dfn-keyboard-accessible), authors *SHOULD* manage focus of
+accessible](#dfn-keyboard-accessible), authors *MUST* manage focus of
 descendants for all instances of this
 [role](#dfn-role), as
 described in [Managing Focus](#managingfocus).
@@ -10229,12 +10358,16 @@ value of `horizontal`.
 
 : Characteristics:
 
-#### `tabpanel` [role]
+#### `tabpanel` role
 
+::: role-description
 A container for the resources associated with a
 [`tab`](https://w3c.github.io/aria/#tab), where each
 [`tab`](https://w3c.github.io/aria/#tab) is contained
 in a [`tablist`](https://w3c.github.io/aria/#tablist).
+
+Authors *MUST* ensure that if a `tab` is active, a corresponding
+`tabpanel` that represents the active `tab` is rendered.
 
 Authors *SHOULD* associate a `tabpanel`
 [element](https://dom.spec.whatwg.org/#concept-element)
@@ -10293,8 +10426,9 @@ tab set design pattern.
 
 : Characteristics:
 
-#### `term` [role]
+#### `term` role
 
+::: role-description
 A word or phrase with an optional corresponding definition. See related
 [`definition`](https://w3c.github.io/aria/#definition).
 
@@ -10355,8 +10489,9 @@ technologies](#assistive-technology) from interacting with those elements.
 
 : Characteristics:
 
-#### `textbox` [role]
+#### `textbox` role
 
+::::: role-description
 A type of input that allows free-form text as its value.
 
 If the
@@ -10372,8 +10507,8 @@ or cases in which an element with different
 
 Authors *MUST* limit the children of a textbox to non-interactive,
 entirely presentational elements such as icons used to visually convey
-information that is already exposed in an accessible manner. Examples
-include:
+information that is already
+[exposed](#dfn-expose) in an accessible manner. Examples include:
 
 - an error icon, where the containing textbox has been provided an
  [`aria-invalid`](https://w3c.github.io/aria/#aria-invalid),
@@ -10448,8 +10583,9 @@ designing the field.
 
 : Characteristics:
 
-#### `time` [role]
+#### `time` role
 
+:::::: role-description
 An element that represents a specific point in time.
 
 At the present time, there are no [WAI-ARIA] properties corresponding
@@ -10524,21 +10660,18 @@ element with the `time` role:
 
 : Characteristics:
 
-#### `timer` [role]
+#### `timer` role
 
-A type of [live region](#dfn-live-region) containing a numerical counter which
-indicates an amount of elapsed time from a start point, or the time
-remaining until an end point.
+::: role-description
+A section of content containing a numerical counter which indicates an
+amount of elapsed time from a start point, or the time remaining until
+an end point.
 
 The text contents of the timer
 [object](#dfn-object) indicate the current time measurement, and are updated
 as that amount changes. The timer value is not necessarily machine
 parsable, but authors *SHOULD* update the text contents at fixed
 intervals, except when the timer is paused or reaches an end-point.
-
-Elements with the role `timer` have an implicit
-[`aria-live`](https://w3c.github.io/aria/#aria-live)
-value of `off`.
 
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Characteristic | Value |
@@ -10576,13 +10709,12 @@ value of `off`.
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Name From: | author |
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
-| Implicit Value for Role: | Default for [`aria-live`](https://w3c.github.io/aria/#aria-live) is `off`. |
-+-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 
 : Characteristics:
 
-#### `toolbar` [role]
+#### `toolbar` role
 
+::: role-description
 A collection of commonly used function buttons or controls represented
 in compact visual form.
 
@@ -10646,8 +10778,9 @@ value of `horizontal`.
 
 : Characteristics:
 
-#### `tooltip` [role]
+#### `tooltip` role
 
+::::: role-description
 A contextual popup that displays a description for an element.
 
 The `tooltip` typically becomes visible, after a short delay, in
@@ -10670,7 +10803,6 @@ before or at the time the tooltip is displayed.
 | Superclass Role: | [`section`](https://w3c.github.io/aria/#section) |
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 | Inherited States and Properties: | - [`aria-atomic`](https://w3c.github.io/aria/#aria-atomic) |
-| | - [`aria-braillelabel`](https://w3c.github.io/aria/#aria-braillelabel) |
 | | - [`aria-brailleroledescription`](https://w3c.github.io/aria/#aria-brailleroledescription) |
 | | - [`aria-busy`](https://w3c.github.io/aria/#aria-busy) (state) |
 | | - [`aria-controls`](https://w3c.github.io/aria/#aria-controls) |
@@ -10691,27 +10823,29 @@ before or at the time the tooltip is displayed.
 | | - [`aria-invalid`](https://w3c.github.io/aria/#aria-invalid) (state) **(deprecated on this |
 | | role in ARIA 1.2)** |
 | | - [`aria-keyshortcuts`](https://w3c.github.io/aria/#aria-keyshortcuts) |
-| | - [`aria-label`](https://w3c.github.io/aria/#aria-label) |
-| | - [`aria-labelledby`](https://w3c.github.io/aria/#aria-labelledby) |
 | | - [`aria-live`](https://w3c.github.io/aria/#aria-live) |
 | | - [`aria-owns`](https://w3c.github.io/aria/#aria-owns) |
 | | - [`aria-relevant`](https://w3c.github.io/aria/#aria-relevant) |
 | | - [`aria-roledescription`](https://w3c.github.io/aria/#aria-roledescription) |
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
-| Name From: | - contents |
-| | - author |
+| Prohibited States and Properties: | - [`aria-braillelabel`](https://w3c.github.io/aria/#aria-braillelabel) |
+| | - [`aria-label`](https://w3c.github.io/aria/#aria-label) |
+| | - [`aria-labelledby`](https://w3c.github.io/aria/#aria-labelledby) |
++-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
+| Name From: | prohibited |
 +-----------------------------------+-----------------------------------------------------------------------------------------------------------------+
 
 : Characteristics:
 
-#### `tree` [role]
+#### `tree` role
 
+::: role-description
 A [`widget`](https://w3c.github.io/aria/#widget) that
 allows the user to select one or more items from a hierarchically
 organized collection.
 
 To be [keyboard
-accessible](#dfn-keyboard-accessible), authors *SHOULD* manage focus of
+accessible](#dfn-keyboard-accessible), authors *MUST* manage focus of
 descendants for all instances of this
 [role](#dfn-role), as
 described in [Managing Focus](#managingfocus).
@@ -10771,8 +10905,9 @@ value of `vertical`.
 
 : Characteristics:
 
-#### `treegrid` [role]
+#### `treegrid` role
 
+::: role-description
 A [`grid`](https://w3c.github.io/aria/#grid) whose rows
 can be expanded and collapsed in the same manner as for a
 [`tree`](https://w3c.github.io/aria/#tree).
@@ -10786,8 +10921,8 @@ agents](https://infra.spec.whatwg.org/#user-agent)
 *MUST* propagate the value to all
 [`gridcell`](https://w3c.github.io/aria/#gridcell)
 elements that are [accessibility
-descendants](#dfn-accessibility-descendant) of the `treegrid` and expose the value in
-the accessibility [API]. An author *MAY* override the
+descendants](#dfn-accessibility-descendant) of the `treegrid` and
+[expose](#dfn-expose) the value in the accessibility [API]. An author *MAY* override the
 propagated value of
 [`aria-readonly`](https://w3c.github.io/aria/#aria-readonly)
 for an individual
@@ -10822,7 +10957,7 @@ is not necessary for the author to specify a value for
 [`aria-readonly`](https://w3c.github.io/aria/#aria-readonly).
 
 To be [keyboard
-accessible](#dfn-keyboard-accessible), authors *SHOULD* manage focus of
+accessible](#dfn-keyboard-accessible), authors *MUST* manage focus of
 descendants for all instances of this
 [role](#dfn-role), as
 described in [Managing Focus](#managingfocus).
@@ -10879,16 +11014,17 @@ described in [Managing Focus](#managingfocus).
 
 : Characteristics:
 
-#### `treeitem` [role]
+#### `treeitem` role
 
+::: role-description
 An item in a
 [`tree`](https://w3c.github.io/aria/#tree).
 
 A [`treeitem`](https://w3c.github.io/aria/#treeitem)
 [element](https://dom.spec.whatwg.org/#concept-element)
 can contain a sub-level group of elements that can be expanded or
-collapsed. An expandable collection of `treeitem` elements are enclosed
-in an element with the
+collapsed. An expandable collection of `treeitem` elements are usually
+enclosed in an element with the
 [`group`](https://w3c.github.io/aria/#group)
 [role](#dfn-role).
 
@@ -10902,6 +11038,23 @@ element with role
 the [accessibility
 child](#dfn-accessibility-child) of an element with role
 [`treeitem`](https://w3c.github.io/aria/#treeitem).
+
+Authors *MAY* use nested
+[`group`](https://w3c.github.io/aria/#group) elements
+to implicitly indicate level hierarchy. Otherwise, authors *MUST* ensure
+all [`treeitem`](https://w3c.github.io/aria/#treeitem)
+elements in the
+[`tree`](https://w3c.github.io/aria/#tree) have
+explicit values for
+[`aria-level`](https://w3c.github.io/aria/#aria-level),
+[`aria-posinset`](https://w3c.github.io/aria/#aria-posinset),
+and
+[`aria-setsize`](https://w3c.github.io/aria/#aria-setsize).
+
+User agents *MUST* calculate an implicit value for
+[`aria-level`](https://w3c.github.io/aria/#aria-level)
+from the document structure if the author does not explicitly specify a
+value.
 
 In certain conditions, a user agent *MAY* provide an implicit value for
 [`aria-selected`](https://w3c.github.io/aria/#aria-selected)
@@ -11025,8 +11178,9 @@ met:
 
 : Characteristics:
 
-#### `widget` [abstract role]
+#### `widget` abstract role
 
+::: role-description
 An interactive component of a graphical user interface ([GUI]).
 
 Widgets are discrete user interface objects with which the user can
@@ -11095,8 +11249,9 @@ Authors *MUST NOT* use `widget` role in content.
 
 : Characteristics:
 
-#### `window` [abstract role]
+#### `window` abstract role
 
+::::: role-description
 A browser or application window.
 
 [Elements](https://dom.spec.whatwg.org/#concept-element) with this [role](#dfn-role) have a window-like behavior in a graphical
@@ -11245,7 +11400,7 @@ true/false/undefined
 ID reference
 : Reference to the ID of another
  [element](https://dom.spec.whatwg.org/#concept-element)
- in the same document
+ in the same document.
 
 ID reference list
 : A list of one or more ID references.
@@ -11308,8 +11463,8 @@ return an invalid value default.
 #### 6.3.3 Operating System Accessibility [API] mapping of multi-value [ARIA] attributes
 
 Unlike IDL reflection, operating system accessibility [API] mappings of [ARIA] attributes can have
-defaults. Any default values from the [ARIA] values tables are exposed
-to the operating system accessibility [API] as described in [5.2.3
+defaults. Any default values from the [ARIA] values tables are
+[exposed](#dfn-expose) to the operating system accessibility [API] as described in [5.2.3
 Supported States and Properties](#supportedState), and in [Core Accessibility API
 Mappings
 1.1](https://www.w3.org/TR/core-aam-1.1/){matched-text="[[[CORE-AAM]]]"}.
@@ -11445,6 +11600,35 @@ and should be translated when a page is localized:
 - [`aria-rowindextext`](https://w3c.github.io/aria/#aria-rowindextext)
 - [`aria-valuetext`](https://w3c.github.io/aria/#aria-valuetext)
 
+The [web
+platform](https://html.spec.whatwg.org/multipage/dom.html#the-lang-and-xml:lang-attributes)
+does not provide a mechanism to specify language and directionality for
+a translatable attribute separate from the language and directionality
+of its containing element.
+
+To avoid creating other accessibility issues, authors are encouraged to
+ensure that the language and directionality of the value of a
+translatable attribute matches the language and directionality of its
+containing element.
+
+Where language or direction metadata for the translatable attribute
+value needs to differ from that of its containing element, authors can
+use a referencing attribute, such as `aria-labelledby`,
+`aria-describedby`, or `aria-details`, pointing to an element, on which
+language and direction attributes can be expressed directly. This allows
+translation of these values when the user agent is presenting the
+document in a machine-translated rendering, via a built-in \"Translate
+this page\" feature, as well as appropriate rendering when the
+element\'s contents are rendered visually.
+
+Authors are encouraged to avoid using plain text [ARIA] attribute values such as
+`<button aria-label="Hola, hello, salut, こんにちは"></button>` for text
+alternatives that contain inline language/direction changes or other
+text-level markup.
+
+For more details, see [Internationalization best practices for web
+developers](https://www.w3.org/TR/international-specs#markup_elements_attributes).
+
 ::: header-wrapper
 ### 6.5 [Global] States and Properties
 
@@ -11470,17 +11654,17 @@ defines the role.
 - [`aria-description`](https://w3c.github.io/aria/#aria-description)
 - [`aria-details`](https://w3c.github.io/aria/#aria-details)
 - [`aria-disabled (state)`](https://w3c.github.io/aria/#aria-disabled)
- (Global use deprecated in ARIA 1.2)
+ (Global use deprecated in [ARIA] 1.2)
 - [`aria-dropeffect`](https://w3c.github.io/aria/#aria-dropeffect)
 - [`aria-errormessage`](https://w3c.github.io/aria/#aria-errormessage)
- (Global use deprecated in ARIA 1.2)
+ (Global use deprecated in [ARIA] 1.2)
 - [`aria-flowto`](https://w3c.github.io/aria/#aria-flowto)
 - [`aria-grabbed (state)`](https://w3c.github.io/aria/#aria-grabbed)
 - [`aria-haspopup`](https://w3c.github.io/aria/#aria-haspopup)
- (Global use deprecated in ARIA 1.2)
+ (Global use deprecated in [ARIA] 1.2)
 - [`aria-hidden (state)`](https://w3c.github.io/aria/#aria-hidden)
 - [`aria-invalid (state)`](https://w3c.github.io/aria/#aria-invalid)
- (Global use deprecated in ARIA 1.2)
+ (Global use deprecated in [ARIA] 1.2)
 - [`aria-keyshortcuts`](https://w3c.github.io/aria/#aria-keyshortcuts)
 - [`aria-label`](https://w3c.github.io/aria/#aria-label)
  (Except where prohibited)
@@ -11497,13 +11681,27 @@ defines the role.
 
 States and properties are categorized as follows:
 
-1. [Widget Attributes](#attrs_widgets)
-2. [Live Region Attributes](#attrs_liveregions)
-3. [Drag-and-Drop Attributes](#attrs_dragdrop)
+1. [Naming Attributes](#attrs_naming)
+2. [Widget Attributes](#attrs_widgets)
+3. [Live Region Attributes](#attrs_liveregions)
 4. [Relationship Attributes](#attrs_relationships)
 
 ::: header-wrapper
-#### 6.6.1 Widget Attributes
+#### 6.6.1 Naming Attributes
+
+This section contains
+[attributes](https://dom.spec.whatwg.org/#concept-attribute)
+related to controlling specific names of elements and their roles.
+
+- [`aria-braillelabel`](https://w3c.github.io/aria/#aria-braillelabel)
+- [`aria-brailleroledescription`](https://w3c.github.io/aria/#aria-brailleroledescription)
+- [`aria-description`](https://w3c.github.io/aria/#aria-description)
+- [`aria-keyshortcuts`](https://w3c.github.io/aria/#aria-keyshortcuts)
+- [`aria-label`](https://w3c.github.io/aria/#aria-label)
+- [`aria-roledescription`](https://w3c.github.io/aria/#aria-roledescription)
+
+::: header-wrapper
+#### 6.6.2 Widget Attributes
 
 This section contains
 [attributes](https://dom.spec.whatwg.org/#concept-attribute)
@@ -11522,7 +11720,6 @@ roles](#widget_roles).
 - [`aria-haspopup`](https://w3c.github.io/aria/#aria-haspopup)
 - [`aria-hidden`](https://w3c.github.io/aria/#aria-hidden)
 - [`aria-invalid`](https://w3c.github.io/aria/#aria-invalid)
-- [`aria-label`](https://w3c.github.io/aria/#aria-label)
 - [`aria-level`](https://w3c.github.io/aria/#aria-level)
 - [`aria-modal`](https://w3c.github.io/aria/#aria-modal)
 - [`aria-multiline`](https://w3c.github.io/aria/#aria-multiline)
@@ -11546,7 +11743,7 @@ technologies](#assistive-technology), or they might be accessed directly from
 the [DOM].
 
 ::: header-wrapper
-#### 6.6.2 Live Region Attributes
+#### 6.6.3 Live Region Attributes
 
 This section contains
 [attributes](https://dom.spec.whatwg.org/#concept-attribute)
@@ -11558,9 +11755,9 @@ might occur without the element having focus, and to provide [assistive
 technologies](#assistive-technology) with information on how to process those
 content updates. Some [roles](#dfn-role) specify a default value for the
 [`aria-live`](https://w3c.github.io/aria/#aria-live)
-attribute specific to that role. An example of a live region is a ticker
-section that lists updating stock quotes. User agents *MAY* ignore
-changes triggered by direct user action on an
+attribute specific to that role. An example of a live region is a chat
+log that lists incoming chat messages. User agents *MAY* ignore changes
+triggered by direct user action on an
 [element](https://dom.spec.whatwg.org/#concept-element)
 inside a live region (e.g., editing the value of a text field).
 
@@ -11568,21 +11765,6 @@ inside a live region (e.g., editing the value of a text field).
 - [`aria-busy`](https://w3c.github.io/aria/#aria-busy)
 - [`aria-live`](https://w3c.github.io/aria/#aria-live)
 - [`aria-relevant`](https://w3c.github.io/aria/#aria-relevant)
-
-::: header-wrapper
-#### 6.6.3 Drag-and-Drop Attributes
-
-This section lists
-[attributes](https://dom.spec.whatwg.org/#concept-attribute)
-which indicate information about drag-and-drop interface
-[elements](https://dom.spec.whatwg.org/#concept-element),
-such as draggable elements and their drop targets. Drop target
-information will be rendered visually by the author and provided to
-[assistive
-technologies](#assistive-technology) through an alternate modality.
-
-- [`aria-dropeffect`](https://w3c.github.io/aria/#aria-dropeffect)
-- [`aria-grabbed`](https://w3c.github.io/aria/#aria-grabbed)
 
 ::: header-wrapper
 #### 6.6.4 Relationship Attributes
@@ -11600,6 +11782,7 @@ which cannot be readily determined from the document structure.
 - [`aria-colindextext`](https://w3c.github.io/aria/#aria-colindextext)
 - [`aria-colspan`](https://w3c.github.io/aria/#aria-colspan)
 - [`aria-controls`](https://w3c.github.io/aria/#aria-controls)
+- [`aria-current`](https://w3c.github.io/aria/#aria-current)
 - [`aria-describedby`](https://w3c.github.io/aria/#aria-describedby)
 - [`aria-details`](https://w3c.github.io/aria/#aria-details)
 - [`aria-errormessage`](https://w3c.github.io/aria/#aria-errormessage)
@@ -11999,8 +12182,9 @@ definition of each [WAI-ARIA] state and
  [`aria-valuenow`](https://w3c.github.io/aria/#aria-valuenow)
  for a range [widget](#dfn-widget).
 
-#### [`aria-activedescendant` [property]]
+#### `aria-activedescendant` property
 
+::: property-description
 [Identifies](#dfn-identifies) the currently active element when [DOM] focus is on a
 [`composite`](https://w3c.github.io/aria/#composite)
 widget,
@@ -12081,8 +12265,9 @@ visible and in view (or scrolls into view) when focused.
 
 : Characteristics:
 
-#### [`aria-atomic` [property]]
+#### `aria-atomic` property
 
+::: property-description
 [Indicates](#dfn-indicates) whether [assistive
 technologies](#assistive-technology) will present all, or only parts of, the
 changed region based on the change notifications defined by the
@@ -12138,8 +12323,9 @@ and present the entire changed region at once.
 
  : Values:
 
-#### [`aria-autocomplete` [property]]
+#### `aria-autocomplete` property
 
+::: property-description
 [Indicates](#dfn-indicates) whether inputting text could trigger display of one or
 more predictions of the user\'s intended value for a
 [`combobox`](https://w3c.github.io/aria/#combobox),
@@ -12251,8 +12437,9 @@ collection is displayed.
 
  : Values:
 
-#### [`aria-braillelabel` [property]]
+#### `aria-braillelabel` property
 
+::::::: property-description
 [Defines](#dfn-defines) a string value that labels the current element, which
 is intended to be converted into Braille. See related
 [`aria-label`](https://w3c.github.io/aria/#aria-label).
@@ -12325,8 +12512,8 @@ assistive technology that provides aural rendering *SHOULD* use the
 accessible name.
 
 [Assistive
-technologies](#assistive-technology) *SHOULD* expose the `aria-braillelabel`
-property as follows:
+technologies](#assistive-technology) *SHOULD*
+[expose](#dfn-expose) the `aria-braillelabel` property as follows:
 
 1. If the value of `aria-braillelabel` does not contain characters in
  [Unicode Braille
@@ -12349,14 +12536,15 @@ In the previous example, a braille display would display \"btn
 \*\*\*\*\" in Braille rather than the verbose \"btn gra 4 stars\".
 
  Characteristic Value
- ---------------- ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Used in Roles: All elements of the base markup except for the following roles: [`caption`](https://w3c.github.io/aria/#caption), [`code`](https://w3c.github.io/aria/#code), [`definition`](https://w3c.github.io/aria/#definition), [`deletion`](https://w3c.github.io/aria/#deletion), [`emphasis`](https://w3c.github.io/aria/#emphasis), [`generic`](https://w3c.github.io/aria/#generic), [`insertion`](https://w3c.github.io/aria/#insertion), [`mark`](https://w3c.github.io/aria/#mark), [`none`](https://w3c.github.io/aria/#none), [`paragraph`](https://w3c.github.io/aria/#paragraph), [`strong`](https://w3c.github.io/aria/#strong), [`subscript`](https://w3c.github.io/aria/#subscript), [`suggestion`](https://w3c.github.io/aria/#suggestion), [`superscript`](https://w3c.github.io/aria/#superscript), [`term`](https://w3c.github.io/aria/#term), [`time`](https://w3c.github.io/aria/#time)
+ ---------------- -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Used in Roles: All elements of the base markup except for the following roles: [`caption`](https://w3c.github.io/aria/#caption), [`code`](https://w3c.github.io/aria/#code), [`definition`](https://w3c.github.io/aria/#definition), [`deletion`](https://w3c.github.io/aria/#deletion), [`emphasis`](https://w3c.github.io/aria/#emphasis), [`generic`](https://w3c.github.io/aria/#generic), [`insertion`](https://w3c.github.io/aria/#insertion), [`mark`](https://w3c.github.io/aria/#mark), [`none`](https://w3c.github.io/aria/#none), [`paragraph`](https://w3c.github.io/aria/#paragraph), [`strong`](https://w3c.github.io/aria/#strong), [`subscript`](https://w3c.github.io/aria/#subscript), [`suggestion`](https://w3c.github.io/aria/#suggestion), [`superscript`](https://w3c.github.io/aria/#superscript), [`term`](https://w3c.github.io/aria/#term), [`time`](https://w3c.github.io/aria/#time), [`tooltip`](https://w3c.github.io/aria/#tooltip)
  Value: [string](#valuetype_string)
 
  : Characteristics:
 
-#### [`aria-brailleroledescription` [property]]
+#### `aria-brailleroledescription` property
 
+::::::::: property-description
 [Defines](#dfn-defines) a human-readable, author-localized abbreviated
 description for the [role](#dfn-role) of an
 [element](https://dom.spec.whatwg.org/#concept-element),
@@ -12440,7 +12628,7 @@ user without applying user specific braille translations; in general,
 authors are **strongly discouraged** from using Unicode Braille Patterns
 in `aria-brailleroledescription`.
 
-User agents *MUST NOT* expose the `aria-brailleroledescription` property
+User agents *MUST NOT* [expose](#dfn-expose) the `aria-brailleroledescription` property
 if any of the following conditions exist:
 
 1. The value of `aria-brailleroledescription` is empty or contains only
@@ -12510,8 +12698,9 @@ Report.\"
 
  : Characteristics:
 
-#### [`aria-busy` [state]]
+#### `aria-busy` state
 
+::: state-description
 [Indicates](#dfn-indicates) an element is being modified and that assistive
 technologies could wait until the modifications are complete before
 exposing them to the user.
@@ -12567,8 +12756,9 @@ would be to mark the tree busy while each of the branches are modified.
 
  : Values:
 
-#### [`aria-checked` [state]]
+#### `aria-checked` state
 
+::: state-description
 [Indicates](#dfn-indicates) the current \"checked\"
 [state](#dfn-state)
 of checkboxes, radio buttons, and other
@@ -12612,8 +12802,7 @@ Practices Guide](https://www.w3.org/WAI/ARIA/apg/).
 | | - [`radio`](https://w3c.github.io/aria/#radio) |
 | | - [`switch`](https://w3c.github.io/aria/#switch) |
 +-----------------------------------+---------------------------------------------------------------------------------------+
-| Inherits into Roles: | - [`switch`](https://w3c.github.io/aria/#switch) |
-| | - [`treeitem`](https://w3c.github.io/aria/#treeitem) |
+| Inherits into Roles: | - [`treeitem`](https://w3c.github.io/aria/#treeitem) |
 +-----------------------------------+---------------------------------------------------------------------------------------+
 | Value: | [tristate](#valuetype_tristate) |
 +-----------------------------------+---------------------------------------------------------------------------------------+
@@ -12629,8 +12818,9 @@ Practices Guide](https://www.w3.org/WAI/ARIA/apg/).
 
  : Values:
 
-#### [`aria-colcount` [property]]
+#### `aria-colcount` property
 
+::::: property-description
 [Defines](#dfn-defines) the total number of columns in a
 [`table`](https://w3c.github.io/aria/#table),
 [`grid`](https://w3c.github.io/aria/#grid), or
@@ -12701,8 +12891,9 @@ The following example shows a grid with 16 columns, of which columns 2,
 
 : Characteristics:
 
-#### [`aria-colindex` [property]]
+#### `aria-colindex` property
 
+::::::::: property-description
 [Defines](#dfn-defines) an
 [element\'s](https://dom.spec.whatwg.org/#concept-element) column index or position with respect to the total number
 of columns within a
@@ -12868,8 +13059,9 @@ children](#dfn-accessibility-child) of each row.
 
 : Characteristics:
 
-#### [`aria-colindextext` [property]]
+#### `aria-colindextext` property
 
+::::: property-description
 [Defines](#dfn-defines) a human readable text alternative of
 [`aria-colindex`](https://w3c.github.io/aria/#aria-colindex).
 See related
@@ -12901,6 +13093,7 @@ purpose of exposing its value on the
 | Used in Roles: | - [`cell`](https://w3c.github.io/aria/#cell) |
 +-----------------------------------+-------------------------------------------------------------------------------+
 | Inherits into Roles: | - [`columnheader`](https://w3c.github.io/aria/#columnheader) |
+| | - [`gridcell`](https://w3c.github.io/aria/#gridcell) |
 | | - [`rowheader`](https://w3c.github.io/aria/#rowheader) |
 +-----------------------------------+-------------------------------------------------------------------------------+
 | Value: | [string](#valuetype_integer) |
@@ -12908,8 +13101,9 @@ purpose of exposing its value on the
 
 : Characteristics:
 
-#### [`aria-colspan` [property]]
+#### `aria-colspan` property
 
+::: property-description
 [Defines](#dfn-defines) the number of columns spanned by a cell or gridcell
 within a [`table`](https://w3c.github.io/aria/#table),
 [`grid`](https://w3c.github.io/aria/#grid), or
@@ -12932,7 +13126,7 @@ attribute, [user
 agents](https://infra.spec.whatwg.org/#user-agent)
 *MUST* ignore the value of
 [`aria-colspan`](https://w3c.github.io/aria/#aria-colspan)
-and instead expose the value of the host language\'s attribute to
+and instead [expose](#dfn-expose) the value of the host language\'s attribute to
 [assistive
 technologies](#assistive-technology).
 
@@ -12942,21 +13136,26 @@ to an integer greater than or equal to 1 and less than the value which
 would cause the cell or gridcell to overlap the next cell or gridcell in
 the same row.
 
-+-----------------------------------+-------------------------------------------------------------------------------+
++-----------------------------------+---------------------------------------------------------------------------------+
 | Characteristic | Value |
-+===================================+===============================================================================+
++===================================+=================================================================================+
+| Related Concepts: | [colspan](https://html.spec.whatwg.org/multipage/tables.html#attr-tdth-colspan) |
+| | in [HTML] |
++-----------------------------------+---------------------------------------------------------------------------------+
 | Used in Roles: | - [`cell`](https://w3c.github.io/aria/#cell) |
-+-----------------------------------+-------------------------------------------------------------------------------+
++-----------------------------------+---------------------------------------------------------------------------------+
 | Inherits into Roles: | - [`columnheader`](https://w3c.github.io/aria/#columnheader) |
+| | - [`gridcell`](https://w3c.github.io/aria/#gridcell) |
 | | - [`rowheader`](https://w3c.github.io/aria/#rowheader) |
-+-----------------------------------+-------------------------------------------------------------------------------+
++-----------------------------------+---------------------------------------------------------------------------------+
 | Value: | [integer](#valuetype_integer) |
-+-----------------------------------+-------------------------------------------------------------------------------+
++-----------------------------------+---------------------------------------------------------------------------------+
 
 : Characteristics:
 
-#### [`aria-controls` [property]]
+#### `aria-controls` property
 
+::: property-description
 [Identifies](#dfn-identifies) the
 [element](https://dom.spec.whatwg.org/#concept-element)
 (or elements) whose contents or presence are controlled by the focused
@@ -13005,8 +13204,9 @@ both.
 
  : Characteristics:
 
-#### [`aria-current` [state]]
+#### `aria-current` state
 
+::::: state-description
 [Indicates](#dfn-indicates) the
 [element](https://dom.spec.whatwg.org/#concept-element)
 that represents the current item within a container or set of related
@@ -13022,7 +13222,7 @@ If the attribute is not present or its value is the empty string or
 `undefined`, the default value of `false` applies and the
 [`aria-current`](https://w3c.github.io/aria/#aria-current)
 [state](#dfn-state)
-*MUST NOT* be exposed by user agents or assistive technologies.
+*MUST NOT* be [exposed](#dfn-expose) by user agents or assistive technologies.
 
 The
 [`aria-current`](https://w3c.github.io/aria/#aria-current)
@@ -13090,8 +13290,9 @@ pages (treeitems) by way of a context menu containing options such as
 
  : Values:
 
-#### [`aria-describedby` [property]]
+#### `aria-describedby` property
 
+::: property-description
 [Identifies](#dfn-identifies) the
 [element](https://dom.spec.whatwg.org/#concept-element)
 (or elements) that describes the
@@ -13129,8 +13330,9 @@ element referenced by the ID.
 
 : Characteristics:
 
-#### [`aria-description` [property]]
+#### `aria-description` property
 
+::: property-description
 [Defines](#dfn-defines) a string value that describes or annotates the current
 element. See related
 [`aria-describedby`](https://w3c.github.io/aria/#aria-describedby).
@@ -13189,8 +13391,9 @@ but should use one of the following instead:
 
  : Characteristics:
 
-#### [`aria-details` [property]]
+#### `aria-details` property
 
+::::::: property-description
 [Identifies](#dfn-identifies) the
 [element](https://dom.spec.whatwg.org/#concept-element)
 (or elements) that provide additional information related to the
@@ -13223,18 +13426,18 @@ of details associated with an element as follows:
  an element within a `caption`.
 - Footnote: `aria-details` refers to an element with role
  `doc-footnote`. This role is defined in
- \[[DPUB-ARIA-1.0](#bib-dpub-aria-1.0 "Digital Publishing WAI-ARIA Module 1.0")\].
+ \[[DPUB-ARIA-1.0](#bib-dpub-aria-1-0 "Digital Publishing WAI-ARIA Module 1.0")\].
 - Endnote: `aria-details` refers to an element with role `doc-endnote`.
  This role is defined in
- \[[DPUB-ARIA-1.0](#bib-dpub-aria-1.0 "Digital Publishing WAI-ARIA Module 1.0")\].
+ \[[DPUB-ARIA-1.0](#bib-dpub-aria-1-0 "Digital Publishing WAI-ARIA Module 1.0")\].
 - Description or general annotation: `aria-details` refers to an element
  with any other role.
 
 Unlike elements referenced by `aria-describedby`, elements referenced by
 `aria-details` are not used in the Accessible Description Computation as
 defined in the [Accessible Name and Description
-Computation](https://w3c.github.io/accname/)
-\[[ACCNAME-1.2](#bib-accname-1.2 "Accessible Name and Description Computation 1.2")\]. Thus, the content of elements referenced by
+Computation](https://w3c.github.io/aria/accname/)
+\[[ACCNAME-1.2](#bib-accname-1-2 "Accessible Name and Description Computation 1.2")\]. Thus, the content of elements referenced by
 `aria-details` are not flattened to a string when presented to assistive
 technology users. This makes `aria-details` particularly useful when
 converting the information to a string would cause a loss of information
@@ -13245,8 +13448,8 @@ example, a paragraph in a document editor might reference multiple
 comments that are not related to each other. If a user agent relies on
 an accessibility [API]
 that does not support exposing multiple descriptive relations, the user
-agent *SHOULD* expose the relationship to the first element referenced
-by `aria-details`.
+agent *SHOULD* [expose](#dfn-expose) the relationship to the first element referenced by
+`aria-details`.
 
 It is valid for an element to have both `aria-details` and a description
 specified with either `aria-describedby` or `aria-description`. If a
@@ -13310,8 +13513,9 @@ the extended description, as shown in the following example.
 
  : Characteristics:
 
-#### [`aria-disabled` [state]]
+#### `aria-disabled` state
 
+::::::::: state-description
 [Indicates](#dfn-indicates) that the
 [element](https://dom.spec.whatwg.org/#concept-element)
 is [perceivable](#dfn-perceivable) but disabled, so it is not editable or
@@ -13412,8 +13616,9 @@ it will only be allowed on roles where it is specifically supported.
 
  : Values:
 
-#### [`aria-dropeffect` [property]]
+#### `aria-dropeffect` property
 
+::::: property-description
 \[Deprecated in [ARIA] 1.1\] Indicates what
 functions can be performed when a dragged object is released on the drop
 target.
@@ -13458,8 +13663,9 @@ targets.
 
  : Values:
 
-#### [`aria-errormessage` [property]]
+#### `aria-errormessage` property
 
+::::::::: property-description
 [Identifies](#dfn-identifies) the
 [element](https://dom.spec.whatwg.org/#concept-element)
 (or elements) that provides an error message for an
@@ -13496,7 +13702,7 @@ pertinent, authors *MUST* either ensure the content is [hidden from all
 users](#dfn-hide-from-all-users) or remove the
 `aria-errormessage` attribute or its value.
 
-User agents *MUST NOT* expose `aria-errormessage` for an object with an
+User agents *MUST NOT* [expose](#dfn-expose) `aria-errormessage` for an object with an
 [`aria-invalid`](https://w3c.github.io/aria/#aria-invalid)
 value of `false`.
 
@@ -13568,8 +13774,9 @@ on [live region roles](#live_region_roles).
 
 : Characteristics:
 
-#### [`aria-expanded` [state]]
+#### `aria-expanded` state
 
+::::::: state-description
 [Indicates](#dfn-indicates) whether a related element is expanded (shown) or
 collapsed (hidden).
 
@@ -13647,7 +13854,6 @@ page.
 | Inherits into Roles: | - [`columnheader`](https://w3c.github.io/aria/#columnheader) |
 | | - [`menuitemcheckbox`](https://w3c.github.io/aria/#menuitemcheckbox) |
 | | - [`menuitemradio`](https://w3c.github.io/aria/#menuitemradio) |
-| | - [`rowheader`](https://w3c.github.io/aria/#rowheader) |
 | | - [`switch`](https://w3c.github.io/aria/#switch) |
 +-----------------------------------+---------------------------------------------------------------------------------------+
 | Value: | [true/false/undefined](#valuetype_true-false-undefined) |
@@ -13663,8 +13869,9 @@ page.
 
  : Values:
 
-#### [`aria-flowto` [property]]
+#### `aria-flowto` property
 
+::: property-description
 [Identifies](#dfn-identifies) the next
 [element](https://dom.spec.whatwg.org/#concept-element)
 (or elements) in an alternate reading order of content which, at the
@@ -13698,8 +13905,9 @@ by the name of the target element of the
 
  : Characteristics:
 
-#### [`aria-grabbed` [state]]
+#### `aria-grabbed` state
 
+::::: state-description
 \[Deprecated in [ARIA] 1.1\] Indicates an
 element\'s \"grabbed\" [state](#dfn-state) in a drag-and-drop operation.
 
@@ -13741,8 +13949,9 @@ attributes of the associated drop targets to `none`.
 
  : Values:
 
-#### [`aria-haspopup` [property]]
+#### `aria-haspopup` property
 
+::::::::: property-description
 [Indicates](#dfn-indicates) the availability and type of interactive popup element,
 such as menu or dialog, that can be triggered by an
 [element](https://dom.spec.whatwg.org/#concept-element).
@@ -13774,8 +13983,9 @@ user agents *MUST* treat an `aria-haspopup` value of `true` as
 equivalent to a value of `menu`.
 
 [Assistive
-technologies](#assistive-technology) and user agents *SHOULD NOT* expose the
-`aria-haspopup` property if it has a value of `false`.
+technologies](#assistive-technology) and user agents *SHOULD NOT*
+[expose](#dfn-expose) the `aria-haspopup` property if it has a value of
+`false`.
 
 A [`tooltip`](https://w3c.github.io/aria/#tooltip) is
 not considered to be a popup in this context.
@@ -13834,8 +14044,9 @@ it will only be allowed on roles where it is specifically supported.
 
  : Values:
 
-#### [`aria-hidden` [state]]
+#### `aria-hidden` state
 
+::::::::: state-description
 [Indicates](#dfn-indicates), when set to `true`, that an
 [element](https://dom.spec.whatwg.org/#concept-element)
 and its entire subtree are hidden from assistive technology, regardless
@@ -13860,8 +14071,8 @@ assistive technologies *only* if the act of hiding this content is
 intended to improve the experience for users of assistive technologies
 by removing redundant or extraneous content. Authors using `aria-hidden`
 to hide visible content from screen readers *MUST* ensure that identical
-or equivalent meaning and functionality is exposed to assistive
-technologies.
+or equivalent meaning and functionality is
+[exposed](#dfn-expose) to assistive technologies.
 
 Authors are advised to use extreme caution and consider a wide range of
 disabilities when hiding visibly rendered content from assistive
@@ -13917,8 +14128,9 @@ technologies.
 
  : Values:
 
-#### [`aria-invalid` [state]]
+#### `aria-invalid` state
 
+::::: state-description
 [Indicates](#dfn-indicates) the entered value does not conform to the format
 expected by the application. See related
 [`aria-errormessage`](https://w3c.github.io/aria/#aria-errormessage).
@@ -13986,8 +14198,9 @@ it will only be allowed on roles where it is specifically supported.
 
  : Values:
 
-#### [`aria-keyshortcuts` [property]]
+#### `aria-keyshortcuts` property
 
+::: property-description
 [Defines](#dfn-defines) keyboard shortcuts that an author has implemented to
 activate or give focus to an element.
 
@@ -14062,14 +14275,14 @@ percent sign might be an unmodified key, in which case \"%\" and
 If the key that needs to be specified is illegal in the host language or
 would cause a string to be terminated, authors *MUST* use the string
 escaping sequence of the host language to specify it. For example, the
-single-quote character can be encoded as \"&#39;\" in [HTML].
+single-quote character can be encoded as \"\&#39;\" in [HTML].
 
 Examples of valid keyboard shortcuts include:
 
 - \"A\"
 - \"Shift+Space\"
 - \"Control+Alt+.\"
-- \"Control+Shift+&#39;\"
+- \"Control+Shift+\&#39;\"
 - \"Alt+Shift+P Control+F\"
 - \"Meta+C Meta+Shift+C\"
 
@@ -14079,10 +14292,10 @@ events to process `aria-keyshortcuts`. The `aria-keyshortcuts` attribute
 exposes the existence of these shortcuts so that assistive technologies
 can communicate this information to users.
 
-Authors *SHOULD* provide a way to expose keyboard shortcuts so that all
-users can discover them, such as through the use of a tooltip. Authors
-*MUST* ensure that `aria-keyshortcuts` applied to disabled elements are
-unavailable.
+Authors *SHOULD* provide a way to
+[expose](#dfn-expose) keyboard shortcuts so that all users can discover them,
+such as through the use of a tooltip. Authors *MUST* ensure that
+`aria-keyshortcuts` applied to disabled elements are unavailable.
 
 Authors *SHOULD* avoid implementing shortcut keys that inhibit operating
 system, user agent, or assistive technology functionality. This requires
@@ -14104,8 +14317,9 @@ configurations.
 
  : Characteristics:
 
-#### [`aria-label` [property]]
+#### `aria-label` property
 
+::: property-description
 [Defines](#dfn-defines) a string value that labels the current element. See
 related
 [`aria-labelledby`](https://w3c.github.io/aria/#aria-labelledby).
@@ -14137,22 +14351,24 @@ determined programmatically from the [DOM], and there are cases where referencin
 user experience. Authors *MUST NOT* specify `aria-label` on an element
 which has an explicit or implicit [WAI-ARIA] role where `aria-label` is
 [prohibited](#prohibitedattributes). As required by the [Accessible Name
-and Description Computation](https://w3c.github.io/accname/)
-\[[ACCNAME-1.2](#bib-accname-1.2 "Accessible Name and Description Computation 1.2")\], user agents give precedence to
+and Description
+Computation](https://w3c.github.io/aria/accname/)
+\[[ACCNAME-1.2](#bib-accname-1-2 "Accessible Name and Description Computation 1.2")\], user agents give precedence to
 [`aria-labelledby`](https://w3c.github.io/aria/#aria-labelledby)
 over
 [`aria-label`](https://w3c.github.io/aria/#aria-label)
 when computing the accessible name property.
 
  Characteristic Value
- ---------------- ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Used in Roles: All elements of the base markup except for the following roles: [`caption`](https://w3c.github.io/aria/#caption), [`code`](https://w3c.github.io/aria/#code), [`definition`](https://w3c.github.io/aria/#definition), [`deletion`](https://w3c.github.io/aria/#deletion), [`emphasis`](https://w3c.github.io/aria/#emphasis), [`generic`](https://w3c.github.io/aria/#generic), [`insertion`](https://w3c.github.io/aria/#insertion), [`mark`](https://w3c.github.io/aria/#mark), [`none`](https://w3c.github.io/aria/#none), [`paragraph`](https://w3c.github.io/aria/#paragraph), [`strong`](https://w3c.github.io/aria/#strong), [`subscript`](https://w3c.github.io/aria/#subscript), [`suggestion`](https://w3c.github.io/aria/#suggestion), [`superscript`](https://w3c.github.io/aria/#superscript), [`term`](https://w3c.github.io/aria/#term), [`time`](https://w3c.github.io/aria/#time)
+ ---------------- -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Used in Roles: All elements of the base markup except for the following roles: [`caption`](https://w3c.github.io/aria/#caption), [`code`](https://w3c.github.io/aria/#code), [`definition`](https://w3c.github.io/aria/#definition), [`deletion`](https://w3c.github.io/aria/#deletion), [`emphasis`](https://w3c.github.io/aria/#emphasis), [`generic`](https://w3c.github.io/aria/#generic), [`insertion`](https://w3c.github.io/aria/#insertion), [`mark`](https://w3c.github.io/aria/#mark), [`none`](https://w3c.github.io/aria/#none), [`paragraph`](https://w3c.github.io/aria/#paragraph), [`strong`](https://w3c.github.io/aria/#strong), [`subscript`](https://w3c.github.io/aria/#subscript), [`suggestion`](https://w3c.github.io/aria/#suggestion), [`superscript`](https://w3c.github.io/aria/#superscript), [`term`](https://w3c.github.io/aria/#term), [`time`](https://w3c.github.io/aria/#time), [`tooltip`](https://w3c.github.io/aria/#tooltip)
  Value: [string](#valuetype_string)
 
  : Characteristics:
 
-#### [`aria-labelledby` [property]]
+#### `aria-labelledby` property
 
+::::: property-description
 [Identifies](#dfn-identifies) the
 [element](https://dom.spec.whatwg.org/#concept-element)
 (or elements) that labels the current element. See related
@@ -14177,8 +14393,8 @@ Authors *MUST NOT* specify `aria-labelledby` on an element which has an
 explicit or implicit [WAI-ARIA] role where
 `aria-labelledby` is [prohibited](#prohibitedattributes). As required by
 the [Accessible Name and Description
-Computation](https://w3c.github.io/accname/)
-\[[ACCNAME-1.2](#bib-accname-1.2 "Accessible Name and Description Computation 1.2")\], user agents give precedence to
+Computation](https://w3c.github.io/aria/accname/)
+\[[ACCNAME-1.2](#bib-accname-1-2 "Accessible Name and Description Computation 1.2")\], user agents give precedence to
 [`aria-labelledby`](https://w3c.github.io/aria/#aria-labelledby)
 over
 [`aria-label`](https://w3c.github.io/aria/#aria-label)
@@ -14200,15 +14416,16 @@ that way to match the convention and minimize the difficulty for
 developers.
 
  Characteristic Value
- ------------------- ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ------------------- -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Related Concepts: `<`[`label`](https://html.spec.whatwg.org/multipage/forms.html#the-label-element)`>` in [HTML]
- Used in Roles: All elements of the base markup except for the following roles: [`caption`](https://w3c.github.io/aria/#caption), [`code`](https://w3c.github.io/aria/#code), [`definition`](https://w3c.github.io/aria/#definition), [`deletion`](https://w3c.github.io/aria/#deletion), [`emphasis`](https://w3c.github.io/aria/#emphasis), [`generic`](https://w3c.github.io/aria/#generic), [`insertion`](https://w3c.github.io/aria/#insertion), [`mark`](https://w3c.github.io/aria/#mark), [`none`](https://w3c.github.io/aria/#none), [`paragraph`](https://w3c.github.io/aria/#paragraph), [`strong`](https://w3c.github.io/aria/#strong), [`subscript`](https://w3c.github.io/aria/#subscript), [`suggestion`](https://w3c.github.io/aria/#suggestion), [`superscript`](https://w3c.github.io/aria/#superscript), [`term`](https://w3c.github.io/aria/#term), [`time`](https://w3c.github.io/aria/#time)
+ Used in Roles: All elements of the base markup except for the following roles: [`caption`](https://w3c.github.io/aria/#caption), [`code`](https://w3c.github.io/aria/#code), [`definition`](https://w3c.github.io/aria/#definition), [`deletion`](https://w3c.github.io/aria/#deletion), [`emphasis`](https://w3c.github.io/aria/#emphasis), [`generic`](https://w3c.github.io/aria/#generic), [`insertion`](https://w3c.github.io/aria/#insertion), [`mark`](https://w3c.github.io/aria/#mark), [`none`](https://w3c.github.io/aria/#none), [`paragraph`](https://w3c.github.io/aria/#paragraph), [`strong`](https://w3c.github.io/aria/#strong), [`subscript`](https://w3c.github.io/aria/#subscript), [`suggestion`](https://w3c.github.io/aria/#suggestion), [`superscript`](https://w3c.github.io/aria/#superscript), [`term`](https://w3c.github.io/aria/#term), [`time`](https://w3c.github.io/aria/#time), [`tooltip`](https://w3c.github.io/aria/#tooltip)
  Value: [ID reference list](#valuetype_idref_list)
 
  : Characteristics:
 
-#### [`aria-level` [property]]
+#### `aria-level` property
 
+::::::: property-description
 [Defines](#dfn-defines) the hierarchical level of an
 [element](https://dom.spec.whatwg.org/#concept-element)
 within a structure.
@@ -14296,8 +14513,9 @@ integers 1-9 on headings.
 
 : Characteristics:
 
-#### [`aria-live` [property]]
+#### `aria-live` property
 
+::: property-description
 [Indicates](#dfn-indicates) that an
 [element](https://dom.spec.whatwg.org/#concept-element)
 will be updated or modified, and defines the priority of updates the
@@ -14317,7 +14535,7 @@ technologies will immediately notify the user of relevant modifications
 to the live region, and could potentially clear the speech queue of
 previous updates.
 
-Priority levels (`none`, `polite`, `assertive`) act as an ordering
+Priority levels (`off`, `polite`, `assertive`) act as an ordering
 mechanism for updates and serve as a recommendation to user agents or
 assistive technologies. The value can be overridden by user agents,
 assistive technologies, or the user. For example, if assistive
@@ -14384,13 +14602,14 @@ is rendered on the page and when the content changes.
  Value Description
  ------------------- --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  assertive Indicates that updates to the region have the highest priority and should be presented the user immediately.
- **off (default)** Indicates that updates to the region should not be presented to the user unless the user is currently focused on that region.
+ **off (default)** Indicates that updates to the region will not be presented to the user.
  polite Indicates that updates to the region should be presented at the next graceful opportunity, such as at the end of speaking the current sentence or when the user pauses typing.
 
  : Values:
 
-#### [`aria-modal` [property]]
+#### `aria-modal` property
 
+::: property-description
 [Indicates](#dfn-indicates) whether an
 [element](https://dom.spec.whatwg.org/#concept-element)
 is modal when displayed.
@@ -14439,8 +14658,9 @@ exists in the host language.
 
  : Values:
 
-#### [`aria-multiline` [property]]
+#### `aria-multiline` property
 
+::::: property-description
 [Indicates](#dfn-indicates) whether a text box accepts multiple lines of input or
 only a single line.
 
@@ -14474,8 +14694,9 @@ designing the field.
 
  : Values:
 
-#### [`aria-multiselectable` [property]]
+#### `aria-multiselectable` property
 
+::::: property-description
 [Indicates](#dfn-indicates) that the user can select more than one item from the
 current selectable descendants.
 
@@ -14513,8 +14734,9 @@ more than one item at a time.
 
  : Values:
 
-#### [`aria-orientation` [property]]
+#### `aria-orientation` property
 
+::::: property-description
 [Indicates](#dfn-indicates) whether the element\'s orientation is horizontal,
 vertical, or unknown/ambiguous.
 
@@ -14560,8 +14782,9 @@ default orientation is ambiguous (e.g.,
 
  : Values:
 
-#### [`aria-owns` [property]]
+#### `aria-owns` property
 
+::::::::: property-description
 [Identifies](#dfn-identifies) an
 [element](https://dom.spec.whatwg.org/#concept-element)
 (or elements) in order to define a visual, functional, or contextual
@@ -14576,16 +14799,17 @@ The value of the
 is a space-separated ID reference list that references one or more
 elements in the document by ID. The reason for adding
 [`aria-owns`](https://w3c.github.io/aria/#aria-owns)
-is to expose a parent/child contextual relationship to [assistive
+is to [expose](#dfn-expose) a parent/child contextual relationship to [assistive
 technologies](#assistive-technology) that is otherwise impossible to infer from
 the [DOM].
 
 If an element has both
 [`aria-owns`](https://w3c.github.io/aria/#aria-owns)
 and [DOM] children then the order
-of the child elements with respect to the parent/child relationship is
-the [DOM] children first, then the
-elements referenced in
+of the [accessibility
+children](#dfn-accessibility-child) with respect to the parent/child
+relationship is the [DOM] children
+first, then the elements referenced in
 [`aria-owns`](https://w3c.github.io/aria/#aria-owns).
 If the author intends that the [DOM] children are not first, then list the
 [DOM] children in
@@ -14682,8 +14906,9 @@ users](#dfn-hide-from-all-users).
 
  : Characteristics:
 
-#### [`aria-placeholder` [property]]
+#### `aria-placeholder` property
 
+::::::::::: property-description
 [Defines](#dfn-defines) a short hint (a word or short phrase) intended to aid
 the user with data entry when the control has no value. A hint could be
 a sample value or a brief description of the expected format.
@@ -14758,8 +14983,9 @@ previously-entered value:
 
 : Characteristics:
 
-#### [`aria-posinset` [property]]
+#### `aria-posinset` property
 
+::::: property-description
 [Defines](#dfn-defines) an
 [element](https://dom.spec.whatwg.org/#concept-element)\'s
 number or position in the current set of listitems or treeitems. Not
@@ -14822,8 +15048,7 @@ any separators.
 | | - [`row`](https://w3c.github.io/aria/#row) |
 | | - [`tab`](https://w3c.github.io/aria/#tab) |
 +-----------------------------------+---------------------------------------------------------------------------------------+
-| Inherits into Roles: | - [`comment`](https://w3c.github.io/aria/#comment) |
-| | - [`menuitemcheckbox`](https://w3c.github.io/aria/#menuitemcheckbox) |
+| Inherits into Roles: | - [`menuitemcheckbox`](https://w3c.github.io/aria/#menuitemcheckbox) |
 | | - [`menuitemradio`](https://w3c.github.io/aria/#menuitemradio) |
 | | - [`treeitem`](https://w3c.github.io/aria/#treeitem) |
 +-----------------------------------+---------------------------------------------------------------------------------------+
@@ -14832,8 +15057,9 @@ any separators.
 
 : Characteristics:
 
-#### [`aria-pressed` [state]]
+#### `aria-pressed` state
 
+::: state-description
 [Indicates](#dfn-indicates) the current \"pressed\"
 [state](#dfn-state)
 of toggle buttons. See related
@@ -14875,8 +15101,9 @@ on checkboxes.
 
  : Values:
 
-#### [`aria-readonly` [property]]
+#### `aria-readonly` property
 
+::: property-description
 Indicates that the
 [element](https://dom.spec.whatwg.org/#concept-element)
 is not editable, but is otherwise
@@ -14931,8 +15158,9 @@ Examples include:
 
  : Values:
 
-#### [`aria-relevant` [property]]
+#### `aria-relevant` property
 
+::::::: property-description
 [Indicates](#dfn-indicates) what notifications the user agent will trigger when the
 [accessibility
 tree](#dfn-accessibility-tree) within a live region is modified. See
@@ -14987,8 +15215,8 @@ inherited value from an ancestor element.
 
 When text changes are denoted as relevant, user agents *MUST* monitor
 any descendant node change that affects the [Accessible Name and
-Description Computation](https://w3c.github.io/accname/)
-\[[ACCNAME-1.2](#bib-accname-1.2 "Accessible Name and Description Computation 1.2")\] of the live region as if the accessible name were
+Description Computation](https://w3c.github.io/aria/accname/)
+\[[ACCNAME-1.2](#bib-accname-1-2 "Accessible Name and Description Computation 1.2")\] of the live region as if the accessible name were
 determined from contents ([nameFrom: contents](#namecalculation)). For
 example, a text change would be triggered if the [HTML] `alt` attribute of a contained image
 changed. However, no change would be triggered if there was a text
@@ -15014,8 +15242,9 @@ by an element contained in the live region.
 
  : Values:
 
-#### [`aria-required` [property]]
+#### `aria-required` property
 
+::::: property-description
 [Indicates](#dfn-indicates) that user input is required on the
 [element](https://dom.spec.whatwg.org/#concept-element)
 before a form can be submitted.
@@ -15072,8 +15301,9 @@ by the user.
 
  : Values:
 
-#### [`aria-roledescription` [property]]
+#### `aria-roledescription` property
 
+::::::::: property-description
 [Defines](#dfn-defines) a human-readable, author-localized description for the
 [role](#dfn-role) of
 an
@@ -15117,7 +15347,7 @@ Additionally, authors *MUST NOT* specify `aria-roledescription` on an
 element which has an explicit or implicit [WAI-ARIA] role where
 `aria-roledescription` is [prohibited](#prohibitedattributes).
 
-User agents *MUST NOT* expose the `aria-roledescription` property if any
+User agents *MUST NOT* [expose](#dfn-expose) the `aria-roledescription` property if any
 of the following conditions exist:
 
 1. The element to which `aria-roledescription` is applied has an
@@ -15170,8 +15400,9 @@ or \"Quarterly Report, group.\"
 
  : Characteristics:
 
-#### [`aria-rowcount` [property]]
+#### `aria-rowcount` property
 
+::::: property-description
 [Defines](#dfn-defines) the total number of rows in a
 [`table`](https://w3c.github.io/aria/#table),
 [`grid`](https://w3c.github.io/aria/#grid), or
@@ -15247,8 +15478,9 @@ row and rows 100 through 102 are displayed to the user.
 
 : Characteristics:
 
-#### [`aria-rowindex` [property]]
+#### `aria-rowindex` property
 
+::::::: property-description
 [Defines](#dfn-defines) an
 [element\'s](https://dom.spec.whatwg.org/#concept-element) row index or position with respect to the total number of
 rows within a
@@ -15380,8 +15612,9 @@ children](#dfn-accessibility-child) of each row.
 
 : Characteristics:
 
-#### [`aria-rowindextext` [property]]
+#### `aria-rowindextext` property
 
+::: property-description
 [Defines](#dfn-defines) a human readable text alternative of
 [`aria-rowindex`](https://w3c.github.io/aria/#aria-rowindex).
 See related
@@ -15418,8 +15651,9 @@ children](#dfn-accessibility-child) of each row.
 
 : Characteristics:
 
-#### [`aria-rowspan` [property]]
+#### `aria-rowspan` property
 
+::: property-description
 [Defines](#dfn-defines) the number of rows spanned by a cell or gridcell within
 a [`table`](https://w3c.github.io/aria/#table),
 [`grid`](https://w3c.github.io/aria/#grid), or
@@ -15442,7 +15676,7 @@ attribute, [user
 agents](https://infra.spec.whatwg.org/#user-agent)
 *MUST* ignore the value of
 [`aria-rowspan`](https://w3c.github.io/aria/#aria-rowspan)
-and instead expose the value of the host language\'s attribute to
+and instead [expose](#dfn-expose) the value of the host language\'s attribute to
 [assistive
 technologies](#assistive-technology).
 
@@ -15453,21 +15687,26 @@ would cause the cell or gridcell to overlap the next cell or gridcell in
 the same column. Setting the value to 0 indicates that the cell or
 gridcell is to span all the remaining rows in the row group.
 
-+-----------------------------------+-------------------------------------------------------------------------------+
++-----------------------------------+---------------------------------------------------------------------------------+
 | Characteristic | Value |
-+===================================+===============================================================================+
++===================================+=================================================================================+
+| Related Concepts: | [rowspan](https://html.spec.whatwg.org/multipage/tables.html#attr-tdth-rowspan) |
+| | in [HTML] |
++-----------------------------------+---------------------------------------------------------------------------------+
 | Used in Roles: | - [`cell`](https://w3c.github.io/aria/#cell) |
-+-----------------------------------+-------------------------------------------------------------------------------+
++-----------------------------------+---------------------------------------------------------------------------------+
 | Inherits into Roles: | - [`columnheader`](https://w3c.github.io/aria/#columnheader) |
+| | - [`gridcell`](https://w3c.github.io/aria/#gridcell) |
 | | - [`rowheader`](https://w3c.github.io/aria/#rowheader) |
-+-----------------------------------+-------------------------------------------------------------------------------+
++-----------------------------------+---------------------------------------------------------------------------------+
 | Value: | [integer](#valuetype_integer) |
-+-----------------------------------+-------------------------------------------------------------------------------+
++-----------------------------------+---------------------------------------------------------------------------------+
 
 : Characteristics:
 
-#### [`aria-selected` [state]]
+#### `aria-selected` state
 
+::: state-description
 [Indicates](#dfn-indicates) the current \"selected\"
 [state](#dfn-state)
 of various [widgets](#dfn-widget). See related
@@ -15515,8 +15754,9 @@ implicit value for aria-selected in any other circumstance.
 
  : Values:
 
-#### [`aria-setsize` [property]]
+#### `aria-setsize` property
 
+::::::: property-description
 [Defines](#dfn-defines) the number of items in the current set of listitems or
 treeitems. Not required if all elements in the set are present in the
 [DOM]. See related
@@ -15597,8 +15837,7 @@ is unknown.
 | | - [`row`](https://w3c.github.io/aria/#row) |
 | | - [`tab`](https://w3c.github.io/aria/#tab) |
 +-----------------------------------+---------------------------------------------------------------------------------------+
-| Inherits into Roles: | - [`comment`](https://w3c.github.io/aria/#comment) |
-| | - [`menuitemcheckbox`](https://w3c.github.io/aria/#menuitemcheckbox) |
+| Inherits into Roles: | - [`menuitemcheckbox`](https://w3c.github.io/aria/#menuitemcheckbox) |
 | | - [`menuitemradio`](https://w3c.github.io/aria/#menuitemradio) |
 | | - [`treeitem`](https://w3c.github.io/aria/#treeitem) |
 +-----------------------------------+---------------------------------------------------------------------------------------+
@@ -15607,8 +15846,9 @@ is unknown.
 
 : Characteristics:
 
-#### [`aria-sort` [property]]
+#### `aria-sort` property
 
+::: property-description
 [Indicates](#dfn-indicates) if items in a table or grid are sorted in ascending or
 descending order.
 
@@ -15639,8 +15879,9 @@ to only one header at a time.
 
  : Values:
 
-#### [`aria-valuemax` [property]]
+#### `aria-valuemax` property
 
+::::: property-description
 [Defines](#dfn-defines) the maximum allowed value for a range
 [widget](#dfn-widget).
 
@@ -15668,24 +15909,22 @@ allows assistive technology to convey the size of the range to users.
 | | element [`max`](https://html.spec.whatwg.org/multipage/input.html#attr-input-max) attribute in [HTML] |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | Used in Roles: | - [`range`](https://w3c.github.io/aria/#range) |
-| | - [`scrollbar`](https://w3c.github.io/aria/#scrollbar) |
 | | - [`separator`](https://w3c.github.io/aria/#separator) |
-| | - [`slider`](https://w3c.github.io/aria/#slider) |
 | | - [`spinbutton`](https://w3c.github.io/aria/#spinbutton) |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | Inherits into Roles: | - [`meter`](https://w3c.github.io/aria/#meter) |
 | | - [`progressbar`](https://w3c.github.io/aria/#progressbar) |
 | | - [`scrollbar`](https://w3c.github.io/aria/#scrollbar) |
 | | - [`slider`](https://w3c.github.io/aria/#slider) |
-| | - [`spinbutton`](https://w3c.github.io/aria/#spinbutton) |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | Value: | [number](#valuetype_number) |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 
 : Characteristics:
 
-#### [`aria-valuemin` [property]]
+#### `aria-valuemin` property
 
+::::: property-description
 [Defines](#dfn-defines) the minimum allowed value for a range
 [widget](#dfn-widget).
 
@@ -15713,24 +15952,22 @@ allows assistive technology to convey the size of the range to users.
 | | element [`min`](https://html.spec.whatwg.org/multipage/input.html#attr-input-min) attribute in [HTML] |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | Used in Roles: | - [`range`](https://w3c.github.io/aria/#range) |
-| | - [`scrollbar`](https://w3c.github.io/aria/#scrollbar) |
 | | - [`separator`](https://w3c.github.io/aria/#separator) |
-| | - [`slider`](https://w3c.github.io/aria/#slider) |
 | | - [`spinbutton`](https://w3c.github.io/aria/#spinbutton) |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | Inherits into Roles: | - [`meter`](https://w3c.github.io/aria/#meter) |
 | | - [`progressbar`](https://w3c.github.io/aria/#progressbar) |
 | | - [`scrollbar`](https://w3c.github.io/aria/#scrollbar) |
 | | - [`slider`](https://w3c.github.io/aria/#slider) |
-| | - [`spinbutton`](https://w3c.github.io/aria/#spinbutton) |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | Value: | [number](#valuetype_number) |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 
 : Characteristics:
 
-#### [`aria-valuenow` [property]]
+#### `aria-valuenow` property
 
+::::: property-description
 [Defines](#dfn-defines) the current value for a range
 [widget](#dfn-widget). See related
 [`aria-valuetext`](https://w3c.github.io/aria/#aria-valuetext).
@@ -15805,19 +16042,16 @@ is specified, assistive technologies render that instead of the value of
 | | - [`slider`](https://w3c.github.io/aria/#slider) |
 | | - [`spinbutton`](https://w3c.github.io/aria/#spinbutton) |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
-| Inherits into Roles: | - [`meter`](https://w3c.github.io/aria/#meter) |
-| | - [`progressbar`](https://w3c.github.io/aria/#progressbar) |
-| | - [`scrollbar`](https://w3c.github.io/aria/#scrollbar) |
-| | - [`slider`](https://w3c.github.io/aria/#slider) |
-| | - [`spinbutton`](https://w3c.github.io/aria/#spinbutton) |
+| Inherits into Roles: | - [`progressbar`](https://w3c.github.io/aria/#progressbar) |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | Value: | [number](#valuetype_number) |
 +-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 
 : Characteristics:
 
-#### [`aria-valuetext` [property]]
+#### `aria-valuetext` property
 
+::: property-description
 [Defines](#dfn-defines) the human readable text alternative of
 [`aria-valuenow`](https://w3c.github.io/aria/#aria-valuenow)
 for a range [widget](#dfn-widget).
@@ -15866,7 +16100,6 @@ of the value of
 | | - [`progressbar`](https://w3c.github.io/aria/#progressbar) |
 | | - [`scrollbar`](https://w3c.github.io/aria/#scrollbar) |
 | | - [`slider`](https://w3c.github.io/aria/#slider) |
-| | - [`spinbutton`](https://w3c.github.io/aria/#spinbutton) |
 +-----------------------------------+-----------------------------------------------------------------------------+
 | Value: | [string](#valuetype_string) |
 +-----------------------------------+-----------------------------------------------------------------------------+
@@ -15885,7 +16118,7 @@ agent](https://infra.spec.whatwg.org/#user-agent) and
 the objects of the document. [Accessible
 objects](#dfn-accessible-object) are created in the accessibility tree for
 every [DOM] element that should be
-exposed to an [assistive
+[exposed](#dfn-expose) to an [assistive
 technology](#assistive-technology), either because it might fire an
 accessibility [event](#dfn-event) or because it has a
 [property](#dfn-property),
@@ -15907,10 +16140,11 @@ tree](#dfn-accessibility-tree):
 - Elements with
  [`none`](https://w3c.github.io/aria/#none) or
  [`presentation`](https://w3c.github.io/aria/#presentation)
- as the first role in the role attribute. However, their exclusion is
- conditional. In addition, the element\'s descendants and text content
- are generally included. These exceptions and conditions are documented
- in the [presentation (role)](#presentation) section.
+ as the first role in the [`role`
+ attribute](#attr-role). However, their exclusion is conditional. In
+ addition, the element\'s descendants and text content are generally
+ included. These exceptions and conditions are documented in the [none
+ (role)](#none) section.
 
 If not already excluded from the accessibility tree per the above rules,
 user agents *SHOULD NOT* include the following elements in the
@@ -15964,7 +16198,8 @@ that meet any of the following criteria:
  its ancestor elements has its
  [`aria-hidden`](https://w3c.github.io/aria/#aria-hidden)
  attribute set to `true`.
- - Elements that are a valid target of an
+ - Elements that are a valid
+ [target](#dfn-target) of an
  [`aria-activedescendant`](https://w3c.github.io/aria/#aria-activedescendant)
  attribute.
 - Elements that have an explicit role or a global [WAI-ARIA] attribute and do not
@@ -15983,7 +16218,7 @@ that meet any of the following criteria:
 
  Text equivalents for [hidden](#dfn-hidden) referenced objects can still
  be used in the [name and description
- computation](https://w3c.github.io/accname/#mapping_additional_nd)
+ computation](https://w3c.github.io/aria/accname/#mapping_additional_nd)
  even when not included in the accessibility tree.
  ::::
 
@@ -16176,18 +16411,16 @@ states, and properties are implemented as
 of
 [elements](https://dom.spec.whatwg.org/#concept-element).
 Roles are applied by placing their names among the tokens appearing in
-the value of a host-language-provided `role` attribute. States and
-properties each get their own attribute, with values as defined for each
-particular state or property in this specification. The name of the
-attribute is the aria-prefixed name of the state or property.
+the value of a host-language-provided [`role`
+attribute](#attr-role). States and properties each get their own attribute,
+with values as defined for each particular state or property in this
+specification. The name of the attribute is the aria-prefixed name of
+the state or property.
 
 ::: header-wrapper
-### 8.1 Role Attribute
-
-An implementing host language will provide a
-[`role`](#dfn-role)
-[attribute](https://dom.spec.whatwg.org/#concept-attribute)
-with the following characteristics:
+### 8.1 [Role Attribute]
+An implementing host language *MUST* allow a [`role`
+attribute] with the following characteristics:
 
 - The attribute value *MUST* allow a [token
  list](#dfn-token-list) as the value;
@@ -16196,11 +16429,11 @@ with the following characteristics:
  as one of these tokens *MUST NOT* in and of itself make the attribute
  value illegal in the host-language syntax; and
 - The first name literal of a non-abstract [WAI-ARIA] role in the list of
- tokens in the role attribute defines the role according to which the
+ tokens in the [`role` attribute](#attr-role) defines the role according to which the
  user agent *MUST* process the element. User Agent processing for roles
  is defined in the [Core Accessibility [API]
- Mappings](https://w3c.github.io/core-aam/)
- \[[CORE-AAM-1.2](#bib-core-aam-1.2 "Core Accessibility API Mappings 1.2")\].
+ Mappings](https://w3c.github.io/aria/core-aam/)
+ \[[CORE-AAM-1.2](#bib-core-aam-1-2 "Core Accessibility API Mappings 1.2")\].
 
 ::: header-wrapper
 ### 8.2 State and Property Attributes
@@ -16327,7 +16560,7 @@ section, Conflicts with Host Language Semantics. Therefore, implicit
 [WAI-ARIA]
 semantics need to be defined in a normative specification, such as the
 host language specification or the [Core Accessibility [API]
-Mappings](https://w3c.github.io/core-aam/).
+Mappings](https://w3c.github.io/aria/core-aam/).
 
 ::: header-wrapper
 ### 8.5 Conflicts with Host Language Semantics
@@ -16344,7 +16577,7 @@ can be part of a fallback strategy for older browsers that have no
 implementation, or because native presentation of the repurposed element
 reduces the amount of style and/or script needed. Except for the cases
 outlined below, user agents *MUST* always use the [WAI-ARIA] semantics to define how
-it exposes the element to accessibility [APIs], rather than using the host
+it [exposes](#dfn-expose) the element to accessibility [APIs], rather than using the host
 language semantics.
 
 In addition to these normal situations in which [WAI-ARIA] is expected to override
@@ -16456,8 +16689,8 @@ language. However, authors *MUST* only use non-global states and
 properties on elements with a role supporting the state or property;
 either defined as an explicit [WAI-ARIA] role, or as defined by
 the host language implicit [WAI-ARIA] semantic matching an
-appropriate [WAI-ARIA] role. When a role
-attribute is added to an element, the
+appropriate [WAI-ARIA] role. When a [`role`
+attribute](#attr-role) is added to an element, the
 [semantics](#dfn-semantics) and behavior of the element, including support for
 [WAI-ARIA] states
 and properties, are augmented or overridden by the role behavior. User
@@ -16516,7 +16749,12 @@ attribute, it signals an author error and is processed as detailed at
 ::: header-wrapper
 #### 8.6.1 ID Reference Error Processing
 
-[user
+The author *MAY* set either an empty value or a value that does not
+match the ID of another
+[element](https://dom.spec.whatwg.org/#concept-element)
+in the same document. This flexibility acknowledges the dynamic nature
+of modern websites, where the [DOM]
+can be populated accordingly when necessary. [user
 agents](https://infra.spec.whatwg.org/#user-agent)
 *SHOULD* ignore ID references that do not match the ID of another
 [element](https://dom.spec.whatwg.org/#concept-element)
@@ -16539,22 +16777,6 @@ reference exactly is an author error and will not match any element in
 the [DOM].
 
 ::: header-wrapper
-### 8.7 [CSS] Selectors
-
-This section might be removed in a future version.
-
-Support for
-[attribute](https://dom.spec.whatwg.org/#concept-attribute) selectors *MUST* include [WAI-ARIA] attributes. For example,
-`.fooMenuItem[aria-haspopup="true"]` would select all
-[elements](https://dom.spec.whatwg.org/#concept-element)
-with class `fooMenuItem`, and [WAI-ARIA] property
-[`aria-haspopup`](https://w3c.github.io/aria/#aria-haspopup)
-with value of `true`. The presentation *MUST* be updated for dynamic
-changes to [WAI-ARIA] attributes. This allows
-authors to match styling with [WAI-ARIA]
-[semantics](#dfn-semantics).
-
-::: header-wrapper
 ## 9. Handling Author Errors
 
 ::: header-wrapper
@@ -16568,10 +16790,12 @@ considered an authoring error to use [abstract roles](#abstract_roles)
 in content. User agents *MUST NOT* map abstract roles via the standard
 role mechanism of the accessibility [API].
 
-If the `role` attribute contains no tokens matching the name of a
-non-abstract [WAI-ARIA] role, the user agent
-*MUST* treat the element as if no [role](#dfn-role) had been provided. For example,
-`<table >` should be exposed in the same way as `<table>` and
+If the [`role` attribute](#attr-role) contains no tokens matching the name of a non-abstract
+[WAI-ARIA] role, the
+user agent *MUST* treat the element as if no
+[role](#dfn-role) had
+been provided. For example, `<table >` should be
+[exposed](#dfn-expose) in the same way as `<table>` and
 `<input type="text" >` in the same way as
 `<input type="text">`.
 
@@ -16641,7 +16865,7 @@ value type, the user agent *SHOULD* do the following:
 
 If a [WAI-ARIA]
 property contains an unknown or disallowed value, the user agent
-*SHOULD* expose to platform [accessibility [APIs]](#dfn-accessibility-api) as follows:
+*SHOULD* [expose](#dfn-expose) to platform [accessibility [APIs]](#dfn-accessibility-api) as follows:
 
 - When exposing as a platform accessibility [API] attribute, expose the
  unknown value --- do not vet it against possible values.
@@ -16697,7 +16921,7 @@ values so are not included here.
 
 There are a number of ways presentational role conflicts are resolved.
 
-User agents *MUST NOT* expose
+User agents *MUST NOT* [expose](#dfn-expose)
 [elements](https://dom.spec.whatwg.org/#concept-element)
 having explicit or inherited presentational role in the accessibility
 tree, with these exceptions:
@@ -16706,7 +16930,7 @@ tree, with these exceptions:
  [`none`](https://w3c.github.io/aria/#none)/[`presentation`](https://w3c.github.io/aria/#presentation)
  role and expose the element with its implicit role, in order to ensure
  that the element is [operable](#dfn-operable).
-- If an [allowed child element](#mustContain) has an explicit
+- If an [allowed accessibility child](#mustContain) has an explicit
  non-presentational role, user agents *MUST* ignore an inherited
  presentational role and expose the element with its explicit role. If
  the action of exposing the explicit role causes the accessibility tree
@@ -16747,9 +16971,9 @@ elements where user agents will ignore that role because it conflicts
 with one of the above items.
 
 ::: header-wrapper
-## 10. IDL Interface
+## 10. IDL Interfaces
 
-Conforming user agents *MUST* implement the following IDL interface.
+Conforming user agents *MUST* implement the following IDL interfaces.
 
 ::: header-wrapper
 ### 10.1 Interface Mixin [`ARIAMixin`]
@@ -16813,7 +17037,84 @@ WebIDLinterface mixin ARIAMixin {
 ```
 
 ::: header-wrapper
-### 10.2 [ARIA] Attribute Correspondence
+### 10.2 Interface Mixin [`ARIANotifyMixin`]
+
+The ariaNotify [API]
+allows authors to provide notifications for accessibility. The
+`ariaNotify` method accepts a string as a first parameter and a
+configuration object as a second (optional) parameter.
+
+```
+WebIDLenum AriaNotifyPriority { "normal", "high" };
+
+dictionary AriaNotificationOptions {
+ AriaNotifyPriority priority = "normal";
+};
+interface mixin ARIANotifyMixin {
+ undefined ariaNotify(DOMString announcement, optional AriaNotificationOptions options = );
+};
+Element includes ARIANotifyMixin;
+Document includes ARIANotifyMixin;
+```
+
+Since ariaNotify does not have a parameter to specify the language and
+directionality of the notification, the notification inherits those of
+its source element.
+
+For cases where the language of the notification differs from that of
+its source element, authors can use a separate calling element and add
+language markup to convey the language.
+
+[Example 60](#example-60)
+
+The original page language is English, but there is a notification in
+Spanish.
+
+[Example](#example-60-0)
+
+```
+const spanishNotification = document.createElement('div');
+spanishNotification.setAttribute('lang', 'es');
+document.body.appendChild(spanishNotification);
+spanishNotification.ariaNotify('Este texto debería leerse con la voz en español');
+```
+
+The User Agent processing steps for the
+[`ariaNotify`]`(``announcement``, ``options``)`
+method are:
+
+1. If the document is not [allowed to
+ use](https://html.spec.whatwg.org/multipage/iframe-embed-object.html#allowed-to-use)
+ the feature identified by
+ [`"aria-notify"`](#dfn-aria-notify) abort these steps.
+
+2. Let `node` be `this`.
+
+3. Let `priority` be
+ `options`\[\"[`priority`](#dom-arianotificationoptions-priority)\"\].
+
+4. If `node` is [excluded from the accessibility
+ tree](#tree_exclusion), then abort these steps.
+
+5. Run the [aria notify
+ steps](https://www.w3.org/TR/core-aam-1.2/#arianotify) given
+ `node`, `announcement`, and
+ `priority`.
+
+::: header-wrapper
+#### 10.2.1 Permissions Policy Integration
+
+This specification defines a [policy-controlled
+feature](https://www.w3.org/TR/permissions-policy-1/#policy-controlled-feature)
+identified by the string [`"aria-notify"`]. It has a [default
+allowlist](https://www.w3.org/TR/permissions-policy-1/#policy-controlled-feature-default-allowlist)
+of `"*"`.
+
+When disabled in a document, any notifications applied using
+`ariaNotify` within that document will not be sent.
+
+::: header-wrapper
+### 10.3 [ARIA] Attribute Correspondence
 
 The following table provides a correspondence between IDL attribute
 names and content attribute names, for use by `ARIAMixin`. It also lists
@@ -16821,7 +17122,7 @@ their correspondence to value type for informative purposes.
 
  ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- --------------------------------------------------------------------------------------------------------------- ---------------------------------------------------------
  IDL Attribute Reflected [ARIA] Content Attribute Value type (non-normative)
- [`role`] [role](#introroles) [token list](#valuetype_token_list)
+ [`role`] [role](#attr-role) [token list](#valuetype_token_list)
  [`ariaActiveDescendantElement`] [`aria-activedescendant`](https://w3c.github.io/aria/#aria-activedescendant) [ID reference list](#valuetype_idref_list)
  [`ariaAtomic`] [`aria-atomic`](https://w3c.github.io/aria/#aria-atomic) [true/false](#valuetype_true-false)
  [`ariaAutoComplete`] [`aria-autocomplete`](https://w3c.github.io/aria/#aria-autocomplete) [token](#valuetype_token)
@@ -16883,7 +17184,7 @@ were deprecated in [ARIA] 1.1 and do not have
 corresponding IDL attributes.
 
 ::: header-wrapper
-#### 10.2.1 Disambiguation Pattern
+#### 10.3.1 Disambiguation Pattern
 
 *This section is non-normative.*
 
@@ -16920,7 +17221,7 @@ attributes listed above.
  becomes Id).
 
 ::: header-wrapper
-#### 10.2.2 IDL Attribute Name Notes or Exceptions
+#### 10.3.2 IDL Attribute Name Notes or Exceptions
 
 *This section is non-normative.*
 
@@ -16935,7 +17236,7 @@ here.
  the P, I, and second S capitalized, *not* `ariaPosInset`.
 
 ::: header-wrapper
-### 10.3 Example IDL Attribute Usage
+### 10.4 Example IDL Attribute Usage
 
 *This section is non-normative.*
 
@@ -16943,9 +17244,9 @@ The primary purpose of [ARIA] IDL attribute reflection
 is to ease JavaScript-based manipulation of values. The following
 examples demonstrate its usage.
 
-[Example 60](#example-60)
+[Example 61](#example-61)
 
-[Example](#example-60-0)
+[Example](#example-61-0)
 
 ```
 <div id="inaccessibleButton">
@@ -16953,7 +17254,7 @@ examples demonstrate its usage.
 </div>
 ```
 
-[Example](#example-60-1)
+[Example](#example-61-1)
 
 ```
 // Get a reference to the element.
@@ -17337,6 +17638,7 @@ processing on [WAI-ARIA] attributes.
 
 The following people contributed to the development of this document.
 
+- [Mario Batušić](https://github.com/MarioBatusic)
 - [Aaron Leventhal](https://github.com/aleventhal)
 - [Adam Page](https://github.com/adampage)
 - [Adrian Roselli](https://github.com/aardrian)
@@ -17348,10 +17650,8 @@ The following people contributed to the development of this document.
 - [Anne-Gaelle Colom](https://github.com/agcolom)
 - [Ariella Gilmore](https://github.com/ariellalgilmore)
 - [Benjamin Beaudry](https://github.com/benbeaudry)
-- [Boaz](https://github.com/boazsender)
 - [Bogdan Brinza](https://github.com/boggydigital)
 - [bpmcneilly](https://github.com/bpmcneilly)
-- [Brennan Young](https://github.com/brennanyoung)
 - [Bryan Garaventa](https://github.com/accdc)
 - [Carolyn MacLeod](https://github.com/carmacleod)
 - [chlane](https://github.com/chlane)
@@ -17365,13 +17665,14 @@ The following people contributed to the development of this document.
 - [Denis Ah-Kang](https://github.com/deniak)
 - [Domenic Denicola](https://github.com/domenic)
 - [Dominique Hazael-Massieux](https://github.com/dontcallmedom)
+- [dtsengchromium](https://github.com/dtsengchromium)
 - [einSelbst](https://github.com/einSelbst)
 - [Epigenetic](https://github.com/Epigenetic)
 - [Estelle Weyl](https://github.com/estelle)
 - [Francis Storr](https://github.com/fstrr)
-- [Frédéric Wang](https://github.com/fred-wang)
+- [François Daoust](https://github.com/tidoust)
+- [Frédéric Wang Nélar](https://github.com/fred-wang)
 - [Games for Girls](https://github.com/design1online)
-- [Giacomo Petri](https://github.com/giacomo-petri)
 - [Harris Schneiderman](https://github.com/schne324)
 - [Innovimax](https://github.com/innovimax)
 - [Isaac Durazo](https://github.com/isaacdurazo)
@@ -17384,26 +17685,31 @@ The following people contributed to the development of this document.
 - [JAWS-test](https://github.com/JAWS-test)
 - [JAWS-test2](https://github.com/JAWS-test2)
 - [joanmarie](https://github.com/joanmarie)
+- [Joey Arhar](https://github.com/josepharhar)
 - [Johanna](https://github.com/Johanna-hub)
 - [Jon Gunderson](https://github.com/jongund)
 - [Jory Cunningham](https://github.com/jorycunningham)
 - [Joseph Scheuhammer](https://github.com/klown)
 - [Josh Salazar](https://github.com/SalazarJosh)
+- [jugglinmike](https://github.com/jugglinmike)
 - [Kagami Sascha Rosylight](https://github.com/saschanaz)
 - [Kasper Isager Dalsgarð](https://github.com/kasperisager)
 - [katez](https://github.com/KateZhaoTR)
 - [Keith Cirkel](https://github.com/keithamus)
+- [Kenneth G. Franqueiro](https://github.com/kfranqueiro)
 - [Laurence Lewis](https://github.com/LaurenceRLewis)
 - [Léonie Watson](https://github.com/LJWatson)
 - [Luke Warlow](https://github.com/lukewarlow)
 - [Manuel Rego](https://github.com/mrego)
 - [Marcos Cáceres](https://github.com/marcoscaceres)
 - [Marek Lewandowski](https://github.com/mlewand)
-- [MarioB](https://github.com/MarioBatusic)
+- [Mark Rogers](https://github.com/dd8)
 - [Matt Garrish](https://github.com/mattgarrish)
 - [Matt King](https://github.com/mcking65)
+- [Medea Young](https://github.com/medeaoblongata)
 - [Melanie Richards](https://github.com/melanierichards)
 - [Melanie Sumner](https://github.com/MelSumner)
+- [Nathan Knowler](https://github.com/knowler)
 - [Nick Schonning](https://github.com/nschonni)
 - [Nicolás Alvarez](https://github.com/nicolas17)
 - [Nolan Lawson](https://github.com/nolanlawson)
@@ -17422,12 +17728,13 @@ The following people contributed to the development of this document.
 - [Sebastien Stettler](https://github.com/billybonks)
 - [Shane McCarron](https://github.com/halindrome)
 - [Shota FUJI](https://github.com/pocka)
-- [Sid Vishnoi](https://github.com/sidvishnoi)
 - [sideshowbarker](https://github.com/sideshowbarker)
 - [Simon Pieters](https://github.com/zcorpan)
 - [Siraj Khan](https://github.com/sirajrkhan)
 - [Stephane Deschamps](https://github.com/notabene)
 - [Steve Faulkner](https://github.com/stevefaulkner)
+- [tannal](https://github.com/tannal)
+- [Theo Hale](https://github.com/HaTheo)
 - [Thibaud Colas](https://github.com/thibaudcolas)
 - [Tim Weißenfels](https://github.com/tim-we)
 - [TST_Zak](https://github.com/zakkinsey)
@@ -17441,110 +17748,119 @@ The following people contributed to the development of this document.
 - [Xiaoqian Wu](https://github.com/siusin)
 - [Yummy_Bacon5](https://github.com/YummyBacon5)
 - [Yves Lafon](https://github.com/ylafon)
+- [Zoë Bijl](https://github.com/ZoeBijl)
 
 ::: header-wrapper
 ### C.1 [ARIA] WG participants at the time of publication
 
 - Rahim Abdi (Apple Inc.)
 - NAVYA AGARWAL (Adobe)
-- Mario Batušić (Fabasoft)
+- Joey Arhar (Google LLC)
+- Bernardo Barlach (Google LLC)
 - Benjamin Beaudry (Microsoft Corporation)
-- Curt Bellew (Oracle Corporation)
-- Zoë Bijl (W3C Invited Experts)
+- Zoë Bijl ([W3C] Invited
+ Experts)
 - Gautier Chomel (EDRLab)
 - Aleksandar Cindrikj (Netcetera)
 - Keith Cirkel (Mozilla Foundation)
 - Daniel Clark (Microsoft Corporation)
 - James Craig (Apple Inc.)
-- Chris Cuellar (Bocoup)
-- Hidde de Vries (Logius)
+- Diego Della Rossa (UsableNet)
 - Joanmarie Diggs (Igalia)
-- Howard Edwards (Bocoup)
-- Tamsin Ewing (W3C)
+- Tamsin Ewing ([W3C])
 - Mayuri Faldu (Navy Federal Credit Union)
 - Betsy Fanning (PDF Association)
 - Steve Faulkner (TetraLogical Services Ltd)
-- Jaunita Flessas (Navy Federal Credit Union)
+- Patrick Foster (axes4 GmbH)
 - Jane Fulton (Cisco)
-- Bryan Garaventa (W3C Invited Experts)
-- Rashmi Garimella (Google LLC)
+- Bryan Garaventa ([W3C]
+ Invited Experts)
 - Matt Garrish (DAISY Consortium)
 - Doug Geoffray (Microsoft Corporation)
 - Ariella Gilmore (IBM Corporation)
 - Taylore Givens (Microsoft Corporation)
-- Shirisha Gubba (Google LLC)
-- Eloisa Guerrero (Rakuten Group, Inc.)
+- David Grogan (Google LLC)
+- Shirisha Gubba ([W3C] Invited
+ Experts)
 - Jon Gunderson (University of Illinois)
 - Oliver Habersetzer (SAP SE)
-- Theo Hale (Microsoft Corporation)
+- Theo Hale ([W3C] Invited
+ Experts)
 - Sunny Hardasani (Adobe)
 - Matthew Hardy (Adobe)
 - Chris Harrelson (Google LLC)
-- Peter Heumader (Fabasoft)
 - Sarah Higley (Microsoft Corporation)
 - Hans Hillen (TPGi)
-- Isabel Holdsworth (TPGi)
+- takumi hiramatsu (Cybozu)
 - Stanley Hon (Microsoft Corporation)
 - Michael Jackson (Microsoft Corporation)
+- John Jansen (Microsoft Corporation)
 - Jilin Jiang (Ant Group Co., Ltd.)
 - Duff Johnson (PDF Association)
 - Summer Jones (Thomson Reuters Corp.)
 - Yuki Kamahori (Cybozu)
 - William Kilian (Kilian Codes LLC)
-- Matthew King (Meta)
+- Matthew King ([W3C] Invited
+ Experts)
 - Zachary Kinsey (TargetStream Technologies)
 - Daisuke Kobayashi (Cybozu)
-- Greta Krafsig (The Washington Post)
 - Peter Krautzberger (krautzource UG)
 - Nina Krauß (SAP SE)
 - JaEun Jemma Ku (University of Illinois)
+- Steven Lambert (Deque Systems, Inc.)
 - Joe Lamyman (TetraLogical Services Ltd)
 - Charles LaPierre (Benetech)
+- Patrick Lauke (TetraLogical Services Ltd)
 - Philip Lazarevic (Level Access)
 - Leo Lee (Microsoft Corporation)
-- Aaron Leventhal (Google LLC)
 - Brett Lewis (TPGi)
-- Andy Luhrs (Microsoft Corporation)
-- Sazzad Mahamud (Google LLC)
 - Alison Maher (Microsoft Corporation)
 - Gurpreet Kaur Mangera (Rakuten Group, Inc.)
 - Mark McCarthy (University of Illinois)
+- Katie McDermott (See Me Please)
 - Eduardo Meza Etienne (Navy Federal Credit Union)
 - Clay Miller (Microsoft Corporation)
 - Hirotaka Minamida (Cybozu)
-- Daniel Montalvo (W3C)
+- Daniel Montalvo ([W3C])
 - Baldino Morelli (UsableNet)
 - Jacques Newman (Microsoft Corporation)
-- James Nurthen (Adobe)
+- James Nurthen (Evinced Inc.)
 - Scott O\'Hara (Microsoft Corporation)
-- Lola Odelola (W3C Invited Experts)
+- Lola Odelola ([W3C] Invited
+ Experts)
 - Neil Osman (Evinced Inc.)
 - Yusuke Oyama (Cybozu)
 - Adam Page (Hilton)
-- Michael Pennisi (Bocoup)
+- Michael Pennisi (Igalia)
 - Giacomo Petri (UsableNet)
 - Noah Praskins (TPGi)
-- Daniel Pöll (Fabasoft)
 - Lucas Radaelli (Google LLC)
-- Paul Rayius (Allyant)
-- Adrian Roselli (W3C Invited Experts)
+- Paul Rayius (PDFix-US)
+- Mark Rogers (Powermapper Software)
+- Adrian Roselli ([W3C] Invited
+ Experts)
 - Marco Sabidussi (UsableNet)
 - Trisha Salas (Level Access)
 - Stefan Schnabel (SAP SE)
 - Harris Schneiderman (Deque Systems, Inc.)
 - Raymond Schwartz (Navy Federal Credit Union)
-- Cynthia Shelly (W3C Invited Experts)
-- Tzviya Siegman (W3C)
-- Arturo Silva (The Washington Post)
+- Kyra Seevers (Google LLC)
+- Davis Shaver (The Washington Post)
+- Cynthia Shelly ([W3C] Invited
+ Experts)
+- Tzviya Siegman ([W3C])
 - Avneesh Singh (DAISY Consortium)
-- Michael\[tm\] Smith (sideshowbarker) (W3C)
+- Michael\[tm\] Smith (sideshowbarker) ([W3C])
 - Francis Storr (Intel Corporation)
-- Jennifer Strickland (MITRE Corporation)
 - Nobukiyo Sugisaki (Cybozu)
 - Melanie Sumner (IBM Corporation)
 - Alexander Surkov (Igalia)
 - James Teh (Mozilla Foundation)
-- Jocelyn Tran (Google LLC)
+- Roman Toda (Foxit software)
+- David Tseng (Google LLC)
+- Cybozu [W3C] (Cybozu)
+- Tyler Wilcock (Apple Inc.)
+- Jan Williams (TPGi)
 
 ::: header-wrapper
 ### C.2 Enabling funders
@@ -17558,187 +17874,6 @@ publication does not necessarily reflect the views or policies of the
 U.S. Department of Education, nor does mention of trade names,
 commercial products, or organizations imply endorsement by the U.S.
 Government.
-
-::: header-wrapper
-## D. References
-
-::: header-wrapper
-### D.1 Normative references
-
-\[ACCNAME-1.2\]
-: [Accessible Name and Description Computation
- 1.2](https://www.w3.org/TR/accname-1.2/). Bryan Garaventa; Melanie
- Sumner. W3C. 23 October 2025. W3C Working Draft. URL:
- <https://www.w3.org/TR/accname-1.2/>
-
-\[CORE-AAM\]
-: [Core Accessibility API Mappings
- 1.1](https://www.w3.org/TR/core-aam-1.1/). Joanmarie Diggs; Joseph
- Scheuhammer; Richard Schwerdtfeger; Michael Cooper; Andi
- Snow-Weaver; Aaron Leventhal. W3C. 14 December 2017. W3C
- Recommendation. URL: <https://www.w3.org/TR/core-aam-1.1/>
-
-\[CORE-AAM-1.2\]
-: [Core Accessibility API Mappings
- 1.2](https://www.w3.org/TR/core-aam-1.2/). Valerie Young; Cynthia
- Shelly. W3C. 23 October 2025. CRD. URL:
- <https://www.w3.org/TR/core-aam-1.2/>
-
-\[CSS3-SELECTORS\]
-: [Selectors Level 3](https://www.w3.org/TR/selectors-3/). Tantek
- Çelik; Elika Etemad; Daniel Glazman; Ian Hickson; Peter Linss; John
- Williams. W3C. 6 November 2018. W3C Recommendation. URL:
- <https://www.w3.org/TR/selectors-3/>
-
-\[DOM\]
-: [DOM Standard](https://dom.spec.whatwg.org/). Anne van Kesteren.
- WHATWG. Living Standard. URL: <https://dom.spec.whatwg.org/>
-
-\[DPUB-ARIA-1.0\]
-: [Digital Publishing WAI-ARIA Module
- 1.0](https://www.w3.org/TR/dpub-aria-1.0/). Matt Garrish; Tzviya
- Siegman; Markus Gylling; Shane McCarron. W3C. 14 December 2017. W3C
- Recommendation. URL: <https://www.w3.org/TR/dpub-aria-1.0/>
-
-\[HTML\]
-: [HTML Standard](https://html.spec.whatwg.org/multipage/). Anne van
- Kesteren; Domenic Denicola; Dominic Farolino; Ian Hickson; Philip
- Jägenstedt; Simon Pieters. WHATWG. Living Standard. URL:
- <https://html.spec.whatwg.org/multipage/>
-
-\[infra\]
-: [Infra Standard](https://infra.spec.whatwg.org/). Anne van Kesteren;
- Domenic Denicola. WHATWG. Living Standard. URL:
- <https://infra.spec.whatwg.org/>
-
-\[MathML3\]
-: [Mathematical Markup Language (MathML) Version 3.0 2nd
- Edition](https://www.w3.org/TR/MathML3/). David Carlisle; Patrick D
- F Ion; Robert R Miner. W3C. 10 April 2014. W3C Recommendation. URL:
- <https://www.w3.org/TR/MathML3/>
-
-\[RFC2119\]
-: [Key words for use in RFCs to Indicate Requirement
- Levels](https://www.rfc-editor.org/rfc/rfc2119). S. Bradner. IETF.
- March 1997. Best Current Practice. URL:
- <https://www.rfc-editor.org/rfc/rfc2119>
-
-\[RFC8174\]
-: [Ambiguity of Uppercase vs Lowercase in RFC 2119 Key
- Words](https://www.rfc-editor.org/rfc/rfc8174). B. Leiba. IETF.
- May 2017. Best Current Practice. URL:
- <https://www.rfc-editor.org/rfc/rfc8174>
-
-\[ROLE-ATTRIBUTE\]
-: [Role Attribute 1.0](https://www.w3.org/TR/role-attribute/). Shane
- McCarron et al. W3C. 28 March 2013. W3C Recommendation. URL:
- <https://www.w3.org/TR/role-attribute/>
-
-\[SVG2\]
-: [Scalable Vector Graphics (SVG) 2](https://www.w3.org/TR/SVG2/).
- Amelia Bellamy-Royds; Bogdan Brinza; Chris Lilley; Dirk Schulze;
- David Storey; Eric Willigers. W3C. 4 October 2018. W3C Candidate
- Recommendation. URL: <https://www.w3.org/TR/SVG2/>
-
-\[uievents-key\]
-: [UI Events KeyboardEvent key
- Values](https://www.w3.org/TR/uievents-key/). Travis Leithead; Gary
- Kacmarcik. W3C. 22 April 2025. W3C Recommendation. URL:
- <https://www.w3.org/TR/uievents-key/>
-
-\[WEBIDL\]
-: [Web IDL Standard](https://webidl.spec.whatwg.org/). Edgar Chen;
- Timothy Gu. WHATWG. Living Standard. URL:
- <https://webidl.spec.whatwg.org/>
-
-\[XML-NAMES\]
-: [Namespaces in XML 1.0 (Third
- Edition)](https://www.w3.org/TR/xml-names/). Tim Bray; Dave
- Hollander; Andrew Layman; Richard Tobin; Henry Thompson et al. W3C.
- 8 December 2009. W3C Recommendation. URL:
- <https://www.w3.org/TR/xml-names/>
-
-::: header-wrapper
-### D.2 Informative references
-
-\[AT-SPI\]
-: [Assistive Technology Service Provider
- Interface](https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/).
- The GNOME Project. URL:
- <https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/>
-
-\[ATK\]
-: [ATK - Accessibility
- Toolkit](https://developer.gnome.org/atk/stable/). The GNOME
- Project. URL: <https://developer.gnome.org/atk/stable/>
-
-\[AXAPI\]
-: [The NSAccessibility Protocol for
- macOS](https://developer.apple.com/documentation/appkit/nsaccessibility).
- Apple, Inc. URL:
- <https://developer.apple.com/documentation/appkit/nsaccessibility>
-
-\[design-principles\]
-: [Web Platform Design
- Principles](https://www.w3.org/TR/design-principles/). Martin
- Thomson; Jeffrey Yasskin. W3C. 22 October 2025. W3C Working Group
- Note. URL: <https://www.w3.org/TR/design-principles/>
-
-\[fingerprinting-guidance\]
-: [Mitigating Browser Fingerprinting in Web
- Specifications](https://www.w3.org/TR/fingerprinting-guidance/).
- Nick Doty; Tom Ritter. W3C. 25 September 2025. W3C Working Group
- Note. URL: <https://www.w3.org/TR/fingerprinting-guidance/>
-
-\[HTML-ARIA\]
-: [ARIA in HTML](https://www.w3.org/TR/html-aria/). Scott O\'Hara;
- Patrick Lauke. W3C. 5 August 2025. W3C Recommendation. URL:
- <https://www.w3.org/TR/html-aria/>
-
-\[IAccessible2\]
-: [IAccessible2](https://wiki.linuxfoundation.org/accessibility/iaccessible2/).
- Linux Foundation. URL:
- <https://wiki.linuxfoundation.org/accessibility/iaccessible2/>
-
-\[MSAA\]
-: [Microsoft Active Accessibility
- (MSAA)](https://docs.microsoft.com/en-us/windows/win32/winauto/microsoft-active-accessibility).
- Microsoft Corporation. URL:
- <https://docs.microsoft.com/en-us/windows/win32/winauto/microsoft-active-accessibility>
-
-\[UI-AUTOMATION\]
-: [UI
- Automation](https://docs.microsoft.com/en-us/windows/win32/winauto/ui-automation-specification).
- Microsoft Corporation. URL:
- <https://docs.microsoft.com/en-us/windows/win32/winauto/ui-automation-specification>
-
-\[UIA-EXPRESS\]
-: [The IAccessibleEx
- Interface](https://docs.microsoft.com/en-us/windows/win32/winauto/iaccessibleex).
- Microsoft Corporation. URL:
- <https://docs.microsoft.com/en-us/windows/win32/winauto/iaccessibleex>
-
-\[wai-aria-1.1\]
-: [Accessible Rich Internet Applications (WAI-ARIA)
- 1.1](https://www.w3.org/TR/wai-aria-1.1/). Joanmarie Diggs; Shane
- McCarron; Michael Cooper; Richard Schwerdtfeger; James Craig. W3C.
- 14 December 2017. W3C Recommendation. URL:
- <https://www.w3.org/TR/wai-aria-1.1/>
-
-\[WCAG21\]
-: [Web Content Accessibility Guidelines (WCAG)
- 2.1](https://www.w3.org/TR/WCAG21/). Michael Cooper; Andrew
- Kirkpatrick; Joshue O\'Connor; Alastair Campbell. W3C. 6 May 2025.
- W3C Recommendation. URL: <https://www.w3.org/TR/WCAG21/>
-
-\[XMLSCHEMA11-2\]
-: [W3C XML Schema Definition Language (XSD) 1.1 Part 2:
- Datatypes](https://www.w3.org/TR/xmlschema11-2/). David Peterson;
- Sandy Gao; Ashok Malhotra; Michael Sperberg-McQueen; Henry Thompson;
- Paul V. Biron et al. W3C. 5 April 2012. W3C Recommendation. URL:
- <https://www.w3.org/TR/xmlschema11-2/>
-
-[[↑]](#title)
 
 [Permalink](#dfn-accessibility-api)
 [exported]
@@ -17767,23 +17902,23 @@ Government.
  Agents](#ref-for-dfn-accessibility-api-13 "§ 4.3.2 Information for User Agents")
 - [§ 5.2.9 Children
  Presentational](#ref-for-dfn-accessibility-api-14 "§ 5.2.9 Children Presentational")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-accessibility-api-15 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-accessibility-api-16 "Reference 2")
- [(3)](#ref-for-dfn-accessibility-api-17 "Reference 3")
- [(4)](#ref-for-dfn-accessibility-api-18 "Reference 4")
- [(5)](#ref-for-dfn-accessibility-api-19 "Reference 5")
- [(6)](#ref-for-dfn-accessibility-api-20 "Reference 6")
- [(7)](#ref-for-dfn-accessibility-api-21 "Reference 7")
-- [§ 6.6.1 Widget
- Attributes](#ref-for-dfn-accessibility-api-22 "§ 6.6.1 Widget Attributes")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-accessibility-api-23 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-accessibility-api-24 "Reference 2")
- [(3)](#ref-for-dfn-accessibility-api-25 "Reference 3")
- [(4)](#ref-for-dfn-accessibility-api-26 "Reference 4")
- [(5)](#ref-for-dfn-accessibility-api-27 "Reference 5")
- [(6)](#ref-for-dfn-accessibility-api-28 "Reference 6")
+- [§ alertdialog](#ref-for-dfn-accessibility-api-15 "§ alertdialog")
+- [§ generic](#ref-for-dfn-accessibility-api-16 "§ generic")
+- [§ none](#ref-for-dfn-accessibility-api-17 "§ none")
+- [§ option](#ref-for-dfn-accessibility-api-18 "§ option")
+- [§ presentation](#ref-for-dfn-accessibility-api-19 "§ presentation")
+- [§ structure](#ref-for-dfn-accessibility-api-20 "§ structure")
+- [§ widget](#ref-for-dfn-accessibility-api-21 "§ widget")
+- [§ 6.6.2 Widget
+ Attributes](#ref-for-dfn-accessibility-api-22 "§ 6.6.2 Widget Attributes")
+- [§ aria-atomic](#ref-for-dfn-accessibility-api-23 "§ aria-atomic")
+- [§
+ aria-description](#ref-for-dfn-accessibility-api-24 "§ aria-description")
+- [§ aria-flowto](#ref-for-dfn-accessibility-api-25 "§ aria-flowto")
+- [§ aria-label](#ref-for-dfn-accessibility-api-26 "§ aria-label")
+- [§
+ aria-labelledby](#ref-for-dfn-accessibility-api-27 "§ aria-labelledby")
+ [(2)](#ref-for-dfn-accessibility-api-28 "Reference 2")
 - [§ 7.1 Excluding Elements from the Accessibility
  Tree](#ref-for-dfn-accessibility-api-29 "§ 7.1 Excluding Elements from the Accessibility Tree")
 - [§ 7.2 Including Elements in the Accessibility
@@ -17837,85 +17972,84 @@ Government.
  Properties](#ref-for-assistive-technology-14 "§ 4.2 WAI-ARIA States and Properties")
 - [§ 4.3.1 Information for
  Authors](#ref-for-assistive-technology-15 "§ 4.3.1 Information for Authors")
-- [§ 5.4 Definition of
- Roles](#ref-for-assistive-technology-16 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-assistive-technology-17 "Reference 2")
- [(3)](#ref-for-assistive-technology-18 "Reference 3")
- [(4)](#ref-for-assistive-technology-19 "Reference 4")
- [(5)](#ref-for-assistive-technology-20 "Reference 5")
- [(6)](#ref-for-assistive-technology-21 "Reference 6")
- [(7)](#ref-for-assistive-technology-22 "Reference 7")
- [(8)](#ref-for-assistive-technology-23 "Reference 8")
- [(9)](#ref-for-assistive-technology-24 "Reference 9")
- [(10)](#ref-for-assistive-technology-25 "Reference 10")
- [(11)](#ref-for-assistive-technology-26 "Reference 11")
- [(12)](#ref-for-assistive-technology-27 "Reference 12")
- [(13)](#ref-for-assistive-technology-28 "Reference 13")
- [(14)](#ref-for-assistive-technology-29 "Reference 14")
- [(15)](#ref-for-assistive-technology-30 "Reference 15")
- [(16)](#ref-for-assistive-technology-31 "Reference 16")
- [(17)](#ref-for-assistive-technology-32 "Reference 17")
- [(18)](#ref-for-assistive-technology-33 "Reference 18")
- [(19)](#ref-for-assistive-technology-34 "Reference 19")
- [(20)](#ref-for-assistive-technology-35 "Reference 20")
- [(21)](#ref-for-assistive-technology-36 "Reference 21")
- [(22)](#ref-for-assistive-technology-37 "Reference 22")
- [(23)](#ref-for-assistive-technology-38 "Reference 23")
- [(24)](#ref-for-assistive-technology-39 "Reference 24")
- [(25)](#ref-for-assistive-technology-40 "Reference 25")
- [(26)](#ref-for-assistive-technology-41 "Reference 26")
- [(27)](#ref-for-assistive-technology-42 "Reference 27")
- [(28)](#ref-for-assistive-technology-43 "Reference 28")
- [(29)](#ref-for-assistive-technology-44 "Reference 29")
- [(30)](#ref-for-assistive-technology-45 "Reference 30")
- [(31)](#ref-for-assistive-technology-46 "Reference 31")
- [(32)](#ref-for-assistive-technology-47 "Reference 32")
- [(33)](#ref-for-assistive-technology-48 "Reference 33")
- [(34)](#ref-for-assistive-technology-49 "Reference 34")
-- [§ 6.6.1 Widget
- Attributes](#ref-for-assistive-technology-50 "§ 6.6.1 Widget Attributes")
-- [§ 6.6.2 Live Region
- Attributes](#ref-for-assistive-technology-51 "§ 6.6.2 Live Region Attributes")
-- [§ 6.6.3 Drag-and-Drop
- Attributes](#ref-for-assistive-technology-52 "§ 6.6.3 Drag-and-Drop Attributes")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-assistive-technology-53 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
+- [§ alertdialog](#ref-for-assistive-technology-16 "§ alertdialog")
+- [§ application](#ref-for-assistive-technology-17 "§ application")
+ [(2)](#ref-for-assistive-technology-18 "Reference 2")
+- [§ article](#ref-for-assistive-technology-19 "§ article")
+- [§ banner](#ref-for-assistive-technology-20 "§ banner")
+- [§ columnheader](#ref-for-assistive-technology-21 "§ columnheader")
+- [§ combobox](#ref-for-assistive-technology-22 "§ combobox")
+- [§ complementary](#ref-for-assistive-technology-23 "§ complementary")
+- [§ contentinfo](#ref-for-assistive-technology-24 "§ contentinfo")
+- [§ document](#ref-for-assistive-technology-25 "§ document")
+ [(2)](#ref-for-assistive-technology-26 "Reference 2")
+ [(3)](#ref-for-assistive-technology-27 "Reference 3")
+- [§ feed](#ref-for-assistive-technology-28 "§ feed")
+ [(2)](#ref-for-assistive-technology-29 "Reference 2")
+ [(3)](#ref-for-assistive-technology-30 "Reference 3")
+ [(4)](#ref-for-assistive-technology-31 "Reference 4")
+ [(5)](#ref-for-assistive-technology-32 "Reference 5")
+ [(6)](#ref-for-assistive-technology-33 "Reference 6")
+- [§ figure](#ref-for-assistive-technology-34 "§ figure")
+- [§ form](#ref-for-assistive-technology-35 "§ form")
+- [§ group](#ref-for-assistive-technology-36 "§ group")
+- [§ landmark](#ref-for-assistive-technology-37 "§ landmark")
+- [§ main](#ref-for-assistive-technology-38 "§ main")
+ [(2)](#ref-for-assistive-technology-39 "Reference 2")
+- [§ navigation](#ref-for-assistive-technology-40 "§ navigation")
+- [§ region](#ref-for-assistive-technology-41 "§ region")
+- [§ rowheader](#ref-for-assistive-technology-42 "§ rowheader")
+- [§ search](#ref-for-assistive-technology-43 "§ search")
+- [§ separator](#ref-for-assistive-technology-44 "§ separator")
+- [§ status](#ref-for-assistive-technology-45 "§ status")
+- [§ structure](#ref-for-assistive-technology-46 "§ structure")
+- [§ term](#ref-for-assistive-technology-47 "§ term")
+- [§ widget](#ref-for-assistive-technology-48 "§ widget")
+ [(2)](#ref-for-assistive-technology-49 "Reference 2")
+- [§ 6.6.2 Widget
+ Attributes](#ref-for-assistive-technology-50 "§ 6.6.2 Widget Attributes")
+- [§ 6.6.3 Live Region
+ Attributes](#ref-for-assistive-technology-51 "§ 6.6.3 Live Region Attributes")
+- [§ aria-atomic](#ref-for-assistive-technology-52 "§ aria-atomic")
+- [§
+ aria-braillelabel](#ref-for-assistive-technology-53 "§ aria-braillelabel")
  [(2)](#ref-for-assistive-technology-54 "Reference 2")
  [(3)](#ref-for-assistive-technology-55 "Reference 3")
  [(4)](#ref-for-assistive-technology-56 "Reference 4")
- [(5)](#ref-for-assistive-technology-57 "Reference 5")
- [(6)](#ref-for-assistive-technology-58 "Reference 6")
- [(7)](#ref-for-assistive-technology-59 "Reference 7")
- [(8)](#ref-for-assistive-technology-60 "Reference 8")
- [(9)](#ref-for-assistive-technology-61 "Reference 9")
- [(10)](#ref-for-assistive-technology-62 "Reference 10")
- [(11)](#ref-for-assistive-technology-63 "Reference 11")
- [(12)](#ref-for-assistive-technology-64 "Reference 12")
- [(13)](#ref-for-assistive-technology-65 "Reference 13")
- [(14)](#ref-for-assistive-technology-66 "Reference 14")
- [(15)](#ref-for-assistive-technology-67 "Reference 15")
- [(16)](#ref-for-assistive-technology-68 "Reference 16")
- [(17)](#ref-for-assistive-technology-69 "Reference 17")
- [(18)](#ref-for-assistive-technology-70 "Reference 18")
- [(19)](#ref-for-assistive-technology-71 "Reference 19")
- [(20)](#ref-for-assistive-technology-72 "Reference 20")
- [(21)](#ref-for-assistive-technology-73 "Reference 21")
- [(22)](#ref-for-assistive-technology-74 "Reference 22")
- [(23)](#ref-for-assistive-technology-75 "Reference 23")
- [(24)](#ref-for-assistive-technology-76 "Reference 24")
- [(25)](#ref-for-assistive-technology-77 "Reference 25")
- [(26)](#ref-for-assistive-technology-78 "Reference 26")
- [(27)](#ref-for-assistive-technology-79 "Reference 27")
+- [§
+ aria-brailleroledescription](#ref-for-assistive-technology-57 "§ aria-brailleroledescription")
+ [(2)](#ref-for-assistive-technology-58 "Reference 2")
+ [(3)](#ref-for-assistive-technology-59 "Reference 3")
+ [(4)](#ref-for-assistive-technology-60 "Reference 4")
+ [(5)](#ref-for-assistive-technology-61 "Reference 5")
+ [(6)](#ref-for-assistive-technology-62 "Reference 6")
+- [§ aria-colspan](#ref-for-assistive-technology-63 "§ aria-colspan")
+- [§ aria-controls](#ref-for-assistive-technology-64 "§ aria-controls")
+- [§ aria-current](#ref-for-assistive-technology-65 "§ aria-current")
+- [§ aria-details](#ref-for-assistive-technology-66 "§ aria-details")
+- [§ aria-flowto](#ref-for-assistive-technology-67 "§ aria-flowto")
+- [§ aria-haspopup](#ref-for-assistive-technology-68 "§ aria-haspopup")
+- [§ aria-level](#ref-for-assistive-technology-69 "§ aria-level")
+- [§ aria-live](#ref-for-assistive-technology-70 "§ aria-live")
+- [§ aria-owns](#ref-for-assistive-technology-71 "§ aria-owns")
+- [§ aria-relevant](#ref-for-assistive-technology-72 "§ aria-relevant")
+- [§ aria-required](#ref-for-assistive-technology-73 "§ aria-required")
+- [§
+ aria-roledescription](#ref-for-assistive-technology-74 "§ aria-roledescription")
+ [(2)](#ref-for-assistive-technology-75 "Reference 2")
+- [§ aria-rowspan](#ref-for-assistive-technology-76 "§ aria-rowspan")
+- [§ aria-setsize](#ref-for-assistive-technology-77 "§ aria-setsize")
+- [§
+ aria-valuetext](#ref-for-assistive-technology-78 "§ aria-valuetext")
 - [§ 7. Accessibility
- Tree](#ref-for-assistive-technology-80 "§ 7. Accessibility Tree")
+ Tree](#ref-for-assistive-technology-79 "§ 7. Accessibility Tree")
 
 [Permalink](#dfn-deprecated)
 
 **Referenced in:**
 
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-deprecated-1 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-deprecated-2 "Reference 2")
+- [§ aria-dropeffect](#ref-for-dfn-deprecated-1 "§ aria-dropeffect")
+- [§ aria-grabbed](#ref-for-dfn-deprecated-2 "§ aria-grabbed")
 
 [Permalink](#dfn-defines)
 
@@ -17923,29 +18057,30 @@ Government.
 
 - [§ 2. Important Terms](#ref-for-dfn-defines-1 "§ 2. Important Terms")
  [(2)](#ref-for-dfn-defines-2 "Reference 2")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-defines-3 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-defines-4 "Reference 2")
- [(3)](#ref-for-dfn-defines-5 "Reference 3")
- [(4)](#ref-for-dfn-defines-6 "Reference 4")
- [(5)](#ref-for-dfn-defines-7 "Reference 5")
- [(6)](#ref-for-dfn-defines-8 "Reference 6")
- [(7)](#ref-for-dfn-defines-9 "Reference 7")
- [(8)](#ref-for-dfn-defines-10 "Reference 8")
- [(9)](#ref-for-dfn-defines-11 "Reference 9")
- [(10)](#ref-for-dfn-defines-12 "Reference 10")
- [(11)](#ref-for-dfn-defines-13 "Reference 11")
- [(12)](#ref-for-dfn-defines-14 "Reference 12")
- [(13)](#ref-for-dfn-defines-15 "Reference 13")
- [(14)](#ref-for-dfn-defines-16 "Reference 14")
- [(15)](#ref-for-dfn-defines-17 "Reference 15")
- [(16)](#ref-for-dfn-defines-18 "Reference 16")
- [(17)](#ref-for-dfn-defines-19 "Reference 17")
- [(18)](#ref-for-dfn-defines-20 "Reference 18")
- [(19)](#ref-for-dfn-defines-21 "Reference 19")
- [(20)](#ref-for-dfn-defines-22 "Reference 20")
- [(21)](#ref-for-dfn-defines-23 "Reference 21")
- [(22)](#ref-for-dfn-defines-24 "Reference 22")
+- [§ aria-braillelabel](#ref-for-dfn-defines-3 "§ aria-braillelabel")
+- [§
+ aria-brailleroledescription](#ref-for-dfn-defines-4 "§ aria-brailleroledescription")
+- [§ aria-colcount](#ref-for-dfn-defines-5 "§ aria-colcount")
+- [§ aria-colindex](#ref-for-dfn-defines-6 "§ aria-colindex")
+- [§ aria-colindextext](#ref-for-dfn-defines-7 "§ aria-colindextext")
+- [§ aria-colspan](#ref-for-dfn-defines-8 "§ aria-colspan")
+- [§ aria-description](#ref-for-dfn-defines-9 "§ aria-description")
+- [§ aria-keyshortcuts](#ref-for-dfn-defines-10 "§ aria-keyshortcuts")
+- [§ aria-label](#ref-for-dfn-defines-11 "§ aria-label")
+- [§ aria-level](#ref-for-dfn-defines-12 "§ aria-level")
+- [§ aria-placeholder](#ref-for-dfn-defines-13 "§ aria-placeholder")
+- [§ aria-posinset](#ref-for-dfn-defines-14 "§ aria-posinset")
+- [§
+ aria-roledescription](#ref-for-dfn-defines-15 "§ aria-roledescription")
+- [§ aria-rowcount](#ref-for-dfn-defines-16 "§ aria-rowcount")
+- [§ aria-rowindex](#ref-for-dfn-defines-17 "§ aria-rowindex")
+- [§ aria-rowindextext](#ref-for-dfn-defines-18 "§ aria-rowindextext")
+- [§ aria-rowspan](#ref-for-dfn-defines-19 "§ aria-rowspan")
+- [§ aria-setsize](#ref-for-dfn-defines-20 "§ aria-setsize")
+- [§ aria-valuemax](#ref-for-dfn-defines-21 "§ aria-valuemax")
+- [§ aria-valuemin](#ref-for-dfn-defines-22 "§ aria-valuemin")
+- [§ aria-valuenow](#ref-for-dfn-defines-23 "§ aria-valuenow")
+- [§ aria-valuetext](#ref-for-dfn-defines-24 "§ aria-valuetext")
 
 [Permalink](#dfn-desktop-focus-event)
 
@@ -17969,14 +18104,12 @@ Government.
  Properties](#ref-for-dfn-event-4 "§ 4.2 WAI-ARIA States and Properties")
 - [§ 4.3.2 Information for User
  Agents](#ref-for-dfn-event-5 "§ 4.3.2 Information for User Agents")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-event-6 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-event-7 "Reference 2")
- [(3)](#ref-for-dfn-event-8 "Reference 3")
+- [§ alert](#ref-for-dfn-event-6 "§ alert")
+- [§ alertdialog](#ref-for-dfn-event-7 "§ alertdialog")
+ [(2)](#ref-for-dfn-event-8 "Reference 2")
 - [§ 6.7 State change
  notification](#ref-for-dfn-event-9 "§ 6.7 State change notification")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-event-10 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
+- [§ aria-relevant](#ref-for-dfn-event-10 "§ aria-relevant")
 - [§ 7. Accessibility
  Tree](#ref-for-dfn-event-11 "§ 7. Accessibility Tree")
 - [§ 7.2 Including Elements in the Accessibility
@@ -17986,7 +18119,50 @@ Government.
 
 **Referenced in:**
 
-- Not referenced in this document.
+- [§ 3.2 All WAI-ARIA in
+ DOM](#ref-for-dfn-expose-1 "§ 3.2 All WAI-ARIA in DOM")
+- [§ 5.2.3 Supported States and
+ Properties](#ref-for-dfn-expose-2 "§ 5.2.3 Supported States and Properties")
+- [§ 5.2.9 Children
+ Presentational](#ref-for-dfn-expose-3 "§ 5.2.9 Children Presentational")
+- [§ columnheader](#ref-for-dfn-expose-4 "§ columnheader")
+- [§ combobox](#ref-for-dfn-expose-5 "§ combobox")
+- [§ comment](#ref-for-dfn-expose-6 "§ comment")
+- [§ dialog](#ref-for-dfn-expose-7 "§ dialog")
+- [§ directory](#ref-for-dfn-expose-8 "§ directory")
+- [§ generic](#ref-for-dfn-expose-9 "§ generic")
+- [§ grid](#ref-for-dfn-expose-10 "§ grid")
+- [§ none](#ref-for-dfn-expose-11 "§ none")
+- [§ row](#ref-for-dfn-expose-12 "§ row")
+- [§ rowheader](#ref-for-dfn-expose-13 "§ rowheader")
+- [§ textbox](#ref-for-dfn-expose-14 "§ textbox")
+- [§ treegrid](#ref-for-dfn-expose-15 "§ treegrid")
+- [§ 6.3.3 Operating System Accessibility API mapping of multi-value
+ ARIA
+ attributes](#ref-for-dfn-expose-16 "§ 6.3.3 Operating System Accessibility API mapping of multi-value ARIA attributes")
+- [§ aria-braillelabel](#ref-for-dfn-expose-17 "§ aria-braillelabel")
+- [§
+ aria-brailleroledescription](#ref-for-dfn-expose-18 "§ aria-brailleroledescription")
+- [§ aria-colspan](#ref-for-dfn-expose-19 "§ aria-colspan")
+- [§ aria-current](#ref-for-dfn-expose-20 "§ aria-current")
+- [§ aria-details](#ref-for-dfn-expose-21 "§ aria-details")
+- [§ aria-errormessage](#ref-for-dfn-expose-22 "§ aria-errormessage")
+- [§ aria-haspopup](#ref-for-dfn-expose-23 "§ aria-haspopup")
+- [§ aria-hidden](#ref-for-dfn-expose-24 "§ aria-hidden")
+- [§ aria-keyshortcuts](#ref-for-dfn-expose-25 "§ aria-keyshortcuts")
+- [§ aria-owns](#ref-for-dfn-expose-26 "§ aria-owns")
+- [§
+ aria-roledescription](#ref-for-dfn-expose-27 "§ aria-roledescription")
+- [§ aria-rowspan](#ref-for-dfn-expose-28 "§ aria-rowspan")
+- [§ 7. Accessibility
+ Tree](#ref-for-dfn-expose-29 "§ 7. Accessibility Tree")
+- [§ 8.5 Conflicts with Host Language
+ Semantics](#ref-for-dfn-expose-30 "§ 8.5 Conflicts with Host Language Semantics")
+- [§ 9.1 Roles](#ref-for-dfn-expose-31 "§ 9.1 Roles")
+- [§ 9.2 States and
+ Properties](#ref-for-dfn-expose-32 "§ 9.2 States and Properties")
+- [§ 9.3 Presentational Roles Conflict
+ Resolution](#ref-for-dfn-expose-33 "§ 9.3 Presentational Roles Conflict Resolution")
 
 [Permalink](#dfn-focusable)
 
@@ -17996,23 +18172,22 @@ Government.
  Authors](#ref-for-dfn-focusable-1 "§ 4.3.1 Information for Authors")
 - [§ 4.3.2 Information for User
  Agents](#ref-for-dfn-focusable-2 "§ 4.3.2 Information for User Agents")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-focusable-3 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-focusable-4 "Reference 2")
- [(3)](#ref-for-dfn-focusable-5 "Reference 3")
- [(4)](#ref-for-dfn-focusable-6 "Reference 4")
- [(5)](#ref-for-dfn-focusable-7 "Reference 5")
- [(6)](#ref-for-dfn-focusable-8 "Reference 6")
- [(7)](#ref-for-dfn-focusable-9 "Reference 7")
- [(8)](#ref-for-dfn-focusable-10 "Reference 8")
- [(9)](#ref-for-dfn-focusable-11 "Reference 9")
- [(10)](#ref-for-dfn-focusable-12 "Reference 10")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-focusable-13 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-focusable-14 "Reference 2")
- [(3)](#ref-for-dfn-focusable-15 "Reference 3")
- [(4)](#ref-for-dfn-focusable-16 "Reference 4")
- [(5)](#ref-for-dfn-focusable-17 "Reference 5")
+- [§ application](#ref-for-dfn-focusable-3 "§ application")
+- [§ combobox](#ref-for-dfn-focusable-4 "§ combobox")
+- [§ dialog](#ref-for-dfn-focusable-5 "§ dialog")
+- [§ document](#ref-for-dfn-focusable-6 "§ document")
+- [§ feed](#ref-for-dfn-focusable-7 "§ feed")
+- [§ grid](#ref-for-dfn-focusable-8 "§ grid")
+- [§ gridcell](#ref-for-dfn-focusable-9 "§ gridcell")
+- [§ none](#ref-for-dfn-focusable-10 "§ none")
+- [§ separator](#ref-for-dfn-focusable-11 "§ separator")
+- [§ treegrid](#ref-for-dfn-focusable-12 "§ treegrid")
+- [§
+ aria-activedescendant](#ref-for-dfn-focusable-13 "§ aria-activedescendant")
+- [§ aria-disabled](#ref-for-dfn-focusable-14 "§ aria-disabled")
+- [§ aria-expanded](#ref-for-dfn-focusable-15 "§ aria-expanded")
+- [§ aria-haspopup](#ref-for-dfn-focusable-16 "§ aria-haspopup")
+- [§ aria-readonly](#ref-for-dfn-focusable-17 "§ aria-readonly")
 - [§ 8.3 Focus
  Navigation](#ref-for-dfn-focusable-18 "§ 8.3 Focus Navigation")
 - [§ 9.3 Presentational Roles Conflict
@@ -18022,8 +18197,7 @@ Government.
 
 **Referenced in:**
 
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-graphical-document-1 "§ 5.4 Definition of Roles")
+- [§ figure](#ref-for-dfn-graphical-document-1 "§ figure")
 
 [Permalink](#dfn-hidden)
 [exported]
@@ -18032,8 +18206,7 @@ Government.
 
 - [§ 2. Important Terms](#ref-for-dfn-hidden-1 "§ 2. Important Terms")
  [(2)](#ref-for-dfn-hidden-2 "Reference 2")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-hidden-3 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
+- [§ aria-hidden](#ref-for-dfn-hidden-3 "§ aria-hidden")
  [(2)](#ref-for-dfn-hidden-4 "Reference 2")
  [(3)](#ref-for-dfn-hidden-5 "Reference 3")
  [(4)](#ref-for-dfn-hidden-6 "Reference 4")
@@ -18051,18 +18224,17 @@ Government.
 - [§ 2. Important
  Terms](#ref-for-dfn-hide-from-all-users-1 "§ 2. Important Terms")
  [(2)](#ref-for-dfn-hide-from-all-users-2 "Reference 2")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-hide-from-all-users-3 "§ 5.4 Definition of Roles")
+- [§ tab](#ref-for-dfn-hide-from-all-users-3 "§ tab")
  [(2)](#ref-for-dfn-hide-from-all-users-4 "Reference 2")
- [(3)](#ref-for-dfn-hide-from-all-users-5 "Reference 3")
- [(4)](#ref-for-dfn-hide-from-all-users-6 "Reference 4")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-hide-from-all-users-7 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
+- [§ tablist](#ref-for-dfn-hide-from-all-users-5 "§ tablist")
+ [(2)](#ref-for-dfn-hide-from-all-users-6 "Reference 2")
+- [§
+ aria-errormessage](#ref-for-dfn-hide-from-all-users-7 "§ aria-errormessage")
  [(2)](#ref-for-dfn-hide-from-all-users-8 "Reference 2")
  [(3)](#ref-for-dfn-hide-from-all-users-9 "Reference 3")
- [(4)](#ref-for-dfn-hide-from-all-users-10 "Reference 4")
- [(5)](#ref-for-dfn-hide-from-all-users-11 "Reference 5")
- [(6)](#ref-for-dfn-hide-from-all-users-12 "Reference 6")
+- [§ aria-owns](#ref-for-dfn-hide-from-all-users-10 "§ aria-owns")
+ [(2)](#ref-for-dfn-hide-from-all-users-11 "Reference 2")
+ [(3)](#ref-for-dfn-hide-from-all-users-12 "Reference 3")
 
 [Permalink](#dfn-identifies)
 
@@ -18071,15 +18243,15 @@ Government.
 - [§ 2. Important
  Terms](#ref-for-dfn-identifies-1 "§ 2. Important Terms")
  [(2)](#ref-for-dfn-identifies-2 "Reference 2")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-identifies-3 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-identifies-4 "Reference 2")
- [(3)](#ref-for-dfn-identifies-5 "Reference 3")
- [(4)](#ref-for-dfn-identifies-6 "Reference 4")
- [(5)](#ref-for-dfn-identifies-7 "Reference 5")
- [(6)](#ref-for-dfn-identifies-8 "Reference 6")
- [(7)](#ref-for-dfn-identifies-9 "Reference 7")
- [(8)](#ref-for-dfn-identifies-10 "Reference 8")
+- [§
+ aria-activedescendant](#ref-for-dfn-identifies-3 "§ aria-activedescendant")
+- [§ aria-controls](#ref-for-dfn-identifies-4 "§ aria-controls")
+- [§ aria-describedby](#ref-for-dfn-identifies-5 "§ aria-describedby")
+- [§ aria-details](#ref-for-dfn-identifies-6 "§ aria-details")
+- [§ aria-errormessage](#ref-for-dfn-identifies-7 "§ aria-errormessage")
+- [§ aria-flowto](#ref-for-dfn-identifies-8 "§ aria-flowto")
+- [§ aria-labelledby](#ref-for-dfn-identifies-9 "§ aria-labelledby")
+- [§ aria-owns](#ref-for-dfn-identifies-10 "§ aria-owns")
 
 [Permalink](#dfn-indicates)
 
@@ -18088,27 +18260,27 @@ Government.
 - [§ 2. Important
  Terms](#ref-for-dfn-indicates-1 "§ 2. Important Terms")
  [(2)](#ref-for-dfn-indicates-2 "Reference 2")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-indicates-3 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-indicates-4 "Reference 2")
- [(3)](#ref-for-dfn-indicates-5 "Reference 3")
- [(4)](#ref-for-dfn-indicates-6 "Reference 4")
- [(5)](#ref-for-dfn-indicates-7 "Reference 5")
- [(6)](#ref-for-dfn-indicates-8 "Reference 6")
- [(7)](#ref-for-dfn-indicates-9 "Reference 7")
- [(8)](#ref-for-dfn-indicates-10 "Reference 8")
- [(9)](#ref-for-dfn-indicates-11 "Reference 9")
- [(10)](#ref-for-dfn-indicates-12 "Reference 10")
- [(11)](#ref-for-dfn-indicates-13 "Reference 11")
- [(12)](#ref-for-dfn-indicates-14 "Reference 12")
- [(13)](#ref-for-dfn-indicates-15 "Reference 13")
- [(14)](#ref-for-dfn-indicates-16 "Reference 14")
- [(15)](#ref-for-dfn-indicates-17 "Reference 15")
- [(16)](#ref-for-dfn-indicates-18 "Reference 16")
- [(17)](#ref-for-dfn-indicates-19 "Reference 17")
- [(18)](#ref-for-dfn-indicates-20 "Reference 18")
- [(19)](#ref-for-dfn-indicates-21 "Reference 19")
- [(20)](#ref-for-dfn-indicates-22 "Reference 20")
+- [§ aria-atomic](#ref-for-dfn-indicates-3 "§ aria-atomic")
+- [§ aria-autocomplete](#ref-for-dfn-indicates-4 "§ aria-autocomplete")
+- [§ aria-busy](#ref-for-dfn-indicates-5 "§ aria-busy")
+- [§ aria-checked](#ref-for-dfn-indicates-6 "§ aria-checked")
+- [§ aria-current](#ref-for-dfn-indicates-7 "§ aria-current")
+- [§ aria-disabled](#ref-for-dfn-indicates-8 "§ aria-disabled")
+- [§ aria-expanded](#ref-for-dfn-indicates-9 "§ aria-expanded")
+- [§ aria-haspopup](#ref-for-dfn-indicates-10 "§ aria-haspopup")
+- [§ aria-hidden](#ref-for-dfn-indicates-11 "§ aria-hidden")
+- [§ aria-invalid](#ref-for-dfn-indicates-12 "§ aria-invalid")
+- [§ aria-live](#ref-for-dfn-indicates-13 "§ aria-live")
+- [§ aria-modal](#ref-for-dfn-indicates-14 "§ aria-modal")
+- [§ aria-multiline](#ref-for-dfn-indicates-15 "§ aria-multiline")
+- [§
+ aria-multiselectable](#ref-for-dfn-indicates-16 "§ aria-multiselectable")
+- [§ aria-orientation](#ref-for-dfn-indicates-17 "§ aria-orientation")
+- [§ aria-pressed](#ref-for-dfn-indicates-18 "§ aria-pressed")
+- [§ aria-relevant](#ref-for-dfn-indicates-19 "§ aria-relevant")
+- [§ aria-required](#ref-for-dfn-indicates-20 "§ aria-required")
+- [§ aria-selected](#ref-for-dfn-indicates-21 "§ aria-selected")
+- [§ aria-sort](#ref-for-dfn-indicates-22 "§ aria-sort")
 
 [Permalink](#dfn-keyboard-accessible)
 
@@ -18118,15 +18290,14 @@ Government.
  Accessibility](#ref-for-dfn-keyboard-accessible-1 "§ 1.1 Rich Internet Application Accessibility")
 - [§ 2. Important
  Terms](#ref-for-dfn-keyboard-accessible-2 "§ 2. Important Terms")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-keyboard-accessible-3 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-keyboard-accessible-4 "Reference 2")
- [(3)](#ref-for-dfn-keyboard-accessible-5 "Reference 3")
- [(4)](#ref-for-dfn-keyboard-accessible-6 "Reference 4")
- [(5)](#ref-for-dfn-keyboard-accessible-7 "Reference 5")
- [(6)](#ref-for-dfn-keyboard-accessible-8 "Reference 6")
- [(7)](#ref-for-dfn-keyboard-accessible-9 "Reference 7")
- [(8)](#ref-for-dfn-keyboard-accessible-10 "Reference 8")
+- [§ grid](#ref-for-dfn-keyboard-accessible-3 "§ grid")
+- [§ listbox](#ref-for-dfn-keyboard-accessible-4 "§ listbox")
+- [§ menu](#ref-for-dfn-keyboard-accessible-5 "§ menu")
+- [§ menubar](#ref-for-dfn-keyboard-accessible-6 "§ menubar")
+- [§ spinbutton](#ref-for-dfn-keyboard-accessible-7 "§ spinbutton")
+- [§ tablist](#ref-for-dfn-keyboard-accessible-8 "§ tablist")
+- [§ tree](#ref-for-dfn-keyboard-accessible-9 "§ tree")
+- [§ treegrid](#ref-for-dfn-keyboard-accessible-10 "§ treegrid")
 
 [Permalink](#dfn-landmark)
 
@@ -18136,18 +18307,17 @@ Government.
  Accessibility](#ref-for-dfn-landmark-1 "§ 1.1 Rich Internet Application Accessibility")
 - [§ 5.3.4 Landmark
  Roles](#ref-for-dfn-landmark-2 "§ 5.3.4 Landmark Roles")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-landmark-3 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-landmark-4 "Reference 2")
- [(3)](#ref-for-dfn-landmark-5 "Reference 3")
- [(4)](#ref-for-dfn-landmark-6 "Reference 4")
- [(5)](#ref-for-dfn-landmark-7 "Reference 5")
- [(6)](#ref-for-dfn-landmark-8 "Reference 6")
- [(7)](#ref-for-dfn-landmark-9 "Reference 7")
- [(8)](#ref-for-dfn-landmark-10 "Reference 8")
- [(9)](#ref-for-dfn-landmark-11 "Reference 9")
- [(10)](#ref-for-dfn-landmark-12 "Reference 10")
- [(11)](#ref-for-dfn-landmark-13 "Reference 11")
+- [§ article](#ref-for-dfn-landmark-3 "§ article")
+- [§ banner](#ref-for-dfn-landmark-4 "§ banner")
+- [§ complementary](#ref-for-dfn-landmark-5 "§ complementary")
+- [§ contentinfo](#ref-for-dfn-landmark-6 "§ contentinfo")
+- [§ form](#ref-for-dfn-landmark-7 "§ form")
+- [§ landmark](#ref-for-dfn-landmark-8 "§ landmark")
+- [§ main](#ref-for-dfn-landmark-9 "§ main")
+ [(2)](#ref-for-dfn-landmark-10 "Reference 2")
+- [§ navigation](#ref-for-dfn-landmark-11 "§ navigation")
+- [§ region](#ref-for-dfn-landmark-12 "§ region")
+- [§ search](#ref-for-dfn-landmark-13 "§ search")
 
 [Permalink](#dfn-live-region)
 [exported]
@@ -18156,19 +18326,15 @@ Government.
 
 - [§ 5.3.5 Live Region
  Roles](#ref-for-dfn-live-region-1 "§ 5.3.5 Live Region Roles")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-live-region-2 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-live-region-3 "Reference 2")
- [(3)](#ref-for-dfn-live-region-4 "Reference 3")
- [(4)](#ref-for-dfn-live-region-5 "Reference 4")
- [(5)](#ref-for-dfn-live-region-6 "Reference 5")
- [(6)](#ref-for-dfn-live-region-7 "Reference 6")
-- [§ 6.6.2 Live Region
- Attributes](#ref-for-dfn-live-region-8 "§ 6.6.2 Live Region Attributes")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-live-region-9 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-live-region-10 "Reference 2")
- [(3)](#ref-for-dfn-live-region-11 "Reference 3")
+- [§ alert](#ref-for-dfn-live-region-2 "§ alert")
+- [§ log](#ref-for-dfn-live-region-3 "§ log")
+- [§ status](#ref-for-dfn-live-region-4 "§ status")
+ [(2)](#ref-for-dfn-live-region-5 "Reference 2")
+- [§ 6.6.3 Live Region
+ Attributes](#ref-for-dfn-live-region-6 "§ 6.6.3 Live Region Attributes")
+- [§ aria-atomic](#ref-for-dfn-live-region-7 "§ aria-atomic")
+- [§ aria-busy](#ref-for-dfn-live-region-8 "§ aria-busy")
+- [§ aria-live](#ref-for-dfn-live-region-9 "§ aria-live")
 
 [Permalink](#dfn-managed-state)
 [exported]
@@ -18182,8 +18348,7 @@ Government.
 
 **Referenced in:**
 
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-nemeth-braille-1 "§ 5.4 Definition of Roles")
+- [§ math](#ref-for-dfn-nemeth-braille-1 "§ math")
 
 [Permalink](#dfn-object)
 
@@ -18203,20 +18368,18 @@ Government.
 - [§ 5.1.4 Base Concept](#ref-for-dfn-object-10 "§ 5.1.4 Base Concept")
 - [§ 5.2.2 Required States and
  Properties](#ref-for-dfn-object-11 "§ 5.2.2 Required States and Properties")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-object-12 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-object-13 "Reference 2")
- [(3)](#ref-for-dfn-object-14 "Reference 3")
- [(4)](#ref-for-dfn-object-15 "Reference 4")
+- [§ group](#ref-for-dfn-object-12 "§ group")
+- [§ image](#ref-for-dfn-object-13 "§ image")
+- [§ roletype](#ref-for-dfn-object-14 "§ roletype")
+- [§ timer](#ref-for-dfn-object-15 "§ timer")
 - [§ 6.1 Clarification of States versus
  Properties](#ref-for-dfn-object-16 "§ 6.1 Clarification of States versus Properties")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-object-17 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-object-18 "Reference 2")
- [(3)](#ref-for-dfn-object-19 "Reference 3")
- [(4)](#ref-for-dfn-object-20 "Reference 4")
- [(5)](#ref-for-dfn-object-21 "Reference 5")
- [(6)](#ref-for-dfn-object-22 "Reference 6")
+- [§ aria-describedby](#ref-for-dfn-object-17 "§ aria-describedby")
+- [§ aria-details](#ref-for-dfn-object-18 "§ aria-details")
+- [§ aria-errormessage](#ref-for-dfn-object-19 "§ aria-errormessage")
+ [(2)](#ref-for-dfn-object-20 "Reference 2")
+- [§ aria-flowto](#ref-for-dfn-object-21 "§ aria-flowto")
+- [§ aria-live](#ref-for-dfn-object-22 "§ aria-live")
 
 [Permalink](#dfn-ontology)
 
@@ -18232,9 +18395,8 @@ Government.
 - [§ 1.1 Rich Internet Application
  Accessibility](#ref-for-dfn-operable-1 "§ 1.1 Rich Internet Application Accessibility")
  [(2)](#ref-for-dfn-operable-2 "Reference 2")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-operable-3 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-operable-4 "Reference 2")
+- [§ aria-disabled](#ref-for-dfn-operable-3 "§ aria-disabled")
+- [§ aria-readonly](#ref-for-dfn-operable-4 "§ aria-readonly")
 - [§ 9.3 Presentational Roles Conflict
  Resolution](#ref-for-dfn-operable-5 "§ 9.3 Presentational Roles Conflict Resolution")
 
@@ -18248,11 +18410,9 @@ Government.
  [(2)](#ref-for-dfn-perceivable-2 "Reference 2")
 - [§ 2. Important
  Terms](#ref-for-dfn-perceivable-3 "§ 2. Important Terms")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-perceivable-4 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-perceivable-5 "Reference 2")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-perceivable-6 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
+- [§ image](#ref-for-dfn-perceivable-4 "§ image")
+- [§ tab](#ref-for-dfn-perceivable-5 "§ tab")
+- [§ aria-disabled](#ref-for-dfn-perceivable-6 "§ aria-disabled")
 
 [Permalink](#dfn-property)
 [exported]
@@ -18294,13 +18454,13 @@ Government.
 - [§ 6.8 Definitions of States and Properties (all aria-\*
  attributes)](#ref-for-dfn-property-20 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
  [(2)](#ref-for-dfn-property-21 "Reference 2")
- [(3)](#ref-for-dfn-property-22 "Reference 3")
- [(4)](#ref-for-dfn-property-23 "Reference 4")
- [(5)](#ref-for-dfn-property-24 "Reference 5")
- [(6)](#ref-for-dfn-property-25 "Reference 6")
- [(7)](#ref-for-dfn-property-26 "Reference 7")
- [(8)](#ref-for-dfn-property-27 "Reference 8")
- [(9)](#ref-for-dfn-property-28 "Reference 9")
+- [§ aria-dropeffect](#ref-for-dfn-property-22 "§ aria-dropeffect")
+- [§ aria-live](#ref-for-dfn-property-23 "§ aria-live")
+- [§ aria-posinset](#ref-for-dfn-property-24 "§ aria-posinset")
+- [§ aria-setsize](#ref-for-dfn-property-25 "§ aria-setsize")
+- [§ aria-sort](#ref-for-dfn-property-26 "§ aria-sort")
+- [§ aria-valuemax](#ref-for-dfn-property-27 "§ aria-valuemax")
+- [§ aria-valuemin](#ref-for-dfn-property-28 "§ aria-valuemin")
 - [§ 7. Accessibility
  Tree](#ref-for-dfn-property-29 "§ 7. Accessibility Tree")
 - [§ 8. Implementation in Host
@@ -18316,25 +18476,22 @@ Government.
 - [§ 1. Introduction](#ref-for-dfn-relationship-1 "§ 1. Introduction")
 - [§ 1.1 Rich Internet Application
  Accessibility](#ref-for-dfn-relationship-2 "§ 1.1 Rich Internet Application Accessibility")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-relationship-3 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-relationship-4 "Reference 2")
- [(3)](#ref-for-dfn-relationship-5 "Reference 3")
- [(4)](#ref-for-dfn-relationship-6 "Reference 4")
- [(5)](#ref-for-dfn-relationship-7 "Reference 5")
- [(6)](#ref-for-dfn-relationship-8 "Reference 6")
- [(7)](#ref-for-dfn-relationship-9 "Reference 7")
- [(8)](#ref-for-dfn-relationship-10 "Reference 8")
+- [§ columnheader](#ref-for-dfn-relationship-3 "§ columnheader")
+- [§ grid](#ref-for-dfn-relationship-4 "§ grid")
+- [§ gridcell](#ref-for-dfn-relationship-5 "§ gridcell")
+- [§ log](#ref-for-dfn-relationship-6 "§ log")
+- [§ radio](#ref-for-dfn-relationship-7 "§ radio")
+- [§ rowgroup](#ref-for-dfn-relationship-8 "§ rowgroup")
+- [§ rowheader](#ref-for-dfn-relationship-9 "§ rowheader")
+- [§ status](#ref-for-dfn-relationship-10 "§ status")
 - [§ 6.6.4 Relationship
  Attributes](#ref-for-dfn-relationship-11 "§ 6.6.4 Relationship Attributes")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-relationship-12 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-relationship-13 "Reference 2")
+- [§ aria-flowto](#ref-for-dfn-relationship-12 "§ aria-flowto")
+- [§ aria-owns](#ref-for-dfn-relationship-13 "§ aria-owns")
 - [§ 7. Accessibility
  Tree](#ref-for-dfn-relationship-14 "§ 7. Accessibility Tree")
 
 [Permalink](#dfn-role)
-[exported]
 
 **Referenced in:**
 
@@ -18352,115 +18509,114 @@ Government.
  Properties](#ref-for-dfn-role-9 "§ 4.2 WAI-ARIA States and Properties")
 - [§ 4.3.2 Information for User
  Agents](#ref-for-dfn-role-10 "§ 4.3.2 Information for User Agents")
- [(2)](#ref-for-dfn-role-11 "Reference 2")
-- [§ 5. The Roles Model](#ref-for-dfn-role-12 "§ 5. The Roles Model")
+- [§ 5. The Roles Model](#ref-for-dfn-role-11 "§ 5. The Roles Model")
 - [§ 5.1.1 Superclass
- Role](#ref-for-dfn-role-13 "§ 5.1.1 Superclass Role")
+ Role](#ref-for-dfn-role-12 "§ 5.1.1 Superclass Role")
 - [§ 5.1.2 Subclass
- Roles](#ref-for-dfn-role-14 "§ 5.1.2 Subclass Roles")
-- [§ 5.1.4 Base Concept](#ref-for-dfn-role-15 "§ 5.1.4 Base Concept")
+ Roles](#ref-for-dfn-role-13 "§ 5.1.2 Subclass Roles")
+- [§ 5.1.4 Base Concept](#ref-for-dfn-role-14 "§ 5.1.4 Base Concept")
 - [§ 5.2.1 Abstract
- Roles](#ref-for-dfn-role-16 "§ 5.2.1 Abstract Roles")
+ Roles](#ref-for-dfn-role-15 "§ 5.2.1 Abstract Roles")
 - [§ 5.2.2 Required States and
- Properties](#ref-for-dfn-role-17 "§ 5.2.2 Required States and Properties")
+ Properties](#ref-for-dfn-role-16 "§ 5.2.2 Required States and Properties")
 - [§ 5.2.3 Supported States and
- Properties](#ref-for-dfn-role-18 "§ 5.2.3 Supported States and Properties")
+ Properties](#ref-for-dfn-role-17 "§ 5.2.3 Supported States and Properties")
 - [§ 5.2.4 Inherited States and
- Properties](#ref-for-dfn-role-19 "§ 5.2.4 Inherited States and Properties")
+ Properties](#ref-for-dfn-role-18 "§ 5.2.4 Inherited States and Properties")
 - [§ 5.2.5 Prohibited States and
- Properties](#ref-for-dfn-role-20 "§ 5.2.5 Prohibited States and Properties")
+ Properties](#ref-for-dfn-role-19 "§ 5.2.5 Prohibited States and Properties")
 - [§ 5.2.6 Allowed Accessibility Child
- Roles](#ref-for-dfn-role-21 "§ 5.2.6 Allowed Accessibility Child Roles")
+ Roles](#ref-for-dfn-role-20 "§ 5.2.6 Allowed Accessibility Child Roles")
 - [§ 5.2.7 Required Accessibility Parent
- Role](#ref-for-dfn-role-22 "§ 5.2.7 Required Accessibility Parent Role")
-- [§ 5.2.8 Name From](#ref-for-dfn-role-23 "§ 5.2.8 Name From")
+ Role](#ref-for-dfn-role-21 "§ 5.2.7 Required Accessibility Parent Role")
+- [§ 5.2.8 Name From](#ref-for-dfn-role-22 "§ 5.2.8 Name From")
 - [§ 5.3 Categorization of
- Roles](#ref-for-dfn-role-24 "§ 5.3 Categorization of Roles")
+ Roles](#ref-for-dfn-role-23 "§ 5.3 Categorization of Roles")
 - [§ 5.3.1 Abstract
- Roles](#ref-for-dfn-role-25 "§ 5.3.1 Abstract Roles")
+ Roles](#ref-for-dfn-role-24 "§ 5.3.1 Abstract Roles")
 - [§ 5.3.3 Document Structure
- Roles](#ref-for-dfn-role-26 "§ 5.3.3 Document Structure Roles")
+ Roles](#ref-for-dfn-role-25 "§ 5.3.3 Document Structure Roles")
 - [§ 5.3.4 Landmark
- Roles](#ref-for-dfn-role-27 "§ 5.3.4 Landmark Roles")
+ Roles](#ref-for-dfn-role-26 "§ 5.3.4 Landmark Roles")
 - [§ 5.3.5 Live Region
- Roles](#ref-for-dfn-role-28 "§ 5.3.5 Live Region Roles")
-- [§ 5.3.6 Window Roles](#ref-for-dfn-role-29 "§ 5.3.6 Window Roles")
+ Roles](#ref-for-dfn-role-27 "§ 5.3.5 Live Region Roles")
+- [§ 5.3.6 Window Roles](#ref-for-dfn-role-28 "§ 5.3.6 Window Roles")
 - [§ 5.4 Definition of
- Roles](#ref-for-dfn-role-30 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-role-31 "Reference 2")
- [(3)](#ref-for-dfn-role-32 "Reference 3")
- [(4)](#ref-for-dfn-role-33 "Reference 4")
- [(5)](#ref-for-dfn-role-34 "Reference 5")
- [(6)](#ref-for-dfn-role-35 "Reference 6")
- [(7)](#ref-for-dfn-role-36 "Reference 7")
- [(8)](#ref-for-dfn-role-37 "Reference 8")
- [(9)](#ref-for-dfn-role-38 "Reference 9")
- [(10)](#ref-for-dfn-role-39 "Reference 10")
- [(11)](#ref-for-dfn-role-40 "Reference 11")
- [(12)](#ref-for-dfn-role-41 "Reference 12")
- [(13)](#ref-for-dfn-role-42 "Reference 13")
- [(14)](#ref-for-dfn-role-43 "Reference 14")
- [(15)](#ref-for-dfn-role-44 "Reference 15")
- [(16)](#ref-for-dfn-role-45 "Reference 16")
- [(17)](#ref-for-dfn-role-46 "Reference 17")
- [(18)](#ref-for-dfn-role-47 "Reference 18")
- [(19)](#ref-for-dfn-role-48 "Reference 19")
- [(20)](#ref-for-dfn-role-49 "Reference 20")
- [(21)](#ref-for-dfn-role-50 "Reference 21")
- [(22)](#ref-for-dfn-role-51 "Reference 22")
- [(23)](#ref-for-dfn-role-52 "Reference 23")
- [(24)](#ref-for-dfn-role-53 "Reference 24")
- [(25)](#ref-for-dfn-role-54 "Reference 25")
- [(26)](#ref-for-dfn-role-55 "Reference 26")
- [(27)](#ref-for-dfn-role-56 "Reference 27")
- [(28)](#ref-for-dfn-role-57 "Reference 28")
- [(29)](#ref-for-dfn-role-58 "Reference 29")
- [(30)](#ref-for-dfn-role-59 "Reference 30")
- [(31)](#ref-for-dfn-role-60 "Reference 31")
- [(32)](#ref-for-dfn-role-61 "Reference 32")
- [(33)](#ref-for-dfn-role-62 "Reference 33")
- [(34)](#ref-for-dfn-role-63 "Reference 34")
- [(35)](#ref-for-dfn-role-64 "Reference 35")
- [(36)](#ref-for-dfn-role-65 "Reference 36")
- [(37)](#ref-for-dfn-role-66 "Reference 37")
- [(38)](#ref-for-dfn-role-67 "Reference 38")
- [(39)](#ref-for-dfn-role-68 "Reference 39")
- [(40)](#ref-for-dfn-role-69 "Reference 40")
- [(41)](#ref-for-dfn-role-70 "Reference 41")
- [(42)](#ref-for-dfn-role-71 "Reference 42")
- [(43)](#ref-for-dfn-role-72 "Reference 43")
- [(44)](#ref-for-dfn-role-73 "Reference 44")
- [(45)](#ref-for-dfn-role-74 "Reference 45")
- [(46)](#ref-for-dfn-role-75 "Reference 46")
- [(47)](#ref-for-dfn-role-76 "Reference 47")
- [(48)](#ref-for-dfn-role-77 "Reference 48")
- [(49)](#ref-for-dfn-role-78 "Reference 49")
- [(50)](#ref-for-dfn-role-79 "Reference 50")
- [(51)](#ref-for-dfn-role-80 "Reference 51")
- [(52)](#ref-for-dfn-role-81 "Reference 52")
- [(53)](#ref-for-dfn-role-82 "Reference 53")
- [(54)](#ref-for-dfn-role-83 "Reference 54")
- [(55)](#ref-for-dfn-role-84 "Reference 55")
+ Roles](#ref-for-dfn-role-29 "§ 5.4 Definition of Roles")
+- [§ alert](#ref-for-dfn-role-30 "§ alert")
+- [§ alertdialog](#ref-for-dfn-role-31 "§ alertdialog")
+- [§ banner](#ref-for-dfn-role-32 "§ banner")
+- [§ cell](#ref-for-dfn-role-33 "§ cell")
+ [(2)](#ref-for-dfn-role-34 "Reference 2")
+- [§ columnheader](#ref-for-dfn-role-35 "§ columnheader")
+- [§ complementary](#ref-for-dfn-role-36 "§ complementary")
+- [§ directory](#ref-for-dfn-role-37 "§ directory")
+ [(2)](#ref-for-dfn-role-38 "Reference 2")
+- [§ grid](#ref-for-dfn-role-39 "§ grid")
+- [§ gridcell](#ref-for-dfn-role-40 "§ gridcell")
+ [(2)](#ref-for-dfn-role-41 "Reference 2")
+ [(3)](#ref-for-dfn-role-42 "Reference 3")
+- [§ group](#ref-for-dfn-role-43 "§ group")
+- [§ image](#ref-for-dfn-role-44 "§ image")
+- [§ list](#ref-for-dfn-role-45 "§ list")
+- [§ listbox](#ref-for-dfn-role-46 "§ listbox")
+ [(2)](#ref-for-dfn-role-47 "Reference 2")
+ [(3)](#ref-for-dfn-role-48 "Reference 3")
+ [(4)](#ref-for-dfn-role-49 "Reference 4")
+- [§ listitem](#ref-for-dfn-role-50 "§ listitem")
+ [(2)](#ref-for-dfn-role-51 "Reference 2")
+- [§ log](#ref-for-dfn-role-52 "§ log")
+- [§ main](#ref-for-dfn-role-53 "§ main")
+- [§ menu](#ref-for-dfn-role-54 "§ menu")
+ [(2)](#ref-for-dfn-role-55 "Reference 2")
+- [§ menubar](#ref-for-dfn-role-56 "§ menubar")
+ [(2)](#ref-for-dfn-role-57 "Reference 2")
+- [§ menuitem](#ref-for-dfn-role-58 "§ menuitem")
+- [§ menuitemcheckbox](#ref-for-dfn-role-59 "§ menuitemcheckbox")
+- [§ menuitemradio](#ref-for-dfn-role-60 "§ menuitemradio")
+- [§ none](#ref-for-dfn-role-61 "§ none")
+ [(2)](#ref-for-dfn-role-62 "Reference 2")
+- [§ option](#ref-for-dfn-role-63 "§ option")
+ [(2)](#ref-for-dfn-role-64 "Reference 2")
+ [(3)](#ref-for-dfn-role-65 "Reference 3")
+ [(4)](#ref-for-dfn-role-66 "Reference 4")
+- [§ roletype](#ref-for-dfn-role-67 "§ roletype")
+- [§ row](#ref-for-dfn-role-68 "§ row")
+- [§ rowgroup](#ref-for-dfn-role-69 "§ rowgroup")
+- [§ rowheader](#ref-for-dfn-role-70 "§ rowheader")
+- [§ spinbutton](#ref-for-dfn-role-71 "§ spinbutton")
+- [§ structure](#ref-for-dfn-role-72 "§ structure")
+- [§ tab](#ref-for-dfn-role-73 "§ tab")
+- [§ tablist](#ref-for-dfn-role-74 "§ tablist")
+- [§ toolbar](#ref-for-dfn-role-75 "§ toolbar")
+- [§ tooltip](#ref-for-dfn-role-76 "§ tooltip")
+- [§ tree](#ref-for-dfn-role-77 "§ tree")
+- [§ treegrid](#ref-for-dfn-role-78 "§ treegrid")
+ [(2)](#ref-for-dfn-role-79 "Reference 2")
+- [§ treeitem](#ref-for-dfn-role-80 "§ treeitem")
+ [(2)](#ref-for-dfn-role-81 "Reference 2")
+- [§ widget](#ref-for-dfn-role-82 "§ widget")
+- [§ window](#ref-for-dfn-role-83 "§ window")
 - [§ 6.1 Clarification of States versus
- Properties](#ref-for-dfn-role-85 "§ 6.1 Clarification of States versus Properties")
+ Properties](#ref-for-dfn-role-84 "§ 6.1 Clarification of States versus Properties")
 - [§ 6.5 Global States and
- Properties](#ref-for-dfn-role-86 "§ 6.5 Global States and Properties")
-- [§ 6.6.2 Live Region
- Attributes](#ref-for-dfn-role-87 "§ 6.6.2 Live Region Attributes")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-role-88 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-role-89 "Reference 2")
- [(3)](#ref-for-dfn-role-90 "Reference 3")
- [(4)](#ref-for-dfn-role-91 "Reference 4")
+ Properties](#ref-for-dfn-role-85 "§ 6.5 Global States and Properties")
+- [§ 6.6.3 Live Region
+ Attributes](#ref-for-dfn-role-86 "§ 6.6.3 Live Region Attributes")
+- [§
+ aria-brailleroledescription](#ref-for-dfn-role-87 "§ aria-brailleroledescription")
+- [§ aria-checked](#ref-for-dfn-role-88 "§ aria-checked")
+- [§ aria-live](#ref-for-dfn-role-89 "§ aria-live")
+- [§
+ aria-roledescription](#ref-for-dfn-role-90 "§ aria-roledescription")
 - [§ 8. Implementation in Host
- Languages](#ref-for-dfn-role-92 "§ 8. Implementation in Host Languages")
-- [§ 8.1 Role Attribute](#ref-for-dfn-role-93 "§ 8.1 Role Attribute")
+ Languages](#ref-for-dfn-role-91 "§ 8. Implementation in Host Languages")
+- [§ 8.1 Role Attribute](#ref-for-dfn-role-92 "§ 8.1 Role Attribute")
+- [§ 9.1 Roles](#ref-for-dfn-role-93 "§ 9.1 Roles")
  [(2)](#ref-for-dfn-role-94 "Reference 2")
-- [§ 9.1 Roles](#ref-for-dfn-role-95 "§ 9.1 Roles")
- [(2)](#ref-for-dfn-role-96 "Reference 2")
- [(3)](#ref-for-dfn-role-97 "Reference 3")
+ [(3)](#ref-for-dfn-role-95 "Reference 3")
 - [§ 9.2 States and
- Properties](#ref-for-dfn-role-98 "§ 9.2 States and Properties")
+ Properties](#ref-for-dfn-role-96 "§ 9.2 States and Properties")
 
 [Permalink](#dfn-semantics)
 [exported]
@@ -18474,17 +18630,14 @@ Government.
 - [§ 4. Using WAI-ARIA](#ref-for-dfn-semantics-3 "§ 4. Using WAI-ARIA")
 - [§ 4.3.1 Information for
  Authors](#ref-for-dfn-semantics-4 "§ 4.3.1 Information for Authors")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-semantics-5 "§ 5.4 Definition of Roles")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-semantics-6 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
+- [§ textbox](#ref-for-dfn-semantics-5 "§ textbox")
+- [§ aria-relevant](#ref-for-dfn-semantics-6 "§ aria-relevant")
 - [§ 8.4 Implicit WAI-ARIA
  Semantics](#ref-for-dfn-semantics-7 "§ 8.4 Implicit WAI-ARIA Semantics")
 - [§ 8.5 Conflicts with Host Language
  Semantics](#ref-for-dfn-semantics-8 "§ 8.5 Conflicts with Host Language Semantics")
 - [§ 8.6 State and Property Attribute
  Processing](#ref-for-dfn-semantics-9 "§ 8.6 State and Property Attribute Processing")
-- [§ 8.7 CSS Selectors](#ref-for-dfn-semantics-10 "§ 8.7 CSS Selectors")
 
 [Permalink](#dfn-state)
 [exported]
@@ -18512,8 +18665,7 @@ Government.
  Properties](#ref-for-dfn-state-13 "§ 5.2.3 Supported States and Properties")
 - [§ 5.2.4 Inherited States and
  Properties](#ref-for-dfn-state-14 "§ 5.2.4 Inherited States and Properties")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-state-15 "§ 5.4 Definition of Roles")
+- [§ button](#ref-for-dfn-state-15 "§ button")
 - [§ 6.1 Clarification of States versus
  Properties](#ref-for-dfn-state-16 "§ 6.1 Clarification of States versus Properties")
 - [§ 6.2.1 Related
@@ -18526,36 +18678,40 @@ Government.
  Attributes](#ref-for-dfn-state-21 "§ 6.4 Translatable Attributes")
 - [§ 6.5 Global States and
  Properties](#ref-for-dfn-state-22 "§ 6.5 Global States and Properties")
-- [§ 6.6.1 Widget
- Attributes](#ref-for-dfn-state-23 "§ 6.6.1 Widget Attributes")
+- [§ 6.6.2 Widget
+ Attributes](#ref-for-dfn-state-23 "§ 6.6.2 Widget Attributes")
 - [§ 6.8 Definitions of States and Properties (all aria-\*
  attributes)](#ref-for-dfn-state-24 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-state-25 "Reference 2")
- [(3)](#ref-for-dfn-state-26 "Reference 3")
- [(4)](#ref-for-dfn-state-27 "Reference 4")
- [(5)](#ref-for-dfn-state-28 "Reference 5")
- [(6)](#ref-for-dfn-state-29 "Reference 6")
- [(7)](#ref-for-dfn-state-30 "Reference 7")
+- [§ aria-checked](#ref-for-dfn-state-25 "§ aria-checked")
+- [§ aria-current](#ref-for-dfn-state-26 "§ aria-current")
+- [§ aria-disabled](#ref-for-dfn-state-27 "§ aria-disabled")
+- [§ aria-grabbed](#ref-for-dfn-state-28 "§ aria-grabbed")
+- [§ aria-pressed](#ref-for-dfn-state-29 "§ aria-pressed")
+- [§ aria-selected](#ref-for-dfn-state-30 "§ aria-selected")
 - [§ 8. Implementation in Host
  Languages](#ref-for-dfn-state-31 "§ 8. Implementation in Host Languages")
 
-[Permalink](#dfn-target-element)
+[Permalink](#dfn-target)
 
 **Referenced in:**
 
-- Not referenced in this document.
+- [§ 4.3.2 Information for User
+ Agents](#ref-for-dfn-target-1 "§ 4.3.2 Information for User Agents")
+- [§ 7.2 Including Elements in the Accessibility
+ Tree](#ref-for-dfn-target-2 "§ 7.2 Including Elements in the Accessibility Tree")
 
 [Permalink](#dfn-unicode-braille)
 
 **Referenced in:**
 
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-unicode-braille-1 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
+- [§
+ aria-braillelabel](#ref-for-dfn-unicode-braille-1 "§ aria-braillelabel")
  [(2)](#ref-for-dfn-unicode-braille-2 "Reference 2")
  [(3)](#ref-for-dfn-unicode-braille-3 "Reference 3")
- [(4)](#ref-for-dfn-unicode-braille-4 "Reference 4")
- [(5)](#ref-for-dfn-unicode-braille-5 "Reference 5")
- [(6)](#ref-for-dfn-unicode-braille-6 "Reference 6")
+- [§
+ aria-brailleroledescription](#ref-for-dfn-unicode-braille-4 "§ aria-brailleroledescription")
+ [(2)](#ref-for-dfn-unicode-braille-5 "Reference 2")
+ [(3)](#ref-for-dfn-unicode-braille-6 "Reference 3")
 
 [Permalink](#dfn-widget)
 [exported]
@@ -18580,29 +18736,27 @@ Government.
  Roles](#ref-for-dfn-widget-10 "§ 5.2 Characteristics of Roles")
 - [§ 5.3 Categorization of
  Roles](#ref-for-dfn-widget-11 "§ 5.3 Categorization of Roles")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-widget-12 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-widget-13 "Reference 2")
- [(3)](#ref-for-dfn-widget-14 "Reference 3")
- [(4)](#ref-for-dfn-widget-15 "Reference 4")
- [(5)](#ref-for-dfn-widget-16 "Reference 5")
- [(6)](#ref-for-dfn-widget-17 "Reference 6")
- [(7)](#ref-for-dfn-widget-18 "Reference 7")
- [(8)](#ref-for-dfn-widget-19 "Reference 8")
- [(9)](#ref-for-dfn-widget-20 "Reference 9")
- [(10)](#ref-for-dfn-widget-21 "Reference 10")
- [(11)](#ref-for-dfn-widget-22 "Reference 11")
- [(12)](#ref-for-dfn-widget-23 "Reference 12")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-widget-24 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-widget-25 "Reference 2")
- [(3)](#ref-for-dfn-widget-26 "Reference 3")
- [(4)](#ref-for-dfn-widget-27 "Reference 4")
- [(5)](#ref-for-dfn-widget-28 "Reference 5")
- [(6)](#ref-for-dfn-widget-29 "Reference 6")
- [(7)](#ref-for-dfn-widget-30 "Reference 7")
- [(8)](#ref-for-dfn-widget-31 "Reference 8")
- [(9)](#ref-for-dfn-widget-32 "Reference 9")
+- [§ button](#ref-for-dfn-widget-12 "§ button")
+- [§ composite](#ref-for-dfn-widget-13 "§ composite")
+- [§ group](#ref-for-dfn-widget-14 "§ group")
+- [§ input](#ref-for-dfn-widget-15 "§ input")
+- [§ listbox](#ref-for-dfn-widget-16 "§ listbox")
+- [§ menu](#ref-for-dfn-widget-17 "§ menu")
+- [§ menuitem](#ref-for-dfn-widget-18 "§ menuitem")
+- [§ menuitemcheckbox](#ref-for-dfn-widget-19 "§ menuitemcheckbox")
+- [§ menuitemradio](#ref-for-dfn-widget-20 "§ menuitemradio")
+- [§ spinbutton](#ref-for-dfn-widget-21 "§ spinbutton")
+- [§ structure](#ref-for-dfn-widget-22 "§ structure")
+- [§ textbox](#ref-for-dfn-widget-23 "§ textbox")
+- [§ aria-checked](#ref-for-dfn-widget-24 "§ aria-checked")
+- [§ aria-invalid](#ref-for-dfn-widget-25 "§ aria-invalid")
+- [§ aria-readonly](#ref-for-dfn-widget-26 "§ aria-readonly")
+- [§ aria-required](#ref-for-dfn-widget-27 "§ aria-required")
+- [§ aria-selected](#ref-for-dfn-widget-28 "§ aria-selected")
+- [§ aria-valuemax](#ref-for-dfn-widget-29 "§ aria-valuemax")
+- [§ aria-valuemin](#ref-for-dfn-widget-30 "§ aria-valuemin")
+- [§ aria-valuenow](#ref-for-dfn-widget-31 "§ aria-valuenow")
+- [§ aria-valuetext](#ref-for-dfn-widget-32 "§ aria-valuetext")
 
 [Permalink](#dfn-prohibited)
 
@@ -18635,10 +18789,8 @@ Government.
  Terms](#ref-for-dfn-accessibility-tree-1 "§ 2. Important Terms")
 - [§ 4.1 WAI-ARIA
  Roles](#ref-for-dfn-accessibility-tree-2 "§ 4.1 WAI-ARIA Roles")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-accessibility-tree-3 "§ 5.4 Definition of Roles")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-accessibility-tree-4 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
+- [§ none](#ref-for-dfn-accessibility-tree-3 "§ none")
+- [§ aria-relevant](#ref-for-dfn-accessibility-tree-4 "§ aria-relevant")
  [(2)](#ref-for-dfn-accessibility-tree-5 "Reference 2")
  [(3)](#ref-for-dfn-accessibility-tree-6 "Reference 3")
  [(4)](#ref-for-dfn-accessibility-tree-7 "Reference 4")
@@ -18660,52 +18812,69 @@ Government.
 
 **Referenced in:**
 
+- [§ 1.1 Rich Internet Application
+ Accessibility](#ref-for-dfn-accessibility-child-1 "§ 1.1 Rich Internet Application Accessibility")
+- [§ 4.3.2 Information for User
+ Agents](#ref-for-dfn-accessibility-child-2 "§ 4.3.2 Information for User Agents")
 - [§ 5.2.6 Allowed Accessibility Child
- Roles](#ref-for-dfn-accessibility-child-1 "§ 5.2.6 Allowed Accessibility Child Roles")
- [(2)](#ref-for-dfn-accessibility-child-2 "Reference 2")
+ Roles](#ref-for-dfn-accessibility-child-3 "§ 5.2.6 Allowed Accessibility Child Roles")
+ [(2)](#ref-for-dfn-accessibility-child-4 "Reference 2")
+ [(3)](#ref-for-dfn-accessibility-child-5 "Reference 3")
+ [(4)](#ref-for-dfn-accessibility-child-6 "Reference 4")
+ [(5)](#ref-for-dfn-accessibility-child-7 "Reference 5")
+ [(6)](#ref-for-dfn-accessibility-child-8 "Reference 6")
 - [§ 5.2.7 Required Accessibility Parent
- Role](#ref-for-dfn-accessibility-child-3 "§ 5.2.7 Required Accessibility Parent Role")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-accessibility-child-4 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-accessibility-child-5 "Reference 2")
- [(3)](#ref-for-dfn-accessibility-child-6 "Reference 3")
- [(4)](#ref-for-dfn-accessibility-child-7 "Reference 4")
- [(5)](#ref-for-dfn-accessibility-child-8 "Reference 5")
- [(6)](#ref-for-dfn-accessibility-child-9 "Reference 6")
- [(7)](#ref-for-dfn-accessibility-child-10 "Reference 7")
- [(8)](#ref-for-dfn-accessibility-child-11 "Reference 8")
- [(9)](#ref-for-dfn-accessibility-child-12 "Reference 9")
- [(10)](#ref-for-dfn-accessibility-child-13 "Reference 10")
- [(11)](#ref-for-dfn-accessibility-child-14 "Reference 11")
- [(12)](#ref-for-dfn-accessibility-child-15 "Reference 12")
- [(13)](#ref-for-dfn-accessibility-child-16 "Reference 13")
- [(14)](#ref-for-dfn-accessibility-child-17 "Reference 14")
- [(15)](#ref-for-dfn-accessibility-child-18 "Reference 15")
- [(16)](#ref-for-dfn-accessibility-child-19 "Reference 16")
- [(17)](#ref-for-dfn-accessibility-child-20 "Reference 17")
- [(18)](#ref-for-dfn-accessibility-child-21 "Reference 18")
- [(19)](#ref-for-dfn-accessibility-child-22 "Reference 19")
- [(20)](#ref-for-dfn-accessibility-child-23 "Reference 20")
- [(21)](#ref-for-dfn-accessibility-child-24 "Reference 21")
- [(22)](#ref-for-dfn-accessibility-child-25 "Reference 22")
- [(23)](#ref-for-dfn-accessibility-child-26 "Reference 23")
- [(24)](#ref-for-dfn-accessibility-child-27 "Reference 24")
- [(25)](#ref-for-dfn-accessibility-child-28 "Reference 25")
- [(26)](#ref-for-dfn-accessibility-child-29 "Reference 26")
- [(27)](#ref-for-dfn-accessibility-child-30 "Reference 27")
- [(28)](#ref-for-dfn-accessibility-child-31 "Reference 28")
- [(29)](#ref-for-dfn-accessibility-child-32 "Reference 29")
- [(30)](#ref-for-dfn-accessibility-child-33 "Reference 30")
- [(31)](#ref-for-dfn-accessibility-child-34 "Reference 31")
- [(32)](#ref-for-dfn-accessibility-child-35 "Reference 32")
- [(33)](#ref-for-dfn-accessibility-child-36 "Reference 33")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-accessibility-child-37 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-accessibility-child-38 "Reference 2")
- [(3)](#ref-for-dfn-accessibility-child-39 "Reference 3")
- [(4)](#ref-for-dfn-accessibility-child-40 "Reference 4")
- [(5)](#ref-for-dfn-accessibility-child-41 "Reference 5")
- [(6)](#ref-for-dfn-accessibility-child-42 "Reference 6")
+ Role](#ref-for-dfn-accessibility-child-9 "§ 5.2.7 Required Accessibility Parent Role")
+- [§ cell](#ref-for-dfn-accessibility-child-10 "§ cell")
+- [§ columnheader](#ref-for-dfn-accessibility-child-11 "§ columnheader")
+- [§ combobox](#ref-for-dfn-accessibility-child-12 "§ combobox")
+- [§ document](#ref-for-dfn-accessibility-child-13 "§ document")
+- [§ grid](#ref-for-dfn-accessibility-child-14 "§ grid")
+ [(2)](#ref-for-dfn-accessibility-child-15 "Reference 2")
+ [(3)](#ref-for-dfn-accessibility-child-16 "Reference 3")
+- [§ gridcell](#ref-for-dfn-accessibility-child-17 "§ gridcell")
+- [§ listbox](#ref-for-dfn-accessibility-child-18 "§ listbox")
+- [§ listitem](#ref-for-dfn-accessibility-child-19 "§ listitem")
+- [§ menu](#ref-for-dfn-accessibility-child-20 "§ menu")
+ [(2)](#ref-for-dfn-accessibility-child-21 "Reference 2")
+ [(3)](#ref-for-dfn-accessibility-child-22 "Reference 3")
+- [§ menubar](#ref-for-dfn-accessibility-child-23 "§ menubar")
+ [(2)](#ref-for-dfn-accessibility-child-24 "Reference 2")
+ [(3)](#ref-for-dfn-accessibility-child-25 "Reference 3")
+- [§ menuitem](#ref-for-dfn-accessibility-child-26 "§ menuitem")
+ [(2)](#ref-for-dfn-accessibility-child-27 "Reference 2")
+- [§
+ menuitemcheckbox](#ref-for-dfn-accessibility-child-28 "§ menuitemcheckbox")
+ [(2)](#ref-for-dfn-accessibility-child-29 "Reference 2")
+- [§
+ menuitemradio](#ref-for-dfn-accessibility-child-30 "§ menuitemradio")
+ [(2)](#ref-for-dfn-accessibility-child-31 "Reference 2")
+- [§ option](#ref-for-dfn-accessibility-child-32 "§ option")
+ [(2)](#ref-for-dfn-accessibility-child-33 "Reference 2")
+- [§ row](#ref-for-dfn-accessibility-child-34 "§ row")
+- [§ rowgroup](#ref-for-dfn-accessibility-child-35 "§ rowgroup")
+ [(2)](#ref-for-dfn-accessibility-child-36 "Reference 2")
+- [§ rowheader](#ref-for-dfn-accessibility-child-37 "§ rowheader")
+- [§ spinbutton](#ref-for-dfn-accessibility-child-38 "§ spinbutton")
+- [§ suggestion](#ref-for-dfn-accessibility-child-39 "§ suggestion")
+ [(2)](#ref-for-dfn-accessibility-child-40 "Reference 2")
+ [(3)](#ref-for-dfn-accessibility-child-41 "Reference 3")
+ [(4)](#ref-for-dfn-accessibility-child-42 "Reference 4")
+- [§ tab](#ref-for-dfn-accessibility-child-43 "§ tab")
+- [§ table](#ref-for-dfn-accessibility-child-44 "§ table")
+- [§ treegrid](#ref-for-dfn-accessibility-child-45 "§ treegrid")
+- [§ treeitem](#ref-for-dfn-accessibility-child-46 "§ treeitem")
+ [(2)](#ref-for-dfn-accessibility-child-47 "Reference 2")
+- [§
+ aria-colindex](#ref-for-dfn-accessibility-child-48 "§ aria-colindex")
+ [(2)](#ref-for-dfn-accessibility-child-49 "Reference 2")
+ [(3)](#ref-for-dfn-accessibility-child-50 "Reference 3")
+- [§ aria-owns](#ref-for-dfn-accessibility-child-51 "§ aria-owns")
+- [§
+ aria-rowindex](#ref-for-dfn-accessibility-child-52 "§ aria-rowindex")
+ [(2)](#ref-for-dfn-accessibility-child-53 "Reference 2")
+- [§
+ aria-rowindextext](#ref-for-dfn-accessibility-child-54 "§ aria-rowindextext")
 
 [Permalink](#dfn-accessibility-descendant)
 [exported]
@@ -18717,21 +18886,23 @@ Government.
  [(2)](#ref-for-dfn-accessibility-descendant-2 "Reference 2")
  [(3)](#ref-for-dfn-accessibility-descendant-3 "Reference 3")
  [(4)](#ref-for-dfn-accessibility-descendant-4 "Reference 4")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-accessibility-descendant-5 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-accessibility-descendant-6 "Reference 2")
- [(3)](#ref-for-dfn-accessibility-descendant-7 "Reference 3")
- [(4)](#ref-for-dfn-accessibility-descendant-8 "Reference 4")
- [(5)](#ref-for-dfn-accessibility-descendant-9 "Reference 5")
- [(6)](#ref-for-dfn-accessibility-descendant-10 "Reference 6")
- [(7)](#ref-for-dfn-accessibility-descendant-11 "Reference 7")
- [(8)](#ref-for-dfn-accessibility-descendant-12 "Reference 8")
- [(9)](#ref-for-dfn-accessibility-descendant-13 "Reference 9")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-accessibility-descendant-14 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
+- [§
+ application](#ref-for-dfn-accessibility-descendant-5 "§ application")
+- [§ composite](#ref-for-dfn-accessibility-descendant-6 "§ composite")
+ [(2)](#ref-for-dfn-accessibility-descendant-7 "Reference 2")
+- [§ grid](#ref-for-dfn-accessibility-descendant-8 "§ grid")
+- [§ menuitem](#ref-for-dfn-accessibility-descendant-9 "§ menuitem")
+- [§
+ menuitemcheckbox](#ref-for-dfn-accessibility-descendant-10 "§ menuitemcheckbox")
+- [§
+ menuitemradio](#ref-for-dfn-accessibility-descendant-11 "§ menuitemradio")
+- [§ none](#ref-for-dfn-accessibility-descendant-12 "§ none")
+- [§ treegrid](#ref-for-dfn-accessibility-descendant-13 "§ treegrid")
+- [§
+ aria-activedescendant](#ref-for-dfn-accessibility-descendant-14 "§ aria-activedescendant")
  [(2)](#ref-for-dfn-accessibility-descendant-15 "Reference 2")
  [(3)](#ref-for-dfn-accessibility-descendant-16 "Reference 3")
- [(4)](#ref-for-dfn-accessibility-descendant-17 "Reference 4")
+- [§ aria-busy](#ref-for-dfn-accessibility-descendant-17 "§ aria-busy")
 - [§ 9.2 States and
  Properties](#ref-for-dfn-accessibility-descendant-18 "§ 9.2 States and Properties")
 
@@ -18742,18 +18913,21 @@ Government.
 
 - [§ 5.2.7 Required Accessibility Parent
  Role](#ref-for-dfn-accessibility-parent-1 "§ 5.2.7 Required Accessibility Parent Role")
-- [§ 5.4 Definition of
- Roles](#ref-for-dfn-accessibility-parent-2 "§ 5.4 Definition of Roles")
- [(2)](#ref-for-dfn-accessibility-parent-3 "Reference 2")
- [(3)](#ref-for-dfn-accessibility-parent-4 "Reference 3")
- [(4)](#ref-for-dfn-accessibility-parent-5 "Reference 4")
- [(5)](#ref-for-dfn-accessibility-parent-6 "Reference 5")
- [(6)](#ref-for-dfn-accessibility-parent-7 "Reference 6")
- [(7)](#ref-for-dfn-accessibility-parent-8 "Reference 7")
- [(8)](#ref-for-dfn-accessibility-parent-9 "Reference 8")
-- [§ 6.8 Definitions of States and Properties (all aria-\*
- attributes)](#ref-for-dfn-accessibility-parent-10 "§ 6.8 Definitions of States and Properties (all aria-* attributes)")
- [(2)](#ref-for-dfn-accessibility-parent-11 "Reference 2")
+ [(2)](#ref-for-dfn-accessibility-parent-2 "Reference 2")
+ [(3)](#ref-for-dfn-accessibility-parent-3 "Reference 3")
+- [§ menuitem](#ref-for-dfn-accessibility-parent-4 "§ menuitem")
+ [(2)](#ref-for-dfn-accessibility-parent-5 "Reference 2")
+- [§
+ menuitemcheckbox](#ref-for-dfn-accessibility-parent-6 "§ menuitemcheckbox")
+ [(2)](#ref-for-dfn-accessibility-parent-7 "Reference 2")
+- [§
+ menuitemradio](#ref-for-dfn-accessibility-parent-8 "§ menuitemradio")
+ [(2)](#ref-for-dfn-accessibility-parent-9 "Reference 2")
+- [§ tooltip](#ref-for-dfn-accessibility-parent-10 "§ tooltip")
+- [§ treeitem](#ref-for-dfn-accessibility-parent-11 "§ treeitem")
+- [§
+ aria-expanded](#ref-for-dfn-accessibility-parent-12 "§ aria-expanded")
+ [(2)](#ref-for-dfn-accessibility-parent-13 "Reference 2")
 
 [Permalink](#dfn-host-language)
 [exported]
@@ -18767,6 +18941,36 @@ Government.
 - [§ 8. Implementation in Host
  Languages](#ref-for-dfn-host-language-3 "§ 8. Implementation in Host Languages")
 
+[Permalink](#attr-role)
+[exported]
+
+**Referenced in:**
+
+- [§ 1.1 Rich Internet Application
+ Accessibility](#ref-for-attr-role-1 "§ 1.1 Rich Internet Application Accessibility")
+- [§ 3.2 All WAI-ARIA in
+ DOM](#ref-for-attr-role-2 "§ 3.2 All WAI-ARIA in DOM")
+ [(2)](#ref-for-attr-role-3 "Reference 2")
+- [§ 4. Using WAI-ARIA](#ref-for-attr-role-4 "§ 4. Using WAI-ARIA")
+- [§ 4.1 WAI-ARIA Roles](#ref-for-attr-role-5 "§ 4.1 WAI-ARIA Roles")
+ [(2)](#ref-for-attr-role-6 "Reference 2")
+ [(3)](#ref-for-attr-role-7 "Reference 3")
+- [§ 4.3.2 Information for User
+ Agents](#ref-for-attr-role-8 "§ 4.3.2 Information for User Agents")
+- [§ 5. The Roles Model](#ref-for-attr-role-9 "§ 5. The Roles Model")
+ [(2)](#ref-for-attr-role-10 "Reference 2")
+- [§ 7.1 Excluding Elements from the Accessibility
+ Tree](#ref-for-attr-role-11 "§ 7.1 Excluding Elements from the Accessibility Tree")
+- [§ 8. Implementation in Host
+ Languages](#ref-for-attr-role-12 "§ 8. Implementation in Host Languages")
+- [§ 8.1 Role Attribute](#ref-for-attr-role-13 "§ 8.1 Role Attribute")
+ [(2)](#ref-for-attr-role-14 "Reference 2")
+- [§ 8.6 State and Property Attribute
+ Processing](#ref-for-attr-role-15 "§ 8.6 State and Property Attribute Processing")
+- [§ 9.1 Roles](#ref-for-attr-role-16 "§ 9.1 Roles")
+- [§ 10.3 ARIA Attribute
+ Correspondence](#ref-for-attr-role-17 "§ 10.3 ARIA Attribute Correspondence")
+
 [Permalink](#dom-ariamixin)
 [exported]
 [IDL](#webidl-316093145 "Jump to IDL declaration")
@@ -18776,6 +18980,71 @@ Government.
 - [§ 10.1 Interface Mixin
  ARIAMixin](#ref-for-dom-ariamixin-1 "§ 10.1 Interface Mixin ARIAMixin")
  [(2)](#ref-for-dom-ariamixin-2 "Reference 2")
+
+[Permalink](#dom-arianotifymixin)
+[exported]
+[IDL](#webidl-1358192187 "Jump to IDL declaration")
+
+**Referenced in:**
+
+- [§ 10.2 Interface Mixin
+ ARIANotifyMixin](#ref-for-dom-arianotifymixin-1 "§ 10.2 Interface Mixin ARIANotifyMixin")
+ [(2)](#ref-for-dom-arianotifymixin-2 "Reference 2")
+ [(3)](#ref-for-dom-arianotifymixin-3 "Reference 3")
+
+[Permalink](#dom-arianotifypriority)
+[exported]
+
+**Referenced in:**
+
+- [§ 10.2 Interface Mixin
+ ARIANotifyMixin](#ref-for-dom-arianotifypriority-1 "§ 10.2 Interface Mixin ARIANotifyMixin")
+
+[Permalink](#dom-arianotifypriority-normal)
+[exported]
+
+**Referenced in:**
+
+- Not referenced in this document.
+
+[Permalink](#dom-arianotifypriority-high)
+[exported]
+
+**Referenced in:**
+
+- Not referenced in this document.
+
+[Permalink](#dom-arianotificationoptions)
+[exported]
+
+**Referenced in:**
+
+- [§ 10.2 Interface Mixin
+ ARIANotifyMixin](#ref-for-dom-arianotificationoptions-1 "§ 10.2 Interface Mixin ARIANotifyMixin")
+
+[Permalink](#dom-arianotificationoptions-priority)
+[exported]
+
+**Referenced in:**
+
+- [§ 10.2 Interface Mixin
+ ARIANotifyMixin](#ref-for-dom-arianotificationoptions-priority-1 "§ 10.2 Interface Mixin ARIANotifyMixin")
+
+[Permalink](#dom-arianotifymixin-arianotify)
+[exported]
+[IDL](#webidl-1358192187 "Jump to IDL declaration")
+
+**Referenced in:**
+
+- [§ 10.2 Interface Mixin
+ ARIANotifyMixin](#ref-for-dom-arianotifymixin-arianotify-1 "§ 10.2 Interface Mixin ARIANotifyMixin")
+
+[Permalink](#dfn-aria-notify)
+
+**Referenced in:**
+
+- [§ 10.2 Interface Mixin
+ ARIANotifyMixin](#ref-for-dfn-aria-notify-1 "§ 10.2 Interface Mixin ARIANotifyMixin")
 
 [Permalink](#dom-ariamixin-role)
 [exported]
@@ -19244,3 +19513,187 @@ Government.
 
 - [§ 10.1 Interface Mixin
  ARIAMixin](#ref-for-dom-ariamixin-ariavaluetext-1 "§ 10.1 Interface Mixin ARIAMixin")
+
+::: header-wrapper
+## D. References
+
+::: header-wrapper
+### D.1 Normative references
+
+\[ACCNAME-1.2\]
+: [Accessible Name and Description Computation
+ 1.2](https://www.w3.org/TR/accname-1.2/). Bryan Garaventa; Melanie
+ Sumner. W3C. 23 September 2026. W3C Working Draft. URL:
+ <https://www.w3.org/TR/accname-1.2/>
+
+\[CORE-AAM\]
+: [Core Accessibility API Mappings
+ 1.1](https://www.w3.org/TR/core-aam-1.1/). Joanmarie Diggs; Joseph
+ Scheuhammer; Richard Schwerdtfeger; Michael Cooper; Andi
+ Snow-Weaver; Aaron Leventhal. W3C. 14 December 2017. W3C
+ Recommendation. URL: <https://www.w3.org/TR/core-aam-1.1/>
+
+\[CORE-AAM-1.2\]
+: [Core Accessibility API Mappings
+ 1.2](https://www.w3.org/TR/core-aam-1.2/). Valerie Young; Cynthia
+ Shelly. W3C. 23 September 2026. CRD. URL:
+ <https://www.w3.org/TR/core-aam-1.2/>
+
+\[DOM\]
+: [DOM Standard](https://dom.spec.whatwg.org/). Anne van Kesteren.
+ WHATWG. Living Standard. URL: <https://dom.spec.whatwg.org/>
+
+\[DPUB-ARIA-1.0\]
+: [Digital Publishing WAI-ARIA Module
+ 1.0](https://www.w3.org/TR/dpub-aria-1.0/). Matt Garrish; Tzviya
+ Siegman; Markus Gylling; Shane McCarron. W3C. 14 December 2017. W3C
+ Recommendation. URL: <https://www.w3.org/TR/dpub-aria-1.0/>
+
+\[HTML\]
+: [HTML Standard](https://html.spec.whatwg.org/multipage/). Anne van
+ Kesteren; Domenic Denicola; Dominic Farolino; Ian Hickson; Philip
+ Jägenstedt; Simon Pieters. WHATWG. Living Standard. URL:
+ <https://html.spec.whatwg.org/multipage/>
+
+\[infra\]
+: [Infra Standard](https://infra.spec.whatwg.org/). Anne van Kesteren;
+ Domenic Denicola. WHATWG. Living Standard. URL:
+ <https://infra.spec.whatwg.org/>
+
+\[MathML3\]
+: [Mathematical Markup Language (MathML) Version 3.0 2nd
+ Edition](https://www.w3.org/TR/MathML3/). David Carlisle; Patrick D
+ F Ion; Robert R Miner. W3C. 10 April 2014. W3C Recommendation. URL:
+ <https://www.w3.org/TR/MathML3/>
+
+\[permissions-policy\]
+: [Permissions Policy](https://www.w3.org/TR/permissions-policy-1/).
+ Ian Clelland; Ari Chivukula. W3C. 22 September 2026. W3C Working
+ Draft. URL: <https://www.w3.org/TR/permissions-policy-1/>
+
+\[RFC2119\]
+: [Key words for use in RFCs to Indicate Requirement
+ Levels](https://www.rfc-editor.org/info/rfc2119/). S. Bradner. IETF.
+ March 1997. Best Current Practice. URL:
+ <https://www.rfc-editor.org/info/rfc2119/>
+
+\[RFC8174\]
+: [Ambiguity of Uppercase vs Lowercase in RFC 2119 Key
+ Words](https://www.rfc-editor.org/info/rfc8174/). B. Leiba. IETF.
+ May 2017. Best Current Practice. URL:
+ <https://www.rfc-editor.org/info/rfc8174/>
+
+\[ROLE-ATTRIBUTE\]
+: [Role Attribute 1.0](https://www.w3.org/TR/role-attribute/). Shane
+ McCarron et al. W3C. 28 March 2013. W3C Recommendation. URL:
+ <https://www.w3.org/TR/role-attribute/>
+
+\[SELECTORS-4\]
+: [Selectors Level 4](https://www.w3.org/TR/selectors-4/). Elika
+ Etemad; Tab Atkins Jr. W3C. 22 January 2026. W3C Working Draft. URL:
+ <https://www.w3.org/TR/selectors-4/>
+
+\[SVG2\]
+: [Scalable Vector Graphics (SVG) 2](https://www.w3.org/TR/SVG2/).
+ Amelia Bellamy-Royds; Bogdan Brinza; Chris Lilley; Dirk Schulze;
+ David Storey; Eric Willigers. W3C. 4 October 2018. W3C Candidate
+ Recommendation. URL: <https://www.w3.org/TR/SVG2/>
+
+\[uievents-key\]
+: [UI Events KeyboardEvent key
+ Values](https://www.w3.org/TR/uievents-key/). Travis Leithead; Gary
+ Kacmarcik. W3C. 22 April 2025. W3C Recommendation. URL:
+ <https://www.w3.org/TR/uievents-key/>
+
+\[WEBIDL\]
+: [Web IDL Standard](https://webidl.spec.whatwg.org/). Edgar Chen;
+ Timothy Gu. WHATWG. Living Standard. URL:
+ <https://webidl.spec.whatwg.org/>
+
+\[XML-NAMES\]
+: [Namespaces in XML 1.0 (Third
+ Edition)](https://www.w3.org/TR/xml-names/). Tim Bray; Dave
+ Hollander; Andrew Layman; Richard Tobin; Henry Thompson et al. W3C.
+ 8 December 2009. W3C Recommendation. URL:
+ <https://www.w3.org/TR/xml-names/>
+
+::: header-wrapper
+### D.2 Informative references
+
+\[AT-SPI\]
+: [Assistive Technology Service Provider
+ Interface](https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/).
+ The GNOME Project. URL:
+ <https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/>
+
+\[ATK\]
+: [ATK - Accessibility
+ Toolkit](https://developer.gnome.org/atk/stable/). The GNOME
+ Project. URL: <https://developer.gnome.org/atk/stable/>
+
+\[AXAPI\]
+: [The NSAccessibility Protocol for
+ macOS](https://developer.apple.com/documentation/appkit/nsaccessibility).
+ Apple, Inc. URL:
+ <https://developer.apple.com/documentation/appkit/nsaccessibility>
+
+\[design-principles\]
+: [Web Platform Design
+ Principles](https://www.w3.org/TR/design-principles/). Jeffrey
+ Yasskin. W3C. 14 September 2026. W3C Working Group Note. URL:
+ <https://www.w3.org/TR/design-principles/>
+
+\[fingerprinting-guidance\]
+: [Mitigating Browser Fingerprinting in Web
+ Specifications](https://www.w3.org/TR/fingerprinting-guidance/).
+ Nick Doty; Tom Ritter. W3C. 25 September 2025. W3C Working Group
+ Note. URL: <https://www.w3.org/TR/fingerprinting-guidance/>
+
+\[HTML-ARIA\]
+: [ARIA in HTML](https://www.w3.org/TR/html-aria/). Patrick Lauke;
+ Scott O\'Hara. W3C. 11 August 2026. W3C Recommendation. URL:
+ <https://www.w3.org/TR/html-aria/>
+
+\[IAccessible2\]
+: [IAccessible2](https://wiki.linuxfoundation.org/accessibility/iaccessible2/).
+ Linux Foundation. URL:
+ <https://wiki.linuxfoundation.org/accessibility/iaccessible2/>
+
+\[MSAA\]
+: [Microsoft Active Accessibility
+ (MSAA)](https://docs.microsoft.com/en-us/windows/win32/winauto/microsoft-active-accessibility).
+ Microsoft Corporation. URL:
+ <https://docs.microsoft.com/en-us/windows/win32/winauto/microsoft-active-accessibility>
+
+\[UI-AUTOMATION\]
+: [UI
+ Automation](https://docs.microsoft.com/en-us/windows/win32/winauto/ui-automation-specification).
+ Microsoft Corporation. URL:
+ <https://docs.microsoft.com/en-us/windows/win32/winauto/ui-automation-specification>
+
+\[UIA-EXPRESS\]
+: [The IAccessibleEx
+ Interface](https://docs.microsoft.com/en-us/windows/win32/winauto/iaccessibleex).
+ Microsoft Corporation. URL:
+ <https://docs.microsoft.com/en-us/windows/win32/winauto/iaccessibleex>
+
+\[wai-aria-1.2\]
+: [Accessible Rich Internet Applications (WAI-ARIA)
+ 1.2](https://www.w3.org/TR/wai-aria-1.2/). Joanmarie Diggs; James
+ Nurthen; Michael Cooper; Carolyn MacLeod. W3C. 6 June 2023. W3C
+ Recommendation. URL: <https://www.w3.org/TR/wai-aria-1.2/>
+
+\[WCAG21\]
+: [Web Content Accessibility Guidelines (WCAG)
+ 2.1](https://www.w3.org/TR/WCAG21/). Michael Cooper; Andrew
+ Kirkpatrick; Joshue O\'Connor; Alastair Campbell. W3C. 6 May 2025.
+ W3C Recommendation. URL: <https://www.w3.org/TR/WCAG21/>
+
+\[XMLSCHEMA11-2\]
+: [W3C XML Schema Definition Language (XSD) 1.1 Part 2:
+ Datatypes](https://www.w3.org/TR/xmlschema11-2/). David Peterson;
+ Sandy Gao; Ashok Malhotra; Michael Sperberg-McQueen; Henry Thompson;
+ Paul V. Biron et al. W3C. 5 April 2012. W3C Recommendation. URL:
+ <https://www.w3.org/TR/xmlschema11-2/>
+
+[[↑]](#title)

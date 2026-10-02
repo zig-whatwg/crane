@@ -218,8 +218,8 @@ events] (each of which is an
 
 Service workers mark certain points in time that are later exposed by
 the [navigation
-timing](https://www.w3.org/TR/navigation-timing-2/#dom-performancenavigationtiming) API and [resource
-timing](https://www.w3.org/TR/resource-timing/#dom-performanceresourcetiming) API.
+timing](https://w3c.github.io/navigation-timing/#performancenavigationtiming) API and [resource
+timing](https://w3c.github.io/resource-timing/#performanceresourcetiming) API.
 
 A [service worker timing info] is a
 [struct](https://infra.spec.whatwg.org/#struct). It has the following
@@ -228,22 +228,22 @@ A [service worker timing info] is a
 [start time]
 
 : A
- [`DOMHighResTimeStamp`](https://www.w3.org/TR/hr-time-3/#dom-domhighrestimestamp), initially 0.
+ [`DOMHighResTimeStamp`](https://w3c.github.io/hr-time/#typedefdef-domhighrestimestamp), initially 0.
 
 [fetch event dispatch time]
 
 : A
- [`DOMHighResTimeStamp`](https://www.w3.org/TR/hr-time-3/#dom-domhighrestimestamp), initially 0.
+ [`DOMHighResTimeStamp`](https://w3c.github.io/hr-time/#typedefdef-domhighrestimestamp), initially 0.
 
 [worker router evaluation start]
 
 : A
- [`DOMHighResTimeStamp`](https://www.w3.org/TR/hr-time-3/#dom-domhighrestimestamp), initially 0.
+ [`DOMHighResTimeStamp`](https://w3c.github.io/hr-time/#typedefdef-domhighrestimestamp), initially 0.
 
 [worker cache lookup start]
 
 : A
- [`DOMHighResTimeStamp`](https://www.w3.org/TR/hr-time-3/#dom-domhighrestimestamp), initially 0.
+ [`DOMHighResTimeStamp`](https://w3c.github.io/hr-time/#typedefdef-domhighrestimestamp), initially 0.
 
 [worker matched router source]
 
@@ -560,7 +560,7 @@ client](#dfn-worker-client)'s
 origin](https://html.spec.whatwg.org/multipage/browsers.html#concept-origin-opaque), or the
 [request](https://fetch.spec.whatwg.org/#concept-request)'s
 [URL](https://fetch.spec.whatwg.org/#concept-request-url) is a [blob
-URL](https://www.w3.org/TR/FileAPI/#blob-url) and the [worker
+URL](https://w3c.github.io/FileAPI/#blob-url) and the [worker
 client](#dfn-worker-client)'s
 [origin](#service-worker-client-origin) is not the
 [same](https://html.spec.whatwg.org/multipage/browsers.html#same-origin) as the
@@ -589,7 +589,7 @@ worker](https://html.spec.whatwg.org/multipage/webappapis.html#concept-environme
 origin](https://html.spec.whatwg.org/multipage/browsers.html#concept-origin-opaque). [Window
 clients](#dfn-window-client) and [worker
 clients](#dfn-worker-client) with a [blob
-URL](https://www.w3.org/TR/FileAPI/#blob-url) can inherit the [active service
+URL](https://w3c.github.io/FileAPI/#blob-url) can inherit the [active service
 worker](https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-active-service-worker) of their creator
 [document](https://dom.spec.whatwg.org/#concept-document) or owner, but if the
 [request](https://fetch.spec.whatwg.org/#concept-request)'s
@@ -823,8 +823,7 @@ method steps are:
  : a new [`Client`](#client) object that represents
  `incumbentGlobal`'s associated worker
 
- 2. Let `origin` be the
- [serialization](https://html.spec.whatwg.org/multipage/browsers.html#ascii-serialisation-of-an-origin) of `incumbentSettings`'s
+ 2. Let `origin` be `incumbentSettings`'s
  [origin](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-origin).
 
  3. Let `destination` be the
@@ -840,9 +839,8 @@ method steps are:
  result of [creating an
  event](https://dom.spec.whatwg.org/#concept-event-create) named
  [`messageerror`](#eventdef-serviceworkerglobalscope-messageerror), using
- [`ExtendableMessageEvent`](#extendablemessageevent), with the
- [`origin`](#dom-extendablemessageevent-origin) attribute initialized to
- `origin` and the
+ [`ExtendableMessageEvent`](#extendablemessageevent), with its
+ [origin](#extendablemessageevent-origin) initialized to `origin` and the
  [`source`](#dom-extendablemessageevent-source) attribute initialized to
  `source`.
 
@@ -860,9 +858,8 @@ method steps are:
  3. Let `e` be the result of [creating an
  event](https://dom.spec.whatwg.org/#concept-event-create) named
  [`message`](#eventdef-serviceworkerglobalscope-message), using
- [`ExtendableMessageEvent`](#extendablemessageevent), with the
- [`origin`](#dom-extendablemessageevent-origin) attribute initialized to
- `origin`, the
+ [`ExtendableMessageEvent`](#extendablemessageevent), with its
+ [origin](#extendablemessageevent-origin) initialized to `origin`, the
  [`source`](#dom-extendablemessageevent-source) attribute initialized to
  `source`, the
  [`data`](#dom-extendablemessageevent-data) attribute initialized to
@@ -1327,8 +1324,8 @@ The
 
 2. Set `scriptURL` to the result of invoking [Get Trusted
  Type compliant
- string](https://www.w3.org/TR/trusted-types/#get-trusted-type-compliant-string) with
- [`TrustedScriptURL`](https://www.w3.org/TR/trusted-types/#trustedscripturl),
+ string](https://w3c.github.io/trusted-types/dist/spec/#get-trusted-type-compliant-string) with
+ [`TrustedScriptURL`](https://w3c.github.io/trusted-types/dist/spec/#trustedscripturl),
  [this](https://webidl.spec.whatwg.org/#this)'s [relevant global
  object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global), `scriptURL`, \"ServiceWorkerContainer
  register\", and \"script\".
@@ -1403,13 +1400,19 @@ The
  Registration](#match-service-worker-registration) given `storage key` and
  `clientURL`.
 
- 2. If `registration` is null, resolve
+ 2. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source), to run the following steps:
+
+ 1. If `registration` is null, resolve
  `promise` with undefined and abort these steps.
 
- 3. Resolve `promise` with the result of [getting the
+ 2. Resolve `promise` with the result of [getting the
  service worker registration
- object](#get-the-service-worker-registration-object) that represents `registration` in
- `promise`'s [relevant settings
+ object](#get-the-service-worker-registration-object) that represents `registration`
+ in `promise`'s [relevant settings
  object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object).
 
 9. Return `promise`.
@@ -1578,7 +1581,7 @@ client](#dfn-service-worker-client).)
 
 [`message`]
 
-[`Event`](https://dom.spec.whatwg.org/#event)
+[`MessageEvent`](https://html.spec.whatwg.org/multipage/comms.html#messageevent)
 
 The [service worker
 client](#serviceworkercontainer-service-worker-client) receives a message from a [service
@@ -1587,7 +1590,7 @@ worker](#dfn-service-worker). See
 
 [`messageerror`]
 
-[`Event`](https://dom.spec.whatwg.org/#event)
+[`MessageEvent`](https://html.spec.whatwg.org/multipage/comms.html#messageevent)
 
 The [service worker
 client](#serviceworkercontainer-service-worker-client) is sent a message that cannot be deserialized from a
@@ -1624,7 +1627,11 @@ The [`enable()`] method steps are:
  registration](#dfn-service-worker-registration).
 
  2. If `registration`'s [active
- worker](#dfn-active-worker) is null,
+ worker](#dfn-active-worker) is null, [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source), to
  [reject](https://webidl.spec.whatwg.org/#reject) `promise` with an
  \"[`InvalidStateError`](https://webidl.spec.whatwg.org/#invalidstateerror)\"
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException), and abort these steps.
@@ -1632,7 +1639,12 @@ The [`enable()`] method steps are:
  3. Set `registration`'s [navigation preload enabled
  flag](#service-worker-registration-navigation-preload-enabled-flag).
 
- 4. Resolve `promise` with undefined.
+ 4. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source), to resolve `promise` with
+ undefined.
 
 3. Return `promise`.
 
@@ -1650,7 +1662,11 @@ The [`disable()`] method steps are:
  registration](#dfn-service-worker-registration).
 
  2. If `registration`'s [active
- worker](#dfn-active-worker) is null,
+ worker](#dfn-active-worker) is null, [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source), to
  [reject](https://webidl.spec.whatwg.org/#reject) `promise` with an
  \"[`InvalidStateError`](https://webidl.spec.whatwg.org/#invalidstateerror)\"
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException), and abort these steps.
@@ -1658,7 +1674,12 @@ The [`disable()`] method steps are:
  3. Unset `registration`'s [navigation preload enabled
  flag](#service-worker-registration-navigation-preload-enabled-flag).
 
- 4. Resolve `promise` with undefined.
+ 4. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source), to resolve `promise` with
+ undefined.
 
 3. Return `promise`.
 
@@ -1666,10 +1687,18 @@ The [`disable()`] method steps are:
 The
 [`setHeaderValue(``value``)`] method steps are:
 
-1. Let `promise` be [a new
+1. Let `value` be the result of
+ [normalizing](https://fetch.spec.whatwg.org/#concept-header-value-normalize) `value`.
+
+2. If `value` is not a [header
+ value](https://fetch.spec.whatwg.org/#header-value), return [a promise rejected
+ with](https://webidl.spec.whatwg.org/#a-promise-rejected-with) a
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+3. Let `promise` be [a new
  promise](https://webidl.spec.whatwg.org/#a-new-promise).
 
-2. Run the following steps [in
+4. Run the following steps [in
  parallel](https://html.spec.whatwg.org/multipage/infrastructure.html#in-parallel):
 
  1. Let `registration` be
@@ -1677,7 +1706,11 @@ The
  registration](#dfn-service-worker-registration).
 
  2. If `registration`'s [active
- worker](#dfn-active-worker) is null,
+ worker](#dfn-active-worker) is null, [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source), to
  [reject](https://webidl.spec.whatwg.org/#reject) `promise` with an
  \"[`InvalidStateError`](https://webidl.spec.whatwg.org/#invalidstateerror)\"
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException), and abort these steps.
@@ -1685,9 +1718,14 @@ The
  3. Set `registration`'s [navigation preload header
  value](#service-worker-registration-navigation-preload-header-value) to `value`.
 
- 4. Resolve `promise` with undefined.
+ 4. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source), to resolve `promise` with
+ undefined.
 
-3. Return `promise`.
+5. Return `promise`.
 
 #### 3.6.4. [`getState()`]
 The [`getState()`] method steps are:
@@ -1714,7 +1752,12 @@ The [`getState()`] method steps are:
  preload header
  value](#service-worker-registration-navigation-preload-header-value).
 
- 5. Resolve `promise` with `state`.
+ 5. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source) to resolve `promise` with
+ `state`.
 
 3. Return `promise`.
 
@@ -1867,7 +1910,11 @@ The [`skipWaiting()`] method steps are:
  worker](#serviceworkerglobalscope-service-worker)'s [containing service worker
  registration](#dfn-containing-service-worker-registration).
 
- 3. Resolve `promise` with undefined.
+ 3. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on [service
+ worker](#serviceworkerglobalscope-service-worker)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), to resolve `promise` with
+ undefined.
 
 3. Return `promise`.
 
@@ -2060,8 +2107,7 @@ are:
  `destination`'s [client message
  queue](#dfn-client-message-queue):
 
- 1. Let `origin` be the
- [serialization](https://html.spec.whatwg.org/multipage/browsers.html#ascii-serialisation-of-an-origin) of `sourceSettings`'s
+ 1. Let `origin` be `sourceSettings`'s
  [origin](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-origin).
 
  2. Let `source` be the result of [getting the
@@ -2080,9 +2126,8 @@ are:
  event](https://dom.spec.whatwg.org/#concept-event-fire) named
  [`messageerror`](#service-worker-container-messageerror-event) at `destination`,
  using
- [`MessageEvent`](https://html.spec.whatwg.org/multipage/comms.html#messageevent), with the
- [`origin`](https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-origin) attribute initialized to
- `origin` and the
+ [`MessageEvent`](https://html.spec.whatwg.org/multipage/comms.html#messageevent), with its
+ [origin](https://html.spec.whatwg.org/multipage/comms.html#concept-messageevent-origin) initialized to `origin` and the
  [`source`](https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-source) attribute initialized to
  `source`, and then abort these steps.
 
@@ -2099,9 +2144,8 @@ are:
  event](https://dom.spec.whatwg.org/#concept-event-dispatch) named
  [`message`](https://html.spec.whatwg.org/multipage/indices.html#event-message) at `destination`,
  using
- [`MessageEvent`](https://html.spec.whatwg.org/multipage/comms.html#messageevent), with the
- [`origin`](https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-origin) attribute initialized to
- `origin`, the
+ [`MessageEvent`](https://html.spec.whatwg.org/multipage/comms.html#messageevent), with its
+ [origin](https://html.spec.whatwg.org/multipage/comms.html#concept-messageevent-origin) initialized to `origin`, the
  [`source`](https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-source) attribute initialized to
  `source`, the
  [`data`](https://html.spec.whatwg.org/multipage/comms.html#dom-messageevent-data) attribute initialized to
@@ -2176,10 +2220,8 @@ The [`focus()`] method steps are:
  5. Let `ancestorOriginsList` be
  [this](https://webidl.spec.whatwg.org/#this)'s [browsing
  context](#dfn-service-worker-client-browsing-context)'s [active
- document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s [relevant global
- object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global)'s
- [`Location`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#location) object's [ancestor origins
- list](https://html.spec.whatwg.org/multipage/nav-history-apis.html#concept-location-ancestor-origins-list)'s associated list.
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s [ancestor origins
+ list](https://html.spec.whatwg.org/multipage/dom.html#concept-document-ancestor-origins-list)'s associated list.
 
  6. [Queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the following steps on
@@ -2284,10 +2326,8 @@ steps are:
 
  8. Let `ancestorOriginsList` be
  `browsingContext`'s [active
- document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s [relevant global
- object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global)'s
- [`Location`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#location) object's [ancestor origins
- list](https://html.spec.whatwg.org/multipage/nav-history-apis.html#concept-location-ancestor-origins-list)'s associated list.
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s [ancestor origins
+ list](https://html.spec.whatwg.org/multipage/dom.html#concept-document-ancestor-origins-list)'s associated list.
 
  9. [Queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the following steps on
@@ -2379,11 +2419,25 @@ are:
  flag](#service-worker-client-discarded-flag) to be set.
 
  3. If `client`'s [execution ready
- flag](https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-execution-ready-flag) is set, then invoke [Resolve Get Client
- Promise](#resolve-get-client-promise) with `client` and
- `promise`, and abort these steps.
+ flag](https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-execution-ready-flag) is set, [queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant
+ settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source), to run the following steps:
 
- 2. Resolve `promise` with undefined.
+ 1. Invoke [Resolve Get Client
+ Promise](#resolve-get-client-promise) with `client` and
+ `promise`.
+
+ 2. Abort these steps.
+
+ 2. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop), using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source), to resolve `promise` with
+ undefined.
 
 3. Return `promise`.
 
@@ -2502,10 +2556,8 @@ The [`matchAll(``options``)`] method steps are:
  client](#dfn-window-client), then set
  `windowData`\[\"`ancestorOriginsList`\"\]
  to `browsingContext`'s [active
- document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s [relevant global
- object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global)'s
- [`Location`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#location) object's [ancestor origins
- list](https://html.spec.whatwg.org/multipage/nav-history-apis.html#concept-location-ancestor-origins-list)'s associated list.
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s [ancestor origins
+ list](https://html.spec.whatwg.org/multipage/dom.html#concept-document-ancestor-origins-list)'s associated list.
 
  7. Wait for `task` to have executed.
 
@@ -2674,10 +2726,8 @@ method steps are:
 
  6. Let `ancestorOriginsList` be
  `newContext`'s [active
- document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s [relevant global
- object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global)'s
- [`Location`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#location) object's [ancestor origins
- list](https://html.spec.whatwg.org/multipage/nav-history-apis.html#concept-location-ancestor-origins-list)'s associated list.
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s [ancestor origins
+ list](https://html.spec.whatwg.org/multipage/dom.html#concept-document-ancestor-origins-list)'s associated list.
 
  7. [Queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the following steps on
@@ -2779,7 +2829,11 @@ The [`claim()`] method steps are:
  Change](#notify-controller-change) algorithm with `client` as
  the argument.
 
- 2. Resolve `promise` with undefined.
+ 2. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) on `promise`'s [relevant settings
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#relevant-settings-object)'s [responsible event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#responsible-event-loop) using the [DOM manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source) to resolve `promise` with undefined.
 
 4. Return `promise`.
 
@@ -3033,7 +3087,11 @@ The [`addRoutes(``rules``)`] method steps are:
  `lifetimePromise` always fullfilled to avoid the install
  event failure.
 
-8. [Enqueue](https://infra.spec.whatwg.org/#queue-enqueue) the following steps to [\[\[service worker
+8. Let `serviceWorkerEventLoop` be the [current global
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#current-global-object)'s [event
+ loop](https://html.spec.whatwg.org/multipage/webappapis.html#event-loop).
+
+9. [Enqueue](https://infra.spec.whatwg.org/#queue-enqueue) the following steps to [\[\[service worker
  queue\]\]](#service-worker-service-worker-queue):
 
  1. Let `allRules` be a copy of
@@ -3045,18 +3103,23 @@ The [`addRoutes(``rules``)`] method steps are:
  1. Append `rule` to `allRules`.
 
  3. If running the [Check Router Registration
- Limit](#check-router-registration-limit) with `allRules` returns false,
- reject `promise` with a
+ Limit](#check-router-registration-limit) with `allRules` returns false, then:
+
+ 1. [Queue a
+ task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the following steps on
+ `serviceWorkerEventLoop` using the [DOM
+ manipulation task
+ source](https://html.spec.whatwg.org/multipage/webappapis.html#dom-manipulation-task-source):
+
+ 1. Reject `promise` with a
  [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+ 2. Abort these steps.
 
  4. Set `serviceWorker`'s [list of router
  rules](#service-worker-list-of-router-rules) to `allRules`.
 
- 5. Let `serviceWorkerEventLoop` be the [current global
- object](https://html.spec.whatwg.org/multipage/webappapis.html#current-global-object)'s [event
- loop](https://html.spec.whatwg.org/multipage/webappapis.html#event-loop).
-
- 6. [Queue a
+ 5. [Queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the following steps on
  `serviceWorkerEventLoop` using the [DOM manipulation
  task
@@ -3064,7 +3127,7 @@ The [`addRoutes(``rules``)`] method steps are:
 
  1. Resolve `promise` with undefined.
 
-9. Return `promise`.
+10. Return `promise`.
 
 ### 4.6. [`FetchEvent`]
 ```
@@ -3130,11 +3193,30 @@ return the value it was initialized to. When an
 [event](https://dom.spec.whatwg.org/#concept-event) is created the attribute *must* be initialized to the
 empty string.
 
+[`clientId`](#dom-fetchevent-clientid) is the
+[id](https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-id) of `request`'s
+[client](https://fetch.spec.whatwg.org/#concept-request-client) when the
+[request](https://fetch.spec.whatwg.org/#concept-request) has an initiating [service worker
+client](#dfn-service-worker-client), and the empty string otherwise (e.g., a top-level
+[navigation
+request](https://fetch.spec.whatwg.org/#navigation-request) with no initiator). See
+[`resultingClientId`](#dom-fetchevent-resultingclientid) for the environment associated with the resulting
+document of a [navigation
+request](https://fetch.spec.whatwg.org/#navigation-request).
+
 #### 4.6.4. [`event.resultingClientId`]
 [`resultingClientId`] attribute *must* return the value it was initialized to. When
 an
 [event](https://dom.spec.whatwg.org/#concept-event) is created the attribute *must* be initialized to the
 empty string.
+
+[`resultingClientId`](#dom-fetchevent-resultingclientid) is `request`'s [reserved
+client](https://fetch.spec.whatwg.org/#concept-request-reserved-client)'s
+[id](https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-id). It is the empty string for [subresource
+requests](https://fetch.spec.whatwg.org/#subresource-request), for requests whose
+[destination](https://fetch.spec.whatwg.org/#concept-request-destination) is
+[`"report"`](https://fetch.spec.whatwg.org/#dom-requestdestination-report), and when `request`'s [reserved
+client](https://fetch.spec.whatwg.org/#concept-request-reserved-client) is null.
 
 #### 4.6.5. [`event.replacesClientId`]
 [`replacesClientId`] attribute
@@ -3390,6 +3472,10 @@ dictionary ExtendableMessageEventInit : ExtendableEventInit {
 };
 ```
 
+Each
+[`ExtendableMessageEvent`](#extendablemessageevent) has an [origin] (an
+[origin](https://html.spec.whatwg.org/multipage/browsers.html#concept-origin), a string, or null), initially null.
+
 [Service workers](#dfn-service-worker) define the
 [extendable](#dom-extendableevent-waituntil)
 [`message`](#eventdef-serviceworkerglobalscope-message) event to allow extending the lifetime of
@@ -3405,16 +3491,43 @@ the object is created, this attribute *must* be initialized to null. It
 represents the message being sent.
 
 #### 4.7.2. [`event.origin`]
-The [`origin`] attribute *must* return the value it was initialized to. When
-the object is created, this attribute *must* be initialized to the empty
-string. It represents the
+The [`origin`] attribute represents the
 [origin](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-origin) of the [service worker
 client](#dfn-service-worker-client) that sent the message.
+
+The
+[`origin`](#dom-extendablemessageevent-origin) getter steps are:
+
+1. If [this](https://webidl.spec.whatwg.org/#this)'s
+ [origin](#extendablemessageevent-origin) is an
+ [origin](https://html.spec.whatwg.org/multipage/browsers.html#concept-origin), then return the
+ [serialization](https://html.spec.whatwg.org/multipage/browsers.html#ascii-serialisation-of-an-origin) of
+ [this](https://webidl.spec.whatwg.org/#this)'s
+ [origin](#extendablemessageevent-origin).
+
+2. If [this](https://webidl.spec.whatwg.org/#this)'s
+ [origin](#extendablemessageevent-origin) is null, then return the empty string.
+
+3. Return [this](https://webidl.spec.whatwg.org/#this)'s
+ [origin](#extendablemessageevent-origin).
+
+When the
+[`origin`](#dom-extendablemessageevent-origin) attribute is \"initialized\" (during
+[`ExtendableMessageEvent`](#extendablemessageevent)'s constructor, for example), the initialization value
+is placed into the object's
+[origin](#extendablemessageevent-origin).
 
 #### 4.7.3. [`event.lastEventId`]
 The [`lastEventId`] attribute *must* return the value it was
 initialized to. When the object is created, this attribute *must* be
 initialized to the empty string.
+
+Objects implementing the
+[`ExtendableMessageEvent`](#extendablemessageevent) interface's [extract an
+origin](https://html.spec.whatwg.org/multipage/browsers.html#extract-an-origin) steps are to return
+[this](https://webidl.spec.whatwg.org/#this)'s
+[origin](#extendablemessageevent-origin) if it is an
+[origin](https://html.spec.whatwg.org/multipage/browsers.html#concept-origin); otherwise null.
 
 #### 4.7.4. [`event.source`]
 The [`source`] attribute *must* return the value it was initialized to. When
@@ -3523,23 +3636,23 @@ notification.](https://notifications.spec.whatwg.org/#closing-a-notification))
 (See [Firing a sync
 event](https://wicg.github.io/background-sync/spec/#fire-a-sync-event).)
 
-[canmakepayment](https://w3c.github.io/payment-handler/#the-canmakepaymentevent)
+[canmakepayment](https://w3c.github.io/web-based-payment-handler/#the-canmakepaymentevent)
 
-[CanMakePaymentEvent](https://w3c.github.io/payment-handler/#dom-canmakepaymentevent)
-
-[Functional](#dfn-functional-events)
-
-(See [Handling a
-CanMakePaymentEvent](https://w3c.github.io/payment-handler/#dfn-handling-a-canmakepaymentevent).)
-
-[paymentrequest](https://w3c.github.io/payment-handler/#the-paymentrequestevent)
-
-[PaymentRequestEvent](https://w3c.github.io/payment-handler/#dom-paymentrequestevent)
+[CanMakePaymentEvent](https://w3c.github.io/web-based-payment-handler/#dom-canmakepaymentevent)
 
 [Functional](#dfn-functional-events)
 
 (See [Handling a
-PaymentRequestEvent](https://w3c.github.io/payment-handler/#dfn-handling-a-paymentrequestevent).)
+CanMakePaymentEvent](https://w3c.github.io/web-based-payment-handler/#dfn-handling-a-canmakepaymentevent).)
+
+[paymentrequest](https://w3c.github.io/web-based-payment-handler/#the-paymentrequestevent)
+
+[PaymentRequestEvent](https://w3c.github.io/web-based-payment-handler/#dom-paymentrequestevent)
+
+[Functional](#dfn-functional-events)
+
+(See [Handling a
+PaymentRequestEvent](https://w3c.github.io/web-based-payment-handler/#dfn-handling-a-paymentrequestevent).)
 
 [`message`]
 
@@ -3551,7 +3664,7 @@ When it receives a message.
 
 [`messageerror`]
 
-[`MessageEvent`](https://html.spec.whatwg.org/multipage/comms.html#messageevent)
+[`ExtendableMessageEvent`](#extendablemessageevent)
 
 Legacy
 
@@ -3890,16 +4003,12 @@ method steps are:
  [service-workers
  mode](https://fetch.spec.whatwg.org/#request-service-workers-mode) to \"`none`\".
 
- 4. Set `r`'s
- [initiator](https://fetch.spec.whatwg.org/#concept-request-initiator) to \"`fetch`\" and
- [destination](https://fetch.spec.whatwg.org/#concept-request-destination) to \"`subresource`\".
+ 4. Add `r` to `requestList`.
 
- 5. Add `r` to `requestList`.
-
- 6. Let `responsePromise` be [a new
+ 5. Let `responsePromise` be [a new
  promise](https://webidl.spec.whatwg.org/#a-new-promise).
 
- 7. Run the following substeps [in
+ 6. Run the following substeps [in
  parallel](https://html.spec.whatwg.org/multipage/infrastructure.html#in-parallel):
 
  - [Append](https://infra.spec.whatwg.org/#list-append) the result of
@@ -3959,7 +4068,7 @@ method steps are:
  The cache commit is allowed when the
  response's body is fully received.
 
- 8. Add `responsePromise` to
+ 7. Add `responsePromise` to
  `responsePromises`.
 
 6. Let `p` be the result of [getting a promise to wait for
@@ -4601,7 +4710,7 @@ worker](#dfn-service-worker) `serviceWorker`:
  resource](#dfn-script-resource) was delivered with a
  `Content-Security-Policy-Report-Only` HTTP header containing the value
  `policy`, the user agent *must*
- [monitor](https://www.w3.org/TR/screen-capture/#dfn-monitor) `policy` for `serviceWorker`.
+ [monitor](https://w3c.github.io/mediacapture-screen-share/#dfn-monitor) `policy` for `serviceWorker`.
 
 The primary reason for this restriction is to mitigate a broad class of
 content injection vulnerabilities, such as cross-site scripting (XSS).
@@ -4836,7 +4945,7 @@ event](#dfn-functional-events) by extending
 ```
 // e.g. define FunctionalEvent interface
 interface FunctionalEvent : ExtendableEvent {
- // add a functional event’s own attributes and methods
+ // add a functional event's own attributes and methods
 };
 ```
 
@@ -5370,7 +5479,7 @@ Output
 : none
 
 1. If the result of running [potentially trustworthy
- origin](https://www.w3.org/TR/secure-contexts/#potentially-trustworthy-origin) with the
+ origin](https://w3c.github.io/webappsec-secure-contexts/#potentially-trustworthy-origin) with the
  [origin](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-origin) of `job`'s [script
  url](#dfn-job-script-url) as the argument is `Not Trusted`, then:
 
@@ -5518,8 +5627,8 @@ Output
  graph](https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-module-worker-script-tree) given `job`'s
  [serialized](https://url.spec.whatwg.org/#concept-url-serializer) [script
  url](#dfn-job-script-url), `job`'s
- [client](#dfn-job-client), \"`serviceworker`\", \"`omit`\", and the
- to-be-created [environment settings
+ [client](#dfn-job-client), \"`serviceworker`\", \"`same-origin`\", and
+ the to-be-created [environment settings
  object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-settings-object) for this service worker.
 
  (#issue-02e2fe82) Using the to-be-created [environment
@@ -5605,22 +5714,20 @@ Output
  error](https://fetch.spec.whatwg.org/#concept-network-error).
 
  8. Let `serviceWorkerAllowed` be the result of
- [extracting header list
- values](https://fetch.spec.whatwg.org/#extract-header-list-values) given \``Service-Worker-Allowed`\` and
+ [get](https://fetch.spec.whatwg.org/#concept-header-list-get) \``Service-Worker-Allowed`\` from
  `response`'s [header
  list](https://fetch.spec.whatwg.org/#concept-response-header-list).
 
  See the definition of the
  [Service-Worker-Allowed](#service-worker-allowed) header in Appendix B: Extended HTTP headers.
 
- 9. Set `policyContainer` to the result of [creating a
+ 9. If `serviceWorkerAllowed` is not null, then set
+ `serviceWorkerAllowed` to the result of [isomorphic
+ decode](https://infra.spec.whatwg.org/#isomorphic-decode) `serviceWorkerAllowed`.
+
+ 10. Set `policyContainer` to the result of [creating a
  policy container from a fetch
  response](https://html.spec.whatwg.org/multipage/browsers.html#creating-a-policy-container-from-a-fetch-response) given `response`.
-
- 10. If `serviceWorkerAllowed` is failure, then:
-
- 1. Asynchronously complete these steps with a [network
- error](https://fetch.spec.whatwg.org/#concept-network-error).
 
  11. Let `scopeURL` be `registration`'s [scope
  url](#dfn-scope-url).
@@ -5652,7 +5759,12 @@ Output
  url](#dfn-job-script-url) as the [base
  URL](https://html.spec.whatwg.org/multipage/webappapis.html#concept-script-base-url).
 
- 2. If `maxScope`'s
+ 2. If `maxScope` is failure, then:
+
+ 1. Asynchronously complete these steps with a [network
+ error](https://fetch.spec.whatwg.org/#concept-network-error).
+
+ 3. If `maxScope`'s
  [origin](https://url.spec.whatwg.org/#concept-url-origin) is `job`'s [script
  url](#dfn-job-script-url)'s
  [origin](https://url.spec.whatwg.org/#concept-url-origin), then:
@@ -5914,6 +6026,45 @@ Output
  flag](#dfn-job-force-bypass-cache-flag) if `forceBypassCache` is true.
 
 6. Invoke [Schedule Job](#schedule-job) with `job`.
+
+### [[Request Soft Update]]
+This algorithm allows other specifications to request that the user
+agent check a [service worker
+registration](#dfn-service-worker-registration) for updates.
+
+Input
+
+: `registration`, a [service worker
+ registration](#dfn-service-worker-registration)
+
+: `requestingStorageKey`, a [storage
+ key](https://storage.spec.whatwg.org/#storage-key)
+
+: `forceBypassCache`, an optional boolean, false by default
+
+Output
+
+: None
+
+1. If `registration`'s [storage
+ key](#service-worker-registration-storage-key) is not
+ [equal](https://storage.spec.whatwg.org/#storage-key-equal) to `requestingStorageKey`, return.
+
+2. If the user agent decides to limit the frequency of update checks
+ for `registration`, return.
+
+ The user agent may protect against excessive
+ resource use by rate-limiting update checks or by treating several
+ invocations for `registration` that occur close together
+ as a single invocation. Callers cannot rely on this algorithm
+ resulting in an update check.
+
+3. Run the [Soft Update](#soft-update) algorithm with `registration` and
+ `forceBypassCache`.
+
+ Calling specifications are responsible for supplying
+the [storage
+key](https://storage.spec.whatwg.org/#storage-key) associated with their request.
 
 ### [[Install]]
 Input
@@ -6325,7 +6476,7 @@ Worker](#run-service-worker), as long as the results are observably equivalent. 
 in particular, as long as all security checks have the same result.)
 
 1. Let `unsafeCreationTime` be the [unsafe shared current
- time](https://www.w3.org/TR/hr-time-3/#dfn-unsafe-shared-current-time).
+ time](https://w3c.github.io/hr-time/#dfn-unsafe-shared-current-time).
 
 2. If `serviceWorker` is
  [running](#service-worker-running), then return `serviceWorker`'s [global
@@ -6396,7 +6547,7 @@ in particular, as long as all security checks have the same result.)
  The [time origin](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-time-origin)
 
  : Return the result of
- [coarsening](https://www.w3.org/TR/hr-time-3/#dfn-coarsen-time) `unsafeCreationTime` given
+ [coarsening](https://w3c.github.io/hr-time/#dfn-coarsen-time) `unsafeCreationTime` given
  `workerGlobalScope`'s [cross-origin isolated
  capability](https://html.spec.whatwg.org/multipage/workers.html#concept-workerglobalscope-cross-origin-isolated-capability).
 
@@ -6429,7 +6580,7 @@ in particular, as long as all security checks have the same result.)
  `workerGlobalScope`.
 
  8. If the [run CSP initialization for a global
- object](https://www.w3.org/TR/CSP3/#run-global-object-csp-initialization) algorithm returns \"`Blocked`\" when executed
+ object](https://w3c.github.io/webappsec-csp/#run-global-object-csp-initialization) algorithm returns \"`Blocked`\" when executed
  upon `workerGlobalScope`, set
  `setupFailed` to true and abort these steps.
 
@@ -6783,7 +6934,7 @@ Output
 
  1. If `request`'s
  [url](https://fetch.spec.whatwg.org/#concept-request-url) is not a [potentially trustworthy
- URL](https://www.w3.org/TR/secure-contexts/#potentially-trustworthy-url), return null.
+ URL](https://w3c.github.io/webappsec-secure-contexts/#potentially-trustworthy-url), return null.
 
  3. If `request` is a [navigation
  request](https://fetch.spec.whatwg.org/#navigation-request) and the
@@ -6848,7 +6999,7 @@ Output
 
  1. Set `timingInfo`'s [worker router evaluation
  start](#service-worker-timing-info-worker-router-evaluation-start) to the [coarsened shared current
- time](https://www.w3.org/TR/hr-time-3/#dfn-coarsened-shared-current-time) given `useHighResPerformanceTimers`.
+ time](https://w3c.github.io/hr-time/#dfn-coarsened-shared-current-time) given `useHighResPerformanceTimers`.
 
  2. Let `source` be the result of running the [Get Router
  Source](#get-router-source) algorithm with `registration`'s
@@ -6884,7 +7035,7 @@ Output
 
  2. Set `timingInfo`'s [worker cache lookup
  start](#service-worker-timing-info-worker-cache-lookup-start) to the [coarsened shared current
- time](https://www.w3.org/TR/hr-time-3/#dfn-coarsened-shared-current-time) given
+ time](https://w3c.github.io/hr-time/#dfn-coarsened-shared-current-time) given
  `useHighResPerformanceTimers`.
 
  3. Let `environment` be null.
@@ -6946,11 +7097,12 @@ Output
  `timingInfo`.
 
  This only creates a
- ServiceWorkerGlobalScope because CORS checks require
- that. It is not expected that implementations will
- actually create a ServiceWorkerGlobalScope here.
+ ServiceWorkerGlobalScope because CORS checks
+ require that. It is not expected that
+ implementations will actually create a
+ ServiceWorkerGlobalScope here.
 
- 1. If `response`'s
+ 6. If `response`'s
  [type](https://fetch.spec.whatwg.org/#concept-response-type) is \"`opaque`\", and
  [cross-origin resource policy
  check](https://fetch.spec.whatwg.org/#cross-origin-resource-policy-check) with
@@ -6960,16 +7112,16 @@ Output
  response](https://fetch.spec.whatwg.org/#concept-internal-response) returns **blocked**, then
  return `timingInfo`.
 
- 2. Set `timingInfo`'s [worker final
+ 7. Set `timingInfo`'s [worker final
  router
  source](#service-worker-timing-info-worker-final-router-source) be set to
  [`"cache"`](#dom-routersourceenum-cache).
 
- 3. Set `result`'s [service worker timing
+ 8. Set `result`'s [service worker timing
  info](#service-worker-timing-info) be set to
  `timingInfo`.
 
- 4. Return `response`.
+ 9. Return `response`.
 
  8. Return `timingInfo`.
 
@@ -7376,7 +7528,7 @@ Output
 
 14. Let `timingInfo`'s [start
  time](#service-worker-timing-info-start-time) be the [coarsened shared current
- time](https://www.w3.org/TR/hr-time-3/#dfn-coarsened-shared-current-time) given `useHighResPerformanceTimers`.
+ time](https://w3c.github.io/hr-time/#dfn-coarsened-shared-current-time) given `useHighResPerformanceTimers`.
 
 15. If `activeWorker`'s
  [state](#dfn-state) is
@@ -7436,29 +7588,31 @@ Output
  7. Initialize `e`'s
  [`preloadResponse`](#dom-fetchevent-preloadresponse) to `preloadResponse`.
 
- 8. Initialize `e`'s
+ 8. If `client` is not null, initialize
+ `e`'s
  [`clientId`](#dom-fetchevent-clientid) attribute to `client`'s
  [id](https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-id).
 
  9. If `request` is a [non-subresource
- request](https://fetch.spec.whatwg.org/#non-subresource-request) and `request`'s
+ request](https://fetch.spec.whatwg.org/#non-subresource-request), `request`'s
  [destination](https://fetch.spec.whatwg.org/#concept-request-destination) is not
- [`"report"`](https://fetch.spec.whatwg.org/#dom-requestdestination-report), initialize `e`'s
+ [`"report"`](https://fetch.spec.whatwg.org/#dom-requestdestination-report), and `reservedClient` is not
+ null, initialize `e`'s
  [`resultingClientId`](#dom-fetchevent-resultingclientid) attribute to `reservedClient`'s
- [id](https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-id), and to the empty string otherwise.
+ [id](https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-id).
 
  10. If `request` is a [navigation
  request](https://fetch.spec.whatwg.org/#navigation-request), initialize `e`'s
  [`replacesClientId`](#dom-fetchevent-replacesclientid) attribute to `request`'s
  [replaces client
- id](https://fetch.spec.whatwg.org/#concept-request-replaces-client-id), and to the empty string otherwise.
+ id](https://fetch.spec.whatwg.org/#concept-request-replaces-client-id).
 
  11. Initialize `e`'s
  [`handled`](#dom-fetchevent-handled) to `eventHandled`.
 
  12. Let `timingInfo`'s [fetch event dispatch
  time](#service-worker-timing-info-fetch-event-dispatch-time) to the [coarsened shared current
- time](https://www.w3.org/TR/hr-time-3/#dfn-coarsened-shared-current-time) given
+ time](https://w3c.github.io/hr-time/#dfn-coarsened-shared-current-time) given
  `useHighResPerformanceTimers`.
 
  13. [Dispatch](https://dom.spec.whatwg.org/#concept-event-dispatch) `e` at
@@ -8176,7 +8330,7 @@ Input
  worker](#dfn-service-worker)
 
 : `event`, an
- [event](https://dom.spec.whatwg.org/#concept-event)
+ [`ExtendableEvent`](#extendableevent)
 
 Output
 
@@ -8209,41 +8363,28 @@ Output
 
 : none
 
-1. If the
- [origin](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-origin) of `job`'s [scope
- url](#dfn-job-scope-url) is not `job`'s
- [client](#dfn-job-client)'s
- [origin](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-origin), then:
-
- 1. Invoke [Reject Job
- Promise](#reject-job-promise) with `job` and
- \"[`SecurityError`](https://webidl.spec.whatwg.org/#securityerror)\"
- [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException).
-
- 2. Invoke [Finish Job](#finish-job) with `job` and abort these steps.
-
-2. Let `registration` be the result of running [Get
+1. Let `registration` be the result of running [Get
  Registration](#get-registration) given `job`'s [storage
  key](#job-storage-key)
  and `job`'s [scope
  url](#dfn-job-scope-url).
 
-3. If `registration` is null, then:
+2. If `registration` is null, then:
 
  1. Invoke [Resolve Job
  Promise](#resolve-job-promise) with `job` and false.
 
  2. Invoke [Finish Job](#finish-job) with `job` and abort these steps.
 
-4. [Remove](https://infra.spec.whatwg.org/#map-remove) [registration
+3. [Remove](https://infra.spec.whatwg.org/#map-remove) [registration
  map](#dfn-scope-to-registration-map)\[(`registration`'s [storage
  key](#service-worker-registration-storage-key), `job`'s [scope
  url](#dfn-job-scope-url))\].
 
-5. Invoke [Resolve Job
+4. Invoke [Resolve Job
  Promise](#resolve-job-promise) with `job` and true.
 
-6. Invoke [Try Clear
+5. Invoke [Try Clear
  Registration](#try-clear-registration) with `registration`.
 
  If [Try Clear
@@ -8255,7 +8396,7 @@ Output
  [unloaded](#handle-service-worker-client-unload) or the [extend lifetime
  promises](#extendableevent-extend-lifetime-promises) for the registration's service workers settle.
 
-7. Invoke [Finish Job](#finish-job) with `job`.
+6. Invoke [Finish Job](#finish-job) with `job`.
 
 ### [[Set Registration]]
 Input
@@ -8801,7 +8942,7 @@ Output
 
  1. If `client`'s [creation
  URL](https://html.spec.whatwg.org/multipage/webappapis.html#concept-environment-creation-url) is not a [potentially trustworthy
- URL](https://www.w3.org/TR/secure-contexts/#potentially-trustworthy-url), [queue a
+ URL](https://w3c.github.io/webappsec-secure-contexts/#potentially-trustworthy-url), [queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to reject `promise` with a
  \"[`SecurityError`](https://webidl.spec.whatwg.org/#securityerror)\"
  [`DOMException`](https://webidl.spec.whatwg.org/#idl-DOMException), on `promise`'s [relevant settings
@@ -8867,10 +9008,8 @@ Output
  5. If `client` is a [window
  client](#dfn-window-client), set `ancestorOriginsList` to
  `browsingContext`'s [active
- document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s [relevant global
- object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global)'s
- [`Location`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#location) object's [ancestor origins
- list](https://html.spec.whatwg.org/multipage/nav-history-apis.html#concept-location-ancestor-origins-list)'s associated list.
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s [ancestor origins
+ list](https://html.spec.whatwg.org/multipage/dom.html#concept-document-ancestor-origins-list)'s associated list.
 
  6. [Queue a
  task](https://html.spec.whatwg.org/multipage/webappapis.html#queue-a-task) to run the following steps on
@@ -9290,8 +9429,9 @@ Output
  [value](#race-response-value) is not \"`pending`\"
 
  3. If `entry`'s
- [value](#race-response-value) is
- [response](https://fetch.spec.whatwg.org/#concept-response), return `entry`'s
+ [value](#race-response-value) is a
+ [response](https://fetch.spec.whatwg.org/#concept-response), return the result of
+ [cloning](https://fetch.spec.whatwg.org/#concept-response-clone) `entry`'s
  [value](#race-response-value).
 
 8. Return null.
