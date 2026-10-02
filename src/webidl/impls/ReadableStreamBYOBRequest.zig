@@ -31,12 +31,16 @@ pub fn deinit(instance: *runtime.Instance) void {
     }
 }
 
-/// `view` - § 4.8.3: Return this.[[view]]. The request keeps the handle.
+/// `view` - § 4.8.3: Return this.[[view]]. The request keeps its handle; a
+/// view result is the binding's (ArrayBufferView.jsHandle), so the view goes
+/// back over a hold of the binding's own.
 pub fn get_view(instance: *runtime.Instance) anyerror!?typedefs.ArrayBufferView {
     const request = srd.byobRequestOf(instance) orelse return error.TypeError;
     const view = request.view orelse return null;
     const info = js.describeView(view) orelse return null;
-    return typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, js.handleOf(view) orelse return null);
+    const borrowed = typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, js.handleOf(view) orelse return null) orelse return null;
+    const kept = try js.toReturnKept(view);
+    return borrowed.withJsHandle(kept.asEngineHandle().?);
 }
 
 /// `respond(bytesWritten)` - § 4.8.3.
@@ -54,8 +58,10 @@ pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) anyerror!voi
 
 /// `respondWithNewView(view)` - § 4.8.3.
 pub fn call_respondWithNewView(instance: *runtime.Instance, view: typedefs.ArrayBufferView) anyerror!void {
+    // The IDL value is a reference to the view object, BORROWED for the call
+    // (the binding releases it); the response keeps only the buffer it
+    // transfers.
     const view_js = js.adoptHandle(try js.Realm.of(instance), view.jsHandle() orelse return error.TypeError);
-    defer js.dispose(view_js);
     const request = srd.byobRequestOf(instance) orelse return error.TypeError;
     // Step 1
     const controller = request.controller orelse return error.TypeError;

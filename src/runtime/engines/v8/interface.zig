@@ -299,11 +299,13 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         if (T == *runtime.CallbackWrapper) break :blk false;
         if (info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn") break :blk false;
 
-        // Buffer sources are views over V8 backing stores, made without the
-        // context (convertAllowSharedBufferSource ignores it, and body
-        // conversion never produces BufferSource's arm at all). Whether the
-        // ARGUMENT handle may go is argHandleIsCopied's question, not this one.
-        if (T == webidl.BufferSource or T == webidl.AllowSharedBufferSource) break :blk false;
+        // Buffer sources are made without the context: a BufferSource or an
+        // ArrayBufferView is a reference to its object (conv.convertBufferSource
+        // reads the kind and the view's Describe, nothing else), and
+        // AllowSharedBufferSource a view over the backing store
+        // (convertAllowSharedBufferSource ignores it). Whether the ARGUMENT
+        // handle may go is argHandleIsCopied's question, not this one.
+        if (T == webidl.BufferSource or T == webidl.ArrayBufferView or T == webidl.AllowSharedBufferSource) break :blk false;
 
         // A self-referential dictionary would recurse without end; past this
         // depth, give the safe answer.
@@ -389,6 +391,12 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // JSValue keeps the pointer it was given (see the test that pins it).
         if (T == runtime.JSValue) break :blk false;
 
+        // A buffer source IS a reference to the object it was converted from:
+        // the handle itself (conv.convertBufferSource), released with the
+        // value (`bufferHandleIsKeptInValue`). Named before the structural
+        // rules, which must never get to call it copied.
+        if (T == webidl.BufferSource or T == webidl.ArrayBufferView) break :blk false;
+
         // A wrapped platform object: the conversion returns the Instance from
         // the wrapper's internal field, and the argument's own handle is not
         // referred to again.
@@ -431,10 +439,12 @@ pub fn argHandleIsCopied(comptime T: type) bool {
 }
 
 /// A dictionary member's conversion may alias the handle Get made for that
-/// member - a JSValue does - but never the dictionary's own.
+/// member - a JSValue does, so does a buffer source (a reference to its
+/// object) or an `object` arm - but never the dictionary's own.
 fn memberHandleIsSafe(comptime T: type) bool {
     if (argHandleIsCopied(T)) return true;
     if (T == runtime.JSValue) return true;
+    if (argumentHandleIsKeptInValue(T)) return true;
     const info = @typeInfo(T);
     if (info == .optional) return memberHandleIsSafe(info.optional.child);
     return false;
@@ -456,10 +466,16 @@ fn memberHandleIsSafe(comptime T: type) bool {
 /// handle or a wrapper, an ArrayBufferView its buffer's - releasing any of
 /// them is a use-after-free. So a type not named here answers FALSE: keep
 /// the handle, keep the leak.
+///
+/// One more is listed: an ArrayBufferView, which conv.toV8Value hands back as
+/// its `js` - a handle the impl handed over. A view result is the binding's,
+/// as a JSValue result's handle is (ArrayBufferView.jsHandle): an impl that
+/// returns a view it keeps (ReadableStreamBYOBRequest.view) or was given
+/// (Crypto.getRandomValues) returns it over a hold of its own.
 pub fn getterValueIsOwned(comptime T: type) bool {
     const owned = [_]type{
-        u8,                u16,                u32,               i8,   i16,  i32, u64, i64, f32, f64, bool,
-        runtime.DOMString, ?runtime.DOMString, runtime.USVString, ?u64, ?i64,
+        u8,                u16,                u32,               i8,   i16,  i32,                    u64, i64, f32, f64, bool,
+        runtime.DOMString, ?runtime.DOMString, runtime.USVString, ?u64, ?i64, webidl.ArrayBufferView,
     };
     inline for (owned) |O| {
         if (T == O) return true;
@@ -576,23 +592,28 @@ pub fn freeBodyInitArg(allocator: std.mem.Allocator, arg: copied_arg_types.BodyI
 /// free-it behaviour, so adding a second non-owning conversion without adding
 /// it here reintroduces the abort.
 pub fn argConversionIsNonOwning(comptime T: type) bool {
-    return T == webidl.buffer_sources.AllowSharedBufferSource or
-        T == webidl.buffer_sources.BufferSource;
+    // BufferSource was listed here while its conversion failed for every
+    // value; it is now a reference to its object (`conv.convertBufferSource`),
+    // which the argument owns until it is freed (`freeConvertedArg`).
+    return T == webidl.buffer_sources.AllowSharedBufferSource;
 }
 
-/// The buffer-source unions `argConversionIsNonOwning` recognises, re-exported
-/// so `tests/v8` can name them: that test target imports `clock`, `host`,
+/// The buffer-source types the ownership rules name, re-exported so
+/// `tests/v8` can name them: that test target imports `clock`, `host`,
 /// `runtime` and `v8`, but not `webidl`.
 pub const non_owning_arg_types = struct {
     pub const AllowSharedBufferSource = webidl.buffer_sources.AllowSharedBufferSource;
     pub const BufferSource = webidl.buffer_sources.BufferSource;
+    pub const ArrayBufferView = webidl.buffer_sources.ArrayBufferView;
 };
 
 /// `conv.fromV8Value`, releasing the argument handle afterwards when
-/// `argHandleIsCopied` can prove that is safe - or, for an `any`
-/// (`anyHandleIsKeptOnlyAsHandle`), when the value it converted to proves it
-/// (`anyConversionKeepsHandle`). The release fires on the error path too,
-/// which is where the handle would otherwise be lost silently.
+/// `argHandleIsCopied` can prove that is safe - or, for a type whose value
+/// says whether it still refers to the handle (`argumentHandleIsKeptInValue`:
+/// an `any`, an `object` union arm, a buffer source), when the value it
+/// converted to proves it (`keptArgumentHandle` is null). The release fires
+/// on the error path too, which is where the handle would otherwise be lost
+/// silently: a failed conversion made nothing that refers to it.
 pub fn convertArgReleasing(
     comptime T: type,
     allocator: std.mem.Allocator,
@@ -605,43 +626,109 @@ pub fn convertArgReleasing(
         return conv.fromV8Value(T, allocator, isolate, context, arg);
     }
     const value = conv.fromV8Value(T, allocator, isolate, context, arg) catch |err| {
-        // A failed `any` conversion made nothing that could refer to it.
-        if (comptime anyHandleIsKeptOnlyAsHandle(T)) v8.v8_Value_Dispose(arg);
+        if (comptime argumentHandleIsKeptInValue(T)) v8.v8_Value_Dispose(arg);
         return err;
     };
-    if (comptime anyHandleIsKeptOnlyAsHandle(T)) {
-        if (!anyConversionKeepsHandle(T, value)) v8.v8_Value_Dispose(arg);
+    if (comptime argumentHandleIsKeptInValue(T)) {
+        if (keptArgumentHandle(T, value) == null) v8.v8_Value_Dispose(arg);
     }
     return value;
 }
 
+/// Is `T` a type whose conversion can keep its argument's handle in exactly
+/// one place, recoverable from the value - so that the VALUE says whether the
+/// handle is still in use (`keptArgumentHandle`)? An ALLOWLIST, as
+/// `argHandleIsCopied` is: anything else keeps the conservative answer (keep
+/// the handle). Two families, released in different places once the call
+/// returns:
+///
+/// - `anyHandleIsKeptOnlyAsHandle`: an `any`, or a union whose only
+///   non-copying arm is `object` - a `.handle` JSValue over the argument's
+///   own Global. Released by `releaseAnyArgument`, for an operation's or a
+///   constructor's argument.
+/// - `bufferHandleIsKeptInValue`: a BufferSource or ArrayBufferView, or a
+///   union whose only non-copying arms are buffer sources - a reference to
+///   the object (WebIDL 3.2.26), the Global it was converted from. Released
+///   with the value itself (`freeConvertedArg`), wherever it sits: an
+///   argument, a dictionary member, a sequence element.
+///
+/// Never true of a type `argHandleIsCopied` accepts - a conversion that copies
+/// keeps nothing - so a caller that releases a copied type's handle and also
+/// asks this question cannot release it twice. BodyInit is the case that
+/// bit: its XMLHttpRequestBodyInit arm holds a BufferSource, but
+/// convertBodyInit copies the bytes, and a RequestInit's `body` member was
+/// released by the dictionary loop's copied rule AND by this one (every
+/// `fetch(url, init)` crashed).
+pub fn argumentHandleIsKeptInValue(comptime T: type) bool {
+    if (comptime argHandleIsCopied(T)) return false;
+    return anyHandleIsKeptOnlyAsHandle(T) or bufferHandleIsKeptInValue(T);
+}
+
+/// The argument handle `value` still refers to, if it does, for a `T` that
+/// `argumentHandleIsKeptInValue` accepts.
+pub fn keptArgumentHandle(comptime T: type, value: T) ?*anyopaque {
+    comptime std.debug.assert(argumentHandleIsKeptInValue(T));
+    if (comptime anyHandleIsKeptOnlyAsHandle(T)) return anyArgumentHandle(T, value);
+    return bufferArgumentHandle(T, value);
+}
+
+/// `T` is a `webidl.Opt` wrapper.
+fn isOptWrapper(comptime T: type) bool {
+    return @typeInfo(T) == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed");
+}
+
+/// The union arm `name` of `T` is WebIDL's `object`: codegen types `object`
+/// as runtime.JSValue and names the arm for it (`conv.fromV8Value`'s union
+/// path matches the same way). A JSValue arm under another name is not one -
+/// CryptoKeyID's and MLNumber's `bigint`.
+fn isObjectArm(comptime T: type, comptime name: []const u8) bool {
+    return @FieldType(T, name) == runtime.JSValue and std.mem.eql(u8, name, "object");
+}
+
 /// Is `T` an `any` - `runtime.JSValue`, nullable, or a `webidl.Opt` of
-/// either - whose conversion can keep its argument's handle in exactly one
-/// place: a `.handle` JSValue?
+/// either - or a union whose `object` arm is its only non-copying arm (or a
+/// nullable or optional one), so that its conversion can keep its argument's
+/// handle in exactly one place: a `.handle` JSValue?
 ///
 /// `conv.fromV8Value`'s JSValue branch makes undefined, null, a boolean or a
 /// number into a Zig value, a string into an owned copy (`.string`), and ONLY
 /// an object, function or symbol into `.handle` over the very handle it was
 /// given ("the argument's own handle ... which the impl borrows for the
-/// call"). A nullable one converts null and undefined to null; a `webidl.Opt`
-/// one converts undefined to "not passed". So for these shapes the value
-/// converted says whether the handle is still referred to - ownership read off
-/// the conversion, not the type (see `argConversionIsNonOwning`).
+/// call"). Its union path gives an `object` arm the same `.handle` (WebIDL
+/// 3.2.25: "the IDL value that is a reference to the object V"), and every
+/// other arm here copies out (`argHandleIsCopied`). A nullable one converts
+/// null and undefined to null; a `webidl.Opt` one converts undefined to "not
+/// passed". So for these shapes the value converted says whether the handle
+/// is still referred to - ownership read off the conversion, not the type
+/// (see `argConversionIsNonOwning`).
 ///
-/// An ALLOWLIST of those four shapes: a union or dictionary that merely
-/// contains an `any` keeps the conservative answer (false: keep the handle).
+/// An ALLOWLIST of those shapes: a union whose JSValue arm is NOT named
+/// `object`, or a dictionary or sequence that merely contains an `any`, keeps
+/// the conservative answer (false: keep the handle).
 pub fn anyHandleIsKeptOnlyAsHandle(comptime T: type) bool {
-    if (T == runtime.JSValue or T == ?runtime.JSValue) return true;
-    if (@typeInfo(T) == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed")) {
-        const Inner = @FieldType(T, "value");
-        return Inner == runtime.JSValue or Inner == ?runtime.JSValue;
-    }
-    return false;
+    return comptime blk: {
+        if (T == runtime.JSValue) break :blk true;
+        const info = @typeInfo(T);
+        if (info == .optional) break :blk anyHandleIsKeptOnlyAsHandle(info.optional.child);
+        if (isOptWrapper(T)) break :blk anyHandleIsKeptOnlyAsHandle(@FieldType(T, "value"));
+        if (info == .@"union" and info.@"union".tag_type != null) {
+            var objects = 0;
+            for (info.@"union".fields) |field| {
+                if (isObjectArm(T, field.name)) {
+                    objects += 1;
+                } else if (!argHandleIsCopied(field.type)) {
+                    break :blk false;
+                }
+            }
+            break :blk objects > 0;
+        }
+        break :blk false;
+    };
 }
 
 /// Whether `value`, converted from an argument handle as a `T` that
 /// `anyHandleIsKeptOnlyAsHandle` accepts, still refers to that handle: true
-/// exactly for a `.handle` JSValue.
+/// exactly for a `.handle` JSValue (an `object` arm's included).
 pub fn anyConversionKeepsHandle(comptime T: type, value: T) bool {
     return anyArgumentHandle(T, value) != null;
 }
@@ -651,14 +738,24 @@ pub fn anyConversionKeepsHandle(comptime T: type, value: T) bool {
 pub fn anyArgumentHandle(comptime T: type, value: T) ?*anyopaque {
     comptime std.debug.assert(anyHandleIsKeptOnlyAsHandle(T));
     if (T == runtime.JSValue) return if (value == .handle) value.handle.ptr else null;
-    if (T == ?runtime.JSValue) return if (value) |v| anyArgumentHandle(runtime.JSValue, v) else null;
-    if (!value.was_passed) return null;
-    return anyArgumentHandle(@FieldType(T, "value"), value.value);
+    const info = @typeInfo(T);
+    if (info == .optional) return if (value) |v| anyArgumentHandle(info.optional.child, v) else null;
+    if (comptime isOptWrapper(T)) {
+        if (!value.was_passed) return null;
+        return anyArgumentHandle(@FieldType(T, "value"), value.value);
+    }
+    switch (value) {
+        inline else => |payload, tag| {
+            if (comptime isObjectArm(T, @tagName(tag))) return anyArgumentHandle(runtime.JSValue, payload);
+            return null;
+        },
+    }
 }
 
-/// Release an operation's or a constructor's `any` argument once the call is
-/// over: the handle `info.get` made, which a `.handle` still refers to (a
-/// primitive's went at conversion, `convertArgReleasing`).
+/// Release an operation's or a constructor's `any` argument - or its
+/// `object` union arm - once the call is over: the handle `info.get` made,
+/// which a `.handle` still refers to (a primitive's went at conversion,
+/// `convertArgReleasing`).
 ///
 /// The argument is BORROWED for the call (AGENTS.md "The engine boundary",
 /// rule 3): an impl that keeps it takes a hold of its own first
@@ -667,13 +764,99 @@ pub fn anyArgumentHandle(comptime T: type, value: T) ?*anyopaque {
 /// that kept the argument - IDBKeyRange's factories, XSLTProcessor's
 /// setParameter, ShadowRoot's adoptedStyleSheets setter - take their own
 /// hold now). Kept, it was one Global per call for the process's life.
+/// `object` arms reached the impls only once their conversion was written
+/// (2026-10-02): AlgorithmIdentifier's, which SubtleCrypto reads during the
+/// call (normalize an algorithm) and never keeps.
 ///
 /// Arguments only: an attribute setter's value, a dictionary's `any` member
 /// and a sequence's element keep today's conservative answer (kept) until
-/// their keepers are read the same way.
+/// their keepers are read the same way. A buffer source is released with the
+/// value instead, by `freeConvertedArg`.
 pub fn releaseAnyArgument(comptime T: type, value: T) void {
     if (comptime !anyHandleIsKeptOnlyAsHandle(T)) return;
     if (anyArgumentHandle(T, value)) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
+}
+
+/// Is `T` a buffer source whose conversion keeps, as the IDL value's
+/// reference to its object (WebIDL 3.2.26), the handle it was converted
+/// from: BufferSource or ArrayBufferView, nullable or a `webidl.Opt` of
+/// either, or a union whose only non-copying arms are buffer sources?
+///
+/// `conv.convertBufferSource` and `conv.convertArrayBufferView` return the
+/// handle they were given as `js` - no clone, no copy of the bytes - and fail
+/// for anything else, keeping nothing. The value says which: a view, an
+/// ArrayBuffer struct, or null / not passed / a copying union arm.
+///
+/// Such a handle is the VALUE's until it is freed: `freeConvertedArg` releases
+/// it, for an argument once the call returns, for a dictionary member or a
+/// sequence element with its dictionary or sequence. The impl BORROWS it for
+/// the call; one that keeps the object past it takes a hold of its own
+/// (`engine.retainValue`). Every impl that took an ArrayBufferView argument
+/// was read for that (2026-10-02): the streams' BYOB read, enqueue and
+/// respondWithNewView disposed it themselves when the value owned a clone,
+/// and now borrow it; the rest (WebGL, RTCDataChannel, PresentationConnection,
+/// Crypto) never kept it. No impl received a BufferSource before - its
+/// conversion was a TypeError for every value.
+pub fn bufferHandleIsKeptInValue(comptime T: type) bool {
+    return comptime blk: {
+        if (T == webidl.BufferSource or T == webidl.ArrayBufferView) break :blk true;
+        // A conversion that copies keeps nothing (BodyInit: convertBodyInit
+        // copies its buffer).
+        if (argHandleIsCopied(T)) break :blk false;
+        const info = @typeInfo(T);
+        if (info == .optional) break :blk bufferHandleIsKeptInValue(info.optional.child);
+        if (isOptWrapper(T)) break :blk bufferHandleIsKeptInValue(@FieldType(T, "value"));
+        if (info == .@"union" and info.@"union".tag_type != null) {
+            var buffers = 0;
+            for (info.@"union".fields) |field| {
+                if (bufferHandleIsKeptInValue(field.type)) {
+                    buffers += 1;
+                } else if (!argHandleIsCopied(field.type)) {
+                    break :blk false;
+                }
+            }
+            break :blk buffers > 0;
+        }
+        break :blk false;
+    };
+}
+
+/// The handle `value` refers to as a buffer source, if it does, for a `T`
+/// that `bufferHandleIsKeptInValue` accepts.
+pub fn bufferArgumentHandle(comptime T: type, value: T) ?*anyopaque {
+    comptime std.debug.assert(bufferHandleIsKeptInValue(T));
+    if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return value.jsHandle();
+    const info = @typeInfo(T);
+    if (info == .optional) return if (value) |v| bufferArgumentHandle(info.optional.child, v) else null;
+    if (comptime isOptWrapper(T)) {
+        if (!value.was_passed) return null;
+        return bufferArgumentHandle(@FieldType(T, "value"), value.value);
+    }
+    switch (value) {
+        inline else => |payload| {
+            if (comptime bufferHandleIsKeptInValue(@TypeOf(payload))) return bufferArgumentHandle(@TypeOf(payload), payload);
+            return null;
+        },
+    }
+}
+
+/// Free a converted buffer source: release the reference it holds (the
+/// handle it was converted from, see `bufferHandleIsKeptInValue`) and, for an
+/// ArrayBuffer, the struct `conv.convertBufferSource` allocated for it. A
+/// value made in Zig (`js` null) holds no handle; an ArrayBuffer struct of
+/// one is its maker's.
+pub fn freeBufferSourceArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
+    if (T == webidl.ArrayBufferView) {
+        if (arg.jsHandle()) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
+        return;
+    }
+    switch (arg) {
+        .array_buffer => |buffer| if (buffer.js) |handle| {
+            v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
+            allocator.destroy(buffer);
+        },
+        .array_buffer_view => |view| freeBufferSourceArg(webidl.ArrayBufferView, allocator, view),
+    }
 }
 
 /// WebIDL [LegacyNullToEmptyString] (3.3.23): the arguments of `fn_name` -
@@ -3368,8 +3551,11 @@ pub fn V8Interface(comptime Interface: type) type {
             if (argConversionIsNonOwning(T)) return false;
             // BodyInit: freed by arm, as its conversion allocated it - before
             // the union rule below, which would take its copied BufferSource
-            // arm for a view (`freeBodyInitArg`).
+            // arm for a reference (`freeBodyInitArg`).
             if (T == copied_arg_types.BodyInit) return true;
+            // A buffer source holds the handle it refers to, and an
+            // ArrayBuffer the struct made for it (`freeBufferSourceArg`).
+            if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return true;
             // Raw string slice - allocated by fromV8Value
             if (T == []const u8) return true;
             // DOMString - allocated by fromV8String
@@ -3449,6 +3635,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
             if (comptime !needsArgCleanup(T)) return;
             if (T == copied_arg_types.BodyInit) return freeBodyInitArg(allocator, arg);
+            if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return freeBufferSourceArg(T, allocator, arg);
 
             if (T == []const u8) {
                 // Only free if it's not the static empty slice and has content
@@ -4073,6 +4260,17 @@ pub fn V8Interface(comptime Interface: type) type {
                         break :blk @ptrCast(v8_obj);
                     },
                 };
+            }
+
+            // An ArrayBufferView result is the binding's, as a JSValue
+            // result's handle is (ArrayBufferView.jsHandle): an impl that
+            // returns a view it was given or keeps returns it over a hold of
+            // its own (`withJsHandle`), since the arguments are released
+            // before this runs. Released once set.
+            if (ReturnType == webidl.ArrayBufferView) {
+                owned.* = true;
+                const js = result.jsHandle() orelse return v8.v8_Undefined(isolate);
+                return @ptrCast(@alignCast(js));
             }
 
             // Handle union types (e.g., ReadableStreamReader)

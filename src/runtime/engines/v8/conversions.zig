@@ -422,7 +422,7 @@ pub fn fromV8Sequence(
         // Get fails only when it threw ("? Get"): the exception is pending.
         const v8_value = v8.v8_Object_Get(@ptrCast(array), context, @ptrCast(index_key)) orelse return ConversionError.ExceptionPending;
         const element = fromV8Value(T, allocator, isolate, context, v8_value) catch |err| {
-            if (comptime interface_mod.argHandleIsCopied(T) or interface_mod.anyHandleIsKeptOnlyAsHandle(T)) v8.v8_Value_Dispose(v8_value);
+            if (comptime interface_mod.argHandleIsCopied(T) or interface_mod.argumentHandleIsKeptInValue(T)) v8.v8_Value_Dispose(v8_value);
             return err;
         };
         releaseElementHandle(T, element, v8_value);
@@ -434,14 +434,16 @@ pub fn fromV8Sequence(
 
 /// Release the handle `element` was converted from, when nothing refers to it
 /// any more: always for a conversion that copies (`argHandleIsCopied`), and
-/// for an `any` unless it converted to `.handle`
-/// (`anyConversionKeepsHandle`). Any other type keeps it - the conservative
-/// answer, as for an argument.
+/// for a type whose value says (`argumentHandleIsKeptInValue`: an `any`, an
+/// `object` arm, a buffer source) unless the value still refers to it
+/// (`keptArgumentHandle`). A buffer source element keeps it until the
+/// sequence is freed (`freeConvertedArg`). Any other type keeps it - the
+/// conservative answer, as for an argument.
 fn releaseElementHandle(comptime T: type, element: T, handle: *v8.Value) void {
     if (comptime interface_mod.argHandleIsCopied(T)) {
         v8.v8_Value_Dispose(handle);
-    } else if (comptime interface_mod.anyHandleIsKeptOnlyAsHandle(T)) {
-        if (!interface_mod.anyConversionKeepsHandle(T, element)) v8.v8_Value_Dispose(handle);
+    } else if (comptime interface_mod.argumentHandleIsKeptInValue(T)) {
+        if (interface_mod.keptArgumentHandle(T, element) == null) v8.v8_Value_Dispose(handle);
     }
 }
 
@@ -698,6 +700,71 @@ fn convertAllowSharedBufferSource(
     }
 
     // Unsupported type
+    return ConversionError.TypeError;
+}
+
+/// WebIDL 3.2.26, converting V to an ArrayBufferView - (Int8Array or ... or
+/// Float64Array or DataView), not [AllowShared] nor [AllowResizable]:
+///
+/// 1-2. V must be an Object with a [[TypedArrayName]] or [[DataView]] internal
+///      slot: anything else is a TypeError.
+/// 3.   IsSharedArrayBuffer(V.[[ViewedArrayBuffer]]) is a TypeError.
+/// 4.   (IsFixedLengthArrayBuffer: not checked - the FFI has no resizable
+///      predicate yet; a view over a resizable buffer converts.)
+/// 5.   "Return the IDL value of type T that is a reference to the same
+///      object as V."
+///
+/// The reference is `value` ITSELF - the handle converted from, no clone. For
+/// an argument that is the binding's `info.get(i)` Global, BORROWED for the
+/// call and released by the binding once the call returns
+/// (`interface.freeConvertedArg`); a dictionary member's or a sequence
+/// element's is the Get handle the conversion made for it, released the same
+/// way with the dictionary or sequence. Nothing about the object is read but
+/// its kind, offset and length: no context, no script.
+fn convertArrayBufferView(value: *v8.Value) ConversionError!typedefs.ArrayBufferView {
+    var info: v8.ViewInfo = undefined;
+    // Steps 1-2: a typed array or a DataView (Describe answers false for
+    // anything else, and for a kind the FFI does not know - Float16Array).
+    if (!v8.v8_ArrayBufferView_Describe(value, &info)) return ConversionError.TypeError;
+    // Step 3: not [AllowShared].
+    if (info.buffer_shared) return ConversionError.TypeError;
+    // Step 5.
+    return typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
+        ConversionError.TypeError;
+}
+
+/// WebIDL 3.2.25 for BufferSource = (ArrayBufferView or ArrayBuffer), whose
+/// flattened member types are ArrayBuffer, DataView and the typed arrays:
+///
+/// - Step 6: V has an [[ArrayBufferData]] slot and IsSharedArrayBuffer(V) is
+///   false - "the result of converting V to ArrayBuffer" (3.2.26: steps 1-2
+///   checked here, step 3 IsFixedLengthArrayBuffer not checked, see
+///   `convertArrayBufferView`; step 4 a reference to the same object).
+/// - Steps 8-9: a DataView or a typed array - `convertArrayBufferView`.
+/// - Step 7: a SharedArrayBuffer matches no member type, and like every other
+///   value (step 20) is a TypeError.
+///
+/// The IDL value is a REFERENCE (`value` itself, BORROWED: see
+/// `convertArrayBufferView`), never a copy and never a slice into the backing
+/// store. WebCrypto's encrypt, sign and digest normalize the algorithm -
+/// running script getters - BEFORE they "get a copy of the bytes held by"
+/// the data (41 WPT sites alter or transfer the buffer in such a getter), so a
+/// copy taken here would read the bytes too early, and a slice could be freed
+/// by the transfer. The impl copies at its spec's step through
+/// `engine.getCopyOfBufferSourceBytes` (a detached buffer reads as empty).
+///
+/// `.array_buffer` points at an ArrayBuffer struct allocated here (`js` the
+/// buffer, no bytes), freed with the argument (`interface.freeConvertedArg`).
+fn convertBufferSource(allocator: std.mem.Allocator, value: *v8.Value) ConversionError!typedefs.BufferSource {
+    // Step 6 (V8's IsArrayBuffer is false for a SharedArrayBuffer).
+    if (v8.v8_Value_IsArrayBuffer(value)) {
+        const buffer = try allocator.create(buffer_sources.ArrayBuffer);
+        buffer.* = .{ .data = &[_]u8{}, .detached = false, .js = @ptrCast(value) };
+        return .{ .array_buffer = buffer };
+    }
+    // Steps 8-9.
+    if (v8.v8_Value_IsArrayBufferView(value)) return .{ .array_buffer_view = try convertArrayBufferView(value) };
+    // Steps 7 and 20.
     return ConversionError.TypeError;
 }
 
@@ -1045,21 +1112,11 @@ pub fn fromV8Value(
         return try convertBodyInit(allocator, isolate, context, value);
     }
 
-    // Handle AllowSharedBufferSource - extract bytes from TypedArray/DataView/ArrayBuffer
-    // WebIDL § 3.2.26: an ArrayBufferView IDL value "is a reference to the
-    // same object as V" - so the result carries the object (an owned Global)
-    // for impls that must detach or re-view its buffer (Streams BYOB). Not
-    // [AllowShared]: a SharedArrayBuffer-backed view is a TypeError.
-    if (T == typedefs.ArrayBufferView) {
-        var info: v8.ViewInfo = undefined;
-        if (!v8.v8_ArrayBufferView_Describe(value, &info)) return ConversionError.TypeError;
-        if (info.buffer_shared) return ConversionError.TypeError;
-        const js = v8.v8_Global_Clone(value) orelse return ConversionError.TypeError;
-        return typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, js) orelse {
-            v8.v8_Global_Dispose(js);
-            return ConversionError.TypeError;
-        };
-    }
+    // WebIDL 3.2.26: a buffer source IDL value "is a reference to the same
+    // object as V" - the handle converted from, not a copy of its bytes and
+    // not a slice into its backing store (see `convertBufferSource`).
+    if (T == typedefs.ArrayBufferView) return convertArrayBufferView(value);
+    if (T == typedefs.BufferSource) return convertBufferSource(allocator, value);
 
     if (T == typedefs.AllowSharedBufferSource) {
         return try convertAllowSharedBufferSource(allocator, value);
@@ -1234,6 +1291,48 @@ pub fn fromV8Value(
             break :blk null;
         };
 
+        // Buffer source arms: BufferSource (its flattened member types are
+        // ArrayBuffer, DataView and the typed arrays) or ArrayBufferView
+        // (DataView and the typed arrays).
+        const buffer_source_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                if (field.type == typedefs.BufferSource) break :blk i;
+            }
+            break :blk null;
+        };
+        const array_buffer_view_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                if (field.type == typedefs.ArrayBufferView) break :blk i;
+            }
+            break :blk null;
+        };
+
+        // The `object` arm: codegen types IDL `object` as runtime.JSValue and
+        // names the arm `object` (AlgorithmIdentifier = (object or
+        // DOMString)). Matched on the name as well as the type: a JSValue arm
+        // under another name is something else - CryptoKeyID's and MLNumber's
+        // `bigint`.
+        const object_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                if (field.type == runtime.JSValue and std.mem.eql(u8, field.name, "object")) break :blk i;
+            }
+            break :blk null;
+        };
+
+        // WebIDL 3.2.25 steps 6, 8 and 9: an ArrayBuffer that is not shared,
+        // a DataView or a typed array goes to the buffer source arm, by that
+        // arm's own conversion - a view over a SharedArrayBuffer is its
+        // TypeError (3.2.26 step 3), not a reason to try the next arm.
+        if (buffer_source_idx) |idx| {
+            if (v8.v8_Value_IsArrayBuffer(value) or v8.v8_Value_IsArrayBufferView(value)) {
+                return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+            }
+        } else if (array_buffer_view_idx) |idx| {
+            if (v8.v8_Value_IsArrayBufferView(value)) {
+                return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+            }
+        }
+
         // Runtime dispatch based on V8 value type
         // Check function FIRST since functions are also objects in JavaScript.
         // WebIDL §3.2.24 step 11: a callable goes to a callback function arm
@@ -1323,6 +1422,21 @@ pub fn fromV8Value(
                 const FieldType = fields[idx].type;
                 const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
                 return @unionInit(T, fields[idx].name, converted);
+            }
+        }
+
+        // WebIDL 3.2.25 steps 5.2, 6.2, 7.2, 8.2, 9.2, 10.2 and 11.7: an
+        // Object no member type above took - a plain object, an array, a
+        // callable, a platform object, a buffer - is "the IDL value that is a
+        // reference to the object V" when the union includes `object`. The
+        // reference is the argument's own handle, as an `any` argument's is:
+        // BORROWED for the call and released by the binding once it returns
+        // (`interface.releaseAnyArgument`). (`object` is not distinguishable
+        // from interface, buffer, callback, dictionary or sequence types, so a
+        // valid union has none of the arms the steps above try first.)
+        if (object_idx) |idx| {
+            if (v8.v8_Value_IsObject(value)) {
+                return @unionInit(T, fields[idx].name, runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } });
             }
         }
 
@@ -1634,16 +1748,18 @@ pub fn fromV8Value(
                     // releases it only for a copying conversion).
                     if (comptime !interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = runtime.JSValue.jsNull;
-                } else if (comptime interface_mod.anyHandleIsKeptOnlyAsHandle(field.type)) {
-                    // An `any` member: kept only when it converted to
-                    // `.handle` (an object, function or symbol); a primitive
-                    // was copied out, and its handle goes now - the rule the
-                    // binding applies to an `any` argument.
+                } else if (comptime interface_mod.argumentHandleIsKeptInValue(field.type)) {
+                    // An `any` member, an `object` arm or a buffer source:
+                    // kept only when the value still refers to it (a `.handle`
+                    // JSValue, a buffer source's reference); a primitive was
+                    // copied out, and its handle goes now - the rule the
+                    // binding applies to such an argument. A buffer source's
+                    // goes when the dictionary is freed (`freeConvertedArg`).
                     const member = fromV8Value(field.type, allocator, isolate, context, field_v8) catch |err| {
                         v8.v8_Value_Dispose(field_v8);
                         return err;
                     };
-                    if (!interface_mod.anyConversionKeepsHandle(field.type, member)) v8.v8_Value_Dispose(field_v8);
+                    if (interface_mod.keptArgumentHandle(field.type, member) == null) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = member;
                 } else {
                     // Convert field value
