@@ -122,6 +122,15 @@ pub const PerformancePaintTiming = struct {
         PerformancePaintTimingImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PerformancePaintTiming")) {
+            if (comptime @hasDecl(impls.PerformancePaintTiming, "installHooks")) impls.PerformancePaintTiming.installHooks();
+        }
+    }
+
     pub fn get_paintTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformancePaintTimingImpl.get_paintTime(instance);
     }

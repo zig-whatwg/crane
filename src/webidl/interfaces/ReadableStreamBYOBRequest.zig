@@ -98,6 +98,15 @@ pub const ReadableStreamBYOBRequest = struct {
         ReadableStreamBYOBRequestImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ReadableStreamBYOBRequest")) {
+            if (comptime @hasDecl(impls.ReadableStreamBYOBRequest, "installHooks")) impls.ReadableStreamBYOBRequest.installHooks();
+        }
+    }
+
     pub fn get_view(instance: *runtime.Instance) anyerror!?ArrayBufferView {
         return try ReadableStreamBYOBRequestImpl.get_view(instance);
     }

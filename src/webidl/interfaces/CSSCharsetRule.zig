@@ -90,6 +90,15 @@ pub const CSSCharsetRule = struct {
         CSSCharsetRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSCharsetRule")) {
+            if (comptime @hasDecl(impls.CSSCharsetRule, "installHooks")) impls.CSSCharsetRule.installHooks();
+        }
+    }
+
     pub fn get_encoding(instance: *runtime.Instance) anyerror!DOMString {
         return try CSSCharsetRuleImpl.get_encoding(instance);
     }

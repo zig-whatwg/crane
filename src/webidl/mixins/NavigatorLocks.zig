@@ -14,6 +14,15 @@ const LockManager = @import("interfaces").LockManager;
 
 pub const impl = @import("impls").NavigatorLocks;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorLocks")) {
+        if (comptime @hasDecl(impls.NavigatorLocks, "installHooks")) impls.NavigatorLocks.installHooks();
+    }
+}
+
 pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return try NavigatorLocksImpl.get_locks(instance);
 }

@@ -118,6 +118,15 @@ pub const CSSStyleRule = struct {
         CSSStyleRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSStyleRule")) {
+            if (comptime @hasDecl(impls.CSSStyleRule, "installHooks")) impls.CSSStyleRule.installHooks();
+        }
+    }
+
     pub fn get_selectorText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSStyleRuleImpl.get_selectorText(instance);
     }

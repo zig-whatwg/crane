@@ -166,6 +166,15 @@ pub const IDBObjectStore = struct {
         IDBObjectStoreImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "IDBObjectStore")) {
+            if (comptime @hasDecl(impls.IDBObjectStore, "installHooks")) impls.IDBObjectStore.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try IDBObjectStoreImpl.get_name(instance);
     }

@@ -112,6 +112,15 @@ pub const IdentityCredential = struct {
         IdentityCredentialImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "IdentityCredential")) {
+            if (comptime @hasDecl(impls.IdentityCredential, "installHooks")) impls.IdentityCredential.installHooks();
+        }
+    }
+
     pub fn get_token(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IdentityCredentialImpl.get_token(instance);
     }

@@ -123,6 +123,15 @@ pub const RTCSctpTransport = struct {
         RTCSctpTransportImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RTCSctpTransport")) {
+            if (comptime @hasDecl(impls.RTCSctpTransport, "installHooks")) impls.RTCSctpTransport.installHooks();
+        }
+    }
+
     pub fn get_transport(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCSctpTransportImpl.get_transport(instance);
     }

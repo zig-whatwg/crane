@@ -47,6 +47,8 @@ fn expectString(expected: []const u8, actual: runtime.DOMString) !void {
 }
 
 test "a foreign element the adapter makes is an element with the token's namespace and local name" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();
@@ -74,6 +76,8 @@ test "a foreign element the adapter makes is an element with the token's namespa
 }
 
 test "a comment the adapter makes is a comment node" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();
@@ -90,6 +94,8 @@ test "a comment the adapter makes is a comment node" {
 }
 
 test "a doctype the adapter makes has the token's name, public ID and system ID, and \"\" for a missing one" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     var fixture: Fixture = undefined;
     try fixture.init();
     defer fixture.deinit();

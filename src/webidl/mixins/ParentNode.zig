@@ -17,6 +17,16 @@ const HTMLCollection = @import("interfaces").HTMLCollection;
 const DOMString = @import("typedefs").DOMString;
 
 pub const impl = @import("impls").ParentNode;
+
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "ParentNode")) {
+        if (comptime @hasDecl(impls.ParentNode, "installHooks")) impls.ParentNode.installHooks();
+    }
+}
+
 pub const NodeOrString = impl.NodeOrString;
 
 /// Extended attributes: [SameObject]

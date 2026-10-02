@@ -153,6 +153,15 @@ pub const HIDDevice = struct {
         HIDDeviceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "HIDDevice")) {
+            if (comptime @hasDecl(impls.HIDDevice, "installHooks")) impls.HIDDevice.installHooks();
+        }
+    }
+
     pub fn get_oninputreport(instance: *runtime.Instance) anyerror!EventHandler {
         return try HIDDeviceImpl.get_oninputreport(instance);
     }

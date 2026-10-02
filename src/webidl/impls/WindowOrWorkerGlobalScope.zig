@@ -284,6 +284,437 @@ pub fn call_clearTimeout(instance: *runtime.Instance, id: webidl.Opt(i32)) anyer
     return error.NotImplemented;
 }
 
+// One call, from the moment the fetch starts until it is entirely over:
+// the fetch's client, the task that settles p, and the abort steps on
+// requestObject's signal - which outlive p's settling, since the body is
+// still arriving and an abort then errors it.
+//
+// Two things hold it, each letting go once: the fetch, until it is over
+// (`finished`), gone (`gone`) or aborted; and the settle task, from
+// `done` until it runs (or its `drop`). The last to let go frees it.
+const FetchCall = struct {
+    const fetch = @import("fetch");
+    const fetch_objects = @import("dom").fetch_objects;
+    const abort_algorithms = @import("dom").abort_algorithms;
+
+    allocator: std.mem.Allocator,
+    /// The relevant realm's runtime context. A page that ends RETIRES its
+    /// context rather than freeing it, and empties it - `engine_ctx`
+    /// becomes null - which is how `alive` tells that the realm is gone.
+    ctx: runtime.Context,
+    /// p's capability, this call's until p is settled or its realm is
+    /// gone. Keeping it keeps p, and so the realm, alive while the fetch
+    /// is in flight.
+    capability: engine.PromiseCapability,
+    outcome: ?(fetch.algorithms.FetchError!fetch.algorithms.FetchResult) = null,
+    /// The fetch, from start until it ends (`done` or `gone`) or is
+    /// aborted.
+    in_flight: ?*fetch.algorithms.AsyncFetch = null,
+    /// requestObject's signal while this call's abort steps are on it,
+    /// as (address, slab generation).
+    signal: ?*runtime.Instance = null,
+    signal_generation: u64 = 0,
+    /// Keeps that signal alive for as long as this call. requestObject
+    /// goes when fetch() returns, and with it its own pin, but DOM
+    /// § 3.3.1: a signal with source signals and abort algorithms must
+    /// not be collected - `controller.abort()` reaches the abort steps
+    /// through it. The generation check stays for a pin that could not
+    /// be taken (no isolate).
+    signal_pin: same_object.Pin = .{},
+    /// Step 9's locallyAborted.
+    locally_aborted: bool = false,
+    /// "Abort a document" canceled this call's fetch (`abortIn`).
+    document_aborted: bool = false,
+    /// The request's keepalive flag: such a fetch outlives its document
+    /// (`abortIn` leaves it).
+    keepalive: bool = false,
+    /// p is settled (or never will be), and its resolver released.
+    settled: bool = false,
+    /// The fetch holds this call, until it lets go.
+    fetch_holds: bool = true,
+    /// A settle task holds this call, until it runs.
+    task_holds: bool = false,
+    /// While requestObject's body is read from its stream to be sent:
+    /// the read, and the request waiting for its bytes. The fetch
+    /// starts once they are all read (`uploadRead`). Until then the
+    /// read stands for the fetch in `fetch_holds`.
+    upload: ?*fetch_body.ReadAll = null,
+    pending_request: ?*fetch.internal.InternalRequest = null,
+
+    const Self = @This();
+
+    fn client(self: *Self) fetch.algorithms.AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = alive, .gone = gone, .finished = finished };
+    }
+
+    fn alive(context: *anyopaque) bool {
+        const self: *Self = @ptrCast(@alignCast(context));
+        return self.ctx.engine_ctx != null;
+    }
+
+    /// The realm went away with the fetch in flight; the fetch has been
+    /// terminated. Nothing is left to settle.
+    fn gone(context: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.in_flight = null;
+        self.fetch_holds = false;
+        self.maybeRelease();
+    }
+
+    /// The fetch is over - its body ended, or nobody read it - after p
+    /// was settled. An abort now has nothing to abort.
+    fn finished(context: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.in_flight = null;
+        self.fetch_holds = false;
+        self.maybeRelease();
+    }
+
+    /// Fetch has its response: queue the fetch task that runs
+    /// processResponse (step 12) - a global task on the networking task
+    /// source, given relevantRealm's global object. A window's realm has
+    /// an event loop. A worker's has none of its own and runs its tasks
+    /// as timers on the page's, so its task is one; a realm with neither
+    /// is in the event loop's network step already, a task boundary, and
+    /// settles now.
+    fn done(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        // The fetch is still this call's: its body is arriving, and the
+        // abort steps can still end it.
+        self.outcome = outcome;
+        self.task_holds = true;
+        if (self.ctx.getOptionalEventLoop()) |loop| {
+            loop.queueTask(.{ .callback = settle, .context = self, .drop = drop });
+            return;
+        }
+        if (self.ctx.getOptionalTimer()) |timer| {
+            if (timer.setTimeout(0, settle, self) != 0) return;
+        }
+        settle(self);
+    }
+
+    /// The fetch task: HTML "queue a global task", its run side - it runs
+    /// in the realm, which ends it (a worker's end of task too).
+    fn settle(context: ?*anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context.?));
+        // The realm can end while the task waits in the queue. And
+        // processResponse step 1: if locallyAborted is true, abort these
+        // steps - the abort steps settled p already.
+        if (!alive(self) or self.locally_aborted) return self.taskDone();
+        // An error means the steps never ran (the realm is gone): the
+        // task is over either way.
+        engine.runTaskInRealm(self.ctx, settleSteps, self) catch {};
+        self.taskDone();
+    }
+
+    fn settleSteps(data: ?*anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(data.?));
+        self.processResponse();
+    }
+
+    /// processResponse, given fetch's outcome.
+    fn processResponse(self: *Self) void {
+        const outcome = self.outcome orelse return;
+        self.outcome = null;
+        var result = outcome catch return self.rejectTypeError("Failed to fetch");
+        result.timing_info.deinit();
+        const response = result.response;
+
+        // Step 3: a network error rejects p with a TypeError.
+        if (response.response_type == .@"error") {
+            response.deinit();
+            return self.rejectTypeError("Failed to fetch");
+        }
+
+        // Step 4: responseObject is the result of creating a Response
+        // object given response, "immutable" and relevantRealm - the
+        // filtered response main fetch made, which is all script sees.
+        response.applyFilter();
+        const response_object = interfaces.Response.call_constructor(self.ctx, webidl.Opt(?typedefs.BodyInit).notPassed(), webidl.Opt(dictionaries.ResponseInit).notPassed()) catch {
+            response.deinit();
+            return self.rejectTypeError("Failed to fetch");
+        };
+        if (!fetch_objects.adoptResponse(response_object, @ptrCast(response), .immutable)) {
+            response.deinit();
+            return self.rejectTypeError("Failed to fetch");
+        }
+        // The abort steps name responseObject from here: an abort after
+        // this errors its body (step 11.4's "abort the fetch() call",
+        // step 5) - also once this call is over, so the response carries
+        // the signal itself.
+        if (self.liveSignal()) |signal| _ = fetch_objects.followSignal(response_object, signal);
+
+        // Step 5: resolve p with responseObject - its wrapper in its
+        // relevant realm.
+        engine.resolvePromise(&self.capability, .{ .instance = response_object }) catch {};
+        self.settleResolver();
+    }
+
+    /// p is settled: its capability has done its job. Holding it longer
+    /// keeps p, and through it the realm, for nothing.
+    fn settleResolver(self: *Self) void {
+        if (self.settled) return;
+        self.settled = true;
+        engine.releasePromiseCapability(&self.capability);
+    }
+
+    fn rejectTypeError(self: *Self, message: []const u8) void {
+        if (self.settled) return;
+        const reason = engine.createSimpleException(self.ctx, .TypeError, message) catch return self.settleResolver();
+        defer reason.release();
+        engine.rejectPromise(&self.capability, reason.value) catch {};
+        self.settleResolver();
+    }
+
+    /// Step 11's abort steps, run when requestObject's signal is
+    /// aborted - from script (`controller.abort()`), or from a task
+    /// (`AbortSignal.timeout()`), either way inside the realm.
+    fn aborted(context: *anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        const signal = self.liveSignal();
+        // The signal empties its abort algorithms as it runs them, so
+        // there is nothing to remove from it any more.
+        self.signal = null;
+
+        // Step 11.1: Set locallyAborted to true.
+        self.locally_aborted = true;
+
+        // Step 11.4's "abort the fetch() call", step 2: cancel request's
+        // body with the reason, while it is being read to be sent - the
+        // stream's source hears it at once. (A body of bytes has nothing
+        // script can see to cancel.)
+        if (self.upload) |u| {
+            self.upload = null;
+            if (self.pending_request) |r| r.deinit();
+            self.pending_request = null;
+            const cancel_realm = streams_js.Realm.ofContext(self.ctx) catch null;
+            const reason: ?streams_js.Value = if (signal) |s| blk: {
+                // The getter's result is a hold of ours; the Value
+                // takes its own.
+                const value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(s) catch break :blk null };
+                defer value.release();
+                const r = cancel_realm orelse break :blk null;
+                break :blk r.fromRuntime(value.value) catch null;
+            } else null;
+            if (reason) |r| {
+                defer streams_js.dispose(r);
+                u.cancel(r);
+            } else if (cancel_realm) |r| {
+                const undef = r.undefinedValue() catch null;
+                if (undef) |v| {
+                    defer streams_js.dispose(v);
+                    u.cancel(v);
+                }
+            }
+            self.fetch_holds = false;
+        }
+
+        // Step 11.3: Abort controller with the signal's abort reason -
+        // the fetch ends here, its transfer cancelled, and a body still
+        // arriving errors with that reason: step 11.4's "abort the
+        // fetch() call" step 5, "error response's body with error", once
+        // responseObject exists, reaches the body's stream through its
+        // pipe.
+        if (self.in_flight) |f| {
+            self.in_flight = null;
+            f.terminateWith(self.abortFailure(signal));
+            self.fetch_holds = false;
+        }
+
+        // Step 11.4, step 1: reject p with the reason - a no-op once p
+        // is settled.
+        if (!self.settled) {
+            if (signal) |s| self.rejectWithAbortReason(s);
+        }
+        self.maybeRelease();
+    }
+
+    /// The failure a body errors with when the fetch is aborted: the
+    /// signal's abort reason, held for as long as the body needs it.
+    fn abortFailure(self: *Self, signal: ?*runtime.Instance) fetch.algorithms.async_fetch.Failure {
+        const s = signal orelse return .{ .kind = .aborted };
+        // The getter's result is a hold of ours; AbortReason takes its own.
+        const reason_value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(s) catch return .{ .kind = .aborted } };
+        defer reason_value.release();
+        const held = fetch_body.AbortReason.create(self.ctx, reason_value.value) orelse return .{ .kind = .aborted };
+        return .{ .kind = .aborted, .reason = held, .release_reason = fetch_body.AbortReason.release };
+    }
+
+    fn rejectWithAbortReason(self: *Self, signal: *runtime.Instance) void {
+        // The getter's result is a hold of ours.
+        const reason_value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(signal) catch return };
+        defer reason_value.release();
+        engine.rejectPromise(&self.capability, reason_value.value) catch {};
+    }
+
+    fn liveSignal(self: *const Self) ?*runtime.Instance {
+        const signal = self.signal orelse return null;
+        if (runtime.SlabAllocator.generationOf(signal) != self.signal_generation) return null;
+        return signal;
+    }
+
+    /// requestObject's body is read: it is the request's body now, and
+    /// the fetch starts.
+    fn uploadRead(context: *anyopaque, bytes: []const u8) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.upload = null;
+        const request = self.pending_request orelse return self.startFailed();
+        self.pending_request = null;
+        // A body made from a ReadableStream: its source is null (Fetch
+        // "extract a body"), which is what HTTP-network fetch and
+        // HTTP-redirect fetch ask of it. Its bytes are here already.
+        const body = fetch.internal.Body.fromSource(self.allocator, .none, bytes.len) catch {
+            request.deinit();
+            return self.startFailed();
+        };
+        body.data.appendSlice(self.allocator, bytes) catch {
+            body.deinit();
+            request.deinit();
+            return self.startFailed();
+        };
+        if (request.body) |old| switch (old) {
+            .body => |b| b.deinit(),
+            .bytes => {},
+        };
+        request.body = .{ .body = body };
+        // The fetch owns the request from here, and frees it on failure.
+        self.in_flight = fetch.algorithms.AsyncFetch.startStreaming(self.allocator, request, .{}, fetch.network.scheduler.threadScheduler(), self.client()) catch
+            return self.startFailed();
+    }
+
+    /// requestObject's body could not be read - its stream errored, or a
+    /// chunk was no Uint8Array: a network error. Or the read was dropped
+    /// (`e` null): the realm is going, its stream torn down, and nothing
+    /// may be made in it - p is let go unsettled, as `gone` does.
+    fn uploadFailed(context: *anyopaque, e: ?streams_js.Value) void {
+        const self: *Self = @ptrCast(@alignCast(context));
+        self.upload = null;
+        if (self.pending_request) |r| r.deinit();
+        self.pending_request = null;
+        if (e == null) {
+            self.settleResolver();
+            self.fetch_holds = false;
+            return self.maybeRelease();
+        }
+        self.startFailed();
+    }
+
+    /// The fetch never started: p rejects with a TypeError, as for a
+    /// network error, and the fetch lets go of this call.
+    fn startFailed(self: *Self) void {
+        self.rejectTypeError("Failed to fetch");
+        self.fetch_holds = false;
+        self.maybeRelease();
+    }
+
+    /// A task that will never run: its loop is going.
+    fn drop(context: ?*anyopaque) void {
+        const self: *Self = @ptrCast(@alignCast(context.?));
+        self.taskDone();
+    }
+
+    fn taskDone(self: *Self) void {
+        self.task_holds = false;
+        // A response the task did not adopt goes: its body with it,
+        // which lets the transfer go too.
+        if (self.outcome) |outcome| {
+            self.outcome = null;
+            var result = outcome catch null;
+            if (result) |*r| r.deinit();
+        }
+        self.settleResolver();
+        self.maybeRelease();
+    }
+
+    fn maybeRelease(self: *Self) void {
+        if (self.fetch_holds or self.task_holds) return;
+        if (self.liveSignal()) |signal| abort_algorithms.remove(signal, self);
+        self.signal = null;
+        self.signal_pin.release();
+        if (self.outcome) |outcome| {
+            var result = outcome catch null;
+            if (result) |*r| r.deinit();
+        }
+        self.settleResolver();
+        self.untrack();
+        self.allocator.destroy(self);
+    }
+
+    /// Every call on this thread whose fetch is under way, for "abort a
+    /// document" (`abortIn`).
+    threadlocal var live: std.ArrayListUnmanaged(*Self) = .empty;
+
+    fn track(self: *Self) void {
+        live.append(std.heap.page_allocator, self) catch {};
+    }
+
+    fn untrack(self: *Self) void {
+        for (live.items, 0..) |c, i| {
+            if (c != self) continue;
+            _ = live.swapRemove(i);
+            return;
+        }
+    }
+
+    /// HTML "abort a document" step 2, for the fetches fetch() started in
+    /// `realm` (dom.document_fetches): "cancel any instances of the fetch
+    /// algorithm in the context of document, discarding any tasks queued
+    /// for them, and discarding any further data received from the
+    /// network for them". p never settles, and its capability - which
+    /// kept the realm - goes. Blink: FetchManager::ContextDestroyed.
+    fn abortIn(realm: runtime.Context) void {
+        // Backwards: a cancel frees its call, which swapRemove replaces
+        // with one already visited.
+        var i = live.items.len;
+        while (i > 0) {
+            i -= 1;
+            if (i >= live.items.len) continue;
+            const call = live.items[i];
+            if (call.ctx != realm or call.document_aborted) continue;
+            // Fetch "when a fetch group is terminated", step 1: a record
+            // whose request's keepalive is true is not terminated - it is
+            // meant to outlive its document (a beacon, a fetch made in
+            // unload; fetch/api/redirect/redirect-keepalive.any.js).
+            if (call.keepalive) continue;
+            call.cancelForDocument();
+        }
+    }
+
+    fn cancelForDocument(self: *Self) void {
+        self.document_aborted = true;
+        // A settle task still queued does nothing when it runs (or is
+        // dropped): processResponse step 1's locallyAborted check.
+        self.locally_aborted = true;
+        // The body being read to be sent: its stream is canceled.
+        if (self.upload) |u| {
+            self.upload = null;
+            if (self.pending_request) |r| r.deinit();
+            self.pending_request = null;
+            if (streams_js.Realm.ofContext(self.ctx) catch null) |r| {
+                if (r.undefinedValue() catch null) |v| {
+                    defer streams_js.dispose(v);
+                    u.cancel(v);
+                }
+            }
+            self.fetch_holds = false;
+        }
+        if (self.in_flight) |f| {
+            self.in_flight = null;
+            f.terminate();
+            self.fetch_holds = false;
+        }
+        self.settleResolver();
+        self.maybeRelease();
+    }
+};
+
+/// The hooks this mixin owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated mixin module (docs/instances.md):
+/// "abort a document" reaches fetch()'s calls through `FetchCall.live`.
+pub fn installHooks() void {
+    @import("dom").document_fetches.install(&FetchCall.abortIn);
+}
+
 /// Operation: fetch
 ///
 /// The fetch runs on the event loop (`fetch.algorithms.AsyncFetch`): this
@@ -296,425 +727,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     const abort_algorithms = @import("dom").abort_algorithms;
     const allocator = instance.ctx.allocator;
 
-    // One call, from the moment the fetch starts until it is entirely over:
-    // the fetch's client, the task that settles p, and the abort steps on
-    // requestObject's signal - which outlive p's settling, since the body is
-    // still arriving and an abort then errors it.
-    //
-    // Two things hold it, each letting go once: the fetch, until it is over
-    // (`finished`), gone (`gone`) or aborted; and the settle task, from
-    // `done` until it runs (or its `drop`). The last to let go frees it.
-    const Call = struct {
-        allocator: std.mem.Allocator,
-        /// The relevant realm's runtime context. A page that ends RETIRES its
-        /// context rather than freeing it, and empties it - `engine_ctx`
-        /// becomes null - which is how `alive` tells that the realm is gone.
-        ctx: runtime.Context,
-        /// p's capability, this call's until p is settled or its realm is
-        /// gone. Keeping it keeps p, and so the realm, alive while the fetch
-        /// is in flight.
-        capability: engine.PromiseCapability,
-        outcome: ?(fetch.algorithms.FetchError!fetch.algorithms.FetchResult) = null,
-        /// The fetch, from start until it ends (`done` or `gone`) or is
-        /// aborted.
-        in_flight: ?*fetch.algorithms.AsyncFetch = null,
-        /// requestObject's signal while this call's abort steps are on it,
-        /// as (address, slab generation).
-        signal: ?*runtime.Instance = null,
-        signal_generation: u64 = 0,
-        /// Keeps that signal alive for as long as this call. requestObject
-        /// goes when fetch() returns, and with it its own pin, but DOM
-        /// § 3.3.1: a signal with source signals and abort algorithms must
-        /// not be collected - `controller.abort()` reaches the abort steps
-        /// through it. The generation check stays for a pin that could not
-        /// be taken (no isolate).
-        signal_pin: same_object.Pin = .{},
-        /// Step 9's locallyAborted.
-        locally_aborted: bool = false,
-        /// "Abort a document" canceled this call's fetch (`abortIn`).
-        document_aborted: bool = false,
-        /// The request's keepalive flag: such a fetch outlives its document
-        /// (`abortIn` leaves it).
-        keepalive: bool = false,
-        /// p is settled (or never will be), and its resolver released.
-        settled: bool = false,
-        /// The fetch holds this call, until it lets go.
-        fetch_holds: bool = true,
-        /// A settle task holds this call, until it runs.
-        task_holds: bool = false,
-        /// While requestObject's body is read from its stream to be sent:
-        /// the read, and the request waiting for its bytes. The fetch
-        /// starts once they are all read (`uploadRead`). Until then the
-        /// read stands for the fetch in `fetch_holds`.
-        upload: ?*fetch_body.ReadAll = null,
-        pending_request: ?*fetch.internal.InternalRequest = null,
-
-        const Self = @This();
-
-        fn client(self: *Self) fetch.algorithms.AsyncFetch.Client {
-            return .{ .context = self, .done = done, .alive = alive, .gone = gone, .finished = finished };
-        }
-
-        fn alive(context: *anyopaque) bool {
-            const self: *Self = @ptrCast(@alignCast(context));
-            return self.ctx.engine_ctx != null;
-        }
-
-        /// The realm went away with the fetch in flight; the fetch has been
-        /// terminated. Nothing is left to settle.
-        fn gone(context: *anyopaque) void {
-            const self: *Self = @ptrCast(@alignCast(context));
-            self.in_flight = null;
-            self.fetch_holds = false;
-            self.maybeRelease();
-        }
-
-        /// The fetch is over - its body ended, or nobody read it - after p
-        /// was settled. An abort now has nothing to abort.
-        fn finished(context: *anyopaque) void {
-            const self: *Self = @ptrCast(@alignCast(context));
-            self.in_flight = null;
-            self.fetch_holds = false;
-            self.maybeRelease();
-        }
-
-        /// Fetch has its response: queue the fetch task that runs
-        /// processResponse (step 12) - a global task on the networking task
-        /// source, given relevantRealm's global object. A window's realm has
-        /// an event loop. A worker's has none of its own and runs its tasks
-        /// as timers on the page's, so its task is one; a realm with neither
-        /// is in the event loop's network step already, a task boundary, and
-        /// settles now.
-        fn done(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
-            const self: *Self = @ptrCast(@alignCast(context));
-            // The fetch is still this call's: its body is arriving, and the
-            // abort steps can still end it.
-            self.outcome = outcome;
-            self.task_holds = true;
-            if (self.ctx.getOptionalEventLoop()) |loop| {
-                loop.queueTask(.{ .callback = settle, .context = self, .drop = drop });
-                return;
-            }
-            if (self.ctx.getOptionalTimer()) |timer| {
-                if (timer.setTimeout(0, settle, self) != 0) return;
-            }
-            settle(self);
-        }
-
-        /// The fetch task: HTML "queue a global task", its run side - it runs
-        /// in the realm, which ends it (a worker's end of task too).
-        fn settle(context: ?*anyopaque) void {
-            const self: *Self = @ptrCast(@alignCast(context.?));
-            // The realm can end while the task waits in the queue. And
-            // processResponse step 1: if locallyAborted is true, abort these
-            // steps - the abort steps settled p already.
-            if (!alive(self) or self.locally_aborted) return self.taskDone();
-            // An error means the steps never ran (the realm is gone): the
-            // task is over either way.
-            engine.runTaskInRealm(self.ctx, settleSteps, self) catch {};
-            self.taskDone();
-        }
-
-        fn settleSteps(data: ?*anyopaque) void {
-            const self: *Self = @ptrCast(@alignCast(data.?));
-            self.processResponse();
-        }
-
-        /// processResponse, given fetch's outcome.
-        fn processResponse(self: *Self) void {
-            const outcome = self.outcome orelse return;
-            self.outcome = null;
-            var result = outcome catch return self.rejectTypeError("Failed to fetch");
-            result.timing_info.deinit();
-            const response = result.response;
-
-            // Step 3: a network error rejects p with a TypeError.
-            if (response.response_type == .@"error") {
-                response.deinit();
-                return self.rejectTypeError("Failed to fetch");
-            }
-
-            // Step 4: responseObject is the result of creating a Response
-            // object given response, "immutable" and relevantRealm - the
-            // filtered response main fetch made, which is all script sees.
-            response.applyFilter();
-            const response_object = interfaces.Response.call_constructor(self.ctx, webidl.Opt(?typedefs.BodyInit).notPassed(), webidl.Opt(dictionaries.ResponseInit).notPassed()) catch {
-                response.deinit();
-                return self.rejectTypeError("Failed to fetch");
-            };
-            if (!fetch_objects.adoptResponse(response_object, @ptrCast(response), .immutable)) {
-                response.deinit();
-                return self.rejectTypeError("Failed to fetch");
-            }
-            // The abort steps name responseObject from here: an abort after
-            // this errors its body (step 11.4's "abort the fetch() call",
-            // step 5) - also once this call is over, so the response carries
-            // the signal itself.
-            if (self.liveSignal()) |signal| _ = fetch_objects.followSignal(response_object, signal);
-
-            // Step 5: resolve p with responseObject - its wrapper in its
-            // relevant realm.
-            engine.resolvePromise(&self.capability, .{ .instance = response_object }) catch {};
-            self.settleResolver();
-        }
-
-        /// p is settled: its capability has done its job. Holding it longer
-        /// keeps p, and through it the realm, for nothing.
-        fn settleResolver(self: *Self) void {
-            if (self.settled) return;
-            self.settled = true;
-            engine.releasePromiseCapability(&self.capability);
-        }
-
-        fn rejectTypeError(self: *Self, message: []const u8) void {
-            if (self.settled) return;
-            const reason = engine.createSimpleException(self.ctx, .TypeError, message) catch return self.settleResolver();
-            defer reason.release();
-            engine.rejectPromise(&self.capability, reason.value) catch {};
-            self.settleResolver();
-        }
-
-        /// Step 11's abort steps, run when requestObject's signal is
-        /// aborted - from script (`controller.abort()`), or from a task
-        /// (`AbortSignal.timeout()`), either way inside the realm.
-        fn aborted(context: *anyopaque) void {
-            const self: *Self = @ptrCast(@alignCast(context));
-            const signal = self.liveSignal();
-            // The signal empties its abort algorithms as it runs them, so
-            // there is nothing to remove from it any more.
-            self.signal = null;
-
-            // Step 11.1: Set locallyAborted to true.
-            self.locally_aborted = true;
-
-            // Step 11.4's "abort the fetch() call", step 2: cancel request's
-            // body with the reason, while it is being read to be sent - the
-            // stream's source hears it at once. (A body of bytes has nothing
-            // script can see to cancel.)
-            if (self.upload) |u| {
-                self.upload = null;
-                if (self.pending_request) |r| r.deinit();
-                self.pending_request = null;
-                const cancel_realm = streams_js.Realm.ofContext(self.ctx) catch null;
-                const reason: ?streams_js.Value = if (signal) |s| blk: {
-                    // The getter's result is a hold of ours; the Value
-                    // takes its own.
-                    const value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(s) catch break :blk null };
-                    defer value.release();
-                    const r = cancel_realm orelse break :blk null;
-                    break :blk r.fromRuntime(value.value) catch null;
-                } else null;
-                if (reason) |r| {
-                    defer streams_js.dispose(r);
-                    u.cancel(r);
-                } else if (cancel_realm) |r| {
-                    const undef = r.undefinedValue() catch null;
-                    if (undef) |v| {
-                        defer streams_js.dispose(v);
-                        u.cancel(v);
-                    }
-                }
-                self.fetch_holds = false;
-            }
-
-            // Step 11.3: Abort controller with the signal's abort reason -
-            // the fetch ends here, its transfer cancelled, and a body still
-            // arriving errors with that reason: step 11.4's "abort the
-            // fetch() call" step 5, "error response's body with error", once
-            // responseObject exists, reaches the body's stream through its
-            // pipe.
-            if (self.in_flight) |f| {
-                self.in_flight = null;
-                f.terminateWith(self.abortFailure(signal));
-                self.fetch_holds = false;
-            }
-
-            // Step 11.4, step 1: reject p with the reason - a no-op once p
-            // is settled.
-            if (!self.settled) {
-                if (signal) |s| self.rejectWithAbortReason(s);
-            }
-            self.maybeRelease();
-        }
-
-        /// The failure a body errors with when the fetch is aborted: the
-        /// signal's abort reason, held for as long as the body needs it.
-        fn abortFailure(self: *Self, signal: ?*runtime.Instance) fetch.algorithms.async_fetch.Failure {
-            const s = signal orelse return .{ .kind = .aborted };
-            // The getter's result is a hold of ours; AbortReason takes its own.
-            const reason_value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(s) catch return .{ .kind = .aborted } };
-            defer reason_value.release();
-            const held = fetch_body.AbortReason.create(self.ctx, reason_value.value) orelse return .{ .kind = .aborted };
-            return .{ .kind = .aborted, .reason = held, .release_reason = fetch_body.AbortReason.release };
-        }
-
-        fn rejectWithAbortReason(self: *Self, signal: *runtime.Instance) void {
-            // The getter's result is a hold of ours.
-            const reason_value: engine.Owned = .{ .value = interfaces.AbortSignal.get_reason(signal) catch return };
-            defer reason_value.release();
-            engine.rejectPromise(&self.capability, reason_value.value) catch {};
-        }
-
-        fn liveSignal(self: *const Self) ?*runtime.Instance {
-            const signal = self.signal orelse return null;
-            if (runtime.SlabAllocator.generationOf(signal) != self.signal_generation) return null;
-            return signal;
-        }
-
-        /// requestObject's body is read: it is the request's body now, and
-        /// the fetch starts.
-        fn uploadRead(context: *anyopaque, bytes: []const u8) void {
-            const self: *Self = @ptrCast(@alignCast(context));
-            self.upload = null;
-            const request = self.pending_request orelse return self.startFailed();
-            self.pending_request = null;
-            // A body made from a ReadableStream: its source is null (Fetch
-            // "extract a body"), which is what HTTP-network fetch and
-            // HTTP-redirect fetch ask of it. Its bytes are here already.
-            const body = fetch.internal.Body.fromSource(self.allocator, .none, bytes.len) catch {
-                request.deinit();
-                return self.startFailed();
-            };
-            body.data.appendSlice(self.allocator, bytes) catch {
-                body.deinit();
-                request.deinit();
-                return self.startFailed();
-            };
-            if (request.body) |old| switch (old) {
-                .body => |b| b.deinit(),
-                .bytes => {},
-            };
-            request.body = .{ .body = body };
-            // The fetch owns the request from here, and frees it on failure.
-            self.in_flight = fetch.algorithms.AsyncFetch.startStreaming(self.allocator, request, .{}, fetch.network.scheduler.threadScheduler(), self.client()) catch
-                return self.startFailed();
-        }
-
-        /// requestObject's body could not be read - its stream errored, or a
-        /// chunk was no Uint8Array: a network error. Or the read was dropped
-        /// (`e` null): the realm is going, its stream torn down, and nothing
-        /// may be made in it - p is let go unsettled, as `gone` does.
-        fn uploadFailed(context: *anyopaque, e: ?streams_js.Value) void {
-            const self: *Self = @ptrCast(@alignCast(context));
-            self.upload = null;
-            if (self.pending_request) |r| r.deinit();
-            self.pending_request = null;
-            if (e == null) {
-                self.settleResolver();
-                self.fetch_holds = false;
-                return self.maybeRelease();
-            }
-            self.startFailed();
-        }
-
-        /// The fetch never started: p rejects with a TypeError, as for a
-        /// network error, and the fetch lets go of this call.
-        fn startFailed(self: *Self) void {
-            self.rejectTypeError("Failed to fetch");
-            self.fetch_holds = false;
-            self.maybeRelease();
-        }
-
-        /// A task that will never run: its loop is going.
-        fn drop(context: ?*anyopaque) void {
-            const self: *Self = @ptrCast(@alignCast(context.?));
-            self.taskDone();
-        }
-
-        fn taskDone(self: *Self) void {
-            self.task_holds = false;
-            // A response the task did not adopt goes: its body with it,
-            // which lets the transfer go too.
-            if (self.outcome) |outcome| {
-                self.outcome = null;
-                var result = outcome catch null;
-                if (result) |*r| r.deinit();
-            }
-            self.settleResolver();
-            self.maybeRelease();
-        }
-
-        fn maybeRelease(self: *Self) void {
-            if (self.fetch_holds or self.task_holds) return;
-            if (self.liveSignal()) |signal| abort_algorithms.remove(signal, self);
-            self.signal = null;
-            self.signal_pin.release();
-            if (self.outcome) |outcome| {
-                var result = outcome catch null;
-                if (result) |*r| r.deinit();
-            }
-            self.settleResolver();
-            self.untrack();
-            self.allocator.destroy(self);
-        }
-
-        /// Every call on this thread whose fetch is under way, for "abort a
-        /// document" (`abortIn`).
-        threadlocal var live: std.ArrayListUnmanaged(*Self) = .empty;
-
-        fn track(self: *Self) void {
-            live.append(std.heap.page_allocator, self) catch {};
-        }
-
-        fn untrack(self: *Self) void {
-            for (live.items, 0..) |c, i| {
-                if (c != self) continue;
-                _ = live.swapRemove(i);
-                return;
-            }
-        }
-
-        /// HTML "abort a document" step 2, for the fetches fetch() started in
-        /// `realm` (dom.document_fetches): "cancel any instances of the fetch
-        /// algorithm in the context of document, discarding any tasks queued
-        /// for them, and discarding any further data received from the
-        /// network for them". p never settles, and its capability - which
-        /// kept the realm - goes. Blink: FetchManager::ContextDestroyed.
-        fn abortIn(realm: runtime.Context) void {
-            // Backwards: a cancel frees its call, which swapRemove replaces
-            // with one already visited.
-            var i = live.items.len;
-            while (i > 0) {
-                i -= 1;
-                if (i >= live.items.len) continue;
-                const call = live.items[i];
-                if (call.ctx != realm or call.document_aborted) continue;
-                // Fetch "when a fetch group is terminated", step 1: a record
-                // whose request's keepalive is true is not terminated - it is
-                // meant to outlive its document (a beacon, a fetch made in
-                // unload; fetch/api/redirect/redirect-keepalive.any.js).
-                if (call.keepalive) continue;
-                call.cancelForDocument();
-            }
-        }
-
-        fn cancelForDocument(self: *Self) void {
-            self.document_aborted = true;
-            // A settle task still queued does nothing when it runs (or is
-            // dropped): processResponse step 1's locallyAborted check.
-            self.locally_aborted = true;
-            // The body being read to be sent: its stream is canceled.
-            if (self.upload) |u| {
-                self.upload = null;
-                if (self.pending_request) |r| r.deinit();
-                self.pending_request = null;
-                if (streams_js.Realm.ofContext(self.ctx) catch null) |r| {
-                    if (r.undefinedValue() catch null) |v| {
-                        defer streams_js.dispose(v);
-                        u.cancel(v);
-                    }
-                }
-                self.fetch_holds = false;
-            }
-            if (self.in_flight) |f| {
-                self.in_flight = null;
-                f.terminate();
-                self.fetch_holds = false;
-            }
-            self.settleResolver();
-            self.maybeRelease();
-        }
-    };
+    const Call = FetchCall;
 
     // Step 8: relevantRealm, this's relevant realm.
     const realm = try streams_js.Realm.of(instance);
@@ -781,8 +794,6 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     // may not, so it fetches a clone: nothing script can observe tells the
     // two apart, since the fetch changes only request's current URL.
     const fetched_request = try request.clone();
-    // Scheme fetch "blob" reads the blob URL store through this.
-    fetch_body.installBlobURLResolver();
     // Fetch "populate request from client": the request's client is this
     // global's settings object.
     populateRequestFromClient(instance, fetched_request) catch {
@@ -821,7 +832,6 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
     capability_taken = true;
     // "Abort a document" reaches the call from here (dom.document_fetches).
     call.track();
-    @import("dom").document_fetches.install(&Call.abortIn);
 
     // Step 11: Add the abort steps to requestObject's signal. Without them
     // the call still settles; it just cannot be aborted.

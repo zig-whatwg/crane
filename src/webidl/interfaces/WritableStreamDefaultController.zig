@@ -95,6 +95,15 @@ pub const WritableStreamDefaultController = struct {
         WritableStreamDefaultControllerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WritableStreamDefaultController")) {
+            if (comptime @hasDecl(impls.WritableStreamDefaultController, "installHooks")) impls.WritableStreamDefaultController.installHooks();
+        }
+    }
+
     pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try WritableStreamDefaultControllerImpl.get_signal(instance);
     }

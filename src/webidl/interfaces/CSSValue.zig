@@ -126,6 +126,15 @@ pub const CSSValue = struct {
         CSSValueImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSValue")) {
+            if (comptime @hasDecl(impls.CSSValue, "installHooks")) impls.CSSValue.installHooks();
+        }
+    }
+
     pub fn get_cssText(instance: *runtime.Instance) anyerror!DOMString {
         return try CSSValueImpl.get_cssText(instance);
     }

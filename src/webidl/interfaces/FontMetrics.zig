@@ -142,6 +142,15 @@ pub const FontMetrics = struct {
         FontMetricsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "FontMetrics")) {
+            if (comptime @hasDecl(impls.FontMetrics, "installHooks")) impls.FontMetrics.installHooks();
+        }
+    }
+
     pub fn get_width(instance: *runtime.Instance) anyerror!f64 {
         return try FontMetricsImpl.get_width(instance);
     }

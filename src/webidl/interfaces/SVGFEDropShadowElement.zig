@@ -286,6 +286,15 @@ pub const SVGFEDropShadowElement = struct {
         SVGFEDropShadowElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFEDropShadowElement")) {
+            if (comptime @hasDecl(impls.SVGFEDropShadowElement, "installHooks")) impls.SVGFEDropShadowElement.installHooks();
+        }
+    }
+
     pub fn get_in1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEDropShadowElementImpl.get_in1(instance);
     }

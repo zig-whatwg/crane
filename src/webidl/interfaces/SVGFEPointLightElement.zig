@@ -248,6 +248,15 @@ pub const SVGFEPointLightElement = struct {
         SVGFEPointLightElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFEPointLightElement")) {
+            if (comptime @hasDecl(impls.SVGFEPointLightElement, "installHooks")) impls.SVGFEPointLightElement.installHooks();
+        }
+    }
+
     pub fn get_x(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEPointLightElementImpl.get_x(instance);
     }

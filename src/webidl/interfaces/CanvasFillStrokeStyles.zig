@@ -117,6 +117,15 @@ pub const CanvasFillStrokeStyles = struct {
         CanvasFillStrokeStylesImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CanvasFillStrokeStyles")) {
+            if (comptime @hasDecl(impls.CanvasFillStrokeStyles, "installHooks")) impls.CanvasFillStrokeStyles.installHooks();
+        }
+    }
+
     pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CanvasFillStrokeStylesImpl.get_strokeStyle(instance);
     }

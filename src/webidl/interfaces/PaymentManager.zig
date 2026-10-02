@@ -101,6 +101,15 @@ pub const PaymentManager = struct {
         PaymentManagerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PaymentManager")) {
+            if (comptime @hasDecl(impls.PaymentManager, "installHooks")) impls.PaymentManager.installHooks();
+        }
+    }
+
     pub fn get_userHint(instance: *runtime.Instance) anyerror!DOMString {
         return try PaymentManagerImpl.get_userHint(instance);
     }

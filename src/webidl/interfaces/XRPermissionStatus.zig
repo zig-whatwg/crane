@@ -106,6 +106,15 @@ pub const XRPermissionStatus = struct {
         XRPermissionStatusImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRPermissionStatus")) {
+            if (comptime @hasDecl(impls.XRPermissionStatus, "installHooks")) impls.XRPermissionStatus.installHooks();
+        }
+    }
+
     pub fn get_granted(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRPermissionStatusImpl.get_granted(instance);
     }

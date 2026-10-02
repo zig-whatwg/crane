@@ -88,6 +88,15 @@ pub const Animatable = struct {
         AnimatableImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Animatable")) {
+            if (comptime @hasDecl(impls.Animatable, "installHooks")) impls.Animatable.installHooks();
+        }
+    }
+
     pub fn call_getAnimations(instance: *runtime.Instance, options: webidl.Opt(GetAnimationsOptions)) anyerror!runtime.JSValue {
         return try AnimatableImpl.call_getAnimations(instance, options);
     }

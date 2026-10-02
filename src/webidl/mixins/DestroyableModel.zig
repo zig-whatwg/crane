@@ -13,6 +13,15 @@ const dictionaries = @import("dictionaries");
 
 pub const impl = @import("impls").DestroyableModel;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "DestroyableModel")) {
+        if (comptime @hasDecl(impls.DestroyableModel, "installHooks")) impls.DestroyableModel.installHooks();
+    }
+}
+
 pub fn call_destroy(instance: *runtime.Instance) anyerror!void {
     return try DestroyableModelImpl.call_destroy(instance);
 }

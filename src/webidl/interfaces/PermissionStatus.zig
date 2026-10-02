@@ -117,6 +117,15 @@ pub const PermissionStatus = struct {
         PermissionStatusImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PermissionStatus")) {
+            if (comptime @hasDecl(impls.PermissionStatus, "installHooks")) impls.PermissionStatus.installHooks();
+        }
+    }
+
     pub fn get_state(instance: *runtime.Instance) anyerror!PermissionState {
         return try PermissionStatusImpl.get_state(instance);
     }

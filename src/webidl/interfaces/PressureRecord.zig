@@ -122,6 +122,15 @@ pub const PressureRecord = struct {
         PressureRecordImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PressureRecord")) {
+            if (comptime @hasDecl(impls.PressureRecord, "installHooks")) impls.PressureRecord.installHooks();
+        }
+    }
+
     pub fn get_source(instance: *runtime.Instance) anyerror!PressureSource {
         return try PressureRecordImpl.get_source(instance);
     }

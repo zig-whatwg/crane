@@ -112,6 +112,15 @@ pub const LayoutFragment = struct {
         LayoutFragmentImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "LayoutFragment")) {
+            if (comptime @hasDecl(impls.LayoutFragment, "installHooks")) impls.LayoutFragment.installHooks();
+        }
+    }
+
     pub fn get_inlineSize(instance: *runtime.Instance) anyerror!f64 {
         return try LayoutFragmentImpl.get_inlineSize(instance);
     }

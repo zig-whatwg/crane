@@ -92,6 +92,15 @@ pub const XRJointPose = struct {
         XRJointPoseImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRJointPose")) {
+            if (comptime @hasDecl(impls.XRJointPose, "installHooks")) impls.XRJointPose.installHooks();
+        }
+    }
+
     pub fn get_radius(instance: *runtime.Instance) anyerror!f32 {
         return try XRJointPoseImpl.get_radius(instance);
     }

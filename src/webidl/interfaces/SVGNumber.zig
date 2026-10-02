@@ -90,6 +90,15 @@ pub const SVGNumber = struct {
         SVGNumberImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGNumber")) {
+            if (comptime @hasDecl(impls.SVGNumber, "installHooks")) impls.SVGNumber.installHooks();
+        }
+    }
+
     pub fn get_value(instance: *runtime.Instance) anyerror!f32 {
         return try SVGNumberImpl.get_value(instance);
     }

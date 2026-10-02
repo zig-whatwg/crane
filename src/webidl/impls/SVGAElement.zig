@@ -22,6 +22,13 @@ pub const ImplError = error{
 /// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Its activation behaviour: following its hyperlink (dom.activation).
+    @import("dom").activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -29,8 +36,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Its activation behaviour: following its hyperlink (dom.activation).
-    @import("dom").activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     // TODO: Initialize your instance state here if needed
     return instance;
@@ -53,13 +58,6 @@ fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) vo
     const has_xlink_href = interfaces.Element.call_hasAttributeNS(target, runtime.DOMString.initInterned(xlink_namespace), runtime.DOMString.initInterned("href")) catch false;
     if (!has_href and !has_xlink_href) return;
     const navigables = @import("dom").navigables;
-    // The navigables are the iframe's to run; a page that never made an
-    // iframe has not installed them yet.
-    if (!navigables.isInstalled()) {
-        const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse return;
-        const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
-        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-    }
     // "With userInvolvement set to event's user navigation involvement."
     navigables.followHyperlink(target, @import("html").user_activation.userNavigationInvolvement(event));
 }

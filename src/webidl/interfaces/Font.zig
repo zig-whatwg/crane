@@ -93,6 +93,15 @@ pub const Font = struct {
         FontImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Font")) {
+            if (comptime @hasDecl(impls.Font, "installHooks")) impls.Font.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try FontImpl.get_name(instance);
     }

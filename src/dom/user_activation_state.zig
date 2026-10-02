@@ -4,7 +4,7 @@
 //! They are the Window's own state, and no IDL member sets them - the
 //! activation notification, activation consumption and history-action
 //! consumption do (src/html/user_activation.zig). So Window installs this
-//! hook from its init, and the algorithms reach the timestamps through it,
+//! hook from its installHooks, and the algorithms reach the timestamps through it,
 //! without importing Window.
 //!
 //! A timestamp is milliseconds on the process's shared monotonic clock
@@ -17,6 +17,7 @@
 //! lint-impls: hook for Window
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const clock = @import("clock");
 
@@ -42,11 +43,12 @@ pub const Implementation = struct {
     set: *const fn (window: *runtime.Instance, timestamps: Timestamps) void,
 };
 
-/// Per thread, like the Windows themselves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by Window's init. Idempotent: every call installs the same functions.
+/// Called by Window's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

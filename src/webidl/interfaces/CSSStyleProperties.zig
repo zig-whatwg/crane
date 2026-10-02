@@ -103,6 +103,15 @@ pub const CSSStyleProperties = struct {
         CSSStylePropertiesImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSStyleProperties")) {
+            if (comptime @hasDecl(impls.CSSStyleProperties, "installHooks")) impls.CSSStyleProperties.installHooks();
+        }
+    }
+
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn get_cssFloat(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSStylePropertiesImpl.get_cssFloat(instance);

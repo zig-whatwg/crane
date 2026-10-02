@@ -40,6 +40,10 @@
 pub const Browser = @import("Browser.zig").Browser;
 pub const BrowserConfig = @import("Browser.zig").BrowserConfig;
 
+/// What every Browser shares, started once before any (docs/instances.md).
+pub const process = @import("process.zig");
+pub const Process = process.Process;
+
 pub const Context = @import("Context.zig").Context;
 pub const ContextType = @import("Context.zig").ContextType;
 
@@ -55,6 +59,7 @@ pub const SessionStorage = storage.SessionStorage;
 
 test {
     _ = @import("Browser.zig");
+    _ = @import("process.zig");
     _ = @import("Context.zig");
     _ = @import("navigation.zig");
     _ = @import("storage/Storage.zig");

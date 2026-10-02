@@ -103,6 +103,15 @@ pub const Crypto = struct {
         CryptoImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Crypto")) {
+            if (comptime @hasDecl(impls.Crypto, "installHooks")) impls.Crypto.installHooks();
+        }
+    }
+
     /// Extended attributes: [SecureContext]
     pub fn get_subtle(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CryptoImpl.get_subtle(instance);

@@ -14,6 +14,15 @@ const Storage = @import("interfaces").Storage;
 
 pub const impl = @import("impls").WindowLocalStorage;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "WindowLocalStorage")) {
+        if (comptime @hasDecl(impls.WindowLocalStorage, "installHooks")) impls.WindowLocalStorage.installHooks();
+    }
+}
+
 pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return try WindowLocalStorageImpl.get_localStorage(instance);
 }

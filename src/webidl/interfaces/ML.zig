@@ -94,6 +94,15 @@ pub const ML = struct {
         MLImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ML")) {
+            if (comptime @hasDecl(impls.ML, "installHooks")) impls.ML.installHooks();
+        }
+    }
+
     pub fn call_createContext(instance: *runtime.Instance, options: webidl.Opt(MLContextOptions)) anyerror!runtime.JSValue {
         return try MLImpl.call_createContext(instance, options);
     }

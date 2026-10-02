@@ -62,31 +62,7 @@ const host = @import("host");
 const Storage = storage_mod.Storage;
 /// The page agent's event loop - the host's (HTML 8.1.7).
 const EventLoop = @import("event_loop.zig").EventLoop;
-
-/// Where a snapshot is looked for, first to last. The build's own output
-/// comes first: a `whatwg_snapshot.bin` in the current directory - one that
-/// was tracked in git from January to September 2026 - won over it, and
-/// every run from the repository root restored that stale snapshot against
-/// the running build's callback table. A candidate the engine refuses (no
-/// build stamp, not a valid blob, another build's external references) is
-/// skipped, not taken because it exists.
-const DEFAULT_SNAPSHOT_PATHS = [_][]const u8{
-    "zig-out/bin/whatwg_snapshot.bin", // Zig build output (highest priority)
-    "whatwg_snapshot.bin", // Current directory
-    "../whatwg_snapshot.bin", // Parent directory (for tests run from subdirs)
-};
-
-/// The first of `candidates` that `usable` accepts, in order, or null.
-fn firstUsableSnapshot(
-    context: anytype,
-    candidates: []const []const u8,
-    comptime usable: fn (@TypeOf(context), []const u8) bool,
-) ?[]const u8 {
-    for (candidates) |path| {
-        if (usable(context, path)) return path;
-    }
-    return null;
-}
+const Process = @import("process.zig").Process;
 
 /// A similar-origin window agent's host hooks: HostPromiseRejectionTracker
 /// and "notify about rejected promises" (html/rejected_promises.zig), and
@@ -101,45 +77,6 @@ const window_agent_hooks: engine.HostHooks = blk: {
     hooks.importMetaResolve = html.script_execution.module_hooks.importMetaResolve;
     break :blk hooks;
 };
-
-/// The engine, started with the snapshot of the first candidate it takes
-/// (engine.initializeEngine refuses a blob this build cannot restore).
-const EngineStart = struct {
-    allocator: std.mem.Allocator,
-    /// The accepted snapshot's bytes, OWNED by `allocator` and lent to the
-    /// engine until deinitializeEngine: V8 deserializes from them lazily.
-    snapshot: ?[]u8 = null,
-
-    /// Start the engine with the snapshot at `path`, if it reads and the
-    /// engine takes it.
-    fn offer(self: *EngineStart, path: []const u8) bool {
-        const bytes = readSnapshot(self.allocator, path) orelse return false;
-        engine.initializeEngine(.{ .snapshot = bytes }) catch {
-            self.allocator.free(bytes);
-            return false;
-        };
-        self.snapshot = bytes;
-        return true;
-    }
-};
-
-/// The file's bytes, or null when it cannot be read. OWNED by `allocator`.
-fn readSnapshot(allocator: std.mem.Allocator, path: []const u8) ?[]u8 {
-    const io = host.io();
-    const file = host.cwd().openFile(io, path, .{}) catch return null;
-    defer file.close(io);
-    const stat = file.stat(io) catch return null;
-    const bytes = allocator.alloc(u8, stat.size) catch return null;
-    const read = file.readPositionalAll(io, bytes, 0) catch {
-        allocator.free(bytes);
-        return null;
-    };
-    if (read != stat.size) {
-        allocator.free(bytes);
-        return null;
-    }
-    return bytes;
-}
 
 /// Browser configuration options
 pub const BrowserConfig = struct {
@@ -176,9 +113,6 @@ pub const Browser = struct {
     event_loop: ?*EventLoop,
     /// Whether isolate was created from a snapshot (affects context initialization)
     used_snapshot: bool,
-    /// The snapshot the engine made the agent from (EngineStart.snapshot):
-    /// freed after the agent is destroyed and the engine has forgotten it.
-    snapshot_bytes: ?[]u8 = null,
     /// The user agent's cookie jar: one for every window, frame and worker
     /// this Browser runs. Fetch sends and stores through it, and
     /// document.cookie and cookieStore read and write it; a realm reaches it
@@ -201,8 +135,16 @@ pub const Browser = struct {
     /// Note: The snapshot contains V8 builtins only. WebIDL interfaces are registered
     /// at runtime on each context creation.
     pub fn init(allocator: std.mem.Allocator, config: BrowserConfig) !*Browser {
+        // What every Browser shares - the engine, the snapshot, every hook -
+        // is the process's, started once before any Browser (process.zig). A
+        // host that has not started it gets it started here, for the
+        // process's life.
+        Process.ensureStarted(.{ .snapshot_path = config.snapshot_path }) catch return error.V8InitFailed;
+
         // The network's process-wide state - curl, and the connection pool
-        // every fetch shares - held for this Browser's life (`deinit`).
+        // every fetch shares - held for this Browser's life (`deinit`). It
+        // stays here until curl's global init is split from the pool, which
+        // must close with the last Browser (process.zig).
         try @import("fetch").network.globalInit();
         errdefer @import("fetch").network.globalCleanup();
 
@@ -210,19 +152,10 @@ pub const Browser = struct {
         runtime.initializeRuntime(allocator);
         errdefer runtime.deinitializeRuntime();
 
-        // The engine and the snapshot its agents are made from: the first
-        // candidate the engine takes, or none (engine.initializeEngine). On
-        // V8 it sets the RUNTIME flags, not the snapshot generator's:
-        // `--predictable` and `--hash-seed=0` are generation-time determinism
-        // knobs, and applying them here turned off V8's own parallelism,
-        // pinned Math.random() to a fixed sequence and removed hash-flooding
-        // protection in every browser this code has ever started.
-        var start: EngineStart = .{ .allocator = allocator };
-        startEngine(&start, config.snapshot_path);
-        errdefer if (start.snapshot) |bytes| allocator.free(bytes);
-        if (start.snapshot == null) engine.initializeEngine(.{}) catch return error.V8InitFailed;
-        errdefer engine.deinitializeEngine();
-        const from_snapshot = start.snapshot != null;
+        // Agents are made from the process's snapshot, unless this Browser
+        // asked for none (an empty snapshot_path).
+        const no_snapshot = if (config.snapshot_path) |path| path.len == 0 else false;
+        const from_snapshot = Process.hasSnapshot() and !no_snapshot;
         if (config.log_performance) {
             std.log.info("Browser starting {s} a snapshot", .{if (from_snapshot) "from" else "without"});
         }
@@ -238,7 +171,7 @@ pub const Browser = struct {
             .allocator = allocator,
         }) catch return error.V8InitFailed;
 
-        return initBrowserWithAgent(allocator, agent, from_snapshot, config, start.snapshot);
+        return initBrowserWithAgent(allocator, agent, from_snapshot, config);
     }
 
     /// Complete browser initialization with its agent.
@@ -247,7 +180,6 @@ pub const Browser = struct {
         agent: *engine.Agent,
         used_snapshot: bool,
         config: BrowserConfig,
-        snapshot_bytes: ?[]u8,
     ) !*Browser {
         errdefer engine.destroyAgent(agent);
 
@@ -273,7 +205,6 @@ pub const Browser = struct {
             .initialized = true,
             .event_loop = event_loop,
             .used_snapshot = used_snapshot,
-            .snapshot_bytes = snapshot_bytes,
             .cookie_jar = cookiestore.CookieJar.init(allocator),
         };
 
@@ -283,18 +214,6 @@ pub const Browser = struct {
         try browser.navigate(initial_url, .window);
 
         return browser;
-    }
-
-    /// Start the engine with the configured snapshot, or the first of
-    /// DEFAULT_SNAPSHOT_PATHS the engine takes; an empty configured path
-    /// means none. `start.snapshot` is null when no snapshot was taken, and
-    /// the engine is not started then.
-    fn startEngine(start: *EngineStart, config_path: ?[]const u8) void {
-        if (config_path) |path| {
-            if (path.len > 0) _ = start.offer(path);
-            return;
-        }
-        _ = firstUsableSnapshot(start, &DEFAULT_SNAPSHOT_PATHS, EngineStart.offer);
     }
 
     /// Deinitialize the browser and release all resources
@@ -354,11 +273,6 @@ pub const Browser = struct {
             // containers retired while a Window might still read them
             // (BrowsingContext.discard) can finally be freed.
             @import("html").window.browsing_context.BrowsingContext.freeRetired();
-
-            // The snapshot outlives the isolate - V8 deserializes from it
-            // lazily - and the engine forgets it before it is freed.
-            engine.deinitializeEngine();
-            if (self.snapshot_bytes) |bytes| self.allocator.free(bytes);
         }
 
         // Cleanup WebIDL runtime
@@ -585,25 +499,6 @@ pub const Browser = struct {
         return self.used_snapshot;
     }
 };
-
-test "the build's own snapshot is looked for first, and a refused candidate is skipped" {
-    try std.testing.expectEqualStrings("zig-out/bin/whatwg_snapshot.bin", DEFAULT_SNAPSHOT_PATHS[0]);
-    const Only = struct {
-        fn accepts(accepted: []const u8, path: []const u8) bool {
-            return std.mem.eql(u8, accepted, path);
-        }
-    };
-    // The build output is refused here, so the next candidate is taken.
-    try std.testing.expectEqualStrings(
-        "whatwg_snapshot.bin",
-        firstUsableSnapshot(@as([]const u8, "whatwg_snapshot.bin"), &DEFAULT_SNAPSHOT_PATHS, Only.accepts).?,
-    );
-    try std.testing.expectEqualStrings(
-        "zig-out/bin/whatwg_snapshot.bin",
-        firstUsableSnapshot(@as([]const u8, "zig-out/bin/whatwg_snapshot.bin"), &DEFAULT_SNAPSHOT_PATHS, Only.accepts).?,
-    );
-    try std.testing.expect(firstUsableSnapshot(@as([]const u8, "nowhere.bin"), &DEFAULT_SNAPSHOT_PATHS, Only.accepts) == null);
-}
 
 test "Browser - basic lifecycle" {
     const testing = std.testing;

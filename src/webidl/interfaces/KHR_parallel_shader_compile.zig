@@ -101,4 +101,13 @@ pub const KHR_parallel_shader_compile = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         KHR_parallel_shader_compileImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "KHR_parallel_shader_compile")) {
+            if (comptime @hasDecl(impls.KHR_parallel_shader_compile, "installHooks")) impls.KHR_parallel_shader_compile.installHooks();
+        }
+    }
 };

@@ -103,6 +103,15 @@ pub const ImageBitmapRenderingContext = struct {
         ImageBitmapRenderingContextImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ImageBitmapRenderingContext")) {
+            if (comptime @hasDecl(impls.ImageBitmapRenderingContext, "installHooks")) impls.ImageBitmapRenderingContext.installHooks();
+        }
+    }
+
     pub fn get_canvas(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ImageBitmapRenderingContextImpl.get_canvas(instance);
     }

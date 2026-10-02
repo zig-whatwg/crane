@@ -135,6 +135,15 @@ pub const GeolocationCoordinates = struct {
         GeolocationCoordinatesImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GeolocationCoordinates")) {
+            if (comptime @hasDecl(impls.GeolocationCoordinates, "installHooks")) impls.GeolocationCoordinates.installHooks();
+        }
+    }
+
     pub fn get_accuracy(instance: *runtime.Instance) anyerror!f64 {
         return try GeolocationCoordinatesImpl.get_accuracy(instance);
     }

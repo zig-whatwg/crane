@@ -228,6 +228,15 @@ pub const GPUSupportedLimits = struct {
         GPUSupportedLimitsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUSupportedLimits")) {
+            if (comptime @hasDecl(impls.GPUSupportedLimits, "installHooks")) impls.GPUSupportedLimits.installHooks();
+        }
+    }
+
     pub fn get_maxTextureDimension1D(instance: *runtime.Instance) anyerror!u32 {
         return try GPUSupportedLimitsImpl.get_maxTextureDimension1D(instance);
     }

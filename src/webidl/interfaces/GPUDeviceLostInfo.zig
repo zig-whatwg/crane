@@ -98,6 +98,15 @@ pub const GPUDeviceLostInfo = struct {
         GPUDeviceLostInfoImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUDeviceLostInfo")) {
+            if (comptime @hasDecl(impls.GPUDeviceLostInfo, "installHooks")) impls.GPUDeviceLostInfo.installHooks();
+        }
+    }
+
     pub fn get_reason(instance: *runtime.Instance) anyerror!GPUDeviceLostReason {
         return try GPUDeviceLostInfoImpl.get_reason(instance);
     }

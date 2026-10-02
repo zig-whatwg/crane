@@ -104,6 +104,15 @@ pub const XRRay = struct {
         XRRayImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRRay")) {
+            if (comptime @hasDecl(impls.XRRay, "installHooks")) impls.XRRay.installHooks();
+        }
+    }
+
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(origin, direction)

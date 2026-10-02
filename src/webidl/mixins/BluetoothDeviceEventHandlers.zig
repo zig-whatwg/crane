@@ -14,6 +14,15 @@ const EventHandler = @import("typedefs").EventHandler;
 
 pub const impl = @import("impls").BluetoothDeviceEventHandlers;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "BluetoothDeviceEventHandlers")) {
+        if (comptime @hasDecl(impls.BluetoothDeviceEventHandlers, "installHooks")) impls.BluetoothDeviceEventHandlers.installHooks();
+    }
+}
+
 pub fn get_onadvertisementreceived(instance: *runtime.Instance) anyerror!EventHandler {
     return try BluetoothDeviceEventHandlersImpl.get_onadvertisementreceived(instance);
 }

@@ -112,6 +112,15 @@ pub const Plugin = struct {
         PluginImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Plugin")) {
+            if (comptime @hasDecl(impls.Plugin, "installHooks")) impls.Plugin.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!DOMString {
         return try PluginImpl.get_name(instance);
     }

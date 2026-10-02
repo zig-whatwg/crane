@@ -95,6 +95,15 @@ pub const StyleSheetList = struct {
         StyleSheetListImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "StyleSheetList")) {
+            if (comptime @hasDecl(impls.StyleSheetList, "installHooks")) impls.StyleSheetList.installHooks();
+        }
+    }
+
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try StyleSheetListImpl.get_length(instance);
     }

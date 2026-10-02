@@ -12,3 +12,12 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 
 pub const impl = @import("impls").GPUCommandsMixin;
+
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "GPUCommandsMixin")) {
+        if (comptime @hasDecl(impls.GPUCommandsMixin, "installHooks")) impls.GPUCommandsMixin.installHooks();
+    }
+}

@@ -137,6 +137,15 @@ pub const SpeechSynthesis = struct {
         SpeechSynthesisImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SpeechSynthesis")) {
+            if (comptime @hasDecl(impls.SpeechSynthesis, "installHooks")) impls.SpeechSynthesis.installHooks();
+        }
+    }
+
     pub fn get_pending(instance: *runtime.Instance) anyerror!bool {
         return try SpeechSynthesisImpl.get_pending(instance);
     }

@@ -150,6 +150,15 @@ pub const Location = struct {
         LocationImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Location")) {
+            if (comptime @hasDecl(impls.Location, "installHooks")) impls.Location.installHooks();
+        }
+    }
+
     /// Extended attributes: [LegacyUnforgeable], [Stringifier]
     pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try LocationImpl.get_href(instance);

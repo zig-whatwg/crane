@@ -9,9 +9,10 @@
 //! each observer registered on it here, so the observer can forget the node
 //! and let itself go once it observes nothing. The Node impl may not call into
 //! the MutationObserver impl; the MutationObserver impl installs the
-//! implementation in its `init`, before any registration can exist.
+//! implementation in its installHooks, before any registration can exist.
 //!
 //! lint-impls: hook for MutationObserver
+const process_start = @import("process_start.zig");
 
 const infra = @import("infra");
 const runtime = @import("runtime");
@@ -32,11 +33,12 @@ pub const Implementation = struct {
     remove_transients: *const fn (observer: *runtime.Instance) void,
 };
 
-/// Per thread, like the nodes and observers it serves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by the MutationObserver impl. Idempotent.
+/// Called by MutationObserver's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

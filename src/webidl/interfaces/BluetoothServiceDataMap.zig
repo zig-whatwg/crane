@@ -85,4 +85,13 @@ pub const BluetoothServiceDataMap = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         BluetoothServiceDataMapImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "BluetoothServiceDataMap")) {
+            if (comptime @hasDecl(impls.BluetoothServiceDataMap, "installHooks")) impls.BluetoothServiceDataMap.installHooks();
+        }
+    }
 };

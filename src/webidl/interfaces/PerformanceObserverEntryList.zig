@@ -98,6 +98,15 @@ pub const PerformanceObserverEntryList = struct {
         PerformanceObserverEntryListImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PerformanceObserverEntryList")) {
+            if (comptime @hasDecl(impls.PerformanceObserverEntryList, "installHooks")) impls.PerformanceObserverEntryList.installHooks();
+        }
+    }
+
     pub fn call_getEntries(instance: *runtime.Instance) anyerror!PerformanceEntryList {
         return try PerformanceObserverEntryListImpl.call_getEntries(instance);
     }

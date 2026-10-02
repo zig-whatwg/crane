@@ -69,6 +69,12 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    dom.navigation_objects.installEvents(.{ .set_navigation_type = &setNavigationType, .set_info = &setInfo });
+}
+
 /// Initialize NavigateEvent instance: the Event part is set by the
 /// constructor.
 pub fn init(
@@ -77,7 +83,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    dom.navigation_objects.installEvents(.{ .set_navigation_type = &setNavigationType, .set_info = &setInfo });
     return runtime.Instance.init(allocator, StateType, vtable, ctx);
 }
 

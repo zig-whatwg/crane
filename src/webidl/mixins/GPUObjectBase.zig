@@ -14,6 +14,15 @@ const USVString = @import("typedefs").USVString;
 
 pub const impl = @import("impls").GPUObjectBase;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "GPUObjectBase")) {
+        if (comptime @hasDecl(impls.GPUObjectBase, "installHooks")) impls.GPUObjectBase.installHooks();
+    }
+}
+
 pub fn get_label(instance: *runtime.Instance) anyerror!runtime.USVString {
     return try GPUObjectBaseImpl.get_label(instance);
 }

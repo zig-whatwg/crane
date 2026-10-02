@@ -19,17 +19,19 @@
 //! lint-impls: hook for URL, EventTarget
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// One specification's unloading document cleanup step, for `environment`.
 pub const Step = *const fn (environment: runtime.Context) void;
 
 const max_steps = 16;
-threadlocal var steps: [max_steps]Step = undefined;
-threadlocal var count: usize = 0;
+var steps: [max_steps]Step = undefined;
+var count: usize = 0;
 
 /// Install `step`. Idempotent: the same function installs once.
 pub fn install(step: Step) void {
+    process_start.assertInstalling();
     for (steps[0..count]) |existing| {
         if (existing == step) return;
     }

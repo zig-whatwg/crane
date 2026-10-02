@@ -119,6 +119,15 @@ pub const OES_vertex_array_object = struct {
         OES_vertex_array_objectImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "OES_vertex_array_object")) {
+            if (comptime @hasDecl(impls.OES_vertex_array_object, "installHooks")) impls.OES_vertex_array_object.installHooks();
+        }
+    }
+
     pub fn call_createVertexArrayOES(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try OES_vertex_array_objectImpl.call_createVertexArrayOES(instance);
     }

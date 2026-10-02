@@ -199,6 +199,15 @@ pub const SVGLength = struct {
         SVGLengthImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGLength")) {
+            if (comptime @hasDecl(impls.SVGLength, "installHooks")) impls.SVGLength.installHooks();
+        }
+    }
+
     pub fn get_unitType(instance: *runtime.Instance) anyerror!u16 {
         return try SVGLengthImpl.get_unitType(instance);
     }

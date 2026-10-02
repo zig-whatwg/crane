@@ -130,6 +130,15 @@ pub const XRQuadLayer = struct {
         XRQuadLayerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRQuadLayer")) {
+            if (comptime @hasDecl(impls.XRQuadLayer, "installHooks")) impls.XRQuadLayer.installHooks();
+        }
+    }
+
     pub fn get_space(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRQuadLayerImpl.get_space(instance);
     }

@@ -112,6 +112,15 @@ pub const OES_draw_buffers_indexed = struct {
         OES_draw_buffers_indexedImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "OES_draw_buffers_indexed")) {
+            if (comptime @hasDecl(impls.OES_draw_buffers_indexed, "installHooks")) impls.OES_draw_buffers_indexed.installHooks();
+        }
+    }
+
     pub fn call_blendFunciOES(instance: *runtime.Instance, buf: GLuint, src: GLenum, dst: GLenum) anyerror!void {
         return try OES_draw_buffers_indexedImpl.call_blendFunciOES(instance, buf, src, dst);
     }

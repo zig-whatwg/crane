@@ -123,6 +123,15 @@ pub const MediaQueryList = struct {
         MediaQueryListImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaQueryList")) {
+            if (comptime @hasDecl(impls.MediaQueryList, "installHooks")) impls.MediaQueryList.installHooks();
+        }
+    }
+
     pub fn get_media(instance: *runtime.Instance) anyerror!CSSOMString {
         return try MediaQueryListImpl.get_media(instance);
     }

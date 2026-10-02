@@ -14,6 +14,15 @@ const DOMString = @import("typedefs").DOMString;
 
 pub const impl = @import("impls").NavigatorLanguage;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorLanguage")) {
+        if (comptime @hasDecl(impls.NavigatorLanguage, "installHooks")) impls.NavigatorLanguage.installHooks();
+    }
+}
+
 pub fn get_language(instance: *runtime.Instance) anyerror!DOMString {
     return try NavigatorLanguageImpl.get_language(instance);
 }

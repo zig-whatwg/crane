@@ -13,6 +13,15 @@ const dictionaries = @import("dictionaries");
 
 pub const impl = @import("impls").NavigatorConcurrentHardware;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorConcurrentHardware")) {
+        if (comptime @hasDecl(impls.NavigatorConcurrentHardware, "installHooks")) impls.NavigatorConcurrentHardware.installHooks();
+    }
+}
+
 pub fn get_hardwareConcurrency(instance: *runtime.Instance) anyerror!u64 {
     return try NavigatorConcurrentHardwareImpl.get_hardwareConcurrency(instance);
 }

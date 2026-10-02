@@ -97,6 +97,15 @@ pub const CSSSupportsRule = struct {
         CSSSupportsRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSSupportsRule")) {
+            if (comptime @hasDecl(impls.CSSSupportsRule, "installHooks")) impls.CSSSupportsRule.installHooks();
+        }
+    }
+
     pub fn get_matches(instance: *runtime.Instance) anyerror!bool {
         return try CSSSupportsRuleImpl.get_matches(instance);
     }

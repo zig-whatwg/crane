@@ -88,6 +88,15 @@ pub const WorkletGroupEffect = struct {
         WorkletGroupEffectImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WorkletGroupEffect")) {
+            if (comptime @hasDecl(impls.WorkletGroupEffect, "installHooks")) impls.WorkletGroupEffect.installHooks();
+        }
+    }
+
     pub fn call_getChildren(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WorkletGroupEffectImpl.call_getChildren(instance);
     }

@@ -121,6 +121,13 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
     return Accessor.getCast(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // A node torn down stops being observed (dom.intersection_targets).
+    @import("dom").intersection_targets.install(.{ .target_destroyed = &targetDestroyed });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -140,9 +147,6 @@ pub fn init(
     // Store internal state in instance
     const state = instance.getState(State);
     state.own._internal = internal;
-
-    // A node torn down stops being observed (dom.intersection_targets).
-    @import("dom").intersection_targets.install(.{ .target_destroyed = &targetDestroyed });
 
     return instance;
 }

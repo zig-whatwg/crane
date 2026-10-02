@@ -125,6 +125,15 @@ pub const TrustedTypePolicyFactory = struct {
         TrustedTypePolicyFactoryImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TrustedTypePolicyFactory")) {
+            if (comptime @hasDecl(impls.TrustedTypePolicyFactory, "installHooks")) impls.TrustedTypePolicyFactory.installHooks();
+        }
+    }
+
     pub fn get_emptyHTML(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try TrustedTypePolicyFactoryImpl.get_emptyHTML(instance);
     }

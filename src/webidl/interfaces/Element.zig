@@ -756,6 +756,15 @@ pub const Element = struct {
         ElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Element")) {
+            if (comptime @hasDecl(impls.Element, "installHooks")) impls.Element.installHooks();
+        }
+    }
+
     pub fn get_namespaceURI(instance: *runtime.Instance) anyerror!?DOMString {
         return try ElementImpl.get_namespaceURI(instance);
     }

@@ -92,5 +92,14 @@ pub const SharedStorageWorkletNavigator = struct {
         SharedStorageWorkletNavigatorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SharedStorageWorkletNavigator")) {
+            if (comptime @hasDecl(impls.SharedStorageWorkletNavigator, "installHooks")) impls.SharedStorageWorkletNavigator.installHooks();
+        }
+    }
+
     pub const get_locks = mixins.NavigatorLocks.get_locks;
 };

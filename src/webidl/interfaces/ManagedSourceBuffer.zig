@@ -118,6 +118,15 @@ pub const ManagedSourceBuffer = struct {
         ManagedSourceBufferImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ManagedSourceBuffer")) {
+            if (comptime @hasDecl(impls.ManagedSourceBuffer, "installHooks")) impls.ManagedSourceBuffer.installHooks();
+        }
+    }
+
     pub fn get_onbufferedchange(instance: *runtime.Instance) anyerror!EventHandler {
         return try ManagedSourceBufferImpl.get_onbufferedchange(instance);
     }

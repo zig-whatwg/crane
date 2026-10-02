@@ -14,6 +14,15 @@ const DOMPointInit = @import("dictionaries").DOMPointInit;
 
 pub const impl = @import("impls").CanvasPath;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CanvasPath")) {
+        if (comptime @hasDecl(impls.CanvasPath, "installHooks")) impls.CanvasPath.installHooks();
+    }
+}
+
 pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
     return try CanvasPathImpl.call_arc(instance, x, y, radius, startAngle, endAngle, counterclockwise);
 }

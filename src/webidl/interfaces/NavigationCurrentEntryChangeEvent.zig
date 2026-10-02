@@ -107,6 +107,15 @@ pub const NavigationCurrentEntryChangeEvent = struct {
         NavigationCurrentEntryChangeEventImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "NavigationCurrentEntryChangeEvent")) {
+            if (comptime @hasDecl(impls.NavigationCurrentEntryChangeEvent, "installHooks")) impls.NavigationCurrentEntryChangeEvent.installHooks();
+        }
+    }
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

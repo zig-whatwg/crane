@@ -130,6 +130,15 @@ pub const EXT_disjoint_timer_query_webgl2 = struct {
         EXT_disjoint_timer_query_webgl2Impl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "EXT_disjoint_timer_query_webgl2")) {
+            if (comptime @hasDecl(impls.EXT_disjoint_timer_query_webgl2, "installHooks")) impls.EXT_disjoint_timer_query_webgl2.installHooks();
+        }
+    }
+
     pub fn call_queryCounterEXT(instance: *runtime.Instance, query: *runtime.Instance, target: GLenum) anyerror!void {
         return try EXT_disjoint_timer_query_webgl2Impl.call_queryCounterEXT(instance, query, target);
     }

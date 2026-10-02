@@ -100,6 +100,15 @@ pub const CSSStyleValue = struct {
         CSSStyleValueImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSStyleValue")) {
+            if (comptime @hasDecl(impls.CSSStyleValue, "installHooks")) impls.CSSStyleValue.installHooks();
+        }
+    }
+
     pub fn call_stringifier(instance: *runtime.Instance) anyerror!DOMString {
         return try CSSStyleValueImpl.call_stringifier(instance);
     }

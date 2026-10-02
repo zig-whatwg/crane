@@ -113,6 +113,15 @@ pub const XRReferenceSpace = struct {
         XRReferenceSpaceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRReferenceSpace")) {
+            if (comptime @hasDecl(impls.XRReferenceSpace, "installHooks")) impls.XRReferenceSpace.installHooks();
+        }
+    }
+
     pub fn get_onreset(instance: *runtime.Instance) anyerror!EventHandler {
         return try XRReferenceSpaceImpl.get_onreset(instance);
     }

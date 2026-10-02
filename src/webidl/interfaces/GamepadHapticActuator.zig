@@ -104,6 +104,15 @@ pub const GamepadHapticActuator = struct {
         GamepadHapticActuatorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GamepadHapticActuator")) {
+            if (comptime @hasDecl(impls.GamepadHapticActuator, "installHooks")) impls.GamepadHapticActuator.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_effects(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try GamepadHapticActuatorImpl.get_effects(instance);

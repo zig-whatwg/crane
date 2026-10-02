@@ -93,6 +93,15 @@ pub const HighlightRegistry = struct {
         HighlightRegistryImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "HighlightRegistry")) {
+            if (comptime @hasDecl(impls.HighlightRegistry, "installHooks")) impls.HighlightRegistry.installHooks();
+        }
+    }
+
     pub fn call_highlightsFromPoint(instance: *runtime.Instance, x: f32, y: f32, options: webidl.Opt(HighlightsFromPointOptions)) anyerror!runtime.JSValue {
         return try HighlightRegistryImpl.call_highlightsFromPoint(instance, x, y, options);
     }

@@ -3,7 +3,7 @@
 //! A document's visibility state is the Document's own state, and no IDL
 //! member sets it: the user agent does, when a top-level traversable's
 //! system visibility state changes (a window is minimized or restored). So
-//! Document installs this hook from its init, and whoever changes a system
+//! Document installs this hook from its installHooks, and whoever changes a system
 //! visibility state - the WebDriver remote end's "minimize window" today -
 //! reaches it without importing Document.
 //!
@@ -12,6 +12,7 @@
 //! lint-impls: hook for Document
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// A visibility state.
@@ -24,11 +25,12 @@ pub const Implementation = struct {
     update: *const fn (document: *runtime.Instance, state: State) void,
 };
 
-/// Per thread, like the documents themselves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by Document's init. Idempotent: every call installs the same function.
+/// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

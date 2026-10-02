@@ -123,6 +123,15 @@ pub const WakeLockSentinel = struct {
         WakeLockSentinelImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WakeLockSentinel")) {
+            if (comptime @hasDecl(impls.WakeLockSentinel, "installHooks")) impls.WakeLockSentinel.installHooks();
+        }
+    }
+
     pub fn get_released(instance: *runtime.Instance) anyerror!bool {
         return try WakeLockSentinelImpl.get_released(instance);
     }

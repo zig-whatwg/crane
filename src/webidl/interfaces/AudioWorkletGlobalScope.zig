@@ -116,6 +116,15 @@ pub const AudioWorkletGlobalScope = struct {
         AudioWorkletGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AudioWorkletGlobalScope")) {
+            if (comptime @hasDecl(impls.AudioWorkletGlobalScope, "installHooks")) impls.AudioWorkletGlobalScope.installHooks();
+        }
+    }
+
     pub fn get_currentFrame(instance: *runtime.Instance) anyerror!u64 {
         return try AudioWorkletGlobalScopeImpl.get_currentFrame(instance);
     }

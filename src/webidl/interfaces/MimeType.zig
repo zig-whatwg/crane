@@ -102,6 +102,15 @@ pub const MimeType = struct {
         MimeTypeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MimeType")) {
+            if (comptime @hasDecl(impls.MimeType, "installHooks")) impls.MimeType.installHooks();
+        }
+    }
+
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
         return try MimeTypeImpl.get_type(instance);
     }

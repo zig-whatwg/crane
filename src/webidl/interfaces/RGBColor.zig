@@ -92,6 +92,15 @@ pub const RGBColor = struct {
         RGBColorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RGBColor")) {
+            if (comptime @hasDecl(impls.RGBColor, "installHooks")) impls.RGBColor.installHooks();
+        }
+    }
+
     pub fn get_red(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RGBColorImpl.get_red(instance);
     }

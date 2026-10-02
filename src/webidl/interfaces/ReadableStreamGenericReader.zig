@@ -89,6 +89,15 @@ pub const ReadableStreamGenericReader = struct {
         ReadableStreamGenericReaderImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ReadableStreamGenericReader")) {
+            if (comptime @hasDecl(impls.ReadableStreamGenericReader, "installHooks")) impls.ReadableStreamGenericReader.installHooks();
+        }
+    }
+
     pub fn get_closed(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ReadableStreamGenericReaderImpl.get_closed(instance);
     }

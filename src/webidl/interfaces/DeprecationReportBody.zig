@@ -134,6 +134,15 @@ pub const DeprecationReportBody = struct {
         DeprecationReportBodyImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "DeprecationReportBody")) {
+            if (comptime @hasDecl(impls.DeprecationReportBody, "installHooks")) impls.DeprecationReportBody.installHooks();
+        }
+    }
+
     pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
         return try DeprecationReportBodyImpl.get_id(instance);
     }

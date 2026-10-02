@@ -9,10 +9,11 @@
 //! stores "a:b" as a local name; `setAttributeNS(null, "FOO", v)` keeps its
 //! case). An Attr node reads and changes its attribute here, and a
 //! NamedNodeMap walks the list by index. None of them may call into the
-//! Element impl, so the Element impl installs the implementation here in its
-//! `init`, which runs before any element exists.
+//! Element impl, so the Element impl installs the implementation here once,
+//! at process start (its installHooks).
 //!
 //! lint-impls: hook for Element
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -35,11 +36,12 @@ pub const Implementation = struct {
     node_at: *const fn (element: *runtime.Instance, index: usize) Error!?*runtime.Instance,
 };
 
-/// Per thread, like the elements it serves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by the Element impl. Idempotent: every call installs the same one.
+/// Called by Element's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

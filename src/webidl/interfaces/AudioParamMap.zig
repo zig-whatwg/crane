@@ -84,4 +84,13 @@ pub const AudioParamMap = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         AudioParamMapImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AudioParamMap")) {
+            if (comptime @hasDecl(impls.AudioParamMap, "installHooks")) impls.AudioParamMap.installHooks();
+        }
+    }
 };

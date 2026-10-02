@@ -672,6 +672,11 @@ pub fn executeTests(
     const file_count = discovery.test_files.items.len;
     print("\nRunning {d} test files ({d} total test runs)...\n\n", .{ file_count, total });
 
+    // The process first (crane.Process): the engine and every hook, once,
+    // before any Browser. It ends after the browser (defers run in reverse).
+    var process = try @import("browser").Process.init(.{});
+    defer process.deinit();
+
     // Create BrowserAdapter for tests. Following Chromium's approach:
     // - Single V8 isolate per browser instance
     // - New V8 context per test (navigation)

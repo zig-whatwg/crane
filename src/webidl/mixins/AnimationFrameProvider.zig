@@ -14,6 +14,15 @@ const FrameRequestCallback = @import("callbacks").FrameRequestCallback;
 
 pub const impl = @import("impls").AnimationFrameProvider;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "AnimationFrameProvider")) {
+        if (comptime @hasDecl(impls.AnimationFrameProvider, "installHooks")) impls.AnimationFrameProvider.installHooks();
+    }
+}
+
 pub fn call_cancelAnimationFrame(instance: *runtime.Instance, handle: u32) anyerror!void {
     return try AnimationFrameProviderImpl.call_cancelAnimationFrame(instance, handle);
 }

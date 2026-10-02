@@ -88,6 +88,15 @@ pub const RealTimeReporting = struct {
         RealTimeReportingImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RealTimeReporting")) {
+            if (comptime @hasDecl(impls.RealTimeReporting, "installHooks")) impls.RealTimeReporting.installHooks();
+        }
+    }
+
     pub fn call_contributeToHistogram(instance: *runtime.Instance, contribution: RealTimeContribution) anyerror!void {
         return try RealTimeReportingImpl.call_contributeToHistogram(instance, contribution);
     }

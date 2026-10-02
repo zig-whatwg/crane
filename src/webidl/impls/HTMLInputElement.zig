@@ -235,18 +235,10 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
-var insertion_steps_registered = false;
-
-/// Initialize instance (creates the instance)
-/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    // The steps other code runs on inputs, installed before any input
-    // exists (each idempotent).
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The steps other code runs on inputs.
     dom.attribute_change_steps.install("input", &attributeChangeSteps);
     dom.activation.install(.{
         .has = &hasActivationBehavior,
@@ -256,14 +248,19 @@ pub fn init(
     });
     dom.form_controls.install(.{ .is = &isInput, .reset = &resetAlgorithm });
     dom.teardown_sweeps.install(&cleanupAllRemainingInternal);
-    if (!insertion_steps_registered) {
-        if (dom.mutation.registerInsertionStepsCallback(&insertionStepsCallback)) {
-            insertion_steps_registered = true;
-        } else |err| {
-            log.warn("input insertion steps not registered: {}", .{err});
-        }
-    }
+    dom.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
+        log.warn("input insertion steps not registered: {}", .{err});
+    };
+}
 
+/// Initialize instance (creates the instance)
+/// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
+pub fn init(
+    allocator: std.mem.Allocator,
+    comptime StateType: type,
+    vtable: *const runtime.VTable,
+    ctx: runtime.Context,
+) !*runtime.Instance {
     // Chain to parent class (HTMLElement)
     const instance = try interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);

@@ -83,6 +83,15 @@ pub const NavigatorOnLine = struct {
         NavigatorOnLineImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "NavigatorOnLine")) {
+            if (comptime @hasDecl(impls.NavigatorOnLine, "installHooks")) impls.NavigatorOnLine.installHooks();
+        }
+    }
+
     pub fn get_onLine(instance: *runtime.Instance) anyerror!bool {
         return try NavigatorOnLineImpl.get_onLine(instance);
     }

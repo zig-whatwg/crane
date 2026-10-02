@@ -154,6 +154,15 @@ pub const GPUCommandEncoder = struct {
         GPUCommandEncoderImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUCommandEncoder")) {
+            if (comptime @hasDecl(impls.GPUCommandEncoder, "installHooks")) impls.GPUCommandEncoder.installHooks();
+        }
+    }
+
     pub const get_label = mixins.GPUObjectBase.get_label;
     pub const set_label = mixins.GPUObjectBase.set_label;
 

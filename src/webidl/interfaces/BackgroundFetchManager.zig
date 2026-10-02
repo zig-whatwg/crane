@@ -100,6 +100,15 @@ pub const BackgroundFetchManager = struct {
         BackgroundFetchManagerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "BackgroundFetchManager")) {
+            if (comptime @hasDecl(impls.BackgroundFetchManager, "installHooks")) impls.BackgroundFetchManager.installHooks();
+        }
+    }
+
     pub fn call_get(instance: *runtime.Instance, id: DOMString) anyerror!runtime.JSValue {
         return try BackgroundFetchManagerImpl.call_get(instance, id);
     }

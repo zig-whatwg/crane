@@ -70,6 +70,13 @@ pub const InternalState = struct {
     }
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // fetch() hands a Response object its response through this hook.
+    @import("dom").fetch_objects.installResponse(.{ .adopt = &adoptResponse, .follow = &followSignal });
+}
+
 /// Initialize instance
 pub fn init(
     allocator: std.mem.Allocator,
@@ -77,9 +84,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // fetch() hands a Response object its response through this hook.
-    @import("dom").fetch_objects.installResponse(.{ .adopt = &adoptResponse, .follow = &followSignal });
-
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 

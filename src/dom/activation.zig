@@ -14,6 +14,7 @@
 //! lint-impls: hook for HTMLAnchorElement, HTMLAreaElement, HTMLButtonElement, HTMLInputElement, HTMLLabelElement, SVGAElement
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// One element type's activation behaviour.
@@ -29,11 +30,12 @@ pub const Behavior = struct {
 };
 
 const max_behaviors = 16;
-threadlocal var behaviors: [max_behaviors]Behavior = undefined;
-threadlocal var count: usize = 0;
+var behaviors: [max_behaviors]Behavior = undefined;
+var count: usize = 0;
 
 /// Install `behavior`. Idempotent: the same `has` function installs once.
 pub fn install(behavior: Behavior) void {
+    process_start.assertInstalling();
     for (behaviors[0..count]) |*existing| {
         if (existing.has == behavior.has) {
             existing.* = behavior;

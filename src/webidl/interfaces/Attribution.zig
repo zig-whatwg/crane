@@ -103,6 +103,15 @@ pub const Attribution = struct {
         AttributionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Attribution")) {
+            if (comptime @hasDecl(impls.Attribution, "installHooks")) impls.Attribution.installHooks();
+        }
+    }
+
     pub fn get_aggregationServices(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try AttributionImpl.get_aggregationServices(instance);
     }

@@ -88,6 +88,15 @@ pub const XRTransientInputHitTestSource = struct {
         XRTransientInputHitTestSourceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRTransientInputHitTestSource")) {
+            if (comptime @hasDecl(impls.XRTransientInputHitTestSource, "installHooks")) impls.XRTransientInputHitTestSource.installHooks();
+        }
+    }
+
     pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
         return try XRTransientInputHitTestSourceImpl.call_cancel(instance);
     }

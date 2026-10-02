@@ -84,4 +84,13 @@ pub const KeyboardLayoutMap = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         KeyboardLayoutMapImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "KeyboardLayoutMap")) {
+            if (comptime @hasDecl(impls.KeyboardLayoutMap, "installHooks")) impls.KeyboardLayoutMap.installHooks();
+        }
+    }
 };

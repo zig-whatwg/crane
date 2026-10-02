@@ -92,6 +92,15 @@ pub const LayoutWorkletGlobalScope = struct {
         LayoutWorkletGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "LayoutWorkletGlobalScope")) {
+            if (comptime @hasDecl(impls.LayoutWorkletGlobalScope, "installHooks")) impls.LayoutWorkletGlobalScope.installHooks();
+        }
+    }
+
     pub fn call_registerLayout(instance: *runtime.Instance, name: DOMString, layoutCtor: VoidFunction) anyerror!void {
         return try LayoutWorkletGlobalScopeImpl.call_registerLayout(instance, name, layoutCtor);
     }

@@ -40,6 +40,13 @@ pub const InternalState = struct {
     }
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Its activation behaviour: following its hyperlink (dom.activation).
+    @import("dom").activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
 pub fn init(
@@ -50,8 +57,6 @@ pub fn init(
 ) !*runtime.Instance {
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
-    // Its activation behaviour: following its hyperlink (dom.activation).
-    @import("dom").activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
 
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer interfaces.HTMLElement.deinit(instance);
@@ -308,13 +313,6 @@ fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) vo
     const elem_internal = ElementImpl.getInternal(target) orelse return;
     if (elem_internal.findAttribute(null, "href") == null) return;
     const navigables = @import("dom").navigables;
-    // The navigables are the iframe's to run; a page that never made an
-    // iframe has not installed them yet.
-    if (!navigables.isInstalled()) {
-        const document = (interfaces.Node.get_ownerDocument(target) catch null) orelse return;
-        const installer = interfaces.Document.call_createElement(document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed()) catch return;
-        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-    }
     // HTML 4.6.6: following it sends the element's pings, before the
     // navigation starts.
     @import("html").hyperlink_auditing.audit(target);

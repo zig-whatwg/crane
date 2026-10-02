@@ -113,6 +113,15 @@ pub const FileSystemHandle = struct {
         FileSystemHandleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "FileSystemHandle")) {
+            if (comptime @hasDecl(impls.FileSystemHandle, "installHooks")) impls.FileSystemHandle.installHooks();
+        }
+    }
+
     pub fn get_kind(instance: *runtime.Instance) anyerror!FileSystemHandleKind {
         return try FileSystemHandleImpl.get_kind(instance);
     }

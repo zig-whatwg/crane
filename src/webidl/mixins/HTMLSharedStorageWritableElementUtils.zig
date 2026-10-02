@@ -13,6 +13,15 @@ const dictionaries = @import("dictionaries");
 
 pub const impl = @import("impls").HTMLSharedStorageWritableElementUtils;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "HTMLSharedStorageWritableElementUtils")) {
+        if (comptime @hasDecl(impls.HTMLSharedStorageWritableElementUtils, "installHooks")) impls.HTMLSharedStorageWritableElementUtils.installHooks();
+    }
+}
+
 /// Extended attributes: [CEReactions], [SecureContext]
 pub fn get_sharedStorageWritable(instance: *runtime.Instance) anyerror!bool {
     return try HTMLSharedStorageWritableElementUtilsImpl.get_sharedStorageWritable(instance);

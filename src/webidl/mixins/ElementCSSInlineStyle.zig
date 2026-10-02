@@ -15,6 +15,15 @@ const StylePropertyMap = @import("interfaces").StylePropertyMap;
 
 pub const impl = @import("impls").ElementCSSInlineStyle;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "ElementCSSInlineStyle")) {
+        if (comptime @hasDecl(impls.ElementCSSInlineStyle, "installHooks")) impls.ElementCSSInlineStyle.installHooks();
+    }
+}
+
 /// Extended attributes: [SameObject], [PutForwards=cssText]
 pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return try ElementCSSInlineStyleImpl.get_style(instance);

@@ -99,6 +99,15 @@ pub const IDBRecord = struct {
         IDBRecordImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "IDBRecord")) {
+            if (comptime @hasDecl(impls.IDBRecord, "installHooks")) impls.IDBRecord.installHooks();
+        }
+    }
+
     pub fn get_key(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try IDBRecordImpl.get_key(instance);
     }

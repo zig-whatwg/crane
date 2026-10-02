@@ -93,6 +93,15 @@ pub const XPathEvaluatorBase = struct {
         XPathEvaluatorBaseImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XPathEvaluatorBase")) {
+            if (comptime @hasDecl(impls.XPathEvaluatorBase, "installHooks")) impls.XPathEvaluatorBase.installHooks();
+        }
+    }
+
     pub fn call_createNSResolver(instance: *runtime.Instance, nodeResolver: *runtime.Instance) anyerror!*runtime.Instance {
         return try XPathEvaluatorBaseImpl.call_createNSResolver(instance, nodeResolver);
     }

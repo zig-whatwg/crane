@@ -8,6 +8,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/browsers.html#same-origin-domain
 //!
 //! lint-impls: hook for Document
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -18,10 +19,11 @@ pub const Implementation = struct {
     domain: *const fn (document: *runtime.Instance) ?[]const u8,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by Document. Idempotent: every call installs the same functions.
+/// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

@@ -261,6 +261,15 @@ pub const SVGMaskElement = struct {
         SVGMaskElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGMaskElement")) {
+            if (comptime @hasDecl(impls.SVGMaskElement, "installHooks")) impls.SVGMaskElement.installHooks();
+        }
+    }
+
     pub fn get_maskUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGMaskElementImpl.get_maskUnits(instance);
     }

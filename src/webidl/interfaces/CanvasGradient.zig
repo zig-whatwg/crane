@@ -91,6 +91,15 @@ pub const CanvasGradient = struct {
         CanvasGradientImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CanvasGradient")) {
+            if (comptime @hasDecl(impls.CanvasGradient, "installHooks")) impls.CanvasGradient.installHooks();
+        }
+    }
+
     pub fn call_addColorStop(instance: *runtime.Instance, offset: f64, color: DOMString) anyerror!void {
         return try CanvasGradientImpl.call_addColorStop(instance, offset, color);
     }

@@ -90,6 +90,13 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    range_boundaries.install(&boundariesOf);
+    range_boundaries.installLiveRange(.{ .collapse = &collapseLive, .update_owner_document = &updateOwnerDocument });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -106,8 +113,6 @@ pub fn init(
     const internal = try ArenaAllocator.get().create(InternalState);
     internal.* = InternalState.init(allocator);
     state.own._internal = internal;
-    range_boundaries.install(&boundariesOf);
-    range_boundaries.installLiveRange(.{ .collapse = &collapseLive, .update_owner_document = &updateOwnerDocument });
 
     return instance;
 }

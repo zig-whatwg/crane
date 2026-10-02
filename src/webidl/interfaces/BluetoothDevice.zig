@@ -165,6 +165,15 @@ pub const BluetoothDevice = struct {
         BluetoothDeviceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "BluetoothDevice")) {
+            if (comptime @hasDecl(impls.BluetoothDevice, "installHooks")) impls.BluetoothDevice.installHooks();
+        }
+    }
+
     pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
         return try BluetoothDeviceImpl.get_id(instance);
     }

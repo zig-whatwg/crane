@@ -100,6 +100,15 @@ pub const CaretPosition = struct {
         CaretPositionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CaretPosition")) {
+            if (comptime @hasDecl(impls.CaretPosition, "installHooks")) impls.CaretPosition.installHooks();
+        }
+    }
+
     pub fn get_offsetNode(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CaretPositionImpl.get_offsetNode(instance);
     }

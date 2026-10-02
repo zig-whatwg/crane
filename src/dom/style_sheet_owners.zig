@@ -22,6 +22,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/semantics.html#update-a-style-block
 //!
 //! lint-impls: hook for HTMLLinkElement, HTMLStyleElement
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -38,16 +39,18 @@ pub const ParserSteps = struct {
     popped: *const fn (element: *runtime.Instance) void,
 };
 
-threadlocal var load_delay: ?LoadDelay = null;
-threadlocal var parser_steps: ?ParserSteps = null;
+var load_delay: ?LoadDelay = null;
+var parser_steps: ?ParserSteps = null;
 
 /// Called by the elements that load style sheets. Idempotent.
 pub fn installLoadDelay(delay: LoadDelay) void {
+    process_start.assertInstalling();
     load_delay = delay;
 }
 
 /// Called by the style element. Idempotent.
 pub fn installParserSteps(steps: ParserSteps) void {
+    process_start.assertInstalling();
     parser_steps = steps;
 }
 

@@ -95,6 +95,15 @@ pub const IdentityProvider = struct {
         IdentityProviderImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "IdentityProvider")) {
+            if (comptime @hasDecl(impls.IdentityProvider, "installHooks")) impls.IdentityProvider.installHooks();
+        }
+    }
+
     pub fn call_static_getUserInfo(instance: *runtime.Instance, config: IdentityProviderConfig) anyerror!runtime.JSValue {
         return try IdentityProviderImpl.call_static_getUserInfo(instance, config);
     }

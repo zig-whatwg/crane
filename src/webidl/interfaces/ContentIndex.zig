@@ -98,6 +98,15 @@ pub const ContentIndex = struct {
         ContentIndexImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ContentIndex")) {
+            if (comptime @hasDecl(impls.ContentIndex, "installHooks")) impls.ContentIndex.installHooks();
+        }
+    }
+
     pub fn call_delete(instance: *runtime.Instance, id: DOMString) anyerror!runtime.JSValue {
         return try ContentIndexImpl.call_delete(instance, id);
     }

@@ -284,6 +284,15 @@ pub const SVGFESpecularLightingElement = struct {
         SVGFESpecularLightingElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFESpecularLightingElement")) {
+            if (comptime @hasDecl(impls.SVGFESpecularLightingElement, "installHooks")) impls.SVGFESpecularLightingElement.installHooks();
+        }
+    }
+
     pub fn get_in1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFESpecularLightingElementImpl.get_in1(instance);
     }

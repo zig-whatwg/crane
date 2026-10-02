@@ -167,6 +167,15 @@ pub const XRFrame = struct {
         XRFrameImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRFrame")) {
+            if (comptime @hasDecl(impls.XRFrame, "installHooks")) impls.XRFrame.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_session(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);

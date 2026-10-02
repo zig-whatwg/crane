@@ -96,6 +96,15 @@ pub const TextTrackCueList = struct {
         TextTrackCueListImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TextTrackCueList")) {
+            if (comptime @hasDecl(impls.TextTrackCueList, "installHooks")) impls.TextTrackCueList.installHooks();
+        }
+    }
+
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try TextTrackCueListImpl.get_length(instance);
     }

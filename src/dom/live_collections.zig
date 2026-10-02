@@ -10,6 +10,7 @@
 //! `abort_algorithms.zig`.
 //!
 //! lint-impls: hook for HTMLCollection
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -22,11 +23,12 @@ pub const Implementation = struct {
     class_names: *const fn (collection: *runtime.Instance, root: *runtime.Instance, class_names: []const u8) error{OutOfMemory}!void,
 };
 
-/// Per thread, like the collections themselves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by the HTMLCollection impl. Idempotent.
+/// Called by HTMLCollection's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

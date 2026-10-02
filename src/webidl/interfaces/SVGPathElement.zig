@@ -268,6 +268,15 @@ pub const SVGPathElement = struct {
         SVGPathElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGPathElement")) {
+            if (comptime @hasDecl(impls.SVGPathElement, "installHooks")) impls.SVGPathElement.installHooks();
+        }
+    }
+
     pub fn get_pathLength(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGPathElementImpl.get_pathLength(instance);
     }

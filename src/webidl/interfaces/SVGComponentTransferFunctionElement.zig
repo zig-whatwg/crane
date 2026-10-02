@@ -316,6 +316,15 @@ pub const SVGComponentTransferFunctionElement = struct {
         SVGComponentTransferFunctionElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGComponentTransferFunctionElement")) {
+            if (comptime @hasDecl(impls.SVGComponentTransferFunctionElement, "installHooks")) impls.SVGComponentTransferFunctionElement.installHooks();
+        }
+    }
+
     pub fn get_type(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGComponentTransferFunctionElementImpl.get_type(instance);
     }

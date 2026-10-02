@@ -112,6 +112,15 @@ pub const AudioTrack = struct {
         AudioTrackImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AudioTrack")) {
+            if (comptime @hasDecl(impls.AudioTrack, "installHooks")) impls.AudioTrack.installHooks();
+        }
+    }
+
     pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
         return try AudioTrackImpl.get_id(instance);
     }

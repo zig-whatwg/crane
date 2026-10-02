@@ -2213,6 +2213,15 @@ pub const WebGL2RenderingContextBase = struct {
         WebGL2RenderingContextBaseImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebGL2RenderingContextBase")) {
+            if (comptime @hasDecl(impls.WebGL2RenderingContextBase, "installHooks")) impls.WebGL2RenderingContextBase.installHooks();
+        }
+    }
+
     pub fn call_vertexAttribIPointer(instance: *runtime.Instance, index: GLuint, size: GLint, @"type": GLenum, stride: GLsizei, offset: GLintptr) anyerror!void {
         return try WebGL2RenderingContextBaseImpl.call_vertexAttribIPointer(instance, index, size, @"type", stride, offset);
     }

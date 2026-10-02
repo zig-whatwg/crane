@@ -91,6 +91,15 @@ pub const SVGElementInstance = struct {
         SVGElementInstanceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGElementInstance")) {
+            if (comptime @hasDecl(impls.SVGElementInstance, "installHooks")) impls.SVGElementInstance.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_correspondingElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         const state = instance.getState(State);

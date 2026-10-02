@@ -111,6 +111,15 @@ pub const XRRenderState = struct {
         XRRenderStateImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRRenderState")) {
+            if (comptime @hasDecl(impls.XRRenderState, "installHooks")) impls.XRRenderState.installHooks();
+        }
+    }
+
     pub fn get_depthNear(instance: *runtime.Instance) anyerror!f64 {
         return try XRRenderStateImpl.get_depthNear(instance);
     }

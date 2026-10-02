@@ -144,6 +144,15 @@ pub const ShadowRealmGlobalScope = struct {
         ShadowRealmGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ShadowRealmGlobalScope")) {
+            if (comptime @hasDecl(impls.ShadowRealmGlobalScope, "installHooks")) impls.ShadowRealmGlobalScope.installHooks();
+        }
+    }
+
     /// Extended attributes: [Replaceable]
     pub fn get_self(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ShadowRealmGlobalScopeImpl.get_self(instance);

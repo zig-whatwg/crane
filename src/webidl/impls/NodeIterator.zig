@@ -131,6 +131,13 @@ fn getInternal(instance: *runtime.Instance) *InternalState {
     return Accessor.getCast(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Document sets a new iterator up through dom.traversal.
+    traversal.installNodeIterator(&setUp);
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -148,9 +155,6 @@ pub fn init(
     // Store internal state in instance
     const state = instance.getState(State);
     state.own._internal = internal;
-
-    // Document sets a new iterator up through dom.traversal.
-    traversal.installNodeIterator(&setUp);
 
     return instance;
 }

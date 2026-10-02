@@ -100,6 +100,15 @@ pub const TransformStreamDefaultController = struct {
         TransformStreamDefaultControllerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TransformStreamDefaultController")) {
+            if (comptime @hasDecl(impls.TransformStreamDefaultController, "installHooks")) impls.TransformStreamDefaultController.installHooks();
+        }
+    }
+
     pub fn get_desiredSize(instance: *runtime.Instance) anyerror!?f64 {
         return try TransformStreamDefaultControllerImpl.get_desiredSize(instance);
     }

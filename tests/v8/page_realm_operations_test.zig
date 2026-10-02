@@ -2755,6 +2755,8 @@ test "protocol: the indexed and named property interceptors release the handles 
 }
 
 test "protocol: a trusted animation event reaches a listener for its legacy webkit type, renamed, and keeps its own type" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     // DOM "invoke" step 9: when no listener on a target matched a trusted
     // event's type, a legacy-mapped type (animationend -> webkitAnimationEnd,
     // ...) is tried, with the event's type attribute renamed while those

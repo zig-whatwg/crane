@@ -92,6 +92,15 @@ pub const WakeLock = struct {
         WakeLockImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WakeLock")) {
+            if (comptime @hasDecl(impls.WakeLock, "installHooks")) impls.WakeLock.installHooks();
+        }
+    }
+
     pub fn call_request(instance: *runtime.Instance, @"type": webidl.Opt(WakeLockType)) anyerror!runtime.JSValue {
         return try WakeLockImpl.call_request(instance, @"type");
     }

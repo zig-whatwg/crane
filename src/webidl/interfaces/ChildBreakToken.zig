@@ -94,6 +94,15 @@ pub const ChildBreakToken = struct {
         ChildBreakTokenImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ChildBreakToken")) {
+            if (comptime @hasDecl(impls.ChildBreakToken, "installHooks")) impls.ChildBreakToken.installHooks();
+        }
+    }
+
     pub fn get_breakType(instance: *runtime.Instance) anyerror!BreakType {
         return try ChildBreakTokenImpl.get_breakType(instance);
     }

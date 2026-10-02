@@ -101,6 +101,15 @@ pub const HTMLAllCollection = struct {
         HTMLAllCollectionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "HTMLAllCollection")) {
+            if (comptime @hasDecl(impls.HTMLAllCollection, "installHooks")) impls.HTMLAllCollection.installHooks();
+        }
+    }
+
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try HTMLAllCollectionImpl.get_length(instance);
     }

@@ -94,6 +94,15 @@ pub const LaunchParams = struct {
         LaunchParamsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "LaunchParams")) {
+            if (comptime @hasDecl(impls.LaunchParams, "installHooks")) impls.LaunchParams.installHooks();
+        }
+    }
+
     pub fn get_targetURL(instance: *runtime.Instance) anyerror!?DOMString {
         return try LaunchParamsImpl.get_targetURL(instance);
     }

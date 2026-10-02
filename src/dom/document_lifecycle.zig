@@ -13,6 +13,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/document-lifecycle.html#unloading-documents
 //!
 //! lint-impls: hook for Document
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -43,10 +44,11 @@ pub const BeforeUnloadResult = struct {
     prompt_requested: bool = false,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by Document. Idempotent: every call installs the same functions.
+/// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

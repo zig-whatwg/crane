@@ -95,6 +95,15 @@ pub const Scheduler = struct {
         SchedulerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Scheduler")) {
+            if (comptime @hasDecl(impls.Scheduler, "installHooks")) impls.Scheduler.installHooks();
+        }
+    }
+
     pub fn call_yield(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SchedulerImpl.call_yield(instance);
     }

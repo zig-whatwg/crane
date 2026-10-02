@@ -83,6 +83,15 @@ pub const NavigatorCookies = struct {
         NavigatorCookiesImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "NavigatorCookies")) {
+            if (comptime @hasDecl(impls.NavigatorCookies, "installHooks")) impls.NavigatorCookies.installHooks();
+        }
+    }
+
     pub fn get_cookieEnabled(instance: *runtime.Instance) anyerror!bool {
         return try NavigatorCookiesImpl.get_cookieEnabled(instance);
     }

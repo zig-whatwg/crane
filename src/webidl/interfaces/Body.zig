@@ -112,6 +112,15 @@ pub const Body = struct {
         BodyImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Body")) {
+            if (comptime @hasDecl(impls.Body, "installHooks")) impls.Body.installHooks();
+        }
+    }
+
     pub fn get_body(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try BodyImpl.get_body(instance);
     }

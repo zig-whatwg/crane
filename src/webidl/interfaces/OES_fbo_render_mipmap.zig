@@ -84,4 +84,13 @@ pub const OES_fbo_render_mipmap = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         OES_fbo_render_mipmapImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "OES_fbo_render_mipmap")) {
+            if (comptime @hasDecl(impls.OES_fbo_render_mipmap, "installHooks")) impls.OES_fbo_render_mipmap.installHooks();
+        }
+    }
 };

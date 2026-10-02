@@ -140,6 +140,15 @@ pub const NetworkInformation = struct {
         NetworkInformationImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "NetworkInformation")) {
+            if (comptime @hasDecl(impls.NetworkInformation, "installHooks")) impls.NetworkInformation.installHooks();
+        }
+    }
+
     pub fn get_type(instance: *runtime.Instance) anyerror!ConnectionType {
         return try NetworkInformationImpl.get_type(instance);
     }

@@ -555,6 +555,15 @@ pub const Navigator = struct {
         NavigatorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Navigator")) {
+            if (comptime @hasDecl(impls.Navigator, "installHooks")) impls.Navigator.installHooks();
+        }
+    }
+
     pub fn get_audioSession(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try NavigatorImpl.get_audioSession(instance);
     }

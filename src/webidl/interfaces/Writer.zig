@@ -152,6 +152,15 @@ pub const Writer = struct {
         WriterImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Writer")) {
+            if (comptime @hasDecl(impls.Writer, "installHooks")) impls.Writer.installHooks();
+        }
+    }
+
     pub fn get_sharedContext(instance: *runtime.Instance) anyerror!DOMString {
         return try WriterImpl.get_sharedContext(instance);
     }

@@ -12,6 +12,7 @@
 //! shape as `live_collections.zig`.
 //!
 //! lint-impls: hook for DOMTokenList
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -23,11 +24,12 @@ pub const Implementation = struct {
     associate: *const fn (list: *runtime.Instance, element: *runtime.Instance, local_name: []const u8) anyerror!void,
 };
 
-/// Per thread, like the lists themselves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by the DOMTokenList impl. Idempotent.
+/// Called by DOMTokenList's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

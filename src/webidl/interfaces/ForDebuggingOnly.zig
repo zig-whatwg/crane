@@ -91,6 +91,15 @@ pub const ForDebuggingOnly = struct {
         ForDebuggingOnlyImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ForDebuggingOnly")) {
+            if (comptime @hasDecl(impls.ForDebuggingOnly, "installHooks")) impls.ForDebuggingOnly.installHooks();
+        }
+    }
+
     pub fn call_reportAdAuctionWin(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
         return try ForDebuggingOnlyImpl.call_reportAdAuctionWin(instance, url);
     }

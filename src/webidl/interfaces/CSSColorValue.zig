@@ -99,6 +99,15 @@ pub const CSSColorValue = struct {
         CSSColorValueImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSColorValue")) {
+            if (comptime @hasDecl(impls.CSSColorValue, "installHooks")) impls.CSSColorValue.installHooks();
+        }
+    }
+
     /// Extended attributes: [Exposed=Window]
     pub fn call_static_parse(instance: *runtime.Instance, cssText: runtime.USVString) anyerror!runtime.JSValue {
         return try CSSColorValueImpl.call_static_parse(instance, cssText);

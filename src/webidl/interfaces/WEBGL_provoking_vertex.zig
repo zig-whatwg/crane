@@ -122,6 +122,15 @@ pub const WEBGL_provoking_vertex = struct {
         WEBGL_provoking_vertexImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_provoking_vertex")) {
+            if (comptime @hasDecl(impls.WEBGL_provoking_vertex, "installHooks")) impls.WEBGL_provoking_vertex.installHooks();
+        }
+    }
+
     pub fn call_provokingVertexWEBGL(instance: *runtime.Instance, provokeMode: GLenum) anyerror!void {
         return try WEBGL_provoking_vertexImpl.call_provokingVertexWEBGL(instance, provokeMode);
     }

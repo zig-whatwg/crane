@@ -134,6 +134,14 @@ pub const InternalState = struct {
     selectedness: Selectedness = .clean,
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The select element's reset algorithm is this file's, as the rest of
+    // the selection model is: installed before any option exists.
+    @import("dom").form_controls.install(.{ .is = &isSelectElement, .reset = &resetSelect });
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
 pub fn init(
@@ -142,9 +150,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // The select element's reset algorithm is this file's, as the rest of
-    // the selection model is: installed before any option exists.
-    @import("dom").form_controls.install(.{ .is = &isSelectElement, .reset = &resetSelect });
 
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");

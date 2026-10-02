@@ -110,6 +110,15 @@ pub const MediaStreamTrackAudioSourceNode = struct {
         MediaStreamTrackAudioSourceNodeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaStreamTrackAudioSourceNode")) {
+            if (comptime @hasDecl(impls.MediaStreamTrackAudioSourceNode, "installHooks")) impls.MediaStreamTrackAudioSourceNode.installHooks();
+        }
+    }
+
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

@@ -125,6 +125,15 @@ pub const NamedFlow = struct {
         NamedFlowImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "NamedFlow")) {
+            if (comptime @hasDecl(impls.NamedFlow, "installHooks")) impls.NamedFlow.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try NamedFlowImpl.get_name(instance);
     }

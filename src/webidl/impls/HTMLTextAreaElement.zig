@@ -171,6 +171,14 @@ pub const InternalState = struct {
     }
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The steps other code runs on textareas (each idempotent).
+    dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm });
+    dom.teardown_sweeps.install(&cleanupAllRemainingInternal);
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
 pub fn init(
@@ -179,9 +187,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // The steps other code runs on textareas (each idempotent).
-    dom.form_controls.install(.{ .is = &isTextArea, .reset = &resetAlgorithm });
-    dom.teardown_sweeps.install(&cleanupAllRemainingInternal);
 
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");

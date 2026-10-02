@@ -275,6 +275,15 @@ pub const SVGFEImageElement = struct {
         SVGFEImageElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFEImageElement")) {
+            if (comptime @hasDecl(impls.SVGFEImageElement, "installHooks")) impls.SVGFEImageElement.installHooks();
+        }
+    }
+
     pub fn get_preserveAspectRatio(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEImageElementImpl.get_preserveAspectRatio(instance);
     }

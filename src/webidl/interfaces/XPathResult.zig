@@ -201,6 +201,15 @@ pub const XPathResult = struct {
         XPathResultImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XPathResult")) {
+            if (comptime @hasDecl(impls.XPathResult, "installHooks")) impls.XPathResult.installHooks();
+        }
+    }
+
     pub fn get_resultType(instance: *runtime.Instance) anyerror!u16 {
         return try XPathResultImpl.get_resultType(instance);
     }

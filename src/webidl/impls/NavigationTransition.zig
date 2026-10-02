@@ -52,6 +52,12 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    dom.navigation_objects.installTransitions(.{ .create = &create });
+}
+
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -63,7 +69,6 @@ pub fn init(
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
     instance.getState(StateType).own._internal = internal;
-    dom.navigation_objects.installTransitions(.{ .create = &create });
     return instance;
 }
 

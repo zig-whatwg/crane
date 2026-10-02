@@ -106,6 +106,15 @@ pub const CryptoKey = struct {
         CryptoKeyImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CryptoKey")) {
+            if (comptime @hasDecl(impls.CryptoKey, "installHooks")) impls.CryptoKey.installHooks();
+        }
+    }
+
     pub fn get_type(instance: *runtime.Instance) anyerror!KeyType {
         return try CryptoKeyImpl.get_type(instance);
     }

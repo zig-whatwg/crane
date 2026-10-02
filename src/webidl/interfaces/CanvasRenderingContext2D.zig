@@ -430,6 +430,15 @@ pub const CanvasRenderingContext2D = struct {
         CanvasRenderingContext2DImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CanvasRenderingContext2D")) {
+            if (comptime @hasDecl(impls.CanvasRenderingContext2D, "installHooks")) impls.CanvasRenderingContext2D.installHooks();
+        }
+    }
+
     pub fn get_canvas(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try CanvasRenderingContext2DImpl.get_canvas(instance);
     }

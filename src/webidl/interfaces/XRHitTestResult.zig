@@ -94,6 +94,15 @@ pub const XRHitTestResult = struct {
         XRHitTestResultImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRHitTestResult")) {
+            if (comptime @hasDecl(impls.XRHitTestResult, "installHooks")) impls.XRHitTestResult.installHooks();
+        }
+    }
+
     pub fn call_getPose(instance: *runtime.Instance, baseSpace: *runtime.Instance) anyerror!?*runtime.Instance {
         return try XRHitTestResultImpl.call_getPose(instance, baseSpace);
     }

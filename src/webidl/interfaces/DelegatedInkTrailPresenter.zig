@@ -97,6 +97,15 @@ pub const DelegatedInkTrailPresenter = struct {
         DelegatedInkTrailPresenterImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "DelegatedInkTrailPresenter")) {
+            if (comptime @hasDecl(impls.DelegatedInkTrailPresenter, "installHooks")) impls.DelegatedInkTrailPresenter.installHooks();
+        }
+    }
+
     pub fn get_presentationArea(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try DelegatedInkTrailPresenterImpl.get_presentationArea(instance);
     }

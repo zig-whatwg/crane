@@ -13,6 +13,7 @@
 //! lint-impls: hook for HTMLIFrameElement, HTMLScriptElement, HTMLDetailsElement, HTMLLinkElement, HTMLInputElement
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// The attribute change steps of one element type: given the element, the
@@ -34,13 +35,14 @@ const Entry = struct {
 
 /// Few element types have steps, so a short list beats a map.
 const max_entries = 16;
-threadlocal var entries: [max_entries]Entry = undefined;
-threadlocal var count: usize = 0;
+var entries: [max_entries]Entry = undefined;
+var count: usize = 0;
 
 /// Install `steps` for HTML elements whose local name is `element` (a string
 /// that lives for the program). Idempotent: installing the same steps again
 /// changes nothing; installing different ones replaces them.
 pub fn install(element: []const u8, steps: Steps) void {
+    process_start.assertInstalling();
     for (entries[0..count]) |*entry| {
         if (std.mem.eql(u8, entry.element, element)) {
             entry.steps = steps;

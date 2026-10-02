@@ -119,6 +119,15 @@ pub const History = struct {
         HistoryImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "History")) {
+            if (comptime @hasDecl(impls.History, "installHooks")) impls.History.installHooks();
+        }
+    }
+
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try HistoryImpl.get_length(instance);
     }

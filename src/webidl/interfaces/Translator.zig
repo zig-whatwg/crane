@@ -129,6 +129,15 @@ pub const Translator = struct {
         TranslatorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Translator")) {
+            if (comptime @hasDecl(impls.Translator, "installHooks")) impls.Translator.installHooks();
+        }
+    }
+
     pub fn get_sourceLanguage(instance: *runtime.Instance) anyerror!DOMString {
         return try TranslatorImpl.get_sourceLanguage(instance);
     }

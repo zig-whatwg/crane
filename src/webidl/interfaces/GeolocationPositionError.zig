@@ -122,6 +122,15 @@ pub const GeolocationPositionError = struct {
         GeolocationPositionErrorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GeolocationPositionError")) {
+            if (comptime @hasDecl(impls.GeolocationPositionError, "installHooks")) impls.GeolocationPositionError.installHooks();
+        }
+    }
+
     pub fn get_code(instance: *runtime.Instance) anyerror!u16 {
         return try GeolocationPositionErrorImpl.get_code(instance);
     }

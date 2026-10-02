@@ -120,6 +120,15 @@ pub const ScreenDetails = struct {
         ScreenDetailsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ScreenDetails")) {
+            if (comptime @hasDecl(impls.ScreenDetails, "installHooks")) impls.ScreenDetails.installHooks();
+        }
+    }
+
     pub fn get_screens(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ScreenDetailsImpl.get_screens(instance);
     }

@@ -34,6 +34,13 @@ pub const ImplError = error{
 /// HTMLLabelElement keeps nothing beyond its attributes.
 pub const InternalState = struct {};
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Installed before any label exists (idempotent).
+    dom.activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
 pub fn init(
@@ -42,8 +49,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Installed before any label exists (idempotent).
-    dom.activation.install(.{ .has = &hasActivationBehavior, .run = &runActivationBehavior });
     return interfaces.HTMLElement.initWithState(allocator, StateType, vtable, ctx);
 }
 

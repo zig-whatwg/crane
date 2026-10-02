@@ -120,6 +120,13 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    message_ports.install(.{ .transferable_state = transferableState, .ship = ship, .receive = receive, .discard = discard });
+    @import("dom").unloading_cleanup.install(&disentangleIn);
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -147,9 +154,6 @@ pub fn initWithInternal(
     const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
     errdefer EventTargetImpl.deinit(instance);
 
-    // Nobody can hold a port to transfer before one exists.
-    message_ports.install(.{ .transferable_state = transferableState, .ship = ship, .receive = receive, .discard = discard });
-
     const internal_state = try allocator.create(InternalState);
     errdefer allocator.destroy(internal_state);
     internal_state.* = .{
@@ -165,7 +169,6 @@ pub fn initWithInternal(
     internal_port.queue_enabled = false;
     live_ports.append(std.heap.page_allocator, instance) catch {};
     // Its document's destruction disentangles it (`disentangleIn`).
-    @import("dom").unloading_cleanup.install(&disentangleIn);
     return instance;
 }
 

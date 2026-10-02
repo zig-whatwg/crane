@@ -92,6 +92,15 @@ pub const ResizeObserverSize = struct {
         ResizeObserverSizeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ResizeObserverSize")) {
+            if (comptime @hasDecl(impls.ResizeObserverSize, "installHooks")) impls.ResizeObserverSize.installHooks();
+        }
+    }
+
     pub fn get_inlineSize(instance: *runtime.Instance) anyerror!f64 {
         return try ResizeObserverSizeImpl.get_inlineSize(instance);
     }

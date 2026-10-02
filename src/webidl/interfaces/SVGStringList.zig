@@ -117,6 +117,15 @@ pub const SVGStringList = struct {
         SVGStringListImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGStringList")) {
+            if (comptime @hasDecl(impls.SVGStringList, "installHooks")) impls.SVGStringList.installHooks();
+        }
+    }
+
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try SVGStringListImpl.get_length(instance);
     }

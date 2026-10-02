@@ -29,6 +29,13 @@ pub const ImplError = error{
 /// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // A meta element's pragma runs when it is inserted into a document.
+    dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch {};
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class: HTMLElement -> Element -> Node -> EventTarget
 pub fn init(
@@ -37,9 +44,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // A meta element's pragma runs when it is inserted into a document:
-    // installed before any meta element exists.
-    ensureInsertionStepsRegistered();
     // Chain to parent class (HTMLElement)
     const HTMLElementImpl = @import("HTMLElement.zig");
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
@@ -75,14 +79,6 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 // =============================================================================
 // Pragma directives (HTML §4.2.5.3)
 // =============================================================================
-
-var insertion_steps_registered: bool = false;
-
-fn ensureInsertionStepsRegistered() void {
-    if (insertion_steps_registered) return;
-    dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch return;
-    insertion_steps_registered = true;
-}
 
 /// "When a meta element is inserted into the document, if its http-equiv
 /// attribute is present and represents one of the above states, then the

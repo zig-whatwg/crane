@@ -81,4 +81,13 @@ pub const JsonLd = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         JsonLdImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "JsonLd")) {
+            if (comptime @hasDecl(impls.JsonLd, "installHooks")) impls.JsonLd.installHooks();
+        }
+    }
 };

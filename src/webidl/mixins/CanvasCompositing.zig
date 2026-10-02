@@ -14,6 +14,15 @@ const DOMString = @import("typedefs").DOMString;
 
 pub const impl = @import("impls").CanvasCompositing;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CanvasCompositing")) {
+        if (comptime @hasDecl(impls.CanvasCompositing, "installHooks")) impls.CanvasCompositing.installHooks();
+    }
+}
+
 pub fn get_globalAlpha(instance: *runtime.Instance) anyerror!f64 {
     return try CanvasCompositingImpl.get_globalAlpha(instance);
 }

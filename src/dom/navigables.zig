@@ -14,6 +14,7 @@
 //! lint-impls: hook for HTMLIFrameElement
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const joint_history = @import("html_core").navigation.joint_history;
 const navigation_api = @import("navigation_api.zig");
@@ -68,16 +69,16 @@ pub const Implementation = struct {
     find_by_name: *const fn (source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by the container. Idempotent: every call installs the same functions.
+/// Called by the container's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 
-/// Whether a container has installed the implementation. It installs when
-/// its first element is made; a caller on a page with none makes one first,
-/// as the window open steps do for dom.auxiliary_navigables.
+/// Whether the owner has installed its implementation: from process start on,
+/// unless a test cleared it.
 pub fn isInstalled() bool {
     return implementation != null;
 }

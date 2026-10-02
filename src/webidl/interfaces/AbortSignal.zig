@@ -129,6 +129,15 @@ pub const AbortSignal = struct {
         AbortSignalImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AbortSignal")) {
+            if (comptime @hasDecl(impls.AbortSignal, "installHooks")) impls.AbortSignal.installHooks();
+        }
+    }
+
     pub fn get_aborted(instance: *runtime.Instance) anyerror!bool {
         return try AbortSignalImpl.get_aborted(instance);
     }

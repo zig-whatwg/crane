@@ -15,6 +15,15 @@ const WritableStream = @import("interfaces").WritableStream;
 
 pub const impl = @import("impls").GenericTransformStream;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "GenericTransformStream")) {
+        if (comptime @hasDecl(impls.GenericTransformStream, "installHooks")) impls.GenericTransformStream.installHooks();
+    }
+}
+
 pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return try GenericTransformStreamImpl.get_readable(instance);
 }

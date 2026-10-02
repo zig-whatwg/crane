@@ -272,6 +272,15 @@ pub const SVGFEOffsetElement = struct {
         SVGFEOffsetElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFEOffsetElement")) {
+            if (comptime @hasDecl(impls.SVGFEOffsetElement, "installHooks")) impls.SVGFEOffsetElement.installHooks();
+        }
+    }
+
     pub fn get_in1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFEOffsetElementImpl.get_in1(instance);
     }

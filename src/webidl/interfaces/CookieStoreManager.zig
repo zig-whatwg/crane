@@ -98,6 +98,15 @@ pub const CookieStoreManager = struct {
         CookieStoreManagerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CookieStoreManager")) {
+            if (comptime @hasDecl(impls.CookieStoreManager, "installHooks")) impls.CookieStoreManager.installHooks();
+        }
+    }
+
     pub fn call_subscribe(instance: *runtime.Instance, subscriptions: runtime.JSValue) anyerror!runtime.JSValue {
         return try CookieStoreManagerImpl.call_subscribe(instance, subscriptions);
     }

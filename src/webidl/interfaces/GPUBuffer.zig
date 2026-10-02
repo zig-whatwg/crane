@@ -130,6 +130,15 @@ pub const GPUBuffer = struct {
         GPUBufferImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUBuffer")) {
+            if (comptime @hasDecl(impls.GPUBuffer, "installHooks")) impls.GPUBuffer.installHooks();
+        }
+    }
+
     pub fn get_size(instance: *runtime.Instance) anyerror!GPUSize64Out {
         return try GPUBufferImpl.get_size(instance);
     }

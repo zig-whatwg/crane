@@ -13,6 +13,15 @@ const dictionaries = @import("dictionaries");
 
 pub const impl = @import("impls").NavigatorAutomationInformation;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorAutomationInformation")) {
+        if (comptime @hasDecl(impls.NavigatorAutomationInformation, "installHooks")) impls.NavigatorAutomationInformation.installHooks();
+    }
+}
+
 pub fn get_webdriver(instance: *runtime.Instance) anyerror!bool {
     return try NavigatorAutomationInformationImpl.get_webdriver(instance);
 }

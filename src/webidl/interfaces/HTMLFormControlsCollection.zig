@@ -94,6 +94,15 @@ pub const HTMLFormControlsCollection = struct {
         HTMLFormControlsCollectionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "HTMLFormControlsCollection")) {
+            if (comptime @hasDecl(impls.HTMLFormControlsCollection, "installHooks")) impls.HTMLFormControlsCollection.installHooks();
+        }
+    }
+
     pub fn call_namedItem(instance: *runtime.Instance, name: DOMString) anyerror!?runtime.JSValue {
         return try HTMLFormControlsCollectionImpl.call_namedItem(instance, name);
     }

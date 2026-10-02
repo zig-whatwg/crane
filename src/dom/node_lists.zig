@@ -3,11 +3,12 @@
 //! A labelable element's `labels` is a NodeList of label elements; NodeList
 //! is not an ancestor of the elements that return one, so they may not reach
 //! into NodeList's impl to fill it. They create the list through its
-//! interface - NodeList's init installs the implementation, so the list
-//! exists before anyone asks - and hand it the nodes here. The same shape as
+//! interface - NodeList installs the implementation at process start - and
+//! hand it the nodes here. The same shape as
 //! `live_collections.zig`.
 //!
 //! lint-impls: hook for NodeList
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -18,11 +19,12 @@ pub const Implementation = struct {
     set_static: *const fn (list: *runtime.Instance, nodes: []const *runtime.Instance) anyerror!void,
 };
 
-/// Per thread, like the lists themselves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by the NodeList impl. Idempotent.
+/// Called by NodeList's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

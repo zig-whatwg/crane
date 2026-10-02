@@ -101,6 +101,15 @@ pub const IDBFactory = struct {
         IDBFactoryImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "IDBFactory")) {
+            if (comptime @hasDecl(impls.IDBFactory, "installHooks")) impls.IDBFactory.installHooks();
+        }
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_deleteDatabase(instance: *runtime.Instance, name: DOMString) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object

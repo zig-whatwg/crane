@@ -88,6 +88,15 @@ pub const XRHitTestSource = struct {
         XRHitTestSourceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRHitTestSource")) {
+            if (comptime @hasDecl(impls.XRHitTestSource, "installHooks")) impls.XRHitTestSource.installHooks();
+        }
+    }
+
     pub fn call_cancel(instance: *runtime.Instance) anyerror!void {
         return try XRHitTestSourceImpl.call_cancel(instance);
     }

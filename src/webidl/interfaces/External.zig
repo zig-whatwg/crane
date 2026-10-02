@@ -90,6 +90,15 @@ pub const External = struct {
         ExternalImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "External")) {
+            if (comptime @hasDecl(impls.External, "installHooks")) impls.External.installHooks();
+        }
+    }
+
     pub fn call_AddSearchProvider(instance: *runtime.Instance) anyerror!void {
         return try ExternalImpl.call_AddSearchProvider(instance);
     }

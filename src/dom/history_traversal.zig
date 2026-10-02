@@ -8,6 +8,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#apply-the-traverse-history-step
 //!
 //! lint-impls: hook for History
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 const joint_history = @import("html_core").navigation.joint_history;
@@ -29,15 +30,16 @@ pub const Implementation = struct {
     resume_traversal: *const fn (window: *runtime.Instance, step: u32) void,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by History. Idempotent.
+/// Called by History's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 
-/// Whether History has installed the implementation - it does when its first
-/// object is made; a caller with none makes one first.
+/// Whether the owner has installed its implementation: from process start on,
+/// unless a test cleared it.
 pub fn isInstalled() bool {
     return implementation != null;
 }

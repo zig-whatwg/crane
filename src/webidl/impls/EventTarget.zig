@@ -207,6 +207,15 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return if (@hasField(@TypeOf(state.own), "_internal")) state.own._internal else null;
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // A lazily made entry's realm end releases it (`lazyInternal`).
+    dom_module.unloading_cleanup.install(&releaseRealmEntries);
+    // No event can be fired before a target exists.
+    @import("dom").fire_event.install(.{ .dispatch_trusted = dispatchTrusted });
+}
+
 /// Initialize instance (creates the instance)
 /// This is the root of the DOM inheritance chain - creates the Instance and
 /// initializes EventTarget's internal state.
@@ -221,9 +230,6 @@ pub fn init(
 
     // Initialize EventTarget internal state in registry
     _ = try initInternal(instance, allocator);
-
-    // No event can be fired before a target exists.
-    @import("dom").fire_event.install(.{ .dispatch_trusted = dispatchTrusted });
 
     return instance;
 }
@@ -359,8 +365,6 @@ fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) 
 /// `LazyEntry`), made on its first addEventListener.
 fn lazyInternal(instance: *runtime.Instance) !*InternalState {
     if (getInternalFromRegistry(instance)) |internal| return internal;
-    // Its realm's end releases it: nothing else will.
-    dom_module.unloading_cleanup.install(&releaseRealmEntries);
     const ArenaAllocator = @import("runtime").ArenaAllocator;
     const internal = try ArenaAllocator.get().create(InternalState);
     errdefer ArenaAllocator.get().destroy(InternalState, internal);

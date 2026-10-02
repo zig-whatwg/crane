@@ -128,6 +128,15 @@ pub const RTCRtpScriptTransformer = struct {
         RTCRtpScriptTransformerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RTCRtpScriptTransformer")) {
+            if (comptime @hasDecl(impls.RTCRtpScriptTransformer, "installHooks")) impls.RTCRtpScriptTransformer.installHooks();
+        }
+    }
+
     pub fn get_readable(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCRtpScriptTransformerImpl.get_readable(instance);
     }

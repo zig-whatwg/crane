@@ -121,6 +121,15 @@ pub const CSSAnimation = struct {
         CSSAnimationImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSAnimation")) {
+            if (comptime @hasDecl(impls.CSSAnimation, "installHooks")) impls.CSSAnimation.installHooks();
+        }
+    }
+
     pub fn get_animationName(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSAnimationImpl.get_animationName(instance);
     }

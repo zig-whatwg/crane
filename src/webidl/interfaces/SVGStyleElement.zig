@@ -264,6 +264,15 @@ pub const SVGStyleElement = struct {
         SVGStyleElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGStyleElement")) {
+            if (comptime @hasDecl(impls.SVGStyleElement, "installHooks")) impls.SVGStyleElement.installHooks();
+        }
+    }
+
     pub fn get_type(instance: *runtime.Instance) anyerror!DOMString {
         return try SVGStyleElementImpl.get_type(instance);
     }

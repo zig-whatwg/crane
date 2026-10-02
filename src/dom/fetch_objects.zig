@@ -13,6 +13,7 @@
 //! lint-impls: hook for Request, Response
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// A Headers object's guard - fetch.internal.HeaderGuard, restated here
@@ -40,16 +41,18 @@ pub const ResponseSteps = struct {
     follow: *const fn (response_object: *runtime.Instance, signal: *runtime.Instance) void,
 };
 
-threadlocal var request_steps: ?RequestSteps = null;
-threadlocal var response_steps: ?ResponseSteps = null;
+var request_steps: ?RequestSteps = null;
+var response_steps: ?ResponseSteps = null;
 
-/// Called by Request. Idempotent.
+/// Called by Request's installHooks, once, at process start (process_start.zig).
 pub fn installRequest(steps: RequestSteps) void {
+    process_start.assertInstalling();
     request_steps = steps;
 }
 
-/// Called by Response. Idempotent.
+/// Called by Response's installHooks, once, at process start (process_start.zig).
 pub fn installResponse(steps: ResponseSteps) void {
+    process_start.assertInstalling();
     response_steps = steps;
 }
 

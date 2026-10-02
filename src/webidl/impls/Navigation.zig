@@ -256,6 +256,24 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// events or hold its promises - and its navigations are not tracked.
 threadlocal var live: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    dom.navigation_api.install(.{
+        .same_document_navigation = &sameDocumentNavigation,
+        .page_swap_activation = &pageSwapActivationHook,
+        .entries_removed = &entriesRemovedHook,
+        .fire_push_replace_reload = &firePushReplaceReloadHook,
+        .fire_traverse = &fireTraverseHook,
+        .inform_about_aborting_navigation = &informAboutAbortingNavigationHook,
+        .inform_about_child_navigable_destruction = &informAboutChildNavigableDestructionHook,
+        .intercept = &interceptHook,
+        .scroll = &scrollHook,
+        .redirect = &redirectHook,
+        .add_handler = &addHandlerHook,
+    });
+}
+
 /// Initialize Navigation instance: an EventTarget, which currententrychange
 /// and the navigate events are fired at.
 pub fn init(
@@ -270,19 +288,6 @@ pub fn init(
     internal.* = .{ .allocator = allocator, .navigation = instance };
     instance.getState(StateType).own._internal = internal;
     try live.append(std.heap.c_allocator, instance);
-    dom.navigation_api.install(.{
-        .same_document_navigation = &sameDocumentNavigation,
-        .page_swap_activation = &pageSwapActivationHook,
-        .entries_removed = &entriesRemovedHook,
-        .fire_push_replace_reload = &firePushReplaceReloadHook,
-        .fire_traverse = &fireTraverseHook,
-        .inform_about_aborting_navigation = &informAboutAbortingNavigationHook,
-        .inform_about_child_navigable_destruction = &informAboutChildNavigableDestructionHook,
-        .intercept = &interceptHook,
-        .scroll = &scrollHook,
-        .redirect = &redirectHook,
-        .add_handler = &addHandlerHook,
-    });
     // "Initialize the navigation API entries for a new document": the current
     // entry, handed out now, is the "from" of the first currententrychange.
     _ = currentEntryObject(instance, internal) catch null;
@@ -336,12 +341,6 @@ fn scopeOf(instance: *runtime.Instance, internal: *InternalState) ?navigation_en
 fn entryObject(internal: *InternalState, window: *runtime.Instance, entry: *const joint_history.Entry) !*runtime.Instance {
     if (internal.handed.get(entry.id)) |handed| return handed.instance;
     const hook = dom.navigation_history_entries;
-    // The first entry object installs the hook; a page that has made none
-    // makes one to install it, and lets it go.
-    if (!hook.isInstalled()) {
-        const installer = try interfaces.NavigationHistoryEntry.init(window.ctx.allocator, window.ctx);
-        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-    }
     const instance = try hook.create(window, @ptrCast(entry));
     const handed = try internal.allocator.create(Handed);
     handed.* = .{ .instance = instance };
@@ -559,10 +558,6 @@ pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, option
     // apiMethodTracker." The navigate event the navigation fires picks the
     // tracker up.
     const navigables = dom.navigables;
-    if (!navigables.isInstalled()) {
-        const installer = try interfaces.Document.call_createElement(again.document, runtime.DOMString.initInterned("iframe"), webidl.Opt(runtime.JSValue).notPassed());
-        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-    }
     internal.handoff = tracker;
     navigables.navigateByTarget(again.document, .{
         .target = "",
@@ -984,10 +979,6 @@ fn activatedEntry(internal: *InternalState, s: navigation_entries.Scope, snapsho
 fn makeActivation(window: *runtime.Instance, init_state: dom.navigation_objects.ActivationInit, entry: ActivatedEntry) ?*runtime.Instance {
     defer if (entry.detached) entry.instance.releaseIfUnwrapped(entry.generation);
     const hook = dom.navigation_objects;
-    if (!hook.activationsInstalled()) {
-        const installer = interfaces.NavigationActivation.init(window.ctx.allocator, window.ctx) catch return null;
-        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-    }
     return hook.createActivation(window.ctx, init_state) catch |err| {
         log.debug("[navigation] no activation: {s}", .{@errorName(err)});
         return null;
@@ -1000,10 +991,6 @@ fn makeActivation(window: *runtime.Instance, init_state: dom.navigation_objects.
 /// until something holds it.
 fn detachedEntryObject(window: *runtime.Instance, snapshot: *const joint_history.EntrySnapshot) ?*runtime.Instance {
     const hook = dom.navigation_history_entries;
-    if (!hook.isInstalled()) {
-        const installer = interfaces.NavigationHistoryEntry.init(window.ctx.allocator, window.ctx) catch return null;
-        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-    }
     const entry = snapshot.asEntry();
     return hook.create(window, @ptrCast(&entry)) catch null;
 }
@@ -1182,10 +1169,6 @@ fn fireTraverseHook(window: *runtime.Instance, entry_id: u64, user_involvement: 
 /// could not be made (the navigation then goes on without an event).
 fn makeDestination(instance: *runtime.Instance, init_state: dom.navigation_objects.DestinationInit) ?*runtime.Instance {
     const hook = dom.navigation_objects;
-    if (!hook.destinationsInstalled()) {
-        const installer = interfaces.NavigationDestination.init(instance.ctx.allocator, instance.ctx) catch return null;
-        installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-    }
     return hook.createDestination(instance.ctx, init_state) catch |err| {
         log.debug("[navigation] no destination: {s}", .{@errorName(err)});
         return null;
@@ -1435,11 +1418,6 @@ fn setTransition(instance: *runtime.Instance, internal: *InternalState, record: 
     engine.markPromiseAsHandled(realm, finished.promise);
     engine.markPromiseAsHandled(realm, committed.promise);
     const hook = dom.navigation_objects;
-    if (!hook.transitionsInstalled()) {
-        if (interfaces.NavigationTransition.init(realm.allocator, realm)) |installer| {
-            installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-        } else |_| {}
-    }
     const transition_instance = hook.createTransition(realm, .{
         .navigation_type = record.navigation_type,
         .from = from,
@@ -1467,11 +1445,6 @@ fn setTransition(instance: *runtime.Instance, internal: *InternalState, record: 
 fn runPrecommitHandlers(instance: *runtime.Instance, internal: *InternalState, record: *EventRecord) void {
     const realm = instance.ctx;
     const hook = dom.navigation_objects;
-    if (!hook.controllersInstalled()) {
-        if (interfaces.NavigationPrecommitController.init(realm.allocator, realm)) |installer| {
-            installer.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(installer));
-        } else |_| {}
-    }
     const controller = hook.createController(realm, record.event) catch {
         processHandlerFailureWithAbortError(instance, internal, record);
         return;

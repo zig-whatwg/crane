@@ -103,6 +103,15 @@ pub const XRJointSpace = struct {
         XRJointSpaceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRJointSpace")) {
+            if (comptime @hasDecl(impls.XRJointSpace, "installHooks")) impls.XRJointSpace.installHooks();
+        }
+    }
+
     pub fn get_jointName(instance: *runtime.Instance) anyerror!XRHandJoint {
         return try XRJointSpaceImpl.get_jointName(instance);
     }

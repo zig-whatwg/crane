@@ -97,6 +97,15 @@ pub const DeviceMotionEventRotationRate = struct {
         DeviceMotionEventRotationRateImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "DeviceMotionEventRotationRate")) {
+            if (comptime @hasDecl(impls.DeviceMotionEventRotationRate, "installHooks")) impls.DeviceMotionEventRotationRate.installHooks();
+        }
+    }
+
     pub fn get_alpha(instance: *runtime.Instance) anyerror!?f64 {
         return try DeviceMotionEventRotationRateImpl.get_alpha(instance);
     }

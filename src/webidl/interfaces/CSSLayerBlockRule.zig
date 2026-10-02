@@ -97,6 +97,15 @@ pub const CSSLayerBlockRule = struct {
         CSSLayerBlockRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSLayerBlockRule")) {
+            if (comptime @hasDecl(impls.CSSLayerBlockRule, "installHooks")) impls.CSSLayerBlockRule.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSLayerBlockRuleImpl.get_name(instance);
     }

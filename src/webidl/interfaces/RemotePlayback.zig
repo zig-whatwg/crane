@@ -133,6 +133,15 @@ pub const RemotePlayback = struct {
         RemotePlaybackImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RemotePlayback")) {
+            if (comptime @hasDecl(impls.RemotePlayback, "installHooks")) impls.RemotePlayback.installHooks();
+        }
+    }
+
     pub fn get_state(instance: *runtime.Instance) anyerror!RemotePlaybackState {
         return try RemotePlaybackImpl.get_state(instance);
     }

@@ -9,6 +9,7 @@
 //! DOM tree structure. WebIDL impls delegate all tree operations here.
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const infra = @import("infra");
 const runtime = @import("runtime");
 
@@ -82,9 +83,12 @@ var children_changed_callbacks: ?infra.List(ChildrenChangedCallback) = null;
 /// Register a callback to be invoked when children change
 /// This should be called during initialization by specifications that need to hook into mutations
 pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) !void {
+    process_start.assertInstalling();
     if (children_changed_callbacks == null) {
         children_changed_callbacks = infra.List(ChildrenChangedCallback).init(std.heap.page_allocator);
     }
+    // Once per function: a repeated install (a test that installs again) adds nothing.
+    if (children_changed_callbacks.?.contains(callback)) return;
     try children_changed_callbacks.?.append(callback);
 }
 
@@ -164,33 +168,45 @@ var moving_steps_callbacks: ?infra.List(MovingStepsCallback) = null;
 
 /// Register a callback for insertion steps
 pub fn registerInsertionStepsCallback(callback: InsertionStepsCallback) !void {
+    process_start.assertInstalling();
     if (insertion_steps_callbacks == null) {
         insertion_steps_callbacks = infra.List(InsertionStepsCallback).init(std.heap.page_allocator);
     }
+    // Once per function: a repeated install (a test that installs again) adds nothing.
+    if (insertion_steps_callbacks.?.contains(callback)) return;
     try insertion_steps_callbacks.?.append(callback);
 }
 
 /// Register a callback for removing steps
 pub fn registerRemovingStepsCallback(callback: RemovingStepsCallback) !void {
+    process_start.assertInstalling();
     if (removing_steps_callbacks == null) {
         removing_steps_callbacks = infra.List(RemovingStepsCallback).init(std.heap.page_allocator);
     }
+    // Once per function: a repeated install (a test that installs again) adds nothing.
+    if (removing_steps_callbacks.?.contains(callback)) return;
     try removing_steps_callbacks.?.append(callback);
 }
 
 /// Register a callback for post-connection steps
 pub fn registerPostConnectionStepsCallback(callback: PostConnectionStepsCallback) !void {
+    process_start.assertInstalling();
     if (post_connection_steps_callbacks == null) {
         post_connection_steps_callbacks = infra.List(PostConnectionStepsCallback).init(std.heap.page_allocator);
     }
+    // Once per function: a repeated install (a test that installs again) adds nothing.
+    if (post_connection_steps_callbacks.?.contains(callback)) return;
     try post_connection_steps_callbacks.?.append(callback);
 }
 
 /// Register a callback for moving steps
 pub fn registerMovingStepsCallback(callback: MovingStepsCallback) !void {
+    process_start.assertInstalling();
     if (moving_steps_callbacks == null) {
         moving_steps_callbacks = infra.List(MovingStepsCallback).init(std.heap.page_allocator);
     }
+    // Once per function: a repeated install (a test that installs again) adds nothing.
+    if (moving_steps_callbacks.?.contains(callback)) return;
     try moving_steps_callbacks.?.append(callback);
 }
 
@@ -2528,4 +2544,23 @@ pub fn adopt(
         // This would call HTML custom element adoption steps
         // For now, this is a no-op
     }
+}
+
+test "a callback registered twice runs once" {
+    const Counter = struct {
+        var calls: usize = 0;
+        fn childrenChanged(_: *NodeBase) void {
+            calls += 1;
+        }
+    };
+    const saved = children_changed_callbacks;
+    defer children_changed_callbacks = saved;
+    children_changed_callbacks = null;
+    defer if (children_changed_callbacks) |*list| list.deinit();
+
+    try registerChildrenChangedCallback(&Counter.childrenChanged);
+    try registerChildrenChangedCallback(&Counter.childrenChanged);
+    var parent: NodeBase = undefined;
+    runChildrenChangedSteps(&parent);
+    try std.testing.expectEqual(@as(usize, 1), Counter.calls);
 }

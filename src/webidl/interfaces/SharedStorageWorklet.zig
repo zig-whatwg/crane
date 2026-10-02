@@ -102,6 +102,15 @@ pub const SharedStorageWorklet = struct {
         SharedStorageWorkletImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SharedStorageWorklet")) {
+            if (comptime @hasDecl(impls.SharedStorageWorklet, "installHooks")) impls.SharedStorageWorklet.installHooks();
+        }
+    }
+
     pub fn call_selectURL(instance: *runtime.Instance, name: DOMString, urls: runtime.JSValue, options: webidl.Opt(SharedStorageRunOperationMethodOptions)) anyerror!runtime.JSValue {
         return try SharedStorageWorkletImpl.call_selectURL(instance, name, urls, options);
     }

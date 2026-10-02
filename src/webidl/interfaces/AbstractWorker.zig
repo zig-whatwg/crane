@@ -86,6 +86,15 @@ pub const AbstractWorker = struct {
         AbstractWorkerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AbstractWorker")) {
+            if (comptime @hasDecl(impls.AbstractWorker, "installHooks")) impls.AbstractWorker.installHooks();
+        }
+    }
+
     pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
         return try AbstractWorkerImpl.get_onerror(instance);
     }

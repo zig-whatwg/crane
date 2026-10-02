@@ -140,6 +140,15 @@ pub const RTCIdentityProviderGlobalScope = struct {
         RTCIdentityProviderGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "RTCIdentityProviderGlobalScope")) {
+            if (comptime @hasDecl(impls.RTCIdentityProviderGlobalScope, "installHooks")) impls.RTCIdentityProviderGlobalScope.installHooks();
+        }
+    }
+
     pub fn get_rtcIdentityProvider(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RTCIdentityProviderGlobalScopeImpl.get_rtcIdentityProvider(instance);
     }

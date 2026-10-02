@@ -84,4 +84,13 @@ pub const EXT_color_buffer_float = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         EXT_color_buffer_floatImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "EXT_color_buffer_float")) {
+            if (comptime @hasDecl(impls.EXT_color_buffer_float, "installHooks")) impls.EXT_color_buffer_float.installHooks();
+        }
+    }
 };

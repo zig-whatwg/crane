@@ -14,6 +14,15 @@ const ML = @import("interfaces").ML;
 
 pub const impl = @import("impls").NavigatorML;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "NavigatorML")) {
+        if (comptime @hasDecl(impls.NavigatorML, "installHooks")) impls.NavigatorML.installHooks();
+    }
+}
+
 /// Extended attributes: [SecureContext], [SameObject]
 pub fn get_ml(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return try NavigatorMLImpl.get_ml(instance);

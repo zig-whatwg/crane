@@ -92,6 +92,15 @@ pub const CSSLayerStatementRule = struct {
         CSSLayerStatementRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSLayerStatementRule")) {
+            if (comptime @hasDecl(impls.CSSLayerStatementRule, "installHooks")) impls.CSSLayerStatementRule.installHooks();
+        }
+    }
+
     pub fn get_nameList(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try CSSLayerStatementRuleImpl.get_nameList(instance);
     }

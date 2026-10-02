@@ -127,6 +127,15 @@ pub const XRView = struct {
         XRViewImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRView")) {
+            if (comptime @hasDecl(impls.XRView, "installHooks")) impls.XRView.installHooks();
+        }
+    }
+
     pub fn get_eye(instance: *runtime.Instance) anyerror!XREye {
         return try XRViewImpl.get_eye(instance);
     }

@@ -93,6 +93,15 @@ pub const WEBGL_debug_shaders = struct {
         WEBGL_debug_shadersImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_debug_shaders")) {
+            if (comptime @hasDecl(impls.WEBGL_debug_shaders, "installHooks")) impls.WEBGL_debug_shaders.installHooks();
+        }
+    }
+
     pub fn call_getTranslatedShaderSource(instance: *runtime.Instance, shader: *runtime.Instance) anyerror!DOMString {
         return try WEBGL_debug_shadersImpl.call_getTranslatedShaderSource(instance, shader);
     }

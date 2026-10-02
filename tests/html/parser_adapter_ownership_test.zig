@@ -37,6 +37,8 @@ fn createElement(
 }
 
 test "DomTreeAdapter.deinit - frees a node the parser never attached" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     const allocator = testing.allocator;
 
     runtime.initializeRuntime(allocator);
@@ -63,6 +65,8 @@ test "DomTreeAdapter.deinit - frees a node the parser never attached" {
 }
 
 test "DomTreeAdapter.deinit - leaves a node a script detached after the parser attached it" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     const allocator = testing.allocator;
 
     runtime.initializeRuntime(allocator);
@@ -100,6 +104,8 @@ test "DomTreeAdapter.deinit - leaves a node a script detached after the parser a
 }
 
 test "DomTreeAdapter.deinit - does not follow a slab slot the GC recycled" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     const allocator = testing.allocator;
 
     runtime.initializeRuntime(allocator);

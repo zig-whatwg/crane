@@ -9,6 +9,7 @@
 //! Spec: https://w3c.github.io/IntersectionObserver/#lifetime
 //!
 //! lint-impls: hook for IntersectionObserver
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -16,10 +17,11 @@ pub const Implementation = struct {
     target_destroyed: *const fn (node: *runtime.Instance) void,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by IntersectionObserver. Idempotent.
+/// Called by IntersectionObserver's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

@@ -145,6 +145,15 @@ pub const TaskAttributionTiming = struct {
         TaskAttributionTimingImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TaskAttributionTiming")) {
+            if (comptime @hasDecl(impls.TaskAttributionTiming, "installHooks")) impls.TaskAttributionTiming.installHooks();
+        }
+    }
+
     pub fn get_startTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try TaskAttributionTimingImpl.get_startTime(instance);
     }

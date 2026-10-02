@@ -141,6 +141,15 @@ pub const Sensor = struct {
         SensorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Sensor")) {
+            if (comptime @hasDecl(impls.Sensor, "installHooks")) impls.Sensor.installHooks();
+        }
+    }
+
     pub fn get_activated(instance: *runtime.Instance) anyerror!bool {
         return try SensorImpl.get_activated(instance);
     }

@@ -245,6 +245,15 @@ pub const SVGClipPathElement = struct {
         SVGClipPathElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGClipPathElement")) {
+            if (comptime @hasDecl(impls.SVGClipPathElement, "installHooks")) impls.SVGClipPathElement.installHooks();
+        }
+    }
+
     pub fn get_clipPathUnits(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGClipPathElementImpl.get_clipPathUnits(instance);
     }

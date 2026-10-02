@@ -101,6 +101,15 @@ pub const XRViewport = struct {
         XRViewportImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRViewport")) {
+            if (comptime @hasDecl(impls.XRViewport, "installHooks")) impls.XRViewport.installHooks();
+        }
+    }
+
     pub fn get_x(instance: *runtime.Instance) anyerror!i32 {
         return try XRViewportImpl.get_x(instance);
     }

@@ -149,6 +149,15 @@ pub const MIDIPort = struct {
         MIDIPortImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MIDIPort")) {
+            if (comptime @hasDecl(impls.MIDIPort, "installHooks")) impls.MIDIPort.installHooks();
+        }
+    }
+
     pub fn get_id(instance: *runtime.Instance) anyerror!DOMString {
         return try MIDIPortImpl.get_id(instance);
     }

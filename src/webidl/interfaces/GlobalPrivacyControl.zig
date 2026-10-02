@@ -83,6 +83,15 @@ pub const GlobalPrivacyControl = struct {
         GlobalPrivacyControlImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GlobalPrivacyControl")) {
+            if (comptime @hasDecl(impls.GlobalPrivacyControl, "installHooks")) impls.GlobalPrivacyControl.installHooks();
+        }
+    }
+
     pub fn get_globalPrivacyControl(instance: *runtime.Instance) anyerror!bool {
         return try GlobalPrivacyControlImpl.get_globalPrivacyControl(instance);
     }

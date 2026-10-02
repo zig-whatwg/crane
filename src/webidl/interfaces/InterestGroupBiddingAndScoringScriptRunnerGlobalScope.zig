@@ -99,6 +99,15 @@ pub const InterestGroupBiddingAndScoringScriptRunnerGlobalScope = struct {
         InterestGroupBiddingAndScoringScriptRunnerGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "InterestGroupBiddingAndScoringScriptRunnerGlobalScope")) {
+            if (comptime @hasDecl(impls.InterestGroupBiddingAndScoringScriptRunnerGlobalScope, "installHooks")) impls.InterestGroupBiddingAndScoringScriptRunnerGlobalScope.installHooks();
+        }
+    }
+
     pub fn get_forDebuggingOnly(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try InterestGroupBiddingAndScoringScriptRunnerGlobalScopeImpl.get_forDebuggingOnly(instance);
     }

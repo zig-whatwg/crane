@@ -101,4 +101,13 @@ pub const OES_standard_derivatives = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         OES_standard_derivativesImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "OES_standard_derivatives")) {
+            if (comptime @hasDecl(impls.OES_standard_derivatives, "installHooks")) impls.OES_standard_derivatives.installHooks();
+        }
+    }
 };

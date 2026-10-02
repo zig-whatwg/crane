@@ -107,6 +107,15 @@ pub const CSSKeyframeRule = struct {
         CSSKeyframeRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSKeyframeRule")) {
+            if (comptime @hasDecl(impls.CSSKeyframeRule, "installHooks")) impls.CSSKeyframeRule.installHooks();
+        }
+    }
+
     pub fn get_keyText(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSKeyframeRuleImpl.get_keyText(instance);
     }

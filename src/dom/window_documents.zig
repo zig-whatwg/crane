@@ -9,6 +9,7 @@
 //!
 //! The installer is src/browser/Context.zig, not an impl.
 //! lint-impls: hook for Context
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -19,11 +20,12 @@ pub const Implementation = struct {
     destroyed: *const fn (realm: runtime.Context) void,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
 /// Called by the browser layer. Idempotent: every call installs the same
 /// function.
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

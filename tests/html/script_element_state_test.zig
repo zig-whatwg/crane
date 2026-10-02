@@ -66,6 +66,8 @@ test "a module script result holds html's module script, typed" {
 }
 
 test "an HTML script element's state is reached through script_element.of, and is the one its IDL members read" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     const allocator = testing.allocator;
 
     runtime.initializeRuntime(allocator);
@@ -95,6 +97,8 @@ test "an HTML script element's state is reached through script_element.of, and i
 }
 
 test "an element that is no HTML script element has no script element state" {
+    // The hooks this test's objects reach (no Browser here: crane.Process is not started).
+    @import("interfaces").process_hooks.startHooksForTest();
     const allocator = testing.allocator;
 
     runtime.initializeRuntime(allocator);

@@ -150,6 +150,15 @@ pub const SharedStorage = struct {
         SharedStorageImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SharedStorage")) {
+            if (comptime @hasDecl(impls.SharedStorage, "installHooks")) impls.SharedStorage.installHooks();
+        }
+    }
+
     /// Extended attributes: [Exposed=Window]
     pub fn get_worklet(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SharedStorageImpl.get_worklet(instance);

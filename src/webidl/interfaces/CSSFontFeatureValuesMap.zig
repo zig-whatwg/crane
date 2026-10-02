@@ -92,6 +92,15 @@ pub const CSSFontFeatureValuesMap = struct {
         CSSFontFeatureValuesMapImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSFontFeatureValuesMap")) {
+            if (comptime @hasDecl(impls.CSSFontFeatureValuesMap, "installHooks")) impls.CSSFontFeatureValuesMap.installHooks();
+        }
+    }
+
     pub fn call_set(instance: *runtime.Instance, featureValueName: CSSOMString, values: runtime.JSValue) anyerror!void {
         return try CSSFontFeatureValuesMapImpl.call_set(instance, featureValueName, values);
     }

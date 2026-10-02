@@ -4763,6 +4763,15 @@ pub const WebGL2RenderingContext = struct {
         WebGL2RenderingContextImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WebGL2RenderingContext")) {
+            if (comptime @hasDecl(impls.WebGL2RenderingContext, "installHooks")) impls.WebGL2RenderingContext.installHooks();
+        }
+    }
+
     pub fn get_canvas(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WebGL2RenderingContextImpl.get_canvas(instance);
     }

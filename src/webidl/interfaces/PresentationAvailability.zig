@@ -110,6 +110,15 @@ pub const PresentationAvailability = struct {
         PresentationAvailabilityImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PresentationAvailability")) {
+            if (comptime @hasDecl(impls.PresentationAvailability, "installHooks")) impls.PresentationAvailability.installHooks();
+        }
+    }
+
     pub fn get_value(instance: *runtime.Instance) anyerror!bool {
         return try PresentationAvailabilityImpl.get_value(instance);
     }

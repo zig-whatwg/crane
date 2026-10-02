@@ -1,6 +1,7 @@
 # Instances and tabs
 
-Status: design (2026-10-01), not yet built. The full design, with the inventory of every
+Status: design (2026-10-01). Batch B0 built (2026-10-02): `zig build lint-global-state` and
+`crane.Process` (src/browser/process.zig) with every src/dom hook written once at start-up. The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.
 
@@ -32,8 +33,30 @@ directory.
    destroyed with the scope.
 3. **A hook is process-wide and written once**, at process start - never installed lazily by the
    first owner, never per instance.
-4. A planned ratchet, `zig build lint-global-state`, will count every process-global and
-   threadlocal mutable variable in src/ and only let the count go down.
+4. `zig build lint-global-state` (part of `zig build test`; tools/lint_global_state.zig) counts
+   every process-global and threadlocal mutable variable in src/ - Zig through std.zig.Ast, C++
+   by a scan of the code - per file and qualified name, against
+   tools/global_state_baseline.txt, and only lets the count go down. A key the baseline lacks
+   fails. `-- --update` records a paid-down tree; it records a NEW key only when its declaration
+   has a `// process-wide: <why>` line directly above it (a variable that genuinely belongs to
+   the process; the integrator reviews it). `-- --rename '<old key>' '<new key>'` records a
+   rename in place: same file, kind, declaration (type and initialiser) and count.
+
+## Hooks: how they are installed
+
+A hook is a function table in a src/dom module (or src/html/script_element.zig) that the owning
+impl fills so code that may not name the impl can reach a step. Since B0:
+
+- The owning impl declares `pub fn installHooks() void` and makes every install there - never in
+  `init`, never on first use, never by making a throwaway object of the owner's type.
+- The generated interface (or mixin module) exposes it, and the generated root's
+  `process_hooks.install()` calls each one. `crane.Process.init` calls that once, before any
+  Browser exists; the browser layer's own hooks (Context.installHooks) follow.
+- The hook module's variable is a plain process `var`, and its install calls
+  `dom.process_start.assertInstalling()`: an install after start-up panics outside tests.
+- A host starts the process itself (`var process = try crane.Process.init(.{}); defer
+  process.deinit();`, as the WPT runner does); `Browser.init` still calls
+  `Process.ensureStarted` for hosts that do not (removed in B6).
 
 ## Decisions (the user, 2026-10-01)
 

@@ -52,6 +52,13 @@ pub const ImplError = error{
 /// UIEvent keeps nothing beyond its generated fields.
 pub const InternalState = struct {};
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // UIEventInit's members, for every subclass (dom.event_construction).
+    event_construction.installUIEvent(.{ .initialize = &initializeMembers });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -59,8 +66,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // UIEventInit's members, for every subclass (dom.event_construction).
-    event_construction.installUIEvent(.{ .initialize = &initializeMembers });
     return interfaces.Event.initWithState(allocator, StateType, vtable, ctx);
 }
 

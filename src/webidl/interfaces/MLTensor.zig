@@ -115,6 +115,15 @@ pub const MLTensor = struct {
         MLTensorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MLTensor")) {
+            if (comptime @hasDecl(impls.MLTensor, "installHooks")) impls.MLTensor.installHooks();
+        }
+    }
+
     pub fn get_dataType(instance: *runtime.Instance) anyerror!MLOperandDataType {
         return try MLTensorImpl.get_dataType(instance);
     }

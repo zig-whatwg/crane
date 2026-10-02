@@ -97,6 +97,15 @@ pub const CSSSupportsConditionRule = struct {
         CSSSupportsConditionRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSSupportsConditionRule")) {
+            if (comptime @hasDecl(impls.CSSSupportsConditionRule, "installHooks")) impls.CSSSupportsConditionRule.installHooks();
+        }
+    }
+
     pub fn get_name(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSSupportsConditionRuleImpl.get_name(instance);
     }

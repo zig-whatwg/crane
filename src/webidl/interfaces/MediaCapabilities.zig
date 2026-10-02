@@ -97,6 +97,15 @@ pub const MediaCapabilities = struct {
         MediaCapabilitiesImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaCapabilities")) {
+            if (comptime @hasDecl(impls.MediaCapabilities, "installHooks")) impls.MediaCapabilities.installHooks();
+        }
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_encodingInfo(instance: *runtime.Instance, configuration: MediaEncodingConfiguration) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object

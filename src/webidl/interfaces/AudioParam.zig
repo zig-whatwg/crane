@@ -132,6 +132,15 @@ pub const AudioParam = struct {
         AudioParamImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AudioParam")) {
+            if (comptime @hasDecl(impls.AudioParam, "installHooks")) impls.AudioParam.installHooks();
+        }
+    }
+
     pub fn get_value(instance: *runtime.Instance) anyerror!f32 {
         return try AudioParamImpl.get_value(instance);
     }

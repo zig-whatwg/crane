@@ -15,6 +15,15 @@ const DOMString = @import("typedefs").DOMString;
 
 pub const impl = @import("impls").CanvasText;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CanvasText")) {
+        if (comptime @hasDecl(impls.CanvasText, "installHooks")) impls.CanvasText.installHooks();
+    }
+}
+
 pub fn call_measureText(instance: *runtime.Instance, text: DOMString) anyerror!*runtime.Instance {
     return try CanvasTextImpl.call_measureText(instance, text);
 }

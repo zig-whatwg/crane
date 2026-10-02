@@ -16,6 +16,15 @@ const CryptoKey = @import("interfaces").CryptoKey;
 
 pub const impl = @import("impls").SFrameKeyManagement;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "SFrameKeyManagement")) {
+        if (comptime @hasDecl(impls.SFrameKeyManagement, "installHooks")) impls.SFrameKeyManagement.installHooks();
+    }
+}
+
 pub fn get_onerror(instance: *runtime.Instance) anyerror!EventHandler {
     return try SFrameKeyManagementImpl.get_onerror(instance);
 }

@@ -172,6 +172,15 @@ pub const EXT_disjoint_timer_query = struct {
         EXT_disjoint_timer_queryImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "EXT_disjoint_timer_query")) {
+            if (comptime @hasDecl(impls.EXT_disjoint_timer_query, "installHooks")) impls.EXT_disjoint_timer_query.installHooks();
+        }
+    }
+
     pub fn call_getQueryObjectEXT(instance: *runtime.Instance, query: *runtime.Instance, pname: GLenum) anyerror!runtime.JSValue {
         return try EXT_disjoint_timer_queryImpl.call_getQueryObjectEXT(instance, query, pname);
     }

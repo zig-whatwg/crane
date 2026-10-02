@@ -118,6 +118,15 @@ pub const ANGLE_instanced_arrays = struct {
         ANGLE_instanced_arraysImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ANGLE_instanced_arrays")) {
+            if (comptime @hasDecl(impls.ANGLE_instanced_arrays, "installHooks")) impls.ANGLE_instanced_arrays.installHooks();
+        }
+    }
+
     pub fn call_drawArraysInstancedANGLE(instance: *runtime.Instance, mode: GLenum, first: GLint, count: GLsizei, primcount: GLsizei) anyerror!void {
         return try ANGLE_instanced_arraysImpl.call_drawArraysInstancedANGLE(instance, mode, first, count, primcount);
     }

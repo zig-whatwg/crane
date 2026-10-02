@@ -110,6 +110,15 @@ pub const BluetoothRemoteGATTDescriptor = struct {
         BluetoothRemoteGATTDescriptorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "BluetoothRemoteGATTDescriptor")) {
+            if (comptime @hasDecl(impls.BluetoothRemoteGATTDescriptor, "installHooks")) impls.BluetoothRemoteGATTDescriptor.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_characteristic(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);

@@ -152,6 +152,15 @@ pub const LargestContentfulPaint = struct {
         LargestContentfulPaintImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "LargestContentfulPaint")) {
+            if (comptime @hasDecl(impls.LargestContentfulPaint, "installHooks")) impls.LargestContentfulPaint.installHooks();
+        }
+    }
+
     pub fn get_loadTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try LargestContentfulPaintImpl.get_loadTime(instance);
     }

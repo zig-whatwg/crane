@@ -114,6 +114,15 @@ pub const MIDIInput = struct {
         MIDIInputImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MIDIInput")) {
+            if (comptime @hasDecl(impls.MIDIInput, "installHooks")) impls.MIDIInput.installHooks();
+        }
+    }
+
     pub fn get_onmidimessage(instance: *runtime.Instance) anyerror!EventHandler {
         return try MIDIInputImpl.get_onmidimessage(instance);
     }

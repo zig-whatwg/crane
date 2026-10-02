@@ -14,6 +14,15 @@ const EventHandler = @import("typedefs").EventHandler;
 
 pub const impl = @import("impls").CharacteristicEventHandlers;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "CharacteristicEventHandlers")) {
+        if (comptime @hasDecl(impls.CharacteristicEventHandlers, "installHooks")) impls.CharacteristicEventHandlers.installHooks();
+    }
+}
+
 pub fn get_oncharacteristicvaluechanged(instance: *runtime.Instance) anyerror!EventHandler {
     return try CharacteristicEventHandlersImpl.get_oncharacteristicvaluechanged(instance);
 }

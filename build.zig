@@ -2084,6 +2084,8 @@ pub fn build(b: *std.Build) void {
     browser_mod.addImport("engine", engine_mod);
     browser_mod.addImport("runtime", runtime_mod);
     browser_mod.addImport("interfaces", interfaces_mod);
+    // crane.Process installs the mixins' hooks (mixins.installHooks).
+    browser_mod.addImport("mixins", mixins_mod);
     browser_mod.addImport("namespaces", namespaces_mod);
     browser_mod.addImport("fetch", fetch_mod);
     // The Browser owns the user agent's cookie jar.
@@ -2447,6 +2449,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "platform", .module = platform_mod },
+            // For tests that make platform objects with no Browser: the hooks
+            // (interfaces.process_hooks.startHooksForTest).
+            .{ .name = "interfaces", .module = interfaces_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});

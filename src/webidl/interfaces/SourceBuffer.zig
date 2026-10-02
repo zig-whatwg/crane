@@ -189,6 +189,15 @@ pub const SourceBuffer = struct {
         SourceBufferImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SourceBuffer")) {
+            if (comptime @hasDecl(impls.SourceBuffer, "installHooks")) impls.SourceBuffer.installHooks();
+        }
+    }
+
     pub fn get_mode(instance: *runtime.Instance) anyerror!AppendMode {
         return try SourceBufferImpl.get_mode(instance);
     }

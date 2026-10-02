@@ -41,6 +41,17 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch {};
+    dom_module.mutation.registerChildrenChangedCallback(&childrenChangedSteps) catch {};
+    // The parsers and html's script processing reach its state through
+    // dom.script_elements, and a connected one prepares on insertion and on
+    // children changing: installed before any SVG script exists.
+    dom_module.script_elements.installSvg(.{ .flags = &flagsOf });
+}
+
 /// Initialize instance, through the chain SVGElement -> Element -> Node ->
 /// EventTarget.
 pub fn init(
@@ -49,12 +60,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // The parsers and html's script processing reach its state through
-    // dom.script_elements, and a connected one prepares on insertion and on
-    // children changing: installed before any SVG script exists.
-    dom_module.script_elements.installSvg(.{ .flags = &flagsOf });
-    ensureStepsRegistered();
-
     const instance = try SVGElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer SVGElementImpl.deinit(instance);
 
@@ -114,15 +119,6 @@ pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) a
 // =============================================================================
 // Insertion and children-changed steps
 // =============================================================================
-
-var steps_registered: bool = false;
-
-fn ensureStepsRegistered() void {
-    if (steps_registered) return;
-    dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch return;
-    dom_module.mutation.registerChildrenChangedCallback(&childrenChangedSteps) catch return;
-    steps_registered = true;
-}
 
 /// The SVG script element `node` stands for, if it is one.
 fn svgScriptOf(node: *NodeBase) ?*runtime.Instance {

@@ -288,6 +288,15 @@ pub const XRSession = struct {
         XRSessionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRSession")) {
+            if (comptime @hasDecl(impls.XRSession, "installHooks")) impls.XRSession.installHooks();
+        }
+    }
+
     pub fn get_visibilityState(instance: *runtime.Instance) anyerror!XRVisibilityState {
         return try XRSessionImpl.get_visibilityState(instance);
     }

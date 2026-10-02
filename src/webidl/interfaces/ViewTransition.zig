@@ -118,6 +118,15 @@ pub const ViewTransition = struct {
         ViewTransitionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "ViewTransition")) {
+            if (comptime @hasDecl(impls.ViewTransition, "installHooks")) impls.ViewTransition.installHooks();
+        }
+    }
+
     pub fn get_updateCallbackDone(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ViewTransitionImpl.get_updateCallbackDone(instance);
     }

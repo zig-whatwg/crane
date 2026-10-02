@@ -128,6 +128,15 @@ pub const FileSystemDirectoryHandle = struct {
         FileSystemDirectoryHandleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "FileSystemDirectoryHandle")) {
+            if (comptime @hasDecl(impls.FileSystemDirectoryHandle, "installHooks")) impls.FileSystemDirectoryHandle.installHooks();
+        }
+    }
+
     pub fn call_removeEntry(instance: *runtime.Instance, name: runtime.USVString, options: webidl.Opt(FileSystemRemoveOptions)) anyerror!runtime.JSValue {
         return try FileSystemDirectoryHandleImpl.call_removeEntry(instance, name, options);
     }

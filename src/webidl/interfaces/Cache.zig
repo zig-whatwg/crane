@@ -112,6 +112,15 @@ pub const Cache = struct {
         CacheImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Cache")) {
+            if (comptime @hasDecl(impls.Cache, "installHooks")) impls.Cache.installHooks();
+        }
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_match(instance: *runtime.Instance, request: RequestInfo, options: webidl.Opt(CacheQueryOptions)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object

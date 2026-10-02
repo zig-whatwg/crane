@@ -84,4 +84,13 @@ pub const OES_texture_float_linear = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         OES_texture_float_linearImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "OES_texture_float_linear")) {
+            if (comptime @hasDecl(impls.OES_texture_float_linear, "installHooks")) impls.OES_texture_float_linear.installHooks();
+        }
+    }
 };

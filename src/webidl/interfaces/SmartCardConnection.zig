@@ -117,6 +117,15 @@ pub const SmartCardConnection = struct {
         SmartCardConnectionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SmartCardConnection")) {
+            if (comptime @hasDecl(impls.SmartCardConnection, "installHooks")) impls.SmartCardConnection.installHooks();
+        }
+    }
+
     pub fn call_status(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try SmartCardConnectionImpl.call_status(instance);
     }

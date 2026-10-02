@@ -112,6 +112,15 @@ pub const TimeEvent = struct {
         TimeEventImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TimeEvent")) {
+            if (comptime @hasDecl(impls.TimeEvent, "installHooks")) impls.TimeEvent.installHooks();
+        }
+    }
+
     pub fn get_view(instance: *runtime.Instance) anyerror!?WindowProxy {
         return try TimeEventImpl.get_view(instance);
     }

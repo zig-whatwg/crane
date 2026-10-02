@@ -13,6 +13,7 @@
 //! lint-impls: hook for HTMLFormElement
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// HTML "user navigation involvement" of a submission.
@@ -33,11 +34,12 @@ pub const Implementation = struct {
     construct_entry_list: *const fn (form: *runtime.Instance, submitter: ?*runtime.Instance, form_data: *runtime.Instance) anyerror!void,
 };
 
-/// Per thread, like the forms themselves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by the HTMLFormElement impl. Idempotent.
+/// Called by HTMLFormElement's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

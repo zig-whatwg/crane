@@ -298,6 +298,15 @@ pub const WEBGL_compressed_texture_astc = struct {
         WEBGL_compressed_texture_astcImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_compressed_texture_astc")) {
+            if (comptime @hasDecl(impls.WEBGL_compressed_texture_astc, "installHooks")) impls.WEBGL_compressed_texture_astc.installHooks();
+        }
+    }
+
     pub fn call_getSupportedProfiles(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WEBGL_compressed_texture_astcImpl.call_getSupportedProfiles(instance);
     }

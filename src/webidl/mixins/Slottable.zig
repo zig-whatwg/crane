@@ -14,6 +14,15 @@ const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 
 pub const impl = @import("impls").Slottable;
 
+/// The impl's process-wide hooks, installed once at process start
+/// (crane.Process, through the root's process_hooks).
+pub fn installHooks() void {
+    const impls = @import("impls");
+    if (comptime @hasDecl(impls, "Slottable")) {
+        if (comptime @hasDecl(impls.Slottable, "installHooks")) impls.Slottable.installHooks();
+    }
+}
+
 pub fn get_assignedSlot(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return try SlottableImpl.get_assignedSlot(instance);
 }

@@ -8,6 +8,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
 //!
 //! lint-impls: hook for Location
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 const joint_history = @import("html_core").navigation.joint_history;
@@ -36,15 +37,16 @@ pub const Implementation = struct {
     navigate: *const fn (window: *runtime.Instance, url: []const u8, params: Params) void,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by Location. Idempotent.
+/// Called by Location's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 
-/// Whether Location has installed it - its first object does; a caller with
-/// none asks the window for its Location first.
+/// Whether the owner has installed its implementation: from process start on,
+/// unless a test cleared it.
 pub fn isInstalled() bool {
     return implementation != null;
 }

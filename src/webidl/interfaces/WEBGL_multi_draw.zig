@@ -103,6 +103,15 @@ pub const WEBGL_multi_draw = struct {
         WEBGL_multi_drawImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_multi_draw")) {
+            if (comptime @hasDecl(impls.WEBGL_multi_draw, "installHooks")) impls.WEBGL_multi_draw.installHooks();
+        }
+    }
+
     pub fn call_multiDrawElementsWEBGL(instance: *runtime.Instance, mode: GLenum, countsList: runtime.JSValue, countsOffset: u64, @"type": GLenum, offsetsList: runtime.JSValue, offsetsOffset: u64, drawcount: GLsizei) anyerror!void {
         return try WEBGL_multi_drawImpl.call_multiDrawElementsWEBGL(instance, mode, countsList, countsOffset, @"type", offsetsList, offsetsOffset, drawcount);
     }

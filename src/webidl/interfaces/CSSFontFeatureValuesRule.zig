@@ -123,6 +123,15 @@ pub const CSSFontFeatureValuesRule = struct {
         CSSFontFeatureValuesRuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "CSSFontFeatureValuesRule")) {
+            if (comptime @hasDecl(impls.CSSFontFeatureValuesRule, "installHooks")) impls.CSSFontFeatureValuesRule.installHooks();
+        }
+    }
+
     pub fn get_fontFamily(instance: *runtime.Instance) anyerror!CSSOMString {
         return try CSSFontFeatureValuesRuleImpl.get_fontFamily(instance);
     }

@@ -336,6 +336,15 @@ pub const SVGFETurbulenceElement = struct {
         SVGFETurbulenceElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGFETurbulenceElement")) {
+            if (comptime @hasDecl(impls.SVGFETurbulenceElement, "installHooks")) impls.SVGFETurbulenceElement.installHooks();
+        }
+    }
+
     pub fn get_baseFrequencyX(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try SVGFETurbulenceElementImpl.get_baseFrequencyX(instance);
     }

@@ -93,6 +93,15 @@ pub const GPUError = struct {
         GPUErrorImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUError")) {
+            if (comptime @hasDecl(impls.GPUError, "installHooks")) impls.GPUError.installHooks();
+        }
+    }
+
     pub fn get_message(instance: *runtime.Instance) anyerror!DOMString {
         return try GPUErrorImpl.get_message(instance);
     }

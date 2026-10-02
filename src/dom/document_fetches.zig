@@ -22,6 +22,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/document-lifecycle.html#destroy-a-document
 //!
 //! lint-impls: hook for XMLHttpRequest, WindowOrWorkerGlobalScope (fetch())
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -31,10 +32,11 @@ pub const Canceler = *const fn (realm: runtime.Context) void;
 /// One slot per kind of fetch owner, with room to spare. Per thread, as the
 /// fetches are.
 const slot_count = 8;
-threadlocal var cancelers: [slot_count]?Canceler = .{null} ** slot_count;
+var cancelers: [slot_count]?Canceler = .{null} ** slot_count;
 
-/// Called by each owner when it starts a fetch. Idempotent.
+/// Called by each owner's installHooks, once, at process start (process_start.zig).
 pub fn install(canceler: Canceler) void {
+    process_start.assertInstalling();
     for (&cancelers) |*slot| {
         if (slot.*) |existing| {
             if (existing == canceler) return;

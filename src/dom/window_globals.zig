@@ -7,6 +7,7 @@
 //! the host that makes a frame's Window binds it here.
 //!
 //! lint-impls: hook for Window
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -17,10 +18,11 @@ pub const Implementation = struct {
     bind: *const fn (window: *runtime.Instance, global: *anyopaque) void,
 };
 
-threadlocal var implementation: ?Implementation = null;
+var implementation: ?Implementation = null;
 
-/// Called by Window. Idempotent: every call installs the same function.
+/// Called by Window's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

@@ -11,6 +11,7 @@
 //! `abort_algorithms.zig`.
 //!
 //! lint-impls: hook for Range, StaticRange
+const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
 
@@ -27,11 +28,12 @@ pub const Boundaries = struct {
 pub const Provider = *const fn (range: *runtime.Instance) ?Boundaries;
 
 /// One slot per kind of range - Range and StaticRange - with room to spare.
-/// Per thread, as a worker's ranges live on its own thread.
-threadlocal var providers: [4]?Provider = .{ null, null, null, null };
+/// Process-wide, written once at start-up (process_start.zig).
+var providers: [4]?Provider = .{ null, null, null, null };
 
 /// Called by each range impl when it creates a range. Idempotent.
 pub fn install(provider: Provider) void {
+    process_start.assertInstalling();
     for (&providers) |*slot| {
         if (slot.*) |existing| {
             if (existing == provider) return;
@@ -64,11 +66,12 @@ pub const LiveRange = struct {
     update_owner_document: *const fn (range: *runtime.Instance) anyerror!void,
 };
 
-/// Per thread, like the ranges themselves.
-threadlocal var live_range: ?LiveRange = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var live_range: ?LiveRange = null;
 
-/// Called by the Range impl when it creates a range. Idempotent.
+/// Called by Range's installHooks, once, at process start (process_start.zig).
 pub fn installLiveRange(impl: LiveRange) void {
+    process_start.assertInstalling();
     live_range = impl;
 }
 

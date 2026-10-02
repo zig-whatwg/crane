@@ -104,6 +104,15 @@ pub const StylePropertyMap = struct {
         StylePropertyMapImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "StylePropertyMap")) {
+            if (comptime @hasDecl(impls.StylePropertyMap, "installHooks")) impls.StylePropertyMap.installHooks();
+        }
+    }
+
     pub fn call_set(instance: *runtime.Instance, property: runtime.USVString, values: []const runtime.JSValue) anyerror!void {
         return try StylePropertyMapImpl.call_set(instance, property, values);
     }

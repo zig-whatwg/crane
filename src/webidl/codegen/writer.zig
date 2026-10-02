@@ -2286,6 +2286,8 @@ pub fn writeLifecycleFunctions(
     writer: anytype,
     impl_name: []const u8,
 ) !void {
+    // "NodeImpl" -> "Node": the impls root's name for it.
+    const impl_decl = if (std.mem.endsWith(u8, impl_name, "Impl")) impl_name[0 .. impl_name.len - 4] else impl_name;
     // init() - delegates to Impl.init() which delegates to Instance.init()
     try writer.writeAll("    /// Initialize a new instance\n");
     try writer.writeAll("    pub fn init(allocator: std.mem.Allocator, ctx: runtime.Context) !*runtime.Instance {\n");
@@ -2309,6 +2311,53 @@ pub fn writeLifecycleFunctions(
     try writer.print("    pub fn deinit(instance: *runtime.Instance) void {{\n", .{});
     try writer.print("        {s}.deinit(instance);\n", .{impl_name});
     try writer.writeAll("    }\n\n");
+
+    try writeInstallHooks(writer, impl_decl, "    ");
+}
+
+/// The impl's process-wide hooks (src/dom), reached through its generated
+/// file - the one place allowed to name the impl (AGENTS.md, "The impls
+/// boundary"). crane.Process calls every one once, at start-up, through the
+/// root's `process_hooks` (docs/instances.md). A no-op for an impl that owns
+/// no hook, and for a definition with no impl yet (the impl is looked up, not
+/// named, so a missing one is not analysed).
+pub fn writeInstallHooks(writer: anytype, impl_name: []const u8, indent: []const u8) !void {
+    try writer.print("{s}/// The impl's process-wide hooks, installed once at process start\n", .{indent});
+    try writer.print("{s}/// (crane.Process, through the root's process_hooks).\n", .{indent});
+    try writer.print("{s}pub fn installHooks() void {{\n", .{indent});
+    try writer.print("{s}    const impls = @import(\"impls\");\n", .{indent});
+    try writer.print("{s}    if (comptime @hasDecl(impls, \"{s}\")) {{\n", .{ indent, impl_name });
+    try writer.print("{s}        if (comptime @hasDecl(impls.{s}, \"installHooks\")) impls.{s}.installHooks();\n", .{ indent, impl_name, impl_name });
+    try writer.print("{s}    }}\n", .{indent});
+    try writer.print("{s}}}\n\n", .{indent});
+}
+
+/// A root file's `process_hooks.install()`: every member's installHooks,
+/// through a comptime loop over the root's declarations. A struct, not a
+/// function, so code that walks the root's declarations as types (the
+/// engine adapter's binding loops) passes over it: it has no Meta.
+pub fn writeRootInstallHooks(writer: anytype, kind: []const u8) !void {
+    try writer.writeAll("\n");
+    try writer.print("/// Every {s}'s process-wide hooks (src/dom), installed once by crane.Process\n", .{kind});
+    try writer.writeAll("/// while the process starts, before any Browser exists (docs/instances.md).\n");
+    try writer.writeAll("pub const process_hooks = struct {\n");
+    try writer.writeAll("    pub fn install() void {\n");
+    try writer.writeAll("        @setEvalBranchQuota(100_000);\n");
+    try writer.writeAll("        inline for (@typeInfo(members).@\"struct\".decls) |decl| {\n");
+    try writer.writeAll("            const member = @field(members, decl.name);\n");
+    try writer.writeAll("            if (@TypeOf(member) == type and @hasDecl(member, \"installHooks\")) member.installHooks();\n");
+    try writer.writeAll("        }\n");
+    try writer.writeAll("    }\n");
+    try writer.writeAll("\n");
+    try writer.writeAll("    /// For a unit test that makes platform objects with no Browser: installs\n");
+    try writer.writeAll("    /// these hooks only - not the engine, not the browser layer's. Production\n");
+    try writer.writeAll("    /// starts through crane.Process. Installing again adds nothing.\n");
+    try writer.writeAll("    pub fn startHooksForTest() void {\n");
+    try writer.writeAll("        if (!@import(\"builtin\").is_test) @compileError(\"startHooksForTest is for tests; a host starts crane.Process\");\n");
+    try writer.writeAll("        install();\n");
+    try writer.writeAll("    }\n");
+    try writer.writeAll("};\n");
+    try writer.writeAll("const members = @This();\n");
 }
 
 /// Write WebIDL constructor function
@@ -4783,6 +4832,31 @@ test "writeLifecycleFunctions generates init and deinit" {
     try testing.expect(std.mem.indexOf(u8, output, "pub fn deinit(") != null);
     // init() should delegate to Impl.init() with State and vtable
     try testing.expect(std.mem.indexOf(u8, output, "NodeImpl.init(allocator, State, &vtable, ctx)") != null);
+}
+
+test "every interface exposes its impl's installHooks, a no-op when the impl declares none" {
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeLifecycleFunctions(&buffer.writer, "NodeImpl");
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "    pub fn installHooks() void {\n") != null);
+    // Looked up, so an interface with no impl yet still compiles.
+    try testing.expect(std.mem.indexOf(u8, output, "if (comptime @hasDecl(impls, \"Node\")) {") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "if (comptime @hasDecl(impls.Node, \"installHooks\")) impls.Node.installHooks();") != null);
+}
+
+test "a root's installHooks calls every member's, once, through a comptime loop" {
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeRootInstallHooks(&buffer.writer, "interface");
+    const output = buffer.written();
+    // A struct, so loops that take every root declaration for a type pass it by.
+    try testing.expect(std.mem.indexOf(u8, output, "pub const process_hooks = struct {\n") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "inline for (@typeInfo(members).@\"struct\".decls) |decl| {") != null);
+    // One helper for unit tests with no Browser, refused outside tests.
+    try testing.expect(std.mem.indexOf(u8, output, "    pub fn startHooksForTest() void {\n") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "@compileError(\"startHooksForTest is for tests") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "if (@TypeOf(member) == type and @hasDecl(member, \"installHooks\")) member.installHooks();") != null);
 }
 
 test "writeDelegateFunctions generates attribute getters" {

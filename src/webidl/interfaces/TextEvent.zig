@@ -110,6 +110,15 @@ pub const TextEvent = struct {
         TextEventImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "TextEvent")) {
+            if (comptime @hasDecl(impls.TextEvent, "installHooks")) impls.TextEvent.installHooks();
+        }
+    }
+
     pub fn get_data(instance: *runtime.Instance) anyerror!DOMString {
         return try TextEventImpl.get_data(instance);
     }

@@ -135,6 +135,15 @@ pub const XRCylinderLayer = struct {
         XRCylinderLayerImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRCylinderLayer")) {
+            if (comptime @hasDecl(impls.XRCylinderLayer, "installHooks")) impls.XRCylinderLayer.installHooks();
+        }
+    }
+
     pub fn get_space(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try XRCylinderLayerImpl.get_space(instance);
     }

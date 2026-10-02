@@ -152,6 +152,15 @@ pub const Rewriter = struct {
         RewriterImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Rewriter")) {
+            if (comptime @hasDecl(impls.Rewriter, "installHooks")) impls.Rewriter.installHooks();
+        }
+    }
+
     pub fn get_sharedContext(instance: *runtime.Instance) anyerror!DOMString {
         return try RewriterImpl.get_sharedContext(instance);
     }

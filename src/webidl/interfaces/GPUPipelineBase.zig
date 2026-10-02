@@ -83,6 +83,15 @@ pub const GPUPipelineBase = struct {
         GPUPipelineBaseImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUPipelineBase")) {
+            if (comptime @hasDecl(impls.GPUPipelineBase, "installHooks")) impls.GPUPipelineBase.installHooks();
+        }
+    }
+
     /// Extended attributes: [NewObject]
     pub fn call_getBindGroupLayout(instance: *runtime.Instance, index: u32) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object

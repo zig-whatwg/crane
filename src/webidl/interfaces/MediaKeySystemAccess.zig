@@ -101,6 +101,15 @@ pub const MediaKeySystemAccess = struct {
         MediaKeySystemAccessImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaKeySystemAccess")) {
+            if (comptime @hasDecl(impls.MediaKeySystemAccess, "installHooks")) impls.MediaKeySystemAccess.installHooks();
+        }
+    }
+
     pub fn get_keySystem(instance: *runtime.Instance) anyerror!DOMString {
         return try MediaKeySystemAccessImpl.get_keySystem(instance);
     }

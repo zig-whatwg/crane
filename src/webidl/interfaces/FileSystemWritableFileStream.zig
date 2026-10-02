@@ -106,6 +106,15 @@ pub const FileSystemWritableFileStream = struct {
         FileSystemWritableFileStreamImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "FileSystemWritableFileStream")) {
+            if (comptime @hasDecl(impls.FileSystemWritableFileStream, "installHooks")) impls.FileSystemWritableFileStream.installHooks();
+        }
+    }
+
     pub fn call_write(instance: *runtime.Instance, data: FileSystemWriteChunkType) anyerror!runtime.JSValue {
         return try FileSystemWritableFileStreamImpl.call_write(instance, data);
     }

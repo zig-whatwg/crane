@@ -89,6 +89,15 @@ pub const FileSystemDirectoryReader = struct {
         FileSystemDirectoryReaderImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "FileSystemDirectoryReader")) {
+            if (comptime @hasDecl(impls.FileSystemDirectoryReader, "installHooks")) impls.FileSystemDirectoryReader.installHooks();
+        }
+    }
+
     pub fn call_readEntries(instance: *runtime.Instance, successCallback: FileSystemEntriesCallback, errorCallback: webidl.Opt(ErrorCallback)) anyerror!void {
         return try FileSystemDirectoryReaderImpl.call_readEntries(instance, successCallback, errorCallback);
     }

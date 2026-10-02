@@ -119,6 +119,13 @@ pub const InternalState = struct {
     }
 };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // "Abort a document" reaches a send()'s fetches through `live_pending`.
+    document_fetches.install(&abortFetchesIn);
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -888,8 +895,6 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     // is the request's (Fetch "fetch" step 13), and its cookie jar the one
     // the request's cookies come from and go to.
     setClient(instance, xhr_state) catch return error.OutOfMemory;
-    // Scheme fetch "blob" reads the blob URL store through this.
-    fetch_body.installBlobURLResolver();
 
     // Steps 1-3, and 7-10, inline and synchronously observable. Step 3 (GET
     // and HEAD) gives back null.
@@ -967,7 +972,6 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     pending.keep_alive.hold(instance);
     // "Abort a document" reaches it through `live_pending`.
     live_pending.append(std.heap.c_allocator, pending) catch {};
-    document_fetches.install(&abortFetchesIn);
 
     // Step 11.11: If this's timeout is not 0, end the fetch once it has run
     // that long.

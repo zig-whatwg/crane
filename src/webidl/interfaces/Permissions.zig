@@ -97,6 +97,15 @@ pub const Permissions = struct {
         PermissionsImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Permissions")) {
+            if (comptime @hasDecl(impls.Permissions, "installHooks")) impls.Permissions.installHooks();
+        }
+    }
+
     pub fn call_revoke(instance: *runtime.Instance, permissionDesc: runtime.JSValue) anyerror!runtime.JSValue {
         return try PermissionsImpl.call_revoke(instance, permissionDesc);
     }

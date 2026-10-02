@@ -131,6 +131,15 @@ pub const PerformanceLongTaskTiming = struct {
         PerformanceLongTaskTimingImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PerformanceLongTaskTiming")) {
+            if (comptime @hasDecl(impls.PerformanceLongTaskTiming, "installHooks")) impls.PerformanceLongTaskTiming.installHooks();
+        }
+    }
+
     pub fn get_startTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformanceLongTaskTimingImpl.get_startTime(instance);
     }

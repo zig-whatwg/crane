@@ -259,6 +259,15 @@ pub const SVGLinearGradientElement = struct {
         SVGLinearGradientElementImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGLinearGradientElement")) {
+            if (comptime @hasDecl(impls.SVGLinearGradientElement, "installHooks")) impls.SVGLinearGradientElement.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_x1(instance: *runtime.Instance) anyerror!*runtime.Instance {
         const state = instance.getState(State);

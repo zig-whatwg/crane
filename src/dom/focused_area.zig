@@ -4,7 +4,7 @@
 //! It is the Document's state (Document keeps it as the element
 //! `activeElement` reports), and no IDL member designates it - the focusing
 //! and unfocusing steps do (src/html/focus.zig). So Document installs this
-//! hook from its init, and the focus algorithms reach the designation
+//! hook from its installHooks, and the focus algorithms reach the designation
 //! through it, without importing Document.
 //!
 //! A focused area is recorded by its DOM anchor element, with the element's
@@ -22,6 +22,7 @@
 //! lint-impls: hook for Document
 
 const std = @import("std");
+const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 /// A designated element and its generation when it was designated.
@@ -43,11 +44,12 @@ pub const Implementation = struct {
     set: *const fn (document: *runtime.Instance, designation: ?Designation) void,
 };
 
-/// Per thread, like the documents themselves.
-threadlocal var implementation: ?Implementation = null;
+/// Process-wide, written once at start-up (process_start.zig).
+var implementation: ?Implementation = null;
 
-/// Called by Document's init. Idempotent: every call installs the same functions.
+/// Called by Document's installHooks, once, at process start (process_start.zig).
 pub fn install(impl: Implementation) void {
+    process_start.assertInstalling();
     implementation = impl;
 }
 

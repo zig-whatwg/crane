@@ -142,8 +142,6 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // The WindowOrWorkerGlobalScope mixin reads a worker's settings here.
-    installSettings();
     const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
     errdefer EventTargetImpl.deinit(instance);
     if (@import("html").worker_host.scopeSettings(ctx)) |settings| {
@@ -153,7 +151,10 @@ pub fn init(
     return instance;
 }
 
-fn installSettings() void {
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The WindowOrWorkerGlobalScope mixin reads a worker's settings here.
     @import("dom").global_settings.install(.{
         .owns = &isWorkerGlobalScope,
         .origin = &settingsOrigin,
@@ -208,7 +209,6 @@ pub fn initWithUrl(
     url: []const u8,
     worker_type: WorkerType,
 ) !*runtime.Instance {
-    installSettings();
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
     try setUpFromUrl(instance, allocator, url, worker_type);

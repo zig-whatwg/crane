@@ -81,6 +81,13 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // The hook elements and Document's factories fill a new node through.
+    dom.attr_nodes.install(.{ .name = &nameHook, .attach = &attachHook, .detach = &detachHook });
+}
+
 /// Initialize instance (creates the instance)
 /// Chains to parent class initialization: Node -> EventTarget
 pub fn init(
@@ -102,9 +109,6 @@ pub fn init(
 
     // An attribute node's node type, whichever path made it.
     try NodeImpl.setNodeType(instance, NodeImpl.NodeType.ATTRIBUTE_NODE);
-
-    // The hook elements and Document's factories fill a new node through.
-    dom.attr_nodes.install(.{ .name = &nameHook, .attach = &attachHook, .detach = &detachHook });
 
     return instance;
 }

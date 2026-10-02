@@ -214,6 +214,15 @@ pub const PerformanceNavigationTiming = struct {
         PerformanceNavigationTimingImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PerformanceNavigationTiming")) {
+            if (comptime @hasDecl(impls.PerformanceNavigationTiming, "installHooks")) impls.PerformanceNavigationTiming.installHooks();
+        }
+    }
+
     pub fn get_unloadEventStart(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformanceNavigationTimingImpl.get_unloadEventStart(instance);
     }

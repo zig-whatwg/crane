@@ -88,4 +88,13 @@ pub const GPUSupportedFeatures = struct {
     pub fn deinit(instance: *runtime.Instance) void {
         GPUSupportedFeaturesImpl.deinit(instance);
     }
+
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUSupportedFeatures")) {
+            if (comptime @hasDecl(impls.GPUSupportedFeatures, "installHooks")) impls.GPUSupportedFeatures.installHooks();
+        }
+    }
 };

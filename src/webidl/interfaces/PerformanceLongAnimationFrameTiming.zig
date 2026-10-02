@@ -165,6 +165,15 @@ pub const PerformanceLongAnimationFrameTiming = struct {
         PerformanceLongAnimationFrameTimingImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PerformanceLongAnimationFrameTiming")) {
+            if (comptime @hasDecl(impls.PerformanceLongAnimationFrameTiming, "installHooks")) impls.PerformanceLongAnimationFrameTiming.installHooks();
+        }
+    }
+
     pub fn get_startTime(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp {
         return try PerformanceLongAnimationFrameTimingImpl.get_startTime(instance);
     }

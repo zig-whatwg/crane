@@ -153,6 +153,15 @@ pub const SerialPort = struct {
         SerialPortImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SerialPort")) {
+            if (comptime @hasDecl(impls.SerialPort, "installHooks")) impls.SerialPort.installHooks();
+        }
+    }
+
     pub fn get_onconnect(instance: *runtime.Instance) anyerror!EventHandler {
         return try SerialPortImpl.get_onconnect(instance);
     }

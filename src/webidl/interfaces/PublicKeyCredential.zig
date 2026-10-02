@@ -145,6 +145,15 @@ pub const PublicKeyCredential = struct {
         PublicKeyCredentialImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PublicKeyCredential")) {
+            if (comptime @hasDecl(impls.PublicKeyCredential, "installHooks")) impls.PublicKeyCredential.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_rawId(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PublicKeyCredentialImpl.get_rawId(instance);

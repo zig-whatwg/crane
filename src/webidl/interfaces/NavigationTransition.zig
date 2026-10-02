@@ -107,6 +107,15 @@ pub const NavigationTransition = struct {
         NavigationTransitionImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "NavigationTransition")) {
+            if (comptime @hasDecl(impls.NavigationTransition, "installHooks")) impls.NavigationTransition.installHooks();
+        }
+    }
+
     pub fn get_navigationType(instance: *runtime.Instance) anyerror!NavigationType {
         return try NavigationTransitionImpl.get_navigationType(instance);
     }

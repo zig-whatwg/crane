@@ -138,6 +138,15 @@ pub const StorageAccessHandle = struct {
         StorageAccessHandleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "StorageAccessHandle")) {
+            if (comptime @hasDecl(impls.StorageAccessHandle, "installHooks")) impls.StorageAccessHandle.installHooks();
+        }
+    }
+
     pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try StorageAccessHandleImpl.get_sessionStorage(instance);
     }

@@ -98,6 +98,15 @@ pub const XRLightEstimate = struct {
         XRLightEstimateImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRLightEstimate")) {
+            if (comptime @hasDecl(impls.XRLightEstimate, "installHooks")) impls.XRLightEstimate.installHooks();
+        }
+    }
+
     pub fn get_sphericalHarmonicsCoefficients(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try XRLightEstimateImpl.get_sphericalHarmonicsCoefficients(instance);
     }

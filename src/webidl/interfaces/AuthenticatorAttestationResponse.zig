@@ -109,6 +109,15 @@ pub const AuthenticatorAttestationResponse = struct {
         AuthenticatorAttestationResponseImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AuthenticatorAttestationResponse")) {
+            if (comptime @hasDecl(impls.AuthenticatorAttestationResponse, "installHooks")) impls.AuthenticatorAttestationResponse.installHooks();
+        }
+    }
+
     /// Extended attributes: [SameObject]
     pub fn get_attestationObject(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try AuthenticatorAttestationResponseImpl.get_attestationObject(instance);

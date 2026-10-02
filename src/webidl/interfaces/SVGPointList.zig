@@ -117,6 +117,15 @@ pub const SVGPointList = struct {
         SVGPointListImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGPointList")) {
+            if (comptime @hasDecl(impls.SVGPointList, "installHooks")) impls.SVGPointList.installHooks();
+        }
+    }
+
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try SVGPointListImpl.get_length(instance);
     }

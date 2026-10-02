@@ -105,6 +105,15 @@ pub const SmartCardContext = struct {
         SmartCardContextImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SmartCardContext")) {
+            if (comptime @hasDecl(impls.SmartCardContext, "installHooks")) impls.SmartCardContext.installHooks();
+        }
+    }
+
     pub fn call_connect(instance: *runtime.Instance, readerName: DOMString, accessMode: SmartCardAccessMode, options: webidl.Opt(SmartCardConnectOptions)) anyerror!runtime.JSValue {
         return try SmartCardContextImpl.call_connect(instance, readerName, accessMode, options);
     }

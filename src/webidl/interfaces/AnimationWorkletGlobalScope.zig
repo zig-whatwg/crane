@@ -92,6 +92,15 @@ pub const AnimationWorkletGlobalScope = struct {
         AnimationWorkletGlobalScopeImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "AnimationWorkletGlobalScope")) {
+            if (comptime @hasDecl(impls.AnimationWorkletGlobalScope, "installHooks")) impls.AnimationWorkletGlobalScope.installHooks();
+        }
+    }
+
     pub fn call_registerAnimator(instance: *runtime.Instance, name: DOMString, animatorCtor: AnimatorInstanceConstructor) anyerror!void {
         return try AnimationWorkletGlobalScopeImpl.call_registerAnimator(instance, name, animatorCtor);
     }

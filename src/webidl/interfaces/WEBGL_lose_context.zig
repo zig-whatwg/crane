@@ -94,6 +94,15 @@ pub const WEBGL_lose_context = struct {
         WEBGL_lose_contextImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "WEBGL_lose_context")) {
+            if (comptime @hasDecl(impls.WEBGL_lose_context, "installHooks")) impls.WEBGL_lose_context.installHooks();
+        }
+    }
+
     pub fn call_loseContext(instance: *runtime.Instance) anyerror!void {
         return try WEBGL_lose_contextImpl.call_loseContext(instance);
     }

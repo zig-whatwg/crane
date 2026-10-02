@@ -105,6 +105,15 @@ pub const GPUShaderModule = struct {
         GPUShaderModuleImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "GPUShaderModule")) {
+            if (comptime @hasDecl(impls.GPUShaderModule, "installHooks")) impls.GPUShaderModule.installHooks();
+        }
+    }
+
     pub const get_label = mixins.GPUObjectBase.get_label;
     pub const set_label = mixins.GPUObjectBase.set_label;
 

@@ -96,6 +96,15 @@ pub const Rect = struct {
         RectImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "Rect")) {
+            if (comptime @hasDecl(impls.Rect, "installHooks")) impls.Rect.installHooks();
+        }
+    }
+
     pub fn get_top(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try RectImpl.get_top(instance);
     }

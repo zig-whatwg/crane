@@ -103,6 +103,15 @@ pub const PluginArray = struct {
         PluginArrayImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "PluginArray")) {
+            if (comptime @hasDecl(impls.PluginArray, "installHooks")) impls.PluginArray.installHooks();
+        }
+    }
+
     pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
         return try PluginArrayImpl.get_length(instance);
     }

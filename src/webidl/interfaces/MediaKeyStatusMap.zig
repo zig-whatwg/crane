@@ -110,6 +110,15 @@ pub const MediaKeyStatusMap = struct {
         MediaKeyStatusMapImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "MediaKeyStatusMap")) {
+            if (comptime @hasDecl(impls.MediaKeyStatusMap, "installHooks")) impls.MediaKeyStatusMap.installHooks();
+        }
+    }
+
     pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
         return try MediaKeyStatusMapImpl.get_size(instance);
     }

@@ -128,6 +128,15 @@ pub const XRInputSource = struct {
         XRInputSourceImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "XRInputSource")) {
+            if (comptime @hasDecl(impls.XRInputSource, "installHooks")) impls.XRInputSource.installHooks();
+        }
+    }
+
     pub fn get_handedness(instance: *runtime.Instance) anyerror!XRHandedness {
         return try XRInputSourceImpl.get_handedness(instance);
     }

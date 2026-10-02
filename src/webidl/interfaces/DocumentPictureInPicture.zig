@@ -118,6 +118,15 @@ pub const DocumentPictureInPicture = struct {
         DocumentPictureInPictureImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "DocumentPictureInPicture")) {
+            if (comptime @hasDecl(impls.DocumentPictureInPicture, "installHooks")) impls.DocumentPictureInPicture.installHooks();
+        }
+    }
+
     pub fn get_window(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try DocumentPictureInPictureImpl.get_window(instance);
     }

@@ -209,6 +209,13 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // Other impls make a collection live through dom.live_collections.
+    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -228,9 +235,6 @@ pub fn init(
 
     // Initialize length to 0
     state.own.length = 0;
-
-    // Other impls make a collection live through dom.live_collections.
-    live_collections.install(.{ .element_children = &makeElementChildren, .class_names = &makeClassNames });
 
     return instance;
 }

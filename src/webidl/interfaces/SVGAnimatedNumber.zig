@@ -94,6 +94,15 @@ pub const SVGAnimatedNumber = struct {
         SVGAnimatedNumberImpl.deinit(instance);
     }
 
+    /// The impl's process-wide hooks, installed once at process start
+    /// (crane.Process, through the root's process_hooks).
+    pub fn installHooks() void {
+        const impls = @import("impls");
+        if (comptime @hasDecl(impls, "SVGAnimatedNumber")) {
+            if (comptime @hasDecl(impls.SVGAnimatedNumber, "installHooks")) impls.SVGAnimatedNumber.installHooks();
+        }
+    }
+
     pub fn get_baseVal(instance: *runtime.Instance) anyerror!f32 {
         return try SVGAnimatedNumberImpl.get_baseVal(instance);
     }
