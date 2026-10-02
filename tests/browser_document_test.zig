@@ -176,3 +176,36 @@ test "Browsers in sequence each hold the network for their life, and the next fi
         try std.testing.expectError(error.NetworkError, browser_mod.navigation.fetchUrl(allocator, "http://127.0.0.1:9/", .{}));
     }
 }
+
+// dom/nodes/name-validation.html leaked 13,702 allocations alone (leaks lane,
+// 2026-10-02): HTMLUnknownElement's deinit was the codegen stub's no-op while
+// its init chained to HTMLElement's, so an unknown element whose wrapper V8
+// collected kept its NodeBase, local name and namespace, keyed by its address,
+// until a node made at the reused address overwrote them. The teardown sweep
+// frees only the elements still alive at the end, so the rounds here make the
+// collector take each round's elements and the next round reuse their slab
+// addresses. Few elements: the testing allocator unwinds a stack trace for
+// every allocation and every free (2,400 elements ran past 18 minutes).
+test "an unknown element the collector takes frees its node state" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+    // An HTML document: createElement makes HTML elements only there.
+    try ctx.loadHTML("<!DOCTYPE html><html><body></body></html>", .{ .base_url = "http://localhost/unknown-elements.html" });
+
+    const script =
+        \\(function () {
+        \\  for (let round = 0; round < 3; round++) {
+        \\    (function () {
+        \\      for (let i = 0; i < 12; i++) document.createElement('x' + round + 'y' + i);
+        \\    })();
+        \\    TestUtils.gc();
+        \\  }
+        \\  return Object.prototype.toString.call(document.createElement('x0y0'));
+        \\})()
+    ;
+    const result = try ctx.evaluateScriptToString(script, allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("[object HTMLUnknownElement]", result);
+}

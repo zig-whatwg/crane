@@ -477,7 +477,6 @@ src/webidl/impls/HTMLTrackElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLTrackElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLUListElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLUListElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLUnknownElement.zig HTMLElement.init 1
 src/webidl/impls/HTMLVideoElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLVideoElement.zig HTMLElement.init 2
 src/webidl/impls/IntersectionObserver.zig IntersectionObserverEntry.createEntry 1
