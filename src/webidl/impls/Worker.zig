@@ -378,17 +378,13 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // the script may be fetched at all.
         .policy_container = worker_host.creatorPolicyContainer(ctx),
     }) catch |err| {
-        std.log.debug("the worker script was not fetched: {}", .{err});
+        std.log.warn("Failed to fetch worker script in constructor: {}", .{err});
+        // Continue with null pending_script: initializeWorkerSync still makes
+        // the worker, and executeWorkerScriptSync, finding no script, queues
+        // `error` at it ("run a worker" onComplete step 1) - once.
         internal_state.pending_script = null;
         internal_state.script_final_url = null;
-        // "Run a worker" onComplete step 1: "If script is null or if
-        // script's error to rethrow is non-null, then: queue a global task on
-        // the DOM manipulation task source given worker's relevant global
-        // object to fire an event named error at worker" - a fetch that
-        // failed (a network error, a 404, a request CSP blocked). The worker
-        // runs no script; it is still made below, as before, so postMessage
-        // to it is harmless.
-        queueErrorEvent(internal_state);
+        // Don't return error - still schedule initialization
         if (ctx.getOptionalEventLoop()) |event_loop| {
             WorkerTask.queue(event_loop, instance, &initializeWorker);
         }
