@@ -122,13 +122,16 @@ pub fn exportOctet(allocator: std.mem.Allocator, key: *const keys.Slots) ![]u8 {
     var count: usize = 0;
     var iterator = key.usages.iterator();
     while (iterator.next()) |usage| : (count += 1) operations[count] = @tagName(usage);
-    return std.json.Stringify.valueAlloc(allocator, .{
+    // WebIDL §3.2.17 step 3: Data declares JsonWebKey members in dictionary
+    // order, which is observable through Object.keys and wrapped JSON bytes.
+    const data: Data = .{
         .kty = "oct",
         .k = material,
         .alg = algorithm,
         .key_ops = operations[0..count],
         .ext = key.extractable,
-    }, .{});
+    };
+    return std.json.Stringify.valueAlloc(allocator, data, .{ .emit_null_optional_fields = false });
 }
 
 pub fn algorithmName(algorithm: keys.Algorithm) ![]const u8 {
@@ -213,6 +216,12 @@ test "JWK export has canonical algorithm and normalized native usages" {
     try std.testing.expectEqual(@as(usize, 2), ops.len);
     try std.testing.expectEqualStrings("encrypt", ops[0].string);
     try std.testing.expectEqualStrings("decrypt", ops[1].string);
+    // WebIDL §3.2.17 step 3: JsonWebKey members are emitted lexicographically.
+    var names = object.iterator();
+    for ([_][]const u8{ "alg", "ext", "k", "key_ops", "kty" }) |expected| {
+        try std.testing.expectEqualStrings(expected, names.next().?.key_ptr.*);
+    }
+    try std.testing.expect(names.next() == null);
 }
 
 fn checkAllocationFailures(allocator: std.mem.Allocator) anyerror!void {
