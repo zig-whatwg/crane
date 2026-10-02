@@ -29,6 +29,37 @@ pub const Data = struct {
 
 pub const OtherPrime = struct { d: ?[]const u8 = null, r: ?[]const u8 = null, t: ?[]const u8 = null };
 
+/// A converted dictionary whose string storage is independent of script.
+pub const Owned = struct {
+    data: Data = .{},
+
+    pub fn deinit(self: *Owned, allocator: std.mem.Allocator) void {
+        inline for (std.meta.fields(Data)) |field| {
+            if (field.type == ?[]const u8) {
+                if (@field(self.data, field.name)) |text| erase(allocator, text);
+            }
+        }
+        if (self.data.key_ops) |operations| {
+            for (operations) |text| erase(allocator, text);
+            allocator.free(operations);
+        }
+        if (self.data.oth) |primes| {
+            for (primes) |prime| {
+                inline for (std.meta.fields(OtherPrime)) |field| {
+                    if (@field(prime, field.name)) |text| erase(allocator, text);
+                }
+            }
+            allocator.free(primes);
+        }
+        self.* = .{};
+    }
+};
+
+fn erase(allocator: std.mem.Allocator, bytes: []const u8) void {
+    std.crypto.secureZero(u8, @constCast(bytes));
+    allocator.free(bytes);
+}
+
 pub fn decode(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
     // RFC 7518 §6: base64url with no padding, whitespace or foreign alphabet.
     const decoder = std.base64.url_safe_no_pad.Decoder;

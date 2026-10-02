@@ -6,9 +6,7 @@ const mbed = @import("mbed.zig");
 const jwk = @import("jwk.zig");
 
 pub fn importRaw(allocator: std.mem.Allocator, algorithm: keys.Algorithm, material: []const u8, extractable: bool, usages: keys.Usages) !keys.Slots {
-    // HMAC §31.6.4 step 1 precedes the common usage validation.
-    if (algorithm.id == .hmac and algorithm.length == 0) return error.DataError;
-    try checkUsages(algorithm, usages);
+    try validateImport(algorithm, usages);
     var metadata: keys.Algorithm = .{ .id = algorithm.id };
     switch (algorithm.id) {
         .aes_ctr, .aes_cbc, .aes_gcm, .aes_kw => {
@@ -28,6 +26,7 @@ pub fn importRaw(allocator: std.mem.Allocator, algorithm: keys.Algorithm, materi
         },
         .hkdf, .pbkdf2 => {
             // §33.4.2 step 2.2 / §34.4.2 step 3; empty key data is valid.
+            try checkUsages(algorithm, usages);
             if (extractable) return error.SyntaxError;
         },
         else => return error.NotSupportedError,
@@ -126,6 +125,13 @@ fn checkUsages(algorithm: keys.Algorithm, usages: keys.Usages) !void {
         };
         if (!valid) return error.SyntaxError;
     }
+}
+
+pub fn validateImport(algorithm: keys.Algorithm, usages: keys.Usages) !void {
+    // HMAC §31.6.4 step 1 precedes its usage check at step 3 and format at 5.
+    if (algorithm.id == .hmac and algorithm.length == 0) return error.DataError;
+    if (algorithm.id == .hkdf or algorithm.id == .pbkdf2) return;
+    try checkUsages(algorithm, usages);
 }
 
 fn available(id: @import("registry.zig").Id, bits: u32) !void {

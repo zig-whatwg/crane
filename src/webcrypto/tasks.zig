@@ -6,7 +6,14 @@ const engine = @import("engine");
 const keys = @import("key.zig");
 const crypto_keys = @import("dom").crypto_keys;
 
-pub const Pair = struct { public_key: keys.Slots, private_key: keys.Slots };
+pub const Pair = keys.Pair;
+pub const PendingJwk = struct {
+    bytes: []u8,
+    algorithm: @import("normalize.zig").Algorithm,
+    extractable: bool,
+    usages: keys.Usages,
+    io: std.Io,
+};
 
 /// Native results cross the task boundary; no caller's JS argument is retained.
 pub const Result = union(enum) {
@@ -16,6 +23,7 @@ pub const Result = union(enum) {
     boolean: bool,
     key: keys.Slots,
     key_pair: Pair,
+    import_jwk: PendingJwk,
     failure: anyerror,
 
     pub fn deinit(self: *Result, allocator: std.mem.Allocator) void {
@@ -28,6 +36,11 @@ pub const Result = union(enum) {
             .key_pair => |*pair| {
                 pair.public_key.deinit();
                 pair.private_key.deinit();
+            },
+            .import_jwk => |*pending| {
+                std.crypto.secureZero(u8, pending.bytes);
+                allocator.free(pending.bytes);
+                pending.algorithm.deinit();
             },
             else => {},
         }
@@ -55,6 +68,22 @@ pub fn settle(realm: runtime.Context, computation: anyerror!Result) !runtime.JSV
 /// Own a copied native input on every path. T.run performs only native work;
 /// T.deinit erases/releases that input. No JS value belongs in T.
 pub fn submit(realm: runtime.Context, input: anytype) !runtime.JSValue {
+    const job = try makeJob(realm.allocator, input);
+    errdefer job.destroy(job.data, realm.allocator);
+    var capability = try engine.createPromise(realm);
+    errdefer engine.releasePromiseCapability(&capability);
+    const promise = try engine.retainValue(realm, capability.promise);
+    errdefer promise.release();
+    const task = try realm.allocator.create(Task);
+    task.* = .{ .realm = realm, .capability = capability, .result = .none, .job = job };
+    // §14.3 "return promise, then in parallel". Until HTML's parallel-queue
+    // facility exists, PBKDF2/RSA and other long native operations occupy the
+    // realm's thread. The copied-input computation can move there unchanged.
+    task.queue(Task.compute);
+    return promise.take();
+}
+
+fn makeJob(box_allocator: std.mem.Allocator, input: anytype) !Job {
     const T = @TypeOf(input);
     const Box = struct {
         value: T,
@@ -71,28 +100,12 @@ pub fn submit(realm: runtime.Context, input: anytype) !runtime.JSValue {
         }
     };
     var owned_input = input;
-    const box = realm.allocator.create(Box) catch |err| {
-        owned_input.deinit(realm.allocator);
+    const box = box_allocator.create(Box) catch |err| {
+        owned_input.deinit(box_allocator);
         return err;
     };
     box.* = .{ .value = owned_input };
-    errdefer Box.destroy(box, realm.allocator);
-    var capability = try engine.createPromise(realm);
-    errdefer engine.releasePromiseCapability(&capability);
-    const promise = try engine.retainValue(realm, capability.promise);
-    errdefer promise.release();
-    const task = try realm.allocator.create(Task);
-    task.* = .{
-        .realm = realm,
-        .capability = capability,
-        .result = .none,
-        .job = .{ .data = box, .compute = Box.compute, .destroy = Box.destroy },
-    };
-    // §14.3 "return promise, then in parallel". Until HTML's parallel-queue
-    // facility exists, PBKDF2/RSA and other long native operations occupy the
-    // realm's thread. The copied-input computation can move there unchanged.
-    task.queue(Task.compute);
-    return promise.take();
+    return .{ .data = box, .compute = Box.compute, .destroy = Box.destroy };
 }
 
 const Job = struct {
@@ -125,6 +138,7 @@ const Task = struct {
 
     fn compute(data: ?*anyopaque) void {
         const self: *Task = @ptrCast(@alignCast(data.?));
+        if (!self.realm.hasEngine()) return self.finish();
         const job = self.job.?;
         self.result = job.compute(job.data, self.realm.allocator) catch |err| .{ .failure = err };
         job.destroy(job.data, self.realm.allocator);
@@ -136,16 +150,64 @@ const Task = struct {
 
     fn run(data: ?*anyopaque) void {
         const self: *Task = @ptrCast(@alignCast(data.?));
-        defer self.finish();
-        if (self.realm.hasEngine()) engine.runTaskInRealm(self.realm, steps, self) catch {};
+        if (self.realm.hasEngine()) engine.runTaskInRealm(self.realm, realmSteps, self) catch {};
+        if (self.job != null) self.queue(Task.compute) else self.finish();
     }
 
-    fn steps(data: ?*anyopaque) void {
+    fn realmSteps(data: ?*anyopaque) void {
+        const self: *Task = @ptrCast(@alignCast(data.?));
+        const thrown = engine.completionOf(self.realm, steps, self) catch |err| return self.reject(err);
+        if (thrown) |reason| {
+            defer reason.release();
+            engine.rejectPromise(&self.capability, reason.borrow()) catch {};
+        }
+    }
+
+    fn steps(data: ?*anyopaque) engine.Error!void {
         const self: *Task = @ptrCast(@alignCast(data.?));
         if (self.result == .failure) return self.reject(self.result.failure);
-        const result_value = self.value() catch |err| return self.reject(err);
+        if (self.result == .import_jwk) {
+            self.prepareJwk() catch |err| {
+                if (err == error.ExceptionPending) return error.ExceptionPending;
+                return self.reject(err);
+            };
+            return;
+        }
+        const result_value = self.value() catch |err| {
+            if (err == error.ExceptionPending) return error.ExceptionPending;
+            return self.reject(err);
+        };
         defer result_value.release();
         engine.resolvePromise(&self.capability, result_value.borrow()) catch {};
+    }
+
+    fn prepareJwk(self: *Task) !void {
+        const pending = self.result.import_jwk;
+        // §14.3.12 step 15 and §9 parse-a-JWK: intrinsic JSON parse, then the
+        // actual WebIDL dictionary conversion (including an abrupt completion).
+        // Q19 interim: the parser currently uses this realm's prototypes.
+        // Switch this single call to the fresh-global protocol operation once
+        // the adapter lands it; dictionary conversion remains steps 5–6.
+        const object = try engine.parseJsonToValue(self.realm, pending.bytes);
+        defer object.release();
+        var dictionary = try @import("inputs.zig").dictionary(self.realm, object.borrow());
+        if (dictionary.data.kty == null) {
+            dictionary.deinit(self.realm.allocator);
+            return error.DataError;
+        }
+        const request: @import("operations.zig").Request = .{
+            .operation = .import_key,
+            .io = pending.io,
+            .algorithm = pending.algorithm,
+            .dictionary = dictionary,
+            .format = .jwk,
+            .extractable = pending.extractable,
+            .usages = pending.usages,
+        };
+        std.crypto.secureZero(u8, pending.bytes);
+        self.realm.allocator.free(pending.bytes);
+        self.result = .none; // The new job takes both dictionary and algorithm.
+        self.job = try makeJob(self.realm.allocator, request);
     }
 
     fn value(self: *Task) !engine.Owned {

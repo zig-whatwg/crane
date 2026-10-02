@@ -9,18 +9,18 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const webcrypto = @import("webcrypto");
+const engine = @import("engine");
+const dom = @import("dom");
+const Request = webcrypto.operations.Request;
 const SubtleCrypto = interfaces.SubtleCrypto;
 
 pub const State = SubtleCrypto.State;
 
 pub const ImplError = error{
-    NotImplemented,
+    NotSupportedError,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+/// SubtleCrypto itself is stateless; each operation owns its copied inputs.
 pub const InternalState = struct {};
 
 /// Initialize instance (creates the instance)
@@ -30,41 +30,39 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    return runtime.Instance.init(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
 /// Operation: generateKey
 pub fn call_generateKey(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = algorithm;
-    _ = extractable;
-    _ = keyUsages;
-    return error.NotImplemented;
+    var request = newRequest(.generate_key);
+    defer request.deinit(instance.ctx.allocator);
+    // WebIDL sequence<KeyUsage> conversion precedes §14.3.6 steps 1-3.
+    request.usages = try webcrypto.inputs.usages(instance.ctx, keyUsages);
+    request.algorithm = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(algorithm), .generate_key);
+    request.extractable = extractable;
+    // Steps 4-12: copied native work and a later settlement task.
+    return webcrypto.tasks.submit(instance.ctx, request.take());
 }
 
 /// Operation: exportKey
 pub fn call_exportKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = format;
-    _ = key;
-    return error.NotImplemented;
+    var request = newRequest(.export_key);
+    defer request.deinit(instance.ctx.allocator);
+    // §14.3.10 steps 1-4; support/extractability checks run in the task, in order.
+    request.format = keyFormat(format);
+    request.key = try copyKey(instance.ctx.allocator, key);
+    return webcrypto.tasks.submit(instance.ctx, request.take());
 }
 
 /// Operation: sign
 pub fn call_sign(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = algorithm;
-    _ = key;
-    _ = data;
-    return error.NotImplemented;
+    return dataOperation(instance, algorithm, key, data, .sign);
 }
 
 /// Operation: encapsulateBits
@@ -72,7 +70,7 @@ pub fn call_encapsulateBits(instance: *runtime.Instance, encapsulationAlgorithm:
     _ = instance;
     _ = encapsulationAlgorithm;
     _ = encapsulationKey;
-    return error.NotImplemented;
+    return error.NotSupportedError;
 }
 
 /// Operation: decapsulateKey
@@ -84,16 +82,18 @@ pub fn call_decapsulateKey(instance: *runtime.Instance, decapsulationAlgorithm: 
     _ = sharedKeyAlgorithm;
     _ = extractable;
     _ = keyUsages;
-    return error.NotImplemented;
+    return error.NotSupportedError;
 }
 
 /// Operation: deriveBits
 pub fn call_deriveBits(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: *runtime.Instance, length: webidl.Opt(?u32)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = algorithm;
-    _ = baseKey;
-    _ = length;
-    return error.NotImplemented;
+    var request = newRequest(.derive_bits);
+    defer request.deinit(instance.ctx.allocator);
+    // §14.3.8 steps 1-3: omitted length has the IDL default null.
+    request.algorithm = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(algorithm), .derive_bits);
+    request.length = if (length.was_passed) length.value else null;
+    request.key = try copyKey(instance.ctx.allocator, baseKey);
+    return webcrypto.tasks.submit(instance.ctx, request.take());
 }
 
 /// Operation: getPublicKey
@@ -101,28 +101,33 @@ pub fn call_getPublicKey(instance: *runtime.Instance, key: *runtime.Instance, ke
     _ = instance;
     _ = key;
     _ = keyUsages;
-    return error.NotImplemented;
+    return error.NotSupportedError;
 }
 
 /// Operation: deriveKey
 pub fn call_deriveKey(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, baseKey: *runtime.Instance, derivedKeyType: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = algorithm;
-    _ = baseKey;
-    _ = derivedKeyType;
-    _ = extractable;
-    _ = keyUsages;
-    return error.NotImplemented;
+    var request = newRequest(.derive_key);
+    defer request.deinit(instance.ctx.allocator);
+    request.usages = try webcrypto.inputs.usages(instance.ctx, keyUsages);
+    // §14.3.7 steps 2-7: normalize all THREE operations, in this order.
+    request.algorithm = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(algorithm), .derive_bits);
+    request.derived_import = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(derivedKeyType), .import_key);
+    request.derived_length = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(derivedKeyType), .get_key_length);
+    request.extractable = extractable;
+    request.key = try copyKey(instance.ctx.allocator, baseKey);
+    return webcrypto.tasks.submit(instance.ctx, request.take());
 }
 
 /// Operation: verify
 pub fn call_verify(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, signature: typedefs.BufferSource, data: typedefs.BufferSource) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = algorithm;
-    _ = key;
-    _ = signature;
-    _ = data;
-    return error.NotImplemented;
+    var request = newRequest(.verify);
+    defer request.deinit(instance.ctx.allocator);
+    // §14.3.4 steps 2-5: normalization, signature copy, then message copy.
+    request.algorithm = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(algorithm), .verify);
+    request.signature = try copyTypedBufferSource(instance.ctx, signature);
+    request.bytes = try copyTypedBufferSource(instance.ctx, data);
+    request.key = try copyKey(instance.ctx.allocator, key);
+    return webcrypto.tasks.submit(instance.ctx, request.take());
 }
 
 /// Operation: supports
@@ -131,7 +136,7 @@ pub fn call_static_supports(instance: *runtime.Instance, operation: runtime.DOMS
     _ = operation;
     _ = algorithm;
     _ = length;
-    return error.NotImplemented;
+    return false;
 }
 
 /// Operation: digest
@@ -140,8 +145,8 @@ pub fn call_digest(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIde
     // completion, including an exception a name getter left pending.
     var normalized = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(algorithm), .digest);
     defer normalized.deinit();
-    // Step 4: copy before the argument conversion's temporary bytes expire.
-    const bytes = try instance.ctx.allocator.dupe(u8, try data.asBytes());
+    // Step 4: read the live BufferSource AFTER normalization's getters run.
+    const bytes = try copyTypedBufferSource(instance.ctx, data);
     // Steps 5-12: digest in the relevant realm and settle from its crypto task.
     return webcrypto.tasks.submit(instance.ctx, DigestInput{ .id = normalized.id, .bytes = bytes });
 }
@@ -170,23 +175,40 @@ const DigestInput = struct {
 
 /// Operation: importKey
 pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyData: runtime.JSValue, algorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = format;
-    _ = keyData;
-    _ = algorithm;
-    _ = extractable;
-    _ = keyUsages;
-    return error.NotImplemented;
+    const realm = instance.ctx;
+    // The installed binding supplies the union/sequence as JSValue. Convert
+    // both IDL arguments before the method's normalization steps.
+    var converted = try webcrypto.inputs.keyData(realm, keyData);
+    defer converted.deinit(realm.allocator);
+    var request = newRequest(.import_key);
+    defer request.deinit(realm.allocator);
+    request.usages = try webcrypto.inputs.usages(realm, keyUsages);
+    // §14.3.9 steps 2-3: normalize before checking the format/union pairing.
+    request.algorithm = try webcrypto.normalize.algorithm(realm, algorithmInput(algorithm), .import_key);
+    request.format = keyFormat(format);
+    request.extractable = extractable;
+    // Step 4: dictionary or a copy of the BufferSource's CURRENT contents.
+    if (request.format == .jwk) {
+        if (converted != .dictionary) return error.TypeError;
+        request.dictionary = converted.dictionary;
+        converted.dictionary = .{};
+    } else {
+        if (converted != .buffer) return error.TypeError;
+        request.bytes = try copyBufferValue(realm, converted.buffer);
+    }
+    return webcrypto.tasks.submit(realm, request.take());
 }
 
 /// Operation: wrapKey
 pub fn call_wrapKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *runtime.Instance, wrappingKey: *runtime.Instance, wrapAlgorithm: typedefs.AlgorithmIdentifier) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = format;
-    _ = key;
-    _ = wrappingKey;
-    _ = wrapAlgorithm;
-    return error.NotImplemented;
+    var request = newRequest(.wrap_key);
+    defer request.deinit(instance.ctx.allocator);
+    // §14.3.11 steps 2-4: retry ANY abrupt normalization as encrypt.
+    request.algorithm = try normalizeWrap(instance.ctx, algorithmInput(wrapAlgorithm), .wrap_key, .encrypt);
+    request.format = keyFormat(format);
+    request.key = try copyKey(instance.ctx.allocator, wrappingKey);
+    request.other_key = try copyKey(instance.ctx.allocator, key);
+    return webcrypto.tasks.submit(instance.ctx, request.take());
 }
 
 /// Operation: decapsulateBits
@@ -195,20 +217,22 @@ pub fn call_decapsulateBits(instance: *runtime.Instance, decapsulationAlgorithm:
     _ = decapsulationAlgorithm;
     _ = decapsulationKey;
     _ = ciphertext;
-    return error.NotImplemented;
+    return error.NotSupportedError;
 }
 
 /// Operation: unwrapKey
 pub fn call_unwrapKey(instance: *runtime.Instance, format: enums.KeyFormat, wrappedKey: typedefs.BufferSource, unwrappingKey: *runtime.Instance, unwrapAlgorithm: typedefs.AlgorithmIdentifier, unwrappedKeyAlgorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = format;
-    _ = wrappedKey;
-    _ = unwrappingKey;
-    _ = unwrapAlgorithm;
-    _ = unwrappedKeyAlgorithm;
-    _ = extractable;
-    _ = keyUsages;
-    return error.NotImplemented;
+    var request = newRequest(.unwrap_key);
+    defer request.deinit(instance.ctx.allocator);
+    request.usages = try webcrypto.inputs.usages(instance.ctx, keyUsages);
+    // §14.3.12 steps 2-7: unwrap/decrypt, import, then copy the wrapped bytes.
+    request.algorithm = try normalizeWrap(instance.ctx, algorithmInput(unwrapAlgorithm), .unwrap_key, .decrypt);
+    request.derived_import = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(unwrappedKeyAlgorithm), .import_key);
+    request.bytes = try copyTypedBufferSource(instance.ctx, wrappedKey);
+    request.key = try copyKey(instance.ctx.allocator, unwrappingKey);
+    request.format = keyFormat(format);
+    request.extractable = extractable;
+    return webcrypto.tasks.submit(instance.ctx, request.take());
 }
 
 /// Operation: encapsulateKey
@@ -219,23 +243,89 @@ pub fn call_encapsulateKey(instance: *runtime.Instance, encapsulationAlgorithm: 
     _ = sharedKeyAlgorithm;
     _ = extractable;
     _ = keyUsages;
-    return error.NotImplemented;
+    return error.NotSupportedError;
 }
 
 /// Operation: decrypt
 pub fn call_decrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = algorithm;
-    _ = key;
-    _ = data;
-    return error.NotImplemented;
+    return dataOperation(instance, algorithm, key, data, .decrypt);
 }
 
 /// Operation: encrypt
 pub fn call_encrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = algorithm;
-    _ = key;
-    _ = data;
-    return error.NotImplemented;
+    return dataOperation(instance, algorithm, key, data, .encrypt);
+}
+
+fn newRequest(operation: webcrypto.operations.Operation) Request {
+    return .{ .operation = operation, .io = @import("host").io() };
+}
+
+fn dataOperation(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, key: *runtime.Instance, data: typedefs.BufferSource, comptime operation: webcrypto.operations.Operation) !runtime.JSValue {
+    var request = newRequest(operation);
+    defer request.deinit(instance.ctx.allocator);
+    // §§14.3.1-3 steps 2-4: normalization precedes copying the data argument.
+    const operation_id: webcrypto.registry.Operation = switch (operation) {
+        .encrypt => .encrypt,
+        .decrypt => .decrypt,
+        .sign => .sign,
+        else => unreachable,
+    };
+    request.algorithm = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(algorithm), operation_id);
+    request.bytes = try copyTypedBufferSource(instance.ctx, data);
+    request.key = try copyKey(instance.ctx.allocator, key);
+    return webcrypto.tasks.submit(instance.ctx, request.take());
+}
+
+fn copyKey(allocator: std.mem.Allocator, instance: *runtime.Instance) !webcrypto.key.Slots {
+    const key = dom.crypto_keys.get(instance) orelse return error.TypeError;
+    return webcrypto.key.Slots.init(allocator, key.kind, key.extractable, key.algorithm, key.usages, key.material);
+}
+
+fn copyBufferValue(realm: runtime.Context, value: runtime.JSValue) ![]u8 {
+    return (try engine.getCopyOfBufferSourceBytes(realm, value, realm.allocator)) orelse error.TypeError;
+}
+
+fn copyTypedBufferSource(realm: runtime.Context, source: typedefs.BufferSource) ![]u8 {
+    // Q18 supersedes Q7's early byte copy. The adapter lane supplies a borrowed
+    // JS-value accessor; wire that value into copyBufferValue here when it
+    // lands. An asBytes copy would freeze data BEFORE algorithm getters run.
+    // TODO(Q18): use the adapter's exact accessor, without retyping the IDL.
+    _ = realm;
+    _ = source;
+    return error.NotSupportedError;
+}
+
+fn keyFormat(format: enums.KeyFormat) webcrypto.operations.Format {
+    return switch (format) {
+        ._raw_ => .raw,
+        ._spki_ => .spki,
+        ._pkcs8_ => .pkcs8,
+        ._jwk_ => .jwk,
+        else => .unsupported,
+    };
+}
+
+fn normalizeWrap(realm: runtime.Context, input: webcrypto.normalize.Input, first: webcrypto.registry.Operation, fallback: webcrypto.registry.Operation) !webcrypto.normalize.Algorithm {
+    const Attempt = struct {
+        realm: runtime.Context,
+        input: webcrypto.normalize.Input,
+        operation: webcrypto.registry.Operation,
+        result: ?webcrypto.normalize.Algorithm = null,
+
+        fn steps(data: ?*anyopaque) engine.Error!void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.result = webcrypto.normalize.algorithm(self.realm, self.input, self.operation) catch |err| switch (err) {
+                error.ExceptionPending => return error.ExceptionPending,
+                error.TypeError => return error.TypeError,
+                else => return,
+            };
+        }
+    };
+    var attempt: Attempt = .{ .realm = realm, .input = input, .operation = first };
+    // §§14.3.11/12 step 3 consumes the FIRST abrupt completion. Clear and
+    // release its thrown value before invoking any getter a second time.
+    const thrown = try engine.completionOf(realm, Attempt.steps, &attempt);
+    if (thrown) |reason| reason.release();
+    if (attempt.result) |result| return result;
+    return webcrypto.normalize.algorithm(realm, input, fallback);
 }
