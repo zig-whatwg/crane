@@ -131,6 +131,9 @@ pub const WorkerScriptFetchOptions = struct {
     /// worker's script - whose CSP list main fetch step 7 checks the request
     /// against. BORROWED; null: no client, nothing to check.
     policy_container: ?*const fetch.internal.PolicyContainer = null,
+    /// Where the fetch client's global hears of the CSP violations the
+    /// request causes (CSP 2.4.2). BORROWED; null: nobody hears them.
+    csp_violation_reporter: ?fetch.internal.CspViolationReporter = null,
 
     pub const CredentialsMode = enum {
         omit,
@@ -222,13 +225,14 @@ pub fn fetchWorkerScript(
     }
 
     // Main fetch step 7: "should request be blocked by Content Security
-    // Policy?" - for every scheme, so for the data: and blob: scripts
-    // answered below without main fetch too (an HTTP(S) one is checked
-    // again by main fetch, each redirect included). A blocked request is a
-    // network error.
+    // Policy?" - for the data: and blob: scripts answered below without
+    // main fetch (an HTTP(S) one, or a relative one, goes through main
+    // fetch, which checks it, each redirect included, and reports it once).
+    // A blocked request is a network error.
     if (options.policy_container) |container| {
         const destination: fetch.internal.Destination = if (options.is_import_scripts) .script else if (options.shared) .sharedworker else .worker;
-        if (std.mem.indexOfScalar(u8, url, ':') != null and fetch.algorithms.csp_check.isBlockedFor(container, url, destination)) {
+        const answered_here = std.mem.startsWith(u8, url, "data:") or std.mem.startsWith(u8, url, "blob:");
+        if (answered_here and fetch.algorithms.csp_check.isBlockedFor(container, url, destination, options.csp_violation_reporter)) {
             return WorkerScriptError.NetworkError;
         }
     }
@@ -428,6 +432,8 @@ fn fetchHttpWorkerScript(
     if (options.policy_container) |container| {
         internal_request.setPolicyContainer(container.clone(allocator) catch return WorkerScriptError.OutOfMemory);
     }
+    // Its violations are its client's (CSP 2.4.2).
+    internal_request.csp_violation_reporter = options.csp_violation_reporter;
 
     // Set credentials mode
     internal_request.credentials_mode = switch (options.credentials) {

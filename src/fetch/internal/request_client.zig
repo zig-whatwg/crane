@@ -39,6 +39,10 @@ pub const RequestClient = struct {
     /// Document's, a WorkerGlobalScope's own. BORROWED for the call; the
     /// request takes a clone. Null for a global that has none.
     policy_container: ?*const PolicyContainer = null,
+    /// Where the settings object's global hears of CSP violations its
+    /// requests cause (CSP §5.5). BORROWED: the request keeps it while its
+    /// client is there. Null for a global that reports none.
+    csp_violation_reporter: ?request_mod.CspViolationReporter = null,
 };
 
 /// Fetch "populate request from client", for a request whose client is the
@@ -87,6 +91,9 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
     // HTTP-network fetch stores a response's in, when the request includes
     // credentials.
     if (request.cookie_jar == null) request.cookie_jar = client.cookie_jar;
+
+    // CSP §2.4.2: a violation the request causes is its client's global's.
+    if (request.csp_violation_reporter == null) request.csp_violation_reporter = client.csp_violation_reporter;
 }
 
 test "populate request from client: traversable, origin, referrer and jar" {

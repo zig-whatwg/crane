@@ -275,6 +275,9 @@ pub const XMLHttpRequestState = struct {
             .traversable = client.traversable,
             .cookie_jar = client.cookie_jar,
             .policy_container = policy_container,
+            // Borrowed, as the client's: the global the request's CSP
+            // violations go to (CSP 2.4.2).
+            .csp_violation_reporter = client.csp_violation_reporter,
         };
     }
 
@@ -562,4 +565,17 @@ test "State - setClient keeps its own clone of the client's policy container" {
     try std.testing.expectEqual(fetch.internal.ReferrerPolicy.unsafe_url, state.client.policy_container.?.referrer_policy);
     try state.setClient(.{});
     try std.testing.expect(state.client.policy_container == null);
+}
+
+fn testReport(_: *anyopaque, _: *const fetch.internal.CspViolation) void {}
+
+test "State - setClient keeps the client's CSP violation reporter" {
+    const allocator = std.testing.allocator;
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+    var global: u8 = 0;
+    try state.setClient(.{ .csp_violation_reporter = .{ .context = &global, .report = &testReport } });
+    try std.testing.expect(state.client.csp_violation_reporter.?.context == @as(*anyopaque, &global));
+    try state.setClient(.{});
+    try std.testing.expect(state.client.csp_violation_reporter == null);
 }

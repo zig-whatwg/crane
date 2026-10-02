@@ -2225,6 +2225,8 @@ const SharedConnect = struct {
             // The outside settings' policy container: its CSP decides
             // whether the script may be fetched at all.
             .policy_container = creatorPolicyContainer(self.owner_realm),
+            // Its violations are reported to the outside settings' global.
+            .csp_violation_reporter = @import("dom").csp_violations.reporterForRealm(self.owner_realm),
         }) catch return self.fireError();
         defer fetched.deinit();
 

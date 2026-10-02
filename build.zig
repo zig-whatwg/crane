@@ -1221,6 +1221,11 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("runtime", runtime_mod);
     dom_mod.addImport("interfaces", interfaces_mod);
     dom_mod.addImport("impls", impls_mod); // For document_internals to access Document.InternalState
+    // CSP violation events (csp_violations.zig): a queued task run in the
+    // global's realm (the engine protocol), and the event's init dictionary.
+    dom_mod.addImport("engine", engine_mod);
+    dom_mod.addImport("dictionaries", dictionaries_mod);
+    dom_mod.addImport("enums", enums_mod);
 
     // Quirks module (WHATWG Quirks Mode Standard)
     const quirks_mod = b.addModule("quirks", .{

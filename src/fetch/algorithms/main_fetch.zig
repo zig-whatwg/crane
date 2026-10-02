@@ -156,7 +156,7 @@ pub const MainFetchStart = union(enum) {
 /// 1. Let request be fetchParams's request
 /// 2. Let response be null
 /// 3. If request's local-URLs-only flag is set and request's current URL is not local, return network error
-/// 4. Report CSP violations for request
+/// 4. Report CSP violations for request (report-only policies)
 /// 5. Upgrade mixed content request
 /// 6. If should request be blocked due to a bad port, return network error
 /// 7. If should request be blocked due to mime type, return network error
@@ -179,8 +179,9 @@ pub fn mainFetchStart(
         }
     }
 
-    // Step 4: Report CSP violations (stubbed - requires CSP implementation)
-    // TODO: Implement CSP violation reporting
+    // Step 4: "Run report Content Security Policy violations for request":
+    // its report-only policies' violations go to its client's global.
+    csp_check.reportViolationsForRequest(request);
 
     // Step 5: "Upgrade request to a potentially trustworthy URL, if
     // appropriate" (Upgrade Insecure Requests 4.1).

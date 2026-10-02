@@ -90,6 +90,8 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     client.request.cookie_jar = cookieJarOf(global);
     // The policy container "populate request from client" step 3 clones.
     if (settings.policy_container) |container_of| client.request.policy_container = container_of(global);
+    // CSP 2.4.2: the global its requests' violations are reported to.
+    client.request.csp_violation_reporter = @import("csp_violations.zig").reporterFor(global);
     return client;
 }
 

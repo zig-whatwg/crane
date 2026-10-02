@@ -377,6 +377,8 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         // The outside settings' policy container: its CSP decides whether
         // the script may be fetched at all.
         .policy_container = worker_host.creatorPolicyContainer(ctx),
+        // Its violations are reported to the outside settings' global.
+        .csp_violation_reporter = @import("dom").csp_violations.reporterForRealm(ctx),
     }) catch |err| {
         std.log.warn("Failed to fetch worker script in constructor: {}", .{err});
         // Continue with null pending_script: initializeWorkerSync still makes

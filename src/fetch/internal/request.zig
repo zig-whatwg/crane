@@ -12,6 +12,12 @@ const HeaderList = header_list.HeaderList;
 const body_mod = @import("body.zig");
 const origins = @import("origins.zig");
 const cookiestore = @import("cookiestore");
+const csp = @import("csp");
+
+/// Where a request's CSP violations go (CSP §5.5): its client's global.
+pub const CspViolationReporter = csp.violation_events.Reporter;
+/// What a CspViolationReporter is handed.
+pub const CspViolation = csp.violation_events.Violation;
 
 /// The user agent's cookie jar (src/cookiestore). Reached through fetch by
 /// modules that take a request's client but not cookiestore itself.
@@ -314,6 +320,14 @@ pub const InternalRequest = struct {
     /// request includes credentials. Null: a request the user agent makes
     /// for itself, which neither sends nor keeps cookies.
     cookie_jar: ?*CookieJar = null,
+
+    /// Where CSP violations this request causes are reported (CSP §2.4.2:
+    /// a request's violation's global object is its client's global), as
+    /// "populate request from client" takes it from the client. BORROWED:
+    /// main fetch reports only while its client is there - a fetch whose
+    /// client is gone is terminated (async_fetch's `alive`). Null: a request
+    /// with no client, whose violations nobody hears.
+    csp_violation_reporter: ?CspViolationReporter = null,
 
     /// Top-level navigation initiator origin
     top_level_navigation_initiator_origin: ?[]const u8 = null,
@@ -675,6 +689,7 @@ pub const InternalRequest = struct {
             .origin = if (self.origin_owned) .client else self.origin,
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
             .cookie_jar = self.cookie_jar,
+            .csp_violation_reporter = self.csp_violation_reporter,
             // Cloned below: each request owns its own.
             .policy_container = .client,
             // Copied below when it is an owned URL.

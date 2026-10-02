@@ -69,6 +69,8 @@ pub const clampAndCoarsenConnectionTimingInfo = fetch_timing.clampAndCoarsenConn
 pub const request = @import("request.zig");
 pub const InternalRequest = request.InternalRequest;
 pub const CookieJar = request.CookieJar;
+pub const CspViolationReporter = request.CspViolationReporter;
+pub const CspViolation = request.CspViolation;
 
 pub const policy_container = @import("policy_container.zig");
 pub const PolicyContainer = policy_container.PolicyContainer;
