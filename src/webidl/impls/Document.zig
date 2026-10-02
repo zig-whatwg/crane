@@ -2875,13 +2875,14 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const runtime.DOMStri
         if (internal.scripts.ignore_destructive_writes_counter > 0 or internal.unload_counter > 0) {
             return;
         }
-        // Step 9.2: "Run the document open steps with document." Deviation,
-        // stated: only the script-created parser's state is set up here -
-        // the document is not emptied, and what is written is buffered for
-        // document.close() (see below).
-        internal.is_script_created_parser = true;
-        internal.insertion_point = 0;
-        internal.write_buffer.clearRetainingCapacity();
+        // Step 9.2: "Run the document open steps with document": its
+        // listeners are erased, its children replaced with nothing, and a
+        // script-created parser is its parser, with an insertion point.
+        _ = try call_open(instance, webidl.Opt(runtime.DOMString).notPassed(), webidl.Opt(runtime.DOMString).notPassed());
+        // The open steps return early - an active parser running a script,
+        // an unload in progress, an aborted parser - without a
+        // script-created parser; then nothing is written.
+        if (!internal.is_script_created_parser) return;
     }
 
     if (string.items.len == 0) return;
@@ -2893,38 +2894,16 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const runtime.DOMStri
 /// body. Deviation, stated: the script-created parser does not process each
 /// write as it arrives; that needs document.open()'s parser, which is not this
 /// function's to create.
+/// Steps 10-11 for a script-created parser: insert string into its input
+/// stream. Deviation, stated (as for document.open()): the script-created
+/// parser processes its stream when document.close() inserts the explicit
+/// EOF, not as each write() inserts - so what was written is not in the
+/// tree until then.
 fn appendToScriptCreatedParserInput(instance: *runtime.Instance, internal: *InternalState, buffer: []const u8) !void {
+    _ = instance;
     internal.write_buffer.appendSlice(internal.allocator, buffer) catch {
         return error.OutOfMemory;
     };
-
-    // For immediate effect (backwards compatibility), also append to body
-    // This handles the common case where document.write is called after parsing
-    const body = get_body(instance) catch null;
-    if (body) |body_elem| {
-        const HTMLParser = @import("HTMLParser.zig");
-
-        const fragment = HTMLParser.parseFragment(
-            internal.allocator,
-            instance.ctx,
-            buffer,
-            body_elem,
-        ) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            else => return,
-        };
-        defer interfaces.DocumentFragment.deinit(fragment);
-
-        // Move children from fragment to body
-        var child = NodeImpl.getFirstChild(fragment);
-        while (child) |c| {
-            const next = NodeImpl.getNextSibling(c);
-            // Use interface instead of impl (per Golden Rule #13)
-            _ = interfaces.Node.call_removeChild(fragment, c) catch break;
-            _ = interfaces.Node.call_appendChild(body_elem, c) catch break;
-            child = next;
-        }
-    }
 }
 
 /// Operation: createAttribute
