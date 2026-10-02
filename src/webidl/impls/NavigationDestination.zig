@@ -36,15 +36,17 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: Allocator,
     url: []u8 = &.{},
-    /// The NavigationHistoryEntry, kept alive with this.
+    /// The NavigationHistoryEntry, kept alive by this one's wrapper (an
+    /// edge: same_object.Traced).
     entry: ?*runtime.Instance = null,
-    entry_pin: same_object.Pin = .{},
+    entry_edge: same_object.Traced = .{ .slot = .{ .name = "entry" } },
     state: joint_history.SerializedState = .null,
     is_same_document: bool = false,
 
-    fn deinit(self: *InternalState) void {
+    /// `destination`: the object this state is, whose edge goes.
+    fn deinit(self: *InternalState, destination: *runtime.Instance) void {
         self.allocator.free(self.url);
-        self.entry_pin.release();
+        self.entry_edge.release(destination);
         self.state.deinit(self.allocator);
     }
 };
@@ -77,7 +79,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        internal.deinit(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -98,7 +100,7 @@ fn create(realm: runtime.Context, init_state: dom.navigation_objects.Destination
     internal.is_same_document = init_state.is_same_document;
     if (init_state.entry) |entry| {
         internal.entry = entry;
-        internal.entry_pin.hold(entry);
+        internal.entry_edge.hold(instance, entry);
     }
     return instance;
 }

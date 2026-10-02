@@ -1210,7 +1210,50 @@ test "protocol: a frame's realm whose WindowProxy went on is severed from its Wi
     try expectEval(parent, "delete globalThis.reader", "true");
 }
 
-test "protocol: a destroyed navigable's realm keeps its global attached, severed from its Window" {
+test "protocol: a destroyed navigable's realm keeps its Window while script holds its WindowProxy, and ends when it is collected" {
+    _ = try realm();
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    const baseline = liveContexts();
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    const window = Watched.of(try platformObjectIn(frame, "globalThis"));
+    {
+        const frame_global = try evalOwned(frame, "globalThis.kept = new Headers([['a', '1']]); globalThis");
+        defer frame_global.release();
+        try setGlobal(parent, "frameWindow", frame_global.value);
+    }
+
+    // HTML "destroy a child navigable" (an iframe removed): Blink's
+    // DisposeContext(kFrameIsDetached) leaves the global attached, and the
+    // Window lives on with its WindowProxy.
+    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    collectTwice();
+    try std.testing.expect(frame.engine_ctx != null);
+    try std.testing.expect(window.alive());
+
+    // Its self-references, and every member that needs the Window: the
+    // Window is the one it was, with what its realm's script kept on it.
+    try expectEval(parent, "[frameWindow.self, frameWindow.frames, frameWindow.globalThis, frameWindow.window].every(w => w === frameWindow)", "true");
+    try expectEval(parent, "typeof frameWindow.name", "string");
+    try expectEval(parent, "frameWindow.kept.get('a')", "1");
+
+    // Crane holds nothing of the frame's context: once script lets its
+    // WindowProxy go, the collector takes the context, and the realm reads
+    // ended from then on.
+    try expectEval(parent, "delete globalThis.frameWindow", "true");
+    const after = liveContexts();
+    if (after != baseline) {
+        std.debug.print("native contexts: {d} before the frame, {d} after its navigable was destroyed and its WindowProxy dropped\n", .{ baseline, after });
+        return error.RealmKeptAlive;
+    }
+    try std.testing.expect(frame.engine_ctx == null);
+    // This test's realms have no event loop to end it from a task: its
+    // page's end does, which frees its Window.
+}
+
+test "protocol: a listener stored on a destroyed navigable's object, closing over the frame, does not keep it" {
     _ = try realm();
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
@@ -1219,32 +1262,59 @@ test "protocol: a destroyed navigable's realm keeps its global attached, severed
     var frame_realm: FrameRealm = .{ .parent = parent };
     const frame = try frame_realm.make();
     {
+        const frame_global = try evalOwned(frame, "globalThis.target = new EventTarget(); globalThis");
+        defer frame_global.release();
+        try setGlobal(parent, "frameWindow", frame_global.value);
+    }
+    // The parent stores, on the frame's object, callbacks whose closures
+    // reach the frame: a listener and an event handler's worth.
+    try expectEval(parent, "(() => { const w = frameWindow; w.target.addEventListener('x', () => w.heard = (w.heard || 0) + 1); return 'ok'; })()", "ok");
+    try expectEval(parent, "frameWindow.target.dispatchEvent(new frameWindow.Event('x')); frameWindow.heard", "1");
+
+    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    collectTwice();
+    // Script that holds the frame still reaches the listener.
+    try expectEval(parent, "frameWindow.target.dispatchEvent(new frameWindow.Event('x')); frameWindow.heard", "2");
+
+    // Once script lets the frame go, the listener is no root that keeps it.
+    try expectEval(parent, "delete globalThis.frameWindow", "true");
+    const after = liveContexts();
+    if (after != baseline) {
+        std.debug.print("native contexts: {d} before the frame, {d} after it was detached and dropped with a listener closing over it\n", .{ baseline, after });
+        return error.RealmKeptAlive;
+    }
+}
+
+test "protocol: a destroyed navigable's realm that its page outlives is not run, and its page's end frees its Window" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    const window = Watched.of(try platformObjectIn(frame, "globalThis"));
+    {
         const frame_global = try evalOwned(frame, "globalThis");
         defer frame_global.release();
         try setGlobal(parent, "frameWindow", frame_global.value);
     }
-
-    // HTML "destroy a child navigable" (an iframe removed): Blink's
-    // DisposeContext(kFrameIsDetached) leaves the global attached.
     protocol.destroyWindowRealm(frame, .navigable_destroyed);
+
+    // HTML "destroy a document" step 7: its tasks are not run.
+    const Steps = struct {
+        var ran = false;
+        fn steps(_: ?*anyopaque) void {
+            ran = true;
+        }
+    };
+    Steps.ran = false;
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(frame, Steps.steps, null));
+    try std.testing.expect(!Steps.ran);
+
+    // The page ends while script still holds the frame's WindowProxy: the
+    // frame's realm ends with it - retired, its wrapper cache gone.
+    try std.testing.expect(window.alive());
+    protocol.destroyWindowRealm(parent, .global_detached);
     try std.testing.expect(frame.engine_ctx == null);
-
-    // The WindowProxy script held still answers its self-references - own
-    // data properties, and `window`, which needs no Window
-    // (self-et-al.window.js). Detached, each read threw "no access".
-    try expectEval(parent, "[frameWindow.self, frameWindow.frames, frameWindow.globalThis, frameWindow.window].every(w => w === frameWindow)", "true");
-    // A member that needs the Window finds none: a TypeError, not a read of
-    // the Window the host freed.
-    try expectEval(parent, "(() => { try { return String(frameWindow.name); } catch (e) { return e.name; } })()", "TypeError");
-
-    // Crane holds nothing of the frame's context: once script lets its
-    // WindowProxy go, the collector takes the context.
-    try expectEval(parent, "delete globalThis.frameWindow", "true");
-    const after = liveContexts();
-    if (after != baseline) {
-        std.debug.print("native contexts: {d} before the frame, {d} after its realm ended and its WindowProxy was dropped\n", .{ baseline, after });
-        return error.RealmKeptAlive;
-    }
+    try std.testing.expect(frame.getV8WrapperCacheStorage() == null);
 }
 
 test "protocol: a wrapper another realm still holds is severed when its realm ends" {
@@ -1260,12 +1330,12 @@ test "protocol: a wrapper another realm still holds is severed when its realm en
     }
     try expectEval(parent, "heldHeaders.get('a')", "1");
 
-    // The frame's realm ends: its wrapper cache frees the Headers, and the
-    // parent still holds the wrapper. Reading through it is a TypeError - the
-    // wrapper names no instance any more - never a read of the freed one
-    // (Headers.call_get unwraps its `_internal` unchecked: a panic, or worse
-    // once the slot is reissued).
-    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    // The frame's realm ends (a navigation's end): its wrapper cache frees
+    // the Headers, and the parent still holds the wrapper. Reading through it
+    // is a TypeError - the wrapper names no instance any more - never a read
+    // of the freed one (Headers.call_get unwraps its `_internal` unchecked: a
+    // panic, or worse once the slot is reissued).
+    protocol.destroyWindowRealm(frame, .global_detached);
     try expectEval(parent, "(() => { try { return String(heldHeaders.get('a')); } catch (e) { return e.name; } })()", "TypeError");
     try expectEval(parent, "delete globalThis.heldHeaders", "true");
 }
@@ -1493,6 +1563,161 @@ test "protocol: traceChild and forgetTracedChild leave no global handle behind" 
         return error.HandlesLeaked;
     }
     try expectEval(w, "delete globalThis.owner && delete globalThis.child", "true");
+}
+
+/// A Headers made the way an impl makes a platform object (its interface's
+/// constructor, from Zig): script has not seen it, so it has no wrapper.
+fn unwrappedHeaders(r: runtime.Context) !*runtime.Instance {
+    const Init = @typeInfo(@TypeOf(interfaces.Headers.call_constructor)).@"fn".params[1].type.?;
+    return interfaces.Headers.call_constructor(r, Init.notPassed());
+}
+
+test "protocol: an owner script has not seen keeps its traced child, and draws the edge on its wrapper once made" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // A Zig-made event before its dispatch, or a constructor's instance
+    // before the binding caches `this`: no wrapper yet.
+    const owner = Watched.of(try unwrappedHeaders(w));
+    const child = Watched.of(try platformObjectIn(w, "new Headers([['child', '1']])"));
+    protocol.traceChild(owner.instance, child.instance, .{ .name = "child" });
+    // traceChild makes no wrapper for it - one made now would be the
+    // collector's to free the owner with, and a constructor would replace it.
+    try std.testing.expect(!protocol.hasWrapper(owner.instance));
+    collectTwice();
+    try std.testing.expect(owner.alive());
+    try std.testing.expect(child.alive());
+
+    // Script sees the owner: the edge is drawn on the wrapper made for it.
+    {
+        const wrapped = try protocol.retainValue(w, .{ .instance = owner.instance });
+        defer wrapped.release();
+        try setGlobal(w, "owner", wrapped.value);
+    }
+    collectTwice();
+    try std.testing.expect(owner.alive());
+    try std.testing.expect(child.alive());
+
+    // The strong hold went to the edge, so the child goes with the owner.
+    try expectEval(w, "delete globalThis.owner", "true");
+    collectTwice();
+    try std.testing.expect(!owner.alive());
+    try std.testing.expect(!child.alive());
+}
+
+test "protocol: forgetTracedChild ends an edge that waits for its owner's wrapper, and a slot keeps one child" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    const owner = Watched.of(try unwrappedHeaders(w));
+    const first = Watched.of(try platformObjectIn(w, "new Headers()"));
+    const second = Watched.of(try platformObjectIn(w, "new Headers()"));
+    const other = Watched.of(try platformObjectIn(w, "new Headers()"));
+    protocol.traceChild(owner.instance, first.instance, .{ .name = "child" });
+    protocol.traceChild(owner.instance, other.instance, .{ .name = "other" });
+    protocol.traceChild(owner.instance, second.instance, .{ .name = "child" });
+    collectTwice();
+    try std.testing.expect(!first.alive());
+    try std.testing.expect(second.alive());
+    try std.testing.expect(other.alive());
+
+    protocol.forgetTracedChild(owner.instance, .{ .name = "child" });
+    protocol.forgetTracedChild(owner.instance, .{ .name = "never" });
+    collectTwice();
+    try std.testing.expect(!second.alive());
+    try std.testing.expect(other.alive());
+    try std.testing.expect(!protocol.hasWrapper(owner.instance));
+}
+
+test "protocol: an owner freed unwrapped lets its waiting edges go" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    const waiting = v8.wrapper_cache_mod.liveDeferredEdgeCount();
+
+    // A Zig-made event that never reaches script: its teardown ends its
+    // edges (forgetTracedChild), and it is freed - its child with them.
+    const owner = try unwrappedHeaders(w);
+    const child = Watched.of(try platformObjectIn(w, "new Headers()"));
+    protocol.traceChild(owner, child.instance, .{ .name = "child" });
+    try std.testing.expectEqual(waiting + 1, v8.wrapper_cache_mod.liveDeferredEdgeCount());
+    protocol.forgetTracedChild(owner, .{ .name = "child" });
+    runtime.Instance.releaseIfUnwrapped(owner, runtime.SlabAllocator.generationOf(owner));
+    try std.testing.expectEqual(waiting, v8.wrapper_cache_mod.liveDeferredEdgeCount());
+    collectTwice();
+    try std.testing.expect(!child.alive());
+
+    // An owner freed without ending them: the next edge drawn in its realm
+    // finds its slot's generation moved on and lets them go too.
+    const careless = try unwrappedHeaders(w);
+    const orphan = Watched.of(try platformObjectIn(w, "new Headers()"));
+    protocol.traceChild(careless, orphan.instance, .{ .name = "child" });
+    runtime.Instance.releaseIfUnwrapped(careless, runtime.SlabAllocator.generationOf(careless));
+    const next = try unwrappedHeaders(w);
+    const kept = Watched.of(try platformObjectIn(w, "new Headers()"));
+    protocol.traceChild(next, kept.instance, .{ .name = "child" });
+    try std.testing.expectEqual(waiting + 1, v8.wrapper_cache_mod.liveDeferredEdgeCount());
+    collectTwice();
+    try std.testing.expect(!orphan.alive());
+    try std.testing.expect(kept.alive());
+    protocol.forgetTracedChild(next, .{ .name = "child" });
+    runtime.Instance.releaseIfUnwrapped(next, runtime.SlabAllocator.generationOf(next));
+}
+
+test "protocol: edges waiting for an owner's wrapper leave no global handle behind" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    const isolate = isolate_once.?;
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    const owner = try unwrappedHeaders(w);
+    const child = try platformObjectIn(w, "globalThis.child = new Headers()");
+    // The first round makes what every later one reuses.
+    protocol.traceChild(owner, child, .{ .name = "child" });
+    protocol.forgetTracedChild(owner, .{ .name = "child" });
+    collectTwice();
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const rounds = 32;
+    for (0..rounds) |_| {
+        protocol.traceChild(owner, child, .{ .name = "child" });
+        protocol.traceChild(owner, child, .{ .name = "child" });
+        protocol.forgetTracedChild(owner, .{ .name = "child" });
+    }
+    collectTwice();
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    if (after -| before >= handle_bytes) {
+        std.debug.print("global handles {d} -> {d} bytes over {d} rounds ({d} bytes a handle)\n", .{ before, after, rounds, handle_bytes });
+        return error.HandlesLeaked;
+    }
+    try expectEval(w, "delete globalThis.child", "true");
+}
+
+test "a window's indexedDB, when making its IDBFactory fails at any allocation, frees what it made once" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    // Each allocation the getter makes fails in turn. The allocator under it
+    // reports a double free or an invalid free (a panic, or an error log,
+    // which fails the test); it is never deinit'd - a Window torn down
+    // unwrapped leaves state its realm's end would free, which this test does
+    // not measure.
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    var k: usize = 0;
+    while (k < 8) : (k += 1) {
+        var failing = std.testing.FailingAllocator.init(debug_allocator.allocator(), .{});
+        const window = try interfaces.Window.init(failing.allocator(), w);
+        failing.fail_index = failing.alloc_index + k;
+        _ = interfaces.Window.get_indexedDB(window) catch {};
+        runtime.Instance.releaseIfUnwrapped(window, runtime.SlabAllocator.generationOf(window));
+    }
 }
 
 test "protocol: performMicrotaskCheckpoint runs the agent's microtasks, whichever realm queued them" {

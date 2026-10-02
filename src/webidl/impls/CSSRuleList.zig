@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -17,22 +18,32 @@ pub const ImplError = error{
 
 // The CSS rules a list reads are its sheet's model (src/dom/cssom.zig).
 const cssom = @import("dom").cssom;
-const same_object = @import("same_object.zig");
 
 /// A CSSRuleList: the CSS rules of the sheet it was made for
 /// (`cssom.bindRuleList`), read live, and the CSSRule object made for each
 /// rule it has handed out - one object per rule, as script expects
-/// `list[0] === list[0]`. Each object is held (`same_object.Pin`) while the
-/// list lives: nothing else in the list keeps its wrapper.
+/// `list[0] === list[0]`. The list's wrapper keeps each object's
+/// (`traceRule`: an edge, not a root - Blink's CSSRuleList traces the rule
+/// objects it made): nothing else in the list keeps its wrapper.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     objects: std.AutoHashMapUnmanaged(*cssom.StyleRule, Made) = .empty,
 
     const Made = struct {
         instance: *runtime.Instance,
-        pin: same_object.Pin = .{},
     };
 };
+
+/// The slot a rule object is kept in: one per rule, named by its model.
+fn ruleSlot(buffer: []u8, model: *cssom.StyleRule) engine.TracedSlot {
+    return .{ .name = std.fmt.bufPrint(buffer, "rule:{x}", .{@intFromPtr(model)}) catch "rule" };
+}
+
+/// `list` keeps `rule`, the object it made for `model`.
+fn traceRule(list: *runtime.Instance, model: *cssom.StyleRule, rule: *runtime.Instance) void {
+    var buffer: [48]u8 = undefined;
+    engine.traceChild(list, rule, ruleSlot(&buffer, model));
+}
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     const state = instance.getState(State);
@@ -59,8 +70,15 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     cssom.unbindRuleList(instance);
     const internal = getInternal(instance) orelse return;
-    var it = internal.objects.valueIterator();
-    while (it.next()) |made| made.pin.release();
+    // A list freed unwrapped lets the holds waiting for its wrapper go
+    // (engine.forgetTracedChild, safe in its teardown); a wrapped one's edges
+    // go with its wrapper. No rule object is touched: the collector may have
+    // freed it first.
+    var it = internal.objects.keyIterator();
+    while (it.next()) |model| {
+        var buffer: [48]u8 = undefined;
+        engine.forgetTracedChild(instance, ruleSlot(&buffer, model.*));
+    }
     internal.objects.deinit(internal.allocator);
     internal.allocator.destroy(internal);
     instance.getState(State).own._internal = null;
@@ -92,6 +110,6 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
     try cssom.bindRule(rule, model);
     const entry = try internal.objects.getOrPut(internal.allocator, model);
     entry.value_ptr.* = .{ .instance = rule };
-    entry.value_ptr.pin.hold(rule);
+    traceRule(instance, model, rule);
     return rule;
 }

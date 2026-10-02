@@ -148,6 +148,11 @@ pub fn enterRealm(realm: runtime.Context) EngineError!EnteredRealm {
 }
 
 pub fn v8RunTaskInRealm(realm: runtime.Context, steps: runtime.RealmSteps, data: ?*anyopaque) EngineError!void {
+    // HTML "destroy a document" step 7: the tasks of a document whose
+    // navigable was destroyed are removed without running. Its realm lives on
+    // while script holds its WindowProxy (protocol_realms detach), and script
+    // may still call into it; its tasks never run.
+    if (@import("protocol_realms.zig").isDetached(realm)) return EngineError.OperationFailed;
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     {

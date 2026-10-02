@@ -25,7 +25,14 @@ const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
 
-/// A strong reference to one Instance's JavaScript wrapper.
+/// A strong reference to one Instance's JavaScript wrapper - a root - for
+/// PENDING ACTIVITY only: an object that must outlive whatever script holds
+/// of it while work it started is under way (an XHR's fetch, a FileReader's
+/// read, a body being read, a fetch() call's signal). Ended when the work
+/// ends - and the work ends when its document does ("abort a document",
+/// dom.document_fetches; the unloading document cleanup steps). A child an
+/// owner keeps for the owner's life is `Traced` or `KeptChild`, never a Pin:
+/// a root keeps the child's realm, and through it the owner, forever.
 pub const Pin = struct {
     held: ?engine.Owned = null,
 
@@ -50,6 +57,49 @@ pub const Pin = struct {
     pub fn release(self: *Pin) void {
         if (self.held) |held| held.release();
         self.held = null;
+    }
+};
+
+/// A child its owner keeps for exactly as long as the owner's wrapper lives:
+/// an edge the collector traces (engine.traceChild), never a root - what a
+/// `Pin` was for every child that is not pending activity. An event's
+/// attributes (a StorageEvent's storageArea, a NavigateEvent's destination
+/// and signal), an object's [SameObject] children: Blink traces each from
+/// its owner's `Trace`.
+///
+/// A Pin held the child whatever became of the owner, and the child's
+/// wrapper - through its map - its realm: a frame whose own global held an
+/// event that pinned the frame's Storage could never be collected, the
+/// root keeping the global that kept the event. An edge lets the owner, the
+/// child and the realm go together once script holds none of them.
+///
+/// The edge keeps the child while the owner's WRAPPER lives, and the owner
+/// is freed when that wrapper is collected (the wrapper cache) - so an owner
+/// never reads its child once its wrapper is gone, and its teardown must not
+/// touch the child: the collector may have freed the child first. An owner
+/// script has not seen yet holds the child strongly until it is wrapped
+/// (engine.traceChild); `release` in its teardown lets that hold go when it
+/// is freed unwrapped (a Zig-made event that never reached script).
+pub const Traced = struct {
+    /// The owner's member that holds the child (its IDL attribute's name).
+    slot: engine.TracedSlot,
+    /// Whether an edge is drawn (or waits for the owner's wrapper).
+    drawn: bool = false,
+
+    /// `owner` keeps `child`, replacing the child this slot kept.
+    pub fn hold(self: *Traced, owner: *runtime.Instance, child: *runtime.Instance) void {
+        engine.traceChild(owner, child, self.slot);
+        self.drawn = true;
+    }
+
+    /// `owner` keeps no child here any more - its member was cleared, or
+    /// `owner` is being torn down. Safe in teardown, the collector's too
+    /// (engine.forgetTracedChild): for an owner the collector frees, only the
+    /// hold an unwrapped owner had is let go.
+    pub fn release(self: *Traced, owner: *runtime.Instance) void {
+        if (!self.drawn) return;
+        engine.forgetTracedChild(owner, self.slot);
+        self.drawn = false;
     }
 };
 

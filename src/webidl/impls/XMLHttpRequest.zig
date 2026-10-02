@@ -68,10 +68,12 @@ pub const InternalState = struct {
     /// The asynchronous send()'s fetch, from send() until its task has run.
     pending_fetch: ?*PendingFetch,
 
-    /// Keeps `this.upload` alive for as long as this XHR - see
-    /// `same_object.zig`. The upload object carries the upload event handlers,
-    /// which script sets on it and then never touches again.
-    upload_pin: same_object.Pin,
+    /// Keeps `this.upload` alive for as long as this XHR's wrapper - an edge
+    /// (same_object.Traced), as Blink's XMLHttpRequest::Trace visits
+    /// `upload_`. The upload object carries the upload event handlers, which
+    /// script sets on it and then never touches again; an XHR whose fetch is
+    /// pending keeps its own wrapper (`keep_alive`), and with it this edge.
+    upload_edge: same_object.Traced,
 
     /// This's response object when it is an object - the ArrayBuffer, Blob
     /// or JSON value `response` made - held so every later read returns that
@@ -84,7 +86,7 @@ pub const InternalState = struct {
             .xhr_state = XMLHttpRequestState.init(allocator),
             .allocator = allocator,
             .pending_fetch = null,
-            .upload_pin = .{},
+            .upload_edge = .{ .slot = .{ .name = "upload" } },
         };
     }
 
@@ -105,9 +107,10 @@ pub const InternalState = struct {
         value.release();
     }
 
-    pub fn deinitState(self: *InternalState) void {
+    /// `owner`: the XHR this state is, whose edge to its upload object goes.
+    pub fn deinitState(self: *InternalState, owner: *runtime.Instance) void {
         // The upload object's lifetime is the wrapper cache's from here.
-        self.upload_pin.release();
+        self.upload_edge.release(owner);
         self.releaseResponseValue();
         // Before anything else: a fetch in flight, or its queued task, would
         // otherwise reach an instance that is going away.
@@ -143,7 +146,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinitState();
+        internal.deinitState(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -228,7 +231,7 @@ pub fn get_upload(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // between `xhr.upload.onloadend = f` and `send()` freed the upload object
     // and `send()` fired `upload.loadstart` into the slab
     // (xhr/send-timeout-events.htm, SEGV in v8_Value_IsFunction).
-    internal.upload_pin.hold(upload);
+    internal.upload_edge.hold(instance, upload);
 
     return upload;
 }

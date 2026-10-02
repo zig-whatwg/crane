@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -33,21 +34,23 @@ pub const InternalState = struct {
     /// [[signal]]: The associated AbortSignal, created with the controller.
     signal: *runtime.Instance,
 
-    /// Holds the signal's wrapper once the signal has been handed to script,
-    /// which also means the wrapper cache owns the signal from then on - see
-    /// `deinit` and `same_object.zig`.
-    signal_pin: same_object.Pin,
+    /// The controller's wrapper keeps the signal's once the signal has been
+    /// handed out (an edge, not a root: same_object.Traced) - Blink traces
+    /// `signal_` from the controller.
+    signal_edge: same_object.Traced = .{ .slot = .{ .name = "signal" } },
 
-    /// The signal as it was when this controller made it. A wrap the pin
-    /// never saw - `Pin.hold` holds nothing without a context to wrap in -
-    /// still hands the signal to the wrapper cache, and a context's teardown
-    /// sweep frees cached objects in no particular order: the signal can go
-    /// before its controller.
+    /// The signal as it was when this controller made it. A context's
+    /// teardown sweep frees cached objects in no particular order: the signal
+    /// can go before its controller.
     signal_link: same_object.Link,
 
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        if (self.signal_pin.isHeld()) {
-            // Script has seen the signal, so V8's wrapper cache owns it and
+    /// `controller`: the object this state is, whose edge goes - from its
+    /// teardown, the collector's too. Touches the signal only when nothing
+    /// else owns it.
+    pub fn deinit(self: *InternalState, controller: *runtime.Instance, allocator: std.mem.Allocator) void {
+        self.signal_edge.release(controller);
+        if (self.signal_link.isLive() and engine.hasWrapper(self.signal)) {
+            // The signal has a wrapper, so V8's wrapper cache owns it and
             // frees it when its wrapper goes - which may be long after this
             // controller: `const s = new AbortController().signal`.
             //
@@ -56,7 +59,6 @@ pub const InternalState = struct {
             // the wrapper cache. Every `controller.signal` read put it there.
             // So a collected controller freed a signal script still held, and
             // a collected signal left the controller pointing into the slab.
-            self.signal_pin.release();
         } else if (self.signal_link.isLive()) {
             // Never handed out - nothing else will ever free it.
             interfaces.AbortSignal.deinit(self.signal);
@@ -88,7 +90,7 @@ pub fn init(
     const internal = state.own._internal.?;
     internal.allocator = allocator;
     internal.signal = signal;
-    internal.signal_pin = .{};
+    internal.signal_edge = .{ .slot = .{ .name = "signal" } };
     internal.signal_link = same_object.Link.to(signal);
 
     return instance;
@@ -99,7 +101,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         // Clean up the owned signal and internal state
-        internal.deinit(internal.allocator);
+        internal.deinit(instance, internal.allocator);
         state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
@@ -125,8 +127,8 @@ pub fn get_signal(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
     // [SameObject], and the signal carries `onabort` and its listeners: keep
-    // its wrapper for as long as this controller lives.
-    internal.signal_pin.hold(internal.signal);
+    // its wrapper for as long as this controller's (once).
+    if (!internal.signal_edge.drawn) internal.signal_edge.hold(instance, internal.signal);
     return internal.signal;
 }
 

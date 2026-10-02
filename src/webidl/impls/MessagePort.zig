@@ -163,7 +163,62 @@ pub fn initWithInternal(
     // start()) is not the receiver's: HTML's transfer-receiving steps leave
     // it disabled until this port's start() or onmessage.
     internal_port.queue_enabled = false;
+    live_ports.append(std.heap.page_allocator, instance) catch {};
+    // Its document's destruction disentangles it (`disentangleIn`).
+    @import("dom").unloading_cleanup.install(&disentangleIn);
     return instance;
+}
+
+/// Every MessagePort on this thread, from init to deinit: the ports "destroy
+/// a document" reaches (`disentangleIn`).
+threadlocal var live_ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+
+fn forgetPort(instance: *runtime.Instance) void {
+    for (live_ports.items, 0..) |port, i| {
+        if (port != instance) continue;
+        _ = live_ports.swapRemove(i);
+        return;
+    }
+}
+
+/// HTML "destroy a document" steps 4-5: "Let ports be the list of
+/// MessagePorts whose relevant global object's associated Document is
+/// document. For each port in ports, disentangle port." - for the ports of
+/// `realm`, whose document is destroyed. A disentangled port has no pending
+/// activity left, so the hold that kept it - and through it its realm -
+/// while its channel lived goes (Blink: MessagePort::ContextDestroyed
+/// closes the port). Installed into the unloading document cleanup steps
+/// (dom.unloading_cleanup), which "destroy a document" runs right after
+/// these (step 6); a document Crane unloads is always destroyed - it keeps
+/// no back/forward cache - so they run at the same moment either way, and a
+/// worker's ports go when it ends.
+pub fn disentangleIn(realm: runtime.Context) void {
+    // Backwards: disentangling queues the peer's close event, frees nothing
+    // here, but stay safe if it did.
+    var i = live_ports.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (i >= live_ports.items.len) continue;
+        const port = live_ports.items[i];
+        if (port.ctx != realm) continue;
+        disentangle(port);
+    }
+}
+
+/// HTML "disentangle" (9.4.4), initiated by `instance`: the two ports are
+/// disentangled and the other one hears `close`.
+fn disentangle(instance: *runtime.Instance) void {
+    const internal = getInternal(instance) orelse return;
+    // A shipped port is not entangled: its end is another port's now.
+    if (!internal.owns_port) return;
+    // 1. otherPort, if this is entangled.
+    const other = internal.internal_port.entangled_port;
+    // 3. Disentangle the two ports (and close this end).
+    internal.internal_port.close();
+    syncPendingActivity(instance);
+    // 4. Fire an event named close at otherPort - from a task of its own
+    // realm, which may be another agent's.
+    if (other) |end| scheduleClose(end);
 }
 
 /// Make `instance` the owner that hears messages queued on its end.
@@ -177,6 +232,7 @@ fn connect(instance: *runtime.Instance, internal: *InternalState) !void {
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    forgetPort(instance);
     // Whatever pending-activity hold is left on it goes with it.
     releasePendingActivity(instance);
     const state = instance.getState(State);
@@ -278,14 +334,8 @@ fn releasePendingActivity(instance: *runtime.Instance) void {
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return;
     internal.detached = true;
-    // A shipped port is not entangled: its end is another port's now.
-    if (!internal.owns_port) return;
-    const other = internal.internal_port.entangled_port;
-    internal.internal_port.close();
-    syncPendingActivity(instance);
-    // Disentangle step 4: fire an event named close at otherPort - from a
-    // task of its own realm, which may be another agent's.
-    if (other) |end| scheduleClose(end);
+    // 2. If this is entangled, disentangle it.
+    disentangle(instance);
 }
 
 // ============================================================================

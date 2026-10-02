@@ -183,9 +183,9 @@ pub const Owner = struct {
     /// This object's body's stream, once made: the [SameObject] `body`
     /// (the generated state's `body`).
     stream: *?*runtime.Instance,
-    /// Holds that stream's wrapper for as long as this object - see
-    /// same_object.zig: `stream` is a pointer V8 cannot see.
-    pin: *same_object.Pin,
+    /// Keeps that stream's wrapper for as long as this object's - an edge
+    /// (same_object.Traced): `stream` is a pointer V8 cannot see.
+    pin: *same_object.Traced,
     /// This object's body; null for a null body.
     body: ?*fetch.internal.Body,
     kind: *const Kind,
@@ -230,7 +230,7 @@ pub fn bodyStream(o: Owner) !?*runtime.Instance {
 
     const stream = try PipeStream.create(o.instance.ctx, pipe);
     o.stream.* = stream;
-    o.pin.hold(stream);
+    o.pin.hold(o.instance, stream);
     if (o.kind.made) |made| made(o.instance, stream);
     return stream;
 }
@@ -258,11 +258,10 @@ pub fn cloneStream(o: Owner, clone: Owner) !void {
     const stream = o.stream.* orelse return;
     const realm = try js.Realm.of(o.instance);
     const branches = try srd.tee(realm, stream);
-    o.pin.release();
     o.stream.* = branches[0];
-    o.pin.hold(branches[0]);
+    o.pin.hold(o.instance, branches[0]);
     clone.stream.* = branches[1];
-    clone.pin.hold(branches[1]);
+    clone.pin.hold(clone.instance, branches[1]);
 }
 
 /// Streams "create a proxy" for `input`'s body, as `target`'s body's
@@ -287,9 +286,8 @@ pub fn proxyInto(input: Owner, target: Owner) !void {
     }
     const branches = try srd.tee(realm, stream);
     if (srd.streamOf(stream)) |slots| slots.disturbed = true;
-    target.pin.release();
     target.stream.* = branches[0];
-    target.pin.hold(branches[0]);
+    target.pin.hold(target.instance, branches[0]);
     const reason = try realm.undefinedValue();
     defer js.dispose(reason);
     const cancelled = srd.cancel(realm, branches[1], reason) catch return;

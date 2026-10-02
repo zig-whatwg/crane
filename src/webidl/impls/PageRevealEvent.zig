@@ -26,13 +26,14 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// The pin that keeps viewTransition's object alive with the event.
+/// The edge that keeps viewTransition's object alive with the event's
+/// wrapper (same_object.Traced).
 pub const InternalState = struct {
     allocator: Allocator,
-    view_transition_pin: same_object.Pin = .{},
+    view_transition_edge: same_object.Traced = .{ .slot = .{ .name = "viewTransition" } },
 
-    fn release(self: *InternalState) void {
-        self.view_transition_pin.release();
+    fn release(self: *InternalState, event: *runtime.Instance) void {
+        self.view_transition_edge.release(event);
     }
 };
 
@@ -51,7 +52,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.release();
+        internal.release(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -90,7 +91,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     internal.* = .{ .allocator = ctx.allocator };
     state.own._internal = internal;
     state.own.viewTransition = init_dict.viewTransition;
-    if (init_dict.viewTransition) |transition| internal.view_transition_pin.hold(transition);
+    if (init_dict.viewTransition) |transition| internal.view_transition_edge.hold(instance, transition);
 
     // The inherited Event internal state and its initialized flag: without
     // them dispatchEvent throws InvalidStateError.

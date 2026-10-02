@@ -552,6 +552,8 @@ fn builtinCallback(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 pub fn isCallable(value: runtime.JSValue) bool {
     // A `.handle` is a Global either way it is tagged (value_operations.handleOf).
     const handle = value_operations.handleOf(value) orelse return false;
+    // Empty: a callback of a realm the collector took (protocol_realms).
+    if (ffi.v8_Global_IsEmpty(handle)) return false;
     return ffi.v8_Value_IsFunction(handle);
 }
 

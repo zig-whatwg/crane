@@ -3408,6 +3408,21 @@ pub extern fn v8_JSON_StringifyValue(context: *Context, value: *Value, no_repres
 /// private property is deleted (the engine protocol's forgetTracedChild). A
 /// no-op when there is none; needs an entered context.
 pub extern fn v8_Object_DeletePrivateRef(holder: *Object, key: [*]const u8, key_len: c_int) void;
+/// Keep `value` alive exactly as long as `context`'s global object: appended
+/// to an array in a private property (`key`) of the hidden global object
+/// behind the proxy - an edge, never a root. A no-op for a collected context.
+pub extern fn v8_Context_RetainOnGlobal(context: *Context, key: [*]const u8, key_len: c_int, value: *Value) void;
+/// Make `context`'s handle weak; `callback(user_data, 0)` runs once the
+/// collector takes the context (first pass: the handle is reset by then).
+/// v8_Context_Dispose ends the arm.
+pub extern fn v8_Context_SetWeak(context: *Context, user_data: ?*anyopaque, callback: WeakCallbackFn) void;
+/// Tag `global` with the key of the realm whose API stored it (a listener, an
+/// event handler); a dispose untags it.
+pub extern fn v8_Global_TagRealm(global: *Value, realm_key: usize) void;
+/// A detached realm (`realm_key`): every handle tagged with it is kept from
+/// its global object (an array in private `key`) and made weak. Returns how
+/// many.
+pub extern fn v8_Context_WeakenTaggedHandles(context: *Context, realm_key: usize, key: [*]const u8, key_len: c_int) c_int;
 // ---- end lane: realms ----
 // ---- lane: speed ----
 /// Isolate::TerminateExecution: any thread, no lock (engine.abortRunningScript).

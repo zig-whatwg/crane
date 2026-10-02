@@ -65,14 +65,14 @@ pub const InternalState = struct {
     /// The dependency runs from the Headers to its owner, the reverse of
     /// `xhr.upload`: the data is the OWNER's header list, so it is the owner
     /// that must outlive the Headers - `const h = (await fetch(u)).headers`
-    /// holds only the Headers. So this object pins the owner's wrapper, and
-    /// the owner holds nothing but its generated `cached_headers` pointer,
-    /// which this object clears when it goes. No strong cycle: a Headers that
-    /// script drops is collected, clears the cache and unpins the owner, and
+    /// holds only the Headers. So this object's wrapper keeps the owner's (an
+    /// edge: same_object.Traced), and the owner holds nothing but its
+    /// generated `cached_headers` pointer, which this object clears when it
+    /// goes. A Headers that script drops is collected, clears the cache, and
     /// the owner hands out a new Headers over the same list next time.
     const Owner = struct {
         link: same_object.Link,
-        pin: same_object.Pin,
+        edge: same_object.Traced,
         /// The owner's `cached_headers`, which must not outlive this object.
         cache_slot: *?*runtime.Instance,
     };
@@ -138,11 +138,11 @@ pub fn initWithHeaderList(
         .owns_headers = false, // We don't own the headers - Response/Request does
         .owner = .{
             .link = same_object.Link.to(owner),
-            .pin = .{},
+            .edge = .{ .slot = .{ .name = "owner" } },
             .cache_slot = cache_slot,
         },
     };
-    if (internal.owner) |*link| link.pin.hold(owner);
+    if (internal.owner) |*link| link.edge.hold(instance, owner);
 
     // Store in instance
     const state = instance.getState(State);
@@ -173,13 +173,13 @@ pub fn deinit(instance: *runtime.Instance) void {
         }
         if (internal.owner) |*owner| {
             // The owner hands out a fresh Headers over the same list next
-            // time. It is alive - this object pinned it - unless the whole
-            // context is being torn down in no particular order, which the
-            // generation check is for.
+            // time - if it is alive: the collector may take it with this
+            // object, in either order, and a context's teardown frees in no
+            // particular order. The generation check is for both.
             if (owner.link.isLive() and owner.cache_slot.* == instance) {
                 owner.cache_slot.* = null;
             }
-            owner.pin.release();
+            owner.edge.release(instance);
         }
         allocator.destroy(internal);
     }

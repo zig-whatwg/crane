@@ -36,14 +36,16 @@ pub const ImplError = error{
 pub const InternalState = struct {
     allocator: Allocator,
     old_entry: ?*runtime.Instance = null,
-    old_pin: same_object.Pin = .{},
+    old_edge: same_object.Traced = .{ .slot = .{ .name = "from" } },
     new_entry: ?*runtime.Instance = null,
-    new_pin: same_object.Pin = .{},
+    new_edge: same_object.Traced = .{ .slot = .{ .name = "entry" } },
     navigation_type: enums.NavigationType = ._push_,
 
-    fn release(self: *InternalState) void {
-        self.old_pin.release();
-        self.new_pin.release();
+    /// `activation`: the object this state is, whose edges go (its teardown,
+    /// the collector's too).
+    fn release(self: *InternalState, activation: *runtime.Instance) void {
+        self.old_edge.release(activation);
+        self.new_edge.release(activation);
         self.old_entry = null;
         self.new_entry = null;
     }
@@ -71,11 +73,11 @@ pub fn init(
     return instance;
 }
 
-/// Deinitialize instance: the entries' pins go with it.
+/// Deinitialize instance: the edges to its entries go with it.
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.release();
+        internal.release(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -89,10 +91,10 @@ fn create(realm: runtime.Context, init_state: dom.navigation_objects.ActivationI
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (init_state.from) |from| {
         internal.old_entry = from;
-        internal.old_pin.hold(from);
+        internal.old_edge.hold(instance, from);
     }
     internal.new_entry = init_state.entry;
-    internal.new_pin.hold(init_state.entry);
+    internal.new_edge.hold(instance, init_state.entry);
     internal.navigation_type = switch (init_state.navigation_type) {
         .push => ._push_,
         .replace => ._replace_,

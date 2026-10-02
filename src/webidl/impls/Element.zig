@@ -81,12 +81,31 @@ pub const AttributeEntry = struct {
     value: []const u8,
 
     /// The Attr node made for this attribute, once script asked for one
-    /// (ensureAttrNode), and the hold on its wrapper that keeps it the same
-    /// node - identity, expandos and all - while the attribute is on this
-    /// element. Blink traces the same edge (Element's AttrNodeList).
+    /// (ensureAttrNode). The element's wrapper keeps the node's
+    /// (`traceAttrNode`: an edge, not a root), so it stays the same node -
+    /// identity, expandos and all - while the attribute is on this element.
+    /// Blink traces the same edge (Element's AttrNodeList).
     attr_node: ?same_object.Link = null,
-    attr_pin: same_object.Pin = .{},
 };
+
+/// The slot an Attr node is kept in: one per node, named by its address - an
+/// element keeps a node for each attribute script asked one for.
+fn attrSlot(buffer: []u8, attr: *runtime.Instance) engine.TracedSlot {
+    return .{ .name = std.fmt.bufPrint(buffer, "attr:{x}", .{@intFromPtr(attr)}) catch "attr" };
+}
+
+/// `element` keeps `attr`, its node for one of its attributes.
+fn traceAttrNode(element: *runtime.Instance, attr: *runtime.Instance) void {
+    var buffer: [48]u8 = undefined;
+    engine.traceChild(element, attr, attrSlot(&buffer, attr));
+}
+
+/// `element` no longer keeps `attr`. Not from teardown: there the edge goes
+/// with the element's wrapper.
+fn forgetAttrNode(element: *runtime.Instance, attr: *runtime.Instance) void {
+    var buffer: [48]u8 = undefined;
+    engine.forgetTracedChild(element, attrSlot(&buffer, attr));
+}
 
 /// Internal state for Element implementation
 /// Stores element-specific data: namespace, prefix, local name, attributes
@@ -238,7 +257,7 @@ pub const InternalState = struct {
         // Free inline attribute entries, letting their Attr nodes go first
         for (self.inline_attrs[0..self.inline_attr_count]) |*maybe_entry| {
             if (maybe_entry.*) |*entry| {
-                detachAttrNode(entry);
+                detachAttrNode(null, entry);
                 freeAttributeEntry(self.allocator, entry.*);
             }
         }
@@ -246,7 +265,7 @@ pub const InternalState = struct {
         // Free heap attribute entries if any
         if (self.heap_attrs) |*heap| {
             for (heap.items) |*entry| {
-                detachAttrNode(entry);
+                detachAttrNode(null, entry);
                 freeAttributeEntry(self.allocator, entry.*);
             }
             heap.deinit(self.allocator);
@@ -1495,7 +1514,7 @@ fn removeAttributeAt(instance: *runtime.Instance, internal: *InternalState, inde
 
     // Step 3: "Set attribute's element to null." - its Attr node, if script
     // has one, keeps the value it had here.
-    detachAttrNode(&entry);
+    detachAttrNode(instance, &entry);
 
     // Step 4: "Handle attribute changes for attribute with element,
     // attribute's value, and null."
@@ -2323,20 +2342,22 @@ fn ensureAttrNode(instance: *runtime.Instance, internal: *InternalState, index: 
     try dom.attr_nodes.name(attr, entry.namespace_uri, entry.prefix, entry.local_name);
     try dom.attr_nodes.attach(attr, instance);
     // `attach` can run nothing, so `entry` is still this attribute's.
+    if (entry.attr_node) |old| forgetAttrNode(instance, old.instance);
     entry.attr_node = same_object.Link.to(attr);
-    entry.attr_pin.release();
-    entry.attr_pin.hold(attr);
+    traceAttrNode(instance, attr);
     return attr;
 }
 
 /// The attribute `entry` stands for is leaving this element: its Attr node, if
 /// one was made, keeps the value and loses its element, and this element stops
-/// holding it.
-fn detachAttrNode(entry: *AttributeEntry) void {
+/// keeping it - `element` null when the element is being torn down, where the
+/// edge goes with its wrapper.
+fn detachAttrNode(element: ?*runtime.Instance, entry: *AttributeEntry) void {
     const link = entry.attr_node orelse return;
     entry.attr_node = null;
-    defer entry.attr_pin.release();
-    // A teardown sweep may have freed the node first.
+    if (element) |e| forgetAttrNode(e, link.instance);
+    // A teardown sweep - or the collector, with the element - may have freed
+    // the node first.
     if (!link.isLive()) return;
     dom.attr_nodes.detach(link.instance, entry.value) catch {};
 }
@@ -2345,9 +2366,9 @@ fn detachAttrNode(entry: *AttributeEntry) void {
 fn adoptAttrNode(instance: *runtime.Instance, internal: *InternalState, index: usize, attr: *runtime.Instance) !void {
     const entry = internal.attributeAt(index) orelse return error.InvalidStateError;
     try dom.attr_nodes.attach(attr, instance);
+    if (entry.attr_node) |old| forgetAttrNode(instance, old.instance);
     entry.attr_node = same_object.Link.to(attr);
-    entry.attr_pin.release();
-    entry.attr_pin.hold(attr);
+    traceAttrNode(instance, attr);
 }
 
 /// Operation: setAttributeNS
@@ -2430,7 +2451,7 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     // "Set oldAttribute's element to null": oldAttr - the node script may
     // already hold, or one made now to hand back - keeps its last value.
     const old_attr = try ensureAttrNode(instance, internal, old_index);
-    detachAttrNode(internal.attributeAt(old_index).?);
+    detachAttrNode(instance, internal.attributeAt(old_index).?);
     try replaceAttributeAt(instance, internal, old_index, prefix, value.asSlice());
     // Found again by name: the change steps can run script.
     if (internal.indexOfAttribute(namespace, local_name.asSlice())) |index| {

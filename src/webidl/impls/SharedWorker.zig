@@ -58,9 +58,11 @@ pub const InternalState = struct {
     /// constructor's realm (steps 6-7). The worker's side of the channel is
     /// the inside port the `connect` event carries.
     port: *runtime.Instance,
-    /// Keeps `port`'s wrapper alive for as long as this object:
+    /// Keeps `port`'s wrapper alive for as long as this object's:
     /// `worker.port.onmessage = f` leaves nothing in script holding the port.
-    port_pin: same_object.Pin = .{},
+    /// An edge, not a root (same_object.Traced); Blink traces `port_` from
+    /// SharedWorker::Trace.
+    port_edge: same_object.Traced = .{ .slot = .{ .name = "port" } },
     allocator: std.mem.Allocator,
 };
 
@@ -78,7 +80,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.port_pin.release();
+        internal.port_edge.release(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -135,7 +137,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     const internal = try allocator.create(InternalState);
     internal.* = .{ .port = outside_port, .allocator = allocator };
     instance.getState(State).own._internal = internal;
-    internal.port_pin.hold(outside_port);
+    internal.port_edge.hold(instance, outside_port);
 
     // 9. outsideStorageKey: obtain a storage key for non-storage purposes,
     // given outsideSettings - its origin, here, serialized (Crane has no

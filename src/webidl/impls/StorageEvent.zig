@@ -51,11 +51,15 @@ pub const InternalState = struct {
     old_value: ?[]u8 = null,
     new_value: ?[]u8 = null,
     url: []u8 = &.{},
-    /// The Storage object, kept alive with the event.
+    /// The Storage object, kept alive by the event's wrapper (an edge, not a
+    /// root: a frame's own global that holds the event must not be kept by
+    /// the frame's Storage it names).
     storage_area: ?*runtime.Instance = null,
-    storage_area_pin: same_object.Pin = .{},
+    storage_area_edge: same_object.Traced = .{ .slot = .{ .name = "storageArea" } },
 
-    fn clear(self: *InternalState) void {
+    /// `event`: the event this state is, whose edge goes - from teardown
+    /// too (same_object.Traced.release).
+    fn clear(self: *InternalState, event: *runtime.Instance) void {
         if (self.key) |v| self.allocator.free(v);
         if (self.old_value) |v| self.allocator.free(v);
         if (self.new_value) |v| self.allocator.free(v);
@@ -64,7 +68,7 @@ pub const InternalState = struct {
         self.old_value = null;
         self.new_value = null;
         self.url = &.{};
-        self.storage_area_pin.release();
+        self.storage_area_edge.release(event);
         self.storage_area = null;
     }
 
@@ -72,6 +76,7 @@ pub const InternalState = struct {
     /// changes unless every copy is made.
     fn set(
         self: *InternalState,
+        event: *runtime.Instance,
         key: ?[]const u8,
         old_value: ?[]const u8,
         new_value: ?[]const u8,
@@ -86,14 +91,14 @@ pub const InternalState = struct {
         const new_copy = if (new_value) |v| try allocator.dupe(u8, v) else null;
         errdefer if (new_copy) |v| allocator.free(v);
         const url_copy = try allocator.dupe(u8, url);
-        self.clear();
+        self.clear(event);
         self.key = key_copy;
         self.old_value = old_copy;
         self.new_value = new_copy;
         self.url = url_copy;
         if (storage_area) |area| {
             self.storage_area = area;
-            self.storage_area_pin.hold(area);
+            self.storage_area_edge.hold(event, area);
         }
     }
 };
@@ -122,7 +127,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.clear();
+        internal.clear(instance);
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
@@ -139,6 +144,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     try EventImpl.innerEventCreationSteps(instance, @"type", dict.base);
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     try internal.set(
+        instance,
         if (dict.key) |v| v.asSlice() else null,
         if (dict.oldValue) |v| v.asSlice() else null,
         if (dict.newValue) |v| v.asSlice() else null,
@@ -197,6 +203,7 @@ pub fn call_initStorageEvent(instance: *runtime.Instance, @"type": runtime.DOMSt
         }
     }.of;
     try internal.set(
+        instance,
         optionalSlice(key),
         optionalSlice(oldValue),
         optionalSlice(newValue),
