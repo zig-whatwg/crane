@@ -154,6 +154,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A store entry must hold what it names](architecture-a-store-entry-must-hold-what-it-names.md) - A registry whose entries outlive the object they name must hold a reference of its own; "it may be referenced elsewhere" is the reason to take one - and every reference it takes needs the spec step that releases it.
 - [A call-as-function handler's This is the callable object](architecture-a-call-as-function-handler-s-this-is-the-callable.md) - Before blaming a binding for the object it hands an impl, check what the engine passes and what the impl does with it - a stub that fails quietly looks like a wrong receiver.
 - [A threadlocal is per thread, which is neither per instance nor per tab](architecture-a-threadlocal-is-per-thread-not-per-instance-or-tab.md) - A threadlocal is per thread, not per instance and not per tab: a hook installed on one thread is null on the next, and page state on it is shared by every page the thread runs. Read a variable's writers and readers before choosing its owner.
+- [A parent's state kept outside the instance dies only if the impl chains to the parent's deinit](architecture-a-parent-s-state-kept-outside-the-instance-dies-only-if.md) - An impl that does not chain to its parent's init and deinit leaves the parent's out-of-instance state behind; a crash at a process's end is in no journal - grep the sweep log and replay the shard under MallocScribble=1.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -276,6 +277,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [An abort through panicExtra inside V8 code is UBSan, not a V8 CHECK](debugging-an-abort-through-panicextra-inside-v8-code-is-ubsan-not-a-check.md) - `panicExtra` under a C++ frame is UBSan: decode the handler's source location from the binary before theorising about V8's preconditions.
 - [The runner writes its log positionally - trace through a pipe](debugging-the-runner-writes-its-log-positionally-trace-through-a-pipe.md) - If a trace in the runner's log is missing or cut, suspect the log: pipe it.
 - [A fault in Allocator.free's memset is a double free, and the allocator said so first](debugging-a-fault-in-allocator-free-s-memset-is-a-double-free.md) - Grep the run log for the allocator's own reports above a fault in free; a constant page offset means a slot in a returned page.
+- [A fault at 0xca10 is a handle V8 zapped in this collection](debugging-a-fault-at-0xca10-is-a-handle-v8-zapped-in-this-collection.md) - 0xca10 (or 0xca11) in a fault address is a handle zapped by the running collection: find the weak callback on the stack and the engine call it made - V8 allows none there.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.
