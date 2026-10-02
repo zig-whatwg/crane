@@ -9,6 +9,8 @@ pub const kdf = @import("kdf.zig");
 pub const registry = @import("registry.zig");
 pub const key = @import("key.zig");
 pub const aes = @import("aes.zig");
+pub const normalize = @import("normalize.zig");
+pub const tasks = @import("tasks.zig");
 
 test {
     _ = random;

@@ -1146,6 +1146,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     impls_mod.addImport("webcrypto", webcrypto_mod);
+    webcrypto_mod.addImport("runtime", runtime_mod);
     impls_mod.addOptions("build_options", build_options);
     impls_mod.addOptions("debug_options", debug_options);
 
@@ -1176,6 +1177,7 @@ pub fn build(b: *std.Build) void {
     engine_impl_mod.addImport("engine", engine_mod);
     engine_mod.addImport("engine_impl", engine_impl_mod);
     impls_mod.addImport("engine", engine_mod);
+    webcrypto_mod.addImport("engine", engine_mod);
     // The runtime reaches the engine the way everything else does: an
     // unwrapped instance asks engine.hasWrapper, [PutForwards] and
     // [Replaceable] setters use its Set and DefineOwnProperty. The facade
@@ -1232,6 +1234,8 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("infra", infra_mod);
     // The user agent's cookie jar, which a settings object hands out.
     dom_mod.addImport("cookiestore", cookiestore_mod);
+    dom_mod.addImport("webcrypto", webcrypto_mod);
+    webcrypto_mod.addImport("dom", dom_mod);
     dom_mod.addImport("webidl", webidl_mod);
     dom_mod.addImport("runtime", runtime_mod);
     dom_mod.addImport("interfaces", interfaces_mod);

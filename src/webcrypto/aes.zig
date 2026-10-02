@@ -119,7 +119,7 @@ pub fn gcm(allocator: std.mem.Allocator, direction: Direction, key: []const u8, 
         unreachable;
     }
     if (!mbed.available) return error.NotSupportedError;
-    const algorithm = c.PSA_ALG_AEAD_WITH_SHORTENED_TAG(c.PSA_ALG_GCM, tag_length);
+    const algorithm: u32 = @intCast(c.PSA_ALG_AEAD_WITH_SHORTENED_TAG(c.PSA_ALG_GCM, tag_length));
     var imported = try mbed.Key.importAes(key, algorithm, if (direction == .encrypt) c.PSA_KEY_USAGE_ENCRYPT else c.PSA_KEY_USAGE_DECRYPT);
     defer imported.deinit();
     var written: usize = 0;

@@ -8,7 +8,7 @@ pub fn hkdf(allocator: std.mem.Allocator, hash: Hash, key: []const u8, salt: []c
     // §33.4.1 step 1: only a present, byte-aligned length is accepted.
     const bits = length orelse return error.OperationError;
     if (bits % 8 != 0) return error.OperationError;
-    // Steps 2-4: RFC 5869's output bound, extract, and expand.
+    // Steps 2-6: RFC 5869's output bound, key material, extract, and expand.
     if (bits / 8 > 255 * hash.digestLength()) return error.OperationError;
     const result = try allocator.alloc(u8, bits / 8);
     switch (hash) {
@@ -19,7 +19,7 @@ pub fn hkdf(allocator: std.mem.Allocator, hash: Hash, key: []const u8, salt: []c
             H.expand(result, info, prk);
         },
     }
-    // Step 5: return the derived bytes.
+    // Step 7: return the derived bytes.
     return result;
 }
 

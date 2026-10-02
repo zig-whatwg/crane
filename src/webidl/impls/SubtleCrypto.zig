@@ -8,6 +8,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const webcrypto = @import("webcrypto");
 const SubtleCrypto = interfaces.SubtleCrypto;
 
 pub const State = SubtleCrypto.State;
@@ -135,10 +136,27 @@ pub fn call_static_supports(instance: *runtime.Instance, operation: runtime.DOMS
 
 /// Operation: digest
 pub fn call_digest(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdentifier, data: typedefs.BufferSource) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = algorithm;
-    _ = data;
-    return error.NotImplemented;
+    // §14.3.5 steps 1-3. The Promise-returning binding preserves abrupt
+    // completion, including an exception a name getter left pending.
+    var normalized = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(algorithm), .digest);
+    defer normalized.deinit();
+    // Step 4: copy before the argument conversion's temporary bytes expire.
+    const bytes = try instance.ctx.allocator.dupe(u8, try data.asBytes());
+    defer instance.ctx.allocator.free(bytes);
+    // Steps 5-12: digest in the relevant realm and settle from its crypto task.
+    return webcrypto.tasks.settle(instance.ctx, digestResult(instance.ctx.allocator, normalized.id, bytes));
+}
+
+fn algorithmInput(algorithm: typedefs.AlgorithmIdentifier) webcrypto.normalize.Input {
+    return switch (algorithm) {
+        .object => |value| .{ .object = value },
+        .domstring => |value| .{ .string = value.asSlice() },
+    };
+}
+
+fn digestResult(allocator: std.mem.Allocator, id: webcrypto.registry.Id, bytes: []const u8) !webcrypto.tasks.Result {
+    const hash = try webcrypto.hash.Hash.fromName(id.name());
+    return .{ .bytes = try webcrypto.hash.digest(allocator, hash, bytes) };
 }
 
 /// Operation: importKey

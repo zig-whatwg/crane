@@ -65,13 +65,13 @@ pub fn call_getRandomValues(instance: *runtime.Instance, array: typedefs.ArrayBu
     // WebCrypto §10.1.1 step 1: only the nine integer typed array types.
     switch (array) {
         .int8_array, .uint8_array, .uint8_clamped_array, .int16_array, .uint16_array, .int32_array, .uint32_array, .bigint64_array, .biguint64_array => {},
-        else => return error.TypeMismatchError,
+        else => return domException(instance.ctx, "TypeMismatchError"),
     }
     if (array.jsHandle()) |handle| {
         const value = runtime.JSValue.fromAnyopaque(handle);
-        const description = engine.describeArrayBufferView(instance.ctx, value) orelse return error.TypeMismatchError;
+        const description = engine.describeArrayBufferView(instance.ctx, value) orelse return domException(instance.ctx, "TypeMismatchError");
         // Steps 2-4: the quota concerns the current view, not its backing buffer.
-        if (description.byte_length > 65536) return error.QuotaExceededError;
+        if (description.byte_length > 65536) return domException(instance.ctx, "QuotaExceededError");
         if (description.byte_length != 0) {
             const bytes = try instance.ctx.allocator.alloc(u8, description.byte_length);
             defer instance.ctx.allocator.free(bytes);
@@ -81,7 +81,7 @@ pub fn call_getRandomValues(instance: *runtime.Instance, array: typedefs.ArrayBu
         }
     } else {
         // Native callers have a real BufferSource rather than an engine view.
-        if (array.getByteLength() > 65536) return error.QuotaExceededError;
+        if (array.getByteLength() > 65536) return domException(instance.ctx, "QuotaExceededError");
         const bytes = try array.asBytes();
         if (bytes.len != 0) random.fill(host.io(), @constCast(bytes)) catch return error.OperationError;
     }
@@ -97,4 +97,11 @@ pub fn call_randomUUID(instance: *runtime.Instance) anyerror!runtime.DOMString {
         else => return error.OperationError,
     };
     return runtime.DOMString.initOwned(text);
+}
+
+fn domException(realm: runtime.Context, name: []const u8) anyerror {
+    const exception = engine.createDOMException(realm, name, "Invalid random-value destination") catch |err| return err;
+    defer exception.release();
+    engine.throwValue(realm, exception.borrow()) catch |err| return err;
+    return error.ExceptionPending;
 }

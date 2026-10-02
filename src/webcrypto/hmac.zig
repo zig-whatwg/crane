@@ -5,7 +5,7 @@ const Hash = @import("hash.zig").Hash;
 
 /// Return a MAC allocated with `allocator`.
 pub fn sign(allocator: std.mem.Allocator, hash: Hash, key: []const u8, message: []const u8) ![]u8 {
-    // §31.6.1 steps 1-3: HMAC with the key's hash and complete key material.
+    // §31.6.1 steps 1-2: HMAC with the key's hash and complete key material.
     switch (hash) {
         inline else => |value| {
             const H = std.crypto.auth.hmac.Hmac(value.Implementation());
@@ -21,7 +21,7 @@ pub fn sign(allocator: std.mem.Allocator, hash: Hash, key: []const u8, message: 
 
 /// Compare the complete MAC; short and long signatures never match.
 pub fn verify(hash: Hash, key: []const u8, signature: []const u8, message: []const u8) bool {
-    // §31.6.2 steps 1-4: recompute the whole MAC, then compare in constant time.
+    // §31.6.2 steps 1-2: recompute the whole MAC, then compare in constant time.
     switch (hash) {
         inline else => |value| {
             const H = std.crypto.auth.hmac.Hmac(value.Implementation());
