@@ -2155,8 +2155,8 @@ pub fn V8Interface(comptime Interface: type) type {
         }
 
         /// Check if a type is an optional callback type (like EventHandler = ?*const fn(...))
-        /// These types are stored as tagged pointers to V8 GlobalHandles and need special
-        /// handling for return value conversion.
+        /// A value of one holds the function's Global<Value>* (conversions.zig), so a
+        /// getter returning one needs special handling for return value conversion.
         fn isOptionalCallbackType(comptime T: type) bool {
             const type_info = @typeInfo(T);
             if (type_info != .optional) return false;
@@ -2809,47 +2809,17 @@ pub fn V8Interface(comptime Interface: type) type {
                                     break :comptime_convert v8.v8_Undefined(isolate_inner) orelse unreachable;
                                 };
                                 break :comptime_convert v8_converted;
-                            } else if (PayloadType == @import("typedefs").EventHandler) {
-                                // EventHandler explicit check - tagged pointer to V8 GlobalHandle
-                                // This is redundant with isOptionalCallbackType but ensures explicit matching
-                                if (result) |tagged_ptr| {
-                                    const ptr_tag = @import("pointer_tag.zig");
-                                    // Cast function pointer to *const anyopaque for untagging
-                                    // The pointer has tag bits set in low 2 bits
-                                    const ptr_addr: usize = @intFromPtr(tagged_ptr);
-                                    const raw_ptr: *const anyopaque = @ptrFromInt(ptr_addr);
-                                    const untagged = ptr_tag.untagPointer(raw_ptr);
-
-                                    if (untagged.tag == .global_handle) {
-                                        // Return the Global<Value>* directly - setReturnValue expects a Global pointer
-                                        // DO NOT call handle.get() - that returns a Local which is the wrong type
-                                        break :comptime_convert @ptrCast(@alignCast(untagged.ptr));
-                                    }
-                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
-                                } else {
-                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
-                                }
                             } else if (comptime isOptionalCallbackType(PayloadType)) {
-                                // Optional callback type (like EventHandler = ?*const fn(...))
-                                // These are stored as tagged pointers to V8 GlobalHandles
-                                // Per WebIDL spec, null EventHandler should return JavaScript null
-                                if (result) |tagged_ptr| {
-                                    const ptr_tag = @import("pointer_tag.zig");
-                                    // Cast function pointer to *const anyopaque for untagging
-                                    // The pointer has tag bits set in low 2 bits
-                                    const ptr_addr: usize = @intFromPtr(tagged_ptr);
-                                    const raw_ptr: *const anyopaque = @ptrFromInt(ptr_addr);
-                                    const untagged = ptr_tag.untagPointer(raw_ptr);
-
-                                    if (untagged.tag == .global_handle) {
-                                        // Return the Global<Value>* directly - setReturnValue expects a Global pointer
-                                        // DO NOT call handle.get() - that returns a Local which is the wrong type
-                                        break :comptime_convert @ptrCast(@alignCast(untagged.ptr));
-                                    }
-                                    // Fallback: return null if we can't extract the V8 value
-                                    break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
+                                // An optional callback function type (EventHandler is
+                                // ?EventHandlerNonNull, a function pointer): the value
+                                // is the function's Global<Value>* (conversions.zig,
+                                // UNTAGGED - a tag in a function pointer's low bits is
+                                // illegal behaviour an optimized build acts on), which
+                                // is what setReturnValue reads. Null is JavaScript null.
+                                if (result) |function_value| {
+                                    const address: usize = @intFromPtr(function_value);
+                                    break :comptime_convert @ptrFromInt(address);
                                 } else {
-                                    // null EventHandler -> JavaScript null
                                     break :comptime_convert v8.v8_Null(isolate_inner) orelse unreachable;
                                 }
                             } else {

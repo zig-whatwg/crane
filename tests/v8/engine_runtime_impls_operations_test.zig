@@ -410,6 +410,36 @@ test "a callback-function argument is handed over as an owned handle to the same
     try std.testing.expectEqual(@as(i32, 7), try eval("theCallback()"));
 }
 
+test "a callback-function argument converts to a value its function-pointer type may hold" {
+    _ = try realm();
+    // Codegen types a callback function as a Zig function pointer
+    // (callbacks.EventHandlerNonNull is this shape), and the conversion
+    // stores the function's Global<Value>* in it. A pointer-typed value must
+    // be aligned for its type - 4 for a function on aarch64 - so a tag in its
+    // low bits is illegal behaviour: an optimized build may assume them clear
+    // and drop the untag, which made a ReleaseSafe runner hand
+    // v8_Global_Clone a Global* + 1 (its alignment trap, under
+    // EventTarget.innerInvoke) for every event handler it ran.
+    const Callback = *const fn (event: *runtime.Instance) runtime.JSValue;
+    const function = try evalHandle("globalThis.theHandler = function () { return 9; }; theHandler");
+    const converted = try v8.conversions.fromV8Value(Callback, std.testing.allocator, isolate_once.?, context_once.?, function);
+    try std.testing.expect(std.mem.isAligned(@intFromPtr(converted), @alignOf(@typeInfo(Callback).pointer.child)));
+    // The argument's own Global, as before, now with nothing in its low bits.
+    try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(converted));
+
+    // EventHandler is the nullable form: the same value.
+    const nullable = (try v8.conversions.fromV8Value(?Callback, std.testing.allocator, isolate_once.?, context_once.?, function)) orelse return error.NullHandler;
+    try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(nullable));
+
+    // takeCallbackFunction takes it over: the same function, the impl's to
+    // release.
+    const taken = v8.callback_interfaces.takeCallbackFunction(@ptrCast(converted));
+    try std.testing.expectEqual(@intFromPtr(function), @intFromPtr(taken.handle.ptr));
+    try expose("takenHandler", taken);
+    try std.testing.expectEqual(@as(i32, 1), try eval("takenHandler === theHandler ? 1 : 0"));
+    v8.engine.v8ReleaseValue(taken);
+}
+
 // ============================================================================
 // The same adapter functions, through the engine protocol
 // ============================================================================
