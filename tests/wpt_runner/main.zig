@@ -48,8 +48,11 @@
 //! - `--from-file=path` - Run the paths in this worklist instead of discovering
 //! - `--start-index=N` - Begin at this worklist index
 //! - `--journal=path` - Append a JSONL record per completed test file
+//! - `--heartbeat=path` - Append a byte as each run starts; the supervisor's
+//!   stall watchdog counts it with the journal (stall_watchdog.Heartbeat)
 
 const std = @import("std");
+const builtin = @import("builtin");
 const config = @import("config.zig");
 const test_parser = @import("test_parser.zig");
 const test_harness = @import("test_harness.zig");
@@ -64,6 +67,7 @@ const options_mod = @import("options.zig");
 const discovery_mod = @import("discovery.zig");
 const output = @import("output.zig");
 const stall_watchdog = @import("stall_watchdog.zig");
+const runner_allocator = @import("runner_allocator.zig");
 const wpt_options = @import("wpt_options");
 const clock = @import("clock");
 const host = @import("host");
@@ -91,6 +95,8 @@ fn wptLogFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
+    runner_allocator.noteLog(level, scope);
+
     // In non-verbose mode, suppress error-level logs from the engine adapter.
     // These are expected during test execution (test failures cause JS errors)
     if (!verbose_mode and level == .err and scope == engine.log_scope) {
@@ -692,6 +698,13 @@ pub fn executeTests(
         null;
     defer if (run_journal) |*j| j.deinit();
 
+    // A supervised child beats once per run (stall_watchdog.Heartbeat) into the
+    // file its supervisor names: a file is `globals x variants` runs, each
+    // under its own ceiling, and the supervisor's watchdog counts the beats
+    // with the journal, so a legal many-variant file is not taken for a hang.
+    var heartbeat: stall_watchdog.Heartbeat = if (options.heartbeat_path) |p| stall_watchdog.Heartbeat.open(p) else .{};
+    defer heartbeat.close();
+
     // Beside the journal, each finished file's results as JSON lines
     // (result_reporter.ResultStream): the report below is written only when
     // this process finishes, so a crash or a stall kill would lose every
@@ -777,6 +790,11 @@ pub fn executeTests(
             // in the same unit as the scoreboard's denominator. A file with no
             // variants iterates exactly once, over a single empty string.
             for (parsed.metadata.variantsOrDefault()) |variant| {
+                // Each run is progress, for both deadlines: the supervisor's
+                // (the heartbeat) and this process's own (`deadline`).
+                heartbeat.beat();
+                deadline.mark(tally.index, test_file.path);
+
                 // How this run is named in the results. Owned rather than
                 // borrowed: a run told apart by both axes at once has no static
                 // string to point at.
@@ -1258,29 +1276,23 @@ pub fn main(init: std.process.Init) !void {
     if (code != 0) std.process.exit(code);
 }
 
-/// The runner's allocator, chosen at startup.
+/// The runner's allocator, chosen at startup: `runner_allocator.Fast`, or
+/// `runner_allocator.Traced` under `CRANE_LEAK_TRACES=1`. Both are pinned there
+/// so that double-free and leak detection, and the traces, are the same in a
+/// Debug runner and a ReleaseSafe one (`-Dwpt-runner-optimize=ReleaseSafe`).
 ///
 /// `init.gpa` is a `DebugAllocator(.{})`, whose Debug-mode default is
 /// `stack_trace_frames = 6`: every allocation AND every free captures a
-/// six-frame trace, and Zig 0.16's unwinder parses DWARF CFI byte-by-byte to do
-/// it. Teardown of one test page frees hundreds of thousands of objects, so a
-/// two-subtest page took 37 SECONDS to exit - measured, and the same on a
-/// binary built before today's changes, so it was never new. The whole time
-/// was `Io.Reader.takeLeb128` under `captureCurrentStackTrace`, at 99% CPU,
-/// after the test had finished in 50ms.
-///
-/// Zero frames keeps leak DETECTION (the count and the addresses) and drops the
-/// per-operation unwinding. `CRANE_LEAK_TRACES=1` restores the six-frame
-/// allocator for a run where the traces are the point; that is what named the
-/// `setTimeoutCallback` and `ProgressEvent` leaks, so it stays reachable.
-var gpa_fast: std.heap.DebugAllocator(.{ .stack_trace_frames = 0 }) = .{};
-var gpa_traced: std.heap.DebugAllocator(.{}) = .{};
+/// six-frame trace, and a two-subtest page took 37 SECONDS to exit
+/// (docs/lessons/debugging-a-two-subtest-page-took-37-seconds-to-exit-and.md).
+var gpa_fast: runner_allocator.Fast = .{};
+var gpa_traced: runner_allocator.Traced = .{};
 
 fn run(init: std.process.Init) !u8 {
     // 0.16 removed std.process.argsAlloc - arguments are no longer process-global.
     // std.process.Init carries them and a process-lifetime arena. Its gpa is not
     // used: see `gpa_fast` above for why the runner owns its allocator.
-    const want_traces = if (init.minimal.environ.getPosix("CRANE_LEAK_TRACES")) |v| (v.len != 0 and v[0] != '0') else false;
+    const want_traces = runner_allocator.wantsTraces(init.minimal.environ.getPosix("CRANE_LEAK_TRACES"));
     const allocator = if (want_traces) gpa_traced.allocator() else gpa_fast.allocator();
     defer {
         // Leak detection still runs; only the traces are gone in the fast case.
@@ -1293,8 +1305,31 @@ fn run(init: std.process.Init) !u8 {
 
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 
-    var options = try parseArgs(allocator, args[1..]);
+    var diag: options_mod.Diagnostic = .{};
+    var options = options_mod.parseArgsDiagnosed(allocator, args[1..], &diag) catch |err| switch (err) {
+        error.UnknownOption => {
+            print("wpt_runner: unknown option {s}\n", .{diag.unknown_option});
+            return 2;
+        },
+        else => return err,
+    };
     defer options.deinit();
+
+    // Which build produced this run, once per run (not per supervised child):
+    // a ReleaseSafe runner (`-Dwpt-runner-optimize`) is several times faster on
+    // CPU-bound files and not yet at parity with Debug (build.zig), so a log
+    // must say which one it came from.
+    if (!options.isChild() or options.wantsSupervisor()) print("wpt_runner: {s} build\n", .{@tagName(builtin.mode)});
+
+    if (options.allocator_self_check) {
+        const check = runner_allocator.selfCheck();
+        print("allocator self-check ({s}): double free {s}, leak {s}\n", .{
+            @tagName(builtin.mode),
+            if (check.double_free_reported) "reported" else "NOT REPORTED",
+            if (check.leak_reported) "reported" else "NOT REPORTED",
+        });
+        return if (check.passed()) 0 else 1;
+    }
 
     // Set verbose mode for log filtering
     verbose_mode = options.verbose;
@@ -1639,6 +1674,13 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
     const options = shard.options;
     var attempt: usize = 0;
 
+    // The child's per-run heartbeat, which the watchdog counts with the
+    // journal. Started empty, removed with the shard.
+    const heartbeat_path = try stall_watchdog.heartbeatPath(allocator, shard.journal_path);
+    defer allocator.free(heartbeat_path);
+    host.cwd().deleteFile(shard.io, heartbeat_path) catch {};
+    defer host.cwd().deleteFile(shard.io, heartbeat_path) catch {};
+
     while (true) {
         // Each restart consumes exactly one worklist entry, so this can only
         // spin as many times as there are tests. The bound is a backstop
@@ -1665,10 +1707,12 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         defer allocator.free(root_arg);
         const out_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{options.output_dir});
         defer allocator.free(out_arg);
+        const beat_arg = try std.fmt.allocPrint(allocator, "--heartbeat={s}", .{heartbeat_path});
+        defer allocator.free(beat_arg);
 
         var argv: std.ArrayList([]const u8) = .empty;
         defer argv.deinit(allocator);
-        try argv.appendSlice(allocator, &.{ shard.self_exe, from_arg, start_arg, journal_arg, root_arg, out_arg });
+        try argv.appendSlice(allocator, &.{ shard.self_exe, from_arg, start_arg, journal_arg, root_arg, out_arg, beat_arg });
         if (!options.verbose) try argv.append(allocator, "--quiet");
 
         print("{s}running tests {d}..{d}\n", .{ shard.label orelse "--> ", next, total });
@@ -1690,6 +1734,7 @@ fn runShard(allocator: std.mem.Allocator, shard: Shard) !void {
         // is the only place left that can end it. See stall_watchdog.zig.
         var watchdog: stall_watchdog.Watchdog = .{
             .journal_path = shard.journal_path,
+            .heartbeat_path = heartbeat_path,
             // A spawned child always has an id; a null one means there is
             // nothing to watch, and a zero pid would name our own group.
             .child_id = child.id orelse 0,

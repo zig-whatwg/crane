@@ -69,6 +69,7 @@ pub const capabilities: engine.Capabilities = .{
     .heap_statistics = .native,
     .heap_snapshots = .native,
     .diagnostic_counters = .native,
+    .script_abort = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
@@ -759,3 +760,15 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
     if (measured) @memcpy(counters[handles.len..], &ownership);
     return counters;
 }
+
+// ---- lane: speed ----
+// 4.1 "abort a running script" (protocol_agents.zig).
+
+pub fn abortRunningScript(agent: *Agent) void {
+    protocol_agents.abortRunningScript(agent);
+}
+
+pub fn resumeScripts(agent: *Agent) void {
+    protocol_agents.resumeScripts(agent);
+}
+// ---- end lane: speed ----

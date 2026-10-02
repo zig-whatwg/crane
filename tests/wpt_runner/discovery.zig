@@ -371,8 +371,9 @@ fn scanDirectory(
         defer allocator.free(full_entry_path);
 
         if (entry.kind == .directory) {
-            // Skip excluded directories
-            if (config.isExcluded(entry_path)) {
+            // Skip excluded directories, and support directories: nothing
+            // here says what a file is (the manifest does, elsewhere).
+            if (config.isExcluded(entry_path) or config.isNonTestFile(entry_path)) {
                 try result.addSkipped(entry_path, "excluded directory");
                 continue;
             }
@@ -384,8 +385,8 @@ fn scanDirectory(
             const file_type = config.FileType.fromPath(entry.name);
             if (file_type == .unknown) continue;
 
-            // Check if excluded
-            if (config.isExcluded(entry_path)) {
+            // Check if excluded, or shaped like a helper rather than a test
+            if (config.isExcluded(entry_path) or config.isNonTestFile(entry_path)) {
                 try result.addSkipped(entry_path, "excluded by pattern");
                 continue;
             }

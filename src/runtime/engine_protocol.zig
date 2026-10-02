@@ -555,6 +555,10 @@ pub const Capabilities = struct {
     heap_statistics: Support,
     heap_snapshots: Support,
     diagnostic_counters: Support,
+    /// HTML "abort a running script" from another thread
+    /// (`abortRunningScript`). Unsupported: a script that never returns holds
+    /// its agent's thread until something outside the process ends it.
+    script_abort: Support,
 };
 
 /// The capabilities of the engine this build selected.
@@ -630,6 +634,31 @@ pub inline fn requestGarbageCollection(agent: *Agent) void {
 /// observes it; every engine answers, doing what it can.
 pub inline fn notifyMemoryPressure(agent: *Agent, level: MemoryPressure) void {
     impl.notifyMemoryPressure(agent, level);
+}
+
+/// HTML 8.1.4.5 "abort a running script": the script running in `agent`
+/// ceases - every ScriptEvaluation and module Evaluate on its stack, without
+/// `catch` or `finally` - and its execution context stack empties. A user
+/// agent's resource limit (a CPU quota, a total execution time) is what calls
+/// it; HTML lets the limit "abort the script without an exception".
+///
+/// Callable from ANY thread: a time limit has to come from outside the agent's
+/// thread while that thread is in script. When no script is running, the next
+/// one to start in the agent is aborted at once. Every host step that was
+/// running script sees it end abruptly (an error path, never a value); the
+/// agent runs no script again until `resumeScripts`, or until the abort has
+/// unwound past the outermost script on its own.
+pub inline fn abortRunningScript(agent: *Agent) void {
+    comptime gate(.script_abort, "abortRunningScript");
+    impl.abortRunningScript(agent);
+}
+
+/// End an `abortRunningScript` that is still in force, so that `agent` can run
+/// script again - the host decided to go on (to let a harness report what ran,
+/// for one). On the agent's own thread. A no-op when no abort is in force.
+pub inline fn resumeScripts(agent: *Agent) void {
+    comptime gate(.script_abort, "resumeScripts");
+    impl.resumeScripts(agent);
 }
 
 // ============================================================================

@@ -54,6 +54,10 @@ const config = @import("config.zig");
 const wpt_server = @import("wpt_server.zig");
 const fetch = @import("fetch");
 const clock = @import("clock");
+/// The JavaScript engine, for one operation: abortRunningScript at a run's
+/// ceiling (script_deadline.zig), when the engine has it.
+const engine = @import("engine");
+const script_deadline = @import("script_deadline.zig");
 
 const log = std.log.scoped(.wpt_browser);
 
@@ -124,6 +128,9 @@ pub const WptBrowser = struct {
     /// testdriver.js's automation backend (the WebDriver remote end), whose
     /// natives the vendor file wires into each test realm.
     test_driver: *test_driver.TestDriver,
+    /// Ends script still running past a run's ceiling (script_deadline.zig):
+    /// its thread runs only where the engine can abort a running script.
+    script_deadline: script_deadline.ScriptDeadline = .{ .abort = abortAgentScript },
 
     /// Initialize WptBrowser with a fresh Browser instance
     pub fn init(allocator: std.mem.Allocator, wpt_root: []const u8) !*WptBrowser {
@@ -149,6 +156,7 @@ pub const WptBrowser = struct {
             .ca_bundle_path = null,
             .test_driver = driver,
         };
+        if (comptime engine.capabilities.script_abort != .unsupported) try self.script_deadline.start();
 
         // Register the blob URL resolver for Web Workers.
         // This allows Workers created with blob URLs (new Worker(URL.createObjectURL(blob)))
@@ -194,6 +202,10 @@ pub const WptBrowser = struct {
 
     /// Cleanup
     pub fn deinit(self: *WptBrowser) void {
+        // Before the agent goes: the thread holds its address.
+        _ = self.endScriptDeadline();
+        self.script_deadline.stop();
+
         // Clear the blob resolver registration
         workers.clearBlobResolver();
 
@@ -299,7 +311,9 @@ pub const WptBrowser = struct {
 
         // Run event loop until test completes or timeout
         const timeout_ms = timeout.toMillis();
-        const result = try self.waitForCompletion(ctx, timeout_ms, test_path);
+        const deadline = clock.monotonicMillis() + @as(i64, @intCast(timeout_ms));
+        self.armScriptDeadline(deadline);
+        const result = try self.waitForCompletion(ctx, deadline, timeout_ms, test_path);
 
         self.tests_run += 1;
         return result;
@@ -316,6 +330,15 @@ pub const WptBrowser = struct {
         timeout_ms: u64,
         context_type: browser_mod.ContextType,
     ) !test_harness.TestResult {
+        // The run's ceiling counts from its start, as wptrunner's per-URL
+        // timeout does: the navigation, the parse and every script the parser
+        // runs are inside it, and script still running past it is aborted
+        // (script_deadline.zig). The wait for completion ends at the same
+        // moment, so a slow load no longer buys a second full budget.
+        const deadline = clock.monotonicMillis() + @as(i64, @intCast(timeout_ms));
+        self.armScriptDeadline(deadline);
+        defer _ = self.endScriptDeadline();
+
         // The origin this document actually came from. A `.https.` test is
         // served from :8443 over TLS, and every same-origin check downstream -
         // blob URLs, worker scripts, subresource URLs - has to agree with it.
@@ -365,18 +388,23 @@ pub const WptBrowser = struct {
                 .loadScript = scriptLoaderCallback,
             },
         }) catch |err| {
-            var result = try test_harness.TestResult.init(self.allocator, test_path);
-            result.status = .@"error";
-            result.message = try std.fmt.allocPrint(self.allocator, "Page load error: {}", .{err});
-            result.nav_ms = nav_ms;
-            result.load_ms = lapMs(&phase);
-            return result;
+            // A load its ceiling aborted is a run that timed out: the wait
+            // below lets the harness report what ran. Any other failure is
+            // the page's.
+            if (!self.script_deadline.abortedThisRun()) {
+                var result = try test_harness.TestResult.init(self.allocator, test_path);
+                result.status = .@"error";
+                result.message = try std.fmt.allocPrint(self.allocator, "Page load error: {}", .{err});
+                result.nav_ms = nav_ms;
+                result.load_ms = lapMs(&phase);
+                return result;
+            }
         };
 
         const load_ms = lapMs(&phase);
 
         // Run event loop until test completes or timeout
-        var result = try self.waitForCompletion(ctx, timeout_ms, test_path);
+        var result = try self.waitForCompletion(ctx, deadline, timeout_ms, test_path);
         result.nav_ms = nav_ms;
         result.load_ms = load_ms;
 
@@ -607,6 +635,43 @@ pub const WptBrowser = struct {
         try ctx.runScript(setup_script);
     }
 
+    /// script_deadline's abort: HTML "abort a running script" in the page's
+    /// agent. Runs on the deadline's thread.
+    fn abortAgentScript(target: ?*anyopaque) void {
+        if (comptime engine.capabilities.script_abort == .unsupported) return;
+        const agent: *engine.Agent = @ptrCast(@alignCast(target orelse return));
+        engine.abortRunningScript(agent);
+    }
+
+    /// Watch the run whose ceiling is `deadline_ms`: script still running past
+    /// it is aborted (script_deadline.zig).
+    fn armScriptDeadline(self: *WptBrowser, deadline_ms: i64) void {
+        if (comptime engine.capabilities.script_abort == .unsupported) return;
+        const agent = self.browser.agent orelse return;
+        self.script_deadline.arm(agent, deadline_ms);
+    }
+
+    /// Stop watching the run. If its script was aborted, the agent runs script
+    /// again from here (engine.resumeScripts) - for the harness's report, and
+    /// for the next run. Whether it was aborted.
+    fn endScriptDeadline(self: *WptBrowser) bool {
+        if (comptime engine.capabilities.script_abort == .unsupported) return false;
+        const aborts = self.script_deadline.disarm();
+        if (aborts == 0) return false;
+        if (self.browser.agent) |agent| engine.resumeScripts(agent);
+        return true;
+    }
+
+    /// A run whose script was aborted at its ceiling reached that ceiling: it
+    /// is TIMEOUT, whatever the harness made of the abort (an aborted script
+    /// can reach it as an uncaught error, which it reports as ERROR). The
+    /// subtests it reported stay.
+    fn markAborted(self: *WptBrowser, result: *test_harness.TestResult, timeout_ms: u64) !void {
+        result.status = .timeout;
+        if (result.message) |old| self.allocator.free(old);
+        result.message = try std.fmt.allocPrint(self.allocator, "Test timed out after {}ms; script still running at the ceiling was aborted", .{timeout_ms});
+    }
+
     /// How long `waitForCompletion` waits, past the ceiling, for a harness told
     /// to time out to report.
     const timeout_grace_ms: i64 = 2_000;
@@ -620,9 +685,11 @@ pub const WptBrowser = struct {
     /// @param timeout_ms Maximum time to wait for completion
     /// @param test_path Test path for error reporting
     /// @return TestResult with test results or timeout status
-    fn waitForCompletion(self: *WptBrowser, ctx: *Context, timeout_ms: u64, test_path: []const u8) !test_harness.TestResult {
+    fn waitForCompletion(self: *WptBrowser, ctx: *Context, deadline: i64, timeout_ms: u64, test_path: []const u8) !test_harness.TestResult {
         const start_time = clock.monotonicMillis();
-        const deadline = start_time + @as(i64, @intCast(timeout_ms));
+        // The run is armed from its start (runHTMLTest); nothing more of it
+        // completes normally once its script has been aborted.
+        defer _ = self.endScriptDeadline();
 
         // Polling interval for completion check
         // With proper blocking, we can use a longer interval while still being responsive
@@ -631,9 +698,8 @@ pub const WptBrowser = struct {
 
         while (true) {
             const now = clock.monotonicMillis();
-            if (now >= deadline) {
-                break;
-            }
+            if (now >= deadline) break;
+            if (self.script_deadline.abortedThisRun()) break;
 
             // Calculate how long to block
             const remaining: u64 = @intCast(deadline - now);
@@ -644,22 +710,36 @@ pub const WptBrowser = struct {
             _ = self.browser.runEventLoopBlocking(wait_time) catch {};
 
             // Check if test is complete
-            if (self.isComplete(ctx)) return try self.collectResults(ctx, start_time, test_path);
+            if (self.isComplete(ctx)) {
+                const aborted = self.endScriptDeadline();
+                var result = try self.collectResults(ctx, start_time, test_path);
+                if (aborted) try self.markAborted(&result, timeout_ms);
+                return result;
+            }
         }
 
         // The ceiling. A file under an explicit timeout has no harness timer
         // of its own, and `timeout()` is how the harness learns its budget is
         // spent: it completes, reporting every subtest that ran and the rest
         // as TIMEOUT or NOTRUN. A file on the harness's own timer ignores the
-        // call. The grace is for completion callbacks queued behind it.
-        ctx.runScript("if (typeof timeout === 'function') timeout();") catch {};
+        // call. The grace is for completion callbacks queued behind it, and it
+        // is bounded the same way: script still running past it is aborted.
+        const aborted = self.endScriptDeadline();
         const grace_deadline = clock.monotonicMillis() + timeout_grace_ms;
+        self.armScriptDeadline(grace_deadline);
+        ctx.runScript("if (typeof timeout === 'function') timeout();") catch {};
         while (true) {
-            if (self.isComplete(ctx)) return try self.collectResults(ctx, start_time, test_path);
+            if (self.isComplete(ctx)) {
+                const aborted_in_grace = self.endScriptDeadline();
+                var result = try self.collectResults(ctx, start_time, test_path);
+                if (aborted or aborted_in_grace) try self.markAborted(&result, timeout_ms);
+                return result;
+            }
             const now = clock.monotonicMillis();
-            if (now >= grace_deadline) break;
+            if (now >= grace_deadline or self.script_deadline.abortedThisRun()) break;
             _ = self.browser.runEventLoopBlocking(@min(@as(u64, @intCast(grace_deadline - now)), check_interval_ms)) catch {};
         }
+        _ = self.endScriptDeadline();
 
         // Timeout
         const duration = @as(u64, @intCast(clock.monotonicMillis() - start_time));

@@ -3424,3 +3424,11 @@ pub extern fn v8_Global_TagRealm(global: *Value, realm_key: usize) void;
 /// many.
 pub extern fn v8_Context_WeakenTaggedHandles(context: *Context, realm_key: usize, key: [*]const u8, key_len: c_int) c_int;
 // ---- end lane: realms ----
+// ---- lane: speed ----
+/// Isolate::TerminateExecution: any thread, no lock (engine.abortRunningScript).
+pub extern fn v8_Isolate_TerminateExecution(isolate: *Isolate) void;
+/// Isolate::CancelTerminateExecution, on the isolate's thread (engine.resumeScripts).
+pub extern fn v8_Isolate_CancelTerminateExecution(isolate: *Isolate) void;
+/// Isolate::IsExecutionTerminating.
+pub extern fn v8_Isolate_IsExecutionTerminating(isolate: *Isolate) bool;
+// ---- end lane: speed ----

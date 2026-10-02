@@ -139,6 +139,7 @@ capability the branch compiles out.
 | `restores_snapshots` | native | unsupported | every realm is created afresh (the no-snapshot startup path, which must keep working) |
 | `can_block_control` | native | unsupported | [[CanBlock]] is the engine's default |
 | `heap_statistics`, `heap_snapshots`, `diagnostic_counters` | native | unsupported | the diagnostics tier reports nothing |
+| `script_abort` | native (TerminateExecution) | unsupported - no public way to end a running script (JSContextGroupSetExecutionTimeLimit is SPI) | a script that never returns holds its agent's thread; the host's bound is outside the process (the WPT runner's stall watchdog) |
 
 Flip a JavaScriptCore capability when an iOS release makes the API public.
 Structured serialization has no JSC API and is not a capability: the JSC
@@ -150,7 +151,7 @@ adapter will use Crane's own walker (src/html/structured_clone).
 
 | Area | Operations |
 |---|---|
-| Engine and agents | `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks`), `destroyAgent`, `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `requestGarbageCollection` (testing only) |
+| Engine and agents | `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks`), `destroyAgent`, `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `requestGarbageCollection` (testing only), `abortRunningScript` [script_abort] (HTML 8.1.4.5 "abort a running script", from any thread: a resource limit's abort "without an exception") and `resumeScripts` [script_abort] (the agent may run script again) |
 | Realms | `createWindowRealm`, `destroyWindowRealm` (how, as `WindowRealmEnd`: `.global_detached` - its page is gone or a navigation replaced its Window, Blink kGlobalObjectIsDetached; `.navigable_destroyed` - HTML "destroy a child navigable", Blink kFrameIsDetached: the global stays attached, severed from the Window), `createWorkerRealm` (HTML "run a worker" step 5: `WorkerRealmOptions.global` picks the global object, a DedicatedWorkerGlobalScope or, for a shared worker, a SharedWorkerGlobalScope), `destroyWorkerRealm`, `currentRealm`, `entryRealm`, `incumbentRealm`, `functionRealm`, `installWindowOperations`, `defineBuiltinFunction` |
 | Running script (HTML 8.1.4) | `runClassicScript`, `evaluateClassicScript`, `evaluateClassicScriptToString`, `compileEventHandler`, `prepareToRunScript` / `cleanUpAfterRunningScript`, `runInRealm`, `runTaskInRealm`, `performMicrotaskCheckpoint` and `queueMicrotask` (the agent's - an event loop's), `extractErrorInformation` |
 | Modules [module_scripts] | `parseModule`, `parseJSONModule`, `createDefaultExportSyntheticModule` (ECMA-262 CreateDefaultExportSyntheticModule, for HTML "create a CSS module script"), `moduleRequests`, `linkModule`, `evaluateModule`, `finishDynamicImport`, `releaseModuleRecord` |

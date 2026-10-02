@@ -12573,3 +12573,23 @@ int v8_Context_WeakenTaggedHandles(Global<Context>* context, uintptr_t realm_key
 
 } // extern "C"
 // ---- end lane: realms ----
+
+// ---- lane: speed ----
+// HTML "abort a running script" (engine.abortRunningScript / resumeScripts).
+extern "C" {
+
+// Thread-safe in V8: callable from any thread without a Locker.
+void v8_Isolate_TerminateExecution(Isolate* isolate) {
+    if (isolate) isolate->TerminateExecution();
+}
+
+void v8_Isolate_CancelTerminateExecution(Isolate* isolate) {
+    if (isolate) isolate->CancelTerminateExecution();
+}
+
+bool v8_Isolate_IsExecutionTerminating(Isolate* isolate) {
+    return isolate && isolate->IsExecutionTerminating();
+}
+
+} // extern "C"
+// ---- end lane: speed ----
