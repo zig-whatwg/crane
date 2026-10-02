@@ -531,26 +531,29 @@ fn fireEventTaskSteps(data: ?*anyopaque) void {
     fireEventOnElement(ctx.instance, event_name) catch {};
 }
 
-/// Helper function to create and dispatch an event on an element
+/// DOM "fire an event" named `event_type` at the element: an Event created
+/// in the element's relevant realm with its type initialized, then
+/// dispatched. HTML's image loads fire load and error without bubbles or
+/// cancelable ("fire an event named load at the img element").
+///
+/// The event is made by the constructor, which gives it its internal state
+/// and its type: `Event.init` makes a bare instance that `initEvent` then
+/// leaves untouched (it returns early on an event without state), so the
+/// event this used to build had no type and reached no listener - no img
+/// ever fired load or error.
 fn fireEventOnElement(instance: *runtime.Instance, event_type: []const u8) !void {
-    const allocator = instance.ctx.allocator;
-    const ctx = instance.ctx;
+    const event = try Event.call_constructor(
+        instance.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = false, .cancelable = false, .composed = false }),
+    );
+    // Not `defer deinit`: a listener can keep the event, and its wrapper then
+    // owns it.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
 
-    // Create the event using the interface's init function (2 args, not 4)
-    const event = try Event.init(allocator, ctx);
-    errdefer Event.deinit(event);
-
-    // Initialize the event with the given type
-    // Per spec: bubbles = true for load/error events on elements, cancelable = false
-    const event_type_str = runtime.DOMString.initInterned(event_type);
-    const bubbles = webidl.Opt(bool).passed(true);
-    const cancelable = webidl.Opt(bool).passed(false);
-    try Event.call_initEvent(event, event_type_str, bubbles, cancelable);
-
-    // Dispatch the event on the element
-    // HTMLImageElement inherits from Element which inherits from EventTarget
     // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
-    // ancestor, so its impl.
+    // ancestor, so its impl (existing debt, unchanged).
     _ = try @import("EventTarget.zig").dispatchTrusted(instance, event);
 }
 

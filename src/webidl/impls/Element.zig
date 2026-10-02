@@ -1429,13 +1429,6 @@ fn attributeChangeSteps(
     // The steps the element's own type defines (an iframe's src and srcdoc),
     // which its impl installs (dom.attribute_change_steps).
     dom.attribute_change_steps.run(instance, internal.local_name.asSlice(), local_name, old_value, value, namespace);
-
-    // HTML "update the image data", for an img whose src is set.
-    if (value) |v| {
-        if (std.mem.eql(u8, local_name, "src") and std.mem.eql(u8, internal.local_name.asSlice(), "img")) {
-            triggerImageSrcChange(instance, v);
-        }
-    }
 }
 
 fn replaceCachedValue(internal: *InternalState, cache: *runtime.DOMString, value: ?[]const u8) void {
@@ -3123,62 +3116,6 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
         .error_value = if (info.error_value == .undefined) null else info.error_value,
     };
     _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
-}
-
-/// Trigger image loading when src attribute changes on an img element
-/// This is called from setAttribute when the src attribute is set on an img element.
-fn triggerImageSrcChange(instance: *runtime.Instance, src_value: []const u8) void {
-    // Skip empty URLs
-    if (src_value.len == 0) {
-        return;
-    }
-
-    // Import fetch module for HTTP requests
-    const fetch_mod = @import("fetch");
-
-    // Initiate the fetch for the image
-    const allocator = instance.ctx.allocator;
-    var fetch_result = fetch_mod.webidl.globalFetch(allocator, .{ .url = src_value }, .{});
-    defer fetch_result.deinit();
-
-    // Create and dispatch the appropriate event based on the result
-    switch (fetch_result) {
-        .response => |response| {
-            // Check if the response indicates success (HTTP 200-299)
-            if (response.ok()) {
-                // Fire 'load' event
-                fireImageEvent(instance, "load") catch {};
-            } else {
-                // HTTP error status - fire 'error' event
-                fireImageEvent(instance, "error") catch {};
-            }
-        },
-        .err => {
-            // Network error - fire 'error' event
-            fireImageEvent(instance, "error") catch {};
-        },
-    }
-}
-
-/// Helper function to fire load/error events on an image element
-fn fireImageEvent(instance: *runtime.Instance, event_type: []const u8) !void {
-    const allocator = instance.ctx.allocator;
-    const ctx = instance.ctx;
-
-    // Create the event
-    const event = try interfaces.Event.init(allocator, ctx);
-    errdefer interfaces.Event.deinit(event);
-
-    // Initialize the event with the given type
-    // Per spec: bubbles = false for load/error events on elements, cancelable = false
-    const event_type_str = runtime.DOMString.initInterned(event_type);
-    const bubbles = webidl.Opt(bool).passed(false);
-    const cancelable = webidl.Opt(bool).passed(false);
-    try interfaces.Event.call_initEvent(event, event_type_str, bubbles, cancelable);
-
-    // Dispatch the event on the element - fired by the user agent, so trusted
-    // (DOM 2.10). EventTarget is an ancestor, so its impl.
-    _ = try @import("EventTarget.zig").dispatchTrusted(instance, event);
 }
 
 /// Operation: insertAdjacentHTML
