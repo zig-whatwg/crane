@@ -12628,6 +12628,28 @@ void v8_Object_DeletePrivateRef(Global<Object>* holder, const char* key, int key
     (void)holder->Get(isolate)->DeletePrivate(context, priv);
 }
 
+/// The value `v8_Object_SetPrivateRef` keeps on `holder` under `key`, as a
+/// Global the caller owns; null when `holder` has no such private property
+/// (never set, or deleted). Script cannot reach it; this is how the engine
+/// protocol's tracedValue reads a value traceValue keeps. Needs an entered
+/// context, as SetPrivateRef does.
+Global<Value>* v8_Object_GetPrivateRef(Global<Object>* holder, const char* key, int key_len) {
+    if (!holder || holder->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return nullptr;
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return nullptr;
+    Local<Private> priv = Private::ForApi(isolate, name);
+    Local<Object> object = holder->Get(isolate);
+    if (!object->HasPrivate(context, priv).FromMaybe(false)) return nullptr;
+    Local<Value> value;
+    if (!object->GetPrivate(context, priv).ToLocal(&value)) return nullptr;
+    return trackHandle(new Global<Value>(isolate, value));
+}
+
 /// Keep `value` alive for exactly as long as `holder` (an object): it is
 /// appended to an array held in `holder`'s private property `key`, made on
 /// first use. An edge, never a root - what a Window realm whose navigable was

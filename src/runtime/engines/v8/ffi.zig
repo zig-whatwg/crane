@@ -3428,6 +3428,10 @@ pub extern fn v8_JSON_StringifyValue(context: *Context, value: *Value, no_repres
 /// private property is deleted (the engine protocol's forgetTracedChild). A
 /// no-op when there is none; needs an entered context.
 pub extern fn v8_Object_DeletePrivateRef(holder: *Object, key: [*]const u8, key_len: c_int) void;
+/// The value `v8_Object_SetPrivateRef` keeps on `holder` under `key` (an
+/// owned Global), or null when there is none (the engine protocol's
+/// tracedValue). Needs an entered context.
+pub extern fn v8_Object_GetPrivateRef(holder: *Object, key: [*]const u8, key_len: c_int) ?*Value;
 /// Keep `value` alive exactly as long as `holder` (an object - a detached
 /// realm's hidden global object, never its proxy): appended to an array in a
 /// private property (`key`) of it - an edge, never a root. Runs in the

@@ -1866,6 +1866,202 @@ test "protocol: creating and releasing promise capabilities leaves no global han
     }
 }
 
+// ============================================================================
+// traceValue / tracedValue: an owner keeps a JavaScript value for as long as
+// its wrapper lives - Blink's TraceWrapperV8Reference - where Crane once held
+// an engine.Owned, a root that kept the value's realm whatever became of the
+// owner (FileReader.result, CustomEvent.detail, NavigateEvent.info).
+// ============================================================================
+
+/// `owner`'s traced value in `slot`, set as the global `name` of `r`; false
+/// when the slot holds none.
+fn tracedToGlobal(r: runtime.Context, owner: *runtime.Instance, slot: []const u8, name: []const u8) !bool {
+    const value = protocol.tracedValue(owner, .{ .name = slot }) orelse return false;
+    defer value.release();
+    const held = try protocol.retainValue(r, value.value);
+    defer held.release();
+    if (held.value != .handle) {
+        // A primitive kept by value: make it a script value to compare.
+        const made = try evalOwned(r, "undefined");
+        defer made.release();
+        return error.PrimitiveNotAHandle;
+    }
+    try setGlobal(r, name, held.value);
+    return true;
+}
+
+test "protocol: a traced value lives as long as its owner's wrapper, and goes with it" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // Script keeps the owner, and nothing of either value.
+    const owner = Watched.of(try platformObjectIn(w, "globalThis.owner = new Headers()"));
+    const traced = Watched.of(try platformObjectIn(w, "new Headers([['traced', '1']])"));
+    const untraced = Watched.of(try platformObjectIn(w, "new Headers([['untraced', '1']])"));
+    protocol.traceValue(owner.instance, .{ .instance = traced.instance }, .{ .name = "result" });
+    {
+        // A plain object, made by script and handed over as the binding hands
+        // a value: borrowed for the call.
+        const object = try evalOwned(w, "({ plain: 7 })");
+        defer object.release();
+        protocol.traceValue(owner.instance, object.value, .{ .name = "detail" });
+    }
+
+    collectTwice();
+    try std.testing.expect(!untraced.alive());
+    try std.testing.expect(owner.alive());
+    try std.testing.expect(traced.alive());
+    try std.testing.expect(try tracedToGlobal(w, owner.instance, "detail", "detail"));
+    try expectEval(w, "detail.plain", "7");
+    try expectEval(w, "delete globalThis.detail", "true");
+
+    // Script lets the owner go, and the values go with it: an edge, not a root.
+    try expectEval(w, "delete globalThis.owner", "true");
+    collectTwice();
+    try std.testing.expect(!owner.alive());
+    try std.testing.expect(!traced.alive());
+}
+
+test "protocol: tracedValue reads back the value itself; a slot holds one; forgetTracedChild empties it" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    const owner = try platformObjectIn(w, "globalThis.owner = new Headers()");
+
+    // Never set: null.
+    try std.testing.expect(protocol.tracedValue(owner, .{ .name = "info" }) == null);
+    {
+        const first = try evalOwned(w, "globalThis.first = { n: 1 }");
+        defer first.release();
+        protocol.traceValue(owner, first.value, .{ .name = "info" });
+    }
+    try std.testing.expect(try tracedToGlobal(w, owner, "info", "back"));
+    try expectEval(w, "back === first", "true");
+    {
+        // A new value in the slot replaces the old.
+        const second = try evalOwned(w, "globalThis.second = { n: 2 }");
+        defer second.release();
+        protocol.traceValue(owner, second.value, .{ .name = "info" });
+    }
+    try std.testing.expect(try tracedToGlobal(w, owner, "info", "back"));
+    try expectEval(w, "back === second", "true");
+
+    // A primitive is kept too, as itself.
+    protocol.traceValue(owner, runtime.JSValue.fromNumber(42), .{ .name = "number" });
+    {
+        const number = protocol.tracedValue(owner, .{ .name = "number" }) orelse return error.NoValue;
+        defer number.release();
+        try std.testing.expectEqual(@as(f64, 42), try protocol.convertToUnrestrictedDouble(w, number.value));
+    }
+
+    protocol.forgetTracedChild(owner, .{ .name = "info" });
+    try std.testing.expect(protocol.tracedValue(owner, .{ .name = "info" }) == null);
+    try std.testing.expect(protocol.tracedValue(owner, .{ .name = "number" }) != null);
+    try expectEval(w, "delete globalThis.owner && delete globalThis.first && delete globalThis.second && delete globalThis.back", "true");
+}
+
+test "protocol: a value that reaches back to its owner does not keep it" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // A CustomEvent whose detail closes over the event: held as a root, the
+    // detail kept the event, and the event the detail, forever.
+    const owner = Watched.of(try platformObjectIn(w, "globalThis.owner = new Headers()"));
+    {
+        const closure = try evalOwned(w, "(() => { const o = owner; return { back: () => o }; })()");
+        defer closure.release();
+        protocol.traceValue(owner.instance, closure.value, .{ .name = "detail" });
+    }
+    collectTwice();
+    try std.testing.expect(owner.alive());
+    try expectEval(w, "delete globalThis.owner", "true");
+    collectTwice();
+    try std.testing.expect(!owner.alive());
+}
+
+test "protocol: an owner script has not seen keeps its traced value, readable before and after its wrapper is made" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // A Zig-made event before its dispatch: no wrapper yet.
+    const owner = Watched.of(try unwrappedHeaders(w));
+    const value = Watched.of(try platformObjectIn(w, "new Headers([['v', '1']])"));
+    protocol.traceValue(owner.instance, .{ .instance = value.instance }, .{ .name = "error" });
+    try std.testing.expect(!protocol.hasWrapper(owner.instance));
+    collectTwice();
+    try std.testing.expect(value.alive());
+    // Engine code reads it before script ever sees the owner.
+    {
+        const read = protocol.tracedValue(owner.instance, .{ .name = "error" }) orelse return error.NoValue;
+        defer read.release();
+        try std.testing.expectEqual(value.instance, protocol.convertToPlatformObject(w, read.value).?);
+    }
+
+    // Script sees the owner: the edge is drawn on its wrapper.
+    {
+        const wrapped = try protocol.retainValue(w, .{ .instance = owner.instance });
+        defer wrapped.release();
+        try setGlobal(w, "owner", wrapped.value);
+    }
+    collectTwice();
+    try std.testing.expect(value.alive());
+    try std.testing.expect(try tracedToGlobal(w, owner.instance, "error", "error"));
+    try expectEval(w, "error.get('v')", "1");
+    try expectEval(w, "delete globalThis.error && delete globalThis.owner", "true");
+    collectTwice();
+    try std.testing.expect(!owner.alive());
+    try std.testing.expect(!value.alive());
+}
+
+test "protocol: traceValue and tracedValue leave no global handle behind" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    const isolate = isolate_once.?;
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    const window = try platformObjectIn(w, "globalThis");
+    const owner = try platformObjectIn(w, "globalThis.owner = new Headers()");
+    const unwrapped = try unwrappedHeaders(w);
+    const value = try evalOwned(w, "globalThis.value = { v: 1 }");
+    defer value.release();
+    const round = struct {
+        fn run(owners: []const *runtime.Instance, v: runtime.JSValue) void {
+            for (owners) |o| {
+                protocol.traceValue(o, v, .{ .name = "value" });
+                protocol.traceValue(o, runtime.JSValue.fromNumber(3), .{ .name = "number" });
+                if (protocol.tracedValue(o, .{ .name = "value" })) |read| read.release();
+                if (protocol.tracedValue(o, .{ .name = "number" })) |read| read.release();
+                if (protocol.tracedValue(o, .{ .name = "never" })) |read| read.release();
+                protocol.forgetTracedChild(o, .{ .name = "value" });
+                protocol.forgetTracedChild(o, .{ .name = "number" });
+            }
+        }
+    }.run;
+    const owners = [_]*runtime.Instance{ window, owner, unwrapped };
+    // The first round makes what every later one reuses.
+    round(&owners, value.value);
+    collectTwice();
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const rounds = 32;
+    for (0..rounds) |_| round(&owners, value.value);
+    collectTwice();
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    if (after -| before >= handle_bytes) {
+        std.debug.print("global handles {d} -> {d} bytes over {d} rounds ({d} bytes a handle)\n", .{ before, after, rounds, handle_bytes });
+        return error.HandlesLeaked;
+    }
+    try expectEval(w, "delete globalThis.owner && delete globalThis.value", "true");
+}
+
 test "a window's indexedDB, when making its IDBFactory fails at any allocation, frees what it made once" {
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);

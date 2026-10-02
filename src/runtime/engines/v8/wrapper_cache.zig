@@ -838,6 +838,21 @@ pub const WrapperCache = struct {
         }
     }
 
+    /// What `owner` keeps under `key` while it waits for its wrapper - a
+    /// child's wrapper or a traced value - BORROWED; null when nothing waits
+    /// (or what waits is a dead owner's at a reissued address, or a value a
+    /// detached realm let go weak and the collector took).
+    pub fn deferredEdge(self: *Self, owner: *runtime.Instance, key: []const u8) ?*v8.Value {
+        const deferred = self.edges_before_wrap.getPtr(owner) orelse return null;
+        if (deferred.generation != runtime.SlabAllocator.generationOf(owner)) return null;
+        for (deferred.edges.items) |edge| {
+            if (!std.mem.eql(u8, edge.key, key)) continue;
+            if (v8.v8_Global_IsEmpty(edge.child)) return null;
+            return edge.child;
+        }
+        return null;
+    }
+
     /// The owner's wrapper is made: draw the edges waiting for it, and let
     /// the strong holds go. Needs a current context, which every wrap has.
     fn drawDeferredEdges(self: *Self, instance: *runtime.Instance, generation: u64, wrapper: *v8.Object) void {

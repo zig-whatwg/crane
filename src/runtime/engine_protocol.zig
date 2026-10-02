@@ -1384,6 +1384,40 @@ pub inline fn forgetTracedChild(owner: *Instance, slot: TracedSlot) void {
     impl.forgetTracedChild(owner, slot);
 }
 
+/// `owner` keeps `value` - a JavaScript value it holds for script, such as a
+/// FileReader's result, a CustomEvent's detail or a NavigateEvent's info -
+/// alive for exactly as long as `owner`'s wrapper: an edge the collector
+/// traces, never a root, so a value that reaches back to its owner (a detail
+/// that closes over its event, a result kept on the reader's own realm's
+/// global) still goes with it once script holds neither. Blink: a
+/// `TraceWrapperV8Reference` the owner's `Trace` visits; V8: a private
+/// property on `owner`'s wrapper; JavaScriptCore: a property under a private
+/// symbol on the owner's JSObject, or a JSManagedValue it owns.
+///
+/// `slot` names the member, in `traceChild`'s namespace: one value or child
+/// per (owner, slot), a new one replacing the old. `tracedValue` reads it
+/// back and `forgetTracedChild` ends it. `value` is BORROWED, and may be any
+/// value - a platform object is kept as its wrapper in its relevant realm, a
+/// primitive as itself. As with `traceChild`: an owner script has not seen
+/// yet holds `value` strongly until its wrapper is made; the owner's wrapper
+/// must live as long as the owner; it must not be called while the
+/// collector runs; it does nothing when `owner`'s realm has no engine realm
+/// left. An engine that keeps no traced values does nothing, and its
+/// `tracedValue` answers null. OWNED: nothing - the edge dies with `owner`'s
+/// wrapper.
+pub inline fn traceValue(owner: *Instance, value: JSValue, slot: TracedSlot) void {
+    impl.traceValue(owner, value, slot);
+}
+
+/// The value `traceValue` keeps in `owner`'s `slot` - the same value, not a
+/// copy - as an `Owned` the caller releases (a getter hands it on with
+/// `take()`); null when the slot holds none: never set, ended
+/// (`forgetTracedChild`), or gone with `owner`'s wrapper. Never makes a
+/// wrapper; must not be called while the collector runs.
+pub inline fn tracedValue(owner: *Instance, slot: TracedSlot) ?Owned {
+    return impl.tracedValue(owner, slot);
+}
+
 // ============================================================================
 // 4.13 Diagnostics tier (tools only; never spec code)
 // ============================================================================
