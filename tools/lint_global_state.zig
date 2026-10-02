@@ -91,7 +91,33 @@ pub const Variable = struct {
     /// Qualified by its enclosing containers and functions.
     name: []const u8,
     kind: Kind,
+    /// The why of a `// process-wide: <why>` line directly above the
+    /// declaration, if it has one (see `processWideWhy`).
+    why: ?[]const u8 = null,
 };
+
+/// The marker a variable that genuinely belongs to the process carries on the
+/// line directly above its declaration (design 6.4: the end state's ~50
+/// process-wide variables each say why). `--update` records a key the
+/// baseline lacks only when every declaration under it carries one.
+const process_wide_marker = "// process-wide:";
+
+/// The non-empty why of a `// process-wide: <why>` line directly above line
+/// `line` (1-based) of `source`, or null. A blank line, a doc comment or any
+/// other line in between breaks it.
+pub fn processWideWhy(source: []const u8, line: u32) ?[]const u8 {
+    if (line < 2) return null;
+    var lines = std.mem.splitScalar(u8, source, '\n');
+    var at: u32 = 1;
+    while (lines.next()) |text| : (at += 1) {
+        if (at != line - 1) continue;
+        const trimmed = std.mem.trim(u8, text, " \t\r");
+        if (!std.mem.startsWith(u8, trimmed, process_wide_marker)) return null;
+        const why = std.mem.trim(u8, trimmed[process_wide_marker.len..], " \t");
+        return if (why.len == 0) null else why;
+    }
+    return null;
+}
 
 // ============================================================================
 // Zig: std.zig.Ast
@@ -161,9 +187,10 @@ pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList
             }
             const name = try qualify(gpa, named.items, first, tree.lastToken(member), tree.tokenSlice(vd.ast.mut_token + 1));
             errdefer gpa.free(name);
-            const loc = tree.tokenLocation(0, vd.ast.mut_token);
+            const line: u32 = @intCast(tree.tokenLocation(0, first).line + 1);
             try out.append(gpa, .{
-                .line = @intCast(loc.line + 1),
+                .line = line,
+                .why = processWideWhy(source, line),
                 .name = name,
                 .kind = if (vd.threadlocal_token != null) .zig_threadlocal else .zig_global,
             });
@@ -642,7 +669,7 @@ pub fn cppVariables(gpa: std.mem.Allocator, text: []const u8) !std.ArrayList(Var
                 var first = stmt_start;
                 while (first < i and std.ascii.isWhitespace(code[first])) first += 1;
                 const line: u32 = @intCast(std.mem.count(u8, text[0..first], "\n") + 1);
-                try out.append(gpa, .{ .line = line, .name = owned, .kind = found.kind });
+                try out.append(gpa, .{ .line = line, .name = owned, .kind = found.kind, .why = processWideWhy(text, line) });
             },
             else => {},
         }
@@ -666,7 +693,12 @@ fn innermostCode(scopes: []const Scope) ScopeKind {
 // ============================================================================
 
 /// What the current tree holds under one key.
-pub const Found = struct { count: u32, kind: Kind };
+pub const Found = struct {
+    count: u32,
+    kind: Kind,
+    /// Declarations under the key without a `// process-wide: <why>` line.
+    unmarked: u32 = 0,
+};
 
 /// Current counts per "path name" key.
 pub const Counts = std.StringHashMapUnmanaged(Found);
@@ -703,6 +735,22 @@ pub fn violations(gpa: std.mem.Allocator, current: *const Counts, baseline: *con
 /// An increase is never recorded.
 pub fn mayRecord(update: bool, above_baseline: usize) bool {
     return update and above_baseline == 0;
+}
+
+/// The violations `--update` refuses: all of them, except a key the baseline
+/// lacks whose every declaration carries a `// process-wide: <why>` line. An
+/// increase for a key the baseline has is refused, marked or not. (The check
+/// without --update fails on every violation, so a process-wide variable
+/// enters the baseline only through a recorded update.)
+pub fn refusedByUpdate(gpa: std.mem.Allocator, found: []const Violation, current: *const Counts, baseline: *const Baseline) !std.ArrayList(Violation) {
+    var out: std.ArrayList(Violation) = .empty;
+    errdefer out.deinit(gpa);
+    for (found) |v| {
+        const marked = if (current.get(v.key)) |f| f.unmarked == 0 else false;
+        if (!baseline.contains(v.key) and marked) continue;
+        try out.append(gpa, v);
+    }
+    return out;
 }
 
 /// Parse a baseline file: `path name count kind class` per line, `#`
@@ -773,7 +821,10 @@ pub fn formatBaseline(gpa: std.mem.Allocator, current: *const Counts, previous: 
     try out.appendSlice(gpa, header);
     for (keys.items) |key| {
         const found = current.get(key).?;
-        const class = if (previous) |p| (if (p.get(key)) |e| e.class else "?") else "?";
+        // A key new to the baseline was recorded through its process-wide
+        // marker: a process resource until someone classifies it further.
+        const new_class = if (found.unmarked == 0) "P-res" else "?";
+        const class = if (previous) |p| (if (p.get(key)) |e| e.class else new_class) else "?";
         try out.print(gpa, "{s} {d} {s} {s}\n", .{ key, found.count, found.kind.label(), class });
     }
     return out.toOwnedSlice(gpa);
@@ -816,6 +867,7 @@ fn scan(
             const gop = try current.getOrPut(arena, key);
             if (!gop.found_existing) gop.value_ptr.* = .{ .count = 0, .kind = variable.kind };
             gop.value_ptr.count += 1;
+            if (variable.why == null) gop.value_ptr.unmarked += 1;
             const site = try sites.getOrPut(arena, key);
             if (!site.found_existing) site.value_ptr.* = .empty;
             try site.value_ptr.append(arena, .{ .path = path, .variable = variable });
@@ -906,9 +958,12 @@ pub fn main(init: std.process.Init) !void {
     while (base_values.next()) |value| baseline_total += value.count;
 
     const found = try violations(arena, &current, &baseline);
-    if (found.items.len > 0) {
-        try out.print("global state: {d} key(s) above the baseline ({d} variables, baseline {d}).\n\n", .{ found.items.len, total, baseline_total });
-        for (found.items) |v| {
+    // Without --update every violation fails; --update records new keys
+    // whose declarations all say why they are process-wide, and nothing else.
+    const blocking = if (update) try refusedByUpdate(arena, found.items, &current, &baseline) else found;
+    if (blocking.items.len > 0) {
+        try out.print("global state: {d} key(s) above the baseline ({d} variables, baseline {d}).\n\n", .{ blocking.items.len, total, baseline_total });
+        for (blocking.items) |v| {
             try out.print("  {s}: allowed {d}, found {d}\n", .{ v.key, v.allowed, v.found });
             if (sites.get(v.key)) |list| {
                 for (list.items) |site| try out.print("      {s}:{d} ({s})\n", .{ site.path, site.variable.line, site.variable.kind.label() });
@@ -921,7 +976,9 @@ pub fn main(init: std.process.Init) !void {
             \\the state on its owner - the Browser, the Tab, the agent, the realm - and
             \\reach it through the realm the code runs in. A hook is written once at
             \\process start. A variable that genuinely belongs to the process says so
-            \\on a `// process-wide: <why>` line and goes through the integrator.
+            \\on a `// process-wide: <why>` line directly above its declaration, and
+            \\enters the baseline through `zig build lint-global-state -- --update`
+            \\(the integrator reviews it). Nothing else raises the baseline.
             \\{s}
         , .{if (update) "--update refuses to record an increase.\n" else ""});
         try out.flush();
@@ -934,7 +991,11 @@ pub fn main(init: std.process.Init) !void {
         const now = if (current.get(entry.key_ptr.*)) |f| f.count else 0;
         if (now < entry.value_ptr.count) lowered += 1;
     }
-    if (mayRecord(update, found.items.len)) {
+    if (mayRecord(update, blocking.items.len)) {
+        for (found.items) |v| {
+            const list = sites.get(v.key) orelse continue;
+            for (list.items) |site| try out.print("global state: recorded process-wide {s} ({s}:{d}): {s}\n", .{ v.key, site.path, site.variable.line, site.variable.why orelse "" });
+        }
         try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = baseline_path, .data = try formatBaseline(arena, &current, &baseline) });
         try out.print("global state: baseline recorded - {d} variables (was {d}), {d} keys.\n", .{ total, baseline_total, current.count() });
     } else if (lowered > 0) {
@@ -1170,6 +1231,72 @@ test "cpp: class heads, linkage blocks and constructors open the right scopes" {
     });
 }
 
+test "a `// process-wide: <why>` line directly above a declaration marks it; an empty why or a gap does not" {
+    const zig_source =
+        \\// process-wide: the start-up phase, written by crane.Process only
+        \\var phase: u8 = 0;
+        \\// process-wide:
+        \\var empty_why: u8 = 0;
+        \\// process-wide: two lines up
+        \\
+        \\var gap: u8 = 0;
+        \\var plain: u8 = 0;
+    ;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const vars = try zigVariables(arena.allocator(), zig_source);
+    try testing.expectEqual(@as(usize, 4), vars.items.len);
+    try testing.expectEqualStrings("the start-up phase, written by crane.Process only", vars.items[0].why.?);
+    try testing.expect(vars.items[1].why == null);
+    try testing.expect(vars.items[2].why == null);
+    try testing.expect(vars.items[3].why == null);
+
+    const cpp = try cppVariables(arena.allocator(),
+        \\  // process-wide: the V8 platform, one per process
+        \\static std::unique_ptr<Platform> g_platform = nullptr;
+        \\static bool v8_initialized = false;
+    );
+    try testing.expectEqualStrings("the V8 platform, one per process", cpp.items[0].why.?);
+    try testing.expect(cpp.items[1].why == null);
+}
+
+test "--update records a new key only when every declaration is marked process-wide; an increase is refused" {
+    var current: Counts = .empty;
+    defer current.deinit(testing.allocator);
+    // New and marked: recordable.
+    try current.put(testing.allocator, "src/dom/process_phase.zig phase", .{ .count = 1, .kind = .zig_global, .unmarked = 0 });
+    // New, without a marker (or with an empty why, which leaves it unmarked).
+    try current.put(testing.allocator, "src/dom/x.zig cache", .{ .count = 1, .kind = .zig_global, .unmarked = 1 });
+    // An existing key grown - marked or not, an increase.
+    try current.put(testing.allocator, "src/a.zig counter", .{ .count = 2, .kind = .zig_global, .unmarked = 0 });
+    var baseline: Baseline = .empty;
+    defer baseline.deinit(testing.allocator);
+    try baseline.put(testing.allocator, "src/a.zig counter", .{ .count = 1, .kind = "G", .class = "D" });
+
+    var found = try violations(testing.allocator, &current, &baseline);
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 3), found.items.len);
+
+    var refused = try refusedByUpdate(testing.allocator, found.items, &current, &baseline);
+    defer refused.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 2), refused.items.len);
+    try testing.expectEqualStrings("src/a.zig counter", refused.items[0].key);
+    try testing.expectEqualStrings("src/dom/x.zig cache", refused.items[1].key);
+    try testing.expect(!mayRecord(true, refused.items.len));
+
+    // With only the marked key new, --update records it - as a process resource.
+    _ = current.remove("src/dom/x.zig cache");
+    current.getPtr("src/a.zig counter").?.count = 1;
+    var found2 = try violations(testing.allocator, &current, &baseline);
+    defer found2.deinit(testing.allocator);
+    var refused2 = try refusedByUpdate(testing.allocator, found2.items, &current, &baseline);
+    defer refused2.deinit(testing.allocator);
+    try testing.expect(mayRecord(true, refused2.items.len));
+    const text = try formatBaseline(testing.allocator, &current, &baseline);
+    defer testing.allocator.free(text);
+    try testing.expect(std.mem.indexOf(u8, text, "src/dom/process_phase.zig phase 1 G P-res\n") != null);
+}
+
 fn testCounts(entries: []const struct { []const u8, u32 }) !Counts {
     var counts: Counts = .empty;
     for (entries) |e| try counts.put(testing.allocator, e[0], .{ .count = e[1], .kind = .zig_threadlocal });
@@ -1233,7 +1360,7 @@ test "the baseline round-trips, sorted, keeps each key's class and ignores comme
     defer current.deinit(testing.allocator);
     try current.put(testing.allocator, "src/b.zig Arena.global", .{ .count = 1, .kind = .zig_global });
     try current.put(testing.allocator, "src/a.zig hook", .{ .count = 2, .kind = .zig_threadlocal });
-    try current.put(testing.allocator, "src/c.cpp g_new", .{ .count = 1, .kind = .cpp_static });
+    try current.put(testing.allocator, "src/c.cpp g_new", .{ .count = 1, .kind = .cpp_static, .unmarked = 1 });
 
     var previous = try parseBaseline(testing.allocator,
         \\# a comment

@@ -167,9 +167,7 @@ src/html/worker_host.zig current_worker_context 1 TL C
 src/html/worker_host.zig disposed_isolates 1 TL D
 src/html/worker_host.zig hosts 1 TL I/engine
 src/html/worker_host.zig live_contexts 1 TL I/engine
-src/html/worker_host.zig next_worker_timer_id 1 TL R
 src/html/worker_host.zig shared_scopes 1 TL I/profile
-src/html/worker_host.zig worker_timer_contexts 1 TL R
 src/html/workers/dedicated_worker.zig DedicatedWorker.pending_messages 1 TL C
 src/html/workers/message_channel.zig WorkerPort.next_id 1 G X
 src/html/workers/script_fetch.zig blob_resolver_callback 1 TL I/profile
@@ -272,6 +270,7 @@ src/runtime/engines/v8/v8_wrapper.cpp g_site_pc 1 C++G D
 src/runtime/engines/v8/v8_wrapper.cpp g_snapshot_handles 1 C++G P-res
 src/runtime/engines/v8/v8_wrapper.cpp g_snapshot_mode 1 C++G P-res
 src/runtime/engines/v8/v8_wrapper.cpp g_synthetic_json_exports 1 C++G I/engine
+src/runtime/engines/v8/v8_wrapper.cpp realmTaggedHandles.map 1 C++G I/engine
 src/runtime/engines/v8/v8_wrapper.cpp t_protocol_resolver 1 C++TL C
 src/runtime/engines/v8/v8_wrapper.cpp v8_initialized 1 C++G P-res
 src/runtime/engines/v8/window_properties.zig template_cache 1 G I/engine
@@ -335,6 +334,7 @@ src/webidl/impls/HTMLStyleElement.zig steps_registered 1 G H
 src/webidl/impls/HTMLTextAreaElement.zig StateMap.map 1 G I/engine
 src/webidl/impls/History.zig push_replace_depth 1 TL C
 src/webidl/impls/IntersectionObserver.zig observing 1 TL I/engine
+src/webidl/impls/MessagePort.zig live_ports 1 TL R
 src/webidl/impls/Navigation.zig live 1 TL I/engine
 src/webidl/impls/ProcessingInstruction.zig live 1 TL I/engine
 src/webidl/impls/ProcessingInstruction.zig live_guard 1 TL I/engine
@@ -343,6 +343,8 @@ src/webidl/impls/Selection.zig empty_array_sentinel 1 G P-const
 src/webidl/impls/StaticRange.zig internal_storage 1 G I/engine
 src/webidl/impls/StaticRange.zig storage_initialized 1 G I/engine
 src/webidl/impls/Text.zig undefined_sentinel 1 G P-const
+src/webidl/impls/WebSocket.zig live_sockets 1 TL R
+src/webidl/impls/WindowOrWorkerGlobalScope.zig call_fetch.Call.live 1 TL R
 src/webidl/impls/XMLHttpRequest.zig live_pending 1 TL R
 src/webidl/impls/fetch_body.zig boundary_counter 1 TL I/engine
 src/webidl/types/buffer_sources.zig engine_buffer 1 G P-const
