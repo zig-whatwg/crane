@@ -94,15 +94,10 @@ pub fn get_algorithm(instance: *runtime.Instance) anyerror!runtime.JSValue {
     defer if (exponent_buffer) |value| value.release();
     var exponent_view: ?engine.Owned = null;
     defer if (exponent_view) |value| value.release();
-    if (algorithm.hash) |value| {
-        hash = try engine.createDictionaryObject(instance.ctx, &.{.{ .name = "name", .value = runtime.JSValue.fromStringRef(value.name()) }});
-        members[count] = .{ .name = "hash", .value = hash.?.borrow() };
-        count += 1;
-    }
-    if (algorithm.length) |value| {
-        members[count] = .{ .name = "length", .value = .{ .number = @floatFromInt(value) } };
-        count += 1;
-    }
+    // WebIDL §3.2.17 step 3: inherited dictionaries before derived ones,
+    // with each dictionary's own members in lexicographic order. RSA's
+    // modulusLength/publicExponent precede RsaHashedKeyAlgorithm.hash;
+    // HmacKeyAlgorithm itself declares hash before length.
     if (algorithm.modulus_length) |value| {
         members[count] = .{ .name = "modulusLength", .value = .{ .number = @floatFromInt(value) } };
         count += 1;
@@ -111,6 +106,15 @@ pub fn get_algorithm(instance: *runtime.Instance) anyerror!runtime.JSValue {
         exponent_buffer = try engine.createArrayBuffer(instance.ctx, value);
         exponent_view = try engine.createArrayBufferView(instance.ctx, .uint8_array, exponent_buffer.?.borrow(), 0, value.len);
         members[count] = .{ .name = "publicExponent", .value = exponent_view.?.borrow() };
+        count += 1;
+    }
+    if (algorithm.hash) |value| {
+        hash = try engine.createDictionaryObject(instance.ctx, &.{.{ .name = "name", .value = runtime.JSValue.fromStringRef(value.name()) }});
+        members[count] = .{ .name = "hash", .value = hash.?.borrow() };
+        count += 1;
+    }
+    if (algorithm.length) |value| {
+        members[count] = .{ .name = "length", .value = .{ .number = @floatFromInt(value) } };
         count += 1;
     }
     if (algorithm.named_curve) |value| {
