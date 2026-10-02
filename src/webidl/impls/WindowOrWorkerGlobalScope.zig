@@ -333,6 +333,9 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         locally_aborted: bool = false,
         /// "Abort a document" canceled this call's fetch (`abortIn`).
         document_aborted: bool = false,
+        /// The request's keepalive flag: such a fetch outlives its document
+        /// (`abortIn` leaves it).
+        keepalive: bool = false,
         /// p is settled (or never will be), and its resolver released.
         settled: bool = false,
         /// The fetch holds this call, until it lets go.
@@ -676,6 +679,11 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
                 if (i >= live.items.len) continue;
                 const call = live.items[i];
                 if (call.ctx != realm or call.document_aborted) continue;
+                // Fetch "when a fetch group is terminated", step 1: a record
+                // whose request's keepalive is true is not terminated - it is
+                // meant to outlive its document (a beacon, a fetch made in
+                // unload; fetch/api/redirect/redirect-keepalive.any.js).
+                if (call.keepalive) continue;
                 call.cancelForDocument();
             }
         }
@@ -785,7 +793,7 @@ pub fn call_fetch(instance: *runtime.Instance, input: typedefs.RequestInfo, init
         fetched_request.deinit();
         return error.OutOfMemory;
     };
-    call.* = .{ .allocator = allocator, .ctx = instance.ctx, .capability = capability };
+    call.* = .{ .allocator = allocator, .ctx = instance.ctx, .capability = capability, .keepalive = fetched_request.keepalive };
     // Only HTTP(S) transmits a request body (HTTP-network fetch); a data:,
     // blob: or about: fetch never reads it, so neither does this - a stream
     // that never closes must not hold such a fetch up.
