@@ -206,7 +206,7 @@ test "the runtime's typeId gives distinct types distinct identities, in every bu
 
     // And the brand check built on it: a chain holds its own levels, not a
     // stranger with the same shape.
-    const chain = runtime.ancestorsOf(First);
+    const chain = comptime runtime.ancestorsOf(First);
     try std.testing.expectEqual(runtime.typeId(First), chain[0].id);
     for (chain) |level| try std.testing.expect(level.id != runtime.typeId(Second));
 }
