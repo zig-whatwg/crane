@@ -4190,6 +4190,46 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&b.addRunArtifact(lint_engine_tests).step);
 
     // ========================================================================
+    // LINT: global state, as a ratchet
+    // ========================================================================
+    // docs/instances.md: several isolated instances run in one process, each
+    // with its tabs, so a container-level `var` (shared by every instance) or
+    // a `threadlocal` (per thread, neither per instance nor per tab) is state
+    // without an owner. tools/lint_global_state.zig counts every one in src/ -
+    // Zig through std.zig.Ast, C++ by a scan of the code - per file and
+    // qualified name, and fails if any rises above
+    // tools/global_state_baseline.txt or a new one appears. The baseline only
+    // goes down: `zig build lint-global-state -- --update` records a paid-down
+    // tree and refuses to record an increase. `zig build test` depends on it.
+    const lint_global_state_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_global_state.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_global_state_exe = b.addExecutable(.{
+        .name = "lint_global_state",
+        .root_module = lint_global_state_module,
+    });
+
+    const lint_global_state_step = b.step("lint-global-state", "Fail on new process-global or threadlocal variables in src/ (use -- --update after removing some)");
+    const lint_global_state = b.addRunArtifact(lint_global_state_exe);
+    // It reads src/ and the baseline, which the build graph does not track.
+    lint_global_state.has_side_effects = true;
+    lint_global_state.setCwd(b.path("."));
+    if (b.args) |args| lint_global_state.addArgs(args);
+    lint_global_state_step.dependOn(&lint_global_state.step);
+
+    // Part of `zig build test`: the check itself (never with --update) and the
+    // tool's own tests.
+    const lint_global_state_check = b.addRunArtifact(lint_global_state_exe);
+    lint_global_state_check.has_side_effects = true;
+    lint_global_state_check.setCwd(b.path("."));
+    test_step.dependOn(&lint_global_state_check.step);
+    const lint_global_state_tests = b.addTest(.{ .root_module = lint_global_state_module });
+    test_step.dependOn(&b.addRunArtifact(lint_global_state_tests).step);
+
+    // ========================================================================
     // WPT: the wpt.fyi upload package
     // ========================================================================
     // tools/wpt_upload_package.zig turns a supervised sweep's reports, result
