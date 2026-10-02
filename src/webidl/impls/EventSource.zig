@@ -22,22 +22,25 @@ pub const ImplError = error{
 /// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
+/// Initialize instance: an EventTarget - through its interface, which sets
+/// up the listener state. (EventSource's own state is not implemented.)
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    return interfaces.EventTarget.initWithState(allocator, StateType, vtable, ctx);
 }
 
-/// Deinitialize instance
+/// Deinitialize instance: the EventTarget part, through its interface - the
+/// listeners and event handlers go with the EventSource. Without it the
+/// listener state outlived the instance: a worker's EventSource left its
+/// listener's handle to be released at the browser's end, into the worker's
+/// disposed isolate (eventsource/format-bom.any.js, at a sweep shard's exit).
+/// The GC layer frees the slab - do NOT call runtime.Instance.deinit().
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    interfaces.EventTarget.deinit(instance);
 }
 
 /// Constructor implementation

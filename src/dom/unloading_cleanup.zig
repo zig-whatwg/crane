@@ -16,7 +16,7 @@
 //! An environment is its realm (`runtime.Context`): a step compares it and
 //! must not assume the realm can still run script.
 //!
-//! lint-impls: hook for URL
+//! lint-impls: hook for URL, EventTarget
 
 const std = @import("std");
 const runtime = @import("runtime");
