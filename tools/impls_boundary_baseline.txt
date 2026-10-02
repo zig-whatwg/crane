@@ -160,14 +160,13 @@ src/webidl/impls/Document.zig EventTarget.eraseAllEventListenersAndHandlers 2
 src/webidl/impls/Document.zig EventTarget.eventHandler 1
 src/webidl/impls/Document.zig EventTarget.setEventHandler 1
 src/webidl/impls/Document.zig HTMLCollection.addElement 9
-src/webidl/impls/Document.zig HTMLParser.parseFragment 1
 src/webidl/impls/Document.zig Node.InternalState 1
 src/webidl/impls/Document.zig Node.NodeType 28
 src/webidl/impls/Document.zig Node.deinit 2
 src/webidl/impls/Document.zig Node.deinitNodeByType 2
-src/webidl/impls/Document.zig Node.getFirstChild 15
+src/webidl/impls/Document.zig Node.getFirstChild 14
 src/webidl/impls/Document.zig Node.getInternalState 1
-src/webidl/impls/Document.zig Node.getNextSibling 14
+src/webidl/impls/Document.zig Node.getNextSibling 13
 src/webidl/impls/Document.zig Node.getNodeType 13
 src/webidl/impls/Document.zig Node.getParent 2
 src/webidl/impls/Document.zig Node.init 1
@@ -194,7 +193,6 @@ src/webidl/impls/DocumentType.zig Node.init 1
 src/webidl/impls/DocumentType.zig Node.setNodeType 1
 src/webidl/impls/Element.zig CharacterData.getData 2
 src/webidl/impls/Element.zig DOMTokenList.setElement 2
-src/webidl/impls/Element.zig EventTarget.dispatchTrusted 1
 src/webidl/impls/Element.zig HTMLCollection.addElement 9
 src/webidl/impls/Element.zig HTMLElement.getInternalState 1
 src/webidl/impls/Element.zig HTMLParser.parseFragment 4
