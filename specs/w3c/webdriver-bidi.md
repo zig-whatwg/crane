@@ -60,6 +60,188 @@ To [resume] given
  like microtasks to ensure this runs before any other tasks
  on the event loop?
 
+A [WebDriver configuration] is a
+[struct](https://infra.spec.whatwg.org/#struct) with:
+
+- [item](https://infra.spec.whatwg.org/#struct-item) [global] which is a
+ [value](#webdriver-configuration-value), initially
+ [unset](#webdriver-configuration-unset);
+
+- [item](https://infra.spec.whatwg.org/#struct-item) [user
+ contexts] which is
+ a weak map between [user
+ contexts](#user-context) and
+ [value](#webdriver-configuration-value), initially empty;
+
+- [item](https://infra.spec.whatwg.org/#struct-item) [navigables] which is a weak map between
+ [navigables](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) and
+ [value](#webdriver-configuration-value), initially empty.
+
+A [WebDriver
+configuration](#webdriver-configuration) has an [associated
+type] which is a
+type.
+
+The [value] for a
+[WebDriver
+configuration](#webdriver-configuration) is either a value whose type is the [associated
+type](#webdriver-configuration-associated-type) for that configuration or
+[unset](#webdriver-configuration-unset).
+
+[Unset] is a value
+indicating that a specific configuration
+[value](#webdriver-configuration-value) has not been set.
+
+ this algorithm allows accessing the [WebDriver
+configuration](#webdriver-configuration) for a given
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) by checking values in
+[navigables](#webdriver-configuration-navigables), then in [user
+contexts](#webdriver-configuration-user-contexts) and finally in
+[global](#webdriver-configuration-global). Returns
+[unset](#webdriver-configuration-unset) if configuration is not set.
+
+To [get WebDriver configuration
+value] of [WebDriver
+configuration](#webdriver-configuration) `configuration` for
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `navigable`:
+
+1. Let `top-level traversable` be `navigable`'s
+ [top-level
+ traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-top).
+
+2. If `configuration`'s
+ [navigables](#webdriver-configuration-navigables)
+ [contains](https://infra.spec.whatwg.org/#map-exists) `top-level traversable`:
+
+ 1. Let `navigable configuration value` be
+ `configuration`'s
+ [navigables](#webdriver-configuration-navigables)\[`top-level traversable`\].
+
+ 2. If `navigable configuration value` is not
+ [unset](#webdriver-configuration-unset), return
+ `navigable configuration value`.
+
+3. Let `user context` be `navigable`'s
+ [associated user
+ context](#associated-user-context).
+
+4. If `configuration`'s [user
+ contexts](#webdriver-configuration-user-contexts)
+ [contains](https://infra.spec.whatwg.org/#map-exists) `user context`:
+
+ 1. Let `user context configuration value` be
+ `configuration`'s [user
+ contexts](#webdriver-configuration-user-contexts)\[`user context`\].
+
+ 2. If `user context configuration value` is not
+ [unset](#webdriver-configuration-unset), return
+ `user context configuration value`.
+
+5. Return `configuration`'s
+ [global](#webdriver-configuration-global).
+
+ this is a generic algorithm for storing [WebDriver
+configuration](#webdriver-configuration) per `target`, which can be either
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables), [user context](#user-context), or store it globally if the `target` is
+null or omitted.
+
+To [store] [WebDriver
+configuration](#webdriver-configuration) `configuration`'s
+[value](#webdriver-configuration-value) `value` in optional `target`
+which is a
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables), a [user context](#user-context) or null if not provided:
+
+1. If `target` is null, set `configuration`'s
+ [global](#webdriver-configuration-global) to `value`.
+
+2. If `target` is a [user
+ context](#user-context), set
+ `configuration`'s [user
+ contexts](#webdriver-configuration-user-contexts)\[`target`\] to `value`.
+
+3. If `target` is a
+ [navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables), set `configuration`'s
+ [navigables](#webdriver-configuration-navigables)\[`target`\] to `value`.
+
+ This generic algorithm stores [WebDriver
+configuration](#webdriver-configuration)'s
+[value](#webdriver-configuration-value) in
+[global](#webdriver-configuration-global), [user
+contexts](#webdriver-configuration-user-contexts), or
+[navigables](#webdriver-configuration-navigables), depending on the presence of \"`userContexts`\" and
+\"`contexts`\" in `command parameters`. These parameters are
+mutually exclusive. If neither is provided, the configuration is stored
+globally.
+
+To [store WebDriver configuration] [WebDriver
+configuration](#webdriver-configuration) `configuration`'s
+[value](#webdriver-configuration-value) `value` for given
+`command parameters`:
+
+1. If `command parameters`
+ [contains](https://infra.spec.whatwg.org/#map-exists) \"`userContexts`\" and
+ `command parameters`
+ [contains](https://infra.spec.whatwg.org/#map-exists) \"`contexts`\", return
+ [error](https://w3c.github.io/webdriver/#errors) with [error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [invalid
+ argument](https://w3c.github.io/webdriver/#dfn-invalid-argument).
+
+2. Let `affected navigables` be an empty
+ [set](https://infra.spec.whatwg.org/#ordered-set).
+
+3. If `command parameters`
+ [contains](https://infra.spec.whatwg.org/#map-exists) \"`contexts`\":
+
+ 1. Let `navigables` be the result of
+ [trying](https://w3c.github.io/webdriver/#dfn-try) to [get valid top-level traversables by
+ ids](#get-valid-top-level-traversables-by-ids) with
+ `command parameters`\[\"`contexts`\"\].
+
+ 2. For each `navigable` of `navigables`:
+
+ 1. [Append](https://infra.spec.whatwg.org/#set-append) `navigable` to
+ `affected navigables`.
+
+ 2. [Store](#webdriver-configuration-store) `configuration`'s
+ `value` in `navigable`.
+
+4. Otherwise, if `command parameters`
+ [contains](https://infra.spec.whatwg.org/#map-exists) \"`userContexts`\":
+
+ 1. Let `user contexts` be the result of
+ [trying](https://w3c.github.io/webdriver/#dfn-try) to [get valid user
+ contexts](#get-valid-user-contexts) with
+ `command parameters`\[\"`userContexts`\"\].
+
+ 2. For each `user context` of
+ `user contexts`:
+
+ 1. [For
+ each](https://infra.spec.whatwg.org/#list-iterate) `top-level traversable` in the
+ list of all [top-level
+ traversables](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable) whose [associated user
+ context](#associated-user-context) is `user context`:
+
+ 1. [Append](https://infra.spec.whatwg.org/#set-append) `top-level traversable` to
+ `affected navigables`.
+
+ 2. [Store](#webdriver-configuration-store) `configuration`'s
+ `value` in `user context`.
+
+5. Otherwise:
+
+ 1. [For
+ each](https://infra.spec.whatwg.org/#list-iterate) `top-level traversable` of all
+ [top-level
+ traversables](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable),
+ [append](https://infra.spec.whatwg.org/#list-append) `top-level traversable` to
+ `affected navigables`.
+
+ 2. [Store](#webdriver-configuration-store) `configuration`'s
+ `value`.
+
+6. Return `affected navigables`.
+
 ## 3. Protocol
 
 This section defines the basic concepts of the WebDriver BiDi protocol.
@@ -170,6 +352,9 @@ EventData = (
 )
 ```
 
+An [EmptyResult] is a result type with no required fields, used as the return
+type for commands that don't produce result data.
+
 [`Remote end definition`](#cddl-module-remote-end-definition) and
 [`Local end definition`](#cddl-module-local-end-definition)
 
@@ -183,14 +368,14 @@ js-uint = 0..9007199254740991
 ### 3.2. Session
 
 WebDriver BiDi extends the
-[session](https://w3c.github.io/webdriver/#dfn-sessions) concept from
+[session](https://w3c.github.io/webdriver/#dfn-webdriver-session) concept from
 [WebDriver](#biblio-webdriver "WebDriver").
 
 A
-[session](https://w3c.github.io/webdriver/#dfn-sessions) has a [BiDi flag], which is false unless otherwise stated.
+[session](https://w3c.github.io/webdriver/#dfn-webdriver-session) has a [BiDi flag], which is false unless otherwise stated.
 
 A [BiDi session] is a
-[session](https://w3c.github.io/webdriver/#dfn-sessions) which has the [BiDi
+[session](https://w3c.github.io/webdriver/#dfn-webdriver-session) which has the [BiDi
 flag](#bidi-flag) set to true.
 
 The list of [active BiDi sessions] is given by:
@@ -353,6 +538,9 @@ following additional codes:
 : Tried to continue an unknown
  [request](https://fetch.spec.whatwg.org/#concept-request).
 
+[no such screencast]
+: Tried to stop an unknown screencast recording.
+
 [no such script]
 : Tried to remove an unknown [preload
  script](#preload-script).
@@ -400,6 +588,7 @@ ErrorCode = "invalid argument" /
  "no such network data" /
  "no such node" /
  "no such request" /
+ "no such screencast" /
  "no such script" /
  "no such storage partition" /
  "no such user context" /
@@ -736,7 +925,7 @@ accept the incoming connection:
  service is not available.
 
 4. If there is a
- [session](https://w3c.github.io/webdriver/#dfn-sessions) in the list of [active
+ [session](https://w3c.github.io/webdriver/#dfn-webdriver-session) in the list of [active
  sessions](https://w3c.github.io/webdriver/#dfn-active-sessions) with `session id` as its [session
  ID](https://w3c.github.io/webdriver/#dfn-session-id) then let `session` be that session.
  Otherwise stop running these steps and act as if the requested
@@ -775,7 +964,7 @@ WebSocket connection to be closed without a closing handshake.
 
 To [construct a WebSocket resource
 name] given a
-[session](https://w3c.github.io/webdriver/#dfn-sessions) `session`:
+[session](https://w3c.github.io/webdriver/#dfn-webdriver-session) `session`:
 
 1. If `session` is null, return \"`/session`\"
 
@@ -785,7 +974,7 @@ name] given a
 
 To [construct a WebSocket URL] given a [WebSocket
 listener](#websocket-listener) `listener` and
-[session](https://w3c.github.io/webdriver/#dfn-sessions) `session`:
+[session](https://w3c.github.io/webdriver/#dfn-webdriver-session) `session`:
 
 1. Let `resource name` be the result of [construct a
  WebSocket resource
@@ -818,7 +1007,7 @@ resource] given `resource name`:
 
 To [start listening for a WebSocket
 connection] given a
-[session](https://w3c.github.io/webdriver/#dfn-sessions) `session`:
+[session](https://w3c.github.io/webdriver/#dfn-webdriver-session) `session`:
 
 1. If there is an existing [WebSocket
  listener](#websocket-listener) in [active
@@ -1153,7 +1342,7 @@ connection](#websocket-connection) `connection`:
  [remove](https://infra.spec.whatwg.org/#list-remove) `connection` from that set.
 
  This does not end any
-[session](https://w3c.github.io/webdriver/#dfn-sessions).
+[session](https://w3c.github.io/webdriver/#dfn-webdriver-session).
 
 Need to hook in to the session ending to
 allow the UA to close the listener if it wants.
@@ -1629,12 +1818,23 @@ To [cleanup the session] given `session`:
  data](#remove-collector-from-data) with `collected data` and
  `collector id`.
 
-5. If [active
+5. For each `screencast recording` in `session`'s
+ [screencast recordings
+ map](#screencast-recordings-map):
+
+ 1. [Stop a screencast
+ recording](#stop-a-screencast-recording) given `screencast recording`.
+
+ 2. [Remove](https://infra.spec.whatwg.org/#map-remove) `screencast recording` from
+ [screencast recordings
+ map](#screencast-recordings-map).
+
+6. If [active
  sessions](https://w3c.github.io/webdriver/#dfn-active-sessions) is
  [empty](https://infra.spec.whatwg.org/#list-empty), [cleanup remote end
  state](#cleanup-remote-end-state).
 
-6. Perform any implementation-specific cleanup steps.
+7. Perform any implementation-specific cleanup steps.
 
 To [cleanup remote end state].
 
@@ -1690,19 +1890,19 @@ WebDriver BiDi defines [additional WebDriver
 capabilities](https://w3c.github.io/webdriver/#dfn-additional-webdriver-capability). The following tables enumerates the capabilities each
 implementation must support for WebDriver BiDi.
 
-Capability
+Capability:
 
 [WebSocket URL]
 
-Key
+Key:
 
 \"`webSocketUrl`\"
 
-Value type
+Value type:
 
 boolean
 
-Description
+Description:
 
 Defines the current session's support for bidirectional connection.
 
@@ -1728,7 +1928,27 @@ algorithm](https://w3c.github.io/webdriver/#dfn-matched-capability-serialization
 2. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data true.
 
-##### 7.1.2.3. The session.ProxyConfiguration Type
+##### 7.1.2.3. The session.CapabilityResponse Type
+
+```
+session.CapabilityResponse = {
+ acceptInsecureCerts: bool,
+ browserName: text,
+ browserVersion: text,
+ platformName: text,
+ setWindowRect: bool,
+ userAgent: text,
+ ? proxy: session.ProxyConfiguration,
+ ? unhandledPromptBehavior: session.UserPromptHandler,
+ ? webSocketUrl: text,
+ Extensible
+}
+```
+
+The `session.CapabilityResponse` type represents all the negotiated
+capabilities for the new session.
+
+##### 7.1.2.4. The session.ProxyConfiguration Type
 
 [`remote end definition`](#cddl-module-remote-end-definition) and
 [`local end definition`](#cddl-module-local-end-definition)
@@ -1778,7 +1998,7 @@ session.SystemProxyConfiguration = (
 )
 ```
 
-##### 7.1.2.4. The session.UserPromptHandler Type
+##### 7.1.2.5. The session.UserPromptHandler Type
 
 [`Remote end definition`](#cddl-module-remote-end-definition) and
 [`local end definition`](#cddl-module-local-end-definition)
@@ -1800,7 +2020,7 @@ user prompt handler.
  `file` handles file picker. \"accept\" and \"dismiss\"
 dismisses the picker. \"ignore\" keeps the picker open.
 
-##### 7.1.2.5. The session.UserPromptHandlerType Type
+##### 7.1.2.6. The session.UserPromptHandlerType Type
 
 [`Remote end definition`](#cddl-module-remote-end-definition) and
 [`local end definition`](#cddl-module-local-end-definition)
@@ -1812,7 +2032,7 @@ session.UserPromptHandlerType = "accept" / "dismiss" / "ignore";
 The `session.UserPromptHandlerType` type represents the behavior of the
 user prompt handler.
 
-##### 7.1.2.6. The session.Subscription Type
+##### 7.1.2.7. The session.Subscription Type
 
 ```
 session.Subscription = text
@@ -1821,7 +2041,7 @@ session.Subscription = text
 The `session.Subscription` type represents a unique subscription
 identifier.
 
-##### 7.1.2.7. The session.SubscribeParameters Type
+##### 7.1.2.8. The session.SubscribeParameters Type
 
 ```
 session.SubscribeParameters = {
@@ -1834,7 +2054,7 @@ session.SubscribeParameters = {
 The `session.SubscribeParameters` type represents a request to subscribe
 to a specific set of events.
 
-##### 7.1.2.8. The session.UnsubscribeByIDRequest Type
+##### 7.1.2.9. The session.UnsubscribeByIDRequest Type
 
 ```
 session.UnsubscribeByIDRequest = {
@@ -1845,7 +2065,7 @@ session.UnsubscribeByIDRequest = {
 The `session.UnsubscribeByIDRequest` type represents a request to remove
 event subscriptions identified by subscription IDs.
 
-##### 7.1.2.9. The session.UnsubscribeByAttributesRequest Type
+##### 7.1.2.10. The session.UnsubscribeByAttributesRequest Type
 
 ```
 session.UnsubscribeByAttributesRequest = {
@@ -1933,18 +2153,7 @@ Return Type
 : ```
  session.NewResult = {
  sessionId: text,
- capabilities: {
- acceptInsecureCerts: bool,
- browserName: text,
- browserVersion: text,
- platformName: text,
- setWindowRect: bool,
- userAgent: text,
- ? proxy: session.ProxyConfiguration,
- ? unhandledPromptBehavior: session.UserPromptHandler,
- ? webSocketUrl: text,
- Extensible
- }
+ capabilities: session.CapabilityResponse
  }
  ```
 
@@ -1996,7 +2205,7 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) given `session` an
 ##### 7.1.3.3. The session.end Command
 
 The [session.end] command ends the current
-[session](https://w3c.github.io/webdriver/#dfn-sessions).
+[session](https://w3c.github.io/webdriver/#dfn-webdriver-session).
 
 Command Type
 
@@ -2600,7 +2809,12 @@ To [set the client window state] given `window` and
  This is a no-op for documents in window
  that are not fullscreen.
 
-8. Switch on the value of `state`:
+8. If `current state` is \"`maximized`\" or \"`minimized`\":
+
+ 1. [Restore the client
+ window](#restore-the-client-window) `window`.
+
+9. Switch on the value of `state`:
 
  \"`fullscreen`\"
 
@@ -2613,10 +2827,6 @@ To [set the client window state] given `window` and
 
  2. [Break](https://infra.spec.whatwg.org/#iteration-break).
 
- \"`normal`\"
- : 1\. [Restore the client
- window](#restore-the-client-window) `window`.
-
  \"`maximize`\"
  : 1\. [Maximize the client
  window](#maximize-the-client-window) `window`.
@@ -2625,7 +2835,7 @@ To [set the client window state] given `window` and
  : 1\. [Minimize the client
  window](#minimize-the-client-window) `window`.
 
-9. Return
+10. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
 #### 7.2.3. Types
@@ -3345,6 +3555,10 @@ status], which has the following
  file is available, absolute filepath of the downloaded file,
  otherwise null.
 
+[downloadResponse]
+: If the navigation is a download,
+ [response](https://fetch.spec.whatwg.org/#concept-response), otherwise null.
+
 #### 7.3.1. Definition
 
 [`remote end definition`](#cddl-module-remote-end-definition)
@@ -3361,7 +3575,10 @@ BrowsingContextCommand = (
  browsingContext.Navigate //
  browsingContext.Print //
  browsingContext.Reload //
+ browsingContext.SetBypassCSP //
  browsingContext.SetViewport //
+ browsingContext.StartScreencast //
+ browsingContext.StopScreencast //
  browsingContext.TraverseHistory
 )
 ```
@@ -3380,7 +3597,10 @@ BrowsingContextResult = (
  browsingContext.NavigateResult /
  browsingContext.PrintResult /
  browsingContext.ReloadResult /
+ browsingContext.SetBypassCSPResult /
  browsingContext.SetViewportResult /
+ browsingContext.StartScreencastResult /
+ browsingContext.StopScreencastResult /
  browsingContext.TraverseHistoryResult
 )
 
@@ -3504,6 +3724,84 @@ map] which is a weak map between
 contexts](#user-context) and
 boolean.
 
+A [remote
+end](https://w3c.github.io/webdriver/#dfn-remote-ends) has a [download id map] which is is a weak map between
+[response](https://fetch.spec.whatwg.org/#concept-response) and download ids. It is initially empty.
+
+A [screencast stream] is an abstract stream of the viewport of a
+[top-level
+traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable), consisting of a [video
+track] containing the
+rendered visual output of the [top-level
+traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable)'s document's viewport, and optionally an [audio
+track] containing the
+audio output of the [top-level
+traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable)'s document.
+
+A [BiDi session](#bidi-session)
+has a [screencast recordings map] which is a
+[map](https://infra.spec.whatwg.org/#ordered-map) in which the keys are
+[UUID](#biblio-rfc9562 "Universally Unique IDentifiers (UUIDs)")s,
+and the values are [screencast recording], which is a
+[struct](https://infra.spec.whatwg.org/#struct) with an
+[item](https://infra.spec.whatwg.org/#struct-item) named [stream],
+which is a [screencast
+stream](#screencast-stream),
+an
+[item](https://infra.spec.whatwg.org/#struct-item) named [path],
+which is a string, an
+[item](https://infra.spec.whatwg.org/#struct-item) named [state],
+which is one of \"`recording`\", \"`stopping`\", \"`stopped`\", an
+[item](https://infra.spec.whatwg.org/#struct-item) named [writeError], which is a string or null.
+
+To [start a screencast recording] given a [screencast
+recording](#screencast-recording) `recording` and `mime type`:
+
+1. Run the following steps [in
+ parallel](https://html.spec.whatwg.org/multipage/infrastructure.html#in-parallel):
+
+ 1. Begin encoding `recording`'s
+ [stream](#screencast-recording-stream) using `mime type`, producing
+ successive chunks of encoded data as [byte
+ sequences](https://infra.spec.whatwg.org/#byte-sequence). Produce a new chunk at the implementation
+ defined interaval while `recording`'s
+ [state](#screencast-recording-state) is \"`recording`\".
+
+ 2. For each chunk `bytes` produced for
+ `recording`, run the following steps:
+
+ 1. Append `bytes` to the file at
+ `recording`'s
+ [path](#screencast-recording-path). If this fails:
+
+ 1. Set `recording`'s
+ [writeError](#screencast-recording-writeerror) to an implementation-defined string
+ describing the write failure.
+
+ 2. [Stop a screencast
+ recording](#stop-a-screencast-recording) given `recording`.
+
+To [stop a screencast recording] given a [screencast
+recording](#screencast-recording) `recording`:
+
+1. If `recording`'s
+ [state](#screencast-recording-state) is not \"`recording`\" then return.
+
+2. Set `recording`'s
+ [state](#screencast-recording-state) to \"`stopping`\".
+
+3. Stop producing new chunks for `recording`, flush any
+ remaining encoded data as a final chunk (processed as in [start a
+ screencast
+ recording](#start-a-screencast-recording)), stop capturing from `recording`'s
+ [stream](#screencast-recording-stream) and release its [video
+ track](#screencast-stream-video-track) and, if present, its [audio
+ track](#screencast-stream-audio-track), and then set `recording`'s
+ [state](#screencast-recording-state) to \"`stopped`\".
+
+4. Wait until `recording`'s
+ [state](#screencast-recording-state) is \"`stopped`\".
+
 #### 7.3.2. Types
 
 ##### 7.3.2.1. The browsingContext.BrowsingContext Type
@@ -3561,7 +3859,7 @@ To [get a navigable] given `navigable id`:
 ```
 browsingContext.InfoList = [*browsingContext.Info]
 
-browsingContext.Info = {
+browsingContext.BaseInfo = (
  children: browsingContext.InfoList / null,
  clientWindow: browser.ClientWindow,
  context: browsingContext.BrowsingContext,
@@ -3569,6 +3867,10 @@ browsingContext.Info = {
  url: text,
  userContext: browser.UserContext,
  ? parent: browsingContext.BrowsingContext / null,
+)
+
+browsingContext.Info = {
+ browsingContext.BaseInfo
 }
 ```
 
@@ -3830,7 +4132,19 @@ ongoing navigation.
 
 TODO: Link to the definition in the HTML spec.
 
-##### 7.3.2.5. The browsingContext.NavigationInfo Type
+##### 7.3.2.5. The browsingContext.Download Type
+
+[`remote end definition`](#cddl-module-remote-end-definition) and
+[`local end definition`](#cddl-module-local-end-definition)
+
+```
+browsingContext.Download = text;
+```
+
+The `browsingContext.Download` type is a unique string identifying a
+download.
+
+##### 7.3.2.6. The browsingContext.NavigationInfo Type
 
 [`local end definition`](#cddl-module-local-end-definition):
 
@@ -3840,6 +4154,7 @@ browsingContext.BaseNavigationInfo = (
  navigation: browsingContext.Navigation / null,
  timestamp: js-uint,
  url: text,
+ ? userContext: browser.UserContext,
 )
 
 browsingContext.NavigationInfo = {
@@ -3867,16 +4182,21 @@ status](#webdriver-bidi-navigation-status) `navigation status`:
 4. Let `url` be `navigation status`'s
  [url](#navigation-status-url).
 
-5. Return a
+5. Let `user context id` be the [user context
+ id](#user-context-user-context-id) of `navigable`'s [associated user
+ context](#associated-user-context).
+
+6. Return a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `browsingContext.NavigationInfo`
  production, with the `context` field set to
  `navigable id`, the `navigation` field set to
  `navigation id`, the `timestamp` field set to
- `timestamp`, and the `url` field set to the result of the
+ `timestamp`, the `url` field set to the result of the
  [URL
- serializer](https://url.spec.whatwg.org/#concept-url-serializer) given `url`.
+ serializer](https://url.spec.whatwg.org/#concept-url-serializer) given `url`, and the `userContext` field
+ set to `user context id`.
 
-##### 7.3.2.6. The browsingContext.ReadinessState Type
+##### 7.3.2.7. The browsingContext.ReadinessState Type
 
 ```
 browsingContext.ReadinessState = "none" / "interactive" / "complete"
@@ -3885,7 +4205,7 @@ browsingContext.ReadinessState = "none" / "interactive" / "complete"
 The `browsingContext.ReadinessState` type represents the stage of
 document loading at which a navigation command will return.
 
-##### 7.3.2.7. The browsingContext.UserPromptType Type
+##### 7.3.2.8. The browsingContext.UserPromptType Type
 
 [`Remote end definition`](#cddl-module-remote-end-definition) and
 [`local end definition`](#cddl-module-local-end-definition)
@@ -3992,11 +4312,17 @@ Command Type
  ? origin: ("viewport" / "document") .default "viewport",
  ? format: browsingContext.ImageFormat,
  ? clip: browsingContext.ClipRectangle,
+ ? imageSize: browsingContext.ImageSize,
  }
 
  browsingContext.ImageFormat = {
  type: text,
  ? quality: 0.0..1.0,
+ }
+
+ browsingContext.ImageSize = {
+ ? maxWidth: (js-uint .ge 1),
+ ? maxHeight: (js-uint .ge 1),
  }
 
  browsingContext.ClipRectangle = (
@@ -4054,7 +4380,7 @@ dimension](https://drafts.fxtf.org/geometry/#rectangle-height-dimension).
  `height` to -`height`.
 
 7. Return a new
- [`DOMRectReadOnly`](https://drafts.csswg.org/geometry/#domrectreadonly) with [x
+ [`DOMRectReadOnly`](https://drafts.csswg.org/geometry-1/#domrectreadonly) with [x
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-x-coordinate) `x`, [y
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-y-coordinate) `y`, [width
  dimension](https://drafts.fxtf.org/geometry/#rectangle-width-dimension) `width` and [height
@@ -4120,59 +4446,138 @@ To [rectangle intersection] given `rect1` and
  `y_1` - `y_0`.
 
 17. Return a new
- [`DOMRectReadOnly`](https://drafts.csswg.org/geometry/#domrectreadonly) with [x
+ [`DOMRectReadOnly`](https://drafts.csswg.org/geometry-1/#domrectreadonly) with [x
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-x-coordinate) `x_0`, [y
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-y-coordinate) `y_0`, [width
  dimension](https://drafts.fxtf.org/geometry/#rectangle-width-dimension) `width` and [height
  dimension](https://drafts.fxtf.org/geometry/#rectangle-height-dimension) `height`.
 
-To [render document to a canvas] given `document` and
-`rect`:
+To [round a number] given `number`:
+
+1. If `number` is not
+ [finite](https://tc39.es/ecma402/#finite) or `number` is an [integral
+ Number](https://tc39.es/ecma402/#integral-number), return `number`.
+
+2. If `number` \< 0.5𝔽 and `number` \> +0𝔽,
+ return +0𝔽.
+
+3. If `number` \< -0𝔽 and n ≥ -0.5𝔽, return -0𝔽.
+
+4. Return the [integral
+ Number](https://tc39.es/ecma402/#integral-number) closest to `number`, preferring the
+ Number closer to +∞ in the case of a tie.
+
+To [render document to a canvas] given `document`,
+`rect` and `image size`:
 
 1. Let `ratio` be [determine the device pixel
  ratio](https://drafts.csswg.org/cssom-view-1/#determine-the-device-pixel-ratio) given `document`'s [default
  view](https://html.spec.whatwg.org/multipage/nav-history-apis.html#dom-document-defaultview).
 
-2. Let `paint width` be `rect`'s [width
- dimension](https://drafts.fxtf.org/geometry/#rectangle-width-dimension) multiplied by `ratio`, rounded to the
- nearest integer, so it matches the width of `rect` in
- device pixels.
+2. Let `framebuffer width` be `rect`'s [width
+ dimension](https://drafts.fxtf.org/geometry/#rectangle-width-dimension) multiplied by `ratio`, so it matches the
+ width of `rect` in device pixels.
 
-3. Let `paint height` be `rect`'s [height
- dimension](https://drafts.fxtf.org/geometry/#rectangle-height-dimension) multiplied by `ratio`, rounded to the
- nearest integer, so it matches the height of `rect` in
- device pixels.
+3. Let `framebuffer height` be `rect`'s [height
+ dimension](https://drafts.fxtf.org/geometry/#rectangle-height-dimension) multiplied by `ratio`, so it matches the
+ height of `rect` in device pixels.
 
-4. Let `canvas` be a new
+4. Let `scale` be 1.
+
+5. If `image size` is not null:
+
+ 1. Let `max width` be the `maxWidth` field of
+ `image size` if present, or null otherwise.
+
+ 2. Let `max height` be the `maxHeight` field of
+ `image size` if present, or null otherwise.
+
+ 3. If `max width` is not null and `max width`
+ divided by `framebuffer width` is less than
+ `scale`, set `scale` to
+ `max width` divided by
+ `framebuffer width`.
+
+ 4. If `max height` is not null and
+ `max height` divided by
+ `framebuffer height` is less than `scale`,
+ set `scale` to `max height` divided by
+ `framebuffer height`.
+
+6. If `scale` is less than 1:
+
+ 1. Let `scale width` be [round a
+ number](#round-a-number) given `framebuffer width` multiplied
+ by `scale`.
+
+ 2. Let `scale height` be [round a
+ number](#round-a-number) given `framebuffer height`
+ multiplied by `scale`.
+
+ 3. Let `paint width` be the maximum of 1 and
+ `scale width`.
+
+ 4. Let `paint height` be the maximum of 1 and
+ `scale height`.
+
+7. Otherwise:
+
+ 1. Let `paint width` be `framebuffer width`.
+
+ 2. Let `paint height` be
+ `framebuffer height`.
+
+8. Let `canvas` be a new
  [`HTMLCanvasElement`](https://html.spec.whatwg.org/multipage/canvas.html#htmlcanvaselement) with
  [`width`](https://html.spec.whatwg.org/multipage/canvas.html#dom-canvas-width) `paint width` and
  [`height`](https://html.spec.whatwg.org/multipage/canvas.html#dom-canvas-height) `paint height`.
 
-5. Let `canvas context` be the result of running the [2D
+9. Let `canvas context` be the result of running the [2D
  context creation
  algorithm](https://html.spec.whatwg.org/multipage/canvas.html#2d-context-creation-algorithm) with `canvas` and null.
 
-6. Set `canvas`'s [context
+10. Set `canvas`'s [context
  mode](https://html.spec.whatwg.org/multipage//canvas.html#offscreencanvas-context-mode) to
  [2D](https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-2d).
 
-7. Complete implementation specific steps equivalent to drawing the
- region of the framebuffer representing the region of
- `document` covered by `rect` to
- `canvas context`, such that each pixel in the framebuffer
- corresponds to a pixel in `canvas context` with
- (`rect`'s [x
- coordinate](https://drafts.fxtf.org/geometry/#rectangle-x-coordinate), `rect`'s [y
- coordinate](https://drafts.fxtf.org/geometry/#rectangle-y-coordinate)) in viewport coordinates corresponding to (0,0) in
- `canvas context` and (`rect`'s [x
- coordinate](https://drafts.fxtf.org/geometry/#rectangle-x-coordinate) + `rect`'s [width
- dimension](https://drafts.fxtf.org/geometry/#rectangle-width-dimension), `rect`'s [y
- coordinate](https://drafts.fxtf.org/geometry/#rectangle-y-coordinate) + `rect`'s [height
- dimension](https://drafts.fxtf.org/geometry/#rectangle-height-dimension)) corresponding to (`paint width`,
+11. Let `source x` be `rect`'s [x
+ coordinate](https://drafts.fxtf.org/geometry/#rectangle-x-coordinate) multiplied by `ratio`, and let
+ `source y` be `rect`'s [y
+ coordinate](https://drafts.fxtf.org/geometry/#rectangle-y-coordinate) multiplied by `ratio`.
+
+12. Let `source rectangle` be the rectangle whose corners are
+ the four points (`source x`, `source y`),
+ (`source x` + `framebuffer width`,
+ `source y`), (`source x` +
+ `framebuffer width`, `source y` +
+ `framebuffer height`), and (`source x`,
+ `source y` + `framebuffer height`).
+
+13. Let `destination rectangle` be the rectangle whose
+ corners are the four points (0, 0), (`paint width`, 0),
+ (`paint width`, `paint height`), and (0,
  `paint height`).
 
-8. Return
- [canvas](https://svgwg.org/svg2-draft/coords.html#TermCanvas).
+14. Complete implementation specific steps equivalent to painting the
+ region of `document`'s framebuffer specified by
+ `source rectangle` on the region of
+ `canvas context`'s [output
+ bitmap](https://html.spec.whatwg.org/multipage/canvas.html#output-bitmap) specified by `destination rectangle`.
+
+ When the dimensions of `destination rectangle` are
+ smaller than `source rectangle`, then the value painted
+ at a point in the `destination rectangle` is computed by
+ filtering the data from `document`'s framebuffer. The
+ user agent may use any filtering algorithm (for example bilinear
+ interpolation or nearest-neighbor). When the filtering algorithm
+ requires a pixel value from outside the framebuffer, it must instead
+ use the value from the nearest edge pixel. (That is, the filter uses
+ \"clamp-to-edge\" behavior.) When the filtering algorithm requires a
+ pixel value from outside the `source rectangle` but
+ inside the framebuffer, then the value from the framebuffer must be
+ used.
+
+15. Return `canvas`.
 
 To [encode a canvas as Base64] given `canvas` and
 `format`:
@@ -4200,10 +4605,10 @@ To [get the origin rectangle] given `document` and
 1. If `origin` is `"viewport"`:
 
  1. Let `viewport` be `document`'s [visual
- viewport](https://drafts.csswg.org/cssom-view/#visual-viewport).
+ viewport](https://drafts.csswg.org/css-viewport/#visual-viewport).
 
  2. Let `viewport rect` be a
- [`DOMRectReadOnly`](https://drafts.csswg.org/geometry/#domrectreadonly) with [x
+ [`DOMRectReadOnly`](https://drafts.csswg.org/geometry-1/#domrectreadonly) with [x
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-x-coordinate) `viewport` [page
  left](https://drafts.csswg.org/cssom-view/#dom-visualviewport-pageleft), [y
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-y-coordinate) `viewport` [page
@@ -4220,7 +4625,7 @@ To [get the origin rectangle] given `document` and
  element](https://dom.spec.whatwg.org/#ref-for-dom-document-documentelement) for `document`.
 
 4. Let `document rect` be a
- [`DOMRectReadOnly`](https://drafts.csswg.org/geometry/#domrectreadonly) with [x
+ [`DOMRectReadOnly`](https://drafts.csswg.org/geometry-1/#domrectreadonly) with [x
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-x-coordinate) 0, [y
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-y-coordinate) 0, [width
  dimension](https://drafts.fxtf.org/geometry/#rectangle-width-dimension) `document element` [scroll
@@ -4257,6 +4662,8 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `session` and
 
  (#issue-b2b83ca0) This ought to be integrated into the
  update rendering algorithm in some more explicit way.
+ [\[w3c/webdriver-bidi Issue
+ #1131\]](https://github.com/w3c/webdriver-bidi/issues/1131)
 
 6. Let `origin` be the value of the `context` field of
  `command parameters` if present, or \"viewport\"
@@ -4314,7 +4721,7 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `session` and
  box](https://drafts.csswg.org/cssom-view-1/#element-get-the-bounding-box) for `element`.
 
  8. Let `clip rect` be a
- [`DOMRectReadOnly`](https://drafts.csswg.org/geometry/#domrectreadonly) with [x
+ [`DOMRectReadOnly`](https://drafts.csswg.org/geometry-1/#domrectreadonly) with [x
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-x-coordinate) `element rect`\[\"`x`\"\] +
  `viewport rect`\[\"`x`\"\], [y
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-y-coordinate) `element rect`\[\"`y`\"\] +
@@ -4333,7 +4740,7 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `session` and
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-y-coordinate).
 
  3. Let `clip rect` be a
- [`DOMRectReadOnly`](https://drafts.csswg.org/geometry/#domrectreadonly) with [x
+ [`DOMRectReadOnly`](https://drafts.csswg.org/geometry-1/#domrectreadonly) with [x
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-x-coordinate) `clip x`, [y
  coordinate](https://drafts.fxtf.org/geometry/#rectangle-y-coordinate) `clip y`, width
  `clip`\[\"`width`\"\], and height
@@ -4352,22 +4759,26 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `session` and
  [error](https://w3c.github.io/webdriver/#errors) with error code [unable to capture
  screen](https://w3c.github.io/webdriver/#dfn-unable-to-capture-screen).
 
-13. Let `canvas` be [render document to a
- canvas](#render-document-to-a-canvas) with `document` and `rect`.
+13. Let `image size` be the value of the `imageSize` field of
+ `command parameters` if present, or null otherwise.
 
-14. Let `format` be the `format` field of
+14. Let `canvas` be [render document to a
+ canvas](#render-document-to-a-canvas) with `document`, `rect` and
+ `image size`.
+
+15. Let `format` be the `format` field of
  `command parameters`.
 
-15. Let `encoding result` be the result of
+16. Let `encoding result` be the result of
  [trying](https://w3c.github.io/webdriver/#dfn-try) to [encode a canvas as
  Base64](#encode-a-canvas-as-base64) with `canvas` and `format`.
 
-16. Let `body` be a
+17. Let `body` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the
  `browsingContext.CaptureScreenshotResult` production, with the
  `data` field set to `encoding result`.
 
-17. Return
+18. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data `body`.
 
 ##### 7.3.3.3. The browsingContext.close Command
@@ -4464,7 +4875,8 @@ Return Type
 
 : ```
  browsingContext.CreateResult = {
- context: browsingContext.BrowsingContext
+ context: browsingContext.BrowsingContext,
+ ? userContext: browser.UserContext
  }
  ```
 
@@ -4525,8 +4937,8 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
 
 11. Let `traversable` be the result of trying to [create a
  new top-level
- traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-top-level-traversable) steps with null and empty string, and setting the
- [associated user
+ traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-top-level-traversable) steps with null, empty string, null, and false, and
+ setting the [associated user
  context](#associated-user-context) for the newly created [top-level
  traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable) to `user context`. Which OS window the
  new [top-level
@@ -4576,7 +4988,10 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `browsingContext.CreateResult`
  production, with the `context` field set to
  `traversable`'s [navigable
- id](#navigable-id).
+ id](#navigable-id) and the
+ `userContext` property set to the [user context
+ id](#user-context-user-context-id) of `traversable`'s [associated user
+ context](#associated-user-context).
 
 14. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data `body`.
@@ -5098,8 +5513,7 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `session` and
  [list](https://infra.spec.whatwg.org/#list).
 
 9. If `start nodes parameter` is null,
- [append](https://infra.spec.whatwg.org/#list-append) the [document
- element](https://dom.spec.whatwg.org/#ref-for-dom-document-documentelement) of `navigable`'s [active
+ [append](https://infra.spec.whatwg.org/#list-append) the `navigable`'s [active
  document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document) to `context nodes`. Otherwise, for each
  `serialized start node` in
  `start nodes parameter`:
@@ -5414,6 +5828,8 @@ lengths](https://drafts.csswg.org/css-values-3/#absolute-lengths).
 
  (#issue-b2b83ca0①) This ought to be integrated into
  the update rendering algorithm in some more explicit way.
+ [\[w3c/webdriver-bidi Issue
+ #1131\]](https://github.com/w3c/webdriver-bidi/issues/1131)
 
  1. Let `pdf data` be the result taking UA-specific steps
  to generate a paginated representation of `document`,
@@ -5554,7 +5970,80 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
  `wait condition`, history handling \"`reload`\", and
  ignore cache `ignore cache`.
 
-##### 7.3.3.11. The browsingContext.setViewport Command
+##### 7.3.3.11. The browsingContext.setBypassCSP Command
+
+The [browsingContext.setBypassCSP] command
+allows bypassing Content Security Policy enforcement.
+
+ When CSP bypass is enabled, all CSP directives are
+bypassed, including those that would normally block eval(), new
+Function(), inline scripts, and resource loading.
+
+Command Type
+
+: ```
+ browsingContext.SetBypassCSP = (
+ method: "browsingContext.setBypassCSP",
+ params: browsingContext.SetBypassCSPParameters
+ )
+
+ browsingContext.SetBypassCSPParameters = {
+ bypass: true / null,
+ ? contexts: [+browsingContext.BrowsingContext],
+ ? userContexts: [+browser.UserContext],
+ }
+ ```
+
+Return Type
+
+: ```
+ browsingContext.SetBypassCSPResult = EmptyResult
+ ```
+
+A [remote
+end](https://w3c.github.io/webdriver/#dfn-remote-ends) has a [bypass CSP
+configuration], which is [WebDriver
+configuration](#webdriver-configuration) with [associated
+type](#webdriver-configuration-associated-type) boolean.
+
+The [WebDriver BiDi CSP is bypassed] steps given
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `navigable` are:
+
+1. Let `top-level traversable` be `navigable`'s
+ [top-level
+ traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-top).
+
+2. Let `bypass CSP enabled` be the result of [get WebDriver
+ configuration
+ value](#get-webdriver-configuration-value) of [bypass CSP
+ configuration](#bypass-csp-configuration) for `top-level traversable`.
+
+3. Assert: `bypass CSP enabled` is `true` or
+ [unset](#webdriver-configuration-unset).
+
+4. If `bypass CSP enabled` is
+ [unset](#webdriver-configuration-unset), return false.
+
+5. Return true.
+
+The [remote end
+steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) given `command parameters` are:
+
+1. Let `bypass` be
+ `command parameters`\[\"`bypass`\"\].
+
+2. If `bypass` is null, set `bypass` to
+ [unset](#webdriver-configuration-unset).
+
+3. [Try](https://w3c.github.io/webdriver/#dfn-try) to [store WebDriver
+ configuration](#store-webdriver-configuration) [bypass CSP
+ configuration](#bypass-csp-configuration) `bypass` for
+ `command parameters`.
+
+4. Return
+ [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
+
+##### 7.3.3.12. The browsingContext.setViewport Command
 
 The [browsingContext.setViewport] command
 modifies specific viewport characteristics (e.g. viewport width and
@@ -5644,14 +6133,14 @@ To [set viewport] given given
 
 1. If `viewport` is not null, set the width of
  `navigable`'s [layout
- viewport](https://drafts.csswg.org/cssom-view/#layout-viewport) to be the `viewport`'s
+ viewport](https://drafts.csswg.org/css-viewport/#layout-viewport) to be the `viewport`'s
  [width](#viewport-dimensions-width) in CSS pixels and set the height of the
  `navigable`'s [layout
- viewport](https://drafts.csswg.org/cssom-view/#layout-viewport) to be the `viewport`'s
+ viewport](https://drafts.csswg.org/css-viewport/#layout-viewport) to be the `viewport`'s
  [height](#viewport-dimensions-height) in CSS pixels.
 
 2. Otherwise, set the `navigable`'s [layout
- viewport](https://drafts.csswg.org/cssom-view/#layout-viewport) to the implementation-defined default.
+ viewport](https://drafts.csswg.org/css-viewport/#layout-viewport) to the implementation-defined default.
 
 After creating a document in a new
 [navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `navigable` and before the [run WebDriver
@@ -5667,25 +6156,11 @@ TODO: Move it as a hook in the html spec instead.
 2. If `navigable` is a [top-level
  traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable):
 
- 1. If [geolocation overrides
- map](#geolocation-overrides-map)
- [contains](https://infra.spec.whatwg.org/#map-exists) `user context`, [set emulated
- position
- data](https://www.w3.org/TR/geolocation/#dfn-set-emulated-position-data) with `navigable` and [geolocation
- overrides
- map](#geolocation-overrides-map)\[`user context`\].
+ 1. [Update geolocation
+ override](#update-geolocation-override) for `navigable`.
 
- 2. If [forced colors mode theme overrides
- map](#forced-colors-mode-theme-overrides-map)
- [contains](https://infra.spec.whatwg.org/#map-exists) `user context`:
-
- 1. Let `theme` be [forced colors mode theme
- overrides
- map](#forced-colors-mode-theme-overrides-map)\[`user context`\].
-
- 2. [Set emulated forced colors theme
- data](https://drafts.csswg.org/css-color-adjust-1/#set-emulated-forced-colors-theme-data) with `navigable` and
- `theme`.
+ 2. [Update emulated forced colors
+ theme](#update-emulated-forced-colors-theme) for `navigable`.
 
  3. If [screen orientation overrides
  map](#screen-orientation-overrides-map)
@@ -5718,11 +6193,17 @@ TODO: Move it as a hook in the html spec instead.
  map](#viewport-overrides-map)\[`user context`\]\'s
  [devicePixelRatio](#viewport-configuration-devicepixelratio).
 
+4. [Update scrollbar type
+ override](#update-scrollbar-type-override) for `navigable`.
+
+5. [Update text layout mode
+ override](#update-text-layout-mode-override) for `navigable`.
+
 The [remote end
 steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command parameters` are:
 
 1. If the implementation is unable to adjust the [layout
- viewport](https://drafts.csswg.org/cssom-view/#layout-viewport) parameters with the given
+ viewport](https://drafts.csswg.org/css-viewport/#layout-viewport) parameters with the given
  `command parameters` for any reason, return
  [error](https://w3c.github.io/webdriver/#errors) with [error
  code](https://w3c.github.io/webdriver/#dfn-error-code) [unsupported
@@ -5836,7 +6317,280 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
 9. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
-##### 7.3.3.12. The browsingContext.traverseHistory Command
+##### 7.3.3.13. The browsingContext.startScreencast Command
+
+The
+[browsingContext.startScreencast] command
+starts the screencast of a given navigable and writes it to a file.
+
+ The [remote
+end](https://w3c.github.io/webdriver/#dfn-remote-ends) creates and writes the screencast file, but does not
+delete it. Cleaning up the file is left to the [local
+end](https://w3c.github.io/webdriver/#dfn-local-ends). In some configurations this might not be possible ---
+for example, if the [remote
+end](https://w3c.github.io/webdriver/#dfn-remote-ends) has read/write access to the filesystem but the [local
+end](https://w3c.github.io/webdriver/#dfn-local-ends) has only read-only access.
+
+Command Type
+
+: ```
+ browsingContext.StartScreencast = (
+ method: "browsingContext.startScreencast",
+ params: browsingContext.StartScreencastParameters
+ )
+
+ browsingContext.StartScreencastParameters = {
+ context: browsingContext.BrowsingContext,
+ ? destinationFolder: text,
+ ? mimeType: text,
+ ? video: browsingContext.MediaTrackConstraints,
+ ? audio: bool .default false,
+ }
+
+ browsingContext.MediaTrackConstraints = {
+ ? width: js-uint,
+ ? height: js-uint,
+ ? frameRate: js-uint,
+ }
+ ```
+
+Return Type
+
+: ```
+ browsingContext.StartScreencastResult = {
+ screencast: browsingContext.Screencast,
+ path: text
+ }
+ ```
+
+ ```
+ browsingContext.Screencast = text
+ ```
+
+The [remote end
+steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) given `session` and
+`command parameters` are:
+
+1. Let `navigable id` be
+ `command parameters`\[\"`context`\"\].
+
+2. Let `navigable` be the result of
+ [trying](https://w3c.github.io/webdriver/#dfn-try) to [get a
+ navigable](#get-a-navigable) with `navigable id`.
+
+3. If `navigable` is not a [top-level
+ traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable), return
+ [error](https://w3c.github.io/webdriver/#errors) with [error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [invalid
+ argument](https://w3c.github.io/webdriver/#dfn-invalid-argument).
+
+4. If `command parameters`
+ [contains](https://infra.spec.whatwg.org/#map-exists) the `destinationFolder` field:
+
+ 1. Let `destination folder` be
+ `command parameters`\[\"`destinationFolder`\"\].
+
+ 2. Let `destination folder entry` be [locate an
+ entry](https://fs.spec.whatwg.org/#locating-an-entry) given
+ [path](https://fs.spec.whatwg.org/#locator-path) `destination folder` and
+ [root](https://fs.spec.whatwg.org/#locator-root) corresponding to the root of the file system.
+
+ 3. If `destination folder entry` is null, return
+ [error](https://w3c.github.io/webdriver/#errors) with [error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [invalid
+ argument](https://w3c.github.io/webdriver/#dfn-invalid-argument).
+
+ 4. Let `path` be an implementation-defined file path for
+ a new file in `destination folder entry` where the
+ recording will be stored.
+
+5. Otherwise, let `path` be an implementation-defined file
+ path where the recording will be stored.
+
+6. If `command parameters`
+ [contains](https://infra.spec.whatwg.org/#map-exists) the `mimeType` field:
+
+ 1. Let `mime type` be
+ `command parameters`\[\"`mimeType`\"\].
+
+7. Otherwise, set `mime type` to the implementation-defined
+ default format.
+
+8. If the implementation is unable to record a screencast of
+ `navigable` for any reason then return
+ [error](https://w3c.github.io/webdriver/#errors) with [error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [unsupported
+ operation](https://w3c.github.io/webdriver/#dfn-unsupported-operation).
+
+9. Let `stream` be a new [screencast
+ stream](#screencast-stream) for `navigable`, constructed as follows:
+
+ 1. Create a `video track` which must be a live-capture
+ of the
+ [browser](https://www.w3.org/TR/screen-capture/#dfn-browser) [display
+ surface](https://www.w3.org/TR/screen-capture/#dfn-display-surface) of the [relevant global
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global)'s [associated
+ \`Document\`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#concept-document-window)'s
+ `navigable`'s
+ [viewport](https://drafts.csswg.org/css2/#viewport%E2%91%A0).
+
+ 2. If `command parameters`
+ [contains](https://infra.spec.whatwg.org/#map-exists) \"`video`\":
+
+ 1. Let `video` be
+ `command parameters`\[\"`video`\"\].
+
+ 2. If `video`
+ [contains](https://infra.spec.whatwg.org/#map-exists) `width`:
+
+ 1. The user agent must attempt to obtain media whose width
+ is as close as possible to
+ `video`\[\"`width`\"\] given the capabilities
+ of the hardware and the other constraints specified.
+
+ 3. If `video`
+ [contains](https://infra.spec.whatwg.org/#map-exists) `height`:
+
+ 1. The user agent must attempt to obtain media whose height
+ is as close as possible to
+ `video`\[\"`height`\"\] given the
+ capabilities of the hardware and the other constraints
+ specified.
+
+ 4. If `video`
+ [contains](https://infra.spec.whatwg.org/#map-exists) `frameRate`:
+
+ 1. The user agent must attempt to obtain media whose frame
+ rate is as close as possible to
+ `video`\[\"`frameRate`\"\] given the
+ capabilities of the hardware and the other constraints
+ specified.
+
+ 3. [Set](https://infra.spec.whatwg.org/#map-set) `video track` to
+ `stream`\[[video
+ track](#screencast-stream-video-track)\].
+
+ 4. If `command parameters`\[\"`audio`\"\] is true:
+
+ 1. Create an `audio track` which contains the
+ combined audio produced by the sum of documents that consist
+ of the [relevant global
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global)'s [associated
+ \`Document\`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#concept-document-window)'s
+ `navigable`'s [active
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document), and all [active
+ documents](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document) in nested [browsing
+ context](https://html.spec.whatwg.org/multipage/document-sequences.html#browsing-context)s of the [relevant global
+ object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global)'s [associated
+ \`Document\`](https://html.spec.whatwg.org/multipage/nav-history-apis.html#concept-document-window)'s
+ `navigable`.
+
+ 2. [Set](https://infra.spec.whatwg.org/#map-set) `audio track` to
+ `stream`\[[audio
+ track](#screencast-stream-audio-track)\].
+
+ 5. If the implementation is unable to produce `stream`,
+ return
+ [error](https://w3c.github.io/webdriver/#errors) with [error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [unknown
+ error](https://w3c.github.io/webdriver/#dfn-unknown-error).
+
+10. Let `screencast` be the string representation of a
+ [UUID](#biblio-rfc9562 "Universally Unique IDentifiers (UUIDs)").
+
+11. Let `recording` be a new [screencast
+ recording](#screencast-recording) with
+ [stream](#screencast-recording-stream) `stream`,
+ [path](#screencast-recording-path) `path`,
+ [state](#screencast-recording-state) \"`recording`\",
+ [writeError](#screencast-recording-writeerror) null.
+
+12. Set `session`'s [screencast recordings
+ map](#screencast-recordings-map)\[`screencast`\] to
+ `recording`.
+
+13. [Start a screencast
+ recording](#start-a-screencast-recording) given `recording` and
+ `mime type`.
+
+14. Let `body` be a new
+ [map](https://infra.spec.whatwg.org/#ordered-map) matching the
+ `browsingContext.StartScreencastResult` with the `screencast` field
+ set to `screencast` and `path` field set to
+ `path`.
+
+15. Return
+ [success](https://w3c.github.io/webdriver/#dfn-success) with data `body`.
+
+##### 7.3.3.14. The browsingContext.stopScreencast Command
+
+The
+[browsingContext.stopScreencast] command
+stops the screencast.
+
+Command Type
+
+: ```
+ browsingContext.StopScreencast = (
+ method: "browsingContext.stopScreencast",
+ params: browsingContext.StopScreencastParameters
+ )
+
+ browsingContext.StopScreencastParameters = {
+ screencast: browsingContext.Screencast
+ }
+ ```
+
+Return Type
+
+: ```
+ browsingContext.StopScreencastResult = {
+ path: text,
+ ? error: text
+ }
+ ```
+
+The [remote end
+steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) given `session` and
+`command parameters` are:
+
+1. Let `screencast` be the value of the \"`screencast`\"
+ field in `command parameters`.
+
+2. If `session`'s [screencast recordings
+ map](#screencast-recordings-map) does not
+ [contain](https://infra.spec.whatwg.org/#map-exists) `screencast`, return
+ [error](https://w3c.github.io/webdriver/#errors) with [error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [no such
+ screencast](#errors-no-such-screencast).
+
+3. Let `screencast recording` be `session`'s
+ [screencast recordings
+ map](#screencast-recordings-map)\[`screencast`\].
+
+4. [Stop a screencast
+ recording](#stop-a-screencast-recording) given `screencast recording`.
+
+5. [Remove](https://infra.spec.whatwg.org/#map-remove) `screencast` from `session`'s
+ [screencast recordings
+ map](#screencast-recordings-map).
+
+6. Let `error` be `screencast recording`'s
+ [writeError](#screencast-recording-writeerror).
+
+7. Let `path` be `screencast recording`'s
+ [path](#screencast-recording-path).
+
+8. Let `body` be a new
+ [map](https://infra.spec.whatwg.org/#ordered-map) matching the `browsingContext.StopScreencastResult`
+ with the `path` field set to `path`, `error` field set to
+ `error` if `error` is not null or omitted
+ otherwise.
+
+9. Return
+ [success](https://w3c.github.io/webdriver/#dfn-success) with data `body`.
+
+##### 7.3.3.15. The browsingContext.traverseHistory Command
 
 The
 [browsingContext.traverseHistory] command
@@ -5937,7 +6691,7 @@ and [navigation
 status](#webdriver-bidi-navigation-status) `navigation status` are:
 
 Do we want to expose a
-\`browsingContext.pageShow event? In that case we'd need to call this
+\`browsingContext.pageShow\` event? In that case we'd need to call this
 whenever \`pageshow\` is going to be emitted, not just on bfcache
 restore, and also add the persisted status to the data.
 
@@ -5968,17 +6722,26 @@ Event Type
 : ```
  browsingContext.ContextCreated = (
  method: "browsingContext.contextCreated",
- params: browsingContext.Info
+ params: browsingContext.ContextCreatedParameters
  )
+
+ browsingContext.ContextCreatedParameters = {
+ browsingContext.BaseInfo,
+ hasPlannedNavigation: bool,
+ }
  ```
+
+The `browsingContext.ContextCreatedParameters` `hasPlannedNavigation`
+indicates if a navigable is going to perform a navigation after the
+`browsingContext.contextCreated` event is dispatched.
 
 To [Recursively emit context created
 events] given `session` and
 `navigable`:
 
 1. [Emit a context created
- event](#emit-a-context-created-event) with `session` and
- `navigable`.
+ event](#emit-a-context-created-event) with `session`, `navigable`,
+ and false.
 
 2. For each child navigable, `child`, of
  `navigable`:
@@ -5987,28 +6750,34 @@ events] given `session` and
  events](#recursively-emit-context-created-events) given `session` and
  `child`.
 
-To [Emit a context created event] given `session` and
-`navigable`:
+To [Emit a context created event] given `session`,
+`navigable`, and `has planned navigation`:
 
 1. Let `params` be the result of [get the navigable
  info](#get-the-navigable-info) given `navigable`, 0, and true.
 
-2. Let `body` be a
+2. Set `params`\[\"`hasPlannedNavigation`\"\] to
+ `has planned navigation`.
+
+3. Assert: `params` matches the
+ `browsingContext.ContextCreated` production.
+
+4. Let `body` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `browsingContext.ContextCreated`
  production, with the `params` field set to `params`.
 
-3. [Emit an event](#emit-an-event) with `session` and `body`.
+5. [Emit an event](#emit-an-event) with `session` and `body`.
 
 The [remote end event
 trigger](#event-remote-end-event-trigger) is the [WebDriver BiDi navigable
 created] steps given
-[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `navigable` and
-[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `opener navigable`:
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `navigable`, boolean
+`has planned navigation`, and optional
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `opener navigable` (default: null):
 
 1. Set `navigable`'s [original
  opener](#original-opener)
- to `opener navigable`, if `opener navigable`
- is provided.
+ to `opener navigable`.
 
 2. If the [navigable cache
  behavior](#navigable-cache-behavior) with `navigable` is \"`bypass`\", then
@@ -6025,8 +6794,8 @@ created] steps given
  `related navigables`:
 
  1. [Emit a context created
- event](#emit-a-context-created-event) given `session` and
- `navigable`.
+ event](#emit-a-context-created-event) given `session`,
+ `navigable`, and `has planned navigation`.
 
 The [remote end subscribe
 steps](#event-remote-end-subscribe-steps), with [subscribe
@@ -6208,7 +6977,8 @@ Event Type
  browsingContext.HistoryUpdatedParameters = {
  context: browsingContext.BrowsingContext,
  timestamp: js-uint,
- url: text
+ url: text,
+ ? userContext: browser.UserContext
  }
  ```
 
@@ -6223,27 +6993,32 @@ updated] steps given
  document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document)'s
  [URL](https://dom.spec.whatwg.org/#concept-document-url).
 
-2. Let `timestamp` be a [time
+2. Let `user context id` be the [user context
+ id](#user-context-user-context-id) of `navigable`'s [associated user
+ context](#associated-user-context).
+
+3. Let `timestamp` be a [time
  value](https://tc39.es/ecma262/#sec-time-values-and-time-range) representing the current date and time in UTC.
 
-3. Let `params` be a
+4. Let `params` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the
  `browsingContext.HistoryUpdatedParameters` production, with the
  `url` field set to `url`, the `timestamp` field set to
- `timestamp` and the `context` field set to
+ `timestamp`, the `context` field set to
  `navigable`'s [navigable
- id](#navigable-id).
+ id](#navigable-id) and the
+ `userContext` field set to `user context id`.
 
-4. Let `body` be a
+5. Let `body` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `browsingContext.HistoryUpdated`
  production, with the `params` field set to `params`.
 
-5. Let `related browsing contexts` be a
+6. Let `related browsing contexts` be a
  [set](https://infra.spec.whatwg.org/#ordered-set) containing `navigable`'s [active
  browsing
  context](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-bc).
 
-6. For each `session` in the [set of sessions for which an
+7. For each `session` in the [set of sessions for which an
  event is
  enabled](#set-of-sessions-for-which-an-event-is-enabled) given \"`browsingContext.historyUpdated`\" and
  `related browsing contexts`:
@@ -6347,6 +7122,7 @@ Event Type
  )
 
  browsingContext.DownloadWillBeginParams = {
+ download: browsingContext.Download,
  suggestedFilename: text,
  browsingContext.BaseNavigationInfo
  }
@@ -6363,7 +7139,14 @@ status](#webdriver-bidi-navigation-status) `navigation status`:
  info](#get-the-navigation-info) given `navigable` and
  `navigation status`.
 
-2. Let `params` be a
+2. Let `download` be the string representation of a
+ [UUID](#biblio-rfc9562 "Universally Unique IDentifiers (UUIDs)").
+
+3. [Set](https://infra.spec.whatwg.org/#map-set) [download id
+ map](#download-id-map)\[`navigation status`'s
+ [downloadResponse](#navigation-status-download-response)\] to `download`.
+
+4. Let `params` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the
  `browsingContext.DownloadWillBeginParams` production, with the
  `context` field set to
@@ -6371,25 +7154,26 @@ status](#webdriver-bidi-navigation-status) `navigation status`:
  field set to `navigation info`\[\"`navigation`\"\], the
  `timestamp` field set to
  `navigation info`\[\"`timestamp`\"\], the `url` field set
- to `navigation info`\[\"`url`\"\] and `suggestedFilename`
- field set to `navigation status`'s
+ to `navigation info`\[\"`url`\"\], the `download` field
+ set to `download` and the `suggestedFilename` field set
+ to `navigation status`'s
  [suggestedFilename](#navigation-status-suggested-filename).
 
-3. Let `body` be a
+5. Let `body` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `browsingContext.DownloadWillBegin`
  production, with the `params` field set to `params`.
 
-4. Let `navigation id` be `navigation status`'s
+6. Let `navigation id` be `navigation status`'s
  [id](#navigation-status-id).
 
-5. Let `related navigables` be a
+7. Let `related navigables` be a
  [set](https://infra.spec.whatwg.org/#ordered-set) containing `navigable`.
 
-6. [Resume](#resume) with
+8. [Resume](#resume) with
  \"`download started`\", `navigation id`, and
  `navigation status`.
 
-7. For each `session` in the [set of sessions for which an
+9. For each `session` in the [set of sessions for which an
  event is
  enabled](#set-of-sessions-for-which-an-event-is-enabled) given \"`browsingContext.downloadWillBegin`\" and
  `related navigables`:
@@ -6397,59 +7181,10 @@ status](#webdriver-bidi-navigation-status) `navigation status`:
  1. [Emit an event](#emit-an-event) with `session` and
  `body`.
 
-8. Let `download behavior` be [get download
+10. Let `download behavior` be [get download
  behavior](#get-download-behavior) with `navigable`.
 
-9. Return `download behavior`.
-
-The [remote end event
-trigger](#event-remote-end-event-trigger) is the [WebDriver BiDi download
-started] steps given
-[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `navigable` and [navigation
-status](#webdriver-bidi-navigation-status) `navigation status`:
-
-Remove after HTML spec switched to
-[WebDriver BiDi download will
-begin](#webdriver-bidi-download-will-begin) (https://github.com/whatwg/html/pull/11474).
-
-1. Let `navigation info` be the result of [get the
- navigation
- info](#get-the-navigation-info) given `navigable` and
- `navigation status`.
-
-2. Let `params` be a
- [map](https://infra.spec.whatwg.org/#ordered-map) matching the
- `browsingContext.DownloadWillBeginParams` production, with the
- `context` field set to
- `navigation info`\[\"`context`\"\], the `navigation`
- field set to `navigation info`\[\"`navigation`\"\], the
- `timestamp` field set to
- `navigation info`\[\"`timestamp`\"\], the `url` field set
- to `navigation info`\[\"`url`\"\] and `suggestedFilename`
- field set to `navigation status`'s
- [suggestedFilename](#navigation-status-suggested-filename).
-
-3. Let `body` be a
- [map](https://infra.spec.whatwg.org/#ordered-map) matching the `browsingContext.DownloadWillBegin`
- production, with the `params` field set to `params`.
-
-4. Let `navigation id` be `navigation status`'s
- [id](#navigation-status-id).
-
-5. Let `related navigables` be a
- [set](https://infra.spec.whatwg.org/#ordered-set) containing `navigable`.
-
-6. [Resume](#resume) with
- \"`download started`\", `navigation id`, and
- `navigation status`.
-
-7. For each `session` in the [set of sessions for which an
- event is
- enabled](#set-of-sessions-for-which-an-event-is-enabled) given \"`browsingContext.downloadWillBegin`\" and
- `related navigables`:
-
- 1. [Emit an event](#emit-an-event) with `session` and
- `body`.
+11. Return `download behavior`.
 
 ##### 7.3.4.9. The browsingContext.downloadEnd Event
 
@@ -6470,11 +7205,13 @@ Event Type
 
  browsingContext.DownloadCanceledParams = (
  status: "canceled",
+ download: browsingContext.Download,
  browsingContext.BaseNavigationInfo
  )
 
  browsingContext.DownloadCompleteParams = (
  status: "complete",
+ download: browsingContext.Download,
  filepath: text / null,
  browsingContext.BaseNavigationInfo
  )
@@ -6494,11 +7231,23 @@ status](#webdriver-bidi-navigation-status) `navigation status`:
 2. Assert `navigation info`\[\"`status`\"\] is equal to
  either \"`complete`\" or \"`canceled`\".
 
-3. If `navigation info`\[\"`status`\"\] is \"`complete`\",
+3. Let `download response` be
+ `navigation status`'s
+ [downloadResponse](#navigation-status-download-response).
+
+4. If [download id map](#download-id-map)
+ [contains](https://infra.spec.whatwg.org/#map-exists) `download response`, let
+ `download` be [download id
+ map](#download-id-map)\[`download response`\], otherwise let
+ `download` be the string representation of a
+ [UUID](#biblio-rfc9562 "Universally Unique IDentifiers (UUIDs)").
+
+5. If `navigation info`\[\"`status`\"\] is \"`complete`\",
  let `params` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the
  `browsingContext.DownloadCompleteParams` production, with the
- `filepath` field set to `navigation status`'s
+ `download` field set to `download`, the `filepath` field
+ set to `navigation status`'s
  [downloadedFilepath](#navigation-status-downloaded-filepath), the `context` field set to
  `navigation info`\[\"`context`\"\], the `navigation`
  field set to `navigation info`\[\"`navigation`\"\], the
@@ -6509,24 +7258,24 @@ status](#webdriver-bidi-navigation-status) `navigation status`:
  `filepath` can be null for completed downloads if
  the filepath is not available for whatever reason.
 
-4. Otherwise, let `params` be a
+6. Otherwise, let `params` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the
  `browsingContext.DownloadCanceledParams` production, with the
- `context` field set to
- `navigation info`\[\"`context`\"\], the `navigation`
- field set to `navigation info`\[\"`navigation`\"\], the
- `timestamp` field set to
- `navigation info`\[\"`timestamp`\"\], and the `url` field
- set to `navigation info`\[\"`url`\"\].
+ `download` field set to `download`, the `context` field
+ set to `navigation info`\[\"`context`\"\], the
+ `navigation` field set to
+ `navigation info`\[\"`navigation`\"\], the `timestamp`
+ field set to `navigation info`\[\"`timestamp`\"\], and
+ the `url` field set to `navigation info`\[\"`url`\"\].
 
-5. Let `body` be a
+7. Let `body` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `browsingContext.DownloadEnd`
  production, with the `params` field set to `params`.
 
-6. Let `related navigables` be a
+8. Let `related navigables` be a
  [set](https://infra.spec.whatwg.org/#ordered-set) containing `navigable`.
 
-7. For each `session` in the [set of sessions for which an
+9. For each `session` in the [set of sessions for which an
  event is
  enabled](#set-of-sessions-for-which-an-event-is-enabled) given \"`browsingContext.downloadEnd`\" and
  `related navigables`:
@@ -6677,6 +7426,7 @@ Event Type
  context: browsingContext.BrowsingContext,
  accepted: bool,
  type: browsingContext.UserPromptType,
+ ? userContext: browser.UserContext,
  ? userText: text
  }
  ```
@@ -6695,23 +7445,27 @@ null).
  id](#navigable-id) for
  `navigable`.
 
-3. Let `params` be a
+3. Let `user context id` be the [user context
+ id](#user-context-user-context-id) of `navigable`'s [associated user
+ context](#associated-user-context).
+
+4. Let `params` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the
  `browsingContext.UserPromptClosedParameters` production with the
- `context` field set to `navigable id`, the `accepted`
- field set to `accepted`, the `type` field set to
- `type`, and the `userText` field set to
- `user text` if `user text` is not null or
- omitted otherwise.
+ `context` field set to `navigable id`, the `userContext`
+ field set to `user context id`, the `accepted` field set
+ to `accepted`, the `type` field set to `type`,
+ and the `userText` field set to `user text` if
+ `user text` is not null or omitted otherwise.
 
-4. Let `body` be a
+5. Let `body` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `BrowsingContextUserPromptClosedEvent`
  production, with the `params` field set to `params`.
 
-5. Let `related navigables` be a
+6. Let `related navigables` be a
  [set](https://infra.spec.whatwg.org/#ordered-set) containing `navigable`.
 
-6. For each `session` in the [set of sessions for which an
+7. For each `session` in the [set of sessions for which an
  event is
  enabled](#set-of-sessions-for-which-an-event-is-enabled) given \"`browsingContext.userPromptClosed`\" and
  `related navigables`:
@@ -6734,6 +7488,7 @@ Event Type
  handler: session.UserPromptHandlerType,
  message: text,
  type: browsingContext.UserPromptType,
+ ? userContext: browser.UserContext,
  ? defaultValue: text
  }
  ```
@@ -6784,27 +7539,31 @@ opened] steps given
  id](#navigable-id) for
  `navigable`.
 
-3. Let `handler` be [get navigable's user prompt
+3. Let `user context id` be the [user context
+ id](#user-context-user-context-id) of `navigable`'s [associated user
+ context](#associated-user-context).
+
+4. Let `handler` be [get navigable's user prompt
  handler](#get-navigables-user-prompt-handler) with `type` and `navigable`.
 
-4. Let `params` be a
+5. Let `params` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the
  `browsingContext.UserPromptOpenedParameters` production with the
- `context` field set to `navigable id`, the `type` field
- set to `type`, the `message` field set to
- `message`, the `defaultValue` field set to
- `default value` if `default value` is not null
- or omitted otherwise, and the `handler` field set to
- `handler`.
+ `context` field set to `navigable id`, the `userContext`
+ field set to `user context id`, the `type` field set to
+ `type`, the `message` field set to `message`,
+ the `defaultValue` field set to `default value` if
+ `default value` is not null or omitted otherwise, and the
+ `handler` field set to `handler`.
 
-5. Let `body` be a
+6. Let `body` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `browsingContext.UserPromptOpened`
  production, with the `params` field set to `params`.
 
-6. Let `related navigables` be a
+7. Let `related navigables` be a
  [set](https://infra.spec.whatwg.org/#ordered-set) containing `navigable`.
 
-7. For each `session` in the [set of sessions for which an
+8. For each `session` in the [set of sessions for which an
  event is
  enabled](#set-of-sessions-for-which-an-event-is-enabled) given \"`browsingContext.userPromptOpened`\" and
  `related navigables`:
@@ -6812,9 +7571,9 @@ opened] steps given
  1. [Emit an event](#emit-an-event) with `session` and
  `body`.
 
-8. If `handler` is \"`ignore`\", set handler to \"`none`\".
+9. If `handler` is \"`ignore`\", set handler to \"`none`\".
 
-9. Return `handler`.
+10. Return `handler`.
 
 ### 7.4. The emulation Module
 
@@ -6830,13 +7589,17 @@ EmulationCommand = (
  emulation.SetForcedColorsModeThemeOverride //
  emulation.SetGeolocationOverride //
  emulation.SetLocaleOverride //
+ emulation.SetMediaFeaturesOverride //
  emulation.SetNetworkConditions //
  emulation.SetScreenOrientationOverride //
  emulation.SetScreenSettingsOverride //
  emulation.SetScriptingEnabled //
+ emulation.SetScrollbarTypeOverride //
+ emulation.SetTextLayoutModeOverride //
  emulation.SetTimezoneOverride //
  emulation.SetTouchOverride //
- emulation.SetUserAgentOverride
+ emulation.SetUserAgentOverride //
+ emulation.SetViewportMetaOverride
 )
 ```
 
@@ -6845,11 +7608,15 @@ EmulationResult = (
  emulation.SetForcedColorsModeThemeOverrideResult /
  emulation.SetGeolocationOverrideResult /
  emulation.SetLocaleOverrideResult /
+ emulation.SetMediaFeaturesOverrideResult /
  emulation.SetScreenOrientationOverrideResult /
  emulation.SetScriptingEnabledResult /
+ emulation.SetScrollbarTypeOverrideResult /
+ emulation.SetTextLayoutModeOverrideResult /
  emulation.SetTimezoneOverrideResult /
  emulation.SetTouchOverrideResult /
- emulation.SetUserAgentOverrideResult
+ emulation.SetUserAgentOverrideResult /
+ emulation.SetViewportMetaOverrideResult
 )
 ```
 
@@ -6878,38 +7645,6 @@ contexts](#user-context) and
 integer, initially empty; and an
 [item](https://infra.spec.whatwg.org/#struct-item) named [navigables], which is a weak map between
 [navigables](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) and integer, initially empty.
-
-A [remote
-end](https://w3c.github.io/webdriver/#dfn-remote-ends) has a [forced colors mode theme overrides
-map] which is a weak map between [user
-contexts](#user-context) and
-string or null.
-
-A [geolocation override] is a
-[struct](https://infra.spec.whatwg.org/#struct) with:
-
-- [item](https://infra.spec.whatwg.org/#struct-item) named [`latitude`] which is a float;
-
-- [item](https://infra.spec.whatwg.org/#struct-item) named
- [`longitude`] which is a float;
-
-- [item](https://infra.spec.whatwg.org/#struct-item) named [`accuracy`] which is a float;
-
-- [item](https://infra.spec.whatwg.org/#struct-item) named [`altitude`] which is a float or null;
-
-- [item](https://infra.spec.whatwg.org/#struct-item) named
- [`altitudeAccuracy`] which is a float or null;
-
-- [item](https://infra.spec.whatwg.org/#struct-item) named [`heading`] which is a float or null;
-
-- [item](https://infra.spec.whatwg.org/#struct-item) named [`speed`] which is a float or null.
-
-A [remote
-end](https://w3c.github.io/webdriver/#dfn-remote-ends) has a [geolocation overrides
-map] which is a weak map between [user
-contexts](#user-context) and
-[geolocation
-override](#geolocation-override).
 
 A [screen orientation override] is a
 [struct](https://infra.spec.whatwg.org/#struct) with:
@@ -6963,71 +7698,56 @@ Return Type
 [`ForcedColorsModeAutomationTheme`](https://drafts.csswg.org/css-color-adjust-1/#enumdef-forcedcolorsmodeautomationtheme) for the corresponding enum mapping in the CSS
 specification.
 
+A [remote
+end](https://w3c.github.io/webdriver/#dfn-remote-ends) has a [forced colors mode theme override
+configuration], which is [WebDriver
+configuration](#webdriver-configuration) with [associated
+type](#webdriver-configuration-associated-type) string.
+
+To [update emulated forced colors
+theme] for
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `navigable`:
+
+1. Let `theme` be the result of [get WebDriver configuration
+ value](#get-webdriver-configuration-value) of [forced colors mode theme override
+ configuration](#forced-colors-mode-theme-override-configuration) for `navigable`.
+
+2. Assert: `theme` is \"`light`\", \"`dark`\" or
+ [unset](#webdriver-configuration-unset).
+
+3. If `theme` is
+ [unset](#webdriver-configuration-unset), set `theme` to \"`none`\".
+
+4. [Set emulated forced colors theme
+ data](https://drafts.csswg.org/css-color-adjust-1/#set-emulated-forced-colors-theme-data) with `navigable` and `theme`.
+
 The [remote end
 steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command parameters` are:
 
-1. If `command parameters`
- [contains](https://infra.spec.whatwg.org/#map-exists) \"`userContexts`\" and
- `command parameters`
- [contains](https://infra.spec.whatwg.org/#map-exists) \"`contexts`\", return
- [error](https://w3c.github.io/webdriver/#errors) with [error
- code](https://w3c.github.io/webdriver/#dfn-error-code) [invalid
- argument](https://w3c.github.io/webdriver/#dfn-invalid-argument).
-
-2. If `command parameters` doesn't
- [contain](https://infra.spec.whatwg.org/#map-exists) \"`userContexts`\" and
- `command parameters` doesn't
- [contain](https://infra.spec.whatwg.org/#map-exists) \"`contexts`\", return
- [error](https://w3c.github.io/webdriver/#errors) with [error
- code](https://w3c.github.io/webdriver/#dfn-error-code) [invalid
- argument](https://w3c.github.io/webdriver/#dfn-invalid-argument).
-
-3. Let `theme` be
+1. Let `theme` be
  `command parameters`\[\"`theme`\"\].
 
-4. If `theme` is null, set `theme` to \"`none`\".
+2. If `theme` is null, set `theme` to
+ [unset](#webdriver-configuration-unset).
 
-5. Let `navigables` be a
- [set](https://infra.spec.whatwg.org/#ordered-set).
+3. If the implementation does not support setting `theme`,
+ then return
+ [error](https://w3c.github.io/webdriver/#errors) with [error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [unsupported
+ operation](https://w3c.github.io/webdriver/#dfn-unsupported-operation).
 
-6. If the `contexts` field of `command parameters` is
- present:
+4. Let `affected navigables` be the result of
+ [trying](https://w3c.github.io/webdriver/#dfn-try) to [store WebDriver
+ configuration](#store-webdriver-configuration) [forced colors mode theme override
+ configuration](#forced-colors-mode-theme-override-configuration) `theme` for
+ `command parameters`.
 
- 1. Let `navigables` be the result of
- [trying](https://w3c.github.io/webdriver/#dfn-try) to [get valid top-level traversables by
- ids](#get-valid-top-level-traversables-by-ids) with
- `command parameters`\[\"`contexts`\"\].
+5. For each `navigable` of `affected navigables`:
 
-7. Otherwise:
+ 1. [Update emulated forced colors
+ theme](#update-emulated-forced-colors-theme) for `navigable`.
 
- 1. Let `user contexts` be the result of
- [trying](https://w3c.github.io/webdriver/#dfn-try) to [get valid user
- contexts](#get-valid-user-contexts) with
- `command parameters`\[\"`userContexts`\"\].
-
- 2. For each `user context` of
- `user contexts`:
-
- 1. [Set](https://infra.spec.whatwg.org/#map-set) [forced colors mode theme overrides
- map](#forced-colors-mode-theme-overrides-map)\[`user context`\] to
- `theme`.
-
- 2. [For
- each](https://infra.spec.whatwg.org/#list-iterate) `top-level traversable` of the
- list of all [top-level
- traversables](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable) whose [associated user
- context](#associated-user-context) is `user context`:
-
- 1. [Append](https://infra.spec.whatwg.org/#list-append) `top-level traversable` to
- `navigables`.
-
-8. For each `navigable` of `navigables`:
-
- 1. [Set emulated forced colors theme
- data](https://drafts.csswg.org/css-color-adjust-1/#set-emulated-forced-colors-theme-data) with `navigable` and
- `theme`.
-
-9. Return
+6. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
 ##### 7.4.2.2. The emulation.setGeolocationOverride Command
@@ -7075,6 +7795,47 @@ Return Type
  emulation.SetGeolocationOverrideResult = EmptyResult
  ```
 
+A [geolocation override] is a
+[struct](https://infra.spec.whatwg.org/#struct) with:
+
+- [item](https://infra.spec.whatwg.org/#struct-item) named [`latitude`] which is a float;
+
+- [item](https://infra.spec.whatwg.org/#struct-item) named
+ [`longitude`] which is a float;
+
+- [item](https://infra.spec.whatwg.org/#struct-item) named [`accuracy`] which is a float;
+
+- [item](https://infra.spec.whatwg.org/#struct-item) named [`altitude`] which is a float or null;
+
+- [item](https://infra.spec.whatwg.org/#struct-item) named
+ [`altitudeAccuracy`] which is a float or null;
+
+- [item](https://infra.spec.whatwg.org/#struct-item) named [`heading`] which is a float or null;
+
+- [item](https://infra.spec.whatwg.org/#struct-item) named [`speed`] which is a float or null.
+
+A [remote
+end](https://w3c.github.io/webdriver/#dfn-remote-ends) has a [geolocation override
+configuration], which is [WebDriver
+configuration](#webdriver-configuration) with [associated
+type](#webdriver-configuration-associated-type) [geolocation
+override](#geolocation-override).
+
+To [update geolocation override] for
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `navigable`:
+
+1. Let `emulated position data` be the result of [get
+ WebDriver configuration
+ value](#get-webdriver-configuration-value) of [geolocation override
+ configuration](#geolocation-override-configuration) for `navigable`.
+
+2. If `emulated position data` is
+ [unset](#webdriver-configuration-unset), set `emulated position data` to null.
+
+3. [Set emulated position
+ data](https://www.w3.org/TR/geolocation/#dfn-set-emulated-position-data) with `navigable` and
+ `emulated position data`.
+
 The [remote end
 steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command parameters` are:
 
@@ -7106,82 +7867,22 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
 3. Otherwise, let `emulated position data` be
  `command parameters`\[\"`coordinates`\"\].
 
-4. If `command parameters`
- [contains](https://infra.spec.whatwg.org/#map-exists) \"`userContexts`\" and
- `command parameters`
- [contains](https://infra.spec.whatwg.org/#map-exists) \"`contexts`\", return
- [error](https://w3c.github.io/webdriver/#errors) with [error
- code](https://w3c.github.io/webdriver/#dfn-error-code) [invalid
- argument](https://w3c.github.io/webdriver/#dfn-invalid-argument).
+4. If `emulated position data` is null, set
+ `emulated position data` to
+ [unset](#webdriver-configuration-unset).
 
-5. If `command parameters` doesn't
- [contain](https://infra.spec.whatwg.org/#map-exists) \"`userContexts`\" and
- `command parameters` doesn't
- [contain](https://infra.spec.whatwg.org/#map-exists) \"`contexts`\", return
- [error](https://w3c.github.io/webdriver/#errors) with [error
- code](https://w3c.github.io/webdriver/#dfn-error-code) [invalid
- argument](https://w3c.github.io/webdriver/#dfn-invalid-argument).
+5. Let `affected navigables` be the result of
+ [trying](https://w3c.github.io/webdriver/#dfn-try) to [store WebDriver
+ configuration](#store-webdriver-configuration) [geolocation override
+ configuration](#geolocation-override-configuration) `emulated position data` for
+ `command parameters`.
 
-6. Let `navigables` be a
- [set](https://infra.spec.whatwg.org/#ordered-set).
+6. For each `navigable` of `affected navigables`:
 
-7. If the `contexts` field of `command parameters` is
- present:
+ 1. [Update geolocation
+ override](#update-geolocation-override) for `navigable`.
 
- 1. Let `navigables` be the result of
- [trying](https://w3c.github.io/webdriver/#dfn-try) to [get valid top-level traversables by
- ids](#get-valid-top-level-traversables-by-ids) with
- `command parameters`\[\"`contexts`\"\].
-
-8. Otherwise, if the `userContexts` field of
- `command parameters` is present:
-
- 1. Let `user contexts` be the result of
- [trying](https://w3c.github.io/webdriver/#dfn-try) to [get valid user
- contexts](#get-valid-user-contexts) with
- `command parameters`\[\"`userContexts`\"\].
-
- 2. For each `user context` of
- `user contexts`:
-
- 1. If `emulated position data` is null, remove the
- `user context` from [geolocation overrides
- map](#geolocation-overrides-map).
-
- 2. Otherwise,
- [set](https://infra.spec.whatwg.org/#map-set) [geolocation overrides
- map](#geolocation-overrides-map)\[`user context`\] to
- `emulated position data`.
-
- 3. [For
- each](https://infra.spec.whatwg.org/#list-iterate) `top-level traversable` of the
- list of all [top-level
- traversables](https://html.spec.whatwg.org/multipage/document-sequences.html#top-level-traversable) whose [associated user
- context](#associated-user-context) is `user context`:
-
- 1. [Append](https://infra.spec.whatwg.org/#list-append) `top-level traversable` to
- `navigables`.
-
-9. For each `navigable` of `navigables`:
-
- 1. Let `user context` be `navigable`'s
- [associated user
- context](#associated-user-context).
-
- 2. If `emulated position data` is null and [geolocation
- overrides
- map](#geolocation-overrides-map)
- [contains](https://infra.spec.whatwg.org/#map-exists) `user context`, [set emulated
- position
- data](https://www.w3.org/TR/geolocation/#dfn-set-emulated-position-data) with `navigable` and [geolocation
- overrides
- map](#geolocation-overrides-map)\[`user context`\].
-
- 3. Otherwise, [set emulated position
- data](https://www.w3.org/TR/geolocation/#dfn-set-emulated-position-data) with `navigable` and
- `emulated position data`.
-
-10. Return
+7. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
 ##### 7.4.2.3. The emulation.setLocaleOverride Command
@@ -7240,32 +7941,6 @@ object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-setti
  map](#locale-overrides-map)\[`user context`\].
 
 3. Return null
-
-TODO: Remove the following algorithm once the update for
-navigator.language/s in the html spec is merged.
-https://github.com/whatwg/html/pull/11793
-
-[DefaultLocale](https://tc39.es/ecma402/#sec-defaultlocale) algorithm is implementation defined. A WebDriver-BiDi
-[remote
-end](https://w3c.github.io/webdriver/#dfn-remote-ends) must have an implementation that runs the following
-steps:
-
-1. Let `realm` be [current Realm
- Record](https://tc39.es/ecma262/#current-realm).
-
-2. Let `environment settings` be the [environment settings
- object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-settings-object) whose [realm execution
- context](https://html.spec.whatwg.org/multipage/webappapis.html#realm-execution-context)'s Realm component is `realm`.
-
-3. Let `locale override` be the result of [WebDriver BiDi
- emulated
- language](#webdriver-bidi-emulated-language) with `environment settings`.
-
-4. If `locale override` is not null, return
- `locale override`. Otherwise, return the result of
- implementation-defined steps in accordance with the requirements of
- the
- [DefaultLocale](https://tc39.es/ecma402/#sec-defaultlocale) specification.
 
 The [remote end
 steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command parameters` are:
@@ -7352,7 +8027,138 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
 9. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
-##### 7.4.2.4. The emulation.setNetworkConditions Command
+##### 7.4.2.4. The emulation.setMediaFeaturesOverride Command
+
+The
+[emulation.setMediaFeaturesOverride] command
+allows overriding the values of various media features.
+
+Command Type
+
+: ```
+ emulation.SetMediaFeaturesOverride = (
+ method: "emulation.setMediaFeaturesOverride",
+ params: emulation.SetMediaFeaturesOverrideParameters
+ )
+
+ emulation.SetMediaFeaturesOverrideParameters = {
+ features: emulation.MediaFeatures / null,
+ ? contexts: [+browsingContext.BrowsingContext],
+ ? userContexts: [+browser.UserContext],
+ }
+
+ emulation.MediaFeatures = {
+ ? "any-hover": "none" / "hover" / null,
+ ? "any-pointer": "none" / "coarse" / "fine" / null,
+ ? "color": js-uint / null,
+ ? "color-gamut": "srgb" / "p3" / "rec2020" / null,
+ ? "color-index": js-uint / null,
+ ? "display-mode": "fullscreen" / "standalone" / "minimal-ui" / "browser" / "picture-in-picture" / null,
+ ? "dynamic-range": "standard" / "high" / null,
+ ? "environment-blending": "opaque" / "additive" / "subtractive" / null,
+ ? "forced-colors": "none" / "active" / null,
+ ? "grid": 0 / 1 / null,
+ ? "horizontal-viewport-segments": js-uint / null,
+ ? "hover": "none" / "hover" / null,
+ ? "inverted-colors": "none" / "inverted" / null,
+ ? "monochrome": js-uint / null,
+ ? "nav-controls": "none" / "back" / null,
+ ? "overflow-block": "none" / "scroll" / "optional-paged" / "paged" / null,
+ ? "overflow-inline": "none" / "scroll" / null,
+ ? "pointer": "none" / "coarse" / "fine" / null,
+ ? "prefers-color-scheme": "light" / "dark" / null,
+ ? "prefers-contrast": "no-preference" / "more" / "less" / "custom" / null,
+ ? "prefers-reduced-data": "no-preference" / "reduce" / null,
+ ? "prefers-reduced-motion": "no-preference" / "reduce" / null,
+ ? "prefers-reduced-transparency": "no-preference" / "reduce" / null,
+ ? "scan": "interlace" / "progressive" / null,
+ ? "scripting": "none" / "initial-only" / "enabled" / null,
+ ? "update": "none" / "slow" / "fast" / null,
+ ? "vertical-viewport-segments": js-uint / null,
+ ? "video-color-gamut": "srgb" / "p3" / "rec2020" / null,
+ ? "video-dynamic-range": "standard" / "high" / null,
+ }
+ ```
+
+Return Type
+
+: ```
+ emulation.SetMediaFeaturesOverrideResult = EmptyResult
+ ```
+
+A [remote
+end](https://w3c.github.io/webdriver/#dfn-remote-ends) has a [media features override
+configuration], which is [WebDriver
+configuration](#webdriver-configuration) with [associated
+type](#webdriver-configuration-associated-type)
+[map](https://infra.spec.whatwg.org/#ordered-map).
+
+To get [WebDriver BiDi media feature
+value] for
+[Document](https://dom.spec.whatwg.org/#concept-document) `document` and media feature name
+`name`:
+
+1. Let `navigable` be `document`'s [node
+ navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#node-navigable).
+
+2. Let `media features override map` be the result of [get
+ WebDriver configuration
+ value](#get-webdriver-configuration-value) of [media features override
+ configuration](#media-features-override-configuration) for `navigable`.
+
+3. If `media features override map` is not
+ [unset](#webdriver-configuration-unset) and `media features override map`
+ [contains](https://infra.spec.whatwg.org/#map-exists) `name`, return
+ `media features override map`\[`name`\].
+
+4. Return null.
+
+The [remote end
+steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command parameters` are:
+
+1. Let `media features override` be
+ `command parameters`\[\"`features`\"\].
+
+2. If `media features override` is null, set
+ `media features override` to
+ [unset](#webdriver-configuration-unset).
+
+3. Let `media features override map` be an empty
+ [map](https://infra.spec.whatwg.org/#ordered-map).
+
+4. For each `media feature` of
+ `media features override`:
+
+ 1. [Set](https://infra.spec.whatwg.org/#map-set)
+ `media features override map`\[`media feature`\[\"`name`\"\]\]
+ to `media feature`\[\"`value`\"\].
+
+5. If the implementation does not support overriding any of the media
+ features in `media features override map`, return
+ [error](https://w3c.github.io/webdriver/#errors) with [error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [unsupported
+ operation](https://w3c.github.io/webdriver/#dfn-unsupported-operation).
+
+6. Let `affected navigables` be the result of [store
+ WebDriver
+ configuration](#store-webdriver-configuration) [media features override
+ configuration](#media-features-override-configuration) `media features override map` for
+ `command parameters`.
+
+7. For each `navigable` of `affected navigables`:
+
+ 1. [For
+ each](https://infra.spec.whatwg.org/#list-iterate) `document` currently loaded in
+ `navigable` or its [descendant
+ navigables](https://html.spec.whatwg.org/multipage/document-sequences.html#descendant-navigables):
+
+ 1. Run [evaluate media queries and report
+ changes](https://drafts.csswg.org/cssom-view/#evaluate-media-queries-and-report-changes) for `document`.
+
+8. Return
+ [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
+
+##### 7.4.2.5. The emulation.setNetworkConditions Command
 
 The
 [emulation.setNetworkConditions] command
@@ -7364,10 +8170,10 @@ Command Type
 : ```
  emulation.SetNetworkConditions = (
  method: "emulation.setNetworkConditions",
- params: emulation.setNetworkConditionsParameters
+ params: emulation.SetNetworkConditionsParameters
  )
 
- emulation.setNetworkConditionsParameters = {
+ emulation.SetNetworkConditionsParameters = {
  networkConditions: emulation.NetworkConditions / null,
  ? contexts: [+browsingContext.BrowsingContext],
  ? userContexts: [+browser.UserContext],
@@ -7503,7 +8309,7 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
 8. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
-##### 7.4.2.5. The emulation.setScreenSettingsOverride Command
+##### 7.4.2.6. The emulation.setScreenSettingsOverride Command
 
 The
 [emulation.setScreenSettingsOverride] command
@@ -7673,7 +8479,7 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
  5. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
-##### 7.4.2.6. The emulation.setScreenOrientationOverride Command
+##### 7.4.2.7. The emulation.setScreenOrientationOverride Command
 
 The
 [emulation.setScreenOrientationOverride] command
@@ -7836,12 +8642,12 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
 9. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
-##### 7.4.2.7. The emulation.setUserAgentOverride Command
+##### 7.4.2.8. The emulation.setUserAgentOverride Command
 
 The
 [emulation.setUserAgentOverride] command
-modifies User-Agent on the given top-level traversables or user
-contexts.
+modifies User-Agent on the given top-level traversables, user contexts,
+or globally.
 
 Command Type
 
@@ -7987,7 +8793,82 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) given `session` an
 6. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
-##### 7.4.2.8. The emulation.setScriptingEnabled Command
+##### 7.4.2.9. The emulation.setViewportMetaOverride Command
+
+The
+[emulation.setViewportMetaOverride] command
+modifies whether the browser respects the `<meta name=viewport>` tag.
+
+Command Type
+
+: ```
+ emulation.SetViewportMetaOverride = (
+ method: "emulation.setViewportMetaOverride",
+ params: emulation.SetViewportMetaOverrideParameters
+ )
+
+ emulation.SetViewportMetaOverrideParameters = {
+ viewportMeta: true / null,
+ ? contexts: [+browsingContext.BrowsingContext],
+ ? userContexts: [+browser.UserContext],
+ }
+ ```
+
+Return Type
+
+: ```
+ emulation.SetViewportMetaOverrideResult = EmptyResult
+ ```
+
+A [remote
+end](https://w3c.github.io/webdriver/#dfn-remote-ends) has a [viewport meta override
+configuration], which is [WebDriver
+configuration](#webdriver-configuration) with [associated
+type](#webdriver-configuration-associated-type) boolean.
+
+The [WebDriver BiDi viewport meta
+state] steps given
+[Document](https://dom.spec.whatwg.org/#concept-document) `document` are:
+
+1. Let `navigable` be `document`'s [node
+ navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#node-navigable).
+
+2. Let `viewport meta override` be the result of [get
+ WebDriver configuration
+ value](#get-webdriver-configuration-value) of [viewport meta override
+ configuration](#viewport-meta-override-configuration) for `navigable`.
+
+3. If `viewport meta override` is
+ [unset](#webdriver-configuration-unset), return null.
+
+4. Return `viewport meta override`.
+
+The [remote end
+steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) given `command parameters` are:
+
+1. Let `viewport meta override` be
+ `command parameters`\[\"`viewportMeta`\"\].
+
+2. If `viewport meta override` is null, set
+ `viewport meta override` to
+ [unset](#webdriver-configuration-unset).
+
+3. Let `affected navigables` be the result of
+ [trying](https://w3c.github.io/webdriver/#dfn-try) to [store WebDriver
+ configuration](#store-webdriver-configuration) [viewport meta override
+ configuration](#viewport-meta-override-configuration) `viewport meta override` for
+ `command parameters`.
+
+4. For each `navigable` of `affected navigables`,
+ run [evaluate media queries and report
+ changes](https://drafts.csswg.org/cssom-view/#evaluate-media-queries-and-report-changes) for
+ [document](https://dom.spec.whatwg.org/#concept-document) currently loaded in a specified
+ `navigable`.
+
+5. Return
+ [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
+
+##### 7.4.2.10. The emulation.setScriptingEnabled Command
 
 The
 [emulation.setScriptingEnabled] command
@@ -8112,7 +8993,196 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
 6. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
-##### 7.4.2.9. The emulation.setTimezoneOverride Command
+##### 7.4.2.11. The emulation.setScrollbarTypeOverride Command
+
+The
+[emulation.setScrollbarTypeOverride] command
+modifies scrollbar type on the given top-level traversables, user
+contexts or globally.
+
+Command Type
+
+: ```
+ emulation.SetScrollbarTypeOverride = (
+ method: "emulation.setScrollbarTypeOverride",
+ params: emulation.SetScrollbarTypeOverrideParameters
+ )
+
+ emulation.SetScrollbarTypeOverrideParameters = {
+ scrollbarType: "classic" / "overlay" / null,
+ ? contexts: [+browsingContext.BrowsingContext],
+ ? userContexts: [+browser.UserContext],
+ }
+ ```
+
+Return Type
+
+: ```
+ emulation.SetScrollbarTypeOverrideResult = EmptyResult
+ ```
+
+A [remote
+end](https://w3c.github.io/webdriver/#dfn-remote-ends) has a [scrollbar type override
+configuration], which is [WebDriver
+configuration](#webdriver-configuration) with [associated
+type](#webdriver-configuration-associated-type) string.
+
+To [update scrollbar type override] for
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `navigable`:
+
+1. Let `scrollbar type override` be the result of [get
+ WebDriver configuration
+ value](#get-webdriver-configuration-value) of [scrollbar type override
+ configuration](#scrollbar-type-override-configuration) for `navigable`.
+
+2. Assert: `scrollbar type override` is \"`classic`\",
+ \"`overlay`\" or
+ [unset](#webdriver-configuration-unset).
+
+3. If `scrollbar type override` is \"`classic`\", run
+ [implementation-defined](https://infra.spec.whatwg.org/#implementation-defined) steps to make the `navigable`'s [active
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document) to use [classic
+ scrollbars](https://drafts.csswg.org/css-overflow-3/#classic-scrollbars) and return.
+
+4. If `scrollbar type override` is \"`overlay`\", run
+ [implementation-defined](https://infra.spec.whatwg.org/#implementation-defined) steps to make the `navigable`'s [active
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document) to use [overlay
+ scrollbars](https://drafts.csswg.org/css-overflow-3/#overlay-scrollbars) and return.
+
+5. Assert: `scrollbar type override` is
+ [unset](#webdriver-configuration-unset).
+
+6. Run
+ [implementation-defined](https://infra.spec.whatwg.org/#implementation-defined) steps to make the `navigable`'s [active
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document) to use an
+ [implementation-defined](https://infra.spec.whatwg.org/#implementation-defined) default scrollbar type.
+
+The [remote end
+steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) given `command parameters` are:
+
+1. Let `scrollbar type override` be
+ `command parameters`\[\"`scrollbarType`\"\].
+
+2. If `scrollbar type override` is null, set
+ `scrollbar type override` to
+ [unset](#webdriver-configuration-unset).
+
+3. If the implementation does not support setting
+ `scrollbar type override`, then return
+ [error](https://w3c.github.io/webdriver/#errors) with [error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [unsupported
+ operation](https://w3c.github.io/webdriver/#dfn-unsupported-operation).
+
+4. Let `affected navigables` be the result of
+ [trying](https://w3c.github.io/webdriver/#dfn-try) to [store WebDriver
+ configuration](#store-webdriver-configuration) [scrollbar type override
+ configuration](#scrollbar-type-override-configuration) `scrollbar type override` for
+ `command parameters`.
+
+5. For each `navigable` of `affected navigables`:
+
+ 1. [Update scrollbar type
+ override](#update-scrollbar-type-override) for `navigable`.
+
+6. Return
+ [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
+
+##### 7.4.2.12. The emulation.setTextLayoutModeOverride Command
+
+The
+[emulation.setTextLayoutModeOverride] command
+modifies the text layout mode on the given top-level traversables, user
+contexts or globally.
+
+Command Type
+
+: ```
+ emulation.SetTextLayoutModeOverride = (
+ method: "emulation.setTextLayoutModeOverride",
+ params: emulation.SetTextLayoutModeOverrideParameters
+ )
+
+ emulation.SetTextLayoutModeOverrideParameters = {
+ textLayoutMode: emulation.TextLayoutMode / null,
+ ? contexts: [+browsingContext.BrowsingContext],
+ ? userContexts: [+browser.UserContext],
+ }
+
+ emulation.TextLayoutMode = "mobile"
+ ```
+
+Return Type
+
+: ```
+ emulation.SetTextLayoutModeOverrideResult = EmptyResult
+ ```
+
+A [remote
+end](https://w3c.github.io/webdriver/#dfn-remote-ends) has a [text layout mode override
+configuration], which is [WebDriver
+configuration](#webdriver-configuration) with [associated
+type](#webdriver-configuration-associated-type) string.
+
+To [update text layout mode override] for
+[navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables) `navigable`:
+
+ Text layout mode \"`mobile`\" enables text autosizing
+(font inflation), which is an algorithm used primarily on mobile devices
+to boost the legibility of text blocks when fitting them into a small
+viewport. This ensures that content remains readable without requiring
+the user to zoom in. This behavior is often controlled via the
+[text-size-adjust](https://drafts.csswg.org/css-size-adjust-1/#propdef-text-size-adjust) CSS property. See
+[\[CSS-SIZE-ADJUST-1\]](#biblio-css-size-adjust-1 "CSS Mobile Text Size Adjustment Module Level 1").
+
+1. Let `text layout mode override` be the result of [get
+ WebDriver configuration
+ value](#get-webdriver-configuration-value) of [text layout mode override
+ configuration](#text-layout-mode-override-configuration) for `navigable`.
+
+2. Assert: `text layout mode override` is \"`mobile`\" or
+ [unset](#webdriver-configuration-unset).
+
+3. If `text layout mode override` is \"`mobile`\", run
+ [implementation-defined](https://infra.spec.whatwg.org/#implementation-defined) steps to make the `navigable`'s [active
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document) use the \"`mobile`\" text layout mode.
+
+4. Otherwise, run
+ [implementation-defined](https://infra.spec.whatwg.org/#implementation-defined) steps to make the `navigable`'s [active
+ document](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-document) use an
+ [implementation-defined](https://infra.spec.whatwg.org/#implementation-defined) default text layout mode.
+
+The [remote end
+steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) given `command parameters` are:
+
+1. Let `text layout mode override` be
+ `command parameters`\[\"`textLayoutMode`\"\].
+
+2. If `text layout mode override` is null, set
+ `text layout mode override` to
+ [unset](#webdriver-configuration-unset).
+
+3. If `text layout mode override` is not
+ [unset](#webdriver-configuration-unset) and the implementation does not support setting
+ text layout mode override, then return
+ [error](https://w3c.github.io/webdriver/#errors) with [error
+ code](https://w3c.github.io/webdriver/#dfn-error-code) [unsupported
+ operation](https://w3c.github.io/webdriver/#dfn-unsupported-operation).
+
+4. Let `affected navigables` be the result of
+ [trying](https://w3c.github.io/webdriver/#dfn-try) to [store WebDriver
+ configuration](#store-webdriver-configuration) [text layout mode override
+ configuration](#text-layout-mode-override-configuration) `text layout mode override` for
+ `command parameters`.
+
+5. For each `navigable` of `affected navigables`:
+
+ 1. [Update text layout mode
+ override](#update-text-layout-mode-override) for `navigable`.
+
+6. Return
+ [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
+
+##### 7.4.2.13. The emulation.setTimezoneOverride Command
 
 The
 [emulation.setTimezoneOverride] command
@@ -8272,7 +9342,7 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `command para
 9. Return
  [success](https://w3c.github.io/webdriver/#dfn-success) with data null.
 
-##### 7.4.2.10. The emulation.setTouchOverride Command
+##### 7.4.2.14. The emulation.setTouchOverride Command
 
 The [emulation.setTouchOverride] command
 emulates enabled touch input on web pages.
@@ -8651,12 +9721,9 @@ and `navigable`:
 
 3. Return true.
 
-To [clone network request body] given
-[request](https://fetch.spec.whatwg.org/#concept-request) `request`:
-
- This hook is intended to be triggered by the fetch spec
-when the request body has been safely extracted. See step 9 of
-https://fetch.spec.whatwg.org/#concept-fetch
+The [WebDriver BiDi clone network request
+body] steps given
+[request](https://fetch.spec.whatwg.org/#concept-request) `request` are:
 
 1. If `request`'s
  [body](https://fetch.spec.whatwg.org/#concept-request-body) is null, return.
@@ -8688,11 +9755,9 @@ https://fetch.spec.whatwg.org/#concept-fetch
 
  3. Return.
 
-To [clone network response body] given `request` and
-`response body`:
-
- This hook is intended to be triggered by the fetch spec
-when the response is set.
+The [WebDriver BiDi clone network response
+body] steps given `request` and
+`response body` are:
 
 1. If `response body` is null, return.
 
@@ -8765,8 +9830,9 @@ body] given `request`:
 2. If `collected data` is null, return.
 
  [NOTE:] This might happen if there are no collectors setup
- when the request is created, and [clone network request
- body](#clone-network-request-body) does not clone the corresponding body. Or if the
+ when the request is created, and [WebDriver BiDi clone network
+ request
+ body](#webdriver-bidi-clone-network-request-body) does not clone the corresponding body. Or if the
  body was null in the first place.
 
 3. [Maybe collect network
@@ -8792,8 +9858,9 @@ body] given `request` and
 3. If `collected data` is null, return.
 
  [NOTE:] This might happen if there are no collectors setup
- when the response is created, and [clone network response
- body](#clone-network-response-body) does not clone the corresponding body. Or if the
+ when the response is created, and [WebDriver BiDi clone network
+ response
+ body](#webdriver-bidi-clone-network-response-body) does not clone the corresponding body. Or if the
  body was null in the first place.
 
 4. Let `size` be `response`'s [response body
@@ -9281,6 +10348,7 @@ network.BaseParameters = (
  redirectCount: js-uint,
  request: network.RequestData,
  timestamp: js-uint,
+ ? userContext: browser.UserContext / null,
  ? intercepts: [+network.Intercept]
 )
 ```
@@ -9304,7 +10372,9 @@ To [process a network event] given `session`,
 
 4. Let `top-level navigable id` be null.
 
-5. If `request`'s
+5. Let `user context id` be null.
+
+6. If `request`'s
  [client](https://fetch.spec.whatwg.org/#concept-request-client) is an [environment settings
  object](https://html.spec.whatwg.org/multipage/webappapis.html#environment-settings-object):
 
@@ -9316,38 +10386,42 @@ To [process a network event] given `session`,
  window](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-window) is `environment settings`' [global
  object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-settings-object-global), set `navigable id` to that
  navigable's [navigable
- id](#navigable-id), and
- set `top-level navigable id` to that navigable's
+ id](#navigable-id), set
+ `top-level navigable id` to that navigable's
  [top-level
  traversable](https://html.spec.whatwg.org/multipage/document-sequences.html#nav-top)'s [navigable
- id](#navigable-id).
+ id](#navigable-id), and
+ set `user context id` to the [user context
+ id](#user-context-user-context-id) of that navigable's [associated user
+ context](#associated-user-context).
 
-6. Let `intercepts` be the result of [get the network
+7. Let `intercepts` be the result of [get the network
  intercepts](#get-the-network-intercepts) with `session`, `event`,
  `request`, and `top-level navigable id`.
 
-7. Let `redirect count` be `request`'s [redirect
+8. Let `redirect count` be `request`'s [redirect
  count](https://fetch.spec.whatwg.org/#concept-request-redirect-count).
 
-8. Let `timestamp` be a [time
+9. Let `timestamp` be a [time
  value](https://tc39.es/ecma262/#sec-time-values-and-time-range) representing the current date and time in UTC.
 
-9. If `intercepts` is not
+10. If `intercepts` is not
  [empty](https://infra.spec.whatwg.org/#list-empty), let `is blocked` be true, otherwise let
  `is blocked` be false.
 
-10. Let `params` be
+11. Let `params` be
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `network.BaseParameters` production,
  with the `request` field set to `request data`, the
  `navigation` field set to `navigation`, the `context`
- field set to `navigable id`, the `timestamp` field set to
+ field set to `navigable id`, the `userContext` field set
+ to `user context id`, the `timestamp` field set to
  `timestamp`, the `redirectCount` field set to
  `redirect count`, the `isBlocked` field set to
  `is blocked`, and `intercepts` field set to
  `intercepts` if `is blocked` is true, or
  omitted otherwise.
 
-11. Return `params`
+12. Return `params`
 
 ##### 7.5.4.4. The network.BytesValue Type
 
@@ -9556,8 +10630,10 @@ network.FetchTimingInfo = {
  connectStart: float,
  connectEnd: float,
  tlsStart: float,
+
  requestStart: float,
  responseStart: float,
+
  responseEnd: float,
 }
 ```
@@ -9577,7 +10653,7 @@ To [get the fetch timings] given `request`:
  `network.FetchTimingInfo` production, with all fields set to 0.
 
 3. Let `time origin` be [get time origin
- timestamp](https://w3c.github.io/hr-time/#dfn-get-time-origin-timestamp) with `global`.
+ timestamp](https://w3c.github.io/hr-time/#get-time-origin-timestamp) with `global`.
 
 4. Let `timings` be `request`'s [fetch timing
  info](https://fetch.spec.whatwg.org/#fetch-timing-info).
@@ -11184,10 +12260,10 @@ Command Type
 : ```
  network.DisownData = (
  method: "network.disownData",
- params: network.disownDataParameters
+ params: network.DisownDataParameters
  )
 
- network.disownDataParameters = {
+ network.DisownDataParameters = {
  dataType: network.DataType,
  collector: network.Collector,
  request: network.Request,
@@ -11973,7 +13049,7 @@ required] steps given
  data](#get-the-response-data) with `response`.
 
  3. Assert: `response data`
- [contains](https://infra.spec.whatwg.org/#map-exists) \"`authChallenge`\".
+ [contains](https://infra.spec.whatwg.org/#map-exists) \"`authChallenges`\".
 
  4. Set the `response` field of `params` to
  `response data`.
@@ -12469,16 +13545,12 @@ started] steps given
 
 4. Let `response status` be \"`incomplete`\".
 
-5. [Clone network response
- body](#clone-network-response-body) with `request` and
- `response`.
-
-6. Let `sessions` be the [set of sessions for which an event
+5. Let `sessions` be the [set of sessions for which an event
  is
  enabled](#set-of-sessions-for-which-an-event-is-enabled) given \"`network.responseStarted`\" and
  `related navigables`.
 
-7. For each `session` in `sessions`:
+6. For each `session` in `sessions`:
 
  1. Let `params` be the result of [process a network
  event](#process-a-network-event) with `session`
@@ -12524,7 +13596,7 @@ started] steps given
  6. [Remove](https://infra.spec.whatwg.org/#map-remove)
  `blocked requests`\[`request id`\].
 
-8. Return (`response`, `response status`).
+7. Return (`response`, `response status`).
 
 ### 7.6. The script Module
 
@@ -12673,9 +13745,8 @@ scripts] given `environment settings`:
  10. Let `function declaration` be
  `preload script`'s `function declaration`.
 
- 11. Let (`script`,
- `function body evaluation status`) be the result
- of [evaluate function
+ 11. Let `function body evaluation status` be the
+ result of [evaluate function
  body](#evaluate-function-body) with `function declaration`,
  `environment settings`, `base URL`,
  and `options`.
@@ -13423,6 +14494,7 @@ script.WindowRealmInfo = {
  script.BaseRealmInfo,
  type: "window",
  context: browsingContext.BrowsingContext,
+ ? userContext: browser.UserContext,
  ? sandbox: text
 }
 
@@ -13548,12 +14620,18 @@ To [get the realm info] given `environment settings`:
  id](#navigable-id)
  for `navigable`.
 
- 5. Let `realm info` be a
+ 5. Let `user context id` be the [user context
+ id](#user-context-user-context-id) of `navigable`'s [associated
+ user
+ context](#associated-user-context)
+
+ 6. Let `realm info` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `script.WindowRealmInfo`
  production, with the `realm` field set to
  `realm id`, the `origin` field set to
- `origin`, and the `context` field set to
- `navigable id`.
+ `origin`, the `context` field set to
+ `navigable id` and the `userContext` field set to
+ `user context id`.
 
  `global object` is [`SandboxWindowProxy`](#sandboxwindowproxy) object
  : TODO: Unclear if this is the right formulation for handling
@@ -13572,18 +14650,24 @@ To [get the realm info] given `environment settings`:
  id](#navigable-id)
  for `navigable`.
 
- 5. Let `sandbox name` be the result of [get a
+ 5. Let `user context id` be the [user context
+ id](#user-context-user-context-id) of `navigable`'s [associated
+ user
+ context](#associated-user-context)
+
+ 6. Let `sandbox name` be the result of [get a
  sandbox
  name](#get-a-sandbox-name) given `realm`.
 
- 6. Assert: `sandbox name` is not null.
+ 7. Assert: `sandbox name` is not null.
 
- 7. Let `realm info` be a
+ 8. Let `realm info` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `script.WindowRealmInfo`
  production, with the `realm` field set to
  `realm id`, the `origin` field set to
  `origin`, the `context` field set to
- `navigable id`, and the `sandbox` field set to
+ `navigable id`, the `userContext` field set to
+ `user context id`, and the `sandbox` field set to
  `sandbox name`.
 
  `global object` is a [`DedicatedWorkerGlobalScope`](https://html.spec.whatwg.org/multipage/workers.html#dedicatedworkerglobalscope) object
@@ -13684,12 +14768,14 @@ script.RemoteReference = (
 
 script.SharedReference = {
  sharedId: script.SharedId
+
  ? handle: script.Handle,
  Extensible
 }
 
 script.RemoteObjectReference = {
  handle: script.Handle,
+
  ? sharedId: script.SharedId
  Extensible
 }
@@ -14828,13 +15914,14 @@ Record](https://tc39.es/ecma262/#sec-completion-record-specification-type) of ty
 ```
 script.Source = {
  realm: script.Realm,
- ? context: browsingContext.BrowsingContext
+ ? context: browsingContext.BrowsingContext,
+ ? userContext: browser.UserContext
 }
 ```
 
 The `script.Source` type represents a `script.Realm` with an optional
-`browsingContext.BrowsingContext` in which a script related event
-occurred.
+`browsingContext.BrowsingContext` and related `browser.UserContext` in
+which a script related event occurred.
 
 To [get the source] given `source realm`:
 
@@ -14859,13 +15946,19 @@ To [get the source] given `source realm`:
  id](#navigable-id) for
  `navigable` if `navigable` is not null.
 
+ 4. Let `user context id` be the [user context
+ id](#user-context-user-context-id) of `navigable`'s [associated user
+ context](#associated-user-context).
+
  Otherwise let `navigable` be null.
 
 4. Let `source` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `script.Source` production with the
- `realm` field set to `realm`, and the `context` field set
- to `navigable id` if `navigable` is not null,
- or unset otherwise.
+ `realm` field set to `realm`, the `context` field set to
+ `navigable id` if `navigable` is not null, or
+ unset otherwise, and the `userContext` field set to
+ `user context id` if \|navigable is not null, or unset
+ otherwise.
 
 5. Return `source`.
 
@@ -15210,8 +16303,7 @@ and evaluated.
 6. [Clean up after running
  script](https://html.spec.whatwg.org/multipage/webappapis.html#clean-up-after-running-script) with `environment settings`.
 
-7. Return (`function script`,
- `function body evaluation status`).
+7. Return `function body evaluation status`.
 
 The [remote end
 steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `session` and
@@ -15274,8 +16366,7 @@ steps](https://w3c.github.io/webdriver/#dfn-remote-end-steps) with `session` and
 15. Let `options` be the [default script fetch
  options](https://html.spec.whatwg.org/multipage/webappapis.html#default-script-fetch-options).
 
-16. Let (`script`,
- `function body evaluation status`) be the result of
+16. Let `function body evaluation status` be the result of
  [evaluate function
  body](#evaluate-function-body) with `function declaration`,
  `environment settings`, `base URL`, and
@@ -15846,7 +16937,7 @@ steps](https://html.spec.whatwg.org/multipage/document-lifecycle.html#unloading-
 
  3. Let `params` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `script.RealmDestroyedParameters`
- production, with the `realm` field set of `realm id`.
+ production, with the `realm` field set to `realm id`.
 
  4. Let `body` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `script.RealmDestroyed`
@@ -15913,11 +17004,19 @@ worker](https://html.spec.whatwg.org/multipage/workers.html#terminate-a-worker) 
 
 5. Let `params` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `script.RealmDestroyedParameters`
- production, with the `realm` field set of `realm id`.
+ production, with the `realm` field set to `realm id`.
 
 6. Let `body` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `script.RealmDestroyed` production,
  with the `params` field set to `params`.
+
+7. For each `session` in the [set of sessions for which an
+ event is
+ enabled](#set-of-sessions-for-which-an-event-is-enabled) given \"`script.realmDestroyed`\" and
+ `related navigables`:
+
+ 1. [Emit an event](#emit-an-event) with `session` and
+ `body`.
 
 ### 7.7. The storage Module
 
@@ -16995,15 +18094,15 @@ Command Type
  }
 
  input.PointerCommonProperties = (
- ? width: js-uint .default 1,
- ? height: js-uint .default 1,
- ? pressure: float .default 0.0,
- ? tangentialPressure: float .default 0.0,
- ? twist: (0..359) .default 0,
+ ? width: js-uint,
+ ? height: js-uint,
+ ? pressure: (0.0..1.0),
+ ? tangentialPressure: (-1.0..1.0),
+ ? twist: (0..359),
  ; 0 .. Math.PI / 2
- ? altitudeAngle: (0.0..1.5707963267948966) .default 0.0,
+ ? altitudeAngle: (0.0..1.5707963267948966),
  ; 0 .. 2 * Math.PI
- ? azimuthAngle: (0.0..6.283185307179586) .default 0.0,
+ ? azimuthAngle: (0.0..6.283185307179586),
  )
 
  input.Origin = "viewport" / "pointer" / input.ElementOrigin
@@ -17249,6 +18348,7 @@ Event Type
 
  input.FileDialogInfo = {
  context: browsingContext.BrowsingContext,
+ ? userContext: browser.UserContext,
  ? element: script.SharedReference,
  multiple: bool,
  }
@@ -17267,6 +18367,9 @@ opened] steps, given
 file picker
 options](#webdriver-bidi-file-picker-options) `file picker options` (default: null):
 
+ unlike other user prompt handlers, the default behavior
+is to allow for the file dialog to be opened.
+
 1. Let `navigable` be the `element`'s [node
  document](https://dom.spec.whatwg.org/#concept-node-document)'s
  [navigable](https://html.spec.whatwg.org/multipage/document-sequences.html#navigables).
@@ -17274,27 +18377,32 @@ options](#webdriver-bidi-file-picker-options) `file picker options` (default: nu
 2. Let `navigable id` be `navigable`'s [navigable
  id](#navigable-id).
 
-3. Let `multiple` be `false`.
+3. Let `user context id` be the [user context
+ id](#user-context-user-context-id) of `navigable`'s [associated user
+ context](#associated-user-context).
 
-4. If `element` is not null and `element`'s
+4. Let `multiple` be `false`.
+
+5. If `element` is not null and `element`'s
  [`multiple`](https://html.spec.whatwg.org/multipage/input.html#attr-input-multiple) attribute is set, set `multiple`
  to `true`.
 
-5. If `file picker options` is not null and
+6. If `file picker options` is not null and
  `file picker options`'s
  [multiple](#webdriver-bidi-file-picker-options-multiple) is true, set `multiple` to `true`.
 
-6. Let `related navigables` be a
+7. Let `related navigables` be a
  [set](https://infra.spec.whatwg.org/#ordered-set) containing `navigable`.
 
-7. For each `session` in the [set of sessions for which an
+8. For each `session` in the [set of sessions for which an
  event is
  enabled](#set-of-sessions-for-which-an-event-is-enabled) given \"`input.fileDialogOpened`\" and
  `related navigables`:
 
  1. Let `params` be a
  [map](https://infra.spec.whatwg.org/#ordered-map) matching the `input.FileDialogInfo` production
- with the `context` field set to `navigable id` and
+ with the `context` field set to `navigable id`, the
+ `userContext` field set to `user context id` and
  `multiple` field set to `multiple`.
 
  2. If `element` is not null:
@@ -17313,9 +18421,9 @@ options](#webdriver-bidi-file-picker-options) `file picker options` (default: nu
  4. [Emit an event](#emit-an-event) with `session` and
  `body`.
 
-8. Let `dismissed` be false.
+9. Let `dismissed` be false.
 
-9. For each `session` in [active BiDi
+10. For each `session` in [active BiDi
  sessions](#active-bidi-sessions):
 
  1. Let `user prompt handler` be `session`'s
@@ -17338,7 +18446,7 @@ options](#webdriver-bidi-file-picker-options) `file picker options` (default: nu
  `user prompt handler`\[\"`default`\"\] is not equal
  to \"`ignore`\", set `dismissed` to true.
 
-10. Return `dismissed`.
+11. Return `dismissed`.
 
 ### 7.10. The webExtension Module
 
@@ -17639,6 +18747,51 @@ ratio](https://drafts.csswg.org/cssom-view-1/#determine-the-device-pixel-ratio) 
  overrides](#device-pixel-ratio-overrides)\[`window`'s
  [navigable](https://html.spec.whatwg.org/multipage/nav-history-apis.html#window-navigable)\].
 
+#### 8.3.2. Evaluating Media Queries
+
+Remove after
+https://github.com/w3c/csswg-drafts/pull/13549 is merged.
+
+The \[[evaluate media feature] algorithm is modified to support WebDriver
+BiDi overrides. Replace the step \"The result is the result of
+evaluating the specified media feature\" to:
+
+To get the result of evaluating a [media
+feature](https://drafts.csswg.org/mediaqueries-5/#media-feature) `media feature` in the given
+[Document](https://dom.spec.whatwg.org/#concept-document) `document`:
+
+1. Let `media feature name` be the
+ `media feature`'s
+ [mf-name](https://drafts.csswg.org/mediaqueries-4/#typedef-mf-name).
+
+2. Let `emulated value` be the result of getting [WebDriver
+ BiDi media feature
+ value](#webdriver-bidi-media-feature-value) for the `document` and
+ `media feature name`.
+
+3. If `emulated value` is not null, return
+ `emulated value`.
+
+4. Otherwise, return the result of evaluating the specified
+ `media feature`.
+
+#### 8.3.3. The viewport meta element
+
+remove after
+https://github.com/w3c/csswg-drafts/pull/13548 is merged.
+
+The \'Viewport meta element\' section of the
+[\[CSS-VIEWPORT-1\]](#biblio-css-viewport-1 "CSS Viewport Module Level 1")
+specification is modified to verify the [WebDriver BiDi viewport meta
+state](#webdriver-bidi-viewport-meta-state).
+
+If [WebDriver BiDi viewport meta
+state](#webdriver-bidi-viewport-meta-state) given the \`viewport\` meta element's [node
+document](https://dom.spec.whatwg.org/#concept-node-document) is true, the user agent MUST use the \`viewport\` meta
+element.
+
+Otherwise, the user agent MAY use the \`viewport\` meta element.
+
 ## 9. Appendices
 
 *This section is non-normative.*
@@ -17650,8 +18803,15 @@ ratio](https://drafts.csswg.org/cssom-view-1/#determine-the-device-pixel-ratio) 
 The following external specifications define additional WebDriver BiDi
 modules:
 
-1. [Permissions](https://www.w3.org/TR/permissions/)
+1. [Digital Credentials
+ API](https://www.w3.org/TR/digital-credentials/#automated-testing)
 
-2. [nav-speculation](https://wicg.github.io/nav-speculation/prefetch.html)
+2. [Permissions](https://www.w3.org/TR/permissions/#automation-webdriver-bidi)
 
-3. [Web Bluetooth](https://webbluetoothcg.github.io/web-bluetooth/)
+3. [nav-speculation](https://wicg.github.io/nav-speculation/prefetch.html#automated-testing)
+
+4. [User-Agent Client
+ Hints](https://wicg.github.io/ua-client-hints/#automation)
+
+5. [Web
+ Bluetooth](https://bluetooth.spec.whatwg.org/#automated-testing)
