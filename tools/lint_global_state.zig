@@ -94,7 +94,31 @@ pub const Variable = struct {
     /// The why of a `// process-wide: <why>` line directly above the
     /// declaration, if it has one (see `processWideWhy`).
     why: ?[]const u8 = null,
+    /// `declHash` of the declaration with its name taken out: its type and
+    /// initialiser. A rename keeps it (`checkRename`).
+    decl_hash: u64 = 0,
 };
+
+/// A hash of declaration text, whitespace left out, so a rename can be
+/// told from a swap: the same type and initialiser under a new name.
+pub fn declHash(parts: []const []const u8) u64 {
+    var hasher = std.hash.Wyhash.init(0);
+    for (parts) |part| {
+        for (part) |c| {
+            if (!std.ascii.isWhitespace(c)) hasher.update(&.{c});
+        }
+        hasher.update("\x00");
+    }
+    return hasher.final();
+}
+
+fn nodeText(tree: *const std.zig.Ast, node: std.zig.Ast.Node.OptionalIndex) []const u8 {
+    const n = node.unwrap() orelse return "";
+    const start = tree.tokenStart(tree.firstToken(n));
+    const last = tree.lastToken(n);
+    const end = tree.tokenStart(last) + tree.tokenSlice(last).len;
+    return tree.source[start..end];
+}
 
 /// The marker a variable that genuinely belongs to the process carries on the
 /// line directly above its declaration (design 6.4: the end state's ~50
@@ -191,6 +215,7 @@ pub fn zigVariables(gpa: std.mem.Allocator, source: [:0]const u8) !std.ArrayList
             try out.append(gpa, .{
                 .line = line,
                 .why = processWideWhy(source, line),
+                .decl_hash = declHash(&.{ nodeText(&tree, vd.ast.type_node), nodeText(&tree, vd.ast.init_node) }),
                 .name = name,
                 .kind = if (vd.threadlocal_token != null) .zig_threadlocal else .zig_global,
             });
@@ -664,12 +689,16 @@ pub fn cppVariables(gpa: std.mem.Allocator, text: []const u8) !std.ArrayList(Var
                 }
                 try name.appendSlice(gpa, found.name);
                 const owned = try name.toOwnedSlice(gpa);
+                // The statement with its name taken out (original text: the
+                // blanked code has no string contents).
+                const name_at = @intFromPtr(found.name.ptr) - @intFromPtr(code.ptr);
+                const decl_hash = declHash(&.{ text[stmt_start..name_at], text[name_at + found.name.len .. i] });
                 errdefer gpa.free(owned);
                 // The line of the statement's first character.
                 var first = stmt_start;
                 while (first < i and std.ascii.isWhitespace(code[first])) first += 1;
                 const line: u32 = @intCast(std.mem.count(u8, text[0..first], "\n") + 1);
-                try out.append(gpa, .{ .line = line, .name = owned, .kind = found.kind, .why = processWideWhy(text, line) });
+                try out.append(gpa, .{ .line = line, .name = owned, .kind = found.kind, .why = processWideWhy(text, line), .decl_hash = decl_hash });
             },
             else => {},
         }
@@ -698,13 +727,21 @@ pub const Found = struct {
     kind: Kind,
     /// Declarations under the key without a `// process-wide: <why>` line.
     unmarked: u32 = 0,
+    /// The declarations' `declHash`es, combined (order does not matter).
+    decl: u64 = 0,
 };
 
 /// Current counts per "path name" key.
 pub const Counts = std.StringHashMapUnmanaged(Found);
 
 /// One baseline line: its count and the documentation it carries.
-pub const Entry = struct { count: u32, kind: []const u8, class: []const u8 };
+pub const Entry = struct {
+    count: u32,
+    kind: []const u8,
+    class: []const u8,
+    /// Found.decl when recorded: what `--rename` compares.
+    decl: u64 = 0,
+};
 
 pub const Baseline = std.StringHashMapUnmanaged(Entry);
 
@@ -753,6 +790,46 @@ pub fn refusedByUpdate(gpa: std.mem.Allocator, found: []const Violation, current
     return out;
 }
 
+pub const RenameError = error{
+    OldKeyNotInBaseline,
+    OldKeyStillPresent,
+    NewKeyAbsent,
+    NewKeyInBaseline,
+    DifferentFile,
+    DifferentKind,
+    DifferentDeclaration,
+    DifferentCount,
+};
+
+fn pathOf(key: []const u8) []const u8 {
+    return key[0 .. std.mem.indexOfScalar(u8, key, ' ') orelse key.len];
+}
+
+/// Whether `old_key` -> `new_key` is a rename of the same variable, not a
+/// swap: the old key is gone from the tree, the new one is in the tree and
+/// not in the baseline, both are in the same file, with the same kind, the
+/// same declaration (type and initialiser, `declHash`) and the same count.
+/// A move to another file is not a rename: a variable moved is deleted from
+/// one place, which lowers the count, and is not recorded in another.
+pub fn checkRename(old_key: []const u8, new_key: []const u8, current: *const Counts, baseline: *const Baseline) RenameError!void {
+    const old = baseline.get(old_key) orelse return error.OldKeyNotInBaseline;
+    if (current.contains(old_key)) return error.OldKeyStillPresent;
+    const new = current.get(new_key) orelse return error.NewKeyAbsent;
+    if (baseline.contains(new_key)) return error.NewKeyInBaseline;
+    if (!std.mem.eql(u8, pathOf(old_key), pathOf(new_key))) return error.DifferentFile;
+    if (!std.mem.eql(u8, old.kind, new.kind.label())) return error.DifferentKind;
+    if (old.decl != new.decl) return error.DifferentDeclaration;
+    if (old.count != new.count) return error.DifferentCount;
+}
+
+/// Move the baseline's entry from `old_key` to `new_key` (its class with it).
+/// Call only after `checkRename`. Keys are allocated with `gpa`.
+pub fn applyRename(gpa: std.mem.Allocator, baseline: *Baseline, old_key: []const u8, new_key: []const u8) !void {
+    const removed = baseline.fetchRemove(old_key) orelse return error.OldKeyNotInBaseline;
+    gpa.free(removed.key);
+    try baseline.put(gpa, try gpa.dupe(u8, new_key), removed.value);
+}
+
 /// Parse a baseline file: `path name count kind class` per line, `#`
 /// comments. Strings are allocated with `gpa`.
 pub fn parseBaseline(gpa: std.mem.Allocator, text: []const u8) !Baseline {
@@ -769,6 +846,11 @@ pub fn parseBaseline(gpa: std.mem.Allocator, text: []const u8) !Baseline {
         const count = std.fmt.parseInt(u32, count_text, 10) catch return error.MalformedBaseline;
         const kind = fields.next() orelse return error.MalformedBaseline;
         const class = fields.next() orelse "?";
+        var decl: u64 = 0;
+        if (fields.next()) |decl_text| {
+            if (!std.mem.startsWith(u8, decl_text, "decl:")) return error.MalformedBaseline;
+            decl = std.fmt.parseInt(u64, decl_text["decl:".len..], 16) catch return error.MalformedBaseline;
+        }
         if (fields.next() != null) return error.MalformedBaseline;
         const key = try std.fmt.allocPrint(gpa, "{s} {s}", .{ path, name });
         errdefer gpa.free(key);
@@ -777,7 +859,7 @@ pub fn parseBaseline(gpa: std.mem.Allocator, text: []const u8) !Baseline {
         errdefer gpa.free(kind_owned);
         const class_owned = try gpa.dupe(u8, class);
         errdefer gpa.free(class_owned);
-        try out.put(gpa, key, .{ .count = count, .kind = kind_owned, .class = class_owned });
+        try out.put(gpa, key, .{ .count = count, .kind = kind_owned, .class = class_owned, .decl = decl });
     }
     return out;
 }
@@ -793,13 +875,15 @@ pub fn freeBaseline(gpa: std.mem.Allocator, baseline: *Baseline) void {
 }
 
 const header =
-    \\# Mutable process-global and threadlocal variables in src/: path name count kind class.
+    \\# Mutable process-global and threadlocal variables in src/: path name count kind class decl.
     \\# A ratchet - `zig build lint-global-state`, part of `zig build test`, fails if any
     \\# count rises or a new key appears. kind: TL (Zig threadlocal), G (Zig container-level
     \\# var), C++G, C++TL. class (documentation, tmp/plans/instances-inventory.md and
     \\# docs/instances.md): P-const P-res H I/profile I/engine A T R C D X, `?` unclassified.
+    \\# decl: a hash of the declarations' type and initialiser, which `--rename` compares.
     \\# After removing variables, lower it with `zig build lint-global-state -- --update`,
-    \\# which keeps each surviving key's class. Never raise it by hand.
+    \\# which keeps each surviving key's class. Rename a variable in place with
+    \\# `-- --rename '<old key>' '<new key>'`. Never raise it by hand.
     \\
 ;
 
@@ -825,7 +909,7 @@ pub fn formatBaseline(gpa: std.mem.Allocator, current: *const Counts, previous: 
         // marker: a process resource until someone classifies it further.
         const new_class = if (found.unmarked == 0) "P-res" else "?";
         const class = if (previous) |p| (if (p.get(key)) |e| e.class else new_class) else "?";
-        try out.print(gpa, "{s} {d} {s} {s}\n", .{ key, found.count, found.kind.label(), class });
+        try out.print(gpa, "{s} {d} {s} {s} decl:{x:0>16}\n", .{ key, found.count, found.kind.label(), class, found.decl });
     }
     return out.toOwnedSlice(gpa);
 }
@@ -868,6 +952,7 @@ fn scan(
             if (!gop.found_existing) gop.value_ptr.* = .{ .count = 0, .kind = variable.kind };
             gop.value_ptr.count += 1;
             if (variable.why == null) gop.value_ptr.unmarked += 1;
+            gop.value_ptr.decl +%= variable.decl_hash;
             const site = try sites.getOrPut(arena, key);
             if (!site.found_existing) site.value_ptr.* = .empty;
             try site.value_ptr.append(arena, .{ .path = path, .variable = variable });
@@ -906,6 +991,11 @@ fn totalOf(current: *const Counts) usize {
     return total;
 }
 
+fn usage() noreturn {
+    std.debug.print("usage: lint_global_state [--update] [--rename '<old key>' '<new key>']...\n", .{});
+    std.process.exit(2);
+}
+
 pub fn main(init: std.process.Init) !void {
     var arena_state = std.heap.ArenaAllocator.init(init.gpa);
     defer arena_state.deinit();
@@ -913,16 +1003,20 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     var update = false;
+    var renames: std.ArrayList([2][]const u8) = .empty;
     var args = try init.minimal.args.iterateAllocator(arena);
     defer args.deinit();
     _ = args.next();
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--update")) {
             update = true;
-        } else {
-            std.debug.print("usage: lint_global_state [--update]\n", .{});
-            std.process.exit(2);
-        }
+        } else if (std.mem.eql(u8, arg, "--rename")) {
+            const old_key = args.next() orelse usage();
+            const new_key = args.next() orelse usage();
+            try renames.append(arena, .{ try arena.dupe(u8, old_key), try arena.dupe(u8, new_key) });
+            // A rename is recorded, so it updates the baseline.
+            update = true;
+        } else usage();
     }
 
     var current: Counts = .empty;
@@ -952,6 +1046,15 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
     var baseline = try parseBaseline(arena, text.?);
+    for (renames.items) |rename| {
+        checkRename(rename[0], rename[1], &current, &baseline) catch |err| {
+            try out.print("global state: --rename '{s}' '{s}' refused: {s}.\n", .{ rename[0], rename[1], @errorName(err) });
+            try out.flush();
+            std.process.exit(1);
+        };
+        try applyRename(arena, &baseline, rename[0], rename[1]);
+        try out.print("global state: renamed '{s}' -> '{s}'.\n", .{ rename[0], rename[1] });
+    }
 
     var baseline_total: usize = 0;
     var base_values = baseline.valueIterator();
@@ -1294,7 +1397,75 @@ test "--update records a new key only when every declaration is marked process-w
     try testing.expect(mayRecord(true, refused2.items.len));
     const text = try formatBaseline(testing.allocator, &current, &baseline);
     defer testing.allocator.free(text);
-    try testing.expect(std.mem.indexOf(u8, text, "src/dom/process_phase.zig phase 1 G P-res\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "src/dom/process_phase.zig phase 1 G P-res decl:") != null);
+}
+
+test "a rename is recorded only for the same variable: same file, kind, declaration and count" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const decl = declHash(&.{ "std.ArrayListUnmanaged(*Self)", ".empty" });
+
+    var baseline: Baseline = .empty;
+    try baseline.put(arena, try arena.dupe(u8, "src/a.zig call_fetch.Call.live"), .{ .count = 1, .kind = "TL", .class = "R", .decl = decl });
+    try baseline.put(arena, try arena.dupe(u8, "src/a.zig kept"), .{ .count = 1, .kind = "G", .class = "C", .decl = decl });
+
+    var current: Counts = .empty;
+    try current.put(arena, "src/a.zig FetchCall.live", .{ .count = 1, .kind = .zig_threadlocal, .decl = decl });
+    try current.put(arena, "src/a.zig kept", .{ .count = 1, .kind = .zig_global, .decl = decl });
+
+    try checkRename("src/a.zig call_fetch.Call.live", "src/a.zig FetchCall.live", &current, &baseline);
+
+    // The old key must be gone, and in the baseline; the new one present, and not.
+    try testing.expectError(error.OldKeyStillPresent, checkRename("src/a.zig kept", "src/a.zig FetchCall.live", &current, &baseline));
+    try testing.expectError(error.OldKeyNotInBaseline, checkRename("src/a.zig nowhere", "src/a.zig FetchCall.live", &current, &baseline));
+    try testing.expectError(error.NewKeyAbsent, checkRename("src/a.zig call_fetch.Call.live", "src/a.zig missing", &current, &baseline));
+
+    // The same name in another file is a move, not a rename.
+    try current.put(arena, "src/b.zig FetchCall.live", .{ .count = 1, .kind = .zig_threadlocal, .decl = decl });
+    try testing.expectError(error.DifferentFile, checkRename("src/a.zig call_fetch.Call.live", "src/b.zig FetchCall.live", &current, &baseline));
+    // A different type or initialiser is another variable.
+    try current.put(arena, "src/a.zig other_type", .{ .count = 1, .kind = .zig_threadlocal, .decl = declHash(&.{ "?*Self", "null" }) });
+    try testing.expectError(error.DifferentDeclaration, checkRename("src/a.zig call_fetch.Call.live", "src/a.zig other_type", &current, &baseline));
+    // A different kind, or count.
+    try current.put(arena, "src/a.zig now_global", .{ .count = 1, .kind = .zig_global, .decl = decl });
+    try testing.expectError(error.DifferentKind, checkRename("src/a.zig call_fetch.Call.live", "src/a.zig now_global", &current, &baseline));
+    try current.put(arena, "src/a.zig two", .{ .count = 2, .kind = .zig_threadlocal, .decl = decl });
+    try testing.expectError(error.DifferentCount, checkRename("src/a.zig call_fetch.Call.live", "src/a.zig two", &current, &baseline));
+
+    // Applied: the class carries over, the old key is gone.
+    try applyRename(arena, &baseline, "src/a.zig call_fetch.Call.live", "src/a.zig FetchCall.live");
+    try testing.expect(!baseline.contains("src/a.zig call_fetch.Call.live"));
+    try testing.expectEqualStrings("R", baseline.get("src/a.zig FetchCall.live").?.class);
+    try baseline.put(arena, try arena.dupe(u8, "src/a.zig gone_too"), .{ .count = 1, .kind = "TL", .class = "R", .decl = decl });
+    try testing.expectError(error.NewKeyInBaseline, checkRename("src/a.zig gone_too", "src/a.zig FetchCall.live", &current, &baseline));
+}
+
+test "the declaration hash sees the type and initialiser, not the name or the layout" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = try zigVariables(arena.allocator(),
+        \\fn call_fetch() void {
+        \\    const Call = struct {
+        \\        threadlocal var live: std.ArrayListUnmanaged(*Self) = .empty;
+        \\    };
+        \\}
+        \\const FetchCall = struct {
+        \\    threadlocal var live:   std.ArrayListUnmanaged( *Self ) =   .empty;
+        \\    threadlocal var other: std.ArrayListUnmanaged(*Self) = .{};
+        \\};
+    );
+    try testing.expectEqual(@as(usize, 3), a.items.len);
+    try testing.expectEqual(a.items[0].decl_hash, a.items[1].decl_hash);
+    try testing.expect(a.items[0].decl_hash != a.items[2].decl_hash);
+
+    const c = try cppVariables(arena.allocator(),
+        \\static std::atomic<int64_t> g_a{0};
+        \\static std::atomic<int64_t>   g_b{0};
+        \\static std::atomic<int64_t> g_c{1};
+    );
+    try testing.expectEqual(c.items[0].decl_hash, c.items[1].decl_hash);
+    try testing.expect(c.items[0].decl_hash != c.items[2].decl_hash);
 }
 
 fn testCounts(entries: []const struct { []const u8, u32 }) !Counts {
@@ -1375,9 +1546,9 @@ test "the baseline round-trips, sorted, keeps each key's class and ignores comme
     const text = try formatBaseline(testing.allocator, &current, &previous);
     defer testing.allocator.free(text);
     try testing.expect(std.mem.indexOf(u8, text,
-        \\src/a.zig hook 2 TL H
-        \\src/b.zig Arena.global 1 G I/engine
-        \\src/c.cpp g_new 1 C++G ?
+        \\src/a.zig hook 2 TL H decl:0000000000000000
+        \\src/b.zig Arena.global 1 G I/engine decl:0000000000000000
+        \\src/c.cpp g_new 1 C++G ? decl:0000000000000000
         \\
     ) != null);
 
