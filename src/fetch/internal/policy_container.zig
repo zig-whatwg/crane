@@ -32,6 +32,15 @@ pub const PolicyContainer = struct {
     /// "A CSP list, which is a CSP list. It is initially empty." Owned.
     csp_list: csp.CSPList,
 
+    /// Upgrade Insecure Requests' "insecure requests policy" inherited from
+    /// the embedding document (UIR 3.3: a nested browsing context's
+    /// documents) or from the worker's creator (a worker's settings object):
+    /// Upgrade when true. UIR keeps it on settings objects and browsing
+    /// contexts; it rides here, on the container every inheritance path
+    /// already carries (stated). The container's own CSP list can set it too
+    /// - `upgradesInsecureRequests`.
+    inherited_upgrade_insecure_requests: bool = false,
+
     /// "A referrer policy, which is a referrer policy. It is initially the
     /// default referrer policy." The empty string is one too: "create a policy
     /// container from a fetch response" leaves it empty when the response
@@ -55,6 +64,7 @@ pub const PolicyContainer = struct {
         };
         // 4. Set clone's referrer policy to policyContainer's referrer policy.
         copy.referrer_policy = self.referrer_policy;
+        copy.inherited_upgrade_insecure_requests = self.inherited_upgrade_insecure_requests;
         // 6. Return clone.
         return copy;
     }
@@ -97,6 +107,7 @@ pub const PolicyContainer = struct {
     /// upgrade-insecure-requests (Upgrade Insecure Requests 3.1: enforcing
     /// it sets the settings object's insecure requests policy to Upgrade).
     pub fn upgradesInsecureRequests(self: *const PolicyContainer) bool {
+        if (self.inherited_upgrade_insecure_requests) return true;
         for (self.csp_list.policies.items) |*policy| {
             if (policy.disposition == .enforce and policy.containsDirective("upgrade-insecure-requests")) return true;
         }

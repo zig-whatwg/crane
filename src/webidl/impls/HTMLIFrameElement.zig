@@ -1570,17 +1570,31 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     // 4. "If responsePolicyContainer is not null, then return
     // responsePolicyContainer": "create a policy container from a fetch
     // response" for the response a fetch made.
-    if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https") or std.mem.eql(u8, scheme, "data")) {
+    var result = if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https") or std.mem.eql(u8, scheme, "data")) blk: {
         const headers = response.headers;
-        return PolicyContainer.fromResponseHeaders(allocator, .{
+        break :blk PolicyContainer.fromResponseHeaders(allocator, .{
             .url = response_url,
             .csp = if (headers) |h| h.get("content-security-policy") else null,
             .csp_report_only = if (headers) |h| h.get("content-security-policy-report-only") else null,
             .referrer_policy = if (headers) |h| h.get("referrer-policy") else null,
-        }) catch null;
+        }) catch return null;
+    } else PolicyContainer.init(allocator); // 5. "Return a new policy container."
+    // Upgrade Insecure Requests 3.3: a nested browsing context whose
+    // embedding document's insecure requests policy is Upgrade has Upgrade,
+    // and so does every Document created in it.
+    if (containerDocumentOf(integration)) |parent| {
+        if (dom_module.policy_containers.of(parent)) |container| {
+            if (container.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
+        }
     }
-    // 5. "Return a new policy container."
-    return PolicyContainer.init(allocator);
+    return result;
+}
+
+/// The document `integration`'s iframe element is in - its navigable's
+/// embedding document - or null for a popup.
+fn containerDocumentOf(integration: *IFrameIntegration) ?*runtime.Instance {
+    const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return null));
+    return interfaces.Node.get_ownerDocument(element) catch null;
 }
 
 /// "Create and initialize a Document object" step 9: `document`, which

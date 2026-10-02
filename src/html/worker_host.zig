@@ -2312,8 +2312,16 @@ fn sharedScopeOf(allocator: Allocator, connect: *const SharedConnect) !SharedSco
 /// response's. A new container when neither can be had.
 pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScript, owner_realm: runtime.Context) fetch_mod.internal.PolicyContainer {
     const PolicyContainer = fetch_mod.internal.PolicyContainer;
-    // Step 2: the response's, when a network fetch made one.
-    if (fetched.takePolicyContainer()) |container| return container;
+    // Step 2: the response's, when a network fetch made one. Upgrade
+    // Insecure Requests 3.3: a worker inherits its creator's insecure
+    // requests policy ("set up a worker environment settings object").
+    if (fetched.takePolicyContainer()) |container| {
+        var result = container;
+        if (creatorPolicyContainer(owner_realm)) |owner| {
+            if (owner.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
+        }
+        return result;
+    }
     // Step 1: "If workerGlobalScope's url is local but its scheme is not
     // "blob"": a clone of its owner's - the one owner a dedicated worker,
     // or a shared worker's creator, has.
