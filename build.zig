@@ -159,7 +159,7 @@ fn configureStaticLibcurl(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     enable_http2: bool,
-) void {
+) ?*std.Build.Step.Compile {
     // Get the curl dependency with appropriate options
     const curl_dep = b.lazyDependency("curl", .{
         .target = target,
@@ -191,11 +191,11 @@ fn configureStaticLibcurl(
         .ares = false, // Use threaded resolver
         // Disable non-HTTP protocols
         .@"http-only" = true, // This disables FTP, TFTP, Telnet, etc.
-    }) orelse return; // Lazy dependency not available
+    }) orelse return null; // Lazy dependency not available
 
     // Get the libcurl static library artifact from the dependency
     // The curl package exposes both "curl" exe and lib, so we need to find the library specifically
-    const libcurl = findLibraryArtifact(curl_dep, "curl") orelse return;
+    const libcurl = findLibraryArtifact(curl_dep, "curl") orelse return null;
 
     // The module doing the `@cImport` needs the SDK's headers too. translate-c
     // resolves `#include <sys/types.h>` against the IMPORTING module's include
@@ -293,6 +293,12 @@ fn configureStaticLibcurl(
         module.linkSystemLibrary("pthread", .{});
     }
     // macOS: No additional libraries needed with mbedTLS
+    // Return the actual transitive library for WebCrypto, not the unused root
+    // dependency (curl currently pins mbedTLS 3.6.4).
+    for (libcurl.root_module.link_objects.items) |linked| {
+        if (linked == .other_step and std.mem.eql(u8, linked.other_step.name, "mbedtls")) return linked.other_step;
+    }
+    return null;
 }
 
 /// nghttp2 - the HTTP/2 library libcurl speaks HTTP/2 through - compiled from
@@ -1131,6 +1137,15 @@ pub fn build(b: *std.Build) void {
     impls_mod.addImport("runtime", runtime_mod);
     impls_mod.addImport("storage", storage_mod); // For IndexedDB and Storage impl connections
     impls_mod.addImport("cookiestore", cookiestore_mod); // For CookieStore impl
+
+    // Web Cryptography API primitives. Keep the pure algorithms independently
+    // testable; their tests use std.testing.allocator and injected Io.
+    const webcrypto_mod = b.addModule("webcrypto", .{
+        .root_source_file = b.path("src/webcrypto/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    impls_mod.addImport("webcrypto", webcrypto_mod);
     impls_mod.addOptions("build_options", build_options);
     impls_mod.addOptions("debug_options", debug_options);
 
@@ -1864,16 +1879,27 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("infra", infra_mod);
 
     // Configure libcurl for network requests
-    if (use_system_curl) {
+    const webcrypto_mbedtls = if (use_system_curl) blk: {
         // Development: Use system libcurl for faster builds
         fetch_mod.linkSystemLibrary("curl", .{});
         // ...which may be a libcurl without WebSockets. Say so now rather than
         // leaving it to a runtime CURLE_UNSUPPORTED_PROTOCOL.
         warnIfSystemCurlLacksWebSockets(b);
-    } else {
+        break :blk null;
+    } else blk: {
         // Production: Statically compile libcurl with mbedTLS
-        configureStaticLibcurl(b, fetch_mod, target, optimize, enable_http2);
-    }
+        break :blk configureStaticLibcurl(b, fetch_mod, target, optimize, enable_http2);
+    };
+
+    // WebCrypto shares curl's exact mbedTLS artifact, including its installed
+    // headers. The root package's independent pin need not match curl's pin.
+    if (webcrypto_mbedtls) |library| webcrypto_mod.linkLibrary(library);
+    const webcrypto_options = b.addOptions();
+    webcrypto_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
+    webcrypto_mod.addOptions("options", webcrypto_options);
+    webcrypto_mod.addCMacro("MBEDTLS_THREADING_C", "");
+    webcrypto_mod.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
+    if (target.result.os.tag == .ios) addIosSdkPaths(webcrypto_mod, iosSdkPath(b));
 
     // fetch_mod dependencies will be added as implementation progresses:
     // fetch_mod.addImport("url", url_mod);
@@ -2152,6 +2178,14 @@ pub fn build(b: *std.Build) void {
     // ========================================================================
 
     const test_step = b.step("test", "Run WHATWG spec tests (use -Dspec=<name> to filter)");
+
+    const webcrypto_tests = b.addTest(.{ .root_module = webcrypto_mod });
+    const run_webcrypto_tests = b.addRunArtifact(webcrypto_tests);
+    const webcrypto_test_step = b.step("test-webcrypto", "Run Web Cryptography API primitive tests");
+    webcrypto_test_step.dependOn(&run_webcrypto_tests.step);
+    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) {
+        test_step.dependOn(&run_webcrypto_tests.step);
+    }
 
     const test_all = spec_filter == null or std.mem.eql(u8, spec_filter.?, "all");
     const test_infra = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "infra"));
