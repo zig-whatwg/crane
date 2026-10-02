@@ -70,6 +70,9 @@ pub const request = @import("request.zig");
 pub const InternalRequest = request.InternalRequest;
 pub const CookieJar = request.CookieJar;
 
+pub const policy_container = @import("policy_container.zig");
+pub const PolicyContainer = policy_container.PolicyContainer;
+
 pub const request_client = @import("request_client.zig");
 pub const RequestClient = request_client.RequestClient;
 pub const populateRequestFromClient = request_client.populateRequestFromClient;
@@ -146,6 +149,7 @@ test {
     _ = fetch_timing;
     _ = request;
     _ = request_client;
+    _ = policy_container;
     _ = response;
     _ = fetch_controller;
     _ = fetch_params;

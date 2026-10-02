@@ -46,6 +46,7 @@ const mixins = @import("mixins");
 
 // Content Security Policy
 const csp = @import("csp");
+const fetch = @import("fetch");
 
 // HTML module for stylesheet blocking and editing
 const html_core = @import("html_core");
@@ -290,6 +291,14 @@ pub const InternalState = struct {
     /// Whether an import map has been acquired for this document
     import_map_acquired: bool,
 
+    /// The document's policy container (HTML 7.1.6): a new one until a
+    /// navigation gives it the one "determine navigation params policy
+    /// container" chose ("create and initialize a Document object" step 9),
+    /// or a meta element named referrer changes its referrer policy. Owned;
+    /// every request the document's settings object makes takes a clone.
+    /// Reached from outside through `dom.policy_containers`.
+    policy_container: fetch.internal.PolicyContainer,
+
     // === Content Security Policy (CSP Level 3) ===
 
     /// CSP list for this document
@@ -419,6 +428,7 @@ pub const InternalState = struct {
             .import_map_acquired = false,
             // Module disposal (set when engine is configured)
             .dispose_module_fn = null,
+            .policy_container = fetch.internal.PolicyContainer.init(allocator),
             // CSP
             .csp_list = null,
             .csp_self_origin = null,
@@ -535,6 +545,8 @@ pub const InternalState = struct {
             self.import_map_scopes.deinit();
         }
 
+        self.policy_container.deinit();
+
         // CSP list and origin
         if (self.csp_list) |csp_list| {
             csp_list.deinit();
@@ -579,6 +591,12 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
+/// dom.policy_containers: `document`'s policy container.
+fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContainer {
+    const internal = getInternal(document) orelse return null;
+    return &internal.policy_container;
+}
+
 /// Get the Node internal state from a Document instance
 /// Uses the registry pattern for proper inheritance chain
 pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
@@ -604,6 +622,9 @@ pub fn installHooks() void {
         .declarative_refresh = &lifecycleDeclarativeRefresh,
     });
     @import("dom").document_origin.install(.{ .domain = &originDomain });
+    // Its policy container, for whatever sets or reads one without naming
+    // this impl (navigation, meta referrer, a Window's settings object).
+    @import("dom").policy_containers.install(.{ .of = &policyContainerOf });
     // A clone of a Document keeps its mode. Installed here, before any
     // Document exists to be cloned.
     @import("dom").cloning_steps.install(&cloningSteps);

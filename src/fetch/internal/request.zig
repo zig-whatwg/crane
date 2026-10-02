@@ -190,16 +190,18 @@ pub const RequestOrigin = union(enum) {
     origin: []const u8,
 };
 
-/// Policy container - either "client" sentinel or actual container.
-/// KEEP: container uses *anyopaque because this is an internal Fetch spec concept
-/// (policy container per HTML spec), not a WebIDL interface type. The actual
-/// policy container type is implementation-defined per the HTML spec.
+/// A request's policy container: "client" or a policy container.
+/// Spec: https://fetch.spec.whatwg.org/#concept-request-policy-container
 pub const RequestPolicyContainer = union(enum) {
-    /// "client" - will be resolved during fetch
+    /// "client": "populate request from client" replaces it with a clone of
+    /// the client's.
     client,
-    /// Actual policy container (internal HTML spec concept, not WebIDL)
-    container: *anyopaque,
+    /// A policy container, OWNED by the request: `deinit` releases it and
+    /// `clone` copies it.
+    container: PolicyContainer,
 };
+
+pub const PolicyContainer = @import("policy_container.zig").PolicyContainer;
 
 /// Referrer - either special value or URL string.
 pub const Referrer = union(enum) {
@@ -316,7 +318,8 @@ pub const InternalRequest = struct {
     /// Top-level navigation initiator origin
     top_level_navigation_initiator_origin: ?[]const u8 = null,
 
-    /// Policy container ("client" or actual)
+    /// Policy container ("client" or one the request owns): set it with
+    /// `setPolicyContainer`, which releases one being replaced.
     policy_container: RequestPolicyContainer = .client,
 
     /// Referrer
@@ -431,6 +434,8 @@ pub const InternalRequest = struct {
         // A URL referrer is owned - see the field's doc comment.
         if (self.referrer == .url) self.allocator.free(self.referrer.url);
         if (self.origin_owned and self.origin == .origin) self.allocator.free(self.origin.origin);
+        // So is a policy container.
+        if (self.policy_container == .container) self.policy_container.container.deinit();
 
         // Free URL list entries
         for (self.url_list.items) |url| {
@@ -500,6 +505,24 @@ pub const InternalRequest = struct {
         if (self.origin_owned and self.origin == .origin) self.allocator.free(self.origin.origin);
         self.origin = .{ .origin = copy };
         self.origin_owned = true;
+    }
+
+    /// Give the request `container` (taken: the request owns it now),
+    /// releasing a container it owned before.
+    pub fn setPolicyContainer(self: *Self, container: PolicyContainer) void {
+        if (self.policy_container == .container) self.policy_container.container.deinit();
+        self.policy_container = .{ .container = container };
+    }
+
+    /// The referrer policy main fetch step 8 gives a request whose own is
+    /// the empty string: its policy container's, or - for a request still on
+    /// "client", which no client populated (a request the user agent makes
+    /// for itself) - the empty string, which the default stands in for.
+    pub fn policyContainerReferrerPolicy(self: *const Self) ReferrerPolicy {
+        return switch (self.policy_container) {
+            .client => .empty,
+            .container => |c| c.referrer_policy,
+        };
     }
 
     /// Whether request's current URL's origin is same origin with request's
@@ -630,7 +653,8 @@ pub const InternalRequest = struct {
             .origin = if (self.origin_owned) .client else self.origin,
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
             .cookie_jar = self.cookie_jar,
-            .policy_container = self.policy_container,
+            // Cloned below: each request owns its own.
+            .policy_container = .client,
             // Copied below when it is an owned URL.
             .referrer = if (self.referrer == .url) .client else self.referrer,
             .referrer_policy = self.referrer_policy,
@@ -662,6 +686,10 @@ pub const InternalRequest = struct {
         if (self.referrer == .url) try new_request.setReferrerUrl(self.referrer.url);
         // So is an origin set through `setOrigin`.
         if (self.origin_owned and self.origin == .origin) try new_request.setOrigin(self.origin.origin);
+        // And a policy container.
+        if (self.policy_container == .container) {
+            new_request.policy_container = .{ .container = try self.policy_container.container.clone(self.allocator) };
+        }
 
         // So is non-empty integrity metadata: `deinit` frees it, and a shared
         // slice was freed twice.
@@ -922,4 +950,21 @@ test "a request origin serializes as null once a redirect went elsewhere" {
     const after_two = try request.serializeOrigin(allocator);
     defer allocator.free(after_two);
     try std.testing.expectEqualStrings("null", after_two);
+}
+
+test "a request owns its policy container: set, replaced, cloned, released" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://example.com/a");
+    defer request.deinit();
+    try std.testing.expectEqual(ReferrerPolicy.empty, request.policyContainerReferrerPolicy());
+
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, "origin"));
+    try std.testing.expectEqual(ReferrerPolicy.origin, request.policyContainerReferrerPolicy());
+    // A second one replaces the first, which is released.
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, "no-referrer"));
+
+    const copy = try request.clone();
+    defer copy.deinit();
+    request.policy_container.container.referrer_policy = .unsafe_url;
+    try std.testing.expectEqual(ReferrerPolicy.no_referrer, copy.policyContainerReferrerPolicy());
 }

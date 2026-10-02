@@ -15,6 +15,7 @@ const std = @import("std");
 const request_mod = @import("request.zig");
 const InternalRequest = request_mod.InternalRequest;
 const CookieJar = request_mod.CookieJar;
+const PolicyContainer = request_mod.PolicyContainer;
 
 /// What a request takes from its client. Every slice is borrowed for the
 /// call that applies it.
@@ -34,6 +35,10 @@ pub const RequestClient = struct {
     /// The user agent's cookie jar, as the settings object reaches it.
     /// BORROWED: the Browser that owns it outlives every fetch.
     cookie_jar: ?*CookieJar = null,
+    /// The settings object's policy container: a Window's associated
+    /// Document's, a WorkerGlobalScope's own. BORROWED for the call; the
+    /// request takes a clone. Null for a global that has none.
+    policy_container: ?*const PolicyContainer = null,
 };
 
 /// Fetch "populate request from client", for a request whose client is the
@@ -55,8 +60,16 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
             if (origin.len > 0) try request.setOrigin(origin);
         }
     }
-    // 3. The policy container: none is kept here yet.
-    // TODO: request's policy container, once settings objects carry one.
+    // 3. "If request's policy container is "client": if request's client is
+    //    non-null, set request's policy container to a clone of request's
+    //    client's policy container; otherwise set it to a new policy
+    //    container." A client whose global keeps no container leaves it
+    //    "client", which main fetch reads as the defaults.
+    if (request.policy_container == .client) {
+        if (client.policy_container) |container| {
+            request.setPolicyContainer(try container.clone(request.allocator));
+        }
+    }
 
     // Referrer Policy "determine request's referrer", step 3's "client" case,
     // resolved here where the client is known; main fetch step 9 takes it
@@ -126,4 +139,31 @@ test "populate request from client: what the request already has stands" {
     try std.testing.expect(request.referrer == .no_referrer);
     try std.testing.expect(request.traversable_for_user_prompts == .no_traversable);
     try std.testing.expect(request.cookie_jar == &other);
+}
+
+test "populate request from client: the request takes a clone of the client's policy container" {
+    const allocator = std.testing.allocator;
+    var container = try PolicyContainer.fromResponse(allocator, "no-referrer");
+    defer container.deinit();
+
+    const request = try InternalRequest.init(allocator, "https://example.com/a");
+    defer request.deinit();
+    try populateRequestFromClient(request, .{ .origin = "https://example.com", .policy_container = &container });
+    try std.testing.expect(request.policy_container == .container);
+    try std.testing.expectEqual(request_mod.ReferrerPolicy.no_referrer, request.policyContainerReferrerPolicy());
+    // A clone: the client's later changes do not reach the request.
+    container.referrer_policy = .unsafe_url;
+    try std.testing.expectEqual(request_mod.ReferrerPolicy.no_referrer, request.policyContainerReferrerPolicy());
+}
+
+test "populate request from client: a request's own policy container stands" {
+    const allocator = std.testing.allocator;
+    var container = try PolicyContainer.fromResponse(allocator, "no-referrer");
+    defer container.deinit();
+
+    const request = try InternalRequest.init(allocator, "https://example.com/a");
+    defer request.deinit();
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, "origin"));
+    try populateRequestFromClient(request, .{ .policy_container = &container });
+    try std.testing.expectEqual(request_mod.ReferrerPolicy.origin, request.policyContainerReferrerPolicy());
 }

@@ -38,11 +38,24 @@ pub const NavigationResult = struct {
     final_url: []const u8,
     /// Allocator used for result
     allocator: Allocator,
+    /// HTML "create a policy container from a fetch response", for an
+    /// HTTP(S) response: what its Referrer-Policy header says. Owned until
+    /// taken (`takePolicyContainer`); null for a response from no network,
+    /// whose document gets a new policy container.
+    policy_container: ?@import("fetch").internal.PolicyContainer = null,
 
     pub fn deinit(self: *NavigationResult) void {
         self.allocator.free(self.body);
         self.allocator.free(self.final_url);
         self.allocator.free(self.content_type);
+        if (self.policy_container) |*container| container.deinit();
+    }
+
+    /// The response's policy container, handed over: the result keeps none.
+    pub fn takePolicyContainer(self: *NavigationResult) ?@import("fetch").internal.PolicyContainer {
+        const container = self.policy_container;
+        self.policy_container = null;
+        return container;
     }
 };
 
@@ -342,6 +355,13 @@ fn fetchHttpUrl(
     errdefer allocator.free(content_type);
 
     const final_url = try allocator.dupe(u8, url);
+    errdefer allocator.free(final_url);
+
+    // HTML "create a policy container from a fetch response" (step 5: the
+    // response's `Referrer-Policy` header).
+    const referrer_policy_value = response.header_list.get(allocator, "Referrer-Policy") catch return NavigationError.OutOfMemory;
+    defer if (referrer_policy_value) |value| allocator.free(value);
+    const policy_container = fetch_internal.PolicyContainer.fromResponse(allocator, referrer_policy_value) catch return NavigationError.OutOfMemory;
 
     return NavigationResult{
         .status_code = response.status,
@@ -349,6 +369,7 @@ fn fetchHttpUrl(
         .body = body,
         .final_url = final_url,
         .allocator = allocator,
+        .policy_container = policy_container,
     };
 }
 

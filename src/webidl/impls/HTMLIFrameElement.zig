@@ -402,6 +402,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
         return null;
     };
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
+    givePolicyContainer(document_instance, browsing_ctx_ptr);
     // HTML "create a new browsing context and document" step 15: the initial
     // about:blank document's type is "html" and its content type
     // "text/html". Set before the elements below are created, which it makes
@@ -526,6 +527,7 @@ fn parseHtmlForIframe(
     document_internals.setDocumentType(document_instance, .html) catch {};
     document_internals.setContentType(document_instance, "text/html") catch {};
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
+    givePolicyContainer(document_instance, browsing_ctx_ptr);
 
     const DocumentImpl = @import("Document.zig");
     if (window_instance) |window_inst| {
@@ -789,6 +791,10 @@ pub const NavigateOptions = struct {
     post_resource: ?dom_module.navigables.PostResource = null,
     /// With it, "formDataEntryList" as a FormData holding it. BORROWED.
     form_data: ?*runtime.Instance = null,
+    /// "referrerPolicy": a hyperlink's referrerpolicy attribute (or
+    /// no-referrer for noreferrer), an iframe's for "navigate an iframe or
+    /// frame". The empty string defers to the initiator's policy container.
+    referrer_policy: fetch_mod.internal.ReferrerPolicy = .empty,
 };
 
 /// One navigation, from "navigate" step 19 until its document commits or it
@@ -828,6 +834,14 @@ const Navigation = struct {
     /// document base URL - which an about:blank or about:srcdoc document the
     /// navigation makes takes as its about base URL. Owned.
     initiator_base_url: ?[]u8 = null,
+    /// "Create navigation params by fetching" step 3's referrer policy: the
+    /// navigation's referrerPolicy.
+    referrer_policy: fetch_mod.internal.ReferrerPolicy = .empty,
+    /// Navigate step 4's source snapshot params' source policy container: a
+    /// clone of the source document's, taken as the navigation starts - the
+    /// request's policy container, and the initiator's a local URL's
+    /// document inherits. Owned; null with no source document.
+    initiator_policy_container: ?fetch_mod.internal.PolicyContainer = null,
     /// The fetch in flight, until it answers.
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
@@ -845,6 +859,7 @@ const Navigation = struct {
         if (self.post_content_type) |t| self.allocator.free(t);
         if (self.target_origin) |o| self.allocator.free(o);
         if (self.referrer) |r| self.allocator.free(r);
+        if (self.initiator_policy_container) |*container| container.deinit();
         self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
@@ -1121,6 +1136,15 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // is the document state's request referrer, "client" - the source
     // document, as Fetch resolves it.
     if (options.source_document) |source| record.referrer = requestReferrerOf(source, allocator);
+    record.referrer_policy = options.referrer_policy;
+    // Step 4: "Let sourceSnapshotParams be the result of snapshotting source
+    // snapshot params given sourceDocument" - its source policy container a
+    // clone of sourceDocument's policy container.
+    if (options.source_document) |source| {
+        if (dom_module.policy_containers.of(source)) |container| {
+            record.initiator_policy_container = container.clone(allocator) catch null;
+        }
+    }
     // Step 5: "Let initiatorBaseURLSnapshot be sourceDocument's document base
     // URL" - kept only where it can be used, for a document at about:blank
     // or about:srcdoc (navigate step 22.3's document state).
@@ -1308,13 +1332,12 @@ fn startFetch(record: *Navigation) void {
             // The navigable's cookie jar: a frame's top's, a popup's own
             // (its opener's).
             .cookie_jar = if (record.integration.browsing_context) |bc| bc.cookieJar() else null,
-            // The request's referrer; main fetch applies the referrer
-            // policy. Not modelled, stated: the policy itself - the source
-            // document's policy container's, or an iframe's referrerpolicy
-            // attribute for "navigate an iframe or frame" - since documents
-            // here carry no policy container: the request keeps the default,
-            // strict-origin-when-cross-origin (main fetch step 8).
+            // The request's referrer, referrer policy and policy container
+            // (the source snapshot params'): main fetch step 8 gives a
+            // request whose own policy is empty its container's.
             .referrer = record.referrer,
+            .referrer_policy = record.referrer_policy,
+            .policy_container = if (record.initiator_policy_container) |*container| container else null,
         }) catch {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
@@ -1509,7 +1532,58 @@ fn runCommit(context: ?*anyopaque) void {
     // about:srcdoc document: the initiator's base URL snapshot.
     integration.setNextAboutBaseUrl(record.initiator_base_url);
     defer integration.setNextAboutBaseUrl(null);
+    // "Create and initialize a Document object" step 9: the document's policy
+    // container, waiting for whatever makes the document.
+    integration.setNextPolicyContainer(navigationParamsPolicyContainer(integration, record, response));
+    defer integration.setNextPolicyContainer(null);
     commitNavigation(integration, record, response);
+}
+
+/// HTML "determine navigation params policy container" for the document
+/// `record`'s navigation makes from `response`, owned by the caller; null
+/// when it could not be made (out of memory: the document keeps a new one).
+///
+/// Not modelled, stated: step 1's history policy container - a traversal's
+/// document state keeps none, so a traversal to a local URL takes its
+/// initiator's or the response's, as a first visit does.
+fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) ?fetch_mod.internal.PolicyContainer {
+    const allocator = integration.allocator;
+    const PolicyContainer = fetch_mod.internal.PolicyContainer;
+    const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+    // 2. "If responseURL is about:srcdoc": a clone of parentPolicyContainer,
+    // the container document's.
+    if (record.srcdoc != null or navigate_steps.matchesAboutSrcdoc(response_url)) {
+        if (integration.iframe_element) |element_ptr| {
+            const element: *runtime.Instance = @ptrCast(@alignCast(element_ptr));
+            if (interfaces.Node.get_ownerDocument(element) catch null) |parent| {
+                if (dom_module.policy_containers.of(parent)) |container| return container.clone(allocator) catch null;
+            }
+        }
+    }
+    // 3. "If responseURL is local and initiatorPolicyContainer is not null,
+    // then return a clone of initiatorPolicyContainer."
+    const scheme = navigate_steps.schemeOf(response_url);
+    const is_local = std.mem.eql(u8, scheme, "about") or std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
+    if (is_local) {
+        if (record.initiator_policy_container) |*container| return container.clone(allocator) catch null;
+    }
+    // 4. "If responsePolicyContainer is not null, then return
+    // responsePolicyContainer": "create a policy container from a fetch
+    // response" for the response a fetch made.
+    if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https") or std.mem.eql(u8, scheme, "data")) {
+        const header: ?[]const u8 = if (response.headers) |headers| headers.get("referrer-policy") else null;
+        return PolicyContainer.fromResponse(allocator, header) catch null;
+    }
+    // 5. "Return a new policy container."
+    return PolicyContainer.init(allocator);
+}
+
+/// "Create and initialize a Document object" step 9: `document`, which
+/// `browsing_context`'s navigable just made, takes the policy container its
+/// commit chose, if one is waiting.
+fn givePolicyContainer(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse return;
+    if (integration.takeNextPolicyContainer()) |container| dom_module.policy_containers.set(document, container);
 }
 
 /// `document`'s document base URL, serialized, owned by `allocator`; null
@@ -2294,6 +2368,13 @@ fn frameWindowByName(current_document: *runtime.Instance, name: []const u8) ?*ru
 /// stated: the top-level page cannot be replaced - navigating it does only
 /// what its Location can (a fragment navigation).
 fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navigables.Request) void {
+    navigateByTargetWithReferrerPolicy(source_document, request, .empty);
+}
+
+/// `navigateByTarget`, with navigate's referrerPolicy - a hyperlink's. It
+/// reaches a frame's navigation; a page's top-level navigation and a new
+/// popup do not carry it yet (stated).
+fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, request: dom_module.navigables.Request, referrer_policy: fetch_mod.internal.ReferrerPolicy) void {
     const name = request.target;
     // "The rules for choosing a navigable" start from currentNavigable: the
     // source document's, unless the caller names another.
@@ -2326,6 +2407,7 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
                 .navigation_api_state = request.navigation_api_state,
                 .post_resource = request.post_resource,
                 .form_data = request.form_data,
+                .referrer_policy = referrer_policy,
             });
         },
         .page => |page| {
@@ -2363,8 +2445,8 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
 /// dom.navigables: HTML "follow the hyperlink created by" `subject`, an `a`
 /// or `area` element (4.6.4), with no hyperlink suffix.
 ///
-/// Not modelled, stated: the hyperlink's referrer policy, and blob URL
-/// entries (step 6's noopener for a blob: URL).
+/// Not modelled, stated: blob URL entries (step 6's noopener for a blob:
+/// URL).
 fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navigation_api.UserInvolvement) void {
     const document = (interfaces.Node.get_ownerDocument(subject) catch null) orelse return;
     // Step 1: "If subject cannot navigate, then return": its node document is
@@ -2401,8 +2483,16 @@ fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navi
     const noopener = hasLinkType(rel_value, "noopener") or hasLinkType(rel_value, "noreferrer") or
         (!hasLinkType(rel_value, "opener") and std.ascii.eqlIgnoreCase(target, "_blank"));
 
+    // Step 11's referrerPolicy: subject's hyperlink referrer policy -
+    // "no-referrer" when its link types include noreferrer, else the current
+    // state of its referrerpolicy content attribute.
+    const referrer_policy: fetch_mod.internal.ReferrerPolicy = if (hasLinkType(rel_value, "noreferrer")) .no_referrer else blk: {
+        const attr = interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("referrerpolicy")) catch null;
+        break :blk fetch_mod.internal.policy_container.referrerPolicyFromAttribute(if (attr) |a| a.asSlice() else null);
+    };
+
     // Steps 7-11: navigate with the given user involvement.
-    navigateByTarget(document, .{ .target = target, .url = url, .noopener = noopener, .source_element = subject, .user_involvement = user_involvement });
+    navigateByTargetWithReferrerPolicy(document, .{ .target = target, .url = url, .noopener = noopener, .source_element = subject, .user_involvement = user_involvement }, referrer_policy);
 }
 
 /// The target of the first base element in `document` that has one, or "".
@@ -2600,12 +2690,17 @@ fn navigateIframeOrFrame(element: *runtime.Instance, url: []const u8, srcdoc: ?[
     const NodeImpl = @import("Node.zig");
     const container_document = NodeImpl.getOwnerDocument(element);
     const load_for_fragment = crossOriginFragmentNavigation(integration, container_document, url, srcdoc != null);
+    // Step 3: "Let referrerPolicy be the current state of element's
+    // referrerpolicy content attribute."
+    const referrer_attr = interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("referrerpolicy")) catch null;
+    const referrer_policy = fetch_mod.internal.policy_container.referrerPolicyFromAttribute(if (referrer_attr) |a| a.asSlice() else null);
     // Step 4: navigate, using element's node document.
     navigate(integration, url, .{
         .source_document = container_document,
         .history_behavior = behavior,
         .srcdoc = srcdoc,
         .initial_insertion = initial_insertion,
+        .referrer_policy = referrer_policy,
     });
     if (load_for_fragment) queueIframeLoadEventSteps(element);
 }
@@ -2831,10 +2926,23 @@ fn attachNavigableContext(
     // HTML "create a new browsing context and document" step 15: this
     // document "is initial about:blank"; step 21 completely finishes loading
     // it.
-    if (createDocumentForIframe(@ptrCast(realm), browsing_context)) |document| {
-        dom_module.document_lifecycle.markInitialAboutBlank(@ptrCast(@alignCast(document)));
+    if (createDocumentForIframe(@ptrCast(realm), browsing_context)) |document_ptr| {
+        const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
+        dom_module.document_lifecycle.markInitialAboutBlank(document);
+        // Step 19.2: "If creator is non-null, set document's policy container
+        // to a clone of creator's policy container."
+        if (creator) |creator_document| inheritPolicyContainer(document, creator_document);
     }
     return realm;
+}
+
+/// Give `document` a clone of `from`'s policy container (HTML "clone a
+/// policy container"): an initial about:blank document's creator's, a
+/// srcdoc document's parent's, a local URL's initiator's.
+fn inheritPolicyContainer(document: *runtime.Instance, from: *runtime.Instance) void {
+    const source = dom_module.policy_containers.of(from) orelse return;
+    const clone = source.clone(document.ctx.allocator) catch return;
+    dom_module.policy_containers.set(document, clone);
 }
 
 /// A realm for `integration`'s navigable (engine.createWindowRealm with

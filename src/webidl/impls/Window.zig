@@ -417,6 +417,7 @@ pub fn installHooks() void {
         .caches = &settingsCaches,
         .performance = &settingsPerformance,
         .cookie_jar = &settingsCookieJar,
+        .policy_container = &settingsPolicyContainer,
     });
 }
 
@@ -480,6 +481,14 @@ fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
 fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").CookieJar {
     const internal = getInternal(instance) orelse return null;
     return internal.browsing_context.cookieJar();
+}
+
+/// The settings object's policy container: the window's associated
+/// Document's (HTML 7.1.6), reached through dom.policy_containers.
+fn settingsPolicyContainer(instance: *runtime.Instance) ?*const @import("fetch").internal.PolicyContainer {
+    const internal = getInternal(instance) orelse return null;
+    const document = internal.document orelse return null;
+    return @import("dom").policy_containers.of(document);
 }
 
 fn settingsIsSecureContext(instance: *runtime.Instance) bool {

@@ -152,6 +152,13 @@ pub const FetchedScript = struct {
     /// Whether the script is from same origin
     same_origin: bool,
 
+    /// HTML "create a policy container from a fetch response" for the
+    /// response a network fetch made: what the worker global scope's policy
+    /// container becomes ("initialize a worker global scope's policy
+    /// container" step 2). Null for a data: or blob: script, whose container
+    /// is its owner's. Owned until taken (`takePolicyContainer`).
+    policy_container: ?fetch.internal.PolicyContainer = null,
+
     pub fn init(
         allocator: Allocator,
         source: []const u8,
@@ -172,6 +179,14 @@ pub const FetchedScript = struct {
         self.allocator.free(self.source);
         self.allocator.free(self.final_url);
         self.allocator.free(self.content_type);
+        if (self.policy_container) |*container| container.deinit();
+    }
+
+    /// The response's policy container, handed over: the result keeps none.
+    pub fn takePolicyContainer(self: *FetchedScript) ?fetch.internal.PolicyContainer {
+        const container = self.policy_container;
+        self.policy_container = null;
+        return container;
     }
 };
 
@@ -454,7 +469,7 @@ fn fetchHttpWorkerScript(
         true;
 
     // Step 10: Create FetchedScript result
-    return FetchedScript.init(
+    var script = FetchedScript.init(
         allocator,
         body_bytes,
         final_url,
@@ -463,6 +478,12 @@ fn fetchHttpWorkerScript(
     ) catch {
         return WorkerScriptError.OutOfMemory;
     };
+    errdefer script.deinit();
+    // The response's policy container (its `Referrer-Policy` header).
+    const referrer_policy_value = response.header_list.get(allocator, "Referrer-Policy") catch return WorkerScriptError.OutOfMemory;
+    defer if (referrer_policy_value) |value| allocator.free(value);
+    script.policy_container = fetch.internal.PolicyContainer.fromResponse(allocator, referrer_policy_value) catch return WorkerScriptError.OutOfMemory;
+    return script;
 }
 
 /// Check if two URLs have the same origin

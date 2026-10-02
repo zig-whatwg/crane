@@ -133,6 +133,17 @@ pub const NavigationFetchOptions = struct {
     /// sends the jar's cookies and stores the response's. Null: none.
     cookie_jar: ?*fetch.internal.CookieJar = null,
 
+    /// "Create navigation params by fetching" step 3's referrer policy:
+    /// navigate's referrerPolicy - a hyperlink's referrerpolicy attribute, or
+    /// an iframe's for "navigate an iframe or frame". The empty string defers
+    /// to the policy container's (main fetch step 8).
+    referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+
+    /// Step 3's policy container: the source snapshot params' source policy
+    /// container - the navigation's initiator's. BORROWED; the request takes
+    /// a clone. Null leaves it "client".
+    policy_container: ?*const fetch.internal.PolicyContainer = null,
+
     pub const Destination = enum {
         document,
         iframe,
@@ -302,6 +313,13 @@ pub fn navigationRequest(
 
     // The cookie store its fetch sends from and stores to.
     internal_request.cookie_jar = options.cookie_jar;
+
+    // Its referrer policy, and the initiator's policy container main fetch
+    // step 8 falls back to.
+    internal_request.referrer_policy = options.referrer_policy;
+    if (options.policy_container) |container| {
+        internal_request.setPolicyContainer(container.clone(allocator) catch return NavigationFetchError.OutOfMemory);
+    }
     return internal_request;
 }
 
@@ -380,15 +398,17 @@ pub fn resultFromResponse(
         "cross-origin-resource-policy",
         "content-security-policy",
         "x-frame-options",
+        // HTML "create a policy container from a fetch response" step 5.
+        "referrer-policy",
     };
     for (security_headers) |header_name| {
-        if (response.header_list.getFirstValue(header_name)) |value| {
+        // Each header's values combined (Fetch "get" a header list value), as
+        // "extracting header list values" splits them: two Referrer-Policy
+        // headers are one list, whose last policy wins.
+        const combined = response.header_list.get(allocator, header_name) catch return NavigationFetchError.OutOfMemory;
+        if (combined) |owned_value| {
             const owned_name = allocator.dupe(u8, header_name) catch {
-                return NavigationFetchError.OutOfMemory;
-            };
-            errdefer allocator.free(owned_name);
-            const owned_value = allocator.dupe(u8, value) catch {
-                allocator.free(owned_name);
+                allocator.free(owned_value);
                 return NavigationFetchError.OutOfMemory;
             };
             result.headers.?.put(owned_name, owned_value) catch {

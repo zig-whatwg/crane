@@ -129,6 +129,13 @@ pub const InternalState = struct {
     /// Stored during constructor to avoid re-fetching when blob URLs are revoked
     script_final_url: ?[]const u8 = null,
 
+    /// The worker global scope's policy container, as "initialize a worker
+    /// global scope's policy container" chose it from the fetched script
+    /// (the response's, or a clone of this Worker's owner's for a data:
+    /// script), waiting for the WorkerHost the worker runs in. Owned until
+    /// the host takes it.
+    pending_policy_container: ?@import("fetch").internal.PolicyContainer = null,
+
     /// Pending messages to send to worker (before DedicatedWorker is created)
     /// Messages are queued here if postMessage is called before worker initialization completes.
     /// Once the DedicatedWorker is ready, these are flushed to the inside port.
@@ -169,6 +176,8 @@ pub const InternalState = struct {
         if (self.script_final_url) |url| {
             self.allocator.free(url);
         }
+        // A policy container no host took (the worker never started).
+        if (self.pending_policy_container) |*container| container.deinit();
     }
 };
 
@@ -362,7 +371,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     //
     // The fix is to fetch the script content immediately (while the blob URL
     // is still valid) and store it. Only the script EXECUTION is deferred.
-    const fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
+    var fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
         .worker_type = worker_type,
         .requesting_origin = requesting_origin,
     }) catch |err| {
@@ -378,20 +387,24 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
         return instance;
     };
 
+    // The worker global scope's policy container, chosen now - from the
+    // response, or the owner (this realm's global) for a data: script.
+    internal_state.pending_policy_container = worker_host.workerPolicyContainer(ctx.allocator, &fetched_script, ctx);
+
     // Store the fetched script content and final URL for later execution
     internal_state.pending_script = ctx.allocator.dupe(u8, fetched_script.source) catch {
-        @constCast(&fetched_script).deinit();
+        fetched_script.deinit();
         return error.OutOfMemory;
     };
     internal_state.script_final_url = ctx.allocator.dupe(u8, fetched_script.final_url) catch {
         ctx.allocator.free(internal_state.pending_script.?);
         internal_state.pending_script = null;
-        @constCast(&fetched_script).deinit();
+        fetched_script.deinit();
         return error.OutOfMemory;
     };
 
     // Clean up the fetched script metadata (we've copied what we need)
-    @constCast(&fetched_script).deinit();
+    fetched_script.deinit();
 
     // CRITICAL: Use queueTask to schedule worker initialization.
     // The initialization MUST be deferred because:
@@ -593,6 +606,11 @@ fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
     // its global scope's settings hand out (a nested worker's creator is a
     // worker, whose settings have it the same way).
     host.cookie_jar = creatorCookieJar(ctx);
+    // Its policy container, chosen when the script was fetched.
+    if (internal.pending_policy_container) |container| {
+        host.setPolicyContainer(container);
+        internal.pending_policy_container = null;
+    }
 
     // Create the WorkerContext
     dedicated_worker.startWithContext() catch |err| {

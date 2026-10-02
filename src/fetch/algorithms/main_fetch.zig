@@ -192,11 +192,15 @@ pub fn mainFetchStart(
     // Step 7: Check MIME type blocking (stubbed - requires nosniff implementation)
     // TODO: Implement MIME type blocking
 
-    // Step 8: Set referrer policy if empty
-    // Note: In full implementation, would get from policy container
-    // For now, default to strict-origin-when-cross-origin
+    // Step 8: "If request's referrer policy is the empty string, then set
+    // request's referrer policy to request's policy container's referrer
+    // policy." A container's policy can be the empty string too (a response
+    // that named none), and so can a request no client populated: Referrer
+    // Policy 3.9 - "falling back to the default referrer policy" when no
+    // higher-level policy is available.
     if (request.referrer_policy == .empty) {
-        request.referrer_policy = .strict_origin_when_cross_origin;
+        request.referrer_policy = request.policyContainerReferrerPolicy();
+        if (request.referrer_policy == .empty) request.referrer_policy = .strict_origin_when_cross_origin;
     }
 
     // Step 9: If request's referrer is not "no-referrer", set request's
@@ -895,6 +899,47 @@ test "main fetch step 9: a URL referrer is replaced by the referrer its policy a
     request.referrer_policy = .no_referrer;
     _ = try mainFetchStart(allocator, params, true);
     try std.testing.expect(request.referrer == .no_referrer);
+}
+
+test "main fetch step 8: an empty referrer policy is the policy container's, else the default" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+    const PolicyContainer = internal_request.PolicyContainer;
+
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    try request.setReferrerUrl("http://a.test/page");
+    request.mode = .no_cors;
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, "no-referrer"));
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    // The container's no-referrer: no referrer at all.
+    _ = try mainFetchStart(allocator, params, false);
+    try std.testing.expectEqual(internal_request.ReferrerPolicy.no_referrer, request.referrer_policy);
+    try std.testing.expect(request.referrer == .no_referrer);
+
+    // A container whose policy is the empty string (its response named
+    // none): the default, strict-origin-when-cross-origin.
+    request.referrer_policy = .empty;
+    try request.setReferrerUrl("http://a.test/page");
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, null));
+    _ = try mainFetchStart(allocator, params, true);
+    try std.testing.expectEqual(internal_request.ReferrerPolicy.strict_origin_when_cross_origin, request.referrer_policy);
+    try std.testing.expectEqualStrings("http://a.test/", request.referrer.url);
+
+    // A request's own policy wins over its container's.
+    request.referrer_policy = .unsafe_url;
+    try request.setReferrerUrl("http://a.test/page");
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, "no-referrer"));
+    _ = try mainFetchStart(allocator, params, true);
+    try std.testing.expectEqualStrings("http://a.test/page", request.referrer.url);
 }
 
 test "splitSerializedOrigin: scheme, host and a non-default port" {

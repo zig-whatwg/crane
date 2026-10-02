@@ -14,6 +14,7 @@ const callbacks = @import("callbacks");
 const HTMLMetaElement = interfaces.HTMLMetaElement;
 const Element = interfaces.Element;
 const dom_module = @import("dom");
+const fetch = @import("fetch");
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.NodeBase;
 
@@ -34,6 +35,8 @@ pub const InternalState = struct {};
 pub fn installHooks() void {
     // A meta element's pragma runs when it is inserted into a document.
     dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch {};
+    // The "referrer" metadata name runs again when name or content changes.
+    dom_module.attribute_change_steps.install("meta", &attributeChangeSteps);
 }
 
 /// Initialize instance (creates the instance)
@@ -98,11 +101,49 @@ fn insertionSteps(node: *NodeBase) void {
     // now in a document tree - not a shadow tree
     // (attr-meta-http-equiv-refresh/not-in-shadow-tree).
     if (!inDocumentTree(node)) return;
+    // The "referrer" metadata name runs for a meta element inserted into the
+    // document.
+    referrerMetadataName(instance);
     const ElementImpl = @import("Element.zig");
     const http_equiv = (ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("http-equiv")) catch return) orelse return;
     // The attribute is an enumerated attribute: its keywords match ASCII
     // case-insensitively.
     if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "refresh")) refreshState(instance);
+}
+
+/// The meta element's attribute change steps: HTML's "referrer" metadata
+/// name runs when a meta element "has its name or content attributes
+/// changed".
+fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    _ = old_value;
+    _ = value;
+    if (namespace != null) return;
+    if (std.mem.eql(u8, local_name, "name") or std.mem.eql(u8, local_name, "content")) referrerMetadataName(element);
+}
+
+/// HTML 4.2.5.1, the "referrer" metadata name: "If any meta element element
+/// is inserted into the document, or has its name or content attributes
+/// changed, user agents must run the following algorithm." Removing one
+/// changes nothing, and the last inserted or changed one wins - there is no
+/// tree order.
+fn referrerMetadataName(element: *runtime.Instance) void {
+    const node = instance_bridge.getNodeBase(element) orelse return;
+    // 1. "If element is not in a document tree, then return."
+    if (!inDocumentTree(node)) return;
+    // 2. "If element does not have a name attribute whose value is an ASCII
+    // case-insensitive match for "referrer", then return."
+    const name = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("name")) catch return) orelse return;
+    if (!std.ascii.eqlIgnoreCase(name.asSlice(), "referrer")) return;
+    // 3. "If element does not have a content attribute, or that attribute's
+    // value is the empty string, then return."
+    const content = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("content")) catch return) orelse return;
+    // 4-5. The value, ASCII lowercased, with the legacy values mapped.
+    const policy = fetch.internal.policy_container.referrerPolicyFromMeta(content.asSlice()) orelse return;
+    // 6. "If value is a referrer policy, then set element's node document's
+    // policy container's referrer policy to policy."
+    const document = (interfaces.Node.get_ownerDocument(element) catch return) orelse return;
+    const container = dom_module.policy_containers.of(document) orelse return;
+    container.referrer_policy = policy;
 }
 
 /// Whether `node`'s root is a document: it is in a document tree.
