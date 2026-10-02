@@ -142,9 +142,14 @@ fn contentSecurityPolicyState(meta: *runtime.Instance, node: *NodeBase) void {
             directive.deinit();
         }
     }
-    // The policy's self-origin: the document's origin, whose settings object
-    // enforces it.
-    policy.self_origin = documentSelfOrigin(document, allocator);
+    // The policy's self-origin: its CSP list's (CSP 2.2) - the URL origin of
+    // the response the document was created from, which a sandboxed
+    // document's opaque origin does not change - else, for a list that came
+    // from no response, the document's origin.
+    policy.self_origin = if (container.csp_list.self_origin) |*origin|
+        @import("csp").Origin.create(allocator, origin.scheme, origin.host, origin.port) catch null
+    else
+        documentSelfOrigin(document, allocator);
     // 5. "Enforce the policy policy": it joins the document's CSP list.
     container.csp_list.append(policy) catch policy.deinit();
 }

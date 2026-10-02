@@ -308,6 +308,9 @@ pub fn copyPolicy(allocator: std.mem.Allocator, policy: *const types.Policy) !ty
 pub fn copyList(allocator: std.mem.Allocator, list: *const types.CSPList) !types.CSPList {
     var copy = types.CSPList.init(allocator);
     errdefer copy.deinit();
+    if (list.self_origin) |*origin| {
+        copy.self_origin = try types.Origin.create(allocator, origin.scheme, origin.host, origin.port);
+    }
     for (list.policies.items) |*policy| {
         var policy_copy = try copyPolicy(allocator, policy);
         errdefer policy_copy.deinit();

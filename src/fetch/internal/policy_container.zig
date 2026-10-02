@@ -152,14 +152,12 @@ fn parseResponseCsp(allocator: Allocator, list: *csp.CSPList, response: Response
             };
         }
     }
-    // 4. "For each policy of policies: set policy's self-origin to
-    // response's url's origin."
-    if (list.policies.items.len == first) return;
+    // 4. "Return a CSP list whose policies is policies and self-origin is
+    // response's url's origin." Matching reads each policy's self-origin, so
+    // each parsed policy takes a copy too.
     const origin = (try selfOriginOf(allocator, response.url)) orelse return;
-    defer {
-        var o = origin;
-        o.deinit();
-    }
+    if (list.self_origin) |*previous| previous.deinit();
+    list.self_origin = origin;
     for (list.policies.items[first..]) |*policy| {
         policy.self_origin = try csp.Origin.create(allocator, origin.scheme, origin.host, origin.port);
     }
@@ -285,4 +283,26 @@ test "a clone copies the CSP list; a report-only upgrade-insecure-requests upgra
     defer copy.deinit();
     try std.testing.expectEqual(@as(usize, 2), copy.csp_list.policies.items.len);
     try std.testing.expectEqualStrings("a.test", copy.csp_list.policies.items[0].self_origin.?.host);
+}
+
+test "a container from a response records the response URL's origin as its CSP list's self-origin, policies or none" {
+    const allocator = std.testing.allocator;
+    // A sandboxed frame's document has an opaque origin, but its CSP list's
+    // self-origin is the response URL's: a <meta> policy's 'self' matches it.
+    var container = try PolicyContainer.fromResponseHeaders(allocator, .{ .url = "http://web-platform.test:8000/a/b.html" });
+    defer container.deinit();
+    try std.testing.expectEqual(@as(usize, 0), container.csp_list.policies.items.len);
+    const self_origin = container.csp_list.self_origin.?;
+    try std.testing.expectEqualStrings("http", self_origin.scheme);
+    try std.testing.expectEqualStrings("web-platform.test", self_origin.host);
+    try std.testing.expectEqual(@as(?u16, 8000), self_origin.port);
+
+    var copy = try container.clone(allocator);
+    defer copy.deinit();
+    try std.testing.expectEqualStrings("web-platform.test", copy.csp_list.self_origin.?.host);
+
+    // A new container (no response) has none.
+    var fresh = PolicyContainer.init(allocator);
+    defer fresh.deinit();
+    try std.testing.expect(fresh.csp_list.self_origin == null);
 }
