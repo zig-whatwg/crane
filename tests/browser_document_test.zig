@@ -272,3 +272,33 @@ test "a frame nested in a sandboxed document frees its copy of the opaque origin
     defer allocator.free(result);
     try std.testing.expectEqualStrings("1", result);
 }
+
+// An iframe inserted by innerHTML and removed by the next innerHTML is never
+// wrapped, so nothing ever deinit's it: no wrapper is collected, and final
+// teardown sweeps Element's registries, not the iframe's own state. Its
+// integration's copies of the destroyed navigable's target name and window
+// origin leaked with it (leaks lane, 2026-10-02: 25 + 25 in
+// custom-elements/form-associated/ElementInternals-setFormValue.html alone).
+// "Destroy a child navigable" now frees them with the navigable.
+test "a removed frame's navigable takes its target name and window origin with it" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+
+    const html =
+        \\<!DOCTYPE html><html><body><div id="d"></div>
+        \\<script>
+        \\  var d = document.getElementById('d');
+        \\  d.innerHTML = '<iframe name="if1"></iframe>';
+        \\  d.innerHTML = '';
+        \\</script>
+        \\</body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/removed-frame.html" });
+    _ = try browser.runEventLoopBlocking(100);
+
+    const result = try ctx.evaluateScriptToString("String(frames.length)", allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("0", result);
+}
