@@ -71,7 +71,15 @@ pub const InternalState = struct {
     /// object is the end's owner. Freed with this state.
     receiver: ?*Receiver = null,
 
+    /// The tasks queued for this port and not yet run - a message's
+    /// delivery, its peer's `close` - which "destroy a document" removes
+    /// unrun (`dropTasks`). A task takes itself off when it runs. The list
+    /// (not the tasks: a queued one frees itself when it runs, finding its
+    /// port gone) is allocated with `allocator`.
+    armed: std.ArrayListUnmanaged(*PortTask) = .empty,
+
     pub fn deinit(self: *InternalState) void {
+        self.armed.deinit(self.allocator);
         self.disconnect();
         // Only deinit the port if we own it: a transferred port's end belongs
         // to the port the receiving realm made of it.
@@ -87,6 +95,27 @@ pub const InternalState = struct {
         }
         self.allocator.destroy(receiver);
         self.receiver = null;
+    }
+
+    /// A task of this port's ran: it is no longer queued.
+    fn forgetTask(self: *InternalState, task: *PortTask) void {
+        for (self.armed.items, 0..) |armed, i| {
+            if (armed != task) continue;
+            _ = self.armed.swapRemove(i);
+            return;
+        }
+    }
+
+    /// HTML "destroy a document" step 6.2: "Remove any tasks whose document is
+    /// document from any task queue (without running those tasks)" - this
+    /// port's. Each is freed once its timer has let it go; one its timer no
+    /// longer knows may still run, and then finds itself off the list and its
+    /// port's document gone, and frees itself.
+    fn dropTasks(self: *InternalState) void {
+        for (self.armed.items) |task| {
+            if (task.timer.clearTimeout(task.id)) task.allocator.destroy(task);
+        }
+        self.armed.clearRetainingCapacity();
     }
 
     /// HTML's MessagePort transfer steps (value = this port): set its "has
@@ -202,6 +231,18 @@ pub fn disentangleIn(realm: runtime.Context) void {
         const port = live_ports.items[i];
         if (port.ctx != realm) continue;
         disentangle(port);
+    }
+    // "Destroy a document" step 6.2 removes the document's tasks from their
+    // queues unrun: the ports' tasks queued on this realm's event loop - with
+    // the close events the loop above queued for peers in this realm. Never
+    // left to the loop's own end: Browser.deinit ends the workers first, so a
+    // worker's ports queue `close` for their peers on the page's loop, which
+    // does not run again, and the loop's end dropped each task unfreed (leaks
+    // lane, 2026-10-02: 6 per sharedworker-import file run alone).
+    for (live_ports.items) |port| {
+        if (port.ctx != realm) continue;
+        const internal = getInternal(port) orelse continue;
+        internal.dropTasks();
     }
 }
 
@@ -453,11 +494,15 @@ fn postMessageSteps(source: *runtime.Instance, message: runtime.JSValue, transfe
 // The port message queue's task
 // ============================================================================
 
-/// A task queued for a port: the owner, held as (address, generation).
+/// A task queued for a port: the owner, held as (address, generation), and
+/// where it is queued - the port's realm's timer and the id there - for
+/// "destroy a document" to remove it unrun (`InternalState.dropTasks`).
 const PortTask = struct {
     instance: *runtime.Instance,
     generation: u64,
     allocator: std.mem.Allocator,
+    timer: runtime.TimerInterface,
+    id: runtime.TimerId = 0,
 
     fn target(self: *const PortTask) ?*runtime.Instance {
         if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
@@ -482,14 +527,26 @@ fn scheduleDelivery(instance: *runtime.Instance) void {
 }
 
 fn armTask(instance: *runtime.Instance, comptime run: fn (?*anyopaque) void) void {
+    const internal = getInternal(instance) orelse return;
     const timer = instance.ctx.getOptionalTimer() orelse return;
     const task = instance.ctx.allocator.create(PortTask) catch return;
     task.* = .{
         .instance = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
         .allocator = instance.ctx.allocator,
+        .timer = timer,
     };
-    if (timer.setTimeout(0, run, task) == 0) task.allocator.destroy(task);
+    // Recorded with its port before it is queued: nothing can fail between
+    // queuing it and the record.
+    internal.armed.append(internal.allocator, task) catch {
+        task.allocator.destroy(task);
+        return;
+    };
+    task.id = timer.setTimeout(0, run, task);
+    if (task.id == 0) {
+        internal.forgetTask(task);
+        task.allocator.destroy(task);
+    }
 }
 
 /// HTML event loop processing model step 2: a task whose document is not
@@ -517,6 +574,7 @@ fn deliverNext(data: ?*anyopaque) void {
     defer task.allocator.destroy(task);
     const instance = task.target() orelse return;
     const internal = getInternal(instance) orelse return;
+    internal.forgetTask(task);
     if (!internal.owns_port or !internal.internal_port.queue_enabled) return;
     if (!internal.internal_port.hasSerializedMessages()) return;
 
@@ -608,6 +666,7 @@ fn fireClose(data: ?*anyopaque) void {
     const task: *PortTask = @ptrCast(@alignCast(data orelse return));
     defer task.allocator.destroy(task);
     const instance = task.target() orelse return;
+    if (getInternal(instance)) |internal| internal.forgetTask(task);
     engine.runTaskInRealm(instance.ctx, fireCloseSteps, instance) catch {};
 }
 

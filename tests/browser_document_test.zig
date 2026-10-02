@@ -209,3 +209,42 @@ test "an unknown element the collector takes frees its node state" {
     defer allocator.free(result);
     try std.testing.expectEqualStrings("[object HTMLUnknownElement]", result);
 }
+
+// When a worker ends, each of its entangled ports is disentangled and its
+// peer is sent `close` from a task of the PEER's realm (MessagePort's
+// scheduleClose). Browser.deinit ends the workers first, so that task is
+// queued on the page's loop, which never runs again, and the loop dropped the
+// task's memory unfreed (leaks lane, 2026-10-02: 6 per sharedworker-import
+// file run alone). HTML "destroy a document" removes the document's tasks
+// without running them; the page's unloading cleanup frees them.
+test "a port's close task the browser's end never runs is freed with its page" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+
+    const html =
+        \\<!DOCTYPE html><html><body><script>
+        \\  var reply = 'none';
+        \\  var shared = new SharedWorker('data:text/javascript,onconnect = function (e) { self.kept = e.ports[0]; self.kept.postMessage("kept"); };');
+        \\  shared.port.onmessage = function (e) { reply = e.data; };
+        \\</script></body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/port-close-task.html" });
+
+    // The shared worker keeps its connect event's port and answers through
+    // it; both ends are kept (the page's `shared.port`, the worker's `kept`)
+    // to the browser's end. A shared worker, not a dedicated one: a Worker
+    // makes the process's default timer backend from the first allocator it
+    // meets and nothing frees it (a leak of its own, reported).
+    var turns: usize = 0;
+    while (turns < 200) : (turns += 1) {
+        _ = try browser.runEventLoopBlocking(20);
+        const now = try ctx.evaluateScriptToString("reply", allocator);
+        defer allocator.free(now);
+        if (std.mem.eql(u8, now, "kept")) break;
+    }
+    const result = try ctx.evaluateScriptToString("reply", allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("kept", result);
+}
