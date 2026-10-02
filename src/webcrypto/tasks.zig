@@ -40,7 +40,6 @@ pub const Result = union(enum) {
 pub fn settle(realm: runtime.Context, computation: anyerror!Result) !runtime.JSValue {
     var result = computation catch |err| Result{ .failure = err };
     errdefer result.deinit(realm.allocator);
-    const loop = realm.getOptionalEventLoop() orelse return error.NotSupportedError;
     var capability = try engine.createPromise(realm);
     errdefer engine.releasePromiseCapability(&capability);
     const promise = try engine.retainValue(realm, capability.promise);
@@ -49,14 +48,91 @@ pub fn settle(realm: runtime.Context, computation: anyerror!Result) !runtime.JSV
     task.* = .{ .realm = realm, .capability = capability, .result = result };
     // §14.3 methods' final queue-a-global-task step. HTML permits task sources
     // to share a queue; this payload identifies the crypto task source.
-    loop.queueTask(.{ .callback = Task.run, .context = task, .drop = Task.drop });
+    task.queue(Task.run);
     return promise.take();
 }
+
+/// Own a copied native input on every path. T.run performs only native work;
+/// T.deinit erases/releases that input. No JS value belongs in T.
+pub fn submit(realm: runtime.Context, input: anytype) !runtime.JSValue {
+    const T = @TypeOf(input);
+    const Box = struct {
+        value: T,
+
+        fn compute(data: *anyopaque, allocator: std.mem.Allocator) anyerror!Result {
+            const self: *@This() = @ptrCast(@alignCast(data));
+            return self.value.run(allocator);
+        }
+
+        fn destroy(data: *anyopaque, allocator: std.mem.Allocator) void {
+            const self: *@This() = @ptrCast(@alignCast(data));
+            self.value.deinit(allocator);
+            allocator.destroy(self);
+        }
+    };
+    var owned_input = input;
+    const box = realm.allocator.create(Box) catch |err| {
+        owned_input.deinit(realm.allocator);
+        return err;
+    };
+    box.* = .{ .value = owned_input };
+    errdefer Box.destroy(box, realm.allocator);
+    var capability = try engine.createPromise(realm);
+    errdefer engine.releasePromiseCapability(&capability);
+    const promise = try engine.retainValue(realm, capability.promise);
+    errdefer promise.release();
+    const task = try realm.allocator.create(Task);
+    task.* = .{
+        .realm = realm,
+        .capability = capability,
+        .result = .none,
+        .job = .{ .data = box, .compute = Box.compute, .destroy = Box.destroy },
+    };
+    // §14.3 "return promise, then in parallel". Until HTML's parallel-queue
+    // facility exists, PBKDF2/RSA and other long native operations occupy the
+    // realm's thread. The copied-input computation can move there unchanged.
+    task.queue(Task.compute);
+    return promise.take();
+}
+
+const Job = struct {
+    data: *anyopaque,
+    compute: *const fn (*anyopaque, std.mem.Allocator) anyerror!Result,
+    destroy: *const fn (*anyopaque, std.mem.Allocator) void,
+};
 
 const Task = struct {
     realm: runtime.Context,
     capability: engine.PromiseCapability,
     result: Result,
+    job: ?Job = null,
+
+    fn queue(self: *Task, callback: *const fn (?*anyopaque) void) void {
+        if (self.realm.getOptionalEventLoop()) |loop| {
+            loop.queueTask(.{ .callback = callback, .context = self, .drop = Task.drop });
+            return;
+        }
+        // Workers currently ride timers. If the worker ends before this fires,
+        // native_timer.deinit drops no user_data and the payload leaks (also
+        // FileReader/CookieStore/fetch_body). The queued host fix supplies a
+        // runtime.EventLoop with Task.drop and gives native_timer a drop hook.
+        if (self.realm.getOptionalTimer()) |timer| {
+            if (timer.setTimeout(0, callback, self) != 0) return;
+        }
+        // A realm without either queue must still settle, as FileReader does.
+        callback(self);
+    }
+
+    fn compute(data: ?*anyopaque) void {
+        const self: *Task = @ptrCast(@alignCast(data.?));
+        const job = self.job.?;
+        self.result = job.compute(job.data, self.realm.allocator) catch |err| .{ .failure = err };
+        job.destroy(job.data, self.realm.allocator);
+        self.job = null;
+        // Each method's final queue-a-global-task step: settlement is a LATER
+        // task, with the event loop's intervening microtask checkpoint.
+        self.queue(Task.run);
+    }
 
     fn run(data: ?*anyopaque) void {
         const self: *Task = @ptrCast(@alignCast(data.?));
@@ -121,6 +197,7 @@ const Task = struct {
     }
 
     fn finish(self: *Task) void {
+        if (self.job) |job| job.destroy(job.data, self.realm.allocator);
         self.result.deinit(self.realm.allocator);
         engine.releasePromiseCapability(&self.capability);
         self.realm.allocator.destroy(self);

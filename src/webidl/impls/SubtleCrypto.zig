@@ -142,9 +142,8 @@ pub fn call_digest(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIde
     defer normalized.deinit();
     // Step 4: copy before the argument conversion's temporary bytes expire.
     const bytes = try instance.ctx.allocator.dupe(u8, try data.asBytes());
-    defer instance.ctx.allocator.free(bytes);
     // Steps 5-12: digest in the relevant realm and settle from its crypto task.
-    return webcrypto.tasks.settle(instance.ctx, digestResult(instance.ctx.allocator, normalized.id, bytes));
+    return webcrypto.tasks.submit(instance.ctx, DigestInput{ .id = normalized.id, .bytes = bytes });
 }
 
 fn algorithmInput(algorithm: typedefs.AlgorithmIdentifier) webcrypto.normalize.Input {
@@ -154,10 +153,20 @@ fn algorithmInput(algorithm: typedefs.AlgorithmIdentifier) webcrypto.normalize.I
     };
 }
 
-fn digestResult(allocator: std.mem.Allocator, id: webcrypto.registry.Id, bytes: []const u8) !webcrypto.tasks.Result {
-    const hash = try webcrypto.hash.Hash.fromName(id.name());
-    return .{ .bytes = try webcrypto.hash.digest(allocator, hash, bytes) };
-}
+const DigestInput = struct {
+    id: webcrypto.registry.Id,
+    bytes: []u8,
+
+    pub fn run(self: *const DigestInput, allocator: std.mem.Allocator) !webcrypto.tasks.Result {
+        const hash = try webcrypto.hash.Hash.fromName(self.id.name());
+        return .{ .bytes = try webcrypto.hash.digest(allocator, hash, self.bytes) };
+    }
+
+    pub fn deinit(self: *DigestInput, allocator: std.mem.Allocator) void {
+        std.crypto.secureZero(u8, self.bytes);
+        allocator.free(self.bytes);
+    }
+};
 
 /// Operation: importKey
 pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyData: runtime.JSValue, algorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
