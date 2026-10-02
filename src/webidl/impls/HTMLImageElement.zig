@@ -19,6 +19,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/images.html#update-the-image-data
 
 const std = @import("std");
+const log = std.log.scoped(.img);
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
@@ -277,31 +278,83 @@ pub fn get_sharedStorageWritable(instance: *runtime.Instance) anyerror!bool {
     return error.NotImplemented;
 }
 
-/// Setter for src - sets the "src" content attribute and initiates async image loading
-/// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-src
-///
-/// Per HTML spec §4.8.3, when src is set:
-/// 1. Set the src content attribute on the element
-/// 2. Queue a microtask to run the "update the image data" algorithm
-///    - This allows `img.onload = fn` to be set AFTER `img.src = url`
-/// 3. The microtask fetches the image and queues a task to fire events
-///    - Events fire asynchronously via task queue (macrotask), not synchronously
-/// 4. Generation counter enables cancellation if src changes before load completes
-///
-/// TODO: "update the image data" is owed on every relevant mutation - the
-/// src, srcset, sizes, crossorigin or referrerpolicy attribute being set,
-/// changed or removed, however that happens - not only on this setter, so
-/// `img.setAttribute("src", url)` starts no load yet. It belongs in the
-/// element's attribute change steps.
-pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    const allocator = instance.ctx.allocator;
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // HTML 4.8.4.3.2's relevant mutations of an img element's attributes run
+    // "update the image data" - however the attribute is set: the IDL
+    // setters reflect into the content attributes, and setAttribute.
+    @import("dom").attribute_change_steps.install("img", &attributeChangeSteps);
+}
 
-    // Step 1: Set the src attribute using Element.setAttribute
+/// The img element's attribute change steps: its relevant mutations - the
+/// src, srcset, width or sizes attributes set, changed or removed (src set
+/// to its own value included: that restarts animations, which nothing here
+/// keeps), the crossorigin or referrerpolicy attribute's state changed.
+///
+/// Not modelled, stated: the other relevant mutations - the img or a source
+/// sibling inserted, removed or moved, a picture parent's source changing,
+/// the adopting steps, auto-sizes.
+fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    if (namespace != null) return;
+    const always = [_][]const u8{ "src", "srcset", "width", "sizes" };
+    const on_state_change = [_][]const u8{ "crossorigin", "referrerpolicy" };
+    for (always) |name| {
+        if (std.mem.eql(u8, local_name, name)) return updateTheImageData(element);
+    }
+    for (on_state_change) |name| {
+        if (!std.mem.eql(u8, local_name, name)) continue;
+        // An enumerated attribute's state: the same value is the same state.
+        const same = if (old_value) |o| (if (value) |v| std.ascii.eqlIgnoreCase(o, v) else false) else value == null;
+        if (!same) updateTheImageData(element);
+        return;
+    }
+}
+
+/// HTML "update the image data", as far as this engine models it: the
+/// selected source is the src attribute (no srcset or picture source
+/// selection - stated); a non-empty one is fetched, after a microtask (the
+/// spec's "await a stable state"), and load or error fires in a task. A
+/// newer update cancels an older one (the generation counter).
+fn updateTheImageData(instance: *runtime.Instance) void {
+    const src = (Element.call_getAttribute(instance, runtime.DOMString.initInterned("src")) catch return) orelse return;
+    if (src.asSlice().len == 0) return;
+    // "Parse selected source, relative to the element's node document": the
+    // fetch needs an absolute URL. One that does not parse loads nothing.
+    const url = resolveAgainstBaseUrl(instance, src.asSlice()) orelse return;
+    defer instance.ctx.allocator.free(url);
+    startLoad(instance, url) catch |err| log.debug("img: the load did not start: {s}", .{@errorName(err)});
+}
+
+/// `url` parsed against `element`'s base URL (its node document's), and
+/// serialized; owned by the element's context allocator, null when it does
+/// not parse.
+fn resolveAgainstBaseUrl(element: *runtime.Instance, url: []const u8) ?[]const u8 {
+    const base = interfaces.Node.get_baseURI(element) catch return null;
+    defer element.ctx.allocator.free(base);
+    const base_arg = if (base.len > 0) webidl.Opt(runtime.USVString).passed(base) else webidl.Opt(runtime.USVString).notPassed();
+    const parsed = (interfaces.URL.call_static_parse(element, url, base_arg) catch return null) orelse return null;
+    defer runtime.Instance.deinit(parsed);
+    return interfaces.URL.get_href(parsed) catch null;
+}
+
+/// Setter for src: it reflects the src content attribute
+/// (https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-src),
+/// whose change is a relevant mutation: the attribute change steps run
+/// "update the image data".
+pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const dom_value = runtime.DOMString.initInterned(value);
     try Element.call_setAttribute(instance, runtime.DOMString.initInterned("src"), dom_value);
+}
 
-    // Step 2: Get the URL string from the value (USVString is already []const u8)
-    const url_str = value;
+/// Start loading `url_str` for `instance`, superseding any load in flight.
+///
+/// 1. Queue a microtask to run the fetch - so `img.onload = fn` set after
+///    `img.src = url` still hears the event.
+/// 2. The microtask fetches the image and queues a task to fire the event.
+/// 3. A generation counter cancels a load a newer one superseded.
+fn startLoad(instance: *runtime.Instance, url_str: []const u8) !void {
+    const allocator = instance.ctx.allocator;
 
     // Skip empty URLs
     if (url_str.len == 0) {
