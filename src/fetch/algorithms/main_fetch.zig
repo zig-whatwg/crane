@@ -30,6 +30,7 @@ const scheme_fetch = @import("scheme_fetch.zig");
 const validation = @import("../internal/validation.zig");
 const referrer_policy = @import("referrer_policy");
 const mime_blocking = @import("mime_blocking.zig");
+const csp_check = @import("csp_check.zig");
 const origins = @import("../internal/origins.zig");
 const clock = @import("clock");
 
@@ -186,6 +187,14 @@ pub fn mainFetchStart(
 
     // Step 6: Check bad port
     if (shouldBlockDueToBadPort(request)) {
+        return .{ .response = try internal_response.networkError(allocator) };
+    }
+
+    // Step 7 (CSP's part): "If ... should request be blocked by Content
+    // Security Policy ... returns blocked, then set response to a network
+    // error." Each redirect runs main fetch again, so a redirect to a URL
+    // the policy does not allow is blocked too.
+    if (csp_check.shouldRequestBeBlocked(request)) {
         return .{ .response = try internal_response.networkError(allocator) };
     }
 

@@ -87,9 +87,9 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// attribute is present and represents one of the above states, then the
 /// user agent must run the algorithm appropriate for that state."
 ///
-/// Only the Refresh state is modelled; the other states (content language,
-/// encoding declaration, default style, set-cookie, X-UA-Compatible,
-/// Content-Security-Policy) do nothing here.
+/// The Refresh and Content Security Policy states are modelled; the other
+/// states (content language, encoding declaration, default style,
+/// set-cookie, X-UA-Compatible) do nothing here.
 fn insertionSteps(node: *NodeBase) void {
     if (node.node_type != 1) return;
     // Brand-checked by the instance's state, not by `node.node_name`: an
@@ -109,6 +109,54 @@ fn insertionSteps(node: *NodeBase) void {
     // The attribute is an enumerated attribute: its keywords match ASCII
     // case-insensitively.
     if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "refresh")) refreshState(instance);
+    if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "content-security-policy")) contentSecurityPolicyState(instance, node);
+}
+
+/// The Content Security Policy state (`http-equiv="content-security-policy"`):
+/// it "enforces a Content Security Policy on a Document".
+///
+/// Spec: https://html.spec.whatwg.org/multipage/semantics.html#attr-meta-http-equiv-content-security-policy
+fn contentSecurityPolicyState(meta: *runtime.Instance, node: *NodeBase) void {
+    // 1. "If the meta element is not a child of a head element, return."
+    const parent = node.parent_node orelse return;
+    if (parent.node_type != 1) return;
+    const parent_instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(parent) orelse return));
+    var parent_name = interfaces.Element.get_localName(parent_instance) catch return;
+    defer parent_name.deinit(parent_instance.ctx.allocator);
+    if (!std.mem.eql(u8, parent_name.asSlice(), "head")) return;
+    // 2. "If the meta element has no content attribute, or if that
+    // attribute's value is the empty string, then return."
+    const content = (interfaces.Element.call_getAttribute(meta, runtime.DOMString.initInterned("content")) catch return) orelse return;
+    if (content.asSlice().len == 0) return;
+    const document = (interfaces.Node.get_ownerDocument(meta) catch return) orelse return;
+    const container = dom_module.policy_containers.of(document) orelse return;
+    const allocator = container.allocator;
+    // 3. Parse a serialized CSP, with a source of "meta" and a disposition of
+    // "enforce".
+    var policy = @import("csp").parsing.parseSerializedCSP(allocator, content.asSlice(), .meta, .enforce) catch return;
+    // 4. "Remove all occurrences of the report-uri, frame-ancestors, and
+    // sandbox directives from policy."
+    for ([_][]const u8{ "report-uri", "frame-ancestors", "sandbox" }) |name| {
+        if (policy.directive_set.items.fetchOrderedRemove(name)) |removed| {
+            var directive = removed.value;
+            directive.deinit();
+        }
+    }
+    // The policy's self-origin: the document's origin, whose settings object
+    // enforces it.
+    policy.self_origin = documentSelfOrigin(document, allocator);
+    // 5. "Enforce the policy policy": it joins the document's CSP list.
+    container.csp_list.append(policy) catch policy.deinit();
+}
+
+/// `document`'s origin as a CSP self-origin, through its window's settings
+/// object; null for an opaque one or a document with no window.
+fn documentSelfOrigin(document: *runtime.Instance, allocator: std.mem.Allocator) ?@import("csp").Origin {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
+    const settings = dom_module.global_settings.of(window) orelse return null;
+    const origin = settings.origin(window) catch return null;
+    defer window.ctx.allocator.free(origin);
+    return fetch.internal.policy_container.selfOriginOf(allocator, origin) catch null;
 }
 
 /// The meta element's attribute change steps: HTML's "referrer" metadata

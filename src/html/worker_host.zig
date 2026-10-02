@@ -2221,6 +2221,10 @@ const SharedConnect = struct {
         var fetched = workers.fetchWorkerScript(allocator, self.url, .{
             .worker_type = self.worker_type,
             .requesting_origin = self.origin,
+            .shared = true,
+            // The outside settings' policy container: its CSP decides
+            // whether the script may be fetched at all.
+            .policy_container = creatorPolicyContainer(self.owner_realm),
         }) catch return self.fireError();
         defer fetched.deinit();
 
@@ -2319,7 +2323,7 @@ pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScri
 
 /// The policy container of the global whose realm is `realm`: the
 /// worker's creator's settings object's.
-fn creatorPolicyContainer(realm: runtime.Context) ?*const fetch_mod.internal.PolicyContainer {
+pub fn creatorPolicyContainer(realm: runtime.Context) ?*const fetch_mod.internal.PolicyContainer {
     const record = realm.getRealm() orelse return null;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
     const settings = @import("dom").global_settings.of(global) orelse return null;

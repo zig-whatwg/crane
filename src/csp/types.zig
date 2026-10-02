@@ -81,6 +81,8 @@ pub const SourceExpression = struct {
     host_part: ?[]const u8 = null,
     /// For host expressions with port: the port number
     port_part: ?u16 = null,
+    /// For host expressions whose port-part is "*": any port matches.
+    port_wildcard: bool = false,
     /// For host expressions with path: the path prefix
     path_part: ?[]const u8 = null,
     /// For nonce expressions: the nonce value (without 'nonce-' prefix)

@@ -1571,8 +1571,13 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     // responsePolicyContainer": "create a policy container from a fetch
     // response" for the response a fetch made.
     if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https") or std.mem.eql(u8, scheme, "data")) {
-        const header: ?[]const u8 = if (response.headers) |headers| headers.get("referrer-policy") else null;
-        return PolicyContainer.fromResponse(allocator, header) catch null;
+        const headers = response.headers;
+        return PolicyContainer.fromResponseHeaders(allocator, .{
+            .url = response_url,
+            .csp = if (headers) |h| h.get("content-security-policy") else null,
+            .csp_report_only = if (headers) |h| h.get("content-security-policy-report-only") else null,
+            .referrer_policy = if (headers) |h| h.get("referrer-policy") else null,
+        }) catch null;
     }
     // 5. "Return a new policy container."
     return PolicyContainer.init(allocator);

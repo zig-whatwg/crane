@@ -300,11 +300,7 @@ pub const InternalState = struct {
     policy_container: fetch.internal.PolicyContainer,
 
     // === Content Security Policy (CSP Level 3) ===
-
-    /// CSP list for this document
-    /// Spec: https://www.w3.org/TR/CSP3/ §2.2
-    /// Contains all policies applied to this document via headers or meta tags.
-    csp_list: ?*csp.CSPList,
+    // The CSP list is the policy container's (`policy_container.csp_list`).
 
     /// Document origin for CSP 'self' matching
     csp_self_origin: ?csp.Origin,
@@ -430,7 +426,6 @@ pub const InternalState = struct {
             .dispose_module_fn = null,
             .policy_container = fetch.internal.PolicyContainer.init(allocator),
             // CSP
-            .csp_list = null,
             .csp_self_origin = null,
             // Speculation rules
             .prefetch_hints = std.StringHashMap(SpeculationEagerness).init(allocator),
@@ -547,11 +542,7 @@ pub const InternalState = struct {
 
         self.policy_container.deinit();
 
-        // CSP list and origin
-        if (self.csp_list) |csp_list| {
-            csp_list.deinit();
-            self.allocator.destroy(csp_list);
-        }
+        // CSP origin (the list is the policy container's)
         if (self.csp_self_origin) |*origin| {
             origin.deinit();
         }
@@ -4991,36 +4982,25 @@ pub fn addScopedImportMapping(
 /// Spec: https://www.w3.org/TR/CSP3/ §2.2
 pub fn getCSPList(instance: *runtime.Instance) ?*csp.CSPList {
     const internal = getInternal(instance) orelse return null;
-    return internal.csp_list;
+    return &internal.policy_container.csp_list;
 }
 
 /// Set the CSP list for this document
 /// Takes ownership of the CSP list.
 pub fn setCSPList(instance: *runtime.Instance, csp_list: *csp.CSPList) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Clean up existing CSP list if any
-    if (internal.csp_list) |old_list| {
-        old_list.deinit();
-        internal.allocator.destroy(old_list);
-    }
-
-    internal.csp_list = csp_list;
+    // The policy container\'s list is replaced by this one, which was
+    // allocated with the document\'s allocator.
+    internal.policy_container.csp_list.deinit();
+    internal.policy_container.csp_list = csp_list.*;
+    internal.allocator.destroy(csp_list);
 }
 
 /// Add a policy to the document's CSP list
 /// Spec: https://www.w3.org/TR/CSP3/ §2.2.1
 pub fn addCSPPolicy(instance: *runtime.Instance, policy: csp.Policy) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Create CSP list if it doesn't exist
-    if (internal.csp_list == null) {
-        const new_list = try internal.allocator.create(csp.CSPList);
-        new_list.* = csp.CSPList.init(internal.allocator);
-        internal.csp_list = new_list;
-    }
-
-    try internal.csp_list.?.append(policy);
+    try internal.policy_container.csp_list.append(policy);
 }
 
 /// Get the document's CSP self-origin for 'self' matching
@@ -5060,7 +5040,7 @@ pub fn isInlineScriptAllowedByCSP(
     hash_value: ?[]const u8,
 ) bool {
     const internal = getInternal(instance) orelse return true; // No document = allow
-    const csp_list = internal.csp_list orelse return true; // No CSP = allow
+    const csp_list = &internal.policy_container.csp_list;
 
     // Check each policy
     for (csp_list.policies.items) |*policy| {
@@ -5127,10 +5107,12 @@ pub fn isExternalScriptAllowedByCSP(
     nonce: ?[]const u8,
 ) bool {
     const internal = getInternal(instance) orelse return true; // No document = allow
-    const csp_list = internal.csp_list orelse return true; // No CSP = allow
+    const csp_list = &internal.policy_container.csp_list;
 
     // Get self origin for 'self' matching
-    const self_origin = if (internal.csp_self_origin) |*o| o else null;
+    // 'self' is each policy's self-origin (CSP 2.2), set as it was
+    // delivered; the document's own is the fallback for one without.
+    const fallback_origin = if (internal.csp_self_origin) |*o| o else null;
 
     // Check each policy
     for (csp_list.policies.items) |*policy| {
@@ -5169,7 +5151,7 @@ pub fn isExternalScriptAllowedByCSP(
             url_port,
             url_path,
             &directive.value,
-            self_origin,
+            if (policy.self_origin) |*o| o else fallback_origin,
             0, // redirect_count
         )) {
             continue; // Allowed by URL
@@ -5186,7 +5168,7 @@ pub fn isExternalScriptAllowedByCSP(
 /// Spec: https://www.w3.org/TR/CSP3/ §6.7.4
 pub fn isEvalAllowedByCSP(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return true;
-    const csp_list = internal.csp_list orelse return true;
+    const csp_list = &internal.policy_container.csp_list;
 
     for (csp_list.policies.items) |*policy| {
         if (policy.disposition != .enforce) continue;

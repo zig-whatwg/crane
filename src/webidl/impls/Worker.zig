@@ -374,6 +374,9 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     var fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
         .worker_type = worker_type,
         .requesting_origin = requesting_origin,
+        // The outside settings' policy container: its CSP decides whether
+        // the script may be fetched at all.
+        .policy_container = worker_host.creatorPolicyContainer(ctx),
     }) catch |err| {
         std.log.debug("the worker script was not fetched: {}", .{err});
         internal_state.pending_script = null;

@@ -357,11 +357,9 @@ fn fetchHttpUrl(
     const final_url = try allocator.dupe(u8, url);
     errdefer allocator.free(final_url);
 
-    // HTML "create a policy container from a fetch response" (step 5: the
-    // response's `Referrer-Policy` header).
-    const referrer_policy_value = response.header_list.get(allocator, "Referrer-Policy") catch return NavigationError.OutOfMemory;
-    defer if (referrer_policy_value) |value| allocator.free(value);
-    const policy_container = fetch_internal.PolicyContainer.fromResponse(allocator, referrer_policy_value) catch return NavigationError.OutOfMemory;
+    // HTML "create a policy container from a fetch response": the
+    // response's CSP headers (step 3) and `Referrer-Policy` header (step 5).
+    const policy_container = policyContainerOf(allocator, response, url) catch return NavigationError.OutOfMemory;
 
     return NavigationResult{
         .status_code = response.status,
@@ -371,6 +369,24 @@ fn fetchHttpUrl(
         .allocator = allocator,
         .policy_container = policy_container,
     };
+}
+
+/// HTML "create a policy container from a fetch response" for `response`,
+/// the fetch of `url`.
+fn policyContainerOf(allocator: Allocator, response: *const @import("fetch").internal.InternalResponse, url: []const u8) !@import("fetch").internal.PolicyContainer {
+    const fetch_internal = @import("fetch").internal;
+    const csp_value = try response.header_list.get(allocator, "Content-Security-Policy");
+    defer if (csp_value) |value| allocator.free(value);
+    const csp_report_only = try response.header_list.get(allocator, "Content-Security-Policy-Report-Only");
+    defer if (csp_report_only) |value| allocator.free(value);
+    const referrer_policy_value = try response.header_list.get(allocator, "Referrer-Policy");
+    defer if (referrer_policy_value) |value| allocator.free(value);
+    return fetch_internal.PolicyContainer.fromResponseHeaders(allocator, .{
+        .url = url,
+        .csp = csp_value,
+        .csp_report_only = csp_report_only,
+        .referrer_policy = referrer_policy_value,
+    });
 }
 
 /// Is this fetch response a network error rather than a document?

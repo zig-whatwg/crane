@@ -144,6 +144,9 @@ pub const directives = @import("directives/root.zig");
 // Integration
 pub const integration = @import("integration.zig");
 
+// Fetch integration: should a request be blocked (CSP §4.1)
+pub const request_check = @import("request_check.zig");
+
 // Integration convenience exports
 pub const parseCSPHeaders = integration.parseCSPHeaders;
 pub const parseMetaCSP = integration.parseMetaCSP;
