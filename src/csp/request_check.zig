@@ -38,6 +38,8 @@ pub const Request = struct {
     redirect_count: u32 = 0,
     /// Its cryptographic nonce metadata.
     nonce: []const u8 = "",
+    /// Its integrity metadata (SRI), as the integrity attribute gave it.
+    integrity_metadata: []const u8 = "",
     /// Its parser metadata is "parser-inserted".
     parser_inserted: bool = false,
 };
@@ -212,8 +214,10 @@ fn scriptDirectivesPreRequestCheck(request: Request, source_list: *const types.S
     if (isScriptLike(request.destination)) {
         // 1.1. A nonce that matches: "Allowed".
         if (request.nonce.len > 0 and matching.doesNonceMatch(request.nonce, source_list)) return .allowed;
-        // 1.2. Integrity metadata matching the source list's hashes: not
-        // modelled (stated) - such a request falls through to URL matching.
+        // 1.2. "If the result of executing Does integrity metadata match
+        // source list? on request's integrity metadata and directive's value
+        // is "Matches", return "Allowed"."
+        if (doesIntegrityMetadataMatchSourceList(request.integrity_metadata, source_list)) return .allowed;
         // 1.3. 'strict-dynamic': a parser-inserted request is "Blocked", any
         // other "Allowed".
         if (matching.hasStrictDynamic(source_list)) return if (request.parser_inserted) .blocked else .allowed;
@@ -224,6 +228,39 @@ fn scriptDirectivesPreRequestCheck(request: Request, source_list: *const types.S
     }
     // 2. "Return "Allowed"."
     return .allowed;
+}
+
+/// § 6.7.2.4 Does integrity metadata match source list? - the metadata is
+/// a non-empty set of hashes, every one of which the list has as a
+/// hash-source.
+pub fn doesIntegrityMetadataMatchSourceList(integrity_metadata: []const u8, source_list: *const types.SourceList) bool {
+    // 2-3. The list's hash-source expressions; none: "Does Not Match".
+    var has_hash = false;
+    for (source_list.expressions.items) |expr| {
+        if (expr.type == .hash) has_hash = true;
+    }
+    if (!has_hash) return false;
+    // 4-6. SRI "parse metadata": whitespace-separated "alg-base64[?opts]"
+    // tokens of a known algorithm. Each must be in the list.
+    var any = false;
+    var tokens = std.mem.tokenizeAny(u8, integrity_metadata, " \t\n\r\x0c");
+    while (tokens.next()) |token| {
+        const dash = std.mem.indexOfScalar(u8, token, '-') orelse continue;
+        const algorithm = token[0..dash];
+        if (!std.ascii.eqlIgnoreCase(algorithm, "sha256") and !std.ascii.eqlIgnoreCase(algorithm, "sha384") and !std.ascii.eqlIgnoreCase(algorithm, "sha512")) continue;
+        const rest = token[dash + 1 ..];
+        const value = if (std.mem.indexOfScalar(u8, rest, '?')) |q| rest[0..q] else rest;
+        any = true;
+        const found = for (source_list.expressions.items) |expr| {
+            if (expr.type != .hash) continue;
+            const expr_algorithm = expr.hash_algorithm orelse continue;
+            const expr_value = expr.hash_value orelse continue;
+            if (std.ascii.eqlIgnoreCase(expr_algorithm, algorithm) and std.mem.eql(u8, expr_value, value)) break true;
+        } else false;
+        if (!found) return false;
+    }
+    // 5. "no metadata" or an empty set: "Does Not Match"; 7. "Matches".
+    return any;
 }
 
 /// Fetch: "A request's destination is script-like if it is
@@ -336,4 +373,15 @@ test "the effective directive of each destination" {
     try std.testing.expectEqualStrings("connect-src", effectiveDirective(.{ .url = .{ .scheme = "http" } }).?);
     try std.testing.expectEqualStrings("default-src", effectiveDirective(.{ .url = .{ .scheme = "http" }, .destination = "script", .initiator = "prefetch" }).?);
     try std.testing.expect(effectiveDirective(.{ .url = .{ .scheme = "http" }, .destination = "report" }) == null);
+}
+
+test "integrity metadata matches when every hash it names is a hash-source of the list" {
+    var policy = try testPolicy("script-src 'sha256-abc' 'ShA384-def'", .enforce);
+    defer policy.deinit();
+    const list = &policy.getDirective("script-src").?.value;
+    try std.testing.expect(doesIntegrityMetadataMatchSourceList("sha256-abc", list));
+    try std.testing.expect(doesIntegrityMetadataMatchSourceList("sha256-abc sha384-def?opt", list));
+    try std.testing.expect(!doesIntegrityMetadataMatchSourceList("sha256-abc sha512-zzz", list));
+    try std.testing.expect(!doesIntegrityMetadataMatchSourceList("", list));
+    try std.testing.expect(!doesIntegrityMetadataMatchSourceList("md5-abc", list));
 }

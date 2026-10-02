@@ -61,6 +61,7 @@ pub fn requestOf(request: *const InternalRequest) csp.request_check.Request {
         .initiator = initiatorName(request.initiator),
         .redirect_count = request.redirect_count,
         .nonce = request.cryptographic_nonce_metadata,
+        .integrity_metadata = request.integrity_metadata,
         .parser_inserted = request.parser_metadata == .parser_inserted,
     };
 }

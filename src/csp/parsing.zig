@@ -190,10 +190,10 @@ pub fn parseSourceExpression(
             return try parseHostSource(allocator, token);
         }
 
-        // If it's just scheme: (no path), it's a scheme source
-        if (colon_pos == token.len - 1 or
-            (colon_pos + 1 < token.len and token[colon_pos + 1] != '/'))
-        {
+        // scheme-source = scheme-part ":" - the token is a scheme and one
+        // colon, which ends it. "host:port" (a host-source with a port and
+        // no scheme) is not one.
+        if (colon_pos == token.len - 1 and isSchemePart(token[0..colon_pos])) {
             var expr = try types.SourceExpression.create(allocator, .scheme, token);
             expr.scheme_part = try allocator.dupe(u8, token[0 .. colon_pos + 1]);
             return expr;
@@ -314,6 +314,16 @@ pub fn copyList(allocator: std.mem.Allocator, list: *const types.CSPList) !types
         try copy.append(policy_copy);
     }
     return copy;
+}
+
+/// RFC 3986 scheme, as CSP's scheme-part: ALPHA *( ALPHA / DIGIT / "+" /
+/// "-" / "." ).
+fn isSchemePart(part: []const u8) bool {
+    if (part.len == 0 or !std.ascii.isAlphabetic(part[0])) return false;
+    for (part[1..]) |c| {
+        if (!std.ascii.isAlphanumeric(c) and c != '+' and c != '-' and c != '.') return false;
+    }
+    return true;
 }
 
 /// Check if string contains only ASCII characters.
@@ -542,4 +552,22 @@ test "copyList: each policy parses back to the same directives, disposition, sou
     const second = &copy.policies.items[1];
     try std.testing.expectEqual(types.PolicyDisposition.report, second.disposition);
     try std.testing.expect(second.containsDirective("upgrade-insecure-requests"));
+}
+
+test "parseSourceExpression: host:port is a host-source, scheme: a scheme-source" {
+    const allocator = std.testing.allocator;
+    var host_port = try parseSourceExpression(allocator, "www1.web-platform.test:8000");
+    defer host_port.deinit();
+    try std.testing.expectEqual(types.SourceExpressionType.host, host_port.type);
+    try std.testing.expectEqualStrings("www1.web-platform.test", host_port.host_part.?);
+    try std.testing.expectEqual(@as(?u16, 8000), host_port.port_part);
+
+    var scheme = try parseSourceExpression(allocator, "blob:");
+    defer scheme.deinit();
+    try std.testing.expectEqual(types.SourceExpressionType.scheme, scheme.type);
+
+    var any_port = try parseSourceExpression(allocator, "www.web-platform.test:*");
+    defer any_port.deinit();
+    try std.testing.expectEqual(types.SourceExpressionType.host, any_port.type);
+    try std.testing.expect(any_port.port_wildcard);
 }
