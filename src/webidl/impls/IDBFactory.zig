@@ -20,6 +20,7 @@ const IDBFactoryInterface = interfaces.IDBFactory;
 // Backend imports
 const storage = @import("storage");
 const BackendFactory = storage.indexeddb.IDBFactory;
+const BackendOpenDBRequest = storage.indexeddb.IDBOpenDBRequest;
 const BackendKey = storage.indexeddb.IDBKey;
 const BackendKeyRange = storage.indexeddb.IDBKeyRange;
 
@@ -136,6 +137,8 @@ pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: 
             else => error.InvalidState,
         };
     };
+    // Not connected to the wrapper yet (the TODO below): this call's.
+    defer dropBackendRequest(internal.factory.allocator, request);
 
     // Wrap the backend request in a WebIDL IDBOpenDBRequest instance
     const request_instance = interfaces.IDBOpenDBRequest.init(internal.allocator, instance.ctx) catch {
@@ -147,8 +150,8 @@ pub fn call_open(instance: *runtime.Instance, name: runtime.DOMString, version: 
     if (request_state.own._internal) |req_internal| {
         // Set the backend request reference
         _ = req_internal;
-        _ = request;
         // TODO: Connect backend request to WebIDL request wrapper
+        // (and drop the defer'd free above then: the wrapper will own it).
     }
 
     return request_instance;
@@ -199,6 +202,8 @@ pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString)
             else => error.InvalidState,
         };
     };
+    // Not connected to the wrapper yet (the TODO below): this call's.
+    defer dropBackendRequest(internal.factory.allocator, request);
 
     // Wrap the backend request in a WebIDL IDBOpenDBRequest instance
     const request_instance = interfaces.IDBOpenDBRequest.init(internal.allocator, instance.ctx) catch {
@@ -206,10 +211,30 @@ pub fn call_deleteDatabase(instance: *runtime.Instance, name: runtime.DOMString)
     };
 
     // Store backend request reference
-    _ = request;
     // TODO: Connect backend request to WebIDL request wrapper
+    // (and drop the defer'd free above then: the wrapper will own it).
 
     return request_instance;
+}
+
+/// The backend's open request, and the connection `open` made as its result,
+/// when the call that asked for them ends: nothing is connected to them yet
+/// (the TODOs above), and the backend keeps neither - no table entry (a
+/// database's metadata holds its name and version, its `connections` list is
+/// never appended), no queued task, no handler (`setResult` calls
+/// `onsuccess`, which nothing sets). Each open() and deleteDatabase() leaked
+/// them (leaks lane, 2026-10-02: 56 in the 29 IndexedDB/ files of one sweep
+/// shard, from the support code's deleteDatabase).
+fn dropBackendRequest(allocator: std.mem.Allocator, request: *BackendOpenDBRequest) void {
+    if (request.base.result) |result| switch (result) {
+        .database => |connection| {
+            connection.deinit();
+            allocator.destroy(connection);
+        },
+        else => {},
+    };
+    request.deinit();
+    allocator.destroy(request);
 }
 
 /// Operation: cmp

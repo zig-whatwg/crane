@@ -302,3 +302,29 @@ test "a removed frame's navigable takes its target name and window origin with i
     defer allocator.free(result);
     try std.testing.expectEqualStrings("0", result);
 }
+
+// indexedDB.open() and deleteDatabase() take the backend's open request - and
+// open's connection, the request's result, which the backend keeps nowhere -
+// and do not connect them to the IDBOpenDBRequest they return yet, so each
+// call leaked them (leaks lane, 2026-10-02: every IndexedDB/ file whose
+// support code deletes its database first, 56 in 29 files of one shard).
+// Only deleteDatabase is driven: open() throws a TypeError before it reaches
+// the impl today (reported).
+test "indexedDB.deleteDatabase frees the backend request it does not keep" {
+    const allocator = std.testing.allocator;
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+    try ctx.loadHTML("<!DOCTYPE html><html><body></body></html>", .{ .base_url = "http://localhost/indexeddb.html" });
+
+    const script =
+        \\(function () {
+        \\  const first = indexedDB.deleteDatabase('lk-db');
+        \\  const second = indexedDB.deleteDatabase('lk-db');
+        \\  return [first, second].map(r => Object.prototype.toString.call(r)).join();
+        \\})()
+    ;
+    const result = try ctx.evaluateScriptToString(script, allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("[object IDBOpenDBRequest],[object IDBOpenDBRequest]", result);
+}
