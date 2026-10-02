@@ -207,6 +207,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A mixin's live member is its includer's impl until the mixin is inherited](codegen-a-mixin-s-live-member-is-its-includer-s-impl-until.md) - Before changing a mixin member, open the includer's generated interface and see which impl it calls: until the mixin is inherited, the includer's copy is the live one.
 - [A committed generated tree needs committed, pinned inputs](codegen-a-generated-tree-needs-committed-pinned-inputs.md) - Before checking a generated tree, pin and commit everything that generates it; an unrecorded upstream revision can be recovered by matching blob hashes against the upstream's trees.
 - [The model must not depend on the order files are read in](codegen-the-model-must-not-depend-on-file-order.md) - If a generator's output can change when its inputs are only reordered, it is wrong - test it with shuffled input, and resolve every conflict by a rule, never by arrival order.
+- [A generated root is walked as a list of types](codegen-a-generated-root-is-walked-as-a-list-of-types.md) - A generated root is an API that other code walks; add only declarations of the kind it already holds, and never make generated code name something that may not exist - look it up with @hasDecl.
 
 ### Testing
 - [Regression-check handle changes with timers, not DOM](testing-regression-check-handle-changes-with-timers-not.md) - Pick the regression suite that exercises the lifetime you changed, not the one that touches the same file.
@@ -261,6 +262,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A ceiling checked between event-loop turns cannot stop a script, and a per-file watchdog cannot see per-run progress](testing-a-ceiling-checked-between-turns-cannot-stop-a-script.md) - Put the deadline on another thread with a way into the engine, and count progress in the unit the budget is given in: runs, not files.
 - [When a result moves only under new sharding, replay the shard's prefix serially](testing-a-difference-that-appears-with-new-sharding-replay-the-shard-prefix.md) - A serial replay of the shard's prefix tells file order from load in minutes; pairing each prefix file with the target finds the trigger.
 - [A suspended async function can keep its last loop iteration's values - build WeakRef probes in a helper](testing-a-suspended-async-function-keeps-its-last-loop-values.md) - Before blaming the engine for an object a WeakRef still reaches, make sure no suspended function's frame holds it: build retention probes in a helper that returns only WeakRefs.
+- [A test green before the change pins it only once seen red without the mechanism](testing-green-before-the-change-prove-it-red-by-removing-the-mechanism.md) - A test that was never red proves nothing about the code it is meant to protect; when the behaviour already works, take the new mechanism away once and watch it fail.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
