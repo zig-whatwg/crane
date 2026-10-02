@@ -586,6 +586,28 @@ why the seam is a protocol designed whole:
 
 ---
 
+## Global state
+
+**Crane runs isolated instances (Browsers) and every worker on their own threads, so state has an
+owner: the process, a Browser, a Tab, an agent or a realm** - never a thread, never "whoever got
+here first". The model and the rules for new state are in [docs/instances.md](docs/instances.md);
+read it before adding state.
+
+1. **No new `threadlocal` and no new container-level `var`** (function statics included). Put the
+   state on the object that owns it, or reach it through the realm you run in.
+2. **A hook is installed once, at process start**, from its owner's `installHooks()` - never lazily
+   in `init`, never on first use, never by making a throwaway object.
+3. **Checked by `zig build lint-global-state`** (part of `zig build test`;
+   tools/lint_global_state.zig) against `tools/global_state_baseline.txt`, per file and qualified
+   name. A count that rises fails, a key the baseline lacks fails, and the baseline only goes down
+   (`-- --update` records a lower count). Two narrow exceptions, both reviewed at merge: a NEW key
+   whose declaration has a `// process-wide: <why>` line directly above it (state that genuinely
+   is one per process - say why it holds with many instances on many threads), and
+   `-- --rename '<old>' '<new>'` for a same-file rename with the same kind, declaration and count.
+   Never edit the baseline by hand. Report its total beside the engine-boundary total.
+
+---
+
 ## Golden rules
 
 1. **Algorithm precision.** WHATWG specs define web platform behaviour.
@@ -668,6 +690,8 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
   enforces it
 - V8 outside the V8 adapter in **new** code - `zig build lint-engine` (part of
   `zig build test`) enforces it; see "The engine boundary"
+- A new `threadlocal` or container-level `var` - `zig build lint-global-state`
+  (part of `zig build test`) enforces it; see "Global state"
 - A `get_`/`set_`/`call_` name on a function the generated code does not bind -
   see "Names are the binding map"; `zig build lint-impls` enforces it
 - A new tool written in anything but Zig (the existing WPT tools excepted) -
@@ -688,6 +712,8 @@ du -sh /tmp/* 2>/dev/null | sort -h | tail -5
   `tools/impls_naming_baseline.txt`, which may only go down
 - V8 references outside src/runtime/engines/v8/ - recorded in
   `tools/engine_boundary_baseline.txt`, which may only go down
+- Process-global and threadlocal mutable state - recorded in
+  `tools/global_state_baseline.txt`, which may only go down
 - Non-Zig tools outside the WPT exception: `tools/update_impl_signatures.py`
 - Untested and undocumented code exists
 
