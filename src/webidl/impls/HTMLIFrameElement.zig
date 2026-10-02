@@ -1478,6 +1478,20 @@ fn runCommit(context: ?*anyopaque) void {
     if (!isOngoing(integration, id)) return;
     const response = if (record.response) |*r| r else return;
 
+    // HTML "navigate" step 23's process the navigation response: "if should
+    // navigation response to navigation request of type in target be blocked
+    // by Content Security Policy? returns "Blocked"", the response is a
+    // network error - the frame shows an error document, of an opaque
+    // origin, and its load event still fires.
+    if (frameAncestorsBlock(integration, record, response)) {
+        response.deinit();
+        record.response = navigation_fetch.networkErrorResult(integration.allocator, record.url) catch null;
+        if (record.response == null) {
+            integration.ongoing_navigation = .none;
+            return endLoadDelay(integration);
+        }
+    }
+
     // A 204, a 205 or a download commits no document: the navigable keeps
     // the one it has, and no load event is owed. Decided before anything is
     // unloaded.
@@ -1588,6 +1602,65 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
         }
     }
     return result;
+}
+
+/// CSP 4.2.5 for a frame's navigation: whether the response's own
+/// frame-ancestors (its CSP headers) rejects one of the target's container
+/// documents' origins. Not modelled, stated: violation reports; and a
+/// navigation request's own CSP list's navigation response checks (step 3),
+/// which only frame-ancestors would have, and it ignores "source".
+fn frameAncestorsBlock(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) bool {
+    if (integration.iframe_element == null or response.is_network_error) return false;
+    const headers = response.headers orelse return false;
+    const csp_value = headers.get("content-security-policy") orelse return false;
+    const allocator = integration.allocator;
+    const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+    var container = fetch_mod.internal.PolicyContainer.fromResponseHeaders(allocator, .{ .url = response_url, .csp = csp_value }) catch return false;
+    defer container.deinit();
+    const scheme = navigate_steps.schemeOf(response_url);
+    const is_local = std.mem.eql(u8, scheme, "about") or std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
+
+    // § 6.4.2.1 steps 5-6: the container documents' origins, innermost
+    // first, as their ASCII serializations parse.
+    const csp = @import("csp");
+    const AncestorOrigin = csp.directives.frame_ancestors.AncestorOrigin;
+    var ancestors: [64]AncestorOrigin = undefined;
+    var serialized: [64]?[]u8 = @splat(null);
+    defer for (serialized) |o| if (o) |bytes| allocator.free(bytes);
+    var count: usize = 0;
+    var document = containerDocumentOf(integration);
+    while (document) |doc| : (count += 1) {
+        if (count == ancestors.len) break;
+        const origin = documentOriginOf(doc, allocator);
+        serialized[count] = origin;
+        ancestors[count] = if (origin) |o| ancestorOriginOf(o) else null;
+        const window = (interfaces.Document.get_defaultView(doc) catch null) orelse {
+            count += 1;
+            break;
+        };
+        const parent_container = dom_module.navigable_container.of(window) orelse {
+            count += 1;
+            break;
+        };
+        document = interfaces.Node.get_ownerDocument(parent_container) catch null;
+    }
+    return csp.directives.frame_ancestors.shouldNavigationResponseBeBlocked(&container.csp_list, is_local, ancestors[0..count]);
+}
+
+/// A serialized tuple origin ("scheme://host[:port]") as frame-ancestors
+/// matches it; null for "null", an opaque origin.
+fn ancestorOriginOf(origin: []const u8) @import("csp").directives.frame_ancestors.AncestorOrigin {
+    const sep = std.mem.indexOf(u8, origin, "://") orelse return null;
+    const authority = origin[sep + 3 ..];
+    const host_end = if (authority.len > 0 and authority[0] == '[')
+        (std.mem.indexOfScalar(u8, authority, ']') orelse return null) + 1
+    else
+        std.mem.indexOfScalar(u8, authority, ':') orelse authority.len;
+    const port: ?u16 = if (host_end < authority.len and authority[host_end] == ':')
+        std.fmt.parseInt(u16, authority[host_end + 1 ..], 10) catch return null
+    else
+        null;
+    return .{ .scheme = origin[0..sep], .host = authority[0..host_end], .port = port };
 }
 
 /// The document `integration`'s iframe element is in - its navigable's
