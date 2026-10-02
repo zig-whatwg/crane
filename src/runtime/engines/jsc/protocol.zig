@@ -12,6 +12,13 @@
 //! capability JSC lacks are declared anyway (the protocol checks every
 //! signature) and never reachable. tests/runtime/engine_protocol_test.zig is
 //! compiled against this file, which is what checks it against the protocol.
+//!
+//! Teardown and the collector (engine_protocol.zig 4.12): nothing is wrapped,
+//! so no instance is ever torn down from a collection here. When this adapter
+//! wraps platform objects, its JSObjectFinalizeCallback runs inside JSC's
+//! collector ("must not call any JSC API"), so it may only take the instance
+//! off the wrapper map there and queue the teardown for a turn of the host's
+//! event loop - the rule V8's second pass keeps.
 
 const std = @import("std");
 const engine = @import("engine");

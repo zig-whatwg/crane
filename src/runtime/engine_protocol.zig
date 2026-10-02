@@ -277,8 +277,9 @@ pub const AsyncIteratorSteps = struct {
     /// "asynchronous iterator return", when the declaration has one: a
     /// promise. `value` BORROWED; the result OWNED.
     @"return": ?*const fn (data: ?*anyopaque, value: JSValue) Error!Owned = null,
-    /// The iterator object was collected: free `data`. Called during garbage
-    /// collection, so it must not touch the engine.
+    /// The iterator object was collected: free `data`. Called after the
+    /// collection, never while the engine collects (see 4.12, "Teardown and
+    /// the collector"), so it may release engine values.
     finalize: ?*const fn (data: ?*anyopaque) void = null,
 };
 
@@ -1290,6 +1291,22 @@ pub inline fn structuredDeserializeWithTransfer(realm: Context, serialized: []co
 // ============================================================================
 // 4.12 Platform objects (engine concerns, no spec)
 // ============================================================================
+//
+// Teardown and the collector. An instance's teardown - its vtable deinit, and
+// everything it releases - never runs while the engine is collecting. When the
+// collector takes a platform object's wrapper, the adapter makes the instance
+// unreachable through the binding at once (a later wrap makes a new wrapper)
+// and defers its teardown to a point where engine calls are allowed: a deinit
+// may release Owned values, end holds and traced edges, and call any
+// operation an ordinary step may. V8: the first pass of its weak callbacks
+// only unlinks the wrapper cache's entry; the instance is torn down in the
+// second pass (SetSecondPassCallback, v8-weak-callback-info.h: "No v8 other
+// api calls may be called in the first callback"), as Blink's
+// ScriptWrappable did (firstWeakCallback reset the wrapper,
+// secondWeakCallback freed the object). An engine whose finalizers run
+// inside its collector (JavaScriptCore's JSObjectFinalizeCallback, QuickJS's
+// class finalizer) queues the teardown the same way. Nor does a teardown run
+// for an instance wrapped again in between: the new wrapper owns it.
 
 /// Whether `instance` has a wrapper in its relevant realm.
 pub inline fn hasWrapper(instance: *Instance) bool {
@@ -1307,7 +1324,8 @@ pub inline fn releasePlatformObject(instance: *Instance) void {
     impl.releasePlatformObject(instance);
 }
 
-/// The host has freed `instance`: its wrapper must not free it again.
+/// The host has freed `instance`: its wrapper must not free it again - nor a
+/// teardown the adapter deferred past a collection (4.12) run for it.
 pub inline fn platformObjectDestroyed(instance: *Instance) void {
     impl.platformObjectDestroyed(instance);
 }
@@ -1341,8 +1359,7 @@ pub const TracedSlot = struct { name: []const u8 };
 /// must live as long as `owner` does: true of a Window (its global object),
 /// of an owner script holds, and of anything a traced edge itself keeps. Not
 /// of an owner the host keeps while the collector may take its wrapper.
-/// Never call it while the collector runs (from a finalizer, or a teardown
-/// one starts).
+/// Never call it while the collector runs - no teardown does (4.12).
 /// OWNED: nothing - the edge dies with `owner`'s wrapper.
 pub inline fn traceChild(owner: *Instance, child: *Instance, slot: TracedSlot) void {
     impl.traceChild(owner, child, slot);
@@ -1354,9 +1371,8 @@ pub inline fn traceChild(owner: *Instance, child: *Instance, slot: TracedSlot) v
 /// of an owner script has seen need not call it - the edge dies with the
 /// wrapper. An owner that can be freed unwrapped calls it from its teardown,
 /// where it only lets the waiting edge go: an owner the collector frees has
-/// no wrapper left by then, so nothing touches the engine while the collector
-/// runs. Anywhere else, like `traceChild`, it must not run while the
-/// collector does.
+/// no wrapper left by then. Like `traceChild`, it must not run while the
+/// collector does - no teardown does (4.12).
 pub inline fn forgetTracedChild(owner: *Instance, slot: TracedSlot) void {
     impl.forgetTracedChild(owner, slot);
 }

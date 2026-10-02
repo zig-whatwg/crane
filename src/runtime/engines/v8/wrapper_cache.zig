@@ -121,6 +121,20 @@ const CacheEntry = struct {
     /// one whose instance was freed and its slot reissued before the weak
     /// callback ran - differs here even when vtable and state match.
     original_generation: u64,
+
+    /// Collected: V8's first pass took the wrapper and `unlinkCollected` took
+    /// the entry out of the cache. Its finalizer (`finalizeCollected`) runs in
+    /// the second pass; until then it waits on the cache's pending list.
+    collected: bool = false,
+
+    /// The first pass found another entry under this instance, or none: this
+    /// one was replaced or removed before its wrapper died, and owns nothing
+    /// but its handle.
+    stale: bool = false,
+
+    /// The cache's list of collected entries awaiting their finalizer.
+    pending_prev: ?*CacheEntry = null,
+    pending_next: ?*CacheEntry = null,
 };
 
 /// Why a wrapper is held strongly, beyond what `engineOwns` reads off the
@@ -206,20 +220,6 @@ fn disposeEntryWrapper(entry: *CacheEntry) void {
     v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
 }
 
-/// Weak callback for GC cleanup
-///
-/// Called by V8 when the wrapper object is garbage collected.
-/// This is the critical GC integration point that ensures Zig memory
-/// is properly freed when JavaScript objects are collected.
-///
-/// The cleanup sequence is:
-/// 1. Check if context teardown is in progress (skip if so - coordinator handles it)
-/// 2. Check if instance cleanup already started (via lifecycle flags)
-/// 3. Call gc_integration.onObjectFreed() to invoke type-specific deinit
-///    (e.g., Response.deinit frees headers, body, URL list)
-/// 4. Remove entry from cache HashMap
-/// 5. Dispose the V8 Global<Object>* handle
-/// 6. Free the CacheEntry
 /// True when the slab slot behind `entry.instance` no longer holds the
 /// instance this entry was created for: freed (generation reads dead) or
 /// reissued to a newcomer (a later generation). The vtable/state comparison
@@ -423,7 +423,7 @@ fn syncEntry(entry: *CacheEntry) void {
             entry.retained = true;
         }
         if (entry.strong) {
-            v8.v8_Global_SetWeak(@ptrCast(entry.wrapper), @ptrCast(entry), weakCallback);
+            armWeak(entry);
             entry.strong = false;
         }
         return;
@@ -433,7 +433,7 @@ fn syncEntry(entry: *CacheEntry) void {
     if (strong) {
         v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
     } else {
-        v8.v8_Global_SetWeak(@ptrCast(entry.wrapper), @ptrCast(entry), weakCallback);
+        armWeak(entry);
     }
     entry.strong = strong;
 }
@@ -489,169 +489,159 @@ fn wrappedElsewhere(instance: *runtime.Instance, except: *const WrapperCache) bo
     return false;
 }
 
-fn weakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void {
-    _ = length_in_bytes;
+/// Arm `entry`'s wrapper weak: the collector takes the entry out of the cache
+/// in its first pass and its instance is torn down after the collection.
+fn armWeak(entry: *CacheEntry) void {
+    v8.v8_Global_SetWeakFinalizer(@ptrCast(entry.wrapper), @ptrCast(entry), unlinkCollected, finalizeCollected);
+}
 
-    if (data) |entry_ptr| {
-        const entry: *CacheEntry = @ptrCast(@alignCast(entry_ptr));
+/// V8's FIRST pass: `entry`'s wrapper was collected and its handle Reset. No
+/// V8 API may be called here (v8-weak-callback-info.h) - other wrappers of
+/// this collection may still hold the 0xCA11 zap value - so this only makes
+/// the entry unreachable, as Blink's firstWeakCallback reset the object's
+/// wrapper: out of the cache's map, off a node's bound wrapper, onto the
+/// cache's pending list. A wrap from here on makes a new wrapper. The
+/// instance's teardown is the finalizer's, after the collection.
+fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
+    const entry: *CacheEntry = @ptrCast(@alignCast(data orelse return));
+    entry.collected = true;
+    // A destroyed cache's entry: nothing to unlink from (the finalizer
+    // frees it).
+    if (entry.is_orphaned) return;
 
-        // CRITICAL: Check if entry is orphaned FIRST, before any cache access.
-        // An orphaned entry means the cache was destroyed (via deinitWithoutCallbacks).
-        // In this case:
-        // 1. The cache pointer (entry.cache) may be invalid/freed
-        // 2. The instance pointer (entry.instance) may have been reused for a new object
-        // 3. We should NOT call onObjectFreed - just clean up the entry itself
-        //
-        // This prevents a critical bug where:
-        // - Old instance at address X is garbage collected, callback is queued
-        // - Child context (and its cache) is destroyed
-        // - New instance is allocated at address X in a different cache
-        // - Old callback fires and would incorrectly call onObjectFreed on NEW instance
-        if (entry.is_orphaned) {
-            log.debug("[weakCallback] ORPHANED: instance={*} - cache was destroyed, skipping cleanup", .{entry.instance});
-            // Just dispose our wrapper handle - don't touch the cache or call onObjectFreed
-            // The cache allocator should still be valid since we're called during deinitWithoutCallbacks
-            disposeEntryWrapper(entry);
-            entry.cache.allocator.destroy(entry);
-            return;
-        }
-
-        log.debug("[weakCallback] ENTRY: instance={*} cache={*} vtable={*} state={*}", .{ entry.instance, entry.cache, entry.original_vtable, entry.original_state });
-
-        // CRITICAL: Validate that this entry is still in the cache before removing.
-        // Due to memory reuse (SlabAllocator/ArenaAllocator), the same instance address
-        // can be used for different objects over time. If:
-        // 1. Object A at address X is cached with entry E1
-        // 2. Object A is garbage collected (E1's weak callback fires)
-        // 3. Object B reuses address X and is cached with entry E2
-        // 4. E1's weak callback runs and removes by key X
-        // Then E2 (the NEW entry) would be incorrectly removed!
-        //
-        // The fix: Use fetchRemove and verify the removed entry matches our entry.
-        // If it doesn't match, the entry was replaced - put it back and skip cleanup.
-        if (entry.cache.cache.fetchRemove(entry.instance)) |kv| {
-            if (kv.value != entry) {
-                // The entry was replaced by a new one - put it back!
-                log.debug("[weakCallback] STALE ENTRY: instance={*} - entry replaced, restoring new entry", .{entry.instance});
-                entry.cache.cache.put(entry.instance, kv.value) catch {};
-                // Just dispose our (stale) wrapper and entry, don't call onObjectFreed
-                disposeEntryWrapper(entry);
-                entry.cache.allocator.destroy(entry);
-                return;
-            }
-        } else {
-            // Entry not in cache at all - already removed by another path
-            log.debug("[weakCallback] NOT FOUND: instance={*}", .{entry.instance});
-            disposeEntryWrapper(entry);
-            entry.cache.allocator.destroy(entry);
-            return;
-        }
-
-        // CRITICAL: Verify the instance hasn't been reused for a different object.
-        // The SlabAllocator can reuse instance addresses. If:
-        // 1. Old instance A at address X is garbage collected
-        // 2. This callback is queued but not yet run
-        // 3. New instance B is allocated at address X (different type or re-init)
-        // 4. This callback runs and would incorrectly deinit instance B
-        //
-        // Detection: Compare the current vtable AND state with what we stored.
-        // - If vtable differs, the address was reused for a different type
-        // - If state differs (even with same vtable), it's a new instance of same type
-        log.debug("[weakCallback] VTABLE_CHECK: instance={*} orig_vtable={*} curr_vtable={*} orig_state={*} curr_state={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable, entry.original_state, entry.instance.state });
-        if (slotReissued(entry)) {
-            log.debug("[weakCallback] INSTANCE REUSED: instance={*} - vtable/state/generation mismatch, skipping cleanup", .{entry.instance});
-            // Don't call onObjectFreed - the instance at this address is different
-            disposeEntryWrapper(entry);
-            entry.cache.allocator.destroy(entry);
-            return;
-        }
-
-        // Step 1: Check if context teardown is in progress
-        // If the CleanupCoordinator is handling teardown, we still need to ensure
-        // type-specific cleanup happens. Previously we skipped onObjectFreed here
-        // assuming "wrapper_cache.deinit handles it", but if the weak callback fires
-        // BEFORE wrapper_cache.deinit iterates to this entry, the entry would be
-        // removed from the cache and the instance's deinit would never be called.
-        //
-        // The fix: Check if cleanup was already started for this instance.
-        // If not, call onObjectFreed to trigger the type's deinit.
-        if (runtime.cleanup_coordinator.isContextTearingDown()) {
-            // Note: entry already removed from cache above
-
-            // Check if this instance was already cleaned up, and whether
-            // another realm still wraps it.
-            if (!runtime.instance_lifecycle.isCleanupStarted(entry.instance) and
-                !wrappedElsewhere(entry.instance, entry.cache))
-            {
-                // Not yet cleaned up - call onObjectFreed to trigger deinit
-                runtime.gc.onObjectFreed(entry.instance);
-            }
-
-            disposeEntryWrapper(entry);
-            entry.cache.allocator.destroy(entry);
-            return;
-        }
-
-        // Step 2: Check if instance cleanup already started (lifecycle tracking)
-        // This prevents double-cleanup if Node.deinit was already called
-        if (runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
-            // Already being cleaned up - just dispose handles, and free the
-            // storage a completed cleanup left (slotReissued was ruled out above).
-            // Note: entry already removed from cache above
-            if (runtime.instance_lifecycle.isCleanedUp(entry.instance)) runtime.gc.releaseStorage(entry.instance);
-            disposeEntryWrapper(entry);
-            entry.cache.allocator.destroy(entry);
-            return;
-        }
-
-        // Step 3: Entry already removed from cache at the top (with validation)
-
-        // An instance the ENGINE still owns is not freed when JS drops its
-        // wrapper: a node in a tree is reachable from its parent, a window's
-        // document from its browsing context, and neither pointer is visible
-        // to V8. Freeing here left the parent holding a dangling child, and
-        // the next walk over it - teardown, childNodes, textContent - read
-        // freed memory. Only the wrapper goes; a later wrap makes a fresh one,
-        // and the instance is freed when its tree is torn down, or once it is
-        // removed from the tree and its next wrapper is collected.
-        // A realm's Window is freed by its realm's end, never by its
-        // wrapper's death: the global proxy of a realm whose navigable was
-        // destroyed is collected with the realm, before the task that ends it
-        // runs (protocol_realms).
-        //
-        // And a streams object of a detached realm is not kept: its graph
-        // was held for the realm's life by the global object, which is gone
-        // now with every wrapper of the graph, and the realm's end no longer
-        // finds this entry to free it (the teardown of these classes touches
-        // only their own slots, so any order is safe).
-        const detached_streams = entry.cache.detached_context != null and isStreamsGraphObject(entry.instance.vtable.name);
-        if (isRealmWindow(entry.instance) or (engineOwns(entry.instance) and !detached_streams)) {
-            log.debug("[weakCallback] ENGINE-OWNED: instance={*} - wrapper released, instance kept", .{entry.instance});
-            disposeEntryWrapper(entry);
-            entry.cache.allocator.destroy(entry);
-            return;
-        }
-
-        // Another realm's cache still wraps this instance: only this
-        // realm's wrapper goes. See `live_caches`.
-        if (wrappedElsewhere(entry.instance, entry.cache)) {
-            disposeEntryWrapper(entry);
-            entry.cache.allocator.destroy(entry);
-            return;
-        }
-
-        // Step 4: Clean up the Zig instance via GC integration
-        // This calls the type's deinit function (e.g., Response.deinit)
-        // which frees all owned resources (headers, body, URL list, etc.)
-        // and returns the Instance handle to the SlabAllocator
-        runtime.gc.onObjectFreed(entry.instance);
-
-        // Step 5: Dispose the Global<Object>* handle
-        disposeEntryWrapper(entry);
-
-        // Step 6: Free the CacheEntry
-        entry.cache.allocator.destroy(entry);
+    const instance_bridge = @import("dom").instance_bridge;
+    if (instance_bridge.getNodeBase(@ptrCast(entry.instance))) |nodebase| {
+        if (nodebase.bound_v8_wrapper == entry.wrapper) nodebase.bound_v8_wrapper = null;
     }
+
+    // Due to memory reuse (SlabAllocator/ArenaAllocator), the same instance
+    // address can be used for different objects over time: remove by key
+    // only this entry, and put back one that replaced it.
+    if (entry.cache.cache.fetchRemove(entry.instance)) |kv| {
+        if (kv.value != entry) {
+            log.debug("[unlinkCollected] STALE ENTRY: instance={*} - entry replaced, restoring new entry", .{entry.instance});
+            // The slot it came from is free again: no allocation.
+            entry.cache.cache.putAssumeCapacity(entry.instance, kv.value);
+            entry.stale = true;
+        }
+    } else {
+        log.debug("[unlinkCollected] NOT FOUND: instance={*}", .{entry.instance});
+        entry.stale = true;
+    }
+    entry.cache.linkPending(entry);
+}
+
+/// V8's SECOND pass for a collected wrapper (`unlinkCollected` ran): the
+/// collection is over and engine calls are allowed again, so the instance's
+/// teardown runs here - never while the engine is collecting.
+fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
+    const entry: *CacheEntry = @ptrCast(@alignCast(data orelse return));
+    finalizeEntry(entry);
+}
+
+/// The teardown of a collected entry: free its instance unless something
+/// still owns it, then its handle and the entry. Run by the second pass, or
+/// by the cache's end for one whose second pass has not come yet.
+fn finalizeEntry(entry: *CacheEntry) void {
+    // An orphaned entry means the cache was destroyed (via
+    // deinitWithoutCallbacks): the instance pointer may have been reused for
+    // a new object - just clean up the entry itself. The cache allocator
+    // outlives its caches' entries.
+    if (entry.is_orphaned) {
+        log.debug("[finalizeEntry] ORPHANED: instance={*} - cache was destroyed, skipping cleanup", .{entry.instance});
+        disposeEntryWrapper(entry);
+        entry.cache.allocator.destroy(entry);
+        return;
+    }
+    entry.cache.unlinkPending(entry);
+
+    // Replaced or removed before it was collected: nothing of the instance
+    // is this entry's.
+    if (entry.stale) {
+        disposeEntryWrapper(entry);
+        entry.cache.allocator.destroy(entry);
+        return;
+    }
+
+    // The SlabAllocator can reuse instance addresses: an instance freed
+    // since (its tree's teardown, or the realm's end) and its slot reissued is
+    // not this entry's to free.
+    log.debug("[finalizeEntry] VTABLE_CHECK: instance={*} orig_vtable={*} curr_vtable={*} orig_state={*} curr_state={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable, entry.original_state, entry.instance.state });
+    if (slotReissued(entry)) {
+        log.debug("[finalizeEntry] INSTANCE REUSED: instance={*} - vtable/state/generation mismatch, skipping cleanup", .{entry.instance});
+        disposeEntryWrapper(entry);
+        entry.cache.allocator.destroy(entry);
+        return;
+    }
+
+    // Wrapped again since the collection - script reached the instance
+    // through something the host holds, and a new wrapper was made: that
+    // wrapper owns it now. Blink's second pass dropped only the collected
+    // wrapper's reference for the same reason.
+    if (entry.cache.cache.get(entry.instance)) |current| {
+        if (current.original_generation == entry.original_generation and current.original_vtable == entry.original_vtable) {
+            disposeEntryWrapper(entry);
+            entry.cache.allocator.destroy(entry);
+            return;
+        }
+    }
+
+    // If the CleanupCoordinator is handling teardown, type-specific cleanup
+    // must still happen for an instance nothing has cleaned up yet - unless
+    // another realm still wraps it.
+    if (runtime.cleanup_coordinator.isContextTearingDown()) {
+        if (!runtime.instance_lifecycle.isCleanupStarted(entry.instance) and
+            !wrappedElsewhere(entry.instance, entry.cache))
+        {
+            runtime.gc.onObjectFreed(entry.instance);
+        }
+        disposeEntryWrapper(entry);
+        entry.cache.allocator.destroy(entry);
+        return;
+    }
+
+    // Already being cleaned up (Node.deinit ran): free the storage a
+    // completed cleanup left.
+    if (runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
+        if (runtime.instance_lifecycle.isCleanedUp(entry.instance)) runtime.gc.releaseStorage(entry.instance);
+        disposeEntryWrapper(entry);
+        entry.cache.allocator.destroy(entry);
+        return;
+    }
+
+    // An instance the ENGINE still owns is not freed when JS drops its
+    // wrapper: a node in a tree is reachable from its parent, a window's
+    // document from its browsing context, and neither pointer is visible to
+    // V8. Only the wrapper goes; a later wrap makes a fresh one. A realm's
+    // Window is freed by its realm's end, never by its wrapper's death.
+    //
+    // And a streams object of a detached realm is not kept: its graph was
+    // held for the realm's life by the global object, which is gone now with
+    // every wrapper of the graph, and the realm's end no longer finds this
+    // entry to free it (the teardown of these classes touches only their own
+    // slots, so any order is safe).
+    const detached_streams = entry.cache.detached_context != null and isStreamsGraphObject(entry.instance.vtable.name);
+    if (isRealmWindow(entry.instance) or (engineOwns(entry.instance) and !detached_streams)) {
+        log.debug("[finalizeEntry] ENGINE-OWNED: instance={*} - wrapper released, instance kept", .{entry.instance});
+        disposeEntryWrapper(entry);
+        entry.cache.allocator.destroy(entry);
+        return;
+    }
+
+    // Another realm's cache still wraps this instance: only this realm's
+    // wrapper goes. See `live_caches`.
+    if (wrappedElsewhere(entry.instance, entry.cache)) {
+        disposeEntryWrapper(entry);
+        entry.cache.allocator.destroy(entry);
+        return;
+    }
+
+    // The type's deinit (e.g., Response.deinit frees headers, body, URL
+    // list), which returns the Instance to the SlabAllocator - engine calls
+    // allowed: it may release the values it holds.
+    runtime.gc.onObjectFreed(entry.instance);
+    disposeEntryWrapper(entry);
+    entry.cache.allocator.destroy(entry);
 }
 
 /// V8 Wrapper Identity Cache
@@ -693,7 +683,65 @@ pub const WrapperCache = struct {
     /// edge from the realm's global object instead (`syncEntry`).
     detached_context: ?*v8.Context = null,
 
+    /// Entries whose wrapper was collected and whose finalizer has not run
+    /// (`unlinkCollected` -> `finalizeCollected`), most recent first. The
+    /// cache's end finalizes what is still here: V8 drops a second pass its
+    /// isolate never ran.
+    pending_head: ?*CacheEntry = null,
+
     const Self = @This();
+
+    fn linkPending(self: *Self, entry: *CacheEntry) void {
+        entry.pending_prev = null;
+        entry.pending_next = self.pending_head;
+        if (self.pending_head) |head| head.pending_prev = entry;
+        self.pending_head = entry;
+    }
+
+    fn unlinkPending(self: *Self, entry: *CacheEntry) void {
+        if (entry.pending_prev) |prev| prev.pending_next = entry.pending_next else if (self.pending_head == entry) self.pending_head = entry.pending_next;
+        if (entry.pending_next) |next| next.pending_prev = entry.pending_prev;
+        entry.pending_prev = null;
+        entry.pending_next = null;
+    }
+
+    /// Tests: put `entry` - taken out of the map by hand - where the first
+    /// pass puts a collected one, to stand in for the window between V8's two
+    /// passes.
+    pub fn linkPendingForTest(self: *Self, entry: *CacheEntry) void {
+        self.linkPending(entry);
+    }
+
+    /// Tests: run the finalizers waiting for V8's second pass now.
+    pub fn finalizePendingForTest(self: *Self) void {
+        self.finalizePending();
+    }
+
+    /// Entries collected and not finalized yet (tests, diagnostics).
+    pub fn pendingFinalizerCount(self: *const Self) usize {
+        var count: usize = 0;
+        var at = self.pending_head;
+        while (at) |entry| : (at = entry.pending_next) count += 1;
+        return count;
+    }
+
+    /// The cache is ending: run every finalizer still waiting for its second
+    /// pass now - outside any collection - and cancel that pass (disposing
+    /// the entry's handle does). Each runs as the second pass would have.
+    fn finalizePending(self: *Self) void {
+        while (self.pending_head) |entry| finalizeEntry(entry);
+    }
+
+    /// The cache is being destroyed without running teardowns
+    /// (`deinitWithoutCallbacks`): each pending entry's handle and storage go
+    /// now, its instance with the batch free.
+    fn orphanPending(self: *Self) void {
+        while (self.pending_head) |entry| {
+            self.unlinkPending(entry);
+            disposeEntryWrapper(entry);
+            self.allocator.destroy(entry);
+        }
+    }
 
     /// The realm's navigable was destroyed, and its realm lives on only for
     /// as long as script holds its WindowProxy (protocol_realms, HTML
@@ -852,6 +900,10 @@ pub const WrapperCache = struct {
         // Mark as tearing down to prevent re-entrant access during cleanup.
         // When Node.deinit calls markInstanceCleanedUp, it will be a no-op.
         self.is_tearing_down = true;
+
+        // PHASE 0: wrappers already collected whose finalizer has not run -
+        // it would find this cache gone. Run them now.
+        self.finalizePending();
 
         // PHASE 1: Clear ALL weak callbacks first to prevent any from firing
         // during cleanup. This must happen before any cleanup to avoid races
@@ -1013,6 +1065,10 @@ pub const WrapperCache = struct {
         // Mark as tearing down to prevent re-entrant access
         self.is_tearing_down = true;
 
+        // Collected entries waiting for their finalizer: nothing of theirs
+        // runs now either; their handles and storage go.
+        self.orphanPending();
+
         // PHASE 1: Mark all entries as orphaned FIRST.
         // This must happen before ClearWeak because if a callback fires
         // after ClearWeak but before we destroy entries, it needs to see
@@ -1157,11 +1213,7 @@ pub const WrapperCache = struct {
         if (shouldBeStrong(entry) and self.detached_context == null) {
             entry.strong = true;
         } else {
-            v8.v8_Global_SetWeak(
-                @ptrCast(wrapper),
-                @ptrCast(entry),
-                weakCallback,
-            );
+            armWeak(entry);
             if (self.detached_context != null) syncEntry(entry);
         }
     }
@@ -1173,6 +1225,9 @@ pub const WrapperCache = struct {
     /// Uses two-phase cleanup like deinit() to prevent use-after-free
     /// from weak callbacks firing during cleanup.
     pub fn clear(self: *Self) void {
+        // Collected entries waiting for their finalizer run it now.
+        self.finalizePending();
+
         // PHASE 1: Clear ALL weak callbacks first to prevent any from firing
         // during cleanup. This must happen before any cleanup to avoid races
         // where a weak callback tries to free an already-freed entry.
@@ -1249,7 +1304,7 @@ pub const WrapperCache = struct {
             // frame whose torn-down nodes' wrappers were held could never be
             // collected.
             if (entry.strong) {
-                v8.v8_Global_SetWeak(@ptrCast(entry.wrapper), @ptrCast(entry), weakCallback);
+                armWeak(entry);
                 entry.strong = false;
             }
             return true;

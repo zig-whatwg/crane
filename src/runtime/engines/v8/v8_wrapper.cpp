@@ -231,12 +231,18 @@ typedef void (*ZigWeakCallbackFn)(void* data, size_t length_in_bytes);
 /// Global has been disposed - see `releaseWeakArm` for why that case exists and
 /// why the callback must honour it.
 struct WeakCallbackData {
+    // Runs in V8's FIRST pass, after the handle is Reset: Zig bookkeeping
+    // only - no V8 API call (v8-weak-callback-info.h). May be null.
     ZigWeakCallbackFn callback;
     void* user_data;
     Global<Value>* handle;  // Store handle pointer so we can reset it
     // The isolate the arm belongs to. Disposing an isolate frees only its own
     // detached records: another isolate's may still have a callback queued.
     Isolate* isolate;
+    // Runs in V8's SECOND pass, once every first-pass callback of the
+    // collection has run, where V8 API calls are allowed: the finalizer
+    // proper (v8_Global_SetWeakFinalizer). Null for a first-pass-only arm.
+    ZigWeakCallbackFn finalize = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -290,6 +296,33 @@ static std::unordered_map<const void*, WeakCallbackData*>& armedWeakData() {
 static std::unordered_set<WeakCallbackData*>& detachedWeakData() {
     static std::unordered_set<WeakCallbackData*> set;
     return set;
+}
+
+/// Records whose first pass has run and whose finalizer waits for V8's second
+/// pass, by the handle they were armed on. The handle is Reset by then; its
+/// owner disposes it from the finalizer - or earlier, which cancels the
+/// finalizer (`releaseWeakArm`): the owner is freeing `user_data` in the same
+/// breath. A record whose second pass never runs - its isolate disposed first
+/// - is freed by `v8_Isolate_Dispose`.
+///
+/// Per thread: V8 runs an isolate's weak callbacks, first and second pass, on
+/// the thread that holds the isolate, and its owner disposes its handles there
+/// too, so each thread's isolates keep their own (Browsers and workers run on
+/// threads of their own).
+static std::unordered_map<const void*, WeakCallbackData*>& pendingFinalizers() {
+    // thread-local: an isolate's pending finalizers, on the thread that runs its callbacks.
+    static thread_local std::unordered_map<const void*, WeakCallbackData*> map;
+    return map;
+}
+
+/// How deep this thread is in first-pass weak callbacks: what
+/// v8_Debug_InFirstPassWeakCallback reads, so a test can tell that a finalizer
+/// ran outside the collection.
+// thread-local: whether THIS thread is inside V8's first pass.
+static thread_local int g_first_pass_depth = 0;
+
+extern "C" bool v8_Debug_InFirstPassWeakCallback() {
+    return g_first_pass_depth > 0;
 }
 
 /// Live `WeakCallbackData` records: armed minus freed.
@@ -355,6 +388,24 @@ enum class WeakArmEnd {
 template <typename T>
 static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handle_dying) {
     if (!global) return;
+    // A finalizer waiting for the second pass on this (already Reset) handle:
+    // its owner is ending it now, freeing `user_data` with it, so the second
+    // pass must not run it. The record stays V8's to hand back; that pass
+    // frees it.
+    auto& pending = pendingFinalizers();
+    if (!pending.empty()) {
+        auto pit = pending.find(static_cast<const void*>(global));
+        if (pit != pending.end()) {
+            WeakCallbackData* waiting = pit->second;
+            waiting->finalize = nullptr;
+            waiting->user_data = nullptr;
+            waiting->handle = nullptr;
+            pending.erase(pit);
+            // Queued in V8 still: freed by its second pass, or with its
+            // isolate if that never comes (v8_Isolate_Dispose).
+            detachedWeakData().insert(waiting);
+        }
+    }
     auto& armed = armedWeakData();
     if (armed.empty()) return;
     auto it = armed.find(static_cast<const void*>(global));
@@ -370,8 +421,10 @@ static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handl
     }
 
     // Detached: V8 still owns this record for the rest of the collection.
-    // The Zig side is going away with the caller, so silence it.
+    // The Zig side is going away with the caller, so silence it - its
+    // finalizer too, or the first pass would schedule it.
     data->callback = nullptr;
+    data->finalize = nullptr;
     data->user_data = nullptr;
     detachedWeakData().insert(data);
 
@@ -407,6 +460,8 @@ static void armWeakData(void* handle, WeakCallbackData* data) {
     g_live_weak_callback_data.fetch_add(1, std::memory_order_relaxed);
     armedWeakData()[handle] = data;
 }
+
+static void WeakCallbackSecondPass(const WeakCallbackInfo<WeakCallbackData>& info);
 
 /// Internal weak callback wrapper - V8 calls this, which then calls the Zig callback
 template<typename T>
@@ -449,17 +504,59 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
 
     // A `handle_survives` detach (v8_Global_ClearWeak on an already-queued
     // node) leaves the record HERE with its handle intact, precisely so the
-    // Reset above can happen. It nulls `callback`, so the finalizer below is
-    // skipped and this erase is the only cleanup it needs. Erasing a key that
-    // was never inserted is a no-op, so the armed path pays nothing.
+    // Reset above can happen. It nulls `callback` and `finalize`, so nothing
+    // below runs and this erase is the only cleanup it needs. Erasing a key
+    // that was never inserted is a no-op, so the armed path pays nothing.
     detachedWeakData().erase(data);
 
-    // Call the Zig finalizer with user data
+    // A finalizer waits for the second pass from here - registered before the
+    // first-pass callback runs, so that one disposing the handle cancels it
+    // (`releaseWeakArm`) like any other owner.
+    if (data->finalize) pendingFinalizers()[static_cast<const void*>(data->handle)] = data;
+
+    // The first-pass callback: the same header allows no V8 API call here -
+    // other handles of this collection may hold the 0xCA11 zap value until
+    // their own callbacks run - so it is bookkeeping only.
     if (data->callback) {
+        ++g_first_pass_depth;
         data->callback(data->user_data, 0);
+        --g_first_pass_depth;
     }
 
-    // Clean up the wrapper data
+    // "Should additional work be required, the embedder must set a second
+    // pass callback, which will be called after all the initial callbacks are
+    // processed." The finalizer runs there: after this collection, from V8's
+    // posted task, the next collection's prologue, or synchronously at the end
+    // of a forced one (GlobalHandles::PostGarbageCollectionProcessing). Blink
+    // freed a collected wrapper's object the same way: firstWeakCallback reset
+    // the wrapper and secondWeakCallback derefed the object (ScriptWrappable.h,
+    // Chromium 45).
+    if (data->finalize) {
+        info.SetSecondPassCallback(WeakCallbackSecondPass);
+        return;
+    }
+
+    // No finalizer, or one the callback cancelled (its record went to the
+    // detached set): nothing more runs for it.
+    detachedWeakData().erase(data);
+    freeWeakData(data);
+}
+
+/// V8's second pass for a record armed with a finalizer: every first-pass
+/// callback of the collection has run, and V8 API calls are allowed again.
+static void WeakCallbackSecondPass(const WeakCallbackInfo<WeakCallbackData>& info) {
+    WeakCallbackData* data = info.GetParameter();
+    if (!data) return;
+    // Its owner may have cancelled it (`releaseWeakArm` cleared the entry and
+    // the handle); otherwise erase it BEFORE calling into Zig, which disposes
+    // the handle and must not find a finalizer to cancel.
+    if (data->handle) {
+        auto& pending = pendingFinalizers();
+        auto it = pending.find(static_cast<const void*>(data->handle));
+        if (it != pending.end() && it->second == data) pending.erase(it);
+    }
+    detachedWeakData().erase(data);
+    if (data->finalize) data->finalize(data->user_data, 0);
     freeWeakData(data);
 }
 
@@ -2532,7 +2629,25 @@ void v8_Isolate_Dispose(Isolate* isolate) {
 
         // Dispose the isolate first
         isolate->Dispose();
-        
+
+        // Finalizers whose second pass this isolate never ran: V8 dropped its
+        // pending second-pass list with it. Their owners finalized what they
+        // hold before ending the realm (WrapperCache.deinit), so only the
+        // records are left. After Dispose, so a second pass V8 did run during
+        // it found its record intact.
+        {
+            auto& pending = pendingFinalizers();
+            for (auto it = pending.begin(); it != pending.end();) {
+                WeakCallbackData* data = it->second;
+                if (data->isolate == isolate) {
+                    it = pending.erase(it);
+                    freeWeakData(data);
+                } else {
+                    ++it;
+                }
+            }
+        }
+
         // Then delete the allocator
         if (allocator) {
             delete allocator;
@@ -8576,6 +8691,19 @@ void v8_Global_SetWeak(void* handle, void* user_data, ZigWeakCallbackFn callback
     armWeakData(handle, wrapper);
     
     // Make the Global handle weak with our wrapper callback
+    global->SetWeak(wrapper, WeakCallbackWrapper<Value>, WeakCallbackType::kParameter);
+}
+
+/// Make a Global handle weak with a finalizer that runs after the collection:
+/// `unlink` (may be null) in V8's first pass - bookkeeping, no V8 API - and
+/// `finalize` in the second pass, where V8 API calls are allowed. Disposing
+/// the handle before the second pass cancels `finalize` (`releaseWeakArm`).
+/// Owned by the arm, as v8_Global_SetWeak's record is.
+void v8_Global_SetWeakFinalizer(void* handle, void* user_data, ZigWeakCallbackFn unlink, ZigWeakCallbackFn finalize) {
+    if (!handle || !finalize) return;
+    Global<Value>* global = reinterpret_cast<Global<Value>*>(handle);
+    WeakCallbackData* wrapper = new WeakCallbackData{unlink, user_data, global, Isolate::GetCurrent(), finalize};
+    armWeakData(handle, wrapper);
     global->SetWeak(wrapper, WeakCallbackWrapper<Value>, WeakCallbackType::kParameter);
 }
 

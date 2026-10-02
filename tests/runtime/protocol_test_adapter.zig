@@ -8,6 +8,10 @@
 //! value's type and identity read from its IDL arm. It declares none of the
 //! engine capabilities; the operations gated on one are declared anyway (the
 //! protocol checks every signature) and never reachable.
+//!
+//! Teardown and the collector (engine_protocol.zig 4.12): there is no
+//! collector, so no teardown can run inside one - the contract holds as
+//! stated.
 
 const std = @import("std");
 const engine = @import("engine");
