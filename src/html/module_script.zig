@@ -190,6 +190,19 @@ pub fn disposeEntry(value: *anyopaque) void {
     script.destroy();
 }
 
+/// HTML's script fetch options, as far as a module graph's requests use
+/// them: the cryptographic nonce, integrity metadata, parser metadata and
+/// referrer policy (the credentials mode stays "same-origin", as before).
+/// Borrowed for as long as the graph is fetched.
+pub const FetchOptions = struct {
+    nonce: []const u8 = "",
+    /// The root's: a descendant's comes from the import map's integrity
+    /// section, which is not modelled, so descendants have none.
+    integrity: []const u8 = "",
+    parser_inserted: bool = false,
+    referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+};
+
 /// Everything the loader needs from the document it loads for.
 pub const Environment = struct {
     allocator: std.mem.Allocator,
@@ -211,6 +224,10 @@ pub const Environment = struct {
     /// interface is exposed in the settings object's realm - a Window's, not
     /// a worker's.
     css_allowed: bool = true,
+    /// The script fetch options the graph's requests carry: the root's, and
+    /// - "fetch the descendants of a module script" gets the descendant
+    /// script fetch options from the referrer script's - its descendants'.
+    fetch_options: FetchOptions = .{},
 
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-type-allowed
     pub fn moduleTypeAllowed(self: *const Environment, module_type: ModuleType) bool {
@@ -422,14 +439,20 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     // initiator type to "script"." Then "set up the module script request":
     // its credentials mode is the fetch options', "same-origin" by default.
     //
-    // Deviation, stated: the script fetch options are not carried here, so
-    // the credentials mode is always "same-origin" - a module script with
-    // crossorigin=use-credentials fetches without credentials - and the
-    // referrer is the client's.
+    // "Set up the module script request given request and options": its
+    // cryptographic nonce metadata, integrity metadata, parser metadata and
+    // referrer policy are the options'. Deviation, stated: the credentials
+    // mode is always "same-origin" - a module script with
+    // crossorigin=use-credentials fetches without credentials.
     const request = script_request.InternalRequest.init(env.allocator, url) catch return null;
     defer request.deinit();
     request.mode = .cors;
     request.credentials_mode = .same_origin;
+    const options = env.fetch_options;
+    if (options.nonce.len > 0) request.setCryptographicNonceMetadata(options.nonce) catch return null;
+    request.setIntegrityMetadata(options.integrity) catch return null;
+    request.parser_metadata = if (options.parser_inserted) .parser_inserted else .not_parser_inserted;
+    request.referrer_policy = options.referrer_policy;
     request.destination = switch (module_type) {
         .javascript => .script,
         .json => .json,
@@ -657,8 +680,12 @@ pub fn fetchExternalModuleScriptGraph(env: *const Environment, url: []const u8) 
     // Step 1: fetch a single module script, "javascript-or-wasm".
     // Step 1.1: if result is null, onComplete is given null.
     const result = fetchSingleModuleScript(env, url, .javascript) orelse return null;
-    // Step 1.2: fetch the descendants of and link result.
-    return fetchDescendantsAndLink(env, result);
+    // Step 1.2: fetch the descendants of and link result - with the
+    // descendant script fetch options, whose integrity metadata is not the
+    // root's.
+    var descendants = env.*;
+    descendants.fetch_options.integrity = "";
+    return fetchDescendantsAndLink(&descendants, result);
 }
 
 /// Fetch a module worker script graph, with the root's response in hand.

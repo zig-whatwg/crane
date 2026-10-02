@@ -355,8 +355,11 @@ pub const InternalRequest = struct {
     /// Subresource integrity metadata
     integrity_metadata: []const u8 = "",
 
-    /// Cryptographic nonce for CSP
+    /// Cryptographic nonce for CSP. Borrowed when assigned directly; owned
+    /// (and freed by `deinit`, copied by `clone`) when set with
+    /// `setCryptographicNonceMetadata`.
     cryptographic_nonce_metadata: []const u8 = "",
+    cryptographic_nonce_owned: bool = false,
 
     /// Parser metadata
     parser_metadata: ParserMetadata = .empty,
@@ -443,6 +446,8 @@ pub const InternalRequest = struct {
         }
         self.url_list.deinit(self.allocator);
 
+        if (self.cryptographic_nonce_owned) self.allocator.free(self.cryptographic_nonce_metadata);
+
         // Free integrity_metadata if it was allocated (non-empty means it was set)
         if (self.integrity_metadata.len > 0) {
             self.allocator.free(self.integrity_metadata);
@@ -505,6 +510,23 @@ pub const InternalRequest = struct {
         if (self.origin_owned and self.origin == .origin) self.allocator.free(self.origin.origin);
         self.origin = .{ .origin = copy };
         self.origin_owned = true;
+    }
+
+    /// Set the request's cryptographic nonce metadata to a copy of `nonce`,
+    /// which the request owns.
+    pub fn setCryptographicNonceMetadata(self: *Self, nonce: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, nonce);
+        if (self.cryptographic_nonce_owned) self.allocator.free(self.cryptographic_nonce_metadata);
+        self.cryptographic_nonce_metadata = copy;
+        self.cryptographic_nonce_owned = true;
+    }
+
+    /// Set the request's integrity metadata to a copy of `metadata` (owned:
+    /// `deinit` frees non-empty integrity metadata).
+    pub fn setIntegrityMetadata(self: *Self, metadata: []const u8) !void {
+        const copy: []const u8 = if (metadata.len > 0) try self.allocator.dupe(u8, metadata) else "";
+        if (self.integrity_metadata.len > 0) self.allocator.free(self.integrity_metadata);
+        self.integrity_metadata = copy;
     }
 
     /// Give the request `container` (taken: the request owns it now),
@@ -666,7 +688,8 @@ pub const InternalRequest = struct {
             .redirect_mode = self.redirect_mode,
             // Copied below: deinit frees a non-empty one.
             .integrity_metadata = "",
-            .cryptographic_nonce_metadata = self.cryptographic_nonce_metadata,
+            // Copied below when it is owned.
+            .cryptographic_nonce_metadata = if (self.cryptographic_nonce_owned) "" else self.cryptographic_nonce_metadata,
             .parser_metadata = self.parser_metadata,
             .reload_navigation = self.reload_navigation,
             .history_navigation = self.history_navigation,
@@ -693,6 +716,7 @@ pub const InternalRequest = struct {
 
         // So is non-empty integrity metadata: `deinit` frees it, and a shared
         // slice was freed twice.
+        if (self.cryptographic_nonce_owned) try new_request.setCryptographicNonceMetadata(self.cryptographic_nonce_metadata);
         if (self.integrity_metadata.len > 0) {
             new_request.integrity_metadata = try self.allocator.dupe(u8, self.integrity_metadata);
         }
@@ -967,4 +991,18 @@ test "a request owns its policy container: set, replaced, cloned, released" {
     defer copy.deinit();
     request.policy_container.container.referrer_policy = .unsafe_url;
     try std.testing.expectEqual(ReferrerPolicy.no_referrer, copy.policyContainerReferrerPolicy());
+}
+
+test "a request owns a nonce and integrity metadata set through their setters" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://example.com/s.js");
+    defer request.deinit();
+    try request.setCryptographicNonceMetadata("abc");
+    try request.setCryptographicNonceMetadata("def");
+    try request.setIntegrityMetadata("sha256-x");
+    const copy = try request.clone();
+    defer copy.deinit();
+    try std.testing.expectEqualStrings("def", copy.cryptographic_nonce_metadata);
+    try std.testing.expect(copy.cryptographic_nonce_metadata.ptr != request.cryptographic_nonce_metadata.ptr);
+    try std.testing.expectEqualStrings("sha256-x", copy.integrity_metadata);
 }

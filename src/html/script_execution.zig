@@ -371,29 +371,17 @@ pub fn prepareScriptElement(
         // whose result is known; a script no parser inserted is fetched in
         // parallel (below).
         //
-        // A request CSP blocks is a network error to Fetch
-        // (https://www.w3.org/TR/CSP3/ §4.1.2), so it takes the same path as
-        // any other failed fetch: result null, which executing the element
-        // turns into an error event.
-        const allowed_by_csp = blk: {
-            const doc = node_document orelse break :blk true;
-            const url_parts = parseUrlForCSP(script_url);
-            const nonce = getNonceAttribute(script_element);
-            break :blk document_scripts.externalScriptAllowedByCsp(
-                doc,
-                url_parts.scheme,
-                url_parts.host,
-                url_parts.port,
-                url_parts.path,
-                if (nonce.len > 0) nonce else null,
-            );
-        };
-        if (!allowed_by_csp) log.debug("CSP blocked external script: {s}", .{script_url});
+        // A request CSP blocks is a network error to Fetch: main fetch step 7
+        // decides it (https://www.w3.org/TR/CSP3/ §4.1.2), from the script
+        // fetch options the request carries (setUpScriptRequest), so it
+        // takes the same path as any other failed fetch: result null, which
+        // executing the element turns into an error event. There is no check
+        // here: "prepare the script element" checks only inline scripts.
 
         // Step 33.11 "module": fetch an external module script graph given url,
         // and mark el ready with the result.
         if (script_type == .module) {
-            if (allowed_by_csp and node_document != null) {
+            if (node_document != null) {
                 prepareExternalModuleScript(script_element, node_document.?, script_url);
             } else {
                 state.result = .null;
@@ -407,8 +395,8 @@ pub fn prepareScriptElement(
         // one, stands in for "fetch a classic script" - here, at the fetch
         // step, so a script that prepare returns from earlier (a type that is
         // no JavaScript MIME type, nomodule) is never fetched.
-        const cached = if (allowed_by_csp) state.cached_source_text else null;
-        if (cached == null and allowed_by_csp) {
+        const cached = state.cached_source_text;
+        if (cached == null) {
             // A script no parser inserted is fetched in parallel, as the spec
             // fetches every script: onComplete - "mark as ready" - runs from
             // the networking task that hands over the response
@@ -426,7 +414,7 @@ pub fn prepareScriptElement(
             defer fetched.deinit();
             try setClassicScriptResult(script_element, true, fetched.body, script_url, fetched.muted);
         } else {
-            try setClassicScriptResult(script_element, allowed_by_csp, null, script_url, false);
+            try setClassicScriptResult(script_element, true, null, script_url, false);
         }
 
         // Step 35: scheduling - which also decides when the result, already
@@ -1473,6 +1461,8 @@ fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Insta
         .context_instance = script_element,
         .map = documentModuleMap(document),
         .resolveImportFn = &documentResolveImport,
+        // The element's script fetch options, for its graph's requests.
+        .fetch_options = moduleFetchOptions(script_element),
     };
 }
 
@@ -2423,51 +2413,34 @@ fn resolveUrl(allocator: std.mem.Allocator, url: []const u8, base_url: []const u
     return result;
 }
 
-/// URL parts for CSP checking
-const UrlPartsForCSP = struct {
-    scheme: []const u8,
-    host: []const u8,
-    port: ?u16,
-    path: []const u8,
-};
+/// HTML "set up the classic script request" given `request` and the script
+/// fetch options of `element` (HTML "prepare the script element" step 26-31):
+/// its cryptographic nonce (the nonce attribute's value - the element's
+/// [[CryptographicNonce]]), integrity metadata (the integrity attribute),
+/// parser metadata ("parser-inserted" for a parser-inserted script) and
+/// referrer policy (the referrerpolicy attribute). Main fetch step 7 checks
+/// the request against the client's CSP list with them (a nonce or a listed
+/// hash lets it through).
+fn setUpScriptRequest(request: *fetch.internal.InternalRequest, element: *runtime.Instance) !void {
+    const nonce = getNonceAttribute(element);
+    if (nonce.len > 0) try request.setCryptographicNonceMetadata(nonce);
+    try request.setIntegrityMetadata(getAttribute(element, "integrity") orelse "");
+    const state = script_element_state.of(element);
+    request.parser_metadata = if (state != null and state.?.parser_document != null) .parser_inserted else .not_parser_inserted;
+    request.referrer_policy = fetch.internal.policy_container.referrerPolicyFromAttribute(getAttribute(element, "referrerpolicy"));
+}
 
-/// Parse a URL into components for CSP checking
-/// This is a simplified URL parser for CSP purposes.
-fn parseUrlForCSP(url: []const u8) UrlPartsForCSP {
-    var result = UrlPartsForCSP{
-        .scheme = "",
-        .host = "",
-        .port = null,
-        .path = "/",
+/// The script fetch options a module script graph rooted at `element` is
+/// fetched with (HTML "prepare the script element" steps 26-31), for
+/// module_script's Environment.
+fn moduleFetchOptions(element: *runtime.Instance) module_script.FetchOptions {
+    const state = script_element_state.of(element);
+    return .{
+        .nonce = getNonceAttribute(element),
+        .integrity = getAttribute(element, "integrity") orelse "",
+        .parser_inserted = state != null and state.?.parser_document != null,
+        .referrer_policy = fetch.internal.policy_container.referrerPolicyFromAttribute(getAttribute(element, "referrerpolicy")),
     };
-
-    // Find scheme (before ://)
-    if (std.mem.indexOf(u8, url, "://")) |scheme_end| {
-        result.scheme = url[0..scheme_end];
-
-        // Find host (after :// and before / or : or end)
-        const after_scheme = url[scheme_end + 3 ..];
-
-        // Find end of authority (first / or end of string)
-        var authority_end = after_scheme.len;
-        if (std.mem.indexOf(u8, after_scheme, "/")) |slash| {
-            authority_end = slash;
-            result.path = after_scheme[slash..];
-        }
-
-        const authority = after_scheme[0..authority_end];
-
-        // Check for port (: in authority)
-        if (std.mem.lastIndexOf(u8, authority, ":")) |colon| {
-            result.host = authority[0..colon];
-            const port_str = authority[colon + 1 ..];
-            result.port = std.fmt.parseInt(u16, port_str, 10) catch null;
-        } else {
-            result.host = authority;
-        }
-    }
-
-    return result;
 }
 
 /// HTML "fetch a classic script" for `element`, synchronously: Crane's
@@ -2503,6 +2476,8 @@ fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, 
     const request = fetch.internal.InternalRequest.init(allocator, url) catch return result;
     defer request.deinit();
     script_request.createPotentialCorsRequest(request, .script, script_request.corsSettingFromAttribute(getAttribute(element, "crossorigin")));
+    // Step 4: "Set up the classic script request given request and options."
+    setUpScriptRequest(request, element) catch return result;
     // Step 2: "Set request's client to settings object" - the element's node
     // document's relevant settings object: Fetch reads what "populate request
     // from client" puts on the request.
@@ -2659,6 +2634,11 @@ fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instan
     // `fetchClassicScript`).
     const request = fetch.internal.InternalRequest.init(allocator, url) catch return abandonStart(self);
     script_request.createPotentialCorsRequest(request, .script, script_request.corsSettingFromAttribute(getAttribute(element, "crossorigin")));
+    // Step 4: "Set up the classic script request given request and options."
+    setUpScriptRequest(request, element) catch {
+        request.deinit();
+        return abandonStart(self);
+    };
     script_request.populateRequestFromClient(request, document.ctx) catch {
         request.deinit();
         return abandonStart(self);

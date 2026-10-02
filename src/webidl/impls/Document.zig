@@ -4642,7 +4642,6 @@ fn installScriptHooks() void {
         .scripting_enabled = &isScriptingEnabled,
         .has_style_sheet_blocking_scripts = &hasStyleSheetBlockingScripts,
         .inline_script_allowed_by_csp = &isInlineScriptAllowedByCSP,
-        .external_script_allowed_by_csp = &isExternalScriptAllowedByCSP,
         .add_prefetch_hint = &addPrefetchHintStep,
         .url = &recordedUrl,
     });
@@ -5089,76 +5088,6 @@ pub fn isInlineScriptAllowedByCSP(
             if (!has_nonce_or_hash) {
                 continue; // Allowed by 'unsafe-inline'
             }
-        }
-
-        // Script blocked by this policy
-        return false;
-    }
-
-    return true;
-}
-
-/// Check if an external script URL is allowed by CSP
-/// Spec: https://www.w3.org/TR/CSP3/ §6.7.2
-///
-/// Returns true if the URL is allowed, false if blocked.
-pub fn isExternalScriptAllowedByCSP(
-    instance: *runtime.Instance,
-    url_scheme: []const u8,
-    url_host: []const u8,
-    url_port: ?u16,
-    url_path: []const u8,
-    nonce: ?[]const u8,
-) bool {
-    const internal = getInternal(instance) orelse return true; // No document = allow
-    const csp_list = &internal.policy_container.csp_list;
-
-    // Get self origin for 'self' matching
-    // 'self' is each policy's self-origin (CSP 2.2), set as it was
-    // delivered; the document's own is the fallback for one without.
-    const fallback_origin = if (internal.csp_self_origin) |*o| o else null;
-
-    // Check each policy
-    for (csp_list.policies.items) |*policy| {
-        // Only check enforcing policies for blocking
-        if (policy.disposition != .enforce) continue;
-
-        // Get effective script-src directive (with fallback to default-src)
-        const directive = csp.fallback.getEffectiveScriptSrcElem(policy) orelse continue;
-
-        // Check if 'strict-dynamic' is present
-        const has_strict_dynamic = csp.matching.hasStrictDynamic(&directive.value);
-
-        // With 'strict-dynamic', only nonced/hashed scripts can load other scripts
-        if (has_strict_dynamic) {
-            // If we have a nonce, check it
-            if (nonce) |n| {
-                if (csp.matching.doesNonceMatch(n, &directive.value)) {
-                    continue; // Allowed by nonce with strict-dynamic
-                }
-            }
-            // Without valid nonce, strict-dynamic blocks URL-based loads
-            return false;
-        }
-
-        // Check nonce first (takes precedence)
-        if (nonce) |n| {
-            if (csp.matching.doesNonceMatch(n, &directive.value)) {
-                continue; // Allowed by nonce
-            }
-        }
-
-        // Check URL matching
-        if (csp.matching.doesUrlMatchSourceList(
-            url_scheme,
-            url_host,
-            url_port,
-            url_path,
-            &directive.value,
-            if (policy.self_origin) |*o| o else fallback_origin,
-            0, // redirect_count
-        )) {
-            continue; // Allowed by URL
         }
 
         // Script blocked by this policy
