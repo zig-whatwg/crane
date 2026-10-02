@@ -58,7 +58,7 @@ static void releaseWeakArmRaw(void* handle);
 // ---- lane: realms (realm-tagged handles) ----
 // Handles the engine protocol made for a realm's callbacks (an event
 // listener, an event handler), tagged with the realm whose API stored them,
-// so that the realm's detach can make them weak (v8_Context_WeakenTaggedHandles)
+// so that the realm's detach can make them weak (v8_Object_WeakenTaggedHandles)
 // rather than leave a strong root into it. A dispose drops the tag.
 static std::unordered_map<const void*, uintptr_t>& realmTaggedHandles() {
     static std::unordered_map<const void*, uintptr_t> map;
@@ -12628,34 +12628,40 @@ void v8_Object_DeletePrivateRef(Global<Object>* holder, const char* key, int key
     (void)holder->Get(isolate)->DeletePrivate(context, priv);
 }
 
-/// Keep `value` alive for exactly as long as `context`'s global object: it is
-/// appended to an array held in a private property of the HIDDEN global
-/// object (behind the global proxy), made on first use. An edge, never a
-/// root - what a realm whose navigable was destroyed holds its wrappers by,
-/// so the collector can take the realm once script lets its WindowProxy go
-/// (the engine protocol's Window realm end, `.navigable_destroyed`). A no-op
-/// for a context already collected.
-void v8_Context_RetainOnGlobal(Global<Context>* context, const char* key, int key_len, Global<Value>* value) {
-    if (!context || context->IsEmpty() || !value || value->IsEmpty()) return;
+/// Keep `value` alive for exactly as long as `holder` (an object): it is
+/// appended to an array held in `holder`'s private property `key`, made on
+/// first use. An edge, never a root - what a Window realm whose navigable was
+/// destroyed, or whose document a navigation replaced, holds its wrappers and
+/// callbacks by: `holder` is its HIDDEN global object (never the global proxy,
+/// which a navigation hands to the next realm - a private property set through
+/// it lands on whichever global object it reaches now), so the collector can
+/// take the realm once nothing reaches it (the engine protocol's Window realm
+/// ends). Runs in `holder`'s creation context. A no-op for an empty holder -
+/// a global object already collected.
+void v8_Object_RetainInPrivateArray(Global<Value>* holder, const char* key, int key_len, Global<Value>* value) {
+    if (!holder || holder->IsEmpty() || !value || value->IsEmpty()) return;
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return;
     HandleScope handle_scope(isolate);
-    Local<Context> ctx = context->Get(isolate);
+    Local<Value> held = holder->Get(isolate);
+    if (!held->IsObject()) return;
+    Local<Object> object = held.As<Object>();
+    Local<Context> ctx;
+    if (!object->GetCreationContext(isolate).ToLocal(&ctx)) {
+        ctx = isolate->GetCurrentContext();
+        if (ctx.IsEmpty()) return;
+    }
     Context::Scope context_scope(ctx);
-    // V1 GetPrototype on a global proxy answers the hidden global object.
-    Local<Value> hidden = ctx->Global()->GetPrototype();
-    if (hidden.IsEmpty() || !hidden->IsObject()) return;
-    Local<Object> global = hidden.As<Object>();
     Local<String> name;
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
     Local<Private> priv = Private::ForApi(isolate, name);
     Local<Value> existing;
     Local<Array> list;
-    if (global->GetPrivate(ctx, priv).ToLocal(&existing) && existing->IsArray()) {
+    if (object->GetPrivate(ctx, priv).ToLocal(&existing) && existing->IsArray()) {
         list = existing.As<Array>();
     } else {
         list = Array::New(isolate);
-        if (global->SetPrivate(ctx, priv, list).IsNothing()) return;
+        if (object->SetPrivate(ctx, priv, list).IsNothing()) return;
     }
     (void)list->Set(ctx, list->Length(), value->Get(isolate));
 }
@@ -12677,13 +12683,13 @@ void v8_Global_TagRealm(Global<Value>* global, uintptr_t realm_key) {
 
 static void taggedHandleCollected(void*, size_t) {}
 
-/// A realm whose navigable was destroyed (`realm_key` its context's key):
-/// every handle tagged with it is kept by an edge from its global object
-/// (v8_Context_RetainOnGlobal, `key`) instead, and made weak - its holder
-/// still owns and disposes it; it reads empty once the realm is collected.
-/// Returns how many it weakened.
-int v8_Context_WeakenTaggedHandles(Global<Context>* context, uintptr_t realm_key, const char* key, int key_len) {
-    if (!context || context->IsEmpty() || !realm_key) return 0;
+/// A Window realm that is detached (`realm_key` its context's key): every
+/// handle tagged with it is kept by an edge from `holder` - its hidden global
+/// object (v8_Object_RetainInPrivateArray, `key`) - instead, and made weak; its
+/// holder still owns and disposes it, and it reads empty once the realm is
+/// collected. Returns how many it weakened.
+int v8_Object_WeakenTaggedHandles(Global<Value>* holder, uintptr_t realm_key, const char* key, int key_len) {
+    if (!holder || holder->IsEmpty() || !realm_key) return 0;
     auto& tagged = realmTaggedHandles();
     std::vector<const void*> handles;
     for (const auto& kv : tagged) {
@@ -12693,7 +12699,7 @@ int v8_Context_WeakenTaggedHandles(Global<Context>* context, uintptr_t realm_key
         tagged.erase(h);
         Global<Value>* global = const_cast<Global<Value>*>(static_cast<const Global<Value>*>(h));
         if (global->IsEmpty()) continue;
-        v8_Context_RetainOnGlobal(context, key, key_len, global);
+        v8_Object_RetainInPrivateArray(holder, key, key_len, global);
         v8_Global_SetWeak(static_cast<void*>(global), nullptr, taggedHandleCollected);
     }
     return static_cast<int>(handles.size());

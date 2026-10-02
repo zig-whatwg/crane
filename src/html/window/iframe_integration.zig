@@ -74,9 +74,11 @@ pub const NavigateRequest = struct {
 };
 
 /// An engine context this integration made for a content navigable it no
-/// longer has - the iframe was removed and inserted again, or a navigation
-/// made a new Window. Destroyed with the integration: script may still be
-/// running in it, or hold its window, when the replacement is made.
+/// longer has - the iframe was removed and inserted again, or a navigation's
+/// new Window could not be made. Destroyed with the integration: script may
+/// still be running in it, or hold its window, when the replacement is made.
+/// (A realm a navigation replaced is the engine's to end:
+/// `releaseCurrentRealm`.)
 pub const RetiredRealm = struct {
     data: *anyopaque,
     /// The realm's own global object, when its global proxy went on to a new
@@ -556,20 +558,28 @@ pub const IFrameIntegration = struct {
         self.window_origin = copy;
     }
 
-    /// Detach the current engine context from the integration without
+    /// Take the current engine context off the integration without
     /// destroying it - a navigation is replacing the navigable's Window - and
-    /// keep it until the integration goes (`retired_realms`): its document,
-    /// nodes and functions may still be held by script elsewhere. The caller
-    /// attaches the new context. `global` is the realm's global object, which
-    /// the retired realm keeps (see `RetiredRealm.global`).
-    pub fn retireCurrentRealm(self: *IFrameIntegration, global: ?*anyopaque) IFrameError!void {
-        const data = self.context_cleanup_data orelse return;
-        const destroy = self.retired_realm_destroy orelse return IFrameError.ContextCreationFailed;
-        self.retired_realms.append(self.allocator, .{ .data = data, .global = global, .destroy = destroy }) catch return IFrameError.OutOfMemory;
+    /// hand it to the caller: its cleanup data, or null when there is none.
+    /// The caller attaches the new context and ends the old one (the engine
+    /// keeps a realm a navigation replaced for as long as script reaches
+    /// anything of it - its document, a node, a function - and no longer:
+    /// engine.WindowRealmEnd.global_detached). Kept here until the
+    /// integration went, every replaced realm lived as long as its iframe.
+    pub fn releaseCurrentRealm(self: *IFrameIntegration) ?*anyopaque {
+        const data = self.context_cleanup_data orelse return null;
         self.engine_context = null;
         self.realm = null;
         self.context_cleanup_data = null;
         self.runtime_context = null;
+        return data;
+    }
+
+    /// Keep a realm `releaseCurrentRealm` handed out until the integration
+    /// goes (`retired_realms`): for a replacement that could not be made.
+    pub fn keepRetiredRealm(self: *IFrameIntegration, data: *anyopaque) IFrameError!void {
+        const destroy = self.retired_realm_destroy orelse return IFrameError.ContextCreationFailed;
+        self.retired_realms.append(self.allocator, .{ .data = data, .destroy = destroy }) catch return IFrameError.OutOfMemory;
     }
 
     /// Make sure the realm the next document goes in is the right one: see

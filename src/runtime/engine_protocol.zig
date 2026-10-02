@@ -675,7 +675,14 @@ pub inline fn createWindowRealm(options: *const WindowRealmOptions) Error!Contex
 pub const WindowRealmEnd = enum {
     /// Its page is gone, or a navigation gave its navigable a new Window
     /// (Blink kGlobalObjectIsDetached): the WindowProxy is detached from the
-    /// global object, and script that still holds it reaches nothing.
+    /// global object, and script that still holds it reaches nothing. A
+    /// frame's realm a navigation replaced - its WindowProxy went on to the
+    /// new realm - does not end at once: HTML unloads and destroys its
+    /// document, and its Window lives on for as long as script reaches
+    /// anything of the realm (its document, a node, a function). Its script
+    /// activity and tasks stop, the engine keeps no root into it, and it ends
+    /// once the collector takes it or with its page, whichever is first - as
+    /// `navigable_destroyed` does.
     global_detached,
     /// HTML "destroy a child navigable": its navigable is gone - an iframe
     /// was removed - but script may still hold its WindowProxy (Blink

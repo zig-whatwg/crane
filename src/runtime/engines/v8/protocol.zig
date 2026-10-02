@@ -488,6 +488,9 @@ pub fn createPromise(realm: Context) Error!engine.PromiseCapability {
 }
 
 pub fn resolvePromise(capability: *engine.PromiseCapability, value: JSValue) Error!void {
+    // A detached realm's promise the collector took: nothing to settle, and
+    // its context must not be entered (v8_engine.v8CreatePromise).
+    if (v8_engine.promiseCollected(@ptrCast(@alignCast(capability.state)))) return;
     const resolved = switch (value) {
         // Its wrapper in its relevant realm, not the promise's.
         .instance => |instance| blk: {
@@ -518,6 +521,9 @@ fn resolveWithConverted(state: *anyopaque, value: JSValue) EngineError!void {
 
 pub fn rejectPromise(capability: *engine.PromiseCapability, reason: JSValue) Error!void {
     const handle: *v8_engine.V8PromiseHandle = @ptrCast(@alignCast(capability.state));
+    // A detached realm's promise the collector took: nothing to settle, and
+    // its context must not be entered (v8_engine.v8CreatePromise).
+    if (v8_engine.promiseCollected(handle)) return;
     const scope = @import("js_scope.zig").JsScope.initFromV8Context(handle.context) orelse return error.OperationFailed;
     defer scope.deinit();
     const relevant = try support.Relevant.of(handle.isolate, reason);
@@ -526,7 +532,8 @@ pub fn rejectPromise(capability: *engine.PromiseCapability, reason: JSValue) Err
 }
 
 pub fn releasePromiseCapability(capability: *engine.PromiseCapability) void {
-    if (handleOf(capability.promise)) |promise| ffi.v8_Promise_Dispose(@ptrCast(promise));
+    // v8_Global_Dispose drops the realm tag createPromise put on it.
+    if (handleOf(capability.promise)) |promise| ffi.v8_Global_Dispose(promise);
     v8_engine.v8DestroyPromiseHandle(capability.state, promise_allocator);
 }
 
