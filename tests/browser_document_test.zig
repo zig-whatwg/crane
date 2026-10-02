@@ -328,3 +328,57 @@ test "indexedDB.deleteDatabase frees the backend request it does not keep" {
     defer allocator.free(result);
     try std.testing.expectEqualStrings("[object IDBOpenDBRequest],[object IDBOpenDBRequest]", result);
 }
+
+/// One Browser that loads `first`, ends, and then a second, in the same
+/// process, that inserts an iframe: HTMLIFrameElement's live navigables are
+/// thread-wide, so an integration the first Browser left listed is walked by
+/// the second's insertion after the first's arena is gone.
+fn expectSecondBrowserMakesAFrame(first: []const u8) !void {
+    const allocator = std.testing.allocator;
+    {
+        const browser = try Browser.init(allocator, .{});
+        defer browser.deinit();
+        const ctx = browser.current_context orelse return error.NoContext;
+        try ctx.loadHTML(first, .{ .base_url = "http://localhost/first-browser.html" });
+        _ = try browser.runEventLoopBlocking(100);
+    }
+    const browser = try Browser.init(allocator, .{});
+    defer browser.deinit();
+    const ctx = browser.current_context orelse return error.NoContext;
+    const html =
+        \\<!DOCTYPE html><html><body><div id="d"></div>
+        \\<script>document.getElementById('d').innerHTML = '<iframe name="second"></iframe>';</script>
+        \\</body></html>
+    ;
+    try ctx.loadHTML(html, .{ .base_url = "http://localhost/second-browser.html" });
+    _ = try browser.runEventLoopBlocking(100);
+    const result = try ctx.evaluateScriptToString("String(frames.length)", allocator);
+    defer allocator.free(result);
+    try std.testing.expectEqualStrings("1", result);
+}
+
+// A removed iframe that script never wrapped is never deinit'd, and its
+// integration stayed in the thread's live navigables - left only by deinit -
+// past its Browser: the next Browser's iframe insertion read the freed block
+// (SIGSEGV in integrationOfBrowsingContext; leaks lane, 2026-10-02). "Destroy
+// a child navigable" now takes it off the list.
+test "a removed, never-wrapped frame leaves the live navigables with its navigable" {
+    try expectSecondBrowserMakesAFrame(
+        \\<!DOCTYPE html><html><body><div id="d"></div>
+        \\<script>
+        \\  var d = document.getElementById('d');
+        \\  d.innerHTML = '<iframe name="first"></iframe>';
+        \\  d.innerHTML = '';
+        \\</script>
+        \\</body></html>
+    );
+}
+
+// The same, for a frame still in its document when the Browser ends.
+test "a frame still attached when its Browser ends leaves the live navigables" {
+    try expectSecondBrowserMakesAFrame(
+        \\<!DOCTYPE html><html><body><div id="d"></div>
+        \\<script>document.getElementById('d').innerHTML = '<iframe name="first"></iframe>';</script>
+        \\</body></html>
+    );
+}

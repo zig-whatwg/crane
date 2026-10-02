@@ -738,6 +738,14 @@ pub const IFrameIntegration = struct {
         self.window_origin = null;
         if (self.name.len > 0) self.allocator.free(self.name);
         self.name = "";
+        // A destroyed navigable no longer lives: it leaves the engine's list
+        // of live navigables now (`deinit_callback`, which deinit calls too;
+        // leaving twice is a no-op), and a navigable made on re-insertion
+        // joins again. Left to deinit, the integration of an iframe that is
+        // never deinit'd stayed listed past its Browser, and the next
+        // Browser's iframe insertion read the freed block (SIGSEGV in
+        // integrationOfBrowsingContext, two Browsers in one process).
+        if (self.deinit_callback) |gone| gone(self);
         self.state = .discarded;
     }
 
