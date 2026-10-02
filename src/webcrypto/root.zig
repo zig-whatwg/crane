@@ -14,6 +14,11 @@ pub const tasks = @import("tasks.zig");
 pub const secret_keys = @import("secret_keys.zig");
 pub const jwk = @import("jwk.zig");
 pub const der = @import("der.zig");
+pub const ec = @import("ec.zig");
+pub const okp = @import("okp.zig");
+pub const asymmetric_keys = @import("asymmetric_keys.zig");
+pub const rsa = @import("rsa.zig");
+pub const key_formats = @import("key_formats.zig");
 
 test {
     _ = random;
@@ -27,4 +32,9 @@ test {
     _ = secret_keys;
     _ = jwk;
     _ = der;
+    _ = ec;
+    _ = okp;
+    _ = asymmetric_keys;
+    _ = rsa;
+    _ = key_formats;
 }

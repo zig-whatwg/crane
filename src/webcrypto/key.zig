@@ -5,6 +5,8 @@ const Hash = @import("hash.zig").Hash;
 const Id = @import("registry.zig").Id;
 
 pub const Kind = enum { public, private, secret };
+pub const Format = enum { raw, spki, pkcs8, jwk, unsupported };
+pub const Pair = struct { public_key: Slots, private_key: Slots };
 pub const Curve = enum {
     p256,
     p384,
