@@ -448,43 +448,32 @@ fn loadMicrotaskCallback(data: ?*anyopaque) void {
         return; // Cancelled
     }
 
-    // Perform the fetch
-    var fetch_result = fetch.webidl.globalFetch(allocator, .{ .url = url_str }, .{});
-    defer fetch_result.deinit();
-
-    // Check generation again after fetch
-    if (internal.load_generation != generation) {
-        return; // Cancelled during fetch
-    }
-
-    // Mark as complete
-    internal.complete = true;
-
-    // Determine event type based on fetch result
-    const event_type: ImageEventType = switch (fetch_result) {
-        .response => |response| if (response.ok()) .load else .@"error",
-        .err => .@"error",
+    // "In parallel": the image request is fetched without blocking the
+    // event loop; its response arrives from the loop's network step
+    // (ImageFetch). One that cannot start is an error.
+    startImageFetch(instance, url_str, generation) catch |err| {
+        log.debug("img: the fetch did not start: {s}", .{@errorName(err)});
+        internal.complete = true;
+        queueImageEvent(instance, generation, .@"error", allocator);
     };
+}
 
+/// Queue the task that fires `event_type` at `instance` for the load
+/// `generation` names (a newer load cancels it when it runs).
+fn queueImageEvent(instance: *runtime.Instance, generation: u64, event_type: ImageEventType, allocator: std.mem.Allocator) void {
+    const event_name = switch (event_type) {
+        .load => "load",
+        .@"error" => "error",
+    };
     // Queue a task to fire the event (per spec, events fire via task queue)
     // Use setTimeout(0) for task queue semantics
     const timer = instance.ctx.getOptionalTimer() orelse {
         // No timer support - fire event synchronously as fallback
-        const event_name = switch (event_type) {
-            .load => "load",
-            .@"error" => "error",
-        };
         fireEventOnElement(instance, event_name) catch {};
         return;
     };
-
-    // Allocate task context
     const task_ctx = allocator.create(FireEventTaskContext) catch {
         // OOM - fire synchronously as fallback
-        const event_name = switch (event_type) {
-            .load => "load",
-            .@"error" => "error",
-        };
         fireEventOnElement(instance, event_name) catch {};
         return;
     };
@@ -494,9 +483,127 @@ fn loadMicrotaskCallback(data: ?*anyopaque) void {
         .event_type = event_type,
         .allocator = allocator,
     };
-
-    // Schedule task via setTimeout(0)
     _ = timer.setTimeout(0, &fireEventTaskCallback, task_ctx);
+}
+
+/// The image request of one "update the image data", fetched in parallel
+/// (fetch.algorithms.AsyncFetch, as a link's style sheet is). It does not
+/// keep the element alive: the element's slab generation says whether it
+/// is still there, and a fetch whose element or realm is gone is
+/// terminated.
+///
+/// Not modelled, stated: the image is not decoded - a response that is not
+/// a network error and is ok (or opaque, which cannot be read) is a
+/// loaded image; the list of available images; delaying the document's
+/// load event.
+const ImageFetch = struct {
+    allocator: std.mem.Allocator,
+    element: *runtime.Instance,
+    element_generation: u64,
+    /// The load this fetch is for (InternalState.load_generation).
+    load_generation: u64,
+    realm: runtime.Context,
+
+    fn client(self: *ImageFetch) fetch.algorithms.AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = alive, .gone = gone };
+    }
+
+    fn elementIsLive(self: *const ImageFetch) bool {
+        return runtime.SlabAllocator.generationOf(self.element) == self.element_generation;
+    }
+
+    fn alive(context: *anyopaque) bool {
+        const self: *ImageFetch = @ptrCast(@alignCast(context));
+        return self.realm.engine_ctx != null and self.elementIsLive();
+    }
+
+    /// The element or its realm went with the fetch in flight; the fetch
+    /// has been terminated, and no event fires.
+    fn gone(context: *anyopaque) void {
+        const self: *ImageFetch = @ptrCast(@alignCast(context));
+        self.allocator.destroy(self);
+    }
+
+    /// The response, body and all: the image is available, or the request
+    /// failed - load or error, in a task, unless a newer load superseded
+    /// this one.
+    fn done(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
+        const self: *ImageFetch = @ptrCast(@alignCast(context));
+        defer self.allocator.destroy(self);
+        const event_type: ImageEventType = blk: {
+            var result = outcome catch break :blk .@"error";
+            defer result.deinit();
+            const response = result.response;
+            if (response.response_type == .@"error") break :blk .@"error";
+            if (response.response_type == .@"opaque") break :blk .load;
+            break :blk if (fetch.internal.isOkStatus(response.status)) .load else .@"error";
+        };
+        if (!self.elementIsLive()) return;
+        const internal = getInternal(self.element) orelse return;
+        if (internal.load_generation != self.load_generation) return;
+        internal.complete = true;
+        queueImageEvent(self.element, self.load_generation, event_type, self.element.ctx.allocator);
+    }
+};
+
+/// HTML "update the image data" step 23's request: "create a potential-CORS
+/// request given urlString, "image", and the current state of the element's
+/// crossorigin content attribute"; its client the element's node
+/// document's relevant settings object; its initiator type "img"; its
+/// referrer policy the element's referrerpolicy attribute's state - then
+/// fetched in parallel.
+fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64) !void {
+    const allocator = instance.ctx.allocator;
+    const request = try fetch.internal.InternalRequest.init(allocator, url);
+    var request_owned = true;
+    defer if (request_owned) request.deinit();
+    request.destination = .image;
+    request.initiator_type = .img;
+    // "Create a potential-CORS request": mode "no-cors" for No CORS,
+    // "cors" otherwise; credentials "include", or "same-origin" for
+    // Anonymous; the use-URL-credentials flag set.
+    const cors = attributeValue(instance, "crossorigin");
+    if (cors) |state| {
+        request.mode = .cors;
+        request.credentials_mode = if (std.ascii.eqlIgnoreCase(state, "use-credentials")) .include else .same_origin;
+    } else {
+        request.mode = .no_cors;
+        request.credentials_mode = .include;
+    }
+    request.use_url_credentials = true;
+    request.referrer_policy = fetch.internal.policy_container.referrerPolicyFromAttribute(attributeValue(instance, "referrerpolicy"));
+    // The client: the element's node document's relevant settings object -
+    // its realm's global's.
+    if (realmGlobal(instance.ctx)) |global| {
+        var client = try @import("dom").global_settings.requestClient(global);
+        defer client.deinit();
+        try fetch.internal.populateRequestFromClient(request, client.request);
+    }
+
+    const image_fetch = try allocator.create(ImageFetch);
+    errdefer allocator.destroy(image_fetch);
+    image_fetch.* = .{
+        .allocator = allocator,
+        .element = instance,
+        .element_generation = runtime.SlabAllocator.generationOf(instance),
+        .load_generation = generation,
+        .realm = instance.ctx,
+    };
+    // The fetch owns the request from here, even when it fails to start.
+    request_owned = false;
+    _ = try fetch.algorithms.AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), image_fetch.client());
+}
+
+/// The value of `instance`'s attribute `name`, or null when it has none.
+fn attributeValue(instance: *runtime.Instance, name: []const u8) ?[]const u8 {
+    const value = (Element.call_getAttribute(instance, runtime.DOMString.initInterned(name)) catch return null) orelse return null;
+    return value.asSlice();
+}
+
+/// The global of `realm`.
+fn realmGlobal(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    return @ptrCast(@alignCast(record.global_object orelse return null));
 }
 
 /// Task callback - fires load/error event on the element
