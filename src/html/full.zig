@@ -245,6 +245,10 @@ pub const worker_v8_context = worker_host;
 pub const embedder_scripts = @import("embedder_scripts.zig");
 /// HTML 6.4 user activation.
 pub const user_activation = @import("user_activation.zig");
+
+// "same origin-domain" between the entry settings object and a Window (the
+// Location interface's security check).
+pub const origin_domain = @import("origin_domain.zig");
 /// HTML 6.6 focus: focusable areas, the focusing steps, activeElement.
 pub const focus = @import("focus.zig");
 /// The events a user's pointer and keyboard produce, and their default

@@ -71,6 +71,7 @@ const html_core = @import("html_core");
 const navigate_steps = html_core.navigation.navigate_steps;
 const joint_history = html_core.navigation.joint_history;
 const dom = @import("dom");
+const origin_domain = @import("html").origin_domain;
 
 /// What "Location-object navigate" asks of the navigable's engine.
 pub const NavigateRequest = html_core.window.iframe_integration.NavigateRequest;
@@ -145,6 +146,22 @@ fn getURL(instance: *runtime.Instance) ?*url_record.URLRecord {
     const internal = getInternal(instance) orelse return null;
     refreshFromDocument(internal);
     return internal.url;
+}
+
+/// HTML §7.2.4, the step the Location members begin with: "If this's
+/// relevant Document is non-null and its origin is not same origin-domain
+/// with the entry settings object's origin, then throw a "SecurityError"
+/// DOMException." A Location has a relevant Document while it has a window
+/// (whose browsing context's active document it is).
+fn checkSameOriginDomain(internal: *InternalState) !void {
+    const window = internal.window orelse return;
+    if (!origin_domain.entryIsSameOriginDomainWith(window)) return error.SecurityError;
+}
+
+/// The same check for a getter, which starts from `instance`.
+fn checkGetter(instance: *runtime.Instance) !void {
+    const internal = getInternal(instance) orelse return;
+    try checkSameOriginDomain(internal);
 }
 
 /// Re-parse `internal.url` when the relevant document's URL string differs
@@ -329,6 +346,8 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Returns DOMString with owned memory that caller must free.
 /// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // Step 1: the same-origin-domain check (checkSameOriginDomain).
+    try checkGetter(instance);
     const url = getURL(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
@@ -343,6 +362,8 @@ pub fn get_href(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Returns DOMString with owned memory that caller must free.
 /// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // Step 1: the same-origin-domain check (checkSameOriginDomain).
+    try checkGetter(instance);
     const url = getURL(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
@@ -361,6 +382,8 @@ pub fn get_origin(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Returns DOMString with owned memory that caller must free.
 /// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // Step 1: the same-origin-domain check (checkSameOriginDomain).
+    try checkGetter(instance);
     const url = getURL(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
@@ -379,6 +402,8 @@ pub fn get_protocol(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Returns DOMString with owned memory that caller must free.
 /// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // Step 1: the same-origin-domain check (checkSameOriginDomain).
+    try checkGetter(instance);
     const url = getURL(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
@@ -416,6 +441,8 @@ pub fn get_host(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Returns DOMString with owned memory that caller must free.
 /// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // Step 1: the same-origin-domain check (checkSameOriginDomain).
+    try checkGetter(instance);
     const url = getURL(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
@@ -435,6 +462,8 @@ pub fn get_hostname(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Returns DOMString with owned memory that caller must free.
 /// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // Step 1: the same-origin-domain check (checkSameOriginDomain).
+    try checkGetter(instance);
     const url = getURL(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
@@ -454,6 +483,8 @@ pub fn get_port(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Returns DOMString with owned memory that caller must free.
 /// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // Step 1: the same-origin-domain check (checkSameOriginDomain).
+    try checkGetter(instance);
     const url = getURL(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
@@ -492,6 +523,8 @@ pub fn get_pathname(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Returns DOMString with owned memory that caller must free.
 /// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // Step 1: the same-origin-domain check (checkSameOriginDomain).
+    try checkGetter(instance);
     const url = getURL(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
@@ -513,6 +546,8 @@ pub fn get_search(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Returns DOMString with owned memory that caller must free.
 /// Uses instance.ctx.allocator so interface layer can clean up.
 pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
+    // Step 1: the same-origin-domain check (checkSameOriginDomain).
+    try checkGetter(instance);
     const url = getURL(instance) orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
@@ -532,7 +567,9 @@ pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Getter for ancestorOrigins
 /// Per spec §7.1.3: Returns a DOMStringList of ancestor browsing context origins.
 pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
+    // Step 2: the same-origin-domain check (step 1, the empty list for a
+    // null relevant Document, is part of what is not implemented below).
+    try checkGetter(instance);
     // TODO: Implement DOMStringList creation
     // This requires:
     // 1. Walking up the browsing context tree
@@ -593,11 +630,11 @@ fn navigateToCopy(internal: *InternalState, copy: *url_record.URLRecord) !void {
 /// copyURL as url and scheme start state as state override. 5. If
 /// possibleFailure is failure, then throw a "SyntaxError" DOMException. 6. If
 /// copyURL's scheme is not an HTTP(S) scheme, then terminate these steps. 7.
-/// Location-object navigate this to copyURL." Deviation, stated: step 2's
-/// same-origin-domain check is not modelled.
+/// Location-object navigate this to copyURL."
 pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.window == null) return;
+    try checkSameOriginDomain(internal);
     const allocator = internal.allocator;
     var copy = (try copyOfURL(instance, allocator)) orelse return;
     defer copy.deinit();
@@ -613,8 +650,7 @@ pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyer
 /// HTML §7.2.4: "3. Let copyURL be a copy of this's url. 4. If copyURL has an
 /// opaque path, then return. 5. Basic URL parse the given value, with copyURL
 /// as url and host state as state override. 6. Location-object navigate this
-/// to copyURL." Deviation, stated: step 2's same-origin-domain check is not
-/// modelled.
+/// to copyURL."
 pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     return setComponent(instance, value, ParserState.host);
 }
@@ -628,6 +664,7 @@ pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyer
 fn setComponent(instance: *runtime.Instance, value: []const u8, state: ParserState) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.window == null) return;
+    try checkSameOriginDomain(internal);
     const allocator = internal.allocator;
     var copy = (try copyOfURL(instance, allocator)) orelse return;
     defer copy.deinit();
@@ -641,11 +678,11 @@ fn setComponent(instance: *runtime.Instance, value: []const u8, state: ParserSta
 /// have a username/password/port, then return. 5. If the given value is the
 /// empty string, then set copyURL's port to null. 6. Otherwise, basic URL
 /// parse the given value, with copyURL as url and port state as state
-/// override. 7. Location-object navigate this to copyURL." Deviation,
-/// stated: step 2's same-origin-domain check is not modelled.
+/// override. 7. Location-object navigate this to copyURL."
 pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.window == null) return;
+    try checkSameOriginDomain(internal);
     const allocator = internal.allocator;
     var copy = (try copyOfURL(instance, allocator)) orelse return;
     defer copy.deinit();
@@ -663,10 +700,10 @@ pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 /// opaque path, then return. 5. Set copyURL's path to the empty list. 6.
 /// Basic URL parse the given value, with copyURL as url and path start state
 /// as state override. 7. Location-object navigate this to copyURL."
-/// Deviation, stated: step 2's same-origin-domain check is not modelled.
 pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.window == null) return;
+    try checkSameOriginDomain(internal);
     const allocator = internal.allocator;
     var copy = (try copyOfURL(instance, allocator)) orelse return;
     defer copy.deinit();
@@ -688,10 +725,11 @@ pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyer
 /// state as state override; Location-object navigate to it. The fragment is
 /// kept. Deviation, stated (encoding-parse-utf8): the query is
 /// percent-encoded as UTF-8, not in the relevant document's encoding -
-/// queued; and the same-origin-domain check (step 2) is not modelled.
+/// queued.
 pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.window == null) return;
+    try checkSameOriginDomain(internal);
     const url = getURL(instance) orelse return;
     const allocator = internal.allocator;
     const current = try url_serializer.serialize(allocator, url, false);
@@ -714,12 +752,13 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerro
 }
 
 /// Setter for hash
-/// HTML §7.2.4, the hash setter steps. Deviation, stated: the
-/// same-origin-domain check (step 2) is not modelled.
+/// HTML §7.2.4, the hash setter steps.
 pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Step 1: "If this's relevant Document is null, then return."
     if (internal.window == null) return;
+    // Step 2: the same-origin-domain check.
+    try checkSameOriginDomain(internal);
     // Step 3: "Let copyURL be a copy of this's url."
     const url = getURL(instance) orelse return;
     const allocator = internal.allocator;
@@ -1167,11 +1206,11 @@ fn locationObjectNavigate(internal: *InternalState, url: []const u8, behavior: n
 /// 3. Let urlRecord be the result of encoding-parsing a URL given url,
 /// relative to the entry settings object. 4. If urlRecord is failure, then
 /// throw a "SyntaxError" DOMException. 5. Location-object navigate this to
-/// urlRecord." Deviation, stated: step 2's same-origin-domain check is not
-/// modelled.
+/// urlRecord."
 pub fn call_assign(instance: *runtime.Instance, url: runtime.USVString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     if (internal.window == null) return;
+    try checkSameOriginDomain(internal);
     const resolved = try parseRelativeToEntry(instance, internal, url);
     defer internal.allocator.free(resolved);
     return locationObjectNavigate(internal, resolved, .auto);
@@ -1193,11 +1232,12 @@ pub fn call_replace(instance: *runtime.Instance, url: runtime.USVString) anyerro
 /// document is null, then return. 3. If document's origin is not same
 /// origin-domain with the entry settings object's origin, then throw a
 /// "SecurityError" DOMException. 4. Reload document's node navigable."
-/// Deviation, stated: as for assign(), step 3 is not modelled.
 pub fn call_reload(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // Steps 1-2.
     const window = internal.window orelse return;
+    // Step 3.
+    try checkSameOriginDomain(internal);
     // Step 4: "reload" - the reload navigate event, then the reload history
     // step, both History's (dom.history_traversal). A window that has not
     // made its History yet makes it, which installs the hook.
