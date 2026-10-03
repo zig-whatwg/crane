@@ -274,23 +274,25 @@ pub fn prepareScriptElement(
     // - Nonce matching (nonce attribute)
     // - Hash matching (computed from source text)
     if (!hasSrcAttribute(script_element)) {
-        // This is an inline script
+        // This is an inline script: "if el does not have a src content
+        // attribute, and the Should element's inline behavior be blocked by
+        // Content Security Policy? algorithm returns "Blocked" when given
+        // el, "script", and source text, then return" (CSP 4.2.3; nonces,
+        // hashes and 'strict-dynamic' are csp.inline_check's).
         if (node_document) |doc| {
-            // Get nonce attribute if present
+            // CSP 6.7.3.1 "Is element nonceable?": one with a nonce
+            // attribute. Not modelled, stated: step 2's scan of a script's
+            // attributes for "<script" and the like, and step 3's
+            // duplicate-attribute parse error.
             const nonce = getNonceAttribute(script_element);
-
-            // TODO: Compute hash of source text for hash-based CSP
-            // For now, we only check nonce and 'unsafe-inline'
-
-            // Check if inline script is allowed by CSP
             if (!document_scripts.inlineScriptAllowedByCsp(
                 doc,
+                script_element,
+                source_text,
                 if (nonce.len > 0) nonce else null,
-                null, // hash_algorithm (TODO: compute from source)
-                null, // hash_value (TODO: compute from source)
+                parser_document != null,
             )) {
-                // CSP blocked inline script
-                log.debug("CSP blocked inline script\n", .{});
+                log.debug("CSP blocked inline script", .{});
                 return false;
             }
         }
@@ -371,29 +373,17 @@ pub fn prepareScriptElement(
         // whose result is known; a script no parser inserted is fetched in
         // parallel (below).
         //
-        // A request CSP blocks is a network error to Fetch
-        // (https://www.w3.org/TR/CSP3/ §4.1.2), so it takes the same path as
-        // any other failed fetch: result null, which executing the element
-        // turns into an error event.
-        const allowed_by_csp = blk: {
-            const doc = node_document orelse break :blk true;
-            const url_parts = parseUrlForCSP(script_url);
-            const nonce = getNonceAttribute(script_element);
-            break :blk document_scripts.externalScriptAllowedByCsp(
-                doc,
-                url_parts.scheme,
-                url_parts.host,
-                url_parts.port,
-                url_parts.path,
-                if (nonce.len > 0) nonce else null,
-            );
-        };
-        if (!allowed_by_csp) log.debug("CSP blocked external script: {s}", .{script_url});
+        // A request CSP blocks is a network error to Fetch: main fetch step 7
+        // decides it (https://www.w3.org/TR/CSP3/ §4.1.2), from the script
+        // fetch options the request carries (setUpScriptRequest), so it
+        // takes the same path as any other failed fetch: result null, which
+        // executing the element turns into an error event. There is no check
+        // here: "prepare the script element" checks only inline scripts.
 
         // Step 33.11 "module": fetch an external module script graph given url,
         // and mark el ready with the result.
         if (script_type == .module) {
-            if (allowed_by_csp and node_document != null) {
+            if (node_document != null) {
                 prepareExternalModuleScript(script_element, node_document.?, script_url);
             } else {
                 state.result = .null;
@@ -407,8 +397,8 @@ pub fn prepareScriptElement(
         // one, stands in for "fetch a classic script" - here, at the fetch
         // step, so a script that prepare returns from earlier (a type that is
         // no JavaScript MIME type, nomodule) is never fetched.
-        const cached = if (allowed_by_csp) state.cached_source_text else null;
-        if (cached == null and allowed_by_csp) {
+        const cached = state.cached_source_text;
+        if (cached == null) {
             // A script no parser inserted is fetched in parallel, as the spec
             // fetches every script: onComplete - "mark as ready" - runs from
             // the networking task that hands over the response
@@ -426,7 +416,7 @@ pub fn prepareScriptElement(
             defer fetched.deinit();
             try setClassicScriptResult(script_element, true, fetched.body, script_url, fetched.muted);
         } else {
-            try setClassicScriptResult(script_element, allowed_by_csp, null, script_url, false);
+            try setClassicScriptResult(script_element, true, null, script_url, false);
         }
 
         // Step 35: scheduling - which also decides when the result, already
@@ -449,7 +439,7 @@ pub fn prepareScriptElement(
                 // result. With no record, the document's URL, which the
                 // document keeps too. (Its errors report the document's URL
                 // as their filename: runClassicScript.)
-                const script_base_url = if (classicScriptRecord(doc, base_url)) |record|
+                const script_base_url = if (classicScriptRecord(doc, base_url, script_element)) |record|
                     record.script.base_url
                 else
                     documentUrl(doc, script_element);
@@ -1110,7 +1100,7 @@ fn runClassicScript(script_element: *runtime.Instance, document: *runtime.Instan
 fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool) void {
     const realm = element.ctx;
     // The script's [[HostDefined]]: what an import() in it resolves against.
-    const host_defined: ?*anyopaque = if (classicScriptRecord(document, base_url)) |record| &record.script else null;
+    const host_defined: ?*anyopaque = if (classicScriptRecord(document, base_url, element)) |record| &record.script else null;
     var host = ClassicScriptReport{ .realm = realm, .muted = muted };
     engine.runClassicScript(realm, .{ .utf8 = source }, url, host_defined, .{
         .report = reportClassicScriptError,
@@ -1178,6 +1168,7 @@ const ClassicScriptRecord = struct {
         if (self.live_prev) |prev| prev.live_next = self.live_next else live_classic_scripts = self.live_next;
         if (self.live_next) |next| next.live_prev = self.live_prev;
         std.heap.c_allocator.free(self.script.base_url);
+        if (self.script.nonce.len > 0) std.heap.c_allocator.free(self.script.nonce);
         std.heap.c_allocator.destroy(self);
     }
 };
@@ -1187,22 +1178,32 @@ var live_classic_scripts: ?*ClassicScriptRecord = null;
 
 const classic_script_key_prefix = "classic:";
 
-/// `document`'s classic script record for `base_url`, made (with its own copy
-/// of the URL) if it has none yet. Null when it cannot be made - the script
+/// `document`'s classic script record for `base_url` and the fetch options
+/// an import() from the script reads (`element`'s nonce and referrer
+/// policy), made (with its own copies) if it has none yet. Scripts that
+/// agree on all three share one. Null when it cannot be made - the script
 /// then runs with no [[HostDefined]], and an import() in it resolves against
-/// the document's base URL.
-fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8) ?*ClassicScriptRecord {
+/// the document's base URL with the default options.
+fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, element: *runtime.Instance) ?*ClassicScriptRecord {
     const allocator = std.heap.c_allocator;
+    const options = moduleFetchOptions(element);
     const map = documentModuleMap(document);
-    const key = std.mem.concat(allocator, u8, &.{ classic_script_key_prefix, base_url }) catch return null;
+    // A nonce has no NUL, and a referrer policy's tag no NUL either.
+    const key = std.mem.concat(allocator, u8, &.{ classic_script_key_prefix, options.nonce, "\x00", @tagName(options.referrer_policy), "\x00", base_url }) catch return null;
     defer allocator.free(key);
     if (map.getFn(map.context, key)) |value| return @ptrCast(@alignCast(value));
 
     const record = allocator.create(ClassicScriptRecord) catch return null;
-    record.* = .{ .script = .{ .base_url = allocator.dupe(u8, base_url) catch {
+    const owned_base_url = allocator.dupe(u8, base_url) catch {
         allocator.destroy(record);
         return null;
-    } } };
+    };
+    const owned_nonce: []const u8 = if (options.nonce.len > 0) (allocator.dupe(u8, options.nonce) catch {
+        allocator.free(owned_base_url);
+        allocator.destroy(record);
+        return null;
+    }) else "";
+    record.* = .{ .script = .{ .base_url = owned_base_url, .nonce = owned_nonce, .referrer_policy = options.referrer_policy } };
     record.live_next = live_classic_scripts;
     if (live_classic_scripts) |head| head.live_prev = record;
     live_classic_scripts = record;
@@ -1219,6 +1220,16 @@ fn classicScriptBaseUrlOf(host_defined: *anyopaque) ?[]const u8 {
     var it = live_classic_scripts;
     while (it) |record| : (it = record.live_next) {
         if (@as(*anyopaque, @ptrCast(&record.script)) == host_defined) return record.script.base_url;
+    }
+    return null;
+}
+
+/// The descendant fetch options of the classic script whose [[HostDefined]]
+/// `host_defined` is, or null for one that is not a live record.
+fn classicScriptFetchOptionsOf(host_defined: *anyopaque) ?module_script.FetchOptions {
+    var it = live_classic_scripts;
+    while (it) |record| : (it = record.live_next) {
+        if (@as(*anyopaque, @ptrCast(&record.script)) == host_defined) return record.script.descendantFetchOptions();
     }
     return null;
 }
@@ -1473,6 +1484,8 @@ fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Insta
         .context_instance = script_element,
         .map = documentModuleMap(document),
         .resolveImportFn = &documentResolveImport,
+        // The element's script fetch options, for its graph's requests.
+        .fetch_options = moduleFetchOptions(script_element),
     };
 }
 
@@ -1649,12 +1662,21 @@ fn loadImportedModule(
         .script => |host_defined| if (classicScriptBaseUrlOf(host_defined)) |url| .{ .url = url } else .document,
         .realm => .document,
     };
-    loadImport(realm, base, specifier, type_attribute, request);
+    // Steps 5-6: fetchOptions - the default classic script fetch options,
+    // or the new descendant script fetch options for referencingScript's
+    // fetch options (its nonce and referrer policy: a nonce'd script's
+    // import() passes a nonce-based script-src).
+    const options: module_script.FetchOptions = switch (referrer) {
+        .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| script.descendantFetchOptions() else .{},
+        .script => |host_defined| classicScriptFetchOptionsOf(host_defined) orelse .{},
+        .realm => .{},
+    };
+    loadImport(realm, base, specifier, type_attribute, options, request);
 }
 
 /// HostLoadImportedModule from step 7 on, for the request of an import() in
 /// `realm`: every path finishes `request` (engine.finishDynamicImport).
-fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, type_attribute: ?[]const u8, request: *engine.ImportRequest) void {
+fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, type_attribute: ?[]const u8, options: module_script.FetchOptions, request: *engine.ImportRequest) void {
     // The settings object's global: a Window - for a ShadowRealm, its
     // principal realm's (its synthetic realm settings object's API base URL
     // and fetch client are that realm's).
@@ -1692,15 +1714,22 @@ fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, t
         return finishImportWithTypeError(realm, request, "No event loop to load the module on");
     const task = std.heap.c_allocator.create(DynamicImportTask) catch
         return finishImportWithTypeError(realm, request, "Out of memory");
+    const nonce: []const u8 = if (options.nonce.len > 0) (std.heap.c_allocator.dupe(u8, options.nonce) catch {
+        std.heap.c_allocator.destroy(task);
+        return finishImportWithTypeError(realm, request, "Out of memory");
+    }) else "";
     task.* = .{
         .realm = realm,
         .window = window,
         .generation = runtime.SlabAllocator.generationOf(window),
         .url = std.heap.c_allocator.dupe(u8, url) catch {
+            if (nonce.len > 0) std.heap.c_allocator.free(nonce);
             std.heap.c_allocator.destroy(task);
             return finishImportWithTypeError(realm, request, "Out of memory");
         },
         .module_type = module_type,
+        .nonce = nonce,
+        .referrer_policy = options.referrer_policy,
         .request = request,
     };
     loop.queueTask(.{ .callback = &runDynamicImport, .context = task });
@@ -1725,6 +1754,10 @@ const DynamicImportTask = struct {
     /// Owned (c_allocator).
     url: []const u8,
     module_type: module_script.ModuleType,
+    /// The fetch options the import's requests carry (steps 5-6): the nonce
+    /// (owned, c_allocator, when not empty) and referrer policy.
+    nonce: []const u8,
+    referrer_policy: fetch.internal.ReferrerPolicy,
     /// The host's until finished.
     request: *engine.ImportRequest,
 };
@@ -1733,6 +1766,7 @@ fn runDynamicImport(data: ?*anyopaque) void {
     const task: *DynamicImportTask = @ptrCast(@alignCast(data orelse return));
     defer {
         std.heap.c_allocator.free(task.url);
+        if (task.nonce.len > 0) std.heap.c_allocator.free(task.nonce);
         std.heap.c_allocator.destroy(task);
     }
 
@@ -1754,8 +1788,10 @@ fn dynamicImportSteps(data: ?*anyopaque) void {
     const document = interfaces.Window.get_document(task.window) catch
         return finishImportWithTypeError(realm, task.request, "import() has no document to load for");
     var shadow_realm_map: ShadowRealmModuleMap = undefined;
-    const env = importEnvironment(realm, task.window, document, &shadow_realm_map) orelse
+    var env = importEnvironment(realm, task.window, document, &shadow_realm_map) orelse
         return finishImportWithTypeError(realm, task.request, "import() has no document to load for");
+    // The import's fetch options (HostLoadImportedModule steps 5-6).
+    env.fetch_options = .{ .nonce = task.nonce, .referrer_policy = task.referrer_policy };
 
     // A null graph is a failed fetch: TypeError.
     const graph = module_script.fetchImportedModuleScriptGraph(&env, task.url, task.module_type) orelse
@@ -2423,51 +2459,34 @@ fn resolveUrl(allocator: std.mem.Allocator, url: []const u8, base_url: []const u
     return result;
 }
 
-/// URL parts for CSP checking
-const UrlPartsForCSP = struct {
-    scheme: []const u8,
-    host: []const u8,
-    port: ?u16,
-    path: []const u8,
-};
+/// HTML "set up the classic script request" given `request` and the script
+/// fetch options of `element` (HTML "prepare the script element" step 26-31):
+/// its cryptographic nonce (the nonce attribute's value - the element's
+/// [[CryptographicNonce]]), integrity metadata (the integrity attribute),
+/// parser metadata ("parser-inserted" for a parser-inserted script) and
+/// referrer policy (the referrerpolicy attribute). Main fetch step 7 checks
+/// the request against the client's CSP list with them (a nonce or a listed
+/// hash lets it through).
+fn setUpScriptRequest(request: *fetch.internal.InternalRequest, element: *runtime.Instance) !void {
+    const nonce = getNonceAttribute(element);
+    if (nonce.len > 0) try request.setCryptographicNonceMetadata(nonce);
+    try request.setIntegrityMetadata(getAttribute(element, "integrity") orelse "");
+    const state = script_element_state.of(element);
+    request.parser_metadata = if (state != null and state.?.parser_document != null) .parser_inserted else .not_parser_inserted;
+    request.referrer_policy = fetch.internal.policy_container.referrerPolicyFromAttribute(getAttribute(element, "referrerpolicy"));
+}
 
-/// Parse a URL into components for CSP checking
-/// This is a simplified URL parser for CSP purposes.
-fn parseUrlForCSP(url: []const u8) UrlPartsForCSP {
-    var result = UrlPartsForCSP{
-        .scheme = "",
-        .host = "",
-        .port = null,
-        .path = "/",
+/// The script fetch options a module script graph rooted at `element` is
+/// fetched with (HTML "prepare the script element" steps 26-31), for
+/// module_script's Environment.
+fn moduleFetchOptions(element: *runtime.Instance) module_script.FetchOptions {
+    const state = script_element_state.of(element);
+    return .{
+        .nonce = getNonceAttribute(element),
+        .integrity = getAttribute(element, "integrity") orelse "",
+        .parser_inserted = state != null and state.?.parser_document != null,
+        .referrer_policy = fetch.internal.policy_container.referrerPolicyFromAttribute(getAttribute(element, "referrerpolicy")),
     };
-
-    // Find scheme (before ://)
-    if (std.mem.indexOf(u8, url, "://")) |scheme_end| {
-        result.scheme = url[0..scheme_end];
-
-        // Find host (after :// and before / or : or end)
-        const after_scheme = url[scheme_end + 3 ..];
-
-        // Find end of authority (first / or end of string)
-        var authority_end = after_scheme.len;
-        if (std.mem.indexOf(u8, after_scheme, "/")) |slash| {
-            authority_end = slash;
-            result.path = after_scheme[slash..];
-        }
-
-        const authority = after_scheme[0..authority_end];
-
-        // Check for port (: in authority)
-        if (std.mem.lastIndexOf(u8, authority, ":")) |colon| {
-            result.host = authority[0..colon];
-            const port_str = authority[colon + 1 ..];
-            result.port = std.fmt.parseInt(u16, port_str, 10) catch null;
-        } else {
-            result.host = authority;
-        }
-    }
-
-    return result;
 }
 
 /// HTML "fetch a classic script" for `element`, synchronously: Crane's
@@ -2503,6 +2522,8 @@ fn fetchClassicScript(allocator: std.mem.Allocator, element: *runtime.Instance, 
     const request = fetch.internal.InternalRequest.init(allocator, url) catch return result;
     defer request.deinit();
     script_request.createPotentialCorsRequest(request, .script, script_request.corsSettingFromAttribute(getAttribute(element, "crossorigin")));
+    // Step 4: "Set up the classic script request given request and options."
+    setUpScriptRequest(request, element) catch return result;
     // Step 2: "Set request's client to settings object" - the element's node
     // document's relevant settings object: Fetch reads what "populate request
     // from client" puts on the request.
@@ -2659,6 +2680,11 @@ fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instan
     // `fetchClassicScript`).
     const request = fetch.internal.InternalRequest.init(allocator, url) catch return abandonStart(self);
     script_request.createPotentialCorsRequest(request, .script, script_request.corsSettingFromAttribute(getAttribute(element, "crossorigin")));
+    // Step 4: "Set up the classic script request given request and options."
+    setUpScriptRequest(request, element) catch {
+        request.deinit();
+        return abandonStart(self);
+    };
     script_request.populateRequestFromClient(request, document.ctx) catch {
         request.deinit();
         return abandonStart(self);

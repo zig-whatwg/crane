@@ -353,6 +353,14 @@ pub const IFrameIntegration = struct {
     /// whatever creates the document, and cleared after the commit. Owned.
     next_about_base_url: ?[]u8 = null,
 
+    /// The policy container the next document this navigable makes is
+    /// created with ("create and initialize a Document object" step 9: the
+    /// one "determine navigation params policy container" chose): set just
+    /// before a commit, taken by whatever creates the document - before its
+    /// parser applies a meta referrer or runs a script - and cleared after
+    /// the commit. Owned until taken.
+    next_policy_container: ?@import("fetch").internal.PolicyContainer = null,
+
     /// Create a new IFrameIntegration (element not yet in document)
     pub fn init(allocator: Allocator) IFrameIntegration {
         return .{
@@ -400,6 +408,12 @@ pub const IFrameIntegration = struct {
         if (self.window_origin) |o| self.allocator.free(o);
         self.window_origin = null;
         self.setNextAboutBaseUrl(null);
+        // A pending policy container is only ever set and cleared around one
+        // commit, inside the same call; one still here (a commit that stopped
+        // before a document took it) goes with the integration. Nothing else
+        // needs to free it: removing the iframe ends its navigations, and
+        // the integration's deinit follows.
+        self.setNextPolicyContainer(null);
 
         // Destroy the browsing context if it exists
         // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
@@ -547,6 +561,21 @@ pub const IFrameIntegration = struct {
         const copy: ?[]u8 = if (url) |u| self.allocator.dupe(u8, u) catch null else null;
         if (self.next_about_base_url) |old| self.allocator.free(old);
         self.next_about_base_url = copy;
+    }
+
+    /// The policy container for the next document this navigable makes,
+    /// taken (null: none - the document keeps a new one), releasing one
+    /// still pending.
+    pub fn setNextPolicyContainer(self: *IFrameIntegration, container: ?@import("fetch").internal.PolicyContainer) void {
+        if (self.next_policy_container) |*old| old.deinit();
+        self.next_policy_container = container;
+    }
+
+    /// The pending policy container, handed over: the integration keeps none.
+    pub fn takeNextPolicyContainer(self: *IFrameIntegration) ?@import("fetch").internal.PolicyContainer {
+        const container = self.next_policy_container;
+        self.next_policy_container = null;
+        return container;
     }
 
     /// Record the origin the navigable's Windows are created with.
@@ -1609,6 +1638,38 @@ test "IFrameIntegration - init creates uninitialized state" {
     try std.testing.expectEqual(IFrameState.uninitialized, integration.state);
     try std.testing.expect(integration.browsing_context == null);
     try std.testing.expect(integration.window_proxy == null);
+}
+
+test "IFrameIntegration - a pending policy container is taken by the commit, or released with the integration" {
+    const allocator = std.testing.allocator;
+    const PolicyContainer = @import("fetch").internal.PolicyContainer;
+
+    const parent_ctx = try BrowsingContext.initTopLevel(allocator);
+    defer parent_ctx.deinit();
+
+    // Set, then taken - what a commit does: the document owns it.
+    {
+        var integration = IFrameIntegration.init(allocator);
+        defer integration.deinit();
+        try integration.onInsertedIntoDocument(parent_ctx, Origin.createOpaque());
+        integration.setNextPolicyContainer(try PolicyContainer.fromResponse(allocator, "no-referrer"));
+        // A second set releases the first.
+        integration.setNextPolicyContainer(try PolicyContainer.fromResponse(allocator, "origin"));
+        var taken = integration.takeNextPolicyContainer() orelse return error.TestExpectedContainer;
+        defer taken.deinit();
+        try std.testing.expectEqual(@import("fetch").internal.ReferrerPolicy.origin, taken.referrer_policy);
+        try std.testing.expect(integration.takeNextPolicyContainer() == null);
+    }
+
+    // Set, then the iframe is removed before any document took it: the
+    // integration's deinit releases it.
+    {
+        var integration = IFrameIntegration.init(allocator);
+        defer integration.deinit();
+        try integration.onInsertedIntoDocument(parent_ctx, Origin.createOpaque());
+        integration.setNextPolicyContainer(try PolicyContainer.fromResponse(allocator, "no-referrer"));
+        integration.onRemovedFromDocument();
+    }
 }
 
 test "IFrameIntegration - insertion creates browsing context" {

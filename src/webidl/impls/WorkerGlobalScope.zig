@@ -169,7 +169,15 @@ pub fn installHooks() void {
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .crypto = &settingsCrypto,
         .cookie_jar = &settingsCookieJar,
+        .policy_container = &settingsPolicyContainer,
     });
+}
+
+/// The settings object's policy container: the worker global scope's, which
+/// the host running the worker keeps (html.worker_host).
+fn settingsPolicyContainer(instance: *runtime.Instance) ?*const @import("fetch").internal.PolicyContainer {
+    const settings = @import("html").worker_host.scopeSettings(instance.ctx) orelse return null;
+    return settings.policy_container;
 }
 
 /// The user agent's cookie jar, as the worker's creator handed it over.

@@ -190,10 +190,10 @@ pub fn parseSourceExpression(
             return try parseHostSource(allocator, token);
         }
 
-        // If it's just scheme: (no path), it's a scheme source
-        if (colon_pos == token.len - 1 or
-            (colon_pos + 1 < token.len and token[colon_pos + 1] != '/'))
-        {
+        // scheme-source = scheme-part ":" - the token is a scheme and one
+        // colon, which ends it. "host:port" (a host-source with a port and
+        // no scheme) is not one.
+        if (colon_pos == token.len - 1 and isSchemePart(token[0..colon_pos])) {
             var expr = try types.SourceExpression.create(allocator, .scheme, token);
             expr.scheme_part = try allocator.dupe(u8, token[0 .. colon_pos + 1]);
             return expr;
@@ -249,7 +249,8 @@ fn parseHostSource(allocator: std.mem.Allocator, token: []const u8) !types.Sourc
             const port_str = remaining[ps..port_end];
             if (std.mem.eql(u8, port_str, "*")) {
                 // Wildcard port - matches any port
-                expr.port_part = null; // null means any port
+                expr.port_part = null;
+                expr.port_wildcard = true;
             } else {
                 expr.port_part = std.fmt.parseInt(u16, port_str, 10) catch null;
             }
@@ -262,6 +263,70 @@ fn parseHostSource(allocator: std.mem.Allocator, token: []const u8) !types.Sourc
     }
 
     return expr;
+}
+
+// ============================================================================
+// Copies (HTML "clone a policy container": "append a copy of policy")
+// ============================================================================
+
+/// The serialization of `policy`'s directive set: each directive's name and
+/// its value's source expressions as they were written, joined with spaces,
+/// directives joined with "; ". Owned by `allocator`.
+pub fn serializePolicy(allocator: std.mem.Allocator, policy: *const types.Policy) ![]u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var it = policy.directive_set.items.iterator();
+    var first = true;
+    while (it.next()) |entry| {
+        if (!first) try out.appendSlice(allocator, "; ");
+        first = false;
+        try out.appendSlice(allocator, entry.value_ptr.name);
+        for (entry.value_ptr.value.expressions.items) |expr| {
+            try out.append(allocator, ' ');
+            try out.appendSlice(allocator, expr.raw_value);
+        }
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+/// A copy of `policy`: its serialization parsed again - which "parse a
+/// serialized CSP" turns into the same directive set, since every
+/// directive and expression came from that parse - with the same
+/// disposition, source and self-origin.
+pub fn copyPolicy(allocator: std.mem.Allocator, policy: *const types.Policy) !types.Policy {
+    const serialized = try serializePolicy(allocator, policy);
+    defer allocator.free(serialized);
+    var copy = try parseSerializedCSP(allocator, serialized, policy.source, policy.disposition);
+    errdefer copy.deinit();
+    if (policy.self_origin) |origin| {
+        copy.self_origin = try types.Origin.create(allocator, origin.scheme, origin.host, origin.port);
+    }
+    return copy;
+}
+
+/// A copy of every policy of `list`, in order.
+pub fn copyList(allocator: std.mem.Allocator, list: *const types.CSPList) !types.CSPList {
+    var copy = types.CSPList.init(allocator);
+    errdefer copy.deinit();
+    if (list.self_origin) |*origin| {
+        copy.self_origin = try types.Origin.create(allocator, origin.scheme, origin.host, origin.port);
+    }
+    for (list.policies.items) |*policy| {
+        var policy_copy = try copyPolicy(allocator, policy);
+        errdefer policy_copy.deinit();
+        try copy.append(policy_copy);
+    }
+    return copy;
+}
+
+/// RFC 3986 scheme, as CSP's scheme-part: ALPHA *( ALPHA / DIGIT / "+" /
+/// "-" / "." ).
+fn isSchemePart(part: []const u8) bool {
+    if (part.len == 0 or !std.ascii.isAlphabetic(part[0])) return false;
+    for (part[1..]) |c| {
+        if (!std.ascii.isAlphanumeric(c) and c != '+' and c != '-' and c != '.') return false;
+    }
+    return true;
 }
 
 /// Check if string contains only ASCII characters.
@@ -464,4 +529,48 @@ test "parseSourceExpression - wildcard" {
     defer expr.deinit();
 
     try std.testing.expectEqual(types.SourceExpressionType.wildcard, expr.type);
+}
+
+test "copyList: each policy parses back to the same directives, disposition, source and self-origin" {
+    const allocator = std.testing.allocator;
+    var list = types.CSPList.init(allocator);
+    defer list.deinit();
+    var a = try parseSerializedCSP(allocator, "worker-src 'self' https://a.test:8443/x/; script-src 'nonce-abc' *", .header, .enforce);
+    a.self_origin = try types.Origin.create(allocator, "http", "web-platform.test", 8000);
+    try list.append(a);
+    try list.append(try parseSerializedCSP(allocator, "upgrade-insecure-requests", .meta, .report));
+
+    var copy = try copyList(allocator, &list);
+    defer copy.deinit();
+    try std.testing.expectEqual(@as(usize, 2), copy.policies.items.len);
+    const first = &copy.policies.items[0];
+    try std.testing.expectEqual(types.PolicyDisposition.enforce, first.disposition);
+    try std.testing.expectEqual(types.PolicySource.header, first.source);
+    try std.testing.expectEqualStrings("web-platform.test", first.self_origin.?.host);
+    const worker_src = first.getDirective("worker-src").?;
+    try std.testing.expectEqual(@as(usize, 2), worker_src.value.expressions.items.len);
+    try std.testing.expectEqualStrings("a.test", worker_src.value.expressions.items[1].host_part.?);
+    try std.testing.expectEqual(@as(?u16, 8443), worker_src.value.expressions.items[1].port_part);
+    try std.testing.expect(first.getDirective("script-src").?.value.contains(.nonce));
+    const second = &copy.policies.items[1];
+    try std.testing.expectEqual(types.PolicyDisposition.report, second.disposition);
+    try std.testing.expect(second.containsDirective("upgrade-insecure-requests"));
+}
+
+test "parseSourceExpression: host:port is a host-source, scheme: a scheme-source" {
+    const allocator = std.testing.allocator;
+    var host_port = try parseSourceExpression(allocator, "www1.web-platform.test:8000");
+    defer host_port.deinit();
+    try std.testing.expectEqual(types.SourceExpressionType.host, host_port.type);
+    try std.testing.expectEqualStrings("www1.web-platform.test", host_port.host_part.?);
+    try std.testing.expectEqual(@as(?u16, 8000), host_port.port_part);
+
+    var scheme = try parseSourceExpression(allocator, "blob:");
+    defer scheme.deinit();
+    try std.testing.expectEqual(types.SourceExpressionType.scheme, scheme.type);
+
+    var any_port = try parseSourceExpression(allocator, "www.web-platform.test:*");
+    defer any_port.deinit();
+    try std.testing.expectEqual(types.SourceExpressionType.host, any_port.type);
+    try std.testing.expect(any_port.port_wildcard);
 }

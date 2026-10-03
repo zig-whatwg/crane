@@ -46,6 +46,7 @@ const mixins = @import("mixins");
 
 // Content Security Policy
 const csp = @import("csp");
+const fetch = @import("fetch");
 
 // HTML module for stylesheet blocking and editing
 const html_core = @import("html_core");
@@ -290,12 +291,16 @@ pub const InternalState = struct {
     /// Whether an import map has been acquired for this document
     import_map_acquired: bool,
 
-    // === Content Security Policy (CSP Level 3) ===
+    /// The document's policy container (HTML 7.1.6): a new one until a
+    /// navigation gives it the one "determine navigation params policy
+    /// container" chose ("create and initialize a Document object" step 9),
+    /// or a meta element named referrer changes its referrer policy. Owned;
+    /// every request the document's settings object makes takes a clone.
+    /// Reached from outside through `dom.policy_containers`.
+    policy_container: fetch.internal.PolicyContainer,
 
-    /// CSP list for this document
-    /// Spec: https://www.w3.org/TR/CSP3/ §2.2
-    /// Contains all policies applied to this document via headers or meta tags.
-    csp_list: ?*csp.CSPList,
+    // === Content Security Policy (CSP Level 3) ===
+    // The CSP list is the policy container's (`policy_container.csp_list`).
 
     /// Document origin for CSP 'self' matching
     csp_self_origin: ?csp.Origin,
@@ -419,8 +424,8 @@ pub const InternalState = struct {
             .import_map_acquired = false,
             // Module disposal (set when engine is configured)
             .dispose_module_fn = null,
+            .policy_container = fetch.internal.PolicyContainer.init(allocator),
             // CSP
-            .csp_list = null,
             .csp_self_origin = null,
             // Speculation rules
             .prefetch_hints = std.StringHashMap(SpeculationEagerness).init(allocator),
@@ -535,11 +540,9 @@ pub const InternalState = struct {
             self.import_map_scopes.deinit();
         }
 
-        // CSP list and origin
-        if (self.csp_list) |csp_list| {
-            csp_list.deinit();
-            self.allocator.destroy(csp_list);
-        }
+        self.policy_container.deinit();
+
+        // CSP origin (the list is the policy container's)
         if (self.csp_self_origin) |*origin| {
             origin.deinit();
         }
@@ -579,6 +582,12 @@ pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Registry.get(instance);
 }
 
+/// dom.policy_containers: `document`'s policy container.
+fn policyContainerOf(document: *runtime.Instance) ?*fetch.internal.PolicyContainer {
+    const internal = getInternal(document) orelse return null;
+    return &internal.policy_container;
+}
+
 /// Get the Node internal state from a Document instance
 /// Uses the registry pattern for proper inheritance chain
 pub fn getNodeInternal(instance: *runtime.Instance) ?*NodeImpl.InternalState {
@@ -604,6 +613,9 @@ pub fn installHooks() void {
         .declarative_refresh = &lifecycleDeclarativeRefresh,
     });
     @import("dom").document_origin.install(.{ .domain = &originDomain });
+    // Its policy container, for whatever sets or reads one without naming
+    // this impl (navigation, meta referrer, a Window's settings object).
+    @import("dom").policy_containers.install(.{ .of = &policyContainerOf });
     // A clone of a Document keeps its mode. Installed here, before any
     // Document exists to be cloned.
     @import("dom").cloning_steps.install(&cloningSteps);
@@ -2411,15 +2423,19 @@ fn createAnElement(instance: *runtime.Instance, local_name: []const u8, namespac
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const ElementImpl = @import("Element.zig");
     const is_html = if (namespace) |ns| std.mem.eql(u8, ns, html_namespace) else false;
-    const is_svg_script = if (namespace) |ns|
-        std.mem.eql(u8, ns, svg_namespace) and std.mem.eql(u8, local_name, "script")
-    else
-        false;
+    const is_svg = if (namespace) |ns| std.mem.eql(u8, ns, svg_namespace) else false;
+    const is_svg_script = is_svg and std.mem.eql(u8, local_name, "script");
+    // An SVG a is an SVGAElement: its activation behaviour follows its
+    // hyperlink (SVG 2 "a"). Other SVG elements stay plain Elements until
+    // their interfaces' impls chain (stated).
+    const is_svg_a = is_svg and std.mem.eql(u8, local_name, "a");
 
     const element = if (is_html)
         try createHTMLElement(internal.allocator, instance.ctx, local_name)
     else if (is_svg_script)
         try interfaces.SVGScriptElement.init(internal.allocator, instance.ctx)
+    else if (is_svg_a)
+        try interfaces.SVGAElement.init(internal.allocator, instance.ctx)
     else
         try interfaces.Element.init(internal.allocator, instance.ctx);
     errdefer runtime.Instance.deinit(element);
@@ -2859,13 +2875,14 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const runtime.DOMStri
         if (internal.scripts.ignore_destructive_writes_counter > 0 or internal.unload_counter > 0) {
             return;
         }
-        // Step 9.2: "Run the document open steps with document." Deviation,
-        // stated: only the script-created parser's state is set up here -
-        // the document is not emptied, and what is written is buffered for
-        // document.close() (see below).
-        internal.is_script_created_parser = true;
-        internal.insertion_point = 0;
-        internal.write_buffer.clearRetainingCapacity();
+        // Step 9.2: "Run the document open steps with document": its
+        // listeners are erased, its children replaced with nothing, and a
+        // script-created parser is its parser, with an insertion point.
+        _ = try call_open(instance, webidl.Opt(runtime.DOMString).notPassed(), webidl.Opt(runtime.DOMString).notPassed());
+        // The open steps return early - an active parser running a script,
+        // an unload in progress, an aborted parser - without a
+        // script-created parser; then nothing is written.
+        if (!internal.is_script_created_parser) return;
     }
 
     if (string.items.len == 0) return;
@@ -2877,38 +2894,16 @@ fn documentWriteSteps(instance: *runtime.Instance, text: []const runtime.DOMStri
 /// body. Deviation, stated: the script-created parser does not process each
 /// write as it arrives; that needs document.open()'s parser, which is not this
 /// function's to create.
+/// Steps 10-11 for a script-created parser: insert string into its input
+/// stream. Deviation, stated (as for document.open()): the script-created
+/// parser processes its stream when document.close() inserts the explicit
+/// EOF, not as each write() inserts - so what was written is not in the
+/// tree until then.
 fn appendToScriptCreatedParserInput(instance: *runtime.Instance, internal: *InternalState, buffer: []const u8) !void {
+    _ = instance;
     internal.write_buffer.appendSlice(internal.allocator, buffer) catch {
         return error.OutOfMemory;
     };
-
-    // For immediate effect (backwards compatibility), also append to body
-    // This handles the common case where document.write is called after parsing
-    const body = get_body(instance) catch null;
-    if (body) |body_elem| {
-        const HTMLParser = @import("HTMLParser.zig");
-
-        const fragment = HTMLParser.parseFragment(
-            internal.allocator,
-            instance.ctx,
-            buffer,
-            body_elem,
-        ) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            else => return,
-        };
-        defer interfaces.DocumentFragment.deinit(fragment);
-
-        // Move children from fragment to body
-        var child = NodeImpl.getFirstChild(fragment);
-        while (child) |c| {
-            const next = NodeImpl.getNextSibling(c);
-            // Use interface instead of impl (per Golden Rule #13)
-            _ = interfaces.Node.call_removeChild(fragment, c) catch break;
-            _ = interfaces.Node.call_appendChild(body_elem, c) catch break;
-            child = next;
-        }
-    }
 }
 
 /// Operation: createAttribute
@@ -4626,7 +4621,6 @@ fn installScriptHooks() void {
         .scripting_enabled = &isScriptingEnabled,
         .has_style_sheet_blocking_scripts = &hasStyleSheetBlockingScripts,
         .inline_script_allowed_by_csp = &isInlineScriptAllowedByCSP,
-        .external_script_allowed_by_csp = &isExternalScriptAllowedByCSP,
         .add_prefetch_hint = &addPrefetchHintStep,
         .url = &recordedUrl,
     });
@@ -4970,36 +4964,25 @@ pub fn addScopedImportMapping(
 /// Spec: https://www.w3.org/TR/CSP3/ §2.2
 pub fn getCSPList(instance: *runtime.Instance) ?*csp.CSPList {
     const internal = getInternal(instance) orelse return null;
-    return internal.csp_list;
+    return &internal.policy_container.csp_list;
 }
 
 /// Set the CSP list for this document
 /// Takes ownership of the CSP list.
 pub fn setCSPList(instance: *runtime.Instance, csp_list: *csp.CSPList) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Clean up existing CSP list if any
-    if (internal.csp_list) |old_list| {
-        old_list.deinit();
-        internal.allocator.destroy(old_list);
-    }
-
-    internal.csp_list = csp_list;
+    // The policy container\'s list is replaced by this one, which was
+    // allocated with the document\'s allocator.
+    internal.policy_container.csp_list.deinit();
+    internal.policy_container.csp_list = csp_list.*;
+    internal.allocator.destroy(csp_list);
 }
 
 /// Add a policy to the document's CSP list
 /// Spec: https://www.w3.org/TR/CSP3/ §2.2.1
 pub fn addCSPPolicy(instance: *runtime.Instance, policy: csp.Policy) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Create CSP list if it doesn't exist
-    if (internal.csp_list == null) {
-        const new_list = try internal.allocator.create(csp.CSPList);
-        new_list.* = csp.CSPList.init(internal.allocator);
-        internal.csp_list = new_list;
-    }
-
-    try internal.csp_list.?.append(policy);
+    try internal.policy_container.csp_list.append(policy);
 }
 
 /// Get the document's CSP self-origin for 'self' matching
@@ -5024,148 +5007,56 @@ pub fn setCSPSelfOrigin(instance: *runtime.Instance, scheme: []const u8, host: [
     internal.csp_self_origin = try csp.Origin.create(internal.allocator, scheme, host, port);
 }
 
-/// Check if an inline script is allowed by CSP
-/// Spec: https://www.w3.org/TR/CSP3/ §6.7.3
+/// CSP §4.2.3 "Should element's inline type behavior be blocked by Content
+/// Security Policy?" for the inline script `element` (type "script") with
+/// `source`: for each policy of the document's CSP list, the inline check
+/// of the directive §6.8.4 picks (csp.inline_check: nonce, hash -
+/// base64url too - 'strict-dynamic', 'unsafe-inline'); a policy it blocks
+/// reports a violation - resource "inline", the element, a sample under
+/// 'report-sample' - to the document's window, and blocks the script when
+/// it is enforced. `nonce` is the element's nonce attribute when it is
+/// nonceable (§6.7.3.1).
 ///
-/// Returns true if the script is allowed, false if blocked.
-/// This checks script-src (or default-src fallback) for:
-/// - 'unsafe-inline' keyword
-/// - Nonce matching
-/// - Hash matching
+/// Spec: https://w3c.github.io/webappsec-csp/#should-block-inline
 pub fn isInlineScriptAllowedByCSP(
     instance: *runtime.Instance,
+    element: *runtime.Instance,
+    source: []const u8,
     nonce: ?[]const u8,
-    hash_algorithm: ?[]const u8,
-    hash_value: ?[]const u8,
+    parser_inserted: bool,
 ) bool {
     const internal = getInternal(instance) orelse return true; // No document = allow
-    const csp_list = internal.csp_list orelse return true; // No CSP = allow
-
-    // Check each policy
-    for (csp_list.policies.items) |*policy| {
-        // Only check enforcing policies for blocking
-        if (policy.disposition != .enforce) continue;
-
-        // Get effective script-src directive (with fallback to default-src)
-        const directive = csp.fallback.getEffectiveScriptSrcElem(policy) orelse continue;
-
-        // Check if 'strict-dynamic' is present
-        // With strict-dynamic, inline scripts are blocked unless nonced
-        const has_strict_dynamic = csp.matching.hasStrictDynamic(&directive.value);
-
-        // Check nonce
-        if (nonce) |n| {
-            if (csp.matching.doesNonceMatch(n, &directive.value)) {
-                continue; // Allowed by nonce
-            }
-        }
-
-        // Check hash
-        if (hash_algorithm) |algo| {
-            if (hash_value) |hash| {
-                if (csp.matching.doesHashMatch(algo, hash, &directive.value)) {
-                    continue; // Allowed by hash
-                }
-            }
-        }
-
-        // Check 'unsafe-inline'
-        // Note: 'unsafe-inline' is ignored if nonce or hash is present in the directive
-        if (!has_strict_dynamic and csp.matching.allowsUnsafeInline(&directive.value)) {
-            // Check if there are any nonces or hashes in the directive
-            var has_nonce_or_hash = false;
-            for (directive.value.expressions.items) |expr| {
-                if (expr.type == .nonce or expr.type == .hash) {
-                    has_nonce_or_hash = true;
-                    break;
-                }
-            }
-
-            if (!has_nonce_or_hash) {
-                continue; // Allowed by 'unsafe-inline'
-            }
-        }
-
-        // Script blocked by this policy
-        return false;
+    // The violation's global: the current settings object's - the
+    // document's window, for a script its parser or its script inserted.
+    const window: ?*runtime.Instance = get_defaultView(instance) catch null;
+    // 2. Let result be "Allowed".
+    var allowed = true;
+    // 3. For each policy of the CSP list:
+    for (internal.policy_container.csp_list.policies.items) |*policy| {
+        // 3.1.1. A directive whose inline check allows it is skipped.
+        const directive = csp.inline_check.blockingDirective(policy, .{ .nonce = nonce, .parser_inserted = parser_inserted }, .script, source) orelse continue;
+        // 3.1.2-3.1.7. A violation of the effective directive for inline
+        // checks, resource "inline", the element, and a sample when the
+        // directive asks for one, reported.
+        if (window) |w| @import("dom").csp_violations.reportViolation(w, &.{
+            .policy = policy,
+            .effective_directive = csp.inline_check.effectiveDirectiveForInlineCheck(.script),
+            .resource = .@"inline",
+            .element = element,
+            .sample = csp.violation_events.sampleFor(directive, source),
+        });
+        // 3.1.8. An enforced policy blocks.
+        if (policy.disposition == .enforce) allowed = false;
     }
-
-    return true;
-}
-
-/// Check if an external script URL is allowed by CSP
-/// Spec: https://www.w3.org/TR/CSP3/ §6.7.2
-///
-/// Returns true if the URL is allowed, false if blocked.
-pub fn isExternalScriptAllowedByCSP(
-    instance: *runtime.Instance,
-    url_scheme: []const u8,
-    url_host: []const u8,
-    url_port: ?u16,
-    url_path: []const u8,
-    nonce: ?[]const u8,
-) bool {
-    const internal = getInternal(instance) orelse return true; // No document = allow
-    const csp_list = internal.csp_list orelse return true; // No CSP = allow
-
-    // Get self origin for 'self' matching
-    const self_origin = if (internal.csp_self_origin) |*o| o else null;
-
-    // Check each policy
-    for (csp_list.policies.items) |*policy| {
-        // Only check enforcing policies for blocking
-        if (policy.disposition != .enforce) continue;
-
-        // Get effective script-src directive (with fallback to default-src)
-        const directive = csp.fallback.getEffectiveScriptSrcElem(policy) orelse continue;
-
-        // Check if 'strict-dynamic' is present
-        const has_strict_dynamic = csp.matching.hasStrictDynamic(&directive.value);
-
-        // With 'strict-dynamic', only nonced/hashed scripts can load other scripts
-        if (has_strict_dynamic) {
-            // If we have a nonce, check it
-            if (nonce) |n| {
-                if (csp.matching.doesNonceMatch(n, &directive.value)) {
-                    continue; // Allowed by nonce with strict-dynamic
-                }
-            }
-            // Without valid nonce, strict-dynamic blocks URL-based loads
-            return false;
-        }
-
-        // Check nonce first (takes precedence)
-        if (nonce) |n| {
-            if (csp.matching.doesNonceMatch(n, &directive.value)) {
-                continue; // Allowed by nonce
-            }
-        }
-
-        // Check URL matching
-        if (csp.matching.doesUrlMatchSourceList(
-            url_scheme,
-            url_host,
-            url_port,
-            url_path,
-            &directive.value,
-            self_origin,
-            0, // redirect_count
-        )) {
-            continue; // Allowed by URL
-        }
-
-        // Script blocked by this policy
-        return false;
-    }
-
-    return true;
+    // 4. Return result.
+    return allowed;
 }
 
 /// Check if eval() is allowed by CSP
 /// Spec: https://www.w3.org/TR/CSP3/ §6.7.4
 pub fn isEvalAllowedByCSP(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return true;
-    const csp_list = internal.csp_list orelse return true;
+    const csp_list = &internal.policy_container.csp_list;
 
     for (csp_list.policies.items) |*policy| {
         if (policy.disposition != .enforce) continue;

@@ -122,6 +122,10 @@ pub const HashAlgorithm = hash.HashAlgorithm;
 
 // Violations
 pub const violations = @import("violations.zig");
+/// §5.5 report a violation: what a violation carries to its global's side.
+pub const violation_events = @import("violation_events.zig");
+/// §4.2.3 should element's inline type behavior be blocked, per policy.
+pub const inline_check = @import("inline_check.zig");
 
 pub const createViolation = violations.createViolation;
 pub const createTrustedTypesPolicyViolation = violations.createTrustedTypesPolicyViolation;
@@ -143,6 +147,9 @@ pub const directives = @import("directives/root.zig");
 
 // Integration
 pub const integration = @import("integration.zig");
+
+// Fetch integration: should a request be blocked (CSP §4.1)
+pub const request_check = @import("request_check.zig");
 
 // Integration convenience exports
 pub const parseCSPHeaders = integration.parseCSPHeaders;
