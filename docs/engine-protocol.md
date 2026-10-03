@@ -58,7 +58,7 @@ engine pointer or a flag saying who frees it.
 
 | Type | Meaning |
 |---|---|
-| `Context` | A realm's identity (`runtime.Context`). BORROWED wherever it is a parameter; stable until the realm is torn down. A retired realm has no engine realm behind it. |
+| `Context` | A realm's identity (`runtime.Context`). BORROWED wherever it is a parameter; stable until the realm is torn down. A retired realm has no engine realm behind it. Work queued on the realm's own agent may keep a Context across turns: a torn-down realm's record stays valid and inert until its agent ends (the V8 adapter retires it, `context_manager` `retired`), and `hasEngine()` turns false at retirement. Keeping one is not a root. Check `hasEngine()` before each step that enters the realm, and pass operations only a live one; a retired one may only be compared. Precedent: `src/webcrypto/tasks.zig`. |
 | `Agent` | An ECMAScript agent: a V8 isolate, a JSC context group. Opaque. |
 | `JSValue` | The IDL-level value (`runtime.JSValue`). As a parameter, always BORROWED for the call. As an impl's RESULT, the binding's: it releases it once set. Its handle carries no ownership flag - the holder's type says who releases it. |
 | `Instance` | A platform object: the host's side of a wrapper. |

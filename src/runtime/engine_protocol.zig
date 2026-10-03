@@ -64,6 +64,15 @@ const impl = @import("engine_impl").protocol;
 /// A realm's identity - HTML's realm, ECMAScript's Realm Record - as the
 /// runtime records it. Stable until the realm is torn down; a retired realm
 /// has no engine realm behind it. BORROWED wherever an operation takes one.
+///
+/// Work queued on the realm's own agent (a task, a timer, an async request)
+/// may keep a Context across turns: a torn-down realm's Context stays a
+/// valid, inert record until its agent ends, and `hasEngine()` turns false
+/// at retirement. Keeping one is not a root - it keeps nothing alive. Such
+/// work checks `hasEngine()` before every step that enters the realm, and
+/// passes operations only a Context that answers true; a retired one may
+/// only be compared. Work that could outlive the realm's agent keeps no
+/// Context.
 pub const Context = runtime.Context;
 
 /// An ECMAScript agent: a V8 isolate, a JavaScriptCore context group. Opaque;
