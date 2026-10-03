@@ -842,6 +842,11 @@ const Navigation = struct {
     /// request's policy container, and the initiator's a local URL's
     /// document inherits. Owned; null with no source document.
     initiator_policy_container: ?fetch_mod.internal.PolicyContainer = null,
+    /// Where the navigation request's CSP violations go: the source
+    /// document's global, the request's client's (CSP 2.4.2) - guarded, as
+    /// the source document can go while the fetch is in flight. Null with
+    /// no source document.
+    csp_reporter: ?dom_module.csp_violations.GuardedReporter = null,
     /// The fetch in flight, until it answers.
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
@@ -1144,6 +1149,10 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         if (dom_module.policy_containers.of(source)) |container| {
             record.initiator_policy_container = container.clone(allocator) catch null;
         }
+        // The source snapshot params' fetch client is sourceDocument's
+        // relevant settings object: the request's client, whose global a
+        // violation of the request is (CSP 2.4.2).
+        record.csp_reporter = dom_module.csp_violations.GuardedReporter.forRealm(source.ctx);
     }
     // Step 5: "Let initiatorBaseURLSnapshot be sourceDocument's document base
     // URL" - kept only where it can be used, for a document at about:blank
@@ -1342,6 +1351,10 @@ fn startFetch(record: *Navigation) void {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
+        // Main fetch steps 4 and 7 report the request's CSP violations to its
+        // client's global (CSP 2.4.2). The record outlives the fetch: its
+        // destroy terminates it.
+        if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
         // Step 3's POST resource: "set request's body to documentResource's
         // request body" and "Content-Type" to its request content-type. The
         // body is the record's, borrowed for as long as the fetch runs.
