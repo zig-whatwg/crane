@@ -505,6 +505,13 @@ pub const WorkerNavigator = struct {
         return try WorkerNavigatorImpl.call_taintEnabled(instance);
     }
 
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_setAppBadge", 0b1 },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{

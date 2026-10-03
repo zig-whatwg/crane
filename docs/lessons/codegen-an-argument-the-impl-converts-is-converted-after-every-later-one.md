@@ -1,0 +1,12 @@
+# Codegen: An argument the impl converts is converted after every later argument
+
+**Date**: 2026-10-02
+**Lesson**: Codegen typed every inline union argument as `runtime.JSValue`, so the binding converted every LATER argument before the impl converted the union - an order WebIDL forbids and script can see.
+
+**Why**: WebIDL converts all of an operation's arguments, in order, before its steps run. A JSValue parameter is passed through unconverted; the impl's own conversion of it is part of the operation's steps. Whenever that conversion is observable (a dictionary arm's getters, an object's toString) and a later argument's conversion can throw or is observable too, the order shows. It is invisible for the LAST argument, which the impl converts first thing.
+
+**What Happened**: The WebCrypto lane traced SubtleCrypto.importKey(format, keyData `(BufferSource or JsonWebKey)`, algorithm, ...): a throwing `keyData.alg` getter must win over a Symbol algorithm's TypeError, but the binding rejected the Symbol before importKey ran. FontFace(family, `(CSSOMString or BufferSource)` source, descriptors) read the descriptors' getters and never ran source's toString. A general fix (type every inline union) would have changed ~85 impl signatures, many of them in other lanes' files.
+
+**Fix**: src/webidl/codegen/argument_unions.zig, a pipeline stage after the includes: an inline union argument that HAS a later argument, and whose members the binding's union conversion takes faithfully (string, numeric, boolean, interface, buffer source, typedefs of those, dictionaries whose members are all such, or `any`/`object` - no union member, which the impl would convert later), becomes a named union typedef (`typedefs.BufferSourceOrJsonWebKey`) that every writer then emits as an ordinary typedef. Sequence arms are left out (the binding's union path takes only an Array, not an iterable); so are the unions the writers already special-case (Trusted Types, Node or DOMString). Six parameters qualified (Performance.measure did not: PerformanceMeasureOptions has union members). The binding's union path also needed WebIDL 3.2.25 steps 15-18 for an Object no arm takes (ToString it into the string arm): FontFace's object source was a TypeError. crane/cv-union-argument-order.html 1/3 -> 3/3.
+
+**Takeaway**: **A parameter the binding does not convert is converted inside the operation's steps - after every later argument. Where order is observable, give the union a type the binding converts; where it is not (the last argument), the JSValue is harmless.**

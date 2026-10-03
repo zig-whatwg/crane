@@ -765,4 +765,14 @@ pub const CanvasRenderingContext2D = struct {
         .{ "call_createConicGradient", 0b111 },
         .{ "call_createLinearGradient", 0b1111 },
     };
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_createImageData", 0b11 },
+        .{ "call_getImageData", 0b1111 },
+        .{ "call_putImageData", 0b110 },
+        .{ "call_putImageData__1", 0b1111110 },
+    };
 };

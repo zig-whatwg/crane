@@ -39,7 +39,9 @@
             .hash = "curl-8.18.0-mFDAWPf7AACO9V1eofR62eABcrB1QQtT1a-DN5XumC53",
             .lazy = true, // Only fetch when fetch module is used
         },
-        // mbedTLS - TLS backend for HTTPS (cross-platform, no OpenSSL issues)
+        // mbedTLS - TLS for libcurl, and WebCrypto's PSA/RSA/NIST-KW. The curl
+        // package pins its own (3.6.4); configureStaticLibcurl in build.zig links
+        // THIS one into libcurl in place of it (tests/linked_libraries/versions_test.zig).
         .mbedtls = .{
             .url = "git+https://github.com/allyourcodebase/mbedtls#55f2af148634945e9508a3a50de2ccfe65eb971f",
             .hash = "mbedtls-3.6.6-E4NUR4cWAACCHFSwZ5urTBPK4A6EZlm3pSUjfg4c3QAw",
@@ -52,7 +54,8 @@
             .hash = "N-V-__8AACay2gDbHrByjNGWvyH8G9Gp30uRgZqobYOF1nhb",
             .lazy = true,
         },
-        // zlib - HTTP compression support (gzip, deflate)
+        // zlib - libcurl's HTTP content decoding (gzip, deflate). Like mbedTLS,
+        // linked into libcurl in place of the curl package's own pin (1.3.1).
         .zlib = .{
             .url = "git+https://github.com/allyourcodebase/zlib#d3b5519d3b73616a6bfece0712f080029d2a9244",
             .hash = "zlib-1.3.2-ZZQ7lc8NAAAHm9MDfplvwoesXvk4tVm6VCsiI8KnIbT0",

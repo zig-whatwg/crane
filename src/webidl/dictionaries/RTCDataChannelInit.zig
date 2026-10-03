@@ -13,4 +13,7 @@ pub const RTCDataChannelInit = struct {
     negotiated: ?bool = null,
     id: ?u16 = null,
     priority: ?enums.RTCPriorityType = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "maxPacketLifeTime", "maxRetransmits", "id" };
 };

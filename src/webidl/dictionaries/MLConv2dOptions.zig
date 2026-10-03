@@ -17,4 +17,7 @@ pub const MLConv2dOptions = struct {
     inputLayout: ?enums.MLInputOperandLayout = null,
     filterLayout: ?enums.MLConv2dFilterOperandLayout = null,
     bias: ?*runtime.Instance = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"groups"};
 };

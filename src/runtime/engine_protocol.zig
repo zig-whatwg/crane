@@ -64,6 +64,15 @@ const impl = @import("engine_impl").protocol;
 /// A realm's identity - HTML's realm, ECMAScript's Realm Record - as the
 /// runtime records it. Stable until the realm is torn down; a retired realm
 /// has no engine realm behind it. BORROWED wherever an operation takes one.
+///
+/// Work queued on the realm's own agent (a task, a timer, an async request)
+/// may keep a Context across turns: a torn-down realm's Context stays a
+/// valid, inert record until its agent ends, and `hasEngine()` turns false
+/// at retirement. Keeping one is not a root - it keeps nothing alive. Such
+/// work checks `hasEngine()` before every step that enters the realm, and
+/// passes operations only a Context that answers true; a retired one may
+/// only be compared. Work that could outlive the realm's agent keeps no
+/// Context.
 pub const Context = runtime.Context;
 
 /// An ECMAScript agent: a V8 isolate, a JavaScriptCore context group. Opaque;
@@ -74,6 +83,16 @@ pub const Agent = runtime.Agent;
 pub const JSValue = runtime.JSValue;
 
 /// A platform object: the host's side of a wrapper.
+///
+/// An Instance lives no longer than its realm: when the realm is torn down,
+/// its wrapper cache frees every Instance it alone wraps (a node still in a
+/// tree excepted) and severs the wrapper, whatever still points at it - a
+/// traceChild edge or an Owned value roots the wrapper, not the Instance.
+/// So a pointer to an Instance kept across turns is valid only while its
+/// realm `hasEngine()`: whoever keeps one keeps that realm's Context beside
+/// it and checks it before every dereference - never through the Instance's
+/// own `ctx`, which goes with it. (Blink keeps a reachable object alive past
+/// its context's end; Crane does not yet.)
 pub const Instance = runtime.Instance;
 
 /// Steps an operation runs inside a realm; `data` is the pointer the caller
@@ -607,6 +626,14 @@ pub inline fn destroyAgent(agent: *Agent) void {
     impl.destroyAgent(agent);
 }
 
+/// The `host` pointer `agent` was created with (AgentOptions.host): the
+/// embedder's own pointer handed back, no engine handle. Null when none was
+/// given, once the agent is destroyed, or for an agent the adapter did not
+/// make.
+pub inline fn agentHost(agent: *Agent) ?*anyopaque {
+    return impl.agentHost(agent);
+}
+
 /// Whether the agent's execution context stack is non-empty.
 pub inline fn hasRunningScript(agent: *Agent) bool {
     return impl.hasRunningScript(agent);
@@ -956,9 +983,37 @@ pub inline fn hasProperty(realm: Context, object: JSValue, property: []const u8)
     return impl.hasProperty(realm, object, property);
 }
 
+/// ECMAScript HasOwnProperty(O, P) (7.3.12): whether O.[[GetOwnProperty]](P)
+/// is not undefined. What that throws (a Proxy's getOwnPropertyDescriptor
+/// trap) is left pending: ExceptionPending, never a silent false. TypeError
+/// when `object` is not an Object.
+pub inline fn hasOwnProperty(realm: Context, object: JSValue, property: []const u8) Error!bool {
+    return impl.hasOwnProperty(realm, object, property);
+}
+
 /// Type(V).
 pub inline fn typeOf(realm: Context, value: JSValue) ValueType {
     return impl.typeOf(realm, value);
+}
+
+/// ECMAScript thisTimeValue(value) (21.4.4), without the TypeError: a Date's
+/// [[DateValue]] - NaN for an invalid date - or null when `value` has no
+/// [[DateValue]] internal slot. Never runs script.
+pub inline fn thisTimeValue(realm: Context, value: JSValue) ?f64 {
+    return impl.thisTimeValue(realm, value);
+}
+
+/// Whether `value` is an Array exotic object (ECMAScript 10.4.2) - NOT
+/// IsArray, which looks through a Proxy: a Proxy of an array is no Array
+/// exotic object (IndexedDB "convert a value to a key"). Never runs script.
+pub inline fn isArrayExoticObject(realm: Context, value: JSValue) bool {
+    return impl.isArrayExoticObject(realm, value);
+}
+
+/// A new Date of `realm` whose [[DateValue]] is TimeClip(`time_value`)
+/// (ECMAScript 21.4.2.1, Date(value) given a number). OWNED.
+pub inline fn createDate(realm: Context, time_value: f64) Error!Owned {
+    return impl.createDate(realm, time_value);
 }
 
 /// SameValue(x, y).
@@ -1009,6 +1064,22 @@ pub inline fn completionOf(realm: Context, steps: *const fn (data: ?*anyopaque) 
 /// Infra "parse JSON bytes to a JavaScript value".
 pub inline fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
     return impl.parseJsonToValue(realm, bytes);
+}
+
+/// ECMAScript JSON.parse "in the context of a new global object" (WebCrypto
+/// "parse a JWK" step 4): `bytes` UTF-8 decoded (a leading BOM dropped, as
+/// Infra's "parse JSON bytes" does) and parsed by a NEW global's intrinsic
+/// JSON.parse, so the result's objects and arrays inherit that global's
+/// Object.prototype and Array.prototype - nothing `realm`'s script did to its
+/// own prototypes (`Object.prototype.kty = "oct"`) shows through them. OWNED.
+/// The new global lives as long as the result refers to it; the operation
+/// keeps nothing of it.
+///
+/// A SyntaxError is thrown in `realm` - the CALLER's SyntaxError, with the
+/// new global's message - and left pending: ExceptionPending. NotSupported
+/// where an adapter cannot make a new global (QuickJS, the test adapter).
+pub inline fn parseJsonInNewGlobal(realm: Context, bytes: []const u8) Error!Owned {
+    return impl.parseJsonInNewGlobal(realm, bytes);
 }
 
 /// Infra "serialize a JavaScript value to JSON bytes": ? Call(%JSON.stringify%,
@@ -1065,10 +1136,23 @@ pub inline fn convertToRecordOfStrings(realm: Context, value: JSValue, keys: Str
     return impl.convertToRecordOfStrings(realm, value, keys, values, allocator);
 }
 
-/// WebIDL "get a copy of the bytes held by the buffer source"; null when
-/// `value` is not a buffer source. OWNED.
+/// WebIDL "get a copy of the bytes held by the buffer source", for a value
+/// converted to BufferSource - (ArrayBufferView or ArrayBuffer), NOT
+/// [AllowShared]: null when `value` is not a buffer source, a
+/// SharedArrayBuffer included; a view over a SharedArrayBuffer is a
+/// TypeError. A detached buffer's copy is empty. OWNED. For
+/// AllowSharedBufferSource use getCopyOfAllowSharedBufferSourceBytes.
 pub inline fn getCopyOfBufferSourceBytes(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error!?[]u8 {
     return impl.getCopyOfBufferSourceBytes(realm, value, allocator);
+}
+
+/// WebIDL "get a copy of the bytes held by the buffer source", for a value
+/// converted to AllowSharedBufferSource - (ArrayBuffer or SharedArrayBuffer or
+/// [AllowShared] ArrayBufferView): an ArrayBuffer, a SharedArrayBuffer (never
+/// detached), or the window of a view over either. Null when `value` is none
+/// of those; a detached ArrayBuffer's copy is empty. OWNED.
+pub inline fn getCopyOfAllowSharedBufferSourceBytes(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error!?[]u8 {
+    return impl.getCopyOfAllowSharedBufferSourceBytes(realm, value, allocator);
 }
 
 /// WebIDL sequence<any>. OWNED slice of OWNED values.

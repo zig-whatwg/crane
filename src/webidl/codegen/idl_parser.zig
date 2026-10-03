@@ -423,12 +423,11 @@ pub const Parser = struct {
                 try self.advance();
             }
 
-            // Check for extended attributes on the type (e.g., required [EnforceRange] unsigned long)
+            // Extended attributes on the type (e.g., required [EnforceRange]
+            // unsigned long): kept with the member's, as an argument's are -
+            // the binding reads [EnforceRange] and [Clamp] from them.
             if (self.current_token.type == .left_bracket) {
-                var type_ext_attrs = std.ArrayList(types.ExtendedAttribute).empty;
-                defer type_ext_attrs.deinit(self.allocator);
-                try self.parseExtendedAttributes(&type_ext_attrs);
-                // For now, we skip these type-level extended attributes
+                try self.parseExtendedAttributes(&member_ext_attrs);
             }
 
             // Parse member type
@@ -451,6 +450,7 @@ pub const Parser = struct {
                 .idlType = member_type,
                 .required = is_required,
                 .default = default_value,
+                .extAttrs = try self.allocator.dupe(types.ExtendedAttribute, member_ext_attrs.items),
             });
         }
 

@@ -10,4 +10,7 @@ pub const RsaPssParams = struct {
     base: Algorithm,
 
     saltLength: u32,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"saltLength"};
 };

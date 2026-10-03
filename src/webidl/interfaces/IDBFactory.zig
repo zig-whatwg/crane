@@ -128,11 +128,16 @@ pub const IDBFactory = struct {
     /// Extended attributes: [NewObject]
     pub fn call_open(instance: *runtime.Instance, name: DOMString, version: webidl.Opt(u64)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        // [EnforceRange] on version
-        if (!runtime.isInRange(u64, version)) return error.TypeError;
 
         return try IDBFactoryImpl.call_open(instance, name, version);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_open", 0b10 },
+    };
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.

@@ -780,7 +780,7 @@ pub fn call_reportValidity(instance: *runtime.Instance) anyerror!bool {
 }
 
 /// Operation: setFormValue
-pub fn call_setFormValue(instance: *runtime.Instance, value: ?runtime.JSValue, state: webidl.Opt(?runtime.JSValue)) anyerror!void {
+pub fn call_setFormValue(instance: *runtime.Instance, value: ?typedefs.FileOrUSVStringOrFormData, state: webidl.Opt(?runtime.JSValue)) anyerror!void {
     _ = instance;
     _ = value;
     _ = state;

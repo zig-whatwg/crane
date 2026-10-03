@@ -12,4 +12,7 @@ pub const KmacParams = struct {
 
     length: u32,
     customization: ?typedefs.BufferSource = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"length"};
 };

@@ -13,4 +13,7 @@ pub const Pbkdf2Params = struct {
     salt: typedefs.BufferSource,
     iterations: u32,
     hash: typedefs.HashAlgorithmIdentifier,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"iterations"};
 };

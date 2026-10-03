@@ -17,4 +17,7 @@ pub const Argon2Params = struct {
     version: ?u8 = null,
     secretValue: ?typedefs.BufferSource = null,
     associatedData: ?typedefs.BufferSource = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "parallelism", "memory", "passes", "version" };
 };

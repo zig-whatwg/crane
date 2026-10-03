@@ -31,6 +31,7 @@ const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
+const HTMLOptionElementOrHTMLOptGroupElement = @import("typedefs").HTMLOptionElementOrHTMLOptGroupElement;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
@@ -54,7 +55,6 @@ const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
 const EditContext = @import("interfaces").EditContext;
-const HTMLOptGroupElement = @import("interfaces").HTMLOptGroupElement;
 const DOMRect = @import("interfaces").DOMRect;
 const ElementInternals = @import("interfaces").ElementInternals;
 const ViewTransition = @import("interfaces").ViewTransition;
@@ -587,7 +587,7 @@ pub const HTMLSelectElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_add(instance: *runtime.Instance, element: runtime.JSValue, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
+    pub fn call_add(instance: *runtime.Instance, element: HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

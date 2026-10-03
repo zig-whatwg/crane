@@ -9,4 +9,7 @@ pub const SchedulerPostTaskOptions = struct {
     signal: ?*runtime.Instance = null,
     priority: ?enums.TaskPriority = null,
     delay: ?u64 = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"delay"};
 };

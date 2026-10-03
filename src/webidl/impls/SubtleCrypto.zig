@@ -174,12 +174,90 @@ const DigestInput = struct {
 };
 
 /// Operation: importKey
-pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyData: runtime.JSValue, algorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
+pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyData: typedefs.BufferSourceOrJsonWebKey, algorithm: typedefs.AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
     const realm = instance.ctx;
-    // The installed binding supplies the union/sequence as JSValue. Convert
-    // both IDL arguments before the method's normalization steps.
-    var converted = try webcrypto.inputs.keyData(realm, keyData);
-    defer converted.deinit(realm.allocator);
+    // keyData, (BufferSource or JsonWebKey), was converted by the binding in
+    // argument order - its dictionary's getters before `algorithm`'s
+    // conversion (WebIDL 3.7.6): a BufferSource as a reference to its object,
+    // a JsonWebKey as the binding's dictionary, whose strings it frees when
+    // this returns. keyUsages, the last argument, is converted here, before
+    // the method's steps.
+    const Jwk = struct {
+        const Data = webcrypto.jwk.Data;
+
+        fn text(allocator: std.mem.Allocator, value: ?runtime.DOMString) !?[]const u8 {
+            const string = value orelse return null;
+            return try allocator.dupe(u8, string.asSlice());
+        }
+
+        /// The binding's dictionary as the operation's own, independent of
+        /// the binding's storage.
+        fn copy(allocator: std.mem.Allocator, dictionary: dictionaries.JsonWebKey) !webcrypto.jwk.Owned {
+            var owned: webcrypto.jwk.Owned = .{};
+            errdefer owned.deinit(allocator);
+            inline for (std.meta.fields(Data)) |field| {
+                const member = @field(dictionary, field.name);
+                if (field.type == ?[]const u8) {
+                    @field(owned.data, field.name) = try text(allocator, member);
+                } else if (comptime std.mem.eql(u8, field.name, "ext")) {
+                    owned.data.ext = member;
+                } else if (comptime std.mem.eql(u8, field.name, "key_ops")) {
+                    if (member) |operations| {
+                        const list = try allocator.alloc([]const u8, operations.len);
+                        var filled: usize = 0;
+                        errdefer {
+                            for (list[0..filled]) |operation| allocator.free(operation);
+                            allocator.free(list);
+                        }
+                        for (operations, list) |operation, *slot| {
+                            slot.* = try allocator.dupe(u8, operation.asSlice());
+                            filled += 1;
+                        }
+                        owned.data.key_ops = list;
+                    }
+                } else if (comptime std.mem.eql(u8, field.name, "oth")) {
+                    if (member) |primes| {
+                        const list = try allocator.alloc(webcrypto.jwk.OtherPrime, primes.len);
+                        for (list) |*slot| slot.* = .{};
+                        owned.data.oth = list;
+                        for (primes, list) |prime, *slot| {
+                            slot.r = try text(allocator, prime.r);
+                            slot.d = try text(allocator, prime.d);
+                            slot.t = try text(allocator, prime.t);
+                        }
+                    }
+                }
+            }
+            return owned;
+        }
+
+        /// Key material does not outlive the call in the binding's freed
+        /// strings either: zero them before the binding frees them.
+        fn erase(dictionary: dictionaries.JsonWebKey) void {
+            inline for (std.meta.fields(dictionaries.JsonWebKey)) |field| {
+                const member = @field(dictionary, field.name);
+                if (field.type == ?runtime.DOMString) {
+                    if (member) |string| zero(string);
+                } else if (comptime std.mem.eql(u8, field.name, "key_ops")) {
+                    if (member) |operations| for (operations) |operation| zero(operation);
+                } else if (comptime std.mem.eql(u8, field.name, "oth")) {
+                    if (member) |primes| for (primes) |prime| {
+                        if (prime.r) |string| zero(string);
+                        if (prime.d) |string| zero(string);
+                        if (prime.t) |string| zero(string);
+                    };
+                }
+            }
+        }
+
+        fn zero(string: runtime.DOMString) void {
+            switch (string) {
+                .owned => |bytes| std.crypto.secureZero(u8, @constCast(bytes)),
+                .empty, .interned => {},
+            }
+        }
+    };
+    defer if (keyData == .json_web_key) Jwk.erase(keyData.json_web_key);
     var request = newRequest(.import_key);
     defer request.deinit(realm.allocator);
     request.usages = try webcrypto.inputs.usages(realm, keyUsages);
@@ -189,12 +267,11 @@ pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyD
     request.extractable = extractable;
     // Step 4: dictionary or a copy of the BufferSource's CURRENT contents.
     if (request.format == .jwk) {
-        if (converted != .dictionary) return error.TypeError;
-        request.dictionary = converted.dictionary;
-        converted.dictionary = .{};
+        if (keyData != .json_web_key) return error.TypeError;
+        request.dictionary = try Jwk.copy(realm.allocator, keyData.json_web_key);
     } else {
-        if (converted != .buffer) return error.TypeError;
-        request.bytes = try copyBufferValue(realm, converted.buffer);
+        if (keyData != .buffer_source) return error.TypeError;
+        request.bytes = try copyBufferValue(realm, keyData.buffer_source.jsValue(runtime.JSValue) orelse return error.TypeError);
     }
     return webcrypto.tasks.submit(realm, request.take());
 }

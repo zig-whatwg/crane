@@ -2890,45 +2890,11 @@ fn writeOperationDelegate(
         try writer.writeAll("        // [NewObject] - Caller owns the returned object\n");
     }
 
-    // Validate/clamp arguments
-    for (op.arguments) |arg| {
-        const has_enforce_range = hasExtendedAttribute(arg.extAttrs, "EnforceRange");
-        const has_clamp = hasExtendedAttribute(arg.extAttrs, "Clamp");
-
-        if (has_enforce_range) {
-            try writer.writeAll("        // [EnforceRange] on ");
-            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-            try writer.writeAll("\n        if (!runtime.isInRange(");
-            try writeZigType(writer, arg.idlType.type);
-            try writer.writeAll(", ");
-            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-            try writer.writeAll(")) return error.TypeError;\n");
-        } else if (has_clamp) {
-            try writer.writeAll("        // [Clamp] on ");
-            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-            if (arg.optional) {
-                // For optional params with [Clamp]: clamp if passed, otherwise pass notPassed()
-                try writer.print("\n        const clamped_{s} = if (", .{arg.name});
-                try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-                try writer.writeAll(".wasPassed()) webidl.Opt(");
-                try writeZigType(writer, arg.idlType.type);
-                try writer.writeAll(").passed(runtime.clamp(");
-                try writeZigType(writer, arg.idlType.type);
-                try writer.writeAll(", ");
-                try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-                try writer.writeAll(".value)) else webidl.Opt(");
-                try writeZigType(writer, arg.idlType.type);
-                try writer.writeAll(").notPassed();\n");
-            } else {
-                try writer.print("\n        const clamped_{s} = runtime.clamp(", .{arg.name});
-                try writeZigType(writer, arg.idlType.type);
-                try writer.writeAll(", ");
-                try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-                try writer.writeAll(");\n");
-            }
-        }
-    }
-
+    // [EnforceRange] and [Clamp] are steps of the argument's conversion, which
+    // the binding runs (the `enforce_range` and `clamp` tables): on the number
+    // itself, before it wraps, and not at all for an optional argument left
+    // out. Checked here, on the already-converted value, every value was in
+    // range and every omitted optional failed.
     if (op.arguments.len > 0) {
         try writer.writeAll("        \n");
     }
@@ -2944,14 +2910,8 @@ fn writeOperationDelegate(
     // Note: webidl.Opt() parameters are passed directly (not unwrapped)
     // The impl is responsible for checking .wasPassed() and handling defaults
     for (op.arguments) |arg| {
-        const has_clamp = hasExtendedAttribute(arg.extAttrs, "Clamp");
-
-        if (has_clamp) {
-            try writer.print(", clamped_{s}", .{arg.name});
-        } else {
-            try writer.writeAll(", ");
-            try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
-        }
+        try writer.writeAll(", ");
+        try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
     }
 
     try writer.writeAll(");\n");
@@ -3180,6 +3140,128 @@ fn writeRestrictedFloats(
         }
     }
     try writer.writeAll("    };\n\n");
+}
+
+/// WebIDL [EnforceRange] (3.3.6) and [Clamp] (3.3.3) change an integer
+/// conversion's steps (ConvertToInt steps 6 and 7), so the binding runs them
+/// itself, on the number before it wraps. It learns which values carry them
+/// from these tables - keyed like `restricted_floats`, bit i for argument i
+/// and bit 0 for an attribute setter's value:
+///
+///     pub const enforce_range = .{ .{ "call_open", 0b10 } };
+///     pub const clamp = .{ .{ "call_slice", 0b11 } };
+fn writeIntegerConversions(
+    writer: anytype,
+    own_attributes: []const types.Attribute,
+    overload_ops: []const types.Operation,
+) !void {
+    inline for (.{ .{ "EnforceRange", "enforce_range" }, .{ "Clamp", "clamp" } }) |kind| {
+        try writeIntegerConversionTable(writer, own_attributes, overload_ops, kind[0], kind[1]);
+    }
+}
+
+fn writeIntegerConversionTable(
+    writer: anytype,
+    own_attributes: []const types.Attribute,
+    overload_ops: []const types.Operation,
+    comptime attribute: []const u8,
+    comptime table: []const u8,
+) !void {
+    const allocator = std.heap.page_allocator;
+    var any = false;
+    for (own_attributes) |attr| {
+        if (integerSetter(attr, attribute)) any = true;
+    }
+    for (overload_ops) |op| {
+        if (argumentMask(op.arguments, attribute) != 0) any = true;
+    }
+    if (!any) return;
+
+    try writer.writeAll("    /// WebIDL [" ++ attribute ++ "]: the integer arguments and attribute values\n");
+    try writer.writeAll("    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;\n");
+    try writer.writeAll("    /// an attribute setter's value is bit 0).\n");
+    try writer.writeAll("    pub const " ++ table ++ " = .{\n");
+    for (own_attributes) |attr| {
+        if (!integerSetter(attr, attribute)) continue;
+        const sanitized_name = try sanitizeFunctionName(allocator, attr.name);
+        defer if (!std.mem.eql(u8, sanitized_name, attr.name)) allocator.free(sanitized_name);
+        try writer.print("        .{{ \"set_{s}\", 0b1 }},\n", .{sanitized_name});
+    }
+    const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
+    defer overload.freeOverloadSets(allocator, overload_sets);
+    for (overload_sets) |set| {
+        // An unresolvable overload set binds one function taking a union of
+        // argument lists; nothing there converts argument by argument.
+        if (set.isOverloaded() and !isResolvableOverloadSet(set)) continue;
+        for (set.operations, 0..) |op, k| {
+            const mask = argumentMask(op.arguments, attribute);
+            if (mask == 0) continue;
+            const name = op.name orelse continue;
+            const prefix = if (op.static) "call_static_" else "call_";
+            if (k == 0) {
+                try writer.print("        .{{ \"{s}{s}\", 0b{b} }},\n", .{ prefix, name, mask });
+            } else {
+                try writer.print("        .{{ \"{s}{s}__{d}\", 0b{b} }},\n", .{ prefix, name, k, mask });
+            }
+        }
+    }
+    try writer.writeAll("    };\n\n");
+}
+
+/// A writable, non-static attribute whose type carries `attribute`
+/// ([EnforceRange] or [Clamp]).
+fn integerSetter(attr: types.Attribute, comptime attribute: []const u8) bool {
+    return !attr.readonly and !attr.static and hasExtendedAttribute(attr.extAttrs, attribute);
+}
+
+/// Bit i set when argument i carries `attribute`.
+fn argumentMask(arguments: []const types.Argument, comptime attribute: []const u8) u32 {
+    var mask: u32 = 0;
+    for (arguments, 0..) |arg, i| {
+        if (i >= 32) break;
+        if (hasExtendedAttribute(arg.extAttrs, attribute)) mask |= @as(u32, 1) << @intCast(i);
+    }
+    return mask;
+}
+
+/// A constructor's [EnforceRange] and [Clamp] arguments, as masks (bit i =
+/// argument i) the binding's constructor path reads:
+///
+///     pub const constructor_enforce_range = 0b11;
+pub fn writeConstructorIntegerConversions(writer: anytype, constructor: types.Constructor) !void {
+    inline for (.{ .{ "EnforceRange", "constructor_enforce_range" }, .{ "Clamp", "constructor_clamp" } }) |kind| {
+        const mask = argumentMask(constructor.arguments, kind[0]);
+        if (mask != 0) {
+            try writer.writeAll("    /// WebIDL [" ++ kind[0] ++ "] constructor arguments (bit i = argument i).\n");
+            try writer.print("    pub const " ++ kind[1] ++ ": u32 = 0b{b};\n\n", .{mask});
+        }
+    }
+}
+
+/// A dictionary's [EnforceRange] and [Clamp] members, for the dictionary
+/// converter:
+///
+///     pub const enforce_range_members = .{ "count" };
+///
+/// Written inside the dictionary's struct; nothing when it has none.
+pub fn writeIntegerMembers(writer: anytype, members: []const types.DictionaryMember) !void {
+    inline for (.{ .{ "EnforceRange", "enforce_range_members" }, .{ "Clamp", "clamp_members" } }) |kind| {
+        var any = false;
+        for (members) |member| {
+            if (hasExtendedAttribute(member.extAttrs, kind[0])) any = true;
+        }
+        if (any) {
+            try writer.writeAll("\n    /// [" ++ kind[0] ++ "] members: converted with that branch of ConvertToInt.\n");
+            try writer.writeAll("    pub const " ++ kind[1] ++ " = .{");
+            var first = true;
+            for (members) |member| {
+                if (!hasExtendedAttribute(member.extAttrs, kind[0])) continue;
+                try writer.print("{s}\"{s}\"", .{ if (first) " " else ", ", member.name });
+                first = false;
+            }
+            try writer.writeAll(" };\n");
+        }
+    }
 }
 
 /// A writable, non-static attribute whose setter converts a restricted float.
@@ -4009,6 +4091,9 @@ pub fn writeDelegateFunctions(
     // Which float arguments and attribute values NaN and the infinities throw
     // for.
     try writeRestrictedFloats(writer, own_attributes, overload_ops, options.model);
+    // Which integer arguments and attribute values take [EnforceRange]'s or
+    // [Clamp]'s conversion.
+    try writeIntegerConversions(writer, own_attributes, overload_ops);
     try writePromiseReturning(writer, overload_ops);
 
     // Write serialize delegate for stringifier interfaces

@@ -12,4 +12,7 @@ pub const ImageBitmapOptions = struct {
     resizeWidth: ?u32 = null,
     resizeHeight: ?u32 = null,
     resizeQuality: ?enums.ResizeQuality = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "resizeWidth", "resizeHeight" };
 };

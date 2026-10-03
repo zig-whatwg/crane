@@ -131,13 +131,17 @@ pub const FileSystemSyncAccessHandle = struct {
     }
 
     pub fn call_truncate(instance: *runtime.Instance, newSize: u64) anyerror!void {
-        // [EnforceRange] on newSize
-        if (!runtime.isInRange(u64, newSize)) return error.TypeError;
-
         return try FileSystemSyncAccessHandleImpl.call_truncate(instance, newSize);
     }
 
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         return try FileSystemSyncAccessHandleImpl.call_close(instance);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_truncate", 0b1 },
+    };
 };

@@ -101,11 +101,15 @@ pub const NavigatorBadge = struct {
     }
 
     pub fn call_setAppBadge(instance: *runtime.Instance, contents: webidl.Opt(u64)) anyerror!runtime.JSValue {
-        // [EnforceRange] on contents
-        if (!runtime.isInRange(u64, contents)) return error.TypeError;
-
         return try NavigatorBadgeImpl.call_setAppBadge(instance, contents);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_setAppBadge", 0b1 },
+    };
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
