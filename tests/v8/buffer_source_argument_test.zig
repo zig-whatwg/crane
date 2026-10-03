@@ -619,6 +619,30 @@ test "AbortSignal.timeout(-1) through the binding is a TypeError, not a panic" {
     ));
 }
 
+// ---------------------------------------------------------------------------
+// QuotaExceededError is a derived interface, not a DOMException named so
+// ---------------------------------------------------------------------------
+
+test "a QuotaExceededError the engine makes is the derived interface" {
+    _ = try realm();
+    // createDOMException's path (newDOMExceptionFromContext) and the
+    // binding's error.QuotaExceededError (throwDOMExceptionFromContext) both
+    // make one through QuotaExceededError's constructor, whose base is
+    // DOMException's (src/dom/dom_exceptions.zig): WebIDL 2.8.3.
+    const made = conv.newDOMExceptionFromContext(isolate_once.?, context_once.?, "QuotaExceededError", "over") orelse return error.NothingMade;
+    defer ffi.v8_Value_Dispose(made);
+    try setGlobal("quotaError", made);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\quotaError instanceof QuotaExceededError && quotaError instanceof DOMException &&
+        \\quotaError.name === 'QuotaExceededError' && quotaError.code === 22 && quotaError.message === 'over' &&
+        \\quotaError.quota === null && quotaError.requested === null ? 1 : 0
+    ));
+    const other = conv.newDOMExceptionFromContext(isolate_once.?, context_once.?, "AbortError", "stop") orelse return error.NothingMade;
+    defer ffi.v8_Value_Dispose(other);
+    try setGlobal("abortError", other);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt("abortError instanceof DOMException && !(abortError instanceof QuotaExceededError) && abortError.code === 20 ? 1 : 0"));
+}
+
 test "getRandomValues returns the very view it was given, over a hold of the binding's own" {
     try cryptoObject();
     // The argument's reference is released before the result is converted,

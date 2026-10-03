@@ -3012,6 +3012,14 @@ pub fn throwDOMException(
         return;
     };
     defer v8.v8_Context_Dispose(context);
+    // The derived interface (WebIDL 2.8.3), not a DOMException named so.
+    if (isQuotaExceededError(name)) {
+        if (newQuotaExceededError(isolate, context, message)) |exception| {
+            defer v8.v8_Value_Dispose(exception);
+            v8.v8_Isolate_ThrowException(isolate, exception);
+            return;
+        }
+    }
     // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
     // `Context::Global()` returns a borrowed Local. Disposing releases OUR
     // handle; the global object itself stays rooted by the context.
@@ -3111,6 +3119,14 @@ pub fn throwDOMExceptionFromContext(
     message: []const u8,
 ) void {
     log.debug("[throwDOMExceptionFromContext] name={s}\n", .{name});
+    // The derived interface (WebIDL 2.8.3), not a DOMException named so.
+    if (isQuotaExceededError(name)) {
+        if (newQuotaExceededError(isolate, context, message)) |exception| {
+            defer v8.v8_Value_Dispose(exception);
+            v8.v8_Isolate_ThrowException(isolate, exception);
+            return;
+        }
+    }
     // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
     // `Context::Global()` returns a borrowed Local. Disposing releases OUR
     // handle; the global object itself stays rooted by the context.
@@ -3198,6 +3214,33 @@ pub fn throwDOMExceptionFromContext(
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
+/// WebIDL 2.8.3 "Predefined DOMException derived interfaces": a
+/// QuotaExceededError is an instance of the QuotaExceededError interface
+/// (with `quota` and `requested`, here both null) - not a DOMException that is
+/// merely named so. A new one in `context`'s realm, made by its constructor
+/// (interfaces.QuotaExceededError.call_constructor, whose steps 1-2 initialize
+/// the DOMException base through the DOMException-owned hook,
+/// src/dom/dom_exceptions.zig), as its wrapper: an OWNED Global. Null when the
+/// realm is not one the engine hosts or the constructor fails.
+fn newQuotaExceededError(isolate: *v8.Isolate, context: *v8.Context, message: []const u8) ?*v8.Value {
+    const interfaces = @import("interfaces");
+    const QuotaExceededError = interfaces.QuotaExceededError;
+    const realm = @import("context_manager.zig").get(context) orelse return null;
+    const params = @typeInfo(@TypeOf(QuotaExceededError.call_constructor)).@"fn".params;
+    const Message = params[1].type.?;
+    const Options = params[2].type.?;
+    const instance = QuotaExceededError.call_constructor(realm, Message.passed(runtime.DOMString.initInterned(message)), Options.notPassed()) catch return null;
+    v8.v8_Context_Enter(context);
+    defer v8.v8_Context_Exit(context);
+    const wrapper = instanceToV8(isolate, instance);
+    if (v8.v8_Value_IsUndefined(wrapper)) return null;
+    return v8.v8_Global_Clone(wrapper);
+}
+
+fn isQuotaExceededError(name: []const u8) bool {
+    return std.mem.eql(u8, name, "QuotaExceededError");
+}
+
 /// A new DOMException named `name` with `message`, made by `context`'s
 /// DOMException constructor - the value an algorithm rejects a promise with,
 /// or stores as an abort reason, where throwDOMExceptionFromContext throws it.
@@ -3208,6 +3251,10 @@ pub fn newDOMExceptionFromContext(
     name: []const u8,
     message: []const u8,
 ) ?*v8.Value {
+    // The derived interface (WebIDL 2.8.3), not a DOMException named so.
+    if (isQuotaExceededError(name)) {
+        if (newQuotaExceededError(isolate, context, message)) |exception| return exception;
+    }
     const global = v8.v8_Context_Global(context) orelse return null;
     defer v8.v8_Object_Dispose(global);
     const key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse return null;
