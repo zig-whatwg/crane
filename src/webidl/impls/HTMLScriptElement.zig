@@ -79,7 +79,14 @@ pub fn installHooks() void {
     dom_module.script_elements.install(.{
         .mark_parser_inserted = &markParserInsertedStep,
         .mark_already_started = &markAlreadyStartedStep,
+        .script_text = &scriptTextStep,
     });
+}
+
+/// dom.script_elements: the element's script text (Trusted Types 4.1.2.1).
+fn scriptTextStep(element: *runtime.Instance) ?*dom_module.script_elements.ScriptText {
+    const internal = getInternal(element) orelse return null;
+    return &internal.script_text;
 }
 
 /// Initialize instance (creates the instance)
