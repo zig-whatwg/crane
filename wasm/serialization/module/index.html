@@ -22,7 +22,7 @@
 <h1 class="page-title"><code>wasm/<wbr>serialization/<wbr>module/</code></h1>
 <div class="figures" role="group" aria-label="wasm/serialization/module/">
 <p class="figures-main"><span class="fg-pass">6</span><span class="fg-of"> / 33</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>15</dd></div><div><dt>Timed out</dt><dd>9</dd></div><div><dt>Not run</dt><dd>3</dd></div><div><dt>Test files</dt><dd>16</dd></div><div class="blk"><dt>Blocking files</dt><dd>12</dd></div></dl>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>13</dd></div><div><dt>Timed out</dt><dd>11</dd></div><div><dt>Not run</dt><dd>3</dd></div><div><dt>Test files</dt><dd>16</dd></div><div class="blk"><dt>Blocking files</dt><dd>12</dd></div></dl>
 </div>
 </header>
 <div class="boxes">
@@ -30,7 +30,7 @@
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">16 files</span></div>
 <div class="conf-body">
 <div class="meter" role="img" aria-label="3 clean, 1 with failures, 12 blocking, 0 with no subtests, 0 not run, of 16 files"><span class="m-clean" style="width:18.750%"></span><span class="m-partial" style="width:6.250%"></span><span class="m-blocking" style="width:75.000%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>3</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>1</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>12</dd></div><p class="kinds"><b>5</b> NONE-PASSED, <b>7</b> TIMEOUT</p></dl>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>3</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>1</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>12</dd></div><p class="kinds"><b>4</b> NONE-PASSED, <b>8</b> TIMEOUT</p></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -45,7 +45,7 @@
 <tr data-gate="timeout"><th scope="row"><a href="../../../wasm/serialization/module/nested-worker-success.any.js/"><code>nested-<wbr>worker-<wbr>success.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
 <tr data-gate="partial"><th scope="row"><a href="../../../wasm/serialization/module/no-transferring.html/"><code>no-<wbr>transferring.<wbr>html</code></a></th><td class="n" data-v="2" data-of="3"><b>2</b> / 3</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="1"><span class="gate gate-partial">With failures</span></td></tr>
 <tr data-gate="none-passed"><th scope="row"><a href="../../../wasm/serialization/module/serialization-via-history.html/"><code>serialization-<wbr>via-<wbr>history.<wbr>html</code></a></th><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="none-passed"><th scope="row"><a href="../../../wasm/serialization/module/serialization-via-idb.any.js/"><code>serialization-<wbr>via-<wbr>idb.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
+<tr data-gate="timeout"><th scope="row"><a href="../../../wasm/serialization/module/serialization-via-idb.any.js/"><code>serialization-<wbr>via-<wbr>idb.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
 <tr data-gate="none-passed"><th scope="row"><a href="../../../wasm/serialization/module/serialization-via-notifications-api.any.js/"><code>serialization-<wbr>via-<wbr>notifications-<wbr>api.<wbr>any.<wbr>js</code></a></th><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="4"><span class="fail">4</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
 <tr data-gate="clean"><th scope="row"><a href="../../../wasm/serialization/module/share-module-cross-origin-fails.sub.html/"><code>share-<wbr>module-<wbr>cross-<wbr>origin-<wbr>fails.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
 <tr data-gate="timeout"><th scope="row"><a href="../../../wasm/serialization/module/window-domain-success.sub.html/"><code>window-<wbr>domain-<wbr>success.<wbr>sub.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
