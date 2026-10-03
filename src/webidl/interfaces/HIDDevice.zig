@@ -191,16 +191,10 @@ pub const HIDDevice = struct {
     }
 
     pub fn call_sendFeatureReport(instance: *runtime.Instance, reportId: u8, data: BufferSource) anyerror!runtime.JSValue {
-        // [EnforceRange] on reportId
-        if (!runtime.isInRange(u8, reportId)) return error.TypeError;
-
         return try HIDDeviceImpl.call_sendFeatureReport(instance, reportId, data);
     }
 
     pub fn call_receiveFeatureReport(instance: *runtime.Instance, reportId: u8) anyerror!runtime.JSValue {
-        // [EnforceRange] on reportId
-        if (!runtime.isInRange(u8, reportId)) return error.TypeError;
-
         return try HIDDeviceImpl.call_receiveFeatureReport(instance, reportId);
     }
 
@@ -217,11 +211,17 @@ pub const HIDDevice = struct {
     }
 
     pub fn call_sendReport(instance: *runtime.Instance, reportId: u8, data: BufferSource) anyerror!runtime.JSValue {
-        // [EnforceRange] on reportId
-        if (!runtime.isInRange(u8, reportId)) return error.TypeError;
-
         return try HIDDeviceImpl.call_sendReport(instance, reportId, data);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_sendFeatureReport", 0b1 },
+        .{ "call_receiveFeatureReport", 0b1 },
+        .{ "call_sendReport", 0b1 },
+    };
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.

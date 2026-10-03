@@ -1,0 +1,39 @@
+// Union arguments the binding converts in argument order
+// (tests/codegen/argument_unions_test.zig).
+
+typedef (ArrayBufferView or ArrayBuffer) BufferSource;
+
+dictionary Plain {
+  DOMString name;
+  sequence<DOMString> list;
+  boolean flag;
+};
+
+dictionary Derived : Plain {
+  unsigned long count;
+};
+
+dictionary WithAny {
+  any detail;
+};
+
+dictionary WithUnion {
+  (DOMString or long) start;
+};
+
+[Exposed=Window]
+interface TrustedHTML {};
+
+[Exposed=Window]
+interface Thing {
+  constructor((DOMString or BufferSource) source, optional Plain options = {});
+  undefined take((BufferSource or Plain) data, DOMString after);
+  undefined again((BufferSource or Plain) data, long after);
+  undefined derived((DOMString or Derived) data, long after);
+  undefined last(DOMString first, (BufferSource or Plain) data);
+  undefined anyDictionary((DOMString or WithAny) data, long after);
+  undefined unionDictionary((DOMString or WithUnion) data, long after);
+  undefined sequenceArm((DOMString or sequence<DOMString>) data, long after);
+  undefined nullable((Thing or DOMString)? data, long after);
+  undefined trusted((TrustedHTML or DOMString) markup, long after);
+};

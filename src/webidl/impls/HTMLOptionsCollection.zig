@@ -67,7 +67,7 @@ pub fn set_selectedIndex(instance: *runtime.Instance, value: i32) anyerror!void 
 }
 
 /// Operation: add
-pub fn call_add(instance: *runtime.Instance, element: runtime.JSValue, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
+pub fn call_add(instance: *runtime.Instance, element: typedefs.HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
     _ = instance;
     _ = element;
     _ = before;

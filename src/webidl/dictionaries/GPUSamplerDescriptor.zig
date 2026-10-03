@@ -24,4 +24,7 @@ pub const GPUSamplerDescriptor = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{ "lodMinClamp", "lodMaxClamp" };
+
+    /// [Clamp] members: converted with that branch of ConvertToInt.
+    pub const clamp_members = .{"maxAnisotropy"};
 };

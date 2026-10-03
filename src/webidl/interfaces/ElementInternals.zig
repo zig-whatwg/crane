@@ -13,6 +13,7 @@ const dictionaries = @import("dictionaries");
 const ARIAMixin = @import("mixins").ARIAMixin;
 const HTMLElement = @import("interfaces").HTMLElement;
 const ShadowRoot = @import("interfaces").ShadowRoot;
+const FileOrUSVStringOrFormData = @import("typedefs").FileOrUSVStringOrFormData;
 const ValidityStateFlags = @import("dictionaries").ValidityStateFlags;
 const NodeList = @import("interfaces").NodeList;
 const USVString = @import("typedefs").USVString;
@@ -1189,7 +1190,7 @@ pub const ElementInternals = struct {
         return try ElementInternalsImpl.call_reportValidity(instance);
     }
 
-    pub fn call_setFormValue(instance: *runtime.Instance, value: ?runtime.JSValue, state: webidl.Opt(?runtime.JSValue)) anyerror!void {
+    pub fn call_setFormValue(instance: *runtime.Instance, value: ?FileOrUSVStringOrFormData, state: webidl.Opt(?runtime.JSValue)) anyerror!void {
         return try ElementInternalsImpl.call_setFormValue(instance, value, state);
     }
 };

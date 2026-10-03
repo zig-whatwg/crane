@@ -29,6 +29,10 @@
 //! tests below pin both the recognised types and the surrounding behaviour that
 //! makes an ordinary owned argument still get freed — a predicate that answered
 //! TRUE too widely would leak every string.
+//!
+//! BufferSource left the list on 2026-10-02: its conversion now makes a
+//! reference to the object (tests/v8/buffer_source_argument_test.zig), which
+//! the argument owns until it is freed.
 
 const std = @import("std");
 const v8 = @import("v8");
@@ -37,9 +41,19 @@ const runtime = @import("runtime");
 const nonOwning = v8.interface_mod.argConversionIsNonOwning;
 const types = v8.interface_mod.non_owning_arg_types;
 
-test "buffer-source unions are non-owning - the crash this predicate exists for" {
+test "AllowSharedBufferSource is non-owning - the crash this predicate exists for" {
     try std.testing.expect(nonOwning(types.AllowSharedBufferSource));
-    try std.testing.expect(nonOwning(types.BufferSource));
+}
+
+test "BufferSource and ArrayBufferView are NOT non-owning: they hold a reference to free" {
+    // A BufferSource was listed here while its conversion failed for every
+    // value. It is now a reference to the object it was converted from
+    // (conv.convertBufferSource): the argument's handle, and for an
+    // ArrayBuffer a struct allocated for it, both released when the argument
+    // is freed (freeBufferSourceArg). Non-owning would skip that free and
+    // leak a Global per call.
+    try std.testing.expect(!nonOwning(types.BufferSource));
+    try std.testing.expect(!nonOwning(types.ArrayBufferView));
 }
 
 test "the recognised union really does carry a bare slice arm" {
@@ -136,8 +150,13 @@ test "BodyInit's interface arms are the wrappers' Instances, never freed" {
     v8.interface_mod.freeBodyInitArg(allocator, .{ .xmlhttp_request_body_init = .{ .urlsearch_params = instance } });
 }
 
-test "the BodyInit rule leaves BufferSource itself a view everywhere else" {
-    // What TextDecoder and the rest rely on: the type-level answer is unchanged.
-    try std.testing.expect(nonOwning(BufferSource));
+test "BodyInit's copied BufferSource is freed by arm, not by the reference rule" {
+    // convertBodyInit copies the bytes into an ArrayBuffer struct with no
+    // `js`: freeBodyInitArg frees struct and bytes, and the reference rule
+    // (freeBufferSourceArg) leaves a Zig-made struct to its maker.
     try std.testing.expect(!nonOwning(BodyInit));
+    try std.testing.expect(!nonOwning(BufferSource));
+    const allocator = std.testing.allocator;
+    var zig_made = ArrayBuffer{ .data = &[_]u8{}, .detached = false };
+    v8.interface_mod.freeBufferSourceArg(BufferSource, allocator, .{ .array_buffer = &zig_made });
 }

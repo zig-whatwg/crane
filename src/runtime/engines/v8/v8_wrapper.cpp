@@ -12818,3 +12818,69 @@ bool v8_Isolate_IsExecutionTerminating(Isolate* isolate) {
 
 } // extern "C"
 // ---- end lane: speed ----
+
+// ---- lane: conversions ----
+// engine.hasOwnProperty: ECMAScript HasOwnProperty(O, P), whose throw (a
+// Proxy's getOwnPropertyDescriptor trap) v8_Object_HasOwnProperty swallows
+// into false.
+extern "C" {
+
+int v8_Object_HasOwnPropertyOrThrow(Global<Object>* object, Global<Context>* context, Global<Value>* key) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Object> obj = object->Get(isolate);
+    Local<Value> k = key->Get(isolate);
+    if (!k->IsName()) return -1;
+    Maybe<bool> result = obj->HasOwnProperty(ctx, k.As<Name>());
+    // Nothing: [[GetOwnProperty]] threw, and the exception stays pending.
+    if (result.IsNothing()) return -1;
+    return result.FromJust() ? 1 : 0;
+}
+
+/// The bytes an AllowSharedBufferSource holds (engine.
+/// getCopyOfAllowSharedBufferSourceBytes): an ArrayBuffer's - none when
+/// detached - a SharedArrayBuffer's, or the window [[ByteOffset]],
+/// [[ByteLength]] of a view over either. False when `value` is none of those.
+bool v8_AllowSharedBufferSource_Bytes(Global<Value>* value, void** data, size_t* byte_length) {
+    *data = nullptr;
+    *byte_length = 0;
+    if (!value || value->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Value> v = value->Get(isolate);
+    if (v->IsArrayBuffer()) {
+        Local<ArrayBuffer> ab = v.As<ArrayBuffer>();
+        if (ab->WasDetached()) return true;
+        *data = ab->Data();
+        *byte_length = ab->ByteLength();
+        return true;
+    }
+    if (v->IsSharedArrayBuffer()) {
+        Local<SharedArrayBuffer> sab = v.As<SharedArrayBuffer>();
+        *data = sab->Data();
+        *byte_length = sab->ByteLength();
+        return true;
+    }
+    if (v->IsArrayBufferView()) {
+        Local<ArrayBufferView> view = v.As<ArrayBufferView>();
+        Local<Object> buffer = view->Buffer();
+        void* base = nullptr;
+        if (buffer->IsSharedArrayBuffer()) {
+            base = buffer.As<SharedArrayBuffer>()->Data();
+        } else if (buffer->IsArrayBuffer()) {
+            Local<ArrayBuffer> ab = buffer.As<ArrayBuffer>();
+            if (ab->WasDetached()) return true;
+            base = ab->Data();
+        }
+        size_t length = view->ByteLength();
+        if (!base || length == 0) return true;
+        *data = static_cast<uint8_t*>(base) + view->ByteOffset();
+        *byte_length = length;
+        return true;
+    }
+    return false;
+}
+
+} // extern "C"
+// ---- end lane: conversions ----

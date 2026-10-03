@@ -28,4 +28,7 @@ pub const VideoEncoderConfig = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{"framerate"};
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "width", "height", "displayWidth", "displayHeight", "bitrate" };
 };

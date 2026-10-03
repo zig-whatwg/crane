@@ -42,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
-pub fn call_constructor(ctx: runtime.Context, family: typedefs.CSSOMString, source: runtime.JSValue, descriptors: webidl.Opt(dictionaries.FontFaceDescriptors)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, family: typedefs.CSSOMString, source: typedefs.CSSOMStringOrBufferSource, descriptors: webidl.Opt(dictionaries.FontFaceDescriptors)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &FontFace.vtable, ctx);
     errdefer deinit(instance);

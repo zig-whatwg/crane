@@ -49,6 +49,16 @@ pub const BufferSourceType = enum {
 pub const ArrayBuffer = struct {
     data: []u8,
     detached: bool,
+    /// The JavaScript ArrayBuffer this IDL value refers to, when it was
+    /// converted from one (WebIDL 3.2.26: the IDL value "is a reference to the
+    /// same object as V") - an engine handle, BORROWED for the call: the
+    /// binding releases it once the operation returns. The bytes are then the
+    /// engine's, not this struct's: `data` is empty and `detached` means
+    /// nothing. A spec reads them at its own step, "get a copy of the bytes
+    /// held by the buffer source" (`engine.getCopyOfBufferSourceBytes`; a
+    /// buffer detached since reads as empty) - never a slice into the backing
+    /// store, which a getter run in between can transfer away.
+    js: ?*anyopaque = null,
 
     pub fn init(allocator: std.mem.Allocator, size: usize) !ArrayBuffer {
         const data = try allocator.alloc(u8, size);
@@ -85,8 +95,8 @@ pub fn TypedArray(comptime T: type) type {
         length: usize,
         /// The JavaScript object this value refers to, when it was converted
         /// from one (WebIDL: an ArrayBufferView IDL value "is a reference to
-        /// the same object"). A Global<Value>* owned by this value. `buffer`
-        /// is then `&engine_buffer` - read the bytes through the engine.
+        /// the same object"): see `ArrayBufferView.jsHandle`. `buffer` is
+        /// then `&engine_buffer` - read the bytes through the engine.
         js: ?*anyopaque = null,
 
         const Self = @This();
@@ -183,8 +193,8 @@ pub const DataView = struct {
     byte_length: usize,
     /// The JavaScript object this value refers to, when it was converted
     /// from one (WebIDL: an ArrayBufferView IDL value "is a reference to
-    /// the same object"). A Global<Value>* owned by this value. `buffer`
-    /// is then `&engine_buffer` - read the bytes through the engine.
+    /// the same object"): see `ArrayBufferView.jsHandle`. `buffer` is then
+    /// `&engine_buffer` - read the bytes through the engine.
     js: ?*anyopaque = null,
 
     pub fn init(buffer: *ArrayBuffer, byte_offset: usize, byte_length: usize) !DataView {
@@ -241,8 +251,8 @@ pub const BigInt64Array = struct {
     length: usize,
     /// The JavaScript object this value refers to, when it was converted
     /// from one (WebIDL: an ArrayBufferView IDL value "is a reference to
-    /// the same object"). A Global<Value>* owned by this value. `buffer`
-    /// is then `&engine_buffer` - read the bytes through the engine.
+    /// the same object"): see `ArrayBufferView.jsHandle`. `buffer` is then
+    /// `&engine_buffer` - read the bytes through the engine.
     js: ?*anyopaque = null,
 
     const Self = @This();
@@ -288,8 +298,8 @@ pub const BigUint64Array = struct {
     length: usize,
     /// The JavaScript object this value refers to, when it was converted
     /// from one (WebIDL: an ArrayBufferView IDL value "is a reference to
-    /// the same object"). A Global<Value>* owned by this value. `buffer`
-    /// is then `&engine_buffer` - read the bytes through the engine.
+    /// the same object"): see `ArrayBufferView.jsHandle`. `buffer` is then
+    /// `&engine_buffer` - read the bytes through the engine.
     js: ?*anyopaque = null,
 
     const Self = @This();
@@ -385,15 +395,48 @@ pub const ArrayBufferView = union(enum) {
     float64_array: TypedArray(f64),
     data_view: DataView,
 
-    /// The JavaScript object this view refers to, if it came from one.
+    /// The JavaScript object this view refers to, if it came from one; null
+    /// for a view made in Zig over an ArrayBuffer struct.
+    ///
+    /// Who releases it is the binding's rule, the same as for any JSValue:
+    /// - An ARGUMENT's is BORROWED for the call. It is the argument's own
+    ///   handle (`info.get(i)` made it), and the binding releases it once the
+    ///   operation returns - before it converts the result. An impl that keeps
+    ///   the view past its synchronous steps takes a hold of its own
+    ///   (`engine.retainValue`).
+    /// - A RESULT's is the binding's, released once the result is set, as a
+    ///   JSValue result's handle is. An impl that returns a view it was given
+    ///   or keeps returns it over a hold of its own:
+    ///   `view.withJsHandle((try engine.retainValue(realm, view.jsValue(runtime.JSValue).?)).take().handle.ptr)`.
     pub fn jsHandle(self: ArrayBufferView) ?*anyopaque {
         return switch (self) {
             inline else => |v| v.js,
         };
     }
 
-    /// A view referring to the JavaScript object `js` (owned by the result),
-    /// with the kind, offset and element count the engine reported.
+    /// `jsHandle()` as a `.handle` JSValue of the runtime's type, which the
+    /// caller names (this module sits below `runtime`):
+    /// `view.jsValue(runtime.JSValue)` - what the engine protocol's buffer
+    /// operations take (`engine.describeArrayBufferView`,
+    /// `engine.getCopyOfBufferSourceBytes`). Borrowed exactly as `jsHandle()`
+    /// is. Null for a view made in Zig.
+    pub fn jsValue(self: ArrayBufferView, comptime JSValue: type) ?JSValue {
+        return JSValue.fromHandle(self.jsHandle() orelse return null);
+    }
+
+    /// This view, referring to the JavaScript object `js` instead: the same
+    /// kind, offset and length. For an impl that returns a view over a hold of
+    /// its own (see `jsHandle`).
+    pub fn withJsHandle(self: ArrayBufferView, js: *anyopaque) ArrayBufferView {
+        var copy = self;
+        switch (copy) {
+            inline else => |*v| v.js = js,
+        }
+        return copy;
+    }
+
+    /// A view referring to the JavaScript object `js` (see `jsHandle` for who
+    /// releases it), with the kind, offset and element count the engine reported.
     /// `kind` is the ffi.ViewKind order: int8, uint8, uint8_clamped, int16,
     /// uint16, int32, uint32, float32, float64, bigint64, biguint64, data_view.
     pub fn fromEngine(kind: u8, byte_offset: usize, length: usize, js: *anyopaque) ?ArrayBufferView {
@@ -526,8 +569,12 @@ pub const ArrayBufferView = union(enum) {
         return offset >= view_offset and range_end <= view_end;
     }
 
-    /// Returns a byte slice view of the underlying buffer data
+    /// Returns a byte slice view of the underlying buffer data: a view made
+    /// in Zig only. A view converted from JavaScript holds no bytes here
+    /// (`engine_buffer` is empty) - `error.BytesHeldByEngine`; read them with
+    /// `engine.getCopyOfBufferSourceBytes` at the spec's own step.
     pub fn asBytes(self: ArrayBufferView) ![]const u8 {
+        if (self.jsHandle() != null) return error.BytesHeldByEngine;
         return switch (self) {
             .int8_array => |arr| blk: {
                 const slice = try arr.asConstSlice();
@@ -646,14 +693,46 @@ pub fn constructDataView(
 /// typedef (ArrayBufferView or ArrayBuffer) BufferSource;
 ///
 /// Spec: https://webidl.spec.whatwg.org/#BufferSource
+///
+/// A BufferSource converted from JavaScript is a REFERENCE to its object
+/// (WebIDL 3.2.26), not a copy of its bytes: `.array_buffer` is an ArrayBuffer
+/// struct whose `js` is the buffer, `.array_buffer_view` a view whose `js` is
+/// the view. Specs copy at their own step - "get a copy of the bytes held by
+/// the buffer source", `engine.getCopyOfBufferSourceBytes(realm,
+/// source.jsValue(runtime.JSValue).?, allocator)` - so a step that runs script
+/// first (a getter) sees the bytes as they are then, and a buffer detached
+/// in between reads as empty.
 pub const BufferSource = union(enum) {
     array_buffer: *ArrayBuffer,
     array_buffer_view: ArrayBufferView,
 
-    /// Returns a byte slice view of the buffer data
+    /// The JavaScript object this value refers to - an ArrayBuffer, a typed
+    /// array or a DataView - when it was converted from one; null for a value
+    /// made in Zig. An argument's is BORROWED for the call: the binding
+    /// releases it once the operation returns (see `ArrayBufferView.jsHandle`).
+    pub fn jsHandle(self: BufferSource) ?*anyopaque {
+        return switch (self) {
+            .array_buffer => |buffer| buffer.js,
+            .array_buffer_view => |view| view.jsHandle(),
+        };
+    }
+
+    /// `jsHandle()` as a `.handle` JSValue of the runtime's type, which the
+    /// caller names (this module sits below `runtime`):
+    /// `source.jsValue(runtime.JSValue)` - what
+    /// `engine.getCopyOfBufferSourceBytes` takes. Borrowed exactly as
+    /// `jsHandle()` is. Null for a value made in Zig.
+    pub fn jsValue(self: BufferSource, comptime JSValue: type) ?JSValue {
+        return JSValue.fromHandle(self.jsHandle() orelse return null);
+    }
+
+    /// Returns a byte slice view of the buffer data: a value made in Zig only.
+    /// One converted from JavaScript holds no bytes here -
+    /// `error.BytesHeldByEngine` (see the type's comment).
     pub fn asBytes(self: BufferSource) ![]const u8 {
         return switch (self) {
             .array_buffer => |buf| {
+                if (buf.js != null) return error.BytesHeldByEngine;
                 if (buf.isDetached()) return error.DetachedBuffer;
                 return buf.data;
             },

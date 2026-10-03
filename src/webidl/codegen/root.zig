@@ -21,6 +21,7 @@ pub const generator = @import("generator.zig");
 pub const ir = @import("ir.zig");
 pub const type_registry = @import("type_registry.zig");
 pub const pipeline = @import("pipeline.zig");
+pub const argument_unions = @import("argument_unions.zig");
 pub const duplicates = @import("duplicates.zig");
 pub const adapter = @import("adapter.zig");
 pub const overload = @import("overload.zig");

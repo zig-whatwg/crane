@@ -226,6 +226,103 @@ pub fn convertToInt(comptime T: type, x: f64) T {
     return @bitCast(bits);
 }
 
+/// Which of WebIDL 3.2.4 ConvertToInt's branches an integer conversion takes:
+/// the default (`modulo`, steps 8-12), [EnforceRange] (step 6) or [Clamp]
+/// (step 7). Codegen lists the arguments, attribute values and dictionary
+/// members that carry either extended attribute (`enforce_range`, `clamp`,
+/// `enforce_range_members`, `clamp_members`).
+pub const IntegerConversion = enum { modulo, enforce_range, clamp };
+
+/// WebIDL 3.2.4 ConvertToInt for `T`, given x = ToNumber(V) (step 4).
+///
+/// 1-3. bitLength, lowerBound and upperBound: for a 64-bit type the bounds
+///      are those of a safe integer, [0, 2^53 - 1] unsigned and
+///      [-(2^53 - 1), 2^53 - 1] signed; otherwise the type's own range.
+/// 5.   -0 is +0 (no integer type holds a -0).
+/// 6.   [EnforceRange]: NaN or an infinity is a TypeError; x = IntegerPart(x);
+///      outside [lowerBound, upperBound] is a TypeError.
+/// 7.   [Clamp], x not NaN: clamped to [lowerBound, upperBound], then rounded
+///      to the nearest integer, ties to even.
+/// 8-12. Otherwise `convertToInt` (NaN, +-0, +-Infinity give 0; modulo).
+pub fn convertToIntAs(comptime T: type, comptime conversion: IntegerConversion, x: f64) ConversionError!T {
+    const info = @typeInfo(T).int;
+    // Steps 1-3.
+    const safe: f64 = 0x1p53 - 1;
+    const lower: f64 = if (info.signedness == .unsigned) 0 else if (info.bits == 64) -safe else @floatFromInt(std.math.minInt(T));
+    const upper: f64 = if (info.bits == 64) safe else @floatFromInt(std.math.maxInt(T));
+    switch (conversion) {
+        .modulo => return convertToInt(T, x),
+        .enforce_range => {
+            // Step 6.1.
+            if (std.math.isNan(x) or std.math.isInf(x)) return ConversionError.TypeError;
+            // Step 6.2 (step 5's -0 truncates to 0 either way).
+            const whole = @trunc(x);
+            // Step 6.3.
+            if (whole < lower or whole > upper) return ConversionError.TypeError;
+            // Step 6.4.
+            return @intFromFloat(whole);
+        },
+        .clamp => {
+            // Step 7 applies only to a number; NaN goes to step 8 (0).
+            if (std.math.isNan(x)) return 0;
+            // Step 7.1.
+            const clamped = @min(@max(x, lower), upper);
+            // Step 7.2: round half to even, +0 rather than -0.
+            const floor = @floor(clamped);
+            const fraction = clamped - floor;
+            const rounded = if (fraction < 0.5) floor else if (fraction > 0.5) floor + 1 else if (@mod(floor, 2) == 0) floor else floor + 1;
+            // Step 7.3.
+            return @intFromFloat(rounded);
+        },
+    }
+}
+
+/// An argument, attribute value or dictionary member of integer type `T` - or
+/// a nullable form of one, or an optional argument (`webidl.Opt`) of either -
+/// converted with `conversion`'s branch of ConvertToInt. A nullable's null and
+/// undefined are null; an optional argument's undefined is "not passed" (and,
+/// as `fromV8Value`'s optional path has it, so is null). Any other type
+/// converts as `fromV8Value` does.
+pub fn fromV8ValueInteger(
+    comptime T: type,
+    comptime conversion: IntegerConversion,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!T {
+    if (comptime conversion == .modulo) return fromV8Value(T, allocator, isolate, context, value);
+    const info = @typeInfo(T);
+    if (info == .int) {
+        // Step 4: x = ? ToNumber(V) (a Symbol or a BigInt is a TypeError).
+        return convertToIntAs(T, conversion, try toNumber(context, value));
+    }
+    if (info == .optional) {
+        if (v8.v8_Value_IsNullOrUndefined(value)) return null;
+        return try fromV8ValueInteger(info.optional.child, conversion, allocator, isolate, context, value);
+    }
+    if (info == .@"struct" and @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) {
+        if (v8.v8_Value_IsNullOrUndefined(value)) return T.notPassed();
+        return T.passed(try fromV8ValueInteger(@FieldType(T, "value"), conversion, allocator, isolate, context, value));
+    }
+    return fromV8Value(T, allocator, isolate, context, value);
+}
+
+/// The ConvertToInt branch dictionary `T`'s member `name` takes: codegen lists
+/// [EnforceRange] and [Clamp] members in `enforce_range_members` and
+/// `clamp_members`.
+fn memberIntegerConversion(comptime T: type, comptime name: []const u8) IntegerConversion {
+    comptime {
+        if (@hasDecl(T, "enforce_range_members")) {
+            for (T.enforce_range_members) |member| if (std.mem.eql(u8, member, name)) return .enforce_range;
+        }
+        if (@hasDecl(T, "clamp_members")) {
+            for (T.clamp_members) |member| if (std.mem.eql(u8, member, name)) return .clamp;
+        }
+        return .modulo;
+    }
+}
+
 /// WebIDL `long long`: ToNumber, then ConvertToInt (modulo 2^64).
 pub fn fromV8LongLong(
     context: *v8.Context,
@@ -422,7 +519,7 @@ pub fn fromV8Sequence(
         // Get fails only when it threw ("? Get"): the exception is pending.
         const v8_value = v8.v8_Object_Get(@ptrCast(array), context, @ptrCast(index_key)) orelse return ConversionError.ExceptionPending;
         const element = fromV8Value(T, allocator, isolate, context, v8_value) catch |err| {
-            if (comptime interface_mod.argHandleIsCopied(T) or interface_mod.anyHandleIsKeptOnlyAsHandle(T)) v8.v8_Value_Dispose(v8_value);
+            if (comptime interface_mod.argHandleIsCopied(T) or interface_mod.argumentHandleIsKeptInValue(T)) v8.v8_Value_Dispose(v8_value);
             return err;
         };
         releaseElementHandle(T, element, v8_value);
@@ -434,14 +531,16 @@ pub fn fromV8Sequence(
 
 /// Release the handle `element` was converted from, when nothing refers to it
 /// any more: always for a conversion that copies (`argHandleIsCopied`), and
-/// for an `any` unless it converted to `.handle`
-/// (`anyConversionKeepsHandle`). Any other type keeps it - the conservative
-/// answer, as for an argument.
+/// for a type whose value says (`argumentHandleIsKeptInValue`: an `any`, an
+/// `object` arm, a buffer source) unless the value still refers to it
+/// (`keptArgumentHandle`). A buffer source element keeps it until the
+/// sequence is freed (`freeConvertedArg`). Any other type keeps it - the
+/// conservative answer, as for an argument.
 fn releaseElementHandle(comptime T: type, element: T, handle: *v8.Value) void {
     if (comptime interface_mod.argHandleIsCopied(T)) {
         v8.v8_Value_Dispose(handle);
-    } else if (comptime interface_mod.anyHandleIsKeptOnlyAsHandle(T)) {
-        if (!interface_mod.anyConversionKeepsHandle(T, element)) v8.v8_Value_Dispose(handle);
+    } else if (comptime interface_mod.argumentHandleIsKeptInValue(T)) {
+        if (interface_mod.keptArgumentHandle(T, element) == null) v8.v8_Value_Dispose(handle);
     }
 }
 
@@ -698,6 +797,71 @@ fn convertAllowSharedBufferSource(
     }
 
     // Unsupported type
+    return ConversionError.TypeError;
+}
+
+/// WebIDL 3.2.26, converting V to an ArrayBufferView - (Int8Array or ... or
+/// Float64Array or DataView), not [AllowShared] nor [AllowResizable]:
+///
+/// 1-2. V must be an Object with a [[TypedArrayName]] or [[DataView]] internal
+///      slot: anything else is a TypeError.
+/// 3.   IsSharedArrayBuffer(V.[[ViewedArrayBuffer]]) is a TypeError.
+/// 4.   (IsFixedLengthArrayBuffer: not checked - the FFI has no resizable
+///      predicate yet; a view over a resizable buffer converts.)
+/// 5.   "Return the IDL value of type T that is a reference to the same
+///      object as V."
+///
+/// The reference is `value` ITSELF - the handle converted from, no clone. For
+/// an argument that is the binding's `info.get(i)` Global, BORROWED for the
+/// call and released by the binding once the call returns
+/// (`interface.freeConvertedArg`); a dictionary member's or a sequence
+/// element's is the Get handle the conversion made for it, released the same
+/// way with the dictionary or sequence. Nothing about the object is read but
+/// its kind, offset and length: no context, no script.
+fn convertArrayBufferView(value: *v8.Value) ConversionError!typedefs.ArrayBufferView {
+    var info: v8.ViewInfo = undefined;
+    // Steps 1-2: a typed array or a DataView (Describe answers false for
+    // anything else, and for a kind the FFI does not know - Float16Array).
+    if (!v8.v8_ArrayBufferView_Describe(value, &info)) return ConversionError.TypeError;
+    // Step 3: not [AllowShared].
+    if (info.buffer_shared) return ConversionError.TypeError;
+    // Step 5.
+    return typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
+        ConversionError.TypeError;
+}
+
+/// WebIDL 3.2.25 for BufferSource = (ArrayBufferView or ArrayBuffer), whose
+/// flattened member types are ArrayBuffer, DataView and the typed arrays:
+///
+/// - Step 6: V has an [[ArrayBufferData]] slot and IsSharedArrayBuffer(V) is
+///   false - "the result of converting V to ArrayBuffer" (3.2.26: steps 1-2
+///   checked here, step 3 IsFixedLengthArrayBuffer not checked, see
+///   `convertArrayBufferView`; step 4 a reference to the same object).
+/// - Steps 8-9: a DataView or a typed array - `convertArrayBufferView`.
+/// - Step 7: a SharedArrayBuffer matches no member type, and like every other
+///   value (step 20) is a TypeError.
+///
+/// The IDL value is a REFERENCE (`value` itself, BORROWED: see
+/// `convertArrayBufferView`), never a copy and never a slice into the backing
+/// store. WebCrypto's encrypt, sign and digest normalize the algorithm -
+/// running script getters - BEFORE they "get a copy of the bytes held by"
+/// the data (41 WPT sites alter or transfer the buffer in such a getter), so a
+/// copy taken here would read the bytes too early, and a slice could be freed
+/// by the transfer. The impl copies at its spec's step through
+/// `engine.getCopyOfBufferSourceBytes` (a detached buffer reads as empty).
+///
+/// `.array_buffer` points at an ArrayBuffer struct allocated here (`js` the
+/// buffer, no bytes), freed with the argument (`interface.freeConvertedArg`).
+fn convertBufferSource(allocator: std.mem.Allocator, value: *v8.Value) ConversionError!typedefs.BufferSource {
+    // Step 6 (V8's IsArrayBuffer is false for a SharedArrayBuffer).
+    if (v8.v8_Value_IsArrayBuffer(value)) {
+        const buffer = try allocator.create(buffer_sources.ArrayBuffer);
+        buffer.* = .{ .data = &[_]u8{}, .detached = false, .js = @ptrCast(value) };
+        return .{ .array_buffer = buffer };
+    }
+    // Steps 8-9.
+    if (v8.v8_Value_IsArrayBufferView(value)) return .{ .array_buffer_view = try convertArrayBufferView(value) };
+    // Steps 7 and 20.
     return ConversionError.TypeError;
 }
 
@@ -1045,21 +1209,11 @@ pub fn fromV8Value(
         return try convertBodyInit(allocator, isolate, context, value);
     }
 
-    // Handle AllowSharedBufferSource - extract bytes from TypedArray/DataView/ArrayBuffer
-    // WebIDL § 3.2.26: an ArrayBufferView IDL value "is a reference to the
-    // same object as V" - so the result carries the object (an owned Global)
-    // for impls that must detach or re-view its buffer (Streams BYOB). Not
-    // [AllowShared]: a SharedArrayBuffer-backed view is a TypeError.
-    if (T == typedefs.ArrayBufferView) {
-        var info: v8.ViewInfo = undefined;
-        if (!v8.v8_ArrayBufferView_Describe(value, &info)) return ConversionError.TypeError;
-        if (info.buffer_shared) return ConversionError.TypeError;
-        const js = v8.v8_Global_Clone(value) orelse return ConversionError.TypeError;
-        return typedefs.ArrayBufferView.fromEngine(@intCast(@intFromEnum(info.kind)), info.byte_offset, info.length, js) orelse {
-            v8.v8_Global_Dispose(js);
-            return ConversionError.TypeError;
-        };
-    }
+    // WebIDL 3.2.26: a buffer source IDL value "is a reference to the same
+    // object as V" - the handle converted from, not a copy of its bytes and
+    // not a slice into its backing store (see `convertBufferSource`).
+    if (T == typedefs.ArrayBufferView) return convertArrayBufferView(value);
+    if (T == typedefs.BufferSource) return convertBufferSource(allocator, value);
 
     if (T == typedefs.AllowSharedBufferSource) {
         return try convertAllowSharedBufferSource(allocator, value);
@@ -1234,6 +1388,48 @@ pub fn fromV8Value(
             break :blk null;
         };
 
+        // Buffer source arms: BufferSource (its flattened member types are
+        // ArrayBuffer, DataView and the typed arrays) or ArrayBufferView
+        // (DataView and the typed arrays).
+        const buffer_source_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                if (field.type == typedefs.BufferSource) break :blk i;
+            }
+            break :blk null;
+        };
+        const array_buffer_view_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                if (field.type == typedefs.ArrayBufferView) break :blk i;
+            }
+            break :blk null;
+        };
+
+        // The `object` arm: codegen types IDL `object` as runtime.JSValue and
+        // names the arm `object` (AlgorithmIdentifier = (object or
+        // DOMString)). Matched on the name as well as the type: a JSValue arm
+        // under another name is something else - CryptoKeyID's and MLNumber's
+        // `bigint`.
+        const object_idx: ?usize = comptime blk: {
+            for (fields, 0..) |field, i| {
+                if (field.type == runtime.JSValue and std.mem.eql(u8, field.name, "object")) break :blk i;
+            }
+            break :blk null;
+        };
+
+        // WebIDL 3.2.25 steps 6, 8 and 9: an ArrayBuffer that is not shared,
+        // a DataView or a typed array goes to the buffer source arm, by that
+        // arm's own conversion - a view over a SharedArrayBuffer is its
+        // TypeError (3.2.26 step 3), not a reason to try the next arm.
+        if (buffer_source_idx) |idx| {
+            if (v8.v8_Value_IsArrayBuffer(value) or v8.v8_Value_IsArrayBufferView(value)) {
+                return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+            }
+        } else if (array_buffer_view_idx) |idx| {
+            if (v8.v8_Value_IsArrayBufferView(value)) {
+                return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+            }
+        }
+
         // Runtime dispatch based on V8 value type
         // Check function FIRST since functions are also objects in JavaScript.
         // WebIDL §3.2.24 step 11: a callable goes to a callback function arm
@@ -1323,6 +1519,45 @@ pub fn fromV8Value(
                 const FieldType = fields[idx].type;
                 const converted = try fromV8Value(FieldType, allocator, isolate, context, value);
                 return @unionInit(T, fields[idx].name, converted);
+            }
+        }
+
+        // WebIDL 3.2.25 steps 5.2, 6.2, 7.2, 8.2, 9.2, 10.2 and 11.7: an
+        // Object no member type above took - a plain object, an array, a
+        // callable, a platform object, a buffer - is "the IDL value that is a
+        // reference to the object V" when the union includes `object`. The
+        // reference is the argument's own handle, as an `any` argument's is:
+        // BORROWED for the call and released by the binding once it returns
+        // (`interface.releaseAnyArgument`). (`object` is not distinguishable
+        // from interface, buffer, callback, dictionary or sequence types, so a
+        // valid union has none of the arms the steps above try first.)
+        if (object_idx) |idx| {
+            if (v8.v8_Value_IsObject(value)) {
+                return @unionInit(T, fields[idx].name, runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } });
+            }
+        }
+
+        // Steps 15, 17 and 18 for an Object that no member type above took
+        // (no interface, buffer source, callback, dictionary or `object` arm
+        // matched it): converted to the string type - ToString, so its
+        // toString() runs and what it throws propagates - else the numeric
+        // type, else boolean. The instance path above does step 15 itself for
+        // a union with interface arms; this is the rest:
+        // FontFace(family, (CSSOMString or BufferSource) source, ...) given
+        // an object with a toString was a TypeError. A union with a sequence
+        // arm is left as it was: step 11.2 would take an iterable object as a
+        // sequence before step 15, and this path takes only an Array.
+        if (comptime sequence_idx == null and instance_idx == null) {
+            if (v8.v8_Value_IsObject(value)) {
+                if (string_idx) |idx| {
+                    return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+                }
+                if (number_idx) |idx| {
+                    return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+                }
+                if (boolean_idx) |idx| {
+                    return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+                }
             }
         }
 
@@ -1634,17 +1869,30 @@ pub fn fromV8Value(
                     // releases it only for a copying conversion).
                     if (comptime !interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = runtime.JSValue.jsNull;
-                } else if (comptime interface_mod.anyHandleIsKeptOnlyAsHandle(field.type)) {
-                    // An `any` member: kept only when it converted to
-                    // `.handle` (an object, function or symbol); a primitive
-                    // was copied out, and its handle goes now - the rule the
-                    // binding applies to an `any` argument.
+                } else if (comptime interface_mod.argumentHandleIsKeptInValue(field.type)) {
+                    // An `any` member, an `object` arm or a buffer source:
+                    // kept only when the value still refers to it (a `.handle`
+                    // JSValue, a buffer source's reference); a primitive was
+                    // copied out, and its handle goes now - the rule the
+                    // binding applies to such an argument. A buffer source's
+                    // goes when the dictionary is freed (`freeConvertedArg`).
                     const member = fromV8Value(field.type, allocator, isolate, context, field_v8) catch |err| {
                         v8.v8_Value_Dispose(field_v8);
                         return err;
                     };
-                    if (!interface_mod.anyConversionKeepsHandle(field.type, member)) v8.v8_Value_Dispose(field_v8);
+                    if (interface_mod.keptArgumentHandle(field.type, member) == null) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = member;
+                } else if (comptime memberIntegerConversion(T, field.name) != .modulo) {
+                    // An [EnforceRange] or [Clamp] member: its branch of
+                    // ConvertToInt, on the number before it wraps.
+                    @field(result, field.name) = try fromV8ValueInteger(
+                        field.type,
+                        comptime memberIntegerConversion(T, field.name),
+                        allocator,
+                        isolate,
+                        context,
+                        field_v8,
+                    );
                 } else {
                     // Convert field value
                     @field(result, field.name) = try fromV8Value(
@@ -2764,6 +3012,14 @@ pub fn throwDOMException(
         return;
     };
     defer v8.v8_Context_Dispose(context);
+    // The derived interface (WebIDL 2.8.3), not a DOMException named so.
+    if (isQuotaExceededError(name)) {
+        if (newQuotaExceededError(isolate, context, message)) |exception| {
+            defer v8.v8_Value_Dispose(exception);
+            v8.v8_Isolate_ThrowException(isolate, exception);
+            return;
+        }
+    }
     // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
     // `Context::Global()` returns a borrowed Local. Disposing releases OUR
     // handle; the global object itself stays rooted by the context.
@@ -2863,6 +3119,14 @@ pub fn throwDOMExceptionFromContext(
     message: []const u8,
 ) void {
     log.debug("[throwDOMExceptionFromContext] name={s}\n", .{name});
+    // The derived interface (WebIDL 2.8.3), not a DOMException named so.
+    if (isQuotaExceededError(name)) {
+        if (newQuotaExceededError(isolate, context, message)) |exception| {
+            defer v8.v8_Value_Dispose(exception);
+            v8.v8_Isolate_ThrowException(isolate, exception);
+            return;
+        }
+    }
     // Owned: `v8_Context_Global` allocates a Global<Object> where V8's own
     // `Context::Global()` returns a borrowed Local. Disposing releases OUR
     // handle; the global object itself stays rooted by the context.
@@ -2950,6 +3214,33 @@ pub fn throwDOMExceptionFromContext(
     v8.v8_Isolate_ThrowException(isolate, exception);
 }
 
+/// WebIDL 2.8.3 "Predefined DOMException derived interfaces": a
+/// QuotaExceededError is an instance of the QuotaExceededError interface
+/// (with `quota` and `requested`, here both null) - not a DOMException that is
+/// merely named so. A new one in `context`'s realm, made by its constructor
+/// (interfaces.QuotaExceededError.call_constructor, whose steps 1-2 initialize
+/// the DOMException base through the DOMException-owned hook,
+/// src/dom/dom_exceptions.zig), as its wrapper: an OWNED Global. Null when the
+/// realm is not one the engine hosts or the constructor fails.
+fn newQuotaExceededError(isolate: *v8.Isolate, context: *v8.Context, message: []const u8) ?*v8.Value {
+    const interfaces = @import("interfaces");
+    const QuotaExceededError = interfaces.QuotaExceededError;
+    const realm = @import("context_manager.zig").get(context) orelse return null;
+    const params = @typeInfo(@TypeOf(QuotaExceededError.call_constructor)).@"fn".params;
+    const Message = params[1].type.?;
+    const Options = params[2].type.?;
+    const instance = QuotaExceededError.call_constructor(realm, Message.passed(runtime.DOMString.initInterned(message)), Options.notPassed()) catch return null;
+    v8.v8_Context_Enter(context);
+    defer v8.v8_Context_Exit(context);
+    const wrapper = instanceToV8(isolate, instance);
+    if (v8.v8_Value_IsUndefined(wrapper)) return null;
+    return v8.v8_Global_Clone(wrapper);
+}
+
+fn isQuotaExceededError(name: []const u8) bool {
+    return std.mem.eql(u8, name, "QuotaExceededError");
+}
+
 /// A new DOMException named `name` with `message`, made by `context`'s
 /// DOMException constructor - the value an algorithm rejects a promise with,
 /// or stores as an abort reason, where throwDOMExceptionFromContext throws it.
@@ -2960,6 +3251,10 @@ pub fn newDOMExceptionFromContext(
     name: []const u8,
     message: []const u8,
 ) ?*v8.Value {
+    // The derived interface (WebIDL 2.8.3), not a DOMException named so.
+    if (isQuotaExceededError(name)) {
+        if (newQuotaExceededError(isolate, context, message)) |exception| return exception;
+    }
     const global = v8.v8_Context_Global(context) orelse return null;
     defer v8.v8_Object_Dispose(global);
     const key = v8.v8_String_NewFromUtf8(isolate, "DOMException", 12) orelse return null;

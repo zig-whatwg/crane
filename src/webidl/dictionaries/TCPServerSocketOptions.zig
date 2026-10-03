@@ -8,4 +8,7 @@ pub const TCPServerSocketOptions = struct {
     localPort: ?u16 = null,
     backlog: ?u32 = null,
     ipv6Only: ?bool = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "localPort", "backlog" };
 };

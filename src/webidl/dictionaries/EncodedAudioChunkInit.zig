@@ -12,4 +12,7 @@ pub const EncodedAudioChunkInit = struct {
     duration: ?u64 = null,
     data: typedefs.AllowSharedBufferSource,
     transfer: ?[]const runtime.JSValue = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "timestamp", "duration" };
 };

@@ -11,4 +11,7 @@ pub const ConstrainULongRange = struct {
 
     exact: ?u32 = null,
     ideal: ?u32 = null,
+
+    /// [Clamp] members: converted with that branch of ConvertToInt.
+    pub const clamp_members = .{ "exact", "ideal" };
 };

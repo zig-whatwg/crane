@@ -12,4 +12,7 @@ pub const UnderlyingSource = struct {
     cancel: ?callbacks.UnderlyingSourceCancelCallback = null,
     type: ?enums.ReadableStreamType = null,
     autoAllocateChunkSize: ?u64 = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"autoAllocateChunkSize"};
 };

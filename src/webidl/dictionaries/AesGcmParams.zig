@@ -13,4 +13,7 @@ pub const AesGcmParams = struct {
     iv: typedefs.BufferSource,
     additionalData: ?typedefs.BufferSource = null,
     tagLength: ?u8 = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"tagLength"};
 };

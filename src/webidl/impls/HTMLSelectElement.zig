@@ -433,12 +433,13 @@ fn isInclusiveAncestorOf(ancestor: *runtime.Instance, node: *runtime.Instance) b
 
 /// Operation: add
 /// Spec: https://html.spec.whatwg.org/multipage/common-dom-interfaces.html#dom-htmloptionscollection-add
-pub fn call_add(instance: *runtime.Instance, element: runtime.JSValue, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
-    // `element` is (HTMLOptionElement or HTMLOptGroupElement): a platform
-    // object implementing either, else a TypeError (WebIDL 3.2.24).
-    const new_option = platformObjectOf(instance, element) orelse return error.TypeError;
-    if (new_option.stateAs(interfaces.HTMLOptionElement.State) == null and
-        new_option.stateAs(interfaces.HTMLOptGroupElement.State) == null) return error.TypeError;
+pub fn call_add(instance: *runtime.Instance, element: typedefs.HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
+    // `element` is (HTMLOptionElement or HTMLOptGroupElement), converted by
+    // the binding before `before` (WebIDL 3.2.24: a platform object
+    // implementing either, else a TypeError).
+    const new_option = switch (element) {
+        inline else => |object| object,
+    };
 
     // 1. Adding an ancestor of the select would make a cycle.
     if (isInclusiveAncestorOf(new_option, instance)) return error.HierarchyRequestError;

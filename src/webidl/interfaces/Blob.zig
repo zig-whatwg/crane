@@ -157,12 +157,7 @@ pub const Blob = struct {
     }
 
     pub fn call_slice(instance: *runtime.Instance, start: webidl.Opt(i64), end: webidl.Opt(i64), contentType: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
-        // [Clamp] on start
-        const clamped_start = if (start.wasPassed()) webidl.Opt(i64).passed(runtime.clamp(i64, start.value)) else webidl.Opt(i64).notPassed();
-        // [Clamp] on end
-        const clamped_end = if (end.wasPassed()) webidl.Opt(i64).passed(runtime.clamp(i64, end.value)) else webidl.Opt(i64).notPassed();
-
-        return try BlobImpl.call_slice(instance, clamped_start, clamped_end, contentType);
+        return try BlobImpl.call_slice(instance, start, end, contentType);
     }
 
     /// Extended attributes: [NewObject]
@@ -176,6 +171,13 @@ pub const Blob = struct {
         // [NewObject] - Caller owns the returned object
         return try BlobImpl.call_stream(instance);
     }
+
+    /// WebIDL [Clamp]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const clamp = .{
+        .{ "call_slice", 0b11 },
+    };
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.

@@ -10,4 +10,7 @@ pub const AudioDecoderConfig = struct {
     sampleRate: u32,
     numberOfChannels: u32,
     description: ?typedefs.AllowSharedBufferSource = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "sampleRate", "numberOfChannels" };
 };

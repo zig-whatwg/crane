@@ -13,4 +13,7 @@ pub const IDBGetAllOptions = struct {
     /// `any` members: one present with the value null converts to `.null`,
     /// not to "not present".
     pub const any_members = .{"query"};
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"count"};
 };

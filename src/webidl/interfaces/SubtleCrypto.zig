@@ -15,7 +15,7 @@ const AlgorithmIdentifier = @import("typedefs").AlgorithmIdentifier;
 const KeyUsage = @import("enums").KeyUsage;
 const KeyFormat = @import("enums").KeyFormat;
 const BufferSource = @import("typedefs").BufferSource;
-const JsonWebKey = @import("dictionaries").JsonWebKey;
+const BufferSourceOrJsonWebKey = @import("typedefs").BufferSourceOrJsonWebKey;
 const EncapsulatedKey = @import("dictionaries").EncapsulatedKey;
 const DOMString = @import("typedefs").DOMString;
 const CryptoKey = @import("interfaces").CryptoKey;
@@ -203,7 +203,7 @@ pub const SubtleCrypto = struct {
         return try SubtleCryptoImpl.call_verify(instance, algorithm, key, signature, data);
     }
 
-    pub fn call_importKey(instance: *runtime.Instance, format: KeyFormat, keyData: runtime.JSValue, algorithm: AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
+    pub fn call_importKey(instance: *runtime.Instance, format: KeyFormat, keyData: BufferSourceOrJsonWebKey, algorithm: AlgorithmIdentifier, extractable: bool, keyUsages: runtime.JSValue) anyerror!runtime.JSValue {
         return try SubtleCryptoImpl.call_importKey(instance, format, keyData, algorithm, extractable, keyUsages);
     }
 

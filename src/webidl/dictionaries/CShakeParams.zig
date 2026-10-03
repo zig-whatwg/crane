@@ -13,4 +13,7 @@ pub const CShakeParams = struct {
     length: u32,
     functionName: ?typedefs.BufferSource = null,
     customization: ?typedefs.BufferSource = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"length"};
 };

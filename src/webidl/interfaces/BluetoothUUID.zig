@@ -110,9 +110,6 @@ pub const BluetoothUUID = struct {
     }
 
     pub fn call_static_canonicalUUID(instance: *runtime.Instance, alias: u32) anyerror!UUID {
-        // [EnforceRange] on alias
-        if (!runtime.isInRange(u32, alias)) return error.TypeError;
-
         return try BluetoothUUIDImpl.call_static_canonicalUUID(instance, alias);
     }
 
@@ -123,4 +120,11 @@ pub const BluetoothUUID = struct {
     pub fn call_static_getDescriptor(instance: *runtime.Instance, name: runtime.JSValue) anyerror!UUID {
         return try BluetoothUUIDImpl.call_static_getDescriptor(instance, name);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_static_canonicalUUID", 0b1 },
+    };
 };

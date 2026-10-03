@@ -1828,6 +1828,7 @@ fn generateInterfaceFile(
         if (own_constructors.items.len == 1) {
             // Single constructor - generate normal function
             try writer.writeConstructor(w, impl_name, own_constructors.items[0], type_reg);
+            try writer.writeConstructorIntegerConversions(w, own_constructors.items[0]);
         } else {
             // Multiple constructors - generate overloaded version with tagged union
             const ctor_set = try overload.groupConstructors(allocator, own_constructors.items);
@@ -2909,6 +2910,8 @@ pub fn generateDictionary(
     try writer.writeRestrictedMembers(w, dictionary.members, ir);
     // Which members keep a present null as `.null` (the converter reads it).
     try writer.writeAnyMembers(w, dictionary.members);
+    // Which integer members take [EnforceRange]'s or [Clamp]'s conversion.
+    try writer.writeIntegerMembers(w, dictionary.members);
 
     try w.writeAll("};\n");
 

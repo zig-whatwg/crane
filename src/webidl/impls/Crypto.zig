@@ -85,9 +85,13 @@ pub fn call_getRandomValues(instance: *runtime.Instance, array: typedefs.ArrayBu
         const bytes = try array.asBytes();
         if (bytes.len != 0) random.fill(host.io(), @constCast(bytes)) catch return error.OperationError;
     }
-    // Step 7: return the very same object. Argument-handle lifetime is the
-    // binding's responsibility; this method neither clones nor retains it.
-    return array;
+    // Step 7: return the very same object. The argument's reference is
+    // borrowed for the call, and the binding releases it before it converts
+    // the result, which is the binding's own (ArrayBufferView.jsHandle): the
+    // same object goes back over a hold of the binding's.
+    const js = array.jsValue(runtime.JSValue) orelse return array;
+    const held = try engine.retainValue(instance.ctx, js);
+    return array.withJsHandle(held.take().handle.ptr);
 }
 
 /// Operation: randomUUID

@@ -279,6 +279,14 @@ pub const WebTransport = struct {
         return try WebTransportImpl.call_createBidirectionalStream(instance, options);
     }
 
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "set_anticipatedConcurrentIncomingUnidirectionalStreams", 0b1 },
+        .{ "set_anticipatedConcurrentIncomingBidirectionalStreams", 0b1 },
+    };
+
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
