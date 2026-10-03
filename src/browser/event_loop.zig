@@ -506,3 +506,125 @@ const QueuedMicrotask = struct {
         task.callback(task.context);
     }
 };
+
+// ============================================================================
+// Tests: the idle period step, without an engine (no turn is run - a turn's
+// microtask checkpoint needs the agent).
+// ============================================================================
+
+const testing = std.testing;
+
+/// A loop over no agent: the idle period steps never reach it.
+fn testLoop() !EventLoop {
+    return EventLoop.init(@ptrFromInt(@alignOf(usize)), testing.allocator);
+}
+
+/// A window, as the idle period steps see it: its realm, and what its start
+/// steps were given.
+const TestWindow = struct {
+    realm: runtime.ContextData = undefined,
+    starts: usize = 0,
+    period: idle_periods.Period = undefined,
+
+    fn start(realm: runtime.Context, period: idle_periods.Period) void {
+        const self: *TestWindow = @fieldParentPtr("realm", realm);
+        self.starts += 1;
+        self.period = period;
+    }
+};
+
+fn noop(_: ?*anyopaque) void {}
+
+test "an idle period starts only with no task queued, for each window that asked, once" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var a: TestWindow = .{};
+    var b: TestWindow = .{};
+
+    loop.requestIdlePeriod(&a.realm, &TestWindow.start);
+    loop.requestIdlePeriod(&a.realm, &TestWindow.start);
+    loop.requestIdlePeriod(&b.realm, &TestWindow.start);
+    try testing.expectEqual(@as(usize, 2), loop.idle_requests.items.len);
+    try testing.expect(loop.hasPendingWork());
+
+    // A runnable task: the loop is not idle.
+    try loop.tasks.append(testing.allocator, .{ .callback = &noop, .context = null });
+    try testing.expect(!loop.startIdlePeriod(1_000 * std.time.ns_per_ms));
+    try testing.expectEqual(@as(usize, 0), a.starts);
+    _ = loop.tasks.orderedRemove(0);
+
+    const now: i64 = 1_000 * std.time.ns_per_ms;
+    try testing.expect(loop.startIdlePeriod(now));
+    try testing.expectEqual(@as(usize, 1), a.starts);
+    try testing.expectEqual(@as(usize, 1), b.starts);
+    // computeDeadline with no timer: the 50 ms cap.
+    try testing.expectEqual(now + EventLoop.max_idle_period_ns, a.period.end_ns);
+    try testing.expectEqual(a.period.id, b.period.id);
+    try testing.expectEqual(now, loop.last_idle_period_start_ns);
+    // Every request was answered.
+    try testing.expectEqual(@as(usize, 0), loop.idle_requests.items.len);
+    try testing.expect(!loop.startIdlePeriod(now + EventLoop.max_idle_period_ns));
+}
+
+test "the next idle period waits for the current one's deadline" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var a: TestWindow = .{};
+    const t0: i64 = 1_000 * std.time.ns_per_ms;
+
+    loop.requestIdlePeriod(&a.realm, &TestWindow.start);
+    try testing.expect(loop.startIdlePeriod(t0));
+    const first = a.period;
+    // Asked again from inside the period: it waits for the next one.
+    loop.requestIdlePeriod(&a.realm, &TestWindow.start);
+    try testing.expect(!loop.startIdlePeriod(t0 + 10 * std.time.ns_per_ms));
+    try testing.expectEqual(@as(?u64, 40), loop.idleWaitMs(t0 + 10 * std.time.ns_per_ms));
+    try testing.expect(loop.startIdlePeriod(t0 + EventLoop.max_idle_period_ns));
+    try testing.expectEqual(@as(usize, 2), a.starts);
+    try testing.expect(a.period.id > first.id);
+}
+
+test "the next timer brings an idle period's deadline forward" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var a: TestWindow = .{};
+    const mgr = loop.timer_manager.?;
+    const id = mgr.setTimeout(20, &noop, null);
+    defer _ = mgr.clearTimeout(id);
+
+    const now = monotonicNs();
+    loop.requestIdlePeriod(&a.realm, &TestWindow.start);
+    try testing.expect(loop.startIdlePeriod(now));
+    const end = a.period.end_ns;
+    try testing.expect(end <= now + 20 * std.time.ns_per_ms);
+    try testing.expect(end < now + EventLoop.max_idle_period_ns);
+    // Asked again, the deadline is no later than it was.
+    try testing.expect(loop.idleDeadline(a.period) <= end);
+    // A timer armed during the period, due sooner, brings it forward.
+    const sooner = mgr.setTimeout(1, &noop, null);
+    defer _ = mgr.clearTimeout(sooner);
+    try testing.expect(loop.idleDeadline(a.period) <= monotonicNs() + 1 * std.time.ns_per_ms);
+}
+
+test "work a frame long keeps idle periods away for a frame" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var a: TestWindow = .{};
+    const ms = std.time.ns_per_ms;
+
+    // Short work changes nothing.
+    loop.noteWork(1_000 * ms, 1_005 * ms);
+    loop.requestIdlePeriod(&a.realm, &TestWindow.start);
+    try testing.expect(loop.startIdlePeriod(1_005 * ms));
+
+    // Long work: none until a frame after it ends.
+    loop.noteWork(2_000 * ms, 2_020 * ms);
+    loop.requestIdlePeriod(&a.realm, &TestWindow.start);
+    try testing.expect(!loop.startIdlePeriod(2_030 * ms));
+    try testing.expectEqual(@as(?u64, 6), loop.idleWaitMs(2_030 * ms));
+    try testing.expect(loop.startIdlePeriod(2_036 * ms));
+}
+
+test "a task with no document is runnable" {
+    try testing.expect(EventLoop.isRunnable(.{ .callback = &noop, .context = null }));
+}
