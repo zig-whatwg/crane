@@ -668,6 +668,8 @@ pub const WorkerHost = struct {
     /// The worker's agent - its own, separate from its owner's - made with
     /// this host's hooks (`worker_hooks`).
     agent: *runtime.Agent,
+    /// Per-agent state shared by the HTML checkpoint hooks and IndexedDB.
+    agent_host: html_core.agent_host.AgentHost,
 
     /// The worker's realm: its runtime context, which every Instance created
     /// in it points at - the global scope first. Null until the global scope
@@ -809,15 +811,18 @@ pub const WorkerHost = struct {
         const url_copy = try allocator.dupe(u8, script_url);
         errdefer allocator.free(url_copy);
 
-        // The hooks are called with this host, so it exists first.
+        // The hooks share an AgentHost, embedded before the agent exists.
+        self.agent_host = html_core.agent_host.AgentHost.init(allocator);
+        errdefer self.agent_host.deinit();
         const agent = try engine.createAgent(.{
             .can_block = true,
             .from_snapshot = false,
             .hooks = &worker_hooks,
-            .host = self,
+            .host = &self.agent_host,
         });
         self.* = .{
             .agent = agent,
+            .agent_host = self.agent_host,
             .script_url = url_copy,
             .worker_type = worker_type,
             .policy_container = fetch_mod.internal.PolicyContainer.init(allocator),
@@ -1233,6 +1238,7 @@ pub const WorkerHost = struct {
         self.disposeModules();
         self.freeClassicScripts();
         self.policy_container.deinit();
+        self.agent_host.deinit();
         self.allocator.free(self.script_url);
         self.allocator.destroy(self);
     }
@@ -2440,7 +2446,7 @@ const worker_hooks: engine.HostHooks = .{
     // at the worker's global scope. A worker agent had neither, so no worker
     // ever heard one.
     .promiseRejectionTracker = rejected_promises.hooks.promiseRejectionTracker,
-    .afterMicrotaskCheckpoint = rejected_promises.hooks.afterMicrotaskCheckpoint,
+    .afterMicrotaskCheckpoint = @import("microtask_checkpoint.zig").afterMicrotaskCheckpoint,
 };
 
 /// A worker's module evaluation promise, waiting to settle. Its host
@@ -2480,7 +2486,8 @@ const PendingModuleEvaluation = struct {
 /// `base_url` in the worker whose realm is `realm` (a worker global's import
 /// map is empty). OWNED (`allocator`), or null for the TypeError.
 fn importMetaResolve(host: ?*anyopaque, realm: runtime.Context, base_url: []const u8, specifier: []const u8, allocator: Allocator) ?[]u8 {
-    const self: *WorkerHost = @ptrCast(@alignCast(host orelse return null));
+    const agent_host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(host orelse return null));
+    const self: *WorkerHost = @fieldParentPtr("agent_host", agent_host);
     if (self.realm != realm) return null;
     const env = self.moduleEnvironment() orelse return null;
     const url = module_script.resolve(&env, specifier, base_url) orelse return null;
@@ -2515,8 +2522,9 @@ fn loadImportedModule(
     type_attribute: ?[]const u8,
     request: *engine.ImportRequest,
 ) void {
-    const self: *WorkerHost = @ptrCast(@alignCast(host orelse
+    const agent_host: *html_core.agent_host.AgentHost = @ptrCast(@alignCast(host orelse
         return finishImportWithTypeError(realm, request, "import() is not supported here")));
+    const self: *WorkerHost = @fieldParentPtr("agent_host", agent_host);
     // Only the worker's own realm has its settings object.
     if (self.realm != realm or !self.runsTasks())
         return finishImportWithTypeError(realm, request, "import() in a worker that has ended");

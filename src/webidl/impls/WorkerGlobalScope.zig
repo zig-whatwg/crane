@@ -71,6 +71,12 @@ pub const InternalState = struct {
         value: *runtime.Instance,
         edge: same_object.Traced = .{ .slot = .{ .name = "crypto" } },
     } = null,
+    /// IndexedDB 4.3: one factory owned by this worker global's traced graph.
+    indexed_db: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: same_object.Traced = .{ .slot = .{ .name = "indexedDB" } },
+    } = null,
 
     /// Reference to the worker's event loop (for timer APIs)
     /// This is set when the worker is fully initialized with an event loop.
@@ -103,6 +109,7 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState) void {
+        if (self.indexed_db) |*factory| factory.edge.release(factory.owner);
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         // The WorkerLocation and WorkerNavigator objects are the wrapper
         // cache's: they are freed with it, not here. Only the pins are ours.
@@ -168,6 +175,7 @@ pub fn installHooks() void {
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .crypto = &settingsCrypto,
+        .indexed_db = &settingsIndexedDB,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
     });
@@ -188,8 +196,8 @@ fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").Cooki
 
 // ============================================================================
 // This worker's environment settings, for the WindowOrWorkerGlobalScope mixin
-// (dom.global_settings). A worker has no IDBFactory, CacheStorage or
-// Performance of its own yet.
+// (dom.global_settings). A worker has no CacheStorage or Performance of its
+// own yet.
 // ============================================================================
 
 fn isWorkerGlobalScope(global: *runtime.Instance) bool {
@@ -224,6 +232,15 @@ fn settingsCrypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
     internal.crypto = .{ .owner = instance, .value = crypto };
     internal.crypto.?.edge.hold(instance, crypto);
     return crypto;
+}
+
+fn settingsIndexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    if (internal.indexed_db) |factory| return factory.value;
+    const factory = try interfaces.IDBFactory.init(internal.allocator, instance.ctx);
+    internal.indexed_db = .{ .owner = instance, .value = factory };
+    internal.indexed_db.?.edge.hold(instance, factory);
+    return factory;
 }
 
 /// Initialize with worker URL and type
