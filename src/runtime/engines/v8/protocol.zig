@@ -155,6 +155,10 @@ pub fn destroyAgent(agent: *Agent) void {
     worker_realm.destroyAgent(agent);
 }
 
+pub fn agentHost(agent: *Agent) ?*anyopaque {
+    return protocol_agents.agentHost(agent);
+}
+
 pub fn hasRunningScript(agent: *Agent) bool {
     return worker_realm.hasRunningScript(agent);
 }
@@ -312,6 +316,10 @@ pub const getProperty = protocol_values.getProperty;
 pub const setProperty = protocol_values.setProperty;
 pub const defineOwnProperty = protocol_values.defineOwnProperty;
 pub const hasProperty = protocol_values.hasProperty;
+pub const hasOwnProperty = protocol_values.hasOwnProperty;
+pub const thisTimeValue = protocol_values.thisTimeValue;
+pub const isArrayExoticObject = protocol_values.isArrayExoticObject;
+pub const createDate = protocol_values.createDate;
 pub const typeOf = protocol_values.typeOf;
 pub const sameValue = protocol_values.sameValue;
 pub const toBoolean = protocol_values.toBoolean;
@@ -344,6 +352,7 @@ pub fn throwValue(realm: Context, value: JSValue) Error!void {
 pub const completionOf = @import("protocol_completion.zig").completionOf;
 
 pub const parseJsonToValue = protocol_values.parseJsonToValue;
+pub const parseJsonInNewGlobal = protocol_values.parseJsonInNewGlobal;
 pub const serializeJsonToBytes = protocol_values.serializeJsonToBytes;
 
 // ============================================================================
@@ -392,6 +401,10 @@ pub fn convertToRecordOfStrings(realm: Context, value: JSValue, keys: engine.Str
 
 pub fn getCopyOfBufferSourceBytes(realm: Context, value: JSValue, allocator: Allocator) Error!?[]u8 {
     return webidl_conversions.getCopyOfBufferSourceBytes(realm, value, allocator) catch |err| protocolError(err);
+}
+
+pub fn getCopyOfAllowSharedBufferSourceBytes(realm: Context, value: JSValue, allocator: Allocator) Error!?[]u8 {
+    return webidl_conversions.getCopyOfAllowSharedBufferSourceBytes(realm, value, allocator) catch |err| protocolError(err);
 }
 
 const protocol_conversions = @import("protocol_conversions.zig");

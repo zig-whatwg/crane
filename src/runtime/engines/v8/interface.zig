@@ -299,11 +299,13 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
         if (T == *runtime.CallbackWrapper) break :blk false;
         if (info == .pointer and info.pointer.size == .one and @typeInfo(info.pointer.child) == .@"fn") break :blk false;
 
-        // Buffer sources are views over V8 backing stores, made without the
-        // context (convertAllowSharedBufferSource ignores it, and body
-        // conversion never produces BufferSource's arm at all). Whether the
-        // ARGUMENT handle may go is argHandleIsCopied's question, not this one.
-        if (T == webidl.BufferSource or T == webidl.AllowSharedBufferSource) break :blk false;
+        // Buffer sources are made without the context: a BufferSource or an
+        // ArrayBufferView is a reference to its object (conv.convertBufferSource
+        // reads the kind and the view's Describe, nothing else), and
+        // AllowSharedBufferSource a view over the backing store
+        // (convertAllowSharedBufferSource ignores it). Whether the ARGUMENT
+        // handle may go is argHandleIsCopied's question, not this one.
+        if (T == webidl.BufferSource or T == webidl.ArrayBufferView or T == webidl.AllowSharedBufferSource) break :blk false;
 
         // A self-referential dictionary would recurse without end; past this
         // depth, give the safe answer.
@@ -389,6 +391,12 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // JSValue keeps the pointer it was given (see the test that pins it).
         if (T == runtime.JSValue) break :blk false;
 
+        // A buffer source IS a reference to the object it was converted from:
+        // the handle itself (conv.convertBufferSource), released with the
+        // value (`bufferHandleIsKeptInValue`). Named before the structural
+        // rules, which must never get to call it copied.
+        if (T == webidl.BufferSource or T == webidl.ArrayBufferView) break :blk false;
+
         // A wrapped platform object: the conversion returns the Instance from
         // the wrapper's internal field, and the argument's own handle is not
         // referred to again.
@@ -431,10 +439,12 @@ pub fn argHandleIsCopied(comptime T: type) bool {
 }
 
 /// A dictionary member's conversion may alias the handle Get made for that
-/// member - a JSValue does - but never the dictionary's own.
+/// member - a JSValue does, so does a buffer source (a reference to its
+/// object) or an `object` arm - but never the dictionary's own.
 fn memberHandleIsSafe(comptime T: type) bool {
     if (argHandleIsCopied(T)) return true;
     if (T == runtime.JSValue) return true;
+    if (argumentHandleIsKeptInValue(T)) return true;
     const info = @typeInfo(T);
     if (info == .optional) return memberHandleIsSafe(info.optional.child);
     return false;
@@ -456,10 +466,16 @@ fn memberHandleIsSafe(comptime T: type) bool {
 /// handle or a wrapper, an ArrayBufferView its buffer's - releasing any of
 /// them is a use-after-free. So a type not named here answers FALSE: keep
 /// the handle, keep the leak.
+///
+/// One more is listed: an ArrayBufferView, which conv.toV8Value hands back as
+/// its `js` - a handle the impl handed over. A view result is the binding's,
+/// as a JSValue result's handle is (ArrayBufferView.jsHandle): an impl that
+/// returns a view it keeps (ReadableStreamBYOBRequest.view) or was given
+/// (Crypto.getRandomValues) returns it over a hold of its own.
 pub fn getterValueIsOwned(comptime T: type) bool {
     const owned = [_]type{
-        u8,                u16,                u32,               i8,   i16,  i32, u64, i64, f32, f64, bool,
-        runtime.DOMString, ?runtime.DOMString, runtime.USVString, ?u64, ?i64,
+        u8,                u16,                u32,               i8,   i16,  i32,                    u64, i64, f32, f64, bool,
+        runtime.DOMString, ?runtime.DOMString, runtime.USVString, ?u64, ?i64, webidl.ArrayBufferView,
     };
     inline for (owned) |O| {
         if (T == O) return true;
@@ -576,23 +592,28 @@ pub fn freeBodyInitArg(allocator: std.mem.Allocator, arg: copied_arg_types.BodyI
 /// free-it behaviour, so adding a second non-owning conversion without adding
 /// it here reintroduces the abort.
 pub fn argConversionIsNonOwning(comptime T: type) bool {
-    return T == webidl.buffer_sources.AllowSharedBufferSource or
-        T == webidl.buffer_sources.BufferSource;
+    // BufferSource was listed here while its conversion failed for every
+    // value; it is now a reference to its object (`conv.convertBufferSource`),
+    // which the argument owns until it is freed (`freeConvertedArg`).
+    return T == webidl.buffer_sources.AllowSharedBufferSource;
 }
 
-/// The buffer-source unions `argConversionIsNonOwning` recognises, re-exported
-/// so `tests/v8` can name them: that test target imports `clock`, `host`,
+/// The buffer-source types the ownership rules name, re-exported so
+/// `tests/v8` can name them: that test target imports `clock`, `host`,
 /// `runtime` and `v8`, but not `webidl`.
 pub const non_owning_arg_types = struct {
     pub const AllowSharedBufferSource = webidl.buffer_sources.AllowSharedBufferSource;
     pub const BufferSource = webidl.buffer_sources.BufferSource;
+    pub const ArrayBufferView = webidl.buffer_sources.ArrayBufferView;
 };
 
 /// `conv.fromV8Value`, releasing the argument handle afterwards when
-/// `argHandleIsCopied` can prove that is safe - or, for an `any`
-/// (`anyHandleIsKeptOnlyAsHandle`), when the value it converted to proves it
-/// (`anyConversionKeepsHandle`). The release fires on the error path too,
-/// which is where the handle would otherwise be lost silently.
+/// `argHandleIsCopied` can prove that is safe - or, for a type whose value
+/// says whether it still refers to the handle (`argumentHandleIsKeptInValue`:
+/// an `any`, an `object` union arm, a buffer source), when the value it
+/// converted to proves it (`keptArgumentHandle` is null). The release fires
+/// on the error path too, which is where the handle would otherwise be lost
+/// silently: a failed conversion made nothing that refers to it.
 pub fn convertArgReleasing(
     comptime T: type,
     allocator: std.mem.Allocator,
@@ -600,48 +621,128 @@ pub fn convertArgReleasing(
     context: *v8.Context,
     arg: *v8.Value,
 ) !T {
+    return convertArgReleasingAs(T, .modulo, allocator, isolate, context, arg);
+}
+
+/// `convertArgReleasing`, with an integer argument's ConvertToInt branch:
+/// [EnforceRange] or [Clamp] (`conv.fromV8ValueInteger`), as codegen's
+/// `enforce_range` / `clamp` tables name the argument.
+pub fn convertArgReleasingAs(
+    comptime T: type,
+    comptime integer: conv.IntegerConversion,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    arg: *v8.Value,
+) !T {
     if (comptime argHandleIsCopied(T)) {
         defer v8.v8_Value_Dispose(arg);
-        return conv.fromV8Value(T, allocator, isolate, context, arg);
+        return conv.fromV8ValueInteger(T, integer, allocator, isolate, context, arg);
     }
-    const value = conv.fromV8Value(T, allocator, isolate, context, arg) catch |err| {
-        // A failed `any` conversion made nothing that could refer to it.
-        if (comptime anyHandleIsKeptOnlyAsHandle(T)) v8.v8_Value_Dispose(arg);
+    const value = conv.fromV8ValueInteger(T, integer, allocator, isolate, context, arg) catch |err| {
+        if (comptime argumentHandleIsKeptInValue(T)) v8.v8_Value_Dispose(arg);
         return err;
     };
-    if (comptime anyHandleIsKeptOnlyAsHandle(T)) {
-        if (!anyConversionKeepsHandle(T, value)) v8.v8_Value_Dispose(arg);
+    if (comptime argumentHandleIsKeptInValue(T)) {
+        if (keptArgumentHandle(T, value) == null) v8.v8_Value_Dispose(arg);
     }
     return value;
 }
 
+/// Is `T` a type whose conversion can keep its argument's handle in exactly
+/// one place, recoverable from the value - so that the VALUE says whether the
+/// handle is still in use (`keptArgumentHandle`)? An ALLOWLIST, as
+/// `argHandleIsCopied` is: anything else keeps the conservative answer (keep
+/// the handle). Two families, released in different places once the call
+/// returns:
+///
+/// - `anyHandleIsKeptOnlyAsHandle`: an `any`, or a union whose only
+///   non-copying arm is `object` - a `.handle` JSValue over the argument's
+///   own Global. Released by `releaseAnyArgument`, for an operation's or a
+///   constructor's argument.
+/// - `bufferHandleIsKeptInValue`: a BufferSource or ArrayBufferView, or a
+///   union whose only non-copying arms are buffer sources - a reference to
+///   the object (WebIDL 3.2.26), the Global it was converted from. Released
+///   with the value itself (`freeConvertedArg`), wherever it sits: an
+///   argument, a dictionary member, a sequence element.
+///
+/// Never true of a type `argHandleIsCopied` accepts - a conversion that copies
+/// keeps nothing - so a caller that releases a copied type's handle and also
+/// asks this question cannot release it twice. BodyInit is the case that
+/// bit: its XMLHttpRequestBodyInit arm holds a BufferSource, but
+/// convertBodyInit copies the bytes, and a RequestInit's `body` member was
+/// released by the dictionary loop's copied rule AND by this one (every
+/// `fetch(url, init)` crashed).
+pub fn argumentHandleIsKeptInValue(comptime T: type) bool {
+    if (comptime argHandleIsCopied(T)) return false;
+    return anyHandleIsKeptOnlyAsHandle(T) or bufferHandleIsKeptInValue(T);
+}
+
+/// The argument handle `value` still refers to, if it does, for a `T` that
+/// `argumentHandleIsKeptInValue` accepts.
+pub fn keptArgumentHandle(comptime T: type, value: T) ?*anyopaque {
+    comptime std.debug.assert(argumentHandleIsKeptInValue(T));
+    if (comptime anyHandleIsKeptOnlyAsHandle(T)) return anyArgumentHandle(T, value);
+    return bufferArgumentHandle(T, value);
+}
+
+/// `T` is a `webidl.Opt` wrapper.
+fn isOptWrapper(comptime T: type) bool {
+    return @typeInfo(T) == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed");
+}
+
+/// The union arm `name` of `T` is WebIDL's `object`: codegen types `object`
+/// as runtime.JSValue and names the arm for it (`conv.fromV8Value`'s union
+/// path matches the same way). A JSValue arm under another name is not one -
+/// CryptoKeyID's and MLNumber's `bigint`.
+fn isObjectArm(comptime T: type, comptime name: []const u8) bool {
+    return @FieldType(T, name) == runtime.JSValue and std.mem.eql(u8, name, "object");
+}
+
 /// Is `T` an `any` - `runtime.JSValue`, nullable, or a `webidl.Opt` of
-/// either - whose conversion can keep its argument's handle in exactly one
-/// place: a `.handle` JSValue?
+/// either - or a union whose `object` arm is its only non-copying arm (or a
+/// nullable or optional one), so that its conversion can keep its argument's
+/// handle in exactly one place: a `.handle` JSValue?
 ///
 /// `conv.fromV8Value`'s JSValue branch makes undefined, null, a boolean or a
 /// number into a Zig value, a string into an owned copy (`.string`), and ONLY
 /// an object, function or symbol into `.handle` over the very handle it was
 /// given ("the argument's own handle ... which the impl borrows for the
-/// call"). A nullable one converts null and undefined to null; a `webidl.Opt`
-/// one converts undefined to "not passed". So for these shapes the value
-/// converted says whether the handle is still referred to - ownership read off
-/// the conversion, not the type (see `argConversionIsNonOwning`).
+/// call"). Its union path gives an `object` arm the same `.handle` (WebIDL
+/// 3.2.25: "the IDL value that is a reference to the object V"), and every
+/// other arm here copies out (`argHandleIsCopied`). A nullable one converts
+/// null and undefined to null; a `webidl.Opt` one converts undefined to "not
+/// passed". So for these shapes the value converted says whether the handle
+/// is still referred to - ownership read off the conversion, not the type
+/// (see `argConversionIsNonOwning`).
 ///
-/// An ALLOWLIST of those four shapes: a union or dictionary that merely
-/// contains an `any` keeps the conservative answer (false: keep the handle).
+/// An ALLOWLIST of those shapes: a union whose JSValue arm is NOT named
+/// `object`, or a dictionary or sequence that merely contains an `any`, keeps
+/// the conservative answer (false: keep the handle).
 pub fn anyHandleIsKeptOnlyAsHandle(comptime T: type) bool {
-    if (T == runtime.JSValue or T == ?runtime.JSValue) return true;
-    if (@typeInfo(T) == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed")) {
-        const Inner = @FieldType(T, "value");
-        return Inner == runtime.JSValue or Inner == ?runtime.JSValue;
-    }
-    return false;
+    return comptime blk: {
+        if (T == runtime.JSValue) break :blk true;
+        const info = @typeInfo(T);
+        if (info == .optional) break :blk anyHandleIsKeptOnlyAsHandle(info.optional.child);
+        if (isOptWrapper(T)) break :blk anyHandleIsKeptOnlyAsHandle(@FieldType(T, "value"));
+        if (info == .@"union" and info.@"union".tag_type != null) {
+            var objects = 0;
+            for (info.@"union".fields) |field| {
+                if (isObjectArm(T, field.name)) {
+                    objects += 1;
+                } else if (!argHandleIsCopied(field.type)) {
+                    break :blk false;
+                }
+            }
+            break :blk objects > 0;
+        }
+        break :blk false;
+    };
 }
 
 /// Whether `value`, converted from an argument handle as a `T` that
 /// `anyHandleIsKeptOnlyAsHandle` accepts, still refers to that handle: true
-/// exactly for a `.handle` JSValue.
+/// exactly for a `.handle` JSValue (an `object` arm's included).
 pub fn anyConversionKeepsHandle(comptime T: type, value: T) bool {
     return anyArgumentHandle(T, value) != null;
 }
@@ -651,14 +752,24 @@ pub fn anyConversionKeepsHandle(comptime T: type, value: T) bool {
 pub fn anyArgumentHandle(comptime T: type, value: T) ?*anyopaque {
     comptime std.debug.assert(anyHandleIsKeptOnlyAsHandle(T));
     if (T == runtime.JSValue) return if (value == .handle) value.handle.ptr else null;
-    if (T == ?runtime.JSValue) return if (value) |v| anyArgumentHandle(runtime.JSValue, v) else null;
-    if (!value.was_passed) return null;
-    return anyArgumentHandle(@FieldType(T, "value"), value.value);
+    const info = @typeInfo(T);
+    if (info == .optional) return if (value) |v| anyArgumentHandle(info.optional.child, v) else null;
+    if (comptime isOptWrapper(T)) {
+        if (!value.was_passed) return null;
+        return anyArgumentHandle(@FieldType(T, "value"), value.value);
+    }
+    switch (value) {
+        inline else => |payload, tag| {
+            if (comptime isObjectArm(T, @tagName(tag))) return anyArgumentHandle(runtime.JSValue, payload);
+            return null;
+        },
+    }
 }
 
-/// Release an operation's or a constructor's `any` argument once the call is
-/// over: the handle `info.get` made, which a `.handle` still refers to (a
-/// primitive's went at conversion, `convertArgReleasing`).
+/// Release an operation's or a constructor's `any` argument - or its
+/// `object` union arm - once the call is over: the handle `info.get` made,
+/// which a `.handle` still refers to (a primitive's went at conversion,
+/// `convertArgReleasing`).
 ///
 /// The argument is BORROWED for the call (AGENTS.md "The engine boundary",
 /// rule 3): an impl that keeps it takes a hold of its own first
@@ -667,13 +778,99 @@ pub fn anyArgumentHandle(comptime T: type, value: T) ?*anyopaque {
 /// that kept the argument - IDBKeyRange's factories, XSLTProcessor's
 /// setParameter, ShadowRoot's adoptedStyleSheets setter - take their own
 /// hold now). Kept, it was one Global per call for the process's life.
+/// `object` arms reached the impls only once their conversion was written
+/// (2026-10-02): AlgorithmIdentifier's, which SubtleCrypto reads during the
+/// call (normalize an algorithm) and never keeps.
 ///
 /// Arguments only: an attribute setter's value, a dictionary's `any` member
 /// and a sequence's element keep today's conservative answer (kept) until
-/// their keepers are read the same way.
+/// their keepers are read the same way. A buffer source is released with the
+/// value instead, by `freeConvertedArg`.
 pub fn releaseAnyArgument(comptime T: type, value: T) void {
     if (comptime !anyHandleIsKeptOnlyAsHandle(T)) return;
     if (anyArgumentHandle(T, value)) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
+}
+
+/// Is `T` a buffer source whose conversion keeps, as the IDL value's
+/// reference to its object (WebIDL 3.2.26), the handle it was converted
+/// from: BufferSource or ArrayBufferView, nullable or a `webidl.Opt` of
+/// either, or a union whose only non-copying arms are buffer sources?
+///
+/// `conv.convertBufferSource` and `conv.convertArrayBufferView` return the
+/// handle they were given as `js` - no clone, no copy of the bytes - and fail
+/// for anything else, keeping nothing. The value says which: a view, an
+/// ArrayBuffer struct, or null / not passed / a copying union arm.
+///
+/// Such a handle is the VALUE's until it is freed: `freeConvertedArg` releases
+/// it, for an argument once the call returns, for a dictionary member or a
+/// sequence element with its dictionary or sequence. The impl BORROWS it for
+/// the call; one that keeps the object past it takes a hold of its own
+/// (`engine.retainValue`). Every impl that took an ArrayBufferView argument
+/// was read for that (2026-10-02): the streams' BYOB read, enqueue and
+/// respondWithNewView disposed it themselves when the value owned a clone,
+/// and now borrow it; the rest (WebGL, RTCDataChannel, PresentationConnection,
+/// Crypto) never kept it. No impl received a BufferSource before - its
+/// conversion was a TypeError for every value.
+pub fn bufferHandleIsKeptInValue(comptime T: type) bool {
+    return comptime blk: {
+        if (T == webidl.BufferSource or T == webidl.ArrayBufferView) break :blk true;
+        // A conversion that copies keeps nothing (BodyInit: convertBodyInit
+        // copies its buffer).
+        if (argHandleIsCopied(T)) break :blk false;
+        const info = @typeInfo(T);
+        if (info == .optional) break :blk bufferHandleIsKeptInValue(info.optional.child);
+        if (isOptWrapper(T)) break :blk bufferHandleIsKeptInValue(@FieldType(T, "value"));
+        if (info == .@"union" and info.@"union".tag_type != null) {
+            var buffers = 0;
+            for (info.@"union".fields) |field| {
+                if (bufferHandleIsKeptInValue(field.type)) {
+                    buffers += 1;
+                } else if (!argHandleIsCopied(field.type)) {
+                    break :blk false;
+                }
+            }
+            break :blk buffers > 0;
+        }
+        break :blk false;
+    };
+}
+
+/// The handle `value` refers to as a buffer source, if it does, for a `T`
+/// that `bufferHandleIsKeptInValue` accepts.
+pub fn bufferArgumentHandle(comptime T: type, value: T) ?*anyopaque {
+    comptime std.debug.assert(bufferHandleIsKeptInValue(T));
+    if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return value.jsHandle();
+    const info = @typeInfo(T);
+    if (info == .optional) return if (value) |v| bufferArgumentHandle(info.optional.child, v) else null;
+    if (comptime isOptWrapper(T)) {
+        if (!value.was_passed) return null;
+        return bufferArgumentHandle(@FieldType(T, "value"), value.value);
+    }
+    switch (value) {
+        inline else => |payload| {
+            if (comptime bufferHandleIsKeptInValue(@TypeOf(payload))) return bufferArgumentHandle(@TypeOf(payload), payload);
+            return null;
+        },
+    }
+}
+
+/// Free a converted buffer source: release the reference it holds (the
+/// handle it was converted from, see `bufferHandleIsKeptInValue`) and, for an
+/// ArrayBuffer, the struct `conv.convertBufferSource` allocated for it. A
+/// value made in Zig (`js` null) holds no handle; an ArrayBuffer struct of
+/// one is its maker's.
+pub fn freeBufferSourceArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
+    if (T == webidl.ArrayBufferView) {
+        if (arg.jsHandle()) |handle| v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
+        return;
+    }
+    switch (arg) {
+        .array_buffer => |buffer| if (buffer.js) |handle| {
+            v8.v8_Value_Dispose(@ptrCast(@alignCast(handle)));
+            allocator.destroy(buffer);
+        },
+        .array_buffer_view => |view| freeBufferSourceArg(webidl.ArrayBufferView, allocator, view),
+    }
 }
 
 /// WebIDL [LegacyNullToEmptyString] (3.3.23): the arguments of `fn_name` -
@@ -740,6 +937,63 @@ pub fn restrictedFloatMask(comptime Interface: type, comptime fn_name: []const u
 
 fn restrictedBit(comptime mask: u32, comptime index: usize) bool {
     return index < 32 and (mask >> @intCast(index)) & 1 != 0;
+}
+
+/// WebIDL [EnforceRange] and [Clamp] (3.3.6, 3.3.3): the arguments of
+/// `fn_name` - bit i for argument i, bit 0 for an attribute setter's value -
+/// whose integer conversion takes ConvertToInt's step 6 or 7 instead of
+/// wrapping. Codegen writes the tables (`enforce_range`, `clamp`) from the
+/// IDL; the binding converts with the branch (`conv.fromV8ValueInteger`) on
+/// the number itself, before anything wraps - an optional argument left out
+/// is not passed, never a TypeError.
+pub fn integerConversionMask(comptime Interface: type, comptime fn_name: []const u8, comptime which: conv.IntegerConversion) u32 {
+    const table = switch (which) {
+        .enforce_range => if (@hasDecl(Interface, "enforce_range")) Interface.enforce_range else return 0,
+        .clamp => if (@hasDecl(Interface, "clamp")) Interface.clamp else return 0,
+        .modulo => return 0,
+    };
+    inline for (table) |entry| {
+        if (comptime std.mem.eql(u8, entry[0], fn_name)) return entry[1];
+    }
+    return 0;
+}
+
+/// The constructor's [EnforceRange] and [Clamp] arguments (codegen's
+/// `constructor_enforce_range` / `constructor_clamp` masks).
+fn constructorIntegerConversion(comptime Interface: type, comptime index: usize) conv.IntegerConversion {
+    if (@hasDecl(Interface, "constructor_enforce_range") and restrictedBit(Interface.constructor_enforce_range, index)) return .enforce_range;
+    if (@hasDecl(Interface, "constructor_clamp") and restrictedBit(Interface.constructor_clamp, index)) return .clamp;
+    return .modulo;
+}
+
+/// Per-argument conversion steps codegen's tables add to an operation's
+/// arguments: the restricted float check and the integer branch.
+pub const ArgModes = struct {
+    restricted: u32 = 0,
+    enforce_range: u32 = 0,
+    clamp: u32 = 0,
+};
+
+/// One argument's: whether it is a restricted float, and its ConvertToInt
+/// branch.
+const ArgMode = struct {
+    restricted: bool = false,
+    integer: conv.IntegerConversion = .modulo,
+};
+
+fn argModesOf(comptime Interface: type, comptime fn_name: []const u8) ArgModes {
+    return .{
+        .restricted = restrictedFloatMask(Interface, fn_name),
+        .enforce_range = integerConversionMask(Interface, fn_name, .enforce_range),
+        .clamp = integerConversionMask(Interface, fn_name, .clamp),
+    };
+}
+
+fn argMode(comptime modes: ArgModes, comptime index: usize) ArgMode {
+    return .{
+        .restricted = restrictedBit(modes.restricted, index),
+        .integer = if (restrictedBit(modes.enforce_range, index)) .enforce_range else if (restrictedBit(modes.clamp, index)) .clamp else .modulo,
+    };
 }
 
 /// `value` itself, or - when it is null and [LegacyNullToEmptyString] applies -
@@ -3292,7 +3546,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         webidl_param_count,
                         ReturnType,
                         comptime legacyNullToEmptyMask(Interface, zig_name),
-                        comptime restrictedFloatMask(Interface, zig_name),
+                        comptime argModesOf(Interface, zig_name),
                         instance,
                         info,
                         allocator,
@@ -3368,8 +3622,11 @@ pub fn V8Interface(comptime Interface: type) type {
             if (argConversionIsNonOwning(T)) return false;
             // BodyInit: freed by arm, as its conversion allocated it - before
             // the union rule below, which would take its copied BufferSource
-            // arm for a view (`freeBodyInitArg`).
+            // arm for a reference (`freeBodyInitArg`).
             if (T == copied_arg_types.BodyInit) return true;
+            // A buffer source holds the handle it refers to, and an
+            // ArrayBuffer the struct made for it (`freeBufferSourceArg`).
+            if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return true;
             // Raw string slice - allocated by fromV8Value
             if (T == []const u8) return true;
             // DOMString - allocated by fromV8String
@@ -3428,14 +3685,14 @@ pub fn V8Interface(comptime Interface: type) type {
         /// argument's own conversion, so no later argument is converted first.
         fn convertArg(
             comptime T: type,
-            comptime restricted_arg: bool,
+            comptime mode: ArgMode,
             allocator: std.mem.Allocator,
             isolate: *v8.Isolate,
             context: *v8.Context,
             arg: *v8.Value,
         ) !T {
-            const value = try convertArgReleasing(T, allocator, isolate, context, arg);
-            if (comptime restricted_arg) {
+            const value = try convertArgReleasingAs(T, mode.integer, allocator, isolate, context, arg);
+            if (comptime mode.restricted) {
                 conv.requireFinite(T, value) catch |err| {
                     freeConvertedArg(T, allocator, value);
                     return err;
@@ -3449,6 +3706,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
             if (comptime !needsArgCleanup(T)) return;
             if (T == copied_arg_types.BodyInit) return freeBodyInitArg(allocator, arg);
+            if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return freeBufferSourceArg(T, allocator, arg);
 
             if (T == []const u8) {
                 // Only free if it's not the static empty slice and has content
@@ -3505,11 +3763,26 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 }
             } else if (@typeInfo(T) == .@"struct") {
-                // Struct types (dictionaries) - free any fields that need cleanup
+                // Struct types (dictionaries) - free any fields that need
+                // cleanup, and release each `any`-family member's handle (an
+                // `any` or `object` member, a union typed JSValue, an
+                // `object` union arm): the Get handle the dictionary loop
+                // kept as the member's `.handle`, BORROWED for the call as
+                // an `any` argument's is (releaseAnyArgument). An impl that
+                // keeps a member takes a hold of its own; every keeper was
+                // read for that (2026-10-02, 108 dictionaries with a JSValue
+                // member): the events take holds, Navigation retains or
+                // serializes, PopStateEvent now holds its state. Kept, an
+                // object `detail` held its realm for the process's life
+                // (realms3: a removed frame kept alive by a dropped
+                // CustomEvent). A sequence<any> element inside a dictionary
+                // keeps the conservative answer (kept): its keepers are not
+                // read yet.
                 inline for (std.meta.fields(T)) |field| {
                     if (comptime needsArgCleanup(field.type)) {
                         freeConvertedArg(field.type, allocator, @field(arg, field.name));
                     }
+                    releaseAnyArgument(field.type, @field(arg, field.name));
                 }
             } else if (@typeInfo(T) == .@"union") {
                 // Union types (WebIDL union types) - free the active variant if it needs cleanup
@@ -3584,7 +3857,7 @@ pub fn V8Interface(comptime Interface: type) type {
             comptime webidl_param_count: usize,
             comptime ReturnType: type,
             comptime null_to_empty: u32,
-            comptime restricted: u32,
+            comptime modes: ArgModes,
             instance: *runtime.Instance,
             raw_info: *const v8.FunctionCallbackInfo,
             allocator: std.mem.Allocator,
@@ -3615,13 +3888,13 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
                         // Each element is a restricted float conversion; the
                         // defer above releases the slice if one fails.
-                        if (comptime restrictedBit(restricted, 0)) try conv.requireFinite(Param1Type, arg1);
+                        if (comptime restrictedBit(modes.restricted, 0)) try conv.requireFinite(Param1Type, arg1);
                         break :blk try method_fn(instance, arg1);
                     }
 
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArg(Param1Type, comptime restrictedBit(restricted, 0), allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArg(Param1Type, comptime argMode(modes, 0), allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -3641,7 +3914,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArg(Param1Type, comptime restrictedBit(restricted, 0), allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArg(Param1Type, comptime argMode(modes, 0), allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -3656,7 +3929,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try convertArg(Param2Type, comptime restrictedBit(restricted, 1), allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArg(Param2Type, comptime argMode(modes, 1), allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
@@ -3677,7 +3950,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArg(Param1Type, comptime restrictedBit(restricted, 0), allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArg(Param1Type, comptime argMode(modes, 0), allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3692,7 +3965,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try convertArg(Param2Type, comptime restrictedBit(restricted, 1), allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArg(Param2Type, comptime argMode(modes, 1), allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3706,7 +3979,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
-                        break :arg_blk try convertArg(Param3Type, comptime restrictedBit(restricted, 2), allocator, isolate, v8_context, v8_arg3);
+                        break :arg_blk try convertArg(Param3Type, comptime argMode(modes, 2), allocator, isolate, v8_context, v8_arg3);
                     } else arg_blk: {
                         // Get default value for optional parameter
                         if (comptime getDefaultArgValue(Param3Type)) |default_val| {
@@ -3728,7 +4001,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle first parameter - may be optional
                     const arg1 = if (js_arg_count >= 1) arg_blk: {
                         const v8_arg1 = info.get(0);
-                        break :arg_blk try convertArg(Param1Type, comptime restrictedBit(restricted, 0), allocator, isolate, v8_context, v8_arg1);
+                        break :arg_blk try convertArg(Param1Type, comptime argMode(modes, 0), allocator, isolate, v8_context, v8_arg1);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3743,7 +4016,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     // Handle second parameter - may be optional
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
-                        break :arg_blk try convertArg(Param2Type, comptime restrictedBit(restricted, 1), allocator, isolate, v8_context, v8_arg2);
+                        break :arg_blk try convertArg(Param2Type, comptime argMode(modes, 1), allocator, isolate, v8_context, v8_arg2);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3757,7 +4030,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
-                        break :arg_blk try convertArg(Param3Type, comptime restrictedBit(restricted, 2), allocator, isolate, v8_context, v8_arg3);
+                        break :arg_blk try convertArg(Param3Type, comptime argMode(modes, 2), allocator, isolate, v8_context, v8_arg3);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3771,7 +4044,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
                     const arg4 = if (js_arg_count >= 4) arg_blk: {
                         const v8_arg4 = info.get(3);
-                        break :arg_blk try convertArg(Param4Type, comptime restrictedBit(restricted, 3), allocator, isolate, v8_context, v8_arg4);
+                        break :arg_blk try convertArg(Param4Type, comptime argMode(modes, 3), allocator, isolate, v8_context, v8_arg4);
                     } else arg_blk: {
                         if (comptime getDefaultArgValue(Param4Type)) |default_val| {
                             break :arg_blk default_val;
@@ -3806,7 +4079,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         const ParamType = param.type.?;
                         call_args[i] = if (js_arg_count >= i) arg_blk: {
                             const v8_arg = info.get(@intCast(i - 1));
-                            break :arg_blk try convertArg(ParamType, comptime restrictedBit(restricted, i - 1), allocator, isolate, v8_context, v8_arg);
+                            break :arg_blk try convertArg(ParamType, comptime argMode(modes, i - 1), allocator, isolate, v8_context, v8_arg);
                         } else arg_blk: {
                             if (comptime getDefaultArgValue(ParamType)) |default_val| {
                                 break :arg_blk default_val;
@@ -4073,6 +4346,17 @@ pub fn V8Interface(comptime Interface: type) type {
                         break :blk @ptrCast(v8_obj);
                     },
                 };
+            }
+
+            // An ArrayBufferView result is the binding's, as a JSValue
+            // result's handle is (ArrayBufferView.jsHandle): an impl that
+            // returns a view it was given or keeps returns it over a hold of
+            // its own (`withJsHandle`), since the arguments are released
+            // before this runs. Released once set.
+            if (ReturnType == webidl.ArrayBufferView) {
+                owned.* = true;
+                const js = result.jsHandle() orelse return v8.v8_Undefined(isolate);
+                return @ptrCast(@alignCast(js));
             }
 
             // Handle union types (e.g., ReadableStreamReader)
@@ -4420,7 +4704,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         log.debug("[CTOR_ARGS] MutationObserver converting arg from V8...\n", .{});
                     }
                     const v8_arg1 = info.get(0);
-                    const converted = try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    const converted = try convertArgReleasingAs(Param1Type, comptime constructorIntegerConversion(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                     if (comptime std.mem.eql(u8, interface_name, "MutationObserver")) {
                         log.debug("[CTOR_ARGS] MutationObserver arg converted OK\n", .{});
                     }
@@ -4453,7 +4737,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Check if first param has a default (e.g., webidl.Opt or optional)
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArgReleasingAs(Param1Type, comptime constructorIntegerConversion(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     // Try default for first param
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
@@ -4469,7 +4753,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Second param may be optional (use default if not provided)
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArgReleasingAs(Param2Type, comptime constructorIntegerConversion(Interface, 1), allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     // Use getDefaultArgValue for consistent handling
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
@@ -4492,7 +4776,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArgReleasingAs(Param1Type, comptime constructorIntegerConversion(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                         break :blk default_val;
@@ -4507,7 +4791,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArgReleasingAs(Param2Type, comptime constructorIntegerConversion(Interface, 1), allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                         break :blk default_val;
@@ -4522,7 +4806,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
                     const v8_arg3 = info.get(2);
-                    break :blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                    break :blk try convertArgReleasingAs(Param3Type, comptime constructorIntegerConversion(Interface, 2), allocator, isolate, v8_context, v8_arg3);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                         break :blk default_val;
@@ -4545,7 +4829,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle first parameter - may be optional
                 const arg1 = if (js_arg_count >= 1) blk: {
                     const v8_arg1 = info.get(0);
-                    break :blk try convertArgReleasing(Param1Type, allocator, isolate, v8_context, v8_arg1);
+                    break :blk try convertArgReleasingAs(Param1Type, comptime constructorIntegerConversion(Interface, 0), allocator, isolate, v8_context, v8_arg1);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param1Type)) |default_val| {
                         break :blk default_val;
@@ -4560,7 +4844,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle second parameter - may be optional
                 const arg2 = if (js_arg_count >= 2) blk: {
                     const v8_arg2 = info.get(1);
-                    break :blk try convertArgReleasing(Param2Type, allocator, isolate, v8_context, v8_arg2);
+                    break :blk try convertArgReleasingAs(Param2Type, comptime constructorIntegerConversion(Interface, 1), allocator, isolate, v8_context, v8_arg2);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param2Type)) |default_val| {
                         break :blk default_val;
@@ -4575,7 +4859,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle third parameter - may be optional
                 const arg3 = if (js_arg_count >= 3) blk: {
                     const v8_arg3 = info.get(2);
-                    break :blk try convertArgReleasing(Param3Type, allocator, isolate, v8_context, v8_arg3);
+                    break :blk try convertArgReleasingAs(Param3Type, comptime constructorIntegerConversion(Interface, 2), allocator, isolate, v8_context, v8_arg3);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param3Type)) |default_val| {
                         break :blk default_val;
@@ -4590,7 +4874,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 // Handle fourth parameter - may be optional
                 const arg4 = if (js_arg_count >= 4) blk: {
                     const v8_arg4 = info.get(3);
-                    break :blk try convertArgReleasing(Param4Type, allocator, isolate, v8_context, v8_arg4);
+                    break :blk try convertArgReleasingAs(Param4Type, comptime constructorIntegerConversion(Interface, 3), allocator, isolate, v8_context, v8_arg4);
                 } else blk: {
                     if (comptime getDefaultArgValue(Param4Type)) |default_val| {
                         break :blk default_val;
@@ -7636,7 +7920,19 @@ pub fn V8Interface(comptime Interface: type) type {
                     // enum value, the setter should be a no-op (silently return without error).
                     // https://webidl.spec.whatwg.org/#idl-enums
                     value_handed_over = true;
-                    const zig_value = convertV8ToZig(ValueType, allocator, isolate_inner, context, new_value_v8) catch |err| {
+                    // An [EnforceRange] or [Clamp] attribute (`enforce_range` /
+                    // `clamp`, bit 0): its branch of ConvertToInt, on the number.
+                    const setter_integer: conv.IntegerConversion = comptime if (integerConversionMask(Interface, setter_name_param, .enforce_range) & 1 != 0)
+                        .enforce_range
+                    else if (integerConversionMask(Interface, setter_name_param, .clamp) & 1 != 0)
+                        .clamp
+                    else
+                        .modulo;
+                    const converted_value = if (comptime setter_integer != .modulo)
+                        conv.fromV8ValueInteger(ValueType, setter_integer, allocator, isolate_inner, context, new_value_v8)
+                    else
+                        convertV8ToZig(ValueType, allocator, isolate_inner, context, new_value_v8);
+                    const zig_value = converted_value catch |err| {
                         // ExceptionPending means an exception was already rethrown
                         if (err == conv.ConversionError.ExceptionPending) {
                             return;
@@ -8000,7 +8296,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         webidl_param_count,
                         ReturnType,
                         comptime legacyNullToEmptyMask(Interface, zig_name),
-                        comptime restrictedFloatMask(Interface, zig_name),
+                        comptime argModesOf(Interface, zig_name),
                         template_instance,
                         info,
                         allocator,

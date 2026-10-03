@@ -19,4 +19,7 @@ pub const ItemDetails = struct {
     introductoryPrice: ?PaymentCurrencyAmount = null,
     introductoryPricePeriod: ?runtime.DOMString = null,
     introductoryPriceCycles: ?u64 = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"introductoryPriceCycles"};
 };

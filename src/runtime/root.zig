@@ -294,31 +294,6 @@ pub fn clamp(comptime T: type, value: anytype) T {
     @compileError("clamp only supports integer and float types");
 }
 
-/// Check if a value is in valid range for target type
-/// Used by WebIDL operations that require range checking
-pub fn isInRange(comptime T: type, value: anytype) bool {
-    const type_info = @typeInfo(T);
-
-    if (type_info == .int) {
-        const min_val = std.math.minInt(T);
-        const max_val = std.math.maxInt(T);
-
-        // Convert input for comparison
-        const val_i64 = switch (@typeInfo(@TypeOf(value))) {
-            .int => |int_info| if (int_info.signedness == .signed)
-                @as(i64, @intCast(value))
-            else
-                @as(i64, @intCast(value)),
-            .float => @as(i64, @intFromFloat(value)),
-            else => return false,
-        };
-
-        return val_i64 >= min_val and val_i64 <= max_val;
-    }
-
-    return true; // Non-integers always in range
-}
-
 /// Initialize the WebIDL runtime
 ///
 /// Must be called before using any runtime functionality.

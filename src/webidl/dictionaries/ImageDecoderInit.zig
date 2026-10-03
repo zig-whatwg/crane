@@ -14,4 +14,7 @@ pub const ImageDecoderInit = struct {
     desiredHeight: ?u32 = null,
     preferAnimation: ?bool = null,
     transfer: ?[]const runtime.JSValue = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "desiredWidth", "desiredHeight" };
 };

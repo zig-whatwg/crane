@@ -10,4 +10,7 @@ pub const AudioDataCopyToOptions = struct {
     frameOffset: ?u32 = null,
     frameCount: ?u32 = null,
     format: ?enums.AudioSampleFormat = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "planeIndex", "frameOffset", "frameCount" };
 };

@@ -9,4 +9,7 @@ pub const DocumentPictureInPictureOptions = struct {
     height: ?u64 = null,
     disallowReturnToOpener: ?bool = null,
     preferInitialWindowPlacement: ?bool = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "width", "height" };
 };

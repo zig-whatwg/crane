@@ -125,4 +125,7 @@ pub const MLOpSupportLimits = struct {
     transpose: ?MLSingleInputSupportLimits = null,
     triangular: ?MLSingleInputSupportLimits = null,
     where: ?MLWhereSupportLimits = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"maxTensorByteLength"};
 };

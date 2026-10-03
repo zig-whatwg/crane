@@ -8,6 +8,7 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 const ir_mod = @import("ir.zig");
+const argument_unions = @import("argument_unions.zig");
 const generator = @import("generator.zig");
 const format = @import("format.zig");
 const types = @import("types.zig");
@@ -231,6 +232,11 @@ pub fn processFiles(
     // the order the files were read in.
     std.mem.sort(IncludesStatement, includes.items, {}, IncludesStatement.lessThan);
     for (includes.items) |inc| try ir.processIncludes(&.{inc.statement});
+
+    // Stage 1.6: a union argument the binding must convert in argument order
+    // becomes a named union typedef (argument_unions.zig) - after the
+    // includes, so an includer's mixin operations are named too.
+    try argument_unions.nameArgumentUnions(&ir);
 
     // Stage 2: Report merging statistics
     std.debug.print("\nStage 2: Partial interface merging\n", .{});

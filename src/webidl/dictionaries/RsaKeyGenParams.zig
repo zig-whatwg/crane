@@ -12,4 +12,7 @@ pub const RsaKeyGenParams = struct {
 
     modulusLength: u32,
     publicExponent: typedefs.BigInteger,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"modulusLength"};
 };

@@ -261,7 +261,7 @@ pub fn set_ondatachannel(instance: *runtime.Instance, value: typedefs.EventHandl
 }
 
 /// Operation: addTransceiver
-pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: runtime.JSValue, init_data: webidl.Opt(dictionaries.RTCRtpTransceiverInit)) anyerror!*runtime.Instance {
+pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: typedefs.MediaStreamTrackOrDOMString, init_data: webidl.Opt(dictionaries.RTCRtpTransceiverInit)) anyerror!*runtime.Instance {
     _ = instance;
     _ = trackOrKind;
     _ = init_data;

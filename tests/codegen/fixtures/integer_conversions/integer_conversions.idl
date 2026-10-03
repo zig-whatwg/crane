@@ -1,0 +1,17 @@
+// [EnforceRange] and [Clamp] (tests/codegen/integer_conversions_test.zig).
+
+dictionary Ranged {
+  [EnforceRange] unsigned long count;
+  [Clamp] octet level;
+  unsigned long plain;
+};
+
+[Exposed=Window]
+interface Counter {
+  constructor([EnforceRange] unsigned long long width, [Clamp] long height);
+  attribute [EnforceRange] unsigned long long limit;
+  undefined open(DOMString name, optional [EnforceRange] unsigned long long version);
+  undefined slice(optional [Clamp] long long start, optional [Clamp] long long end);
+  static undefined timeout([EnforceRange] unsigned long long milliseconds);
+  undefined plain(unsigned long n);
+};

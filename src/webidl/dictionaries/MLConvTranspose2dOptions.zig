@@ -19,4 +19,7 @@ pub const MLConvTranspose2dOptions = struct {
     inputLayout: ?enums.MLInputOperandLayout = null,
     filterLayout: ?enums.MLConvTranspose2dFilterOperandLayout = null,
     bias: ?*runtime.Instance = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"groups"};
 };

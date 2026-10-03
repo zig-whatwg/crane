@@ -20,15 +20,16 @@ const MediaStreamTrack = @import("interfaces").MediaStreamTrack;
 const RTCIceGatheringState = @import("enums").RTCIceGatheringState;
 const AlgorithmIdentifier = @import("typedefs").AlgorithmIdentifier;
 const RTCIceCandidateInit = @import("dictionaries").RTCIceCandidateInit;
-const USVString = @import("typedefs").USVString;
 const RTCSignalingState = @import("enums").RTCSignalingState;
 const RTCPeerConnectionState = @import("enums").RTCPeerConnectionState;
+const MediaStreamTrackOrDOMString = @import("typedefs").MediaStreamTrackOrDOMString;
 const RTCDataChannel = @import("interfaces").RTCDataChannel;
 const RTCIdentityProviderOptions = @import("dictionaries").RTCIdentityProviderOptions;
 const RTCCertificate = @import("interfaces").RTCCertificate;
 const RTCRtpReceiver = @import("interfaces").RTCRtpReceiver;
 const MediaStream = @import("interfaces").MediaStream;
 const RTCSctpTransport = @import("interfaces").RTCSctpTransport;
+const USVString = @import("typedefs").USVString;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const RTCIceConnectionState = @import("enums").RTCIceConnectionState;
@@ -525,7 +526,7 @@ pub const RTCPeerConnection = struct {
         return try RTCPeerConnectionImpl.call_getSenders(instance);
     }
 
-    pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: runtime.JSValue, init_data: webidl.Opt(RTCRtpTransceiverInit)) anyerror!*runtime.Instance {
+    pub fn call_addTransceiver(instance: *runtime.Instance, trackOrKind: MediaStreamTrackOrDOMString, init_data: webidl.Opt(RTCRtpTransceiverInit)) anyerror!*runtime.Instance {
         return try RTCPeerConnectionImpl.call_addTransceiver(instance, trackOrKind, init_data);
     }
 

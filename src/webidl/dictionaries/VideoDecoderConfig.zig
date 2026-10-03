@@ -23,4 +23,7 @@ pub const VideoDecoderConfig = struct {
     /// WebIDL `double` and `float` members (not `unrestricted`): NaN and the
     /// infinities throw a TypeError when the dictionary is converted.
     pub const restricted_members = .{"rotation"};
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "codedWidth", "codedHeight", "displayAspectWidth", "displayAspectHeight" };
 };

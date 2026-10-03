@@ -10,4 +10,7 @@ pub const KmacImportParams = struct {
     base: Algorithm,
 
     length: ?u32 = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"length"};
 };

@@ -112,13 +112,17 @@ pub const ReadableStreamBYOBRequest = struct {
     }
 
     pub fn call_respond(instance: *runtime.Instance, bytesWritten: u64) anyerror!void {
-        // [EnforceRange] on bytesWritten
-        if (!runtime.isInRange(u64, bytesWritten)) return error.TypeError;
-
         return try ReadableStreamBYOBRequestImpl.call_respond(instance, bytesWritten);
     }
 
     pub fn call_respondWithNewView(instance: *runtime.Instance, view: ArrayBufferView) anyerror!void {
         return try ReadableStreamBYOBRequestImpl.call_respondWithNewView(instance, view);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_respond", 0b1 },
+    };
 };

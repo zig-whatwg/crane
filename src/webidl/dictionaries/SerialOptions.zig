@@ -12,4 +12,7 @@ pub const SerialOptions = struct {
     parity: ?enums.ParityType = null,
     bufferSize: ?u32 = null,
     flowControl: ?enums.FlowControlType = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "baudRate", "dataBits", "stopBits", "bufferSize" };
 };

@@ -11,4 +11,7 @@ pub const TCPSocketOptions = struct {
     noDelay: ?bool = null,
     keepAliveDelay: ?u32 = null,
     dnsQueryType: ?enums.SocketDnsQueryType = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "sendBufferSize", "receiveBufferSize", "keepAliveDelay" };
 };
