@@ -100,6 +100,12 @@ pub const ModuleScript = struct {
     /// Resolved module requests, in the order the source makes them.
     children: std.ArrayListUnmanaged(Child) = .empty,
 
+    /// The script's fetch options, as far as an import() from it reads them
+    /// (HTML "new descendant script fetch options"): its cryptographic nonce
+    /// (OWNED when not empty) and referrer policy.
+    nonce: []const u8 = "",
+    referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+
     /// Depth-first walk state. `visiting` is set while this script's requests
     /// are being loaded, so a cycle back to it stops instead of recursing
     /// forever - the spec's LoadRequestedModules does the same through
@@ -126,15 +132,28 @@ pub const ModuleScript = struct {
         script: *ModuleScript,
     };
 
-    fn create(allocator: std.mem.Allocator, base_url: []const u8) !*ModuleScript {
+    /// A module script with `base_url`, fetched (or inline) with `options`.
+    fn create(allocator: std.mem.Allocator, base_url: []const u8, options: FetchOptions) !*ModuleScript {
         const self = try allocator.create(ModuleScript);
         errdefer allocator.destroy(self);
+        const owned_base_url = try allocator.dupe(u8, base_url);
+        errdefer allocator.free(owned_base_url);
         self.* = .{
             .allocator = allocator,
-            .base_url = try allocator.dupe(u8, base_url),
+            .base_url = owned_base_url,
+            .nonce = if (options.nonce.len > 0) try allocator.dupe(u8, options.nonce) else "",
+            .referrer_policy = options.referrer_policy,
         };
         track(self);
         return self;
+    }
+
+    /// HTML "new descendant script fetch options" for this script's fetch
+    /// options: its cryptographic nonce and referrer policy; integrity
+    /// metadata "", parser metadata "not-parser-inserted". Borrowed from the
+    /// script.
+    pub fn descendantFetchOptions(self: *const ModuleScript) FetchOptions {
+        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy };
     }
 
     /// Release the script, its record and values, and its edge list.
@@ -149,6 +168,7 @@ pub const ModuleScript = struct {
         for (self.children.items) |child| self.allocator.free(child.specifier);
         self.children.deinit(self.allocator);
         self.allocator.free(self.base_url);
+        if (self.nonce.len > 0) self.allocator.free(self.nonce);
         self.allocator.destroy(self);
     }
 
@@ -256,7 +276,7 @@ pub fn createJavaScriptModuleScript(
     base_url: []const u8,
 ) !*ModuleScript {
     if (!supported) return error.NotSupported;
-    const script = try ModuleScript.create(env.allocator, base_url);
+    const script = try ModuleScript.create(env.allocator, base_url, env.fetch_options);
     errdefer script.destroy();
 
     switch (try engine.parseModule(env.realm(), source, base_url, script)) {
@@ -310,6 +330,16 @@ pub fn scriptOf(host_defined: *anyopaque) ?*ModuleScript {
 /// time.
 pub const ClassicScript = struct {
     base_url: []const u8,
+    /// Its fetch options, as far as an import() from it reads them (HTML
+    /// "new descendant script fetch options"): the cryptographic nonce and
+    /// the referrer policy. Owned by whoever owns the script.
+    nonce: []const u8 = "",
+    referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+
+    /// HTML "new descendant script fetch options" for this script's.
+    pub fn descendantFetchOptions(self: *const ClassicScript) FetchOptions {
+        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy };
+    }
 };
 
 /// The base URL of the classic script a Script Record's [[HostDefined]] is.
@@ -334,7 +364,7 @@ pub fn importMetaUrl(host: ?*anyopaque, module_host_defined: *anyopaque) []const
 /// Step 5: ParseJSONModule - a SyntaxError becomes the parse error.
 fn createJsonModuleScript(env: *const Environment, source: []const u8, url: []const u8) !*ModuleScript {
     if (!supported) return error.NotSupported;
-    const script = try ModuleScript.create(env.allocator, url);
+    const script = try ModuleScript.create(env.allocator, url, env.fetch_options);
     errdefer script.destroy();
 
     switch (try engine.parseJSONModule(env.realm(), source, url, script)) {
@@ -359,7 +389,7 @@ fn createJsonModuleScript(env: *const Environment, source: []const u8, url: []co
 /// nothing reads for a CSS module (it has no import.meta and no imports).
 fn createCssModuleScript(env: *const Environment, source: []const u8, url: []const u8) !*ModuleScript {
     if (!supported) return error.NotSupported;
-    const script = try ModuleScript.create(env.allocator, url);
+    const script = try ModuleScript.create(env.allocator, url, env.fetch_options);
     errdefer script.destroy();
     const realm = env.realm();
 
@@ -685,6 +715,7 @@ pub fn fetchExternalModuleScriptGraph(env: *const Environment, url: []const u8) 
     // root's.
     var descendants = env.*;
     descendants.fetch_options.integrity = "";
+    descendants.fetch_options.parser_inserted = false;
     return fetchDescendantsAndLink(&descendants, result);
 }
 

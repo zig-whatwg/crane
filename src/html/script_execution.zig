@@ -439,7 +439,7 @@ pub fn prepareScriptElement(
                 // result. With no record, the document's URL, which the
                 // document keeps too. (Its errors report the document's URL
                 // as their filename: runClassicScript.)
-                const script_base_url = if (classicScriptRecord(doc, base_url)) |record|
+                const script_base_url = if (classicScriptRecord(doc, base_url, script_element)) |record|
                     record.script.base_url
                 else
                     documentUrl(doc, script_element);
@@ -1100,7 +1100,7 @@ fn runClassicScript(script_element: *runtime.Instance, document: *runtime.Instan
 fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance, source: []const u8, url: []const u8, base_url: []const u8, muted: bool) void {
     const realm = element.ctx;
     // The script's [[HostDefined]]: what an import() in it resolves against.
-    const host_defined: ?*anyopaque = if (classicScriptRecord(document, base_url)) |record| &record.script else null;
+    const host_defined: ?*anyopaque = if (classicScriptRecord(document, base_url, element)) |record| &record.script else null;
     var host = ClassicScriptReport{ .realm = realm, .muted = muted };
     engine.runClassicScript(realm, .{ .utf8 = source }, url, host_defined, .{
         .report = reportClassicScriptError,
@@ -1168,6 +1168,7 @@ const ClassicScriptRecord = struct {
         if (self.live_prev) |prev| prev.live_next = self.live_next else live_classic_scripts = self.live_next;
         if (self.live_next) |next| next.live_prev = self.live_prev;
         std.heap.c_allocator.free(self.script.base_url);
+        if (self.script.nonce.len > 0) std.heap.c_allocator.free(self.script.nonce);
         std.heap.c_allocator.destroy(self);
     }
 };
@@ -1177,22 +1178,32 @@ var live_classic_scripts: ?*ClassicScriptRecord = null;
 
 const classic_script_key_prefix = "classic:";
 
-/// `document`'s classic script record for `base_url`, made (with its own copy
-/// of the URL) if it has none yet. Null when it cannot be made - the script
+/// `document`'s classic script record for `base_url` and the fetch options
+/// an import() from the script reads (`element`'s nonce and referrer
+/// policy), made (with its own copies) if it has none yet. Scripts that
+/// agree on all three share one. Null when it cannot be made - the script
 /// then runs with no [[HostDefined]], and an import() in it resolves against
-/// the document's base URL.
-fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8) ?*ClassicScriptRecord {
+/// the document's base URL with the default options.
+fn classicScriptRecord(document: *runtime.Instance, base_url: []const u8, element: *runtime.Instance) ?*ClassicScriptRecord {
     const allocator = std.heap.c_allocator;
+    const options = moduleFetchOptions(element);
     const map = documentModuleMap(document);
-    const key = std.mem.concat(allocator, u8, &.{ classic_script_key_prefix, base_url }) catch return null;
+    // A nonce has no NUL, and a referrer policy's tag no NUL either.
+    const key = std.mem.concat(allocator, u8, &.{ classic_script_key_prefix, options.nonce, "\x00", @tagName(options.referrer_policy), "\x00", base_url }) catch return null;
     defer allocator.free(key);
     if (map.getFn(map.context, key)) |value| return @ptrCast(@alignCast(value));
 
     const record = allocator.create(ClassicScriptRecord) catch return null;
-    record.* = .{ .script = .{ .base_url = allocator.dupe(u8, base_url) catch {
+    const owned_base_url = allocator.dupe(u8, base_url) catch {
         allocator.destroy(record);
         return null;
-    } } };
+    };
+    const owned_nonce: []const u8 = if (options.nonce.len > 0) (allocator.dupe(u8, options.nonce) catch {
+        allocator.free(owned_base_url);
+        allocator.destroy(record);
+        return null;
+    }) else "";
+    record.* = .{ .script = .{ .base_url = owned_base_url, .nonce = owned_nonce, .referrer_policy = options.referrer_policy } };
     record.live_next = live_classic_scripts;
     if (live_classic_scripts) |head| head.live_prev = record;
     live_classic_scripts = record;
@@ -1209,6 +1220,16 @@ fn classicScriptBaseUrlOf(host_defined: *anyopaque) ?[]const u8 {
     var it = live_classic_scripts;
     while (it) |record| : (it = record.live_next) {
         if (@as(*anyopaque, @ptrCast(&record.script)) == host_defined) return record.script.base_url;
+    }
+    return null;
+}
+
+/// The descendant fetch options of the classic script whose [[HostDefined]]
+/// `host_defined` is, or null for one that is not a live record.
+fn classicScriptFetchOptionsOf(host_defined: *anyopaque) ?module_script.FetchOptions {
+    var it = live_classic_scripts;
+    while (it) |record| : (it = record.live_next) {
+        if (@as(*anyopaque, @ptrCast(&record.script)) == host_defined) return record.script.descendantFetchOptions();
     }
     return null;
 }
@@ -1641,12 +1662,21 @@ fn loadImportedModule(
         .script => |host_defined| if (classicScriptBaseUrlOf(host_defined)) |url| .{ .url = url } else .document,
         .realm => .document,
     };
-    loadImport(realm, base, specifier, type_attribute, request);
+    // Steps 5-6: fetchOptions - the default classic script fetch options,
+    // or the new descendant script fetch options for referencingScript's
+    // fetch options (its nonce and referrer policy: a nonce'd script's
+    // import() passes a nonce-based script-src).
+    const options: module_script.FetchOptions = switch (referrer) {
+        .module => |host_defined| if (module_script.scriptOf(host_defined)) |script| script.descendantFetchOptions() else .{},
+        .script => |host_defined| classicScriptFetchOptionsOf(host_defined) orelse .{},
+        .realm => .{},
+    };
+    loadImport(realm, base, specifier, type_attribute, options, request);
 }
 
 /// HostLoadImportedModule from step 7 on, for the request of an import() in
 /// `realm`: every path finishes `request` (engine.finishDynamicImport).
-fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, type_attribute: ?[]const u8, request: *engine.ImportRequest) void {
+fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, type_attribute: ?[]const u8, options: module_script.FetchOptions, request: *engine.ImportRequest) void {
     // The settings object's global: a Window - for a ShadowRealm, its
     // principal realm's (its synthetic realm settings object's API base URL
     // and fetch client are that realm's).
@@ -1684,15 +1714,22 @@ fn loadImport(realm: runtime.Context, base: ImportBase, specifier: []const u8, t
         return finishImportWithTypeError(realm, request, "No event loop to load the module on");
     const task = std.heap.c_allocator.create(DynamicImportTask) catch
         return finishImportWithTypeError(realm, request, "Out of memory");
+    const nonce: []const u8 = if (options.nonce.len > 0) (std.heap.c_allocator.dupe(u8, options.nonce) catch {
+        std.heap.c_allocator.destroy(task);
+        return finishImportWithTypeError(realm, request, "Out of memory");
+    }) else "";
     task.* = .{
         .realm = realm,
         .window = window,
         .generation = runtime.SlabAllocator.generationOf(window),
         .url = std.heap.c_allocator.dupe(u8, url) catch {
+            if (nonce.len > 0) std.heap.c_allocator.free(nonce);
             std.heap.c_allocator.destroy(task);
             return finishImportWithTypeError(realm, request, "Out of memory");
         },
         .module_type = module_type,
+        .nonce = nonce,
+        .referrer_policy = options.referrer_policy,
         .request = request,
     };
     loop.queueTask(.{ .callback = &runDynamicImport, .context = task });
@@ -1717,6 +1754,10 @@ const DynamicImportTask = struct {
     /// Owned (c_allocator).
     url: []const u8,
     module_type: module_script.ModuleType,
+    /// The fetch options the import's requests carry (steps 5-6): the nonce
+    /// (owned, c_allocator, when not empty) and referrer policy.
+    nonce: []const u8,
+    referrer_policy: fetch.internal.ReferrerPolicy,
     /// The host's until finished.
     request: *engine.ImportRequest,
 };
@@ -1725,6 +1766,7 @@ fn runDynamicImport(data: ?*anyopaque) void {
     const task: *DynamicImportTask = @ptrCast(@alignCast(data orelse return));
     defer {
         std.heap.c_allocator.free(task.url);
+        if (task.nonce.len > 0) std.heap.c_allocator.free(task.nonce);
         std.heap.c_allocator.destroy(task);
     }
 
@@ -1746,8 +1788,10 @@ fn dynamicImportSteps(data: ?*anyopaque) void {
     const document = interfaces.Window.get_document(task.window) catch
         return finishImportWithTypeError(realm, task.request, "import() has no document to load for");
     var shadow_realm_map: ShadowRealmModuleMap = undefined;
-    const env = importEnvironment(realm, task.window, document, &shadow_realm_map) orelse
+    var env = importEnvironment(realm, task.window, document, &shadow_realm_map) orelse
         return finishImportWithTypeError(realm, task.request, "import() has no document to load for");
+    // The import's fetch options (HostLoadImportedModule steps 5-6).
+    env.fetch_options = .{ .nonce = task.nonce, .referrer_policy = task.referrer_policy };
 
     // A null graph is a failed fetch: TypeError.
     const graph = module_script.fetchImportedModuleScriptGraph(&env, task.url, task.module_type) orelse
