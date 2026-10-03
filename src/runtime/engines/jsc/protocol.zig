@@ -331,6 +331,12 @@ pub fn convertToRecordOfStrings(_: Context, _: JSValue, _: engine.StringConversi
 pub fn getCopyOfBufferSourceBytes(_: Context, _: JSValue, _: Allocator) Error!?[]u8 {
     return error.NotSupported;
 }
+/// JSC: JSValueGetTypedArrayType, then JSObjectGetArrayBufferBytesPtr /
+/// JSObjectGetTypedArrayBytesPtr (a SharedArrayBuffer is an ArrayBuffer to
+/// the C API) - copied at once.
+pub fn getCopyOfAllowSharedBufferSourceBytes(_: Context, _: JSValue, _: Allocator) Error!?[]u8 {
+    return error.NotSupported;
+}
 pub fn convertToSequence(_: Context, _: JSValue, _: Allocator) Error![]Owned {
     return error.NotSupported;
 }

@@ -299,6 +299,9 @@ pub fn convertToRecordOfStrings(_: Context, _: JSValue, _: engine.StringConversi
 pub fn getCopyOfBufferSourceBytes(_: Context, _: JSValue, _: Allocator) Error!?[]u8 {
     return error.NotSupported;
 }
+pub fn getCopyOfAllowSharedBufferSourceBytes(_: Context, _: JSValue, _: Allocator) Error!?[]u8 {
+    return error.NotSupported;
+}
 pub fn convertToSequence(_: Context, _: JSValue, _: Allocator) Error![]Owned {
     return error.NotSupported;
 }

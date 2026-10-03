@@ -1110,10 +1110,23 @@ pub inline fn convertToRecordOfStrings(realm: Context, value: JSValue, keys: Str
     return impl.convertToRecordOfStrings(realm, value, keys, values, allocator);
 }
 
-/// WebIDL "get a copy of the bytes held by the buffer source"; null when
-/// `value` is not a buffer source. OWNED.
+/// WebIDL "get a copy of the bytes held by the buffer source", for a value
+/// converted to BufferSource - (ArrayBufferView or ArrayBuffer), NOT
+/// [AllowShared]: null when `value` is not a buffer source, a
+/// SharedArrayBuffer included; a view over a SharedArrayBuffer is a
+/// TypeError. A detached buffer's copy is empty. OWNED. For
+/// AllowSharedBufferSource use getCopyOfAllowSharedBufferSourceBytes.
 pub inline fn getCopyOfBufferSourceBytes(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error!?[]u8 {
     return impl.getCopyOfBufferSourceBytes(realm, value, allocator);
+}
+
+/// WebIDL "get a copy of the bytes held by the buffer source", for a value
+/// converted to AllowSharedBufferSource - (ArrayBuffer or SharedArrayBuffer or
+/// [AllowShared] ArrayBufferView): an ArrayBuffer, a SharedArrayBuffer (never
+/// detached), or the window of a view over either. Null when `value` is none
+/// of those; a detached ArrayBuffer's copy is empty. OWNED.
+pub inline fn getCopyOfAllowSharedBufferSourceBytes(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error!?[]u8 {
+    return impl.getCopyOfAllowSharedBufferSourceBytes(realm, value, allocator);
 }
 
 /// WebIDL sequence<any>. OWNED slice of OWNED values.

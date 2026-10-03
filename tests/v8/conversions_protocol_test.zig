@@ -268,3 +268,42 @@ test "agentHost: the host pointer the agent was made with, and null once it is d
     protocol.destroyAgent(agent);
     try std.testing.expectEqual(@as(?*anyopaque, null), protocol.agentHost(agent));
 }
+
+// ---------------------------------------------------------------------------
+// The bytes of an AllowSharedBufferSource
+// ---------------------------------------------------------------------------
+
+test "getCopyOfAllowSharedBufferSourceBytes takes a SharedArrayBuffer and a view over one; the BufferSource form still refuses both" {
+    const ctx = try realm();
+    const allocator = std.testing.allocator;
+    const shared = try eval("globalThis.sharedBytes = new SharedArrayBuffer(4); new Uint8Array(sharedBytes).set([1, 2, 3, 4]); sharedBytes");
+    defer ffi.v8_Value_Dispose(shared);
+    const shared_view = try eval("new Uint8Array(sharedBytes, 1, 2)");
+    defer ffi.v8_Value_Dispose(shared_view);
+    const plain = try eval("new Uint16Array([0x0201]).buffer");
+    defer ffi.v8_Value_Dispose(plain);
+    const detached = try eval("(() => { const b = new ArrayBuffer(8); b.transfer(); return b; })()");
+    defer ffi.v8_Value_Dispose(detached);
+    const object = try eval("({ byteLength: 4 })");
+    defer ffi.v8_Value_Dispose(object);
+
+    const all = (try protocol.getCopyOfAllowSharedBufferSourceBytes(ctx, handleValue(shared), allocator)).?;
+    defer allocator.free(all);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4 }, all);
+    const window = (try protocol.getCopyOfAllowSharedBufferSourceBytes(ctx, handleValue(shared_view), allocator)).?;
+    defer allocator.free(window);
+    try std.testing.expectEqualSlices(u8, &.{ 2, 3 }, window);
+    const bytes = (try protocol.getCopyOfAllowSharedBufferSourceBytes(ctx, handleValue(plain), allocator)).?;
+    defer allocator.free(bytes);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, bytes);
+    const none = (try protocol.getCopyOfAllowSharedBufferSourceBytes(ctx, handleValue(detached), allocator)).?;
+    defer allocator.free(none);
+    try std.testing.expectEqual(@as(usize, 0), none.len);
+    try std.testing.expectEqual(@as(?[]u8, null), try protocol.getCopyOfAllowSharedBufferSourceBytes(ctx, handleValue(object), allocator));
+    try std.testing.expectEqual(@as(?[]u8, null), try protocol.getCopyOfAllowSharedBufferSourceBytes(ctx, .{ .number = 1 }, allocator));
+
+    // The BufferSource form (not [AllowShared]) is unchanged: null for the
+    // SharedArrayBuffer, a TypeError for a view over one.
+    try std.testing.expectEqual(@as(?[]u8, null), try protocol.getCopyOfBufferSourceBytes(ctx, handleValue(shared), allocator));
+    try std.testing.expectError(error.TypeError, protocol.getCopyOfBufferSourceBytes(ctx, handleValue(shared_view), allocator));
+}

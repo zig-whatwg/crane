@@ -403,6 +403,10 @@ pub fn getCopyOfBufferSourceBytes(realm: Context, value: JSValue, allocator: All
     return webidl_conversions.getCopyOfBufferSourceBytes(realm, value, allocator) catch |err| protocolError(err);
 }
 
+pub fn getCopyOfAllowSharedBufferSourceBytes(realm: Context, value: JSValue, allocator: Allocator) Error!?[]u8 {
+    return webidl_conversions.getCopyOfAllowSharedBufferSourceBytes(realm, value, allocator) catch |err| protocolError(err);
+}
+
 const protocol_conversions = @import("protocol_conversions.zig");
 pub const convertToSequence = protocol_conversions.convertToSequence;
 pub const convertToSequenceOfStringPairs = protocol_conversions.convertToSequenceOfStringPairs;

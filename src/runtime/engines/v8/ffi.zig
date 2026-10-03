@@ -1008,6 +1008,11 @@ pub extern fn v8_Object_HasOwnProperty(object: *Object, context: *Context, key: 
 /// ECMAScript HasOwnProperty(O, P) with its throw reported: 1 or 0, or -1 when
 /// [[GetOwnProperty]] threw (the exception left pending) or the key is no Name.
 pub extern fn v8_Object_HasOwnPropertyOrThrow(object: *Object, context: *Context, key: *Value) c_int;
+/// The bytes an AllowSharedBufferSource holds: an ArrayBuffer's (none when
+/// detached), a SharedArrayBuffer's, or a view's window over either. False
+/// when `value` is none of those. The pointer is valid until script next runs
+/// or the buffer is detached.
+pub extern fn v8_AllowSharedBufferSource_Bytes(value: *Value, data: *?*anyopaque, byte_length: *usize) bool;
 pub extern fn v8_Object_GetOwnPropertyDescriptor(object: *Object, context: *Context, key: *Value) ?*Value;
 pub extern fn v8_Object_GetOwnPropertyNames(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetOwnPropertyNamesAsStrings(context: *Context, obj: *Object) ?*Array;

@@ -413,6 +413,27 @@ pub fn getCopyOfBufferSourceBytes(realm: runtime.Context, value: runtime.JSValue
     return null;
 }
 
+/// engine.getCopyOfAllowSharedBufferSourceBytes: WebIDL "get a copy of the
+/// bytes held by the buffer source" for AllowSharedBufferSource - an
+/// ArrayBuffer, a SharedArrayBuffer, or a view over either (its own window).
+/// OWNED; null when `value` is none of those.
+pub fn getCopyOfAllowSharedBufferSourceBytes(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) EngineError!?[]u8 {
+    if (value != .handle) return null;
+    const entered = try engine.enterRealm(realm);
+    defer entered.leaveAgent();
+    defer entered.leaveScope();
+    const handle = try ownHandle(entered.isolate, entered.scope.context, value);
+    defer ffi.v8_Global_Dispose(handle);
+    var data: ?*anyopaque = null;
+    var length: usize = 0;
+    // The pointer is valid until script next runs or the buffer is detached:
+    // copied at once.
+    if (!ffi.v8_AllowSharedBufferSource_Bytes(handle, &data, &length)) return null;
+    if (length == 0 or data == null) return allocator.alloc(u8, 0) catch EngineError.OutOfMemory;
+    const bytes: [*]const u8 = @ptrCast(data.?);
+    return allocator.dupe(u8, bytes[0..length]) catch EngineError.OutOfMemory;
+}
+
 /// Engine table `createSequenceOfValues`: an Array of `realm` holding
 /// `values` (borrowed). OWNED.
 pub fn createSequenceOfValues(realm: runtime.Context, values: []const runtime.JSValue) EngineError!runtime.JSValue {
