@@ -164,6 +164,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A declared union does not prove its input conversion](architecture-a-declared-union-does-not-prove-its-input-conversion.md) - Check union selection and argument cleanup at the binding seam.
 - [Link the library your dependency actually built](architecture-link-the-library-your-dependency-actually-built.md) - Trace the linked artifact, headers and lifetime owner before sharing a C library.
 - [A request carries a clone of its client's policies, not a pointer to them](architecture-a-request-carries-a-clone-of-its-clients-policies.md) - Security state a request reads travels with the request as a clone taken when the client populates it, never as a pointer back to the document or a lookup at fetch time.
+- [A realm a navigation replaced is kept by whoever was meant to end it - hand it to the collector, and hang its edges on its OWN global](architecture-a-navigated-away-realm-is-kept-by-whoever-ends-it-last.md) - "Ended later by its owner" is a root until the owner goes: give a reachability-dependent lifetime to the collector, and hang a realm's edges on its own global object, never on the proxy a navigation handed on.
+- [Node wrappers are traced both ways, so a tree lives exactly as long as script reaches any wrapper in it](architecture-node-wrappers-are-traced-both-ways-so-a-tree-lives-while-any-wrapper-does.md) - Keep a graph alive by edges between wrappers, never by making members strong; every wrapped member's path to the graph's root must be made of wrappers, and every finalizer path must expect the graph to die whole.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -301,6 +303,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Equal constants share one address in a release build](debugging-equal-constants-share-one-address-in-a-release-build.md) - An identity built on the address of a `const` is an identity only in Debug; use a `var`.
 - [A full process-wide table shows up in the next file, as a wrong prototype](debugging-a-full-process-wide-table-shows-up-in-the-next-file.md) - Grep the sweep log for every error line before theorising; never give a per-isolate cache a fixed process-wide capacity.
 - [An event made by init has no type and reaches no listener](debugging-an-event-made-by-init-has-no-type-and-reaches-no-listener.md) - When an event "never fires", check that it has a type: initEvent on an event without internal state is a silent no-op; build engine events with the constructor.
+- [A cleanup walk run on every call is quadratic once a new caller makes it hot - time the harness's own per-test path](debugging-a-cleanup-walk-on-every-call-is-quadratic-once-a-new-caller-makes-it-hot.md) - When an A/B times out a few heavy files, run base and tip interleaved under the same load before calling it noise, and time testharness's per-test path.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.
