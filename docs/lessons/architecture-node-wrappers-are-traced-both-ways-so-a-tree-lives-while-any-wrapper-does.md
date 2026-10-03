@@ -12,5 +12,9 @@
 2. The insertion steps draw them for a wrapped node that gained a parent; the removing steps erase them for the removed subtree's ROOT only (the hook visits every descendant: act only when `parent_node` is null); the moving steps (moveBefore, which runs neither) move them.
 3. `shouldBeStrong` no longer counts a parented node; `engineOwns` still does for the instance (a parented node whose wrapper dies is kept - which now happens only when its whole tree's wrappers die together, and the root's teardown frees it).
 4. A window's document stays strong (holdStrong): its wrapped nodes hang from it.
+5. A whole tree now dies in ONE collection, so its entries can all be pending at once. Every finalizer
+   path must leave a parented node to its root's teardown: the realm-end branch of `finalizeEntry`
+   freed a pending parented node first, and the root's teardown then walked into it (a segfault in
+   Node.deinit at the page's end, gc_bench's shadow bodies).
 
 **Takeaway**: **Keep a graph alive by edges between wrappers, never by making members strong: strength roots the member, edges let the collector keep or take the whole graph - and make sure every wrapped member's path to the graph's root is made of wrappers.**
