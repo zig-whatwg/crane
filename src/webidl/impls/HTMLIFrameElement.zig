@@ -2185,10 +2185,13 @@ fn fireHashChange(data: ?*anyopaque) void {
 
 /// HTML "navigate to a javascript: URL" (§7.4.2.3.2), as its task.
 ///
-/// Steps 3-5 (the initiator's origin, CSP) are not modelled. The new
-/// document's origin is the container's, not the initiator's - the same
-/// when, as in every case this engine reaches, the page navigates its own
-/// frame.
+/// Step 3 (the initiator's origin) is not modelled. Steps 4-5 are, for
+/// require-trusted-types-for's pre-navigation check (Trusted Types 4.2.1.1)
+/// over the record's initiator policy container: its default policy may
+/// rewrite the URL, and an enforced policy may block it. CSP 4.2.4's other
+/// checks (the javascript: inline check) are not run. The new document's
+/// origin is the container's, not the initiator's - the same when, as in
+/// every case this engine reaches, the page navigates its own frame.
 fn runJavascriptNavigation(context: ?*anyopaque) void {
     const id = idOf(context);
     const kv = navigations.fetchRemove(id) orelse return;
@@ -2198,6 +2201,28 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     if (!isOngoing(integration, id)) return;
     // Step 2: "Set the ongoing navigation for targetNavigable to null."
     integration.ongoing_navigation = .none;
+
+    // Steps 4-5: the request - url, the initiator policy container - and
+    // "should navigation request of type be blocked by Content Security
+    // Policy?". Its client is the source document's global, the record's
+    // reporter's; one that is gone has no default policy, so a javascript:
+    // URL under enforced Trusted Types is then Blocked.
+    if (record.initiator_policy_container) |*container| {
+        const client: ?*runtime.Instance = if (record.csp_reporter) |reporter| blk: {
+            if (runtime.SlabAllocator.generationOf(reporter.global) != reporter.generation) break :blk null;
+            if (!reporter.global.ctx.hasEngine()) break :blk null;
+            break :blk reporter.global;
+        } else null;
+        const check = dom_module.trusted_types.javascriptUrlPreNavigationCheck(record.allocator, &container.csp_list, client, record.url, &isParsableUrl) catch return endLoadDelay(integration);
+        switch (check) {
+            .allowed => {},
+            .rewritten => |url| {
+                record.allocator.free(record.url);
+                record.url = url;
+            },
+            .blocked => return endLoadDelay(integration),
+        }
+    }
 
     integration.busy += 1;
     defer finishBusy(integration);
@@ -2269,6 +2294,13 @@ fn javascriptNavigationInRealm(integration: *IFrameIntegration, record: *Navigat
     // realm: a new document may need a new one.
     record.javascript_result = integration.allocator.dupe(u8, html) catch return endLoadDelay(integration);
     record.javascript_url = integration.allocator.dupe(u8, url) catch return endLoadDelay(integration);
+}
+
+/// Whether the URL parser parses `url` (the pre-navigation check's step 6).
+fn isParsableUrl(allocator: std.mem.Allocator, url: []const u8) bool {
+    var parsed = basic_parser.parse(allocator, url, null) catch return false;
+    parsed.deinit();
+    return true;
 }
 
 /// HTML "evaluate a javascript: URL" steps 1-10: the script is the URL after

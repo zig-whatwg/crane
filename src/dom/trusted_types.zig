@@ -407,3 +407,107 @@ test "event handler content attribute names: GlobalEventHandlers, the body's, El
     try std.testing.expect(!isEventHandlerContentAttributeName("oNclick"));
     try std.testing.expect(!isEventHandlerContentAttributeName("one"));
 }
+
+// ============================================================================
+// 4.2.1.1: the require-trusted-types-for pre-navigation check
+// ============================================================================
+
+/// What the pre-navigation check decided for a javascript: URL.
+pub const PreNavigation = union(enum) {
+    /// Navigate to the URL as it was.
+    allowed,
+    /// Navigate to this URL instead - the default policy's value, after
+    /// "javascript:". OWNED by the allocator given.
+    rewritten: []u8,
+    /// Do not navigate.
+    blocked,
+};
+
+/// The sink a javascript: URL's pre-navigation check names.
+pub const javascript_url_sink = "Location href";
+
+/// Trusted Types 4.2.1.1, the `require-trusted-types-for` pre-navigation
+/// check, as CSP 4.2.4 "should navigation request of type be blocked by
+/// Content Security Policy?" runs it for a navigation to `url`:
+/// `csp_list` is the navigation request's policy container's, `client` its
+/// client's global object - whose trusted type policy factory's default
+/// policy runs, and where violations go (null: neither). `isValidUrl` is
+/// the URL parser's verdict on a string (step 6).
+///
+/// Run once for every policy that requires Trusted Types for 'script'
+/// (report-only ones too): a value from the default policy rewrites the URL;
+/// none - no default policy, a null or undefined value, a throw (caught here:
+/// "if that algorithm threw an error ... return Blocked") or an unparsable
+/// result - is reported for each such policy as 4.2.4 reports a sink type
+/// mismatch (sink "Location href", the source the URL's code - what Blink
+/// and Gecko report and WPT reads), and blocks only under an enforced one.
+pub fn javascriptUrlPreNavigationCheck(
+    allocator: std.mem.Allocator,
+    csp_list: *const csp.CSPList,
+    client: ?*runtime.Instance,
+    url: []const u8,
+    isValidUrl: *const fn (allocator: std.mem.Allocator, url: []const u8) bool,
+) error{OutOfMemory}!PreNavigation {
+    // 1. "If request's url's scheme is not "javascript", return "Allowed"."
+    const prefix = "javascript:";
+    if (url.len < prefix.len or !std.ascii.eqlIgnoreCase(url[0..prefix.len], prefix)) return .allowed;
+    // Only a policy with require-trusted-types-for 'script' has this check.
+    if (!csp.directives.doesSinkTypeRequireTrustedTypes(csp_list, script_sink_group, true)) return .allowed;
+    // 2-3. "Let encodedScriptSource be the result of removing the leading
+    // "javascript:" from urlString."
+    const encoded = url[prefix.len..];
+    // 4. Process value with a default policy, TrustedScript, the client's
+    // global, encodedScriptSource, "Location href".
+    if (client) |global| {
+        if (try defaultPolicyValueCaught(allocator, global, encoded)) |converted| {
+            defer allocator.free(converted);
+            // 5. "Set urlString to be the result of prepending "javascript:"
+            // to stringified convertedScriptSource."
+            const rewritten = try std.mem.concat(allocator, u8, &.{ prefix, converted });
+            // 6-7. A URL that parses is the request's new URL.
+            if (isValidUrl(allocator, rewritten)) return .{ .rewritten = rewritten };
+            allocator.free(rewritten);
+        }
+    }
+    // "Blocked", reported per requiring policy; only an enforced one blocks.
+    const reporter: ?csp.violation_events.Reporter = if (client) |global| csp_violations.reporterFor(global) else null;
+    const disposition = try csp.directives.shouldSinkTypeMismatchViolationBeBlocked(allocator, csp_list, javascript_url_sink, script_sink_group, encoded, reporter);
+    return if (disposition == .blocked) .blocked else .allowed;
+}
+
+/// The default policy's createScript value for `source` (sink "Location
+/// href"), OWNED; null for none, and for a policy that threw - its exception
+/// caught and dropped.
+fn defaultPolicyValueCaught(allocator: std.mem.Allocator, global: *runtime.Instance, source: []const u8) error{OutOfMemory}!?[]u8 {
+    const Steps = struct {
+        allocator: std.mem.Allocator,
+        global: *runtime.Instance,
+        source: []const u8,
+        result: ?[]u8 = null,
+        failed: bool = false,
+
+        fn run(data: ?*anyopaque) engine.Error!void {
+            const self: *@This() = @ptrCast(@alignCast(data.?));
+            self.result = processValueWithDefaultPolicy(self.allocator, .script, self.global, self.source, javascript_url_sink) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.ExceptionPending => return error.ExceptionPending,
+                else => {
+                    self.failed = true;
+                    return;
+                },
+            };
+        }
+    };
+    var steps: Steps = .{ .allocator = allocator, .global = global, .source = source };
+    if (!global.ctx.hasEngine()) return null;
+    const thrown = engine.completionOf(global.ctx, Steps.run, &steps) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return null,
+    };
+    if (thrown) |exception| {
+        exception.release();
+        if (steps.result) |r| allocator.free(r);
+        return null;
+    }
+    return steps.result;
+}
