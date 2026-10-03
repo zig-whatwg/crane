@@ -2390,9 +2390,27 @@ fn runIframeLoadEventSteps(element: *runtime.Instance) void {
     const was_delaying = internal.integration.delaying_load;
     internal.integration.delaying_load = false;
     const generation = runtime.SlabAllocator.generationOf(element);
-    // Steps 1-3 (mute iframe load) and 4 (resource timing) are not modelled.
-    // Step 6: "Fire an event named load at element."
-    fireLoadEventOnIframe(element);
+    // Step 2: "Let childDocument be element's content navigable's active
+    // document." (Step 1 asserts there is a content navigable; step 4,
+    // resource timing, is not modelled.)
+    const child_document = activeDocumentOf(internal.integration);
+    // Step 3: "If childDocument has its mute iframe load flag set, then
+    // return." The document was opened during an earlier load event at this
+    // element (the document open steps, step 14). Its load still no longer
+    // delays the container document's, below.
+    const muted = if (child_document) |child| document_lifecycle.isIframeLoadMuted(child) else false;
+    if (!muted) {
+        // Step 5: "Set childDocument's iframe load in progress flag."
+        const child_generation = if (child_document) |child| runtime.SlabAllocator.generationOf(child) else 0;
+        if (child_document) |child| document_lifecycle.setIframeLoadInProgress(child, true);
+        // Step 6: "Fire an event named load at element."
+        fireLoadEventOnIframe(element);
+        // Step 7: "Unset childDocument's iframe load in progress flag." The
+        // handlers may have navigated the frame and dropped the document.
+        if (child_document) |child| {
+            if (runtime.SlabAllocator.generationOf(child) == child_generation) document_lifecycle.setIframeLoadInProgress(child, false);
+        }
+    }
     // The handlers may have taken the element away.
     if (!was_delaying or runtime.SlabAllocator.generationOf(element) != generation) return;
     const NodeImpl = @import("Node.zig");

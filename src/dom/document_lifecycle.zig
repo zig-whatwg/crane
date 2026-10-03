@@ -32,6 +32,8 @@ pub const Implementation = struct {
     set_about_base_url: *const fn (document: *runtime.Instance, url: ?[]const u8) void,
     about_fallback_base_url: *const fn (document: *runtime.Instance) ?[]const u8,
     declarative_refresh: *const fn (document: *runtime.Instance, input: []const u8, meta: ?*runtime.Instance) void,
+    set_iframe_load_in_progress: *const fn (document: *runtime.Instance, in_progress: bool) void,
+    is_iframe_load_muted: *const fn (document: *runtime.Instance) bool,
 };
 
 /// The "steps to fire beforeunload" result that navigation reads: whether the
@@ -154,6 +156,22 @@ pub fn declarativeRefresh(document: *runtime.Instance, input: []const u8, meta: 
     impl.declarative_refresh(document, input, meta);
 }
 
+/// The iframe load event steps, steps 5 and 7: set `document`'s "iframe
+/// load in progress" flag while load is fired at its iframe, and unset it
+/// after. A document opened meanwhile is muted (the document open steps,
+/// step 14).
+pub fn setIframeLoadInProgress(document: *runtime.Instance, in_progress: bool) void {
+    const impl = implementation orelse return;
+    impl.set_iframe_load_in_progress(document, in_progress);
+}
+
+/// Whether `document` has its "mute iframe load" flag set: the iframe load
+/// event steps fire no load at its iframe (step 3).
+pub fn isIframeLoadMuted(document: *runtime.Instance) bool {
+    const impl = implementation orelse return false;
+    return impl.is_iframe_load_muted(document);
+}
+
 test "without an installed implementation nothing is asked of a document" {
     const std = @import("std");
     const saved = implementation;
@@ -169,6 +187,7 @@ test "without an installed implementation nothing is asked of a document" {
     destroy(&document);
     setAboutBaseUrl(&document, "http://x.test/");
     declarativeRefresh(&document, "0; url=http://x.test/", null);
+    setIframeLoadInProgress(&document, true);
     // The answers that let a caller go on: a document nobody can ask about
     // is loaded, is no initial about:blank, is not unloading, and nobody
     // cancels leaving it.
@@ -177,4 +196,6 @@ test "without an installed implementation nothing is asked of a document" {
     try std.testing.expect(!isUnloading(&document));
     try std.testing.expect(!fireBeforeUnload(&document).canceled);
     try std.testing.expect(aboutFallbackBaseUrl(&document) == null);
+    // Nor is its load at its iframe muted: the load event fires.
+    try std.testing.expect(!isIframeLoadMuted(&document));
 }
