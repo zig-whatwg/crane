@@ -184,11 +184,14 @@ Location access checks, document.domain and agent clusters are missing."""
 done_when = """Cross-origin access checks, document.domain and agent clusters \
 exist, and a message that cannot cross a cluster fires messageerror."""
 areas = ["html/browsers/origin/", "html/browsers/the-window-object/"]
-progress = []
+progress = [
+  "75bda94c8a (merged 3998de390) - Location members' same origin-domain checks (SecurityError), src/html/origin_domain.zig",
+  "c5e5b6f1f3 (merged aa6406b5b) - policy containers on Documents and workers; CSP (fetch checks, hashes, violation events, frame-ancestors), Referrer Policy and Upgrade Insecure Requests delivered and enforced",
+]
 
   [[infra.items]]
   name = "Cross-origin WindowProxy and Location access checks"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "document.domain"
