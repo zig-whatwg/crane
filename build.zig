@@ -197,6 +197,41 @@ fn configureStaticLibcurl(
     // The curl package exposes both "curl" exe and lib, so we need to find the library specifically
     const libcurl = findLibraryArtifact(curl_dep, "curl") orelse return null;
 
+    // mbedTLS and zlib: the versions build.zig.zon pins, not the curl package's.
+    //
+    // allyourcodebase/curl at c59c65cd - its newest commit; no newer pin exists -
+    // pins mbedTLS 3.6.4 and zlib 1.3.1 in its own build.zig.zon and links them
+    // with `linkLibrary(dependency.artifact("mbedtls"))` and `("z")`. mbedTLS
+    // 3.6.5 and 3.6.6 are security releases. Zig 0.16's package manager cannot
+    // override a transitive pin from build.zig.zon (`zig build --fork=<path>` is a
+    // command-line override with a local checkout, not a pin), so the override
+    // happens here, in the build graph: root's own `.mbedtls` and `.zlib` are
+    // built with the arguments curl passes, and libcurl's link entries for curl's
+    // copies are pointed at them. Nothing else reaches curl's copies: they are
+    // fetched (curl's build asks for them) but never compiled or linked.
+    // tests/linked_libraries/versions_test.zig asks the linked code which versions it
+    // is, and replaceLinkedLibrary fails the build if a curl bump links either
+    // library some other way.
+    //
+    // `.threading = true` is what curl requests (`!(single_threaded orelse
+    // false)`, and Crane never sets single-threaded); see MBEDTLS_THREADING_C below.
+    const mbedtls_dep = b.lazyDependency("mbedtls", .{
+        .target = target,
+        .optimize = optimize,
+        .threading = true,
+    }) orelse return null;
+    const zlib_dep = b.lazyDependency("zlib", .{
+        .target = target,
+        .optimize = optimize,
+    }) orelse return null;
+    const mbedtls = mbedtls_dep.artifact("mbedtls");
+    replaceLinkedLibrary(libcurl, "mbedtls", mbedtls);
+    replaceLinkedLibrary(libcurl, "z", zlib_dep.artifact("z"));
+    // curl's build passes the version IT pins as MBEDTLS_VERSION - a CMake
+    // variable in upstream curl that no C source of curl or mbedTLS reads. Drop it
+    // rather than leave a false "3.6.4" on every libcurl compile line.
+    removeCMacro(libcurl.root_module, "MBEDTLS_VERSION");
+
     // The module doing the `@cImport` needs the SDK's headers too. translate-c
     // resolves `#include <sys/types.h>` against the IMPORTING module's include
     // paths, not the library's, so curl_ffi.zig fails on its own even after every
@@ -239,11 +274,13 @@ fn configureStaticLibcurl(
         }
     }
 
-    // The mbedTLS package compiles the LIBRARY with these two macros
-    // (mbedtls-3.6.4/build.zig:31-32) but does not propagate them to anything
+    // The mbedTLS package compiles the LIBRARY with these two macros (its
+    // build.zig:30-33, under the `threading` option passed above; the same lines
+    // in the 3.6.4 and 3.6.6 packages) but does not propagate them to anything
     // that includes the installed headers. MBEDTLS_THREADING_C appends a
     // `mbedtls_threading_mutex_t mutex` to mbedtls_entropy_context and
-    // mbedtls_ctr_drbg_context, so the two translation units disagree:
+    // mbedtls_ctr_drbg_context, so the two translation units disagree (aarch64
+    // macOS, measured on 3.6.4 and again on 3.6.6 - identical):
     //
     //     libmbedtls.a  (macros on)   entropy_ctx 904   ctr_drbg_ctx 416
     //     libcurl       (macros off)  entropy_ctx 832   ctr_drbg_ctx 344
@@ -266,7 +303,8 @@ fn configureStaticLibcurl(
     }
 
     // iOS: the SDK paths have to reach the DEPENDENCY's modules too, not just ours.
-    // zlib and mbedtls are compiled inside the curl package's own artifacts, so
+    // zlib and mbedtls are artifacts of their own (root's, linked into libcurl
+    // above), which applyIosSdkRecursively reaches through libcurl's link objects;
     // pointing only the top-level module at the SDK left them failing on <stdio.h>
     // and <string.h> - 15 errors and 107 respectively, which read like broken
     // dependencies rather than an unresolved SDK.
@@ -293,12 +331,54 @@ fn configureStaticLibcurl(
         module.linkSystemLibrary("pthread", .{});
     }
     // macOS: No additional libraries needed with mbedTLS
-    // Return the actual transitive library for WebCrypto, not the unused root
-    // dependency (curl currently pins mbedTLS 3.6.4).
-    for (libcurl.root_module.link_objects.items) |linked| {
-        if (linked == .other_step and std.mem.eql(u8, linked.other_step.name, "mbedtls")) return linked.other_step;
+    // The mbedTLS libcurl links, for WebCrypto: one library, one PSA key store.
+    return mbedtls;
+}
+
+/// Point `library` at `replacement` wherever it links the artifact named `name`:
+/// its link object (what the linker reads) and its include directory (the
+/// installed headers its C sources compile against) - the two entries
+/// `Module.linkLibrary` appends. The build runner derives step dependencies
+/// from these entries (createModuleDependenciesForStep), so the original
+/// artifact is then unreachable and never built.
+///
+/// Panics unless exactly one of each was replaced: a dependency that links the
+/// library some other way must fail the build here, not quietly link its own pin.
+fn replaceLinkedLibrary(library: *std.Build.Step.Compile, name: []const u8, replacement: *std.Build.Step.Compile) void {
+    var links: usize = 0;
+    for (library.root_module.link_objects.items) |*object| switch (object.*) {
+        .other_step => |other| if (std.mem.eql(u8, other.name, name)) {
+            object.* = .{ .other_step = replacement };
+            links += 1;
+        },
+        else => {},
+    };
+    var includes: usize = 0;
+    for (library.root_module.include_dirs.items) |*dir| switch (dir.*) {
+        .other_step => |other| if (std.mem.eql(u8, other.name, name)) {
+            dir.* = .{ .other_step = replacement };
+            includes += 1;
+        },
+        else => {},
+    };
+    if (links != 1 or includes != 1) std.debug.panic(
+        "{s} links {d} artifact(s) and {d} header tree(s) named '{s}', expected one of each; " ++
+            "the dependency changed how it links '{s}' - re-check configureStaticLibcurl",
+        .{ library.name, links, includes, name, name },
+    );
+    // What Module.linkLibrary records too: the build needs the binary.
+    _ = replacement.getEmittedBin();
+}
+
+/// Remove every `-D<name>=...` from `module`'s C macros.
+fn removeCMacro(module: *std.Build.Module, name: []const u8) void {
+    const prefix = module.owner.fmt("-D{s}=", .{name});
+    var i: usize = 0;
+    while (i < module.c_macros.items.len) {
+        if (std.mem.startsWith(u8, module.c_macros.items[i], prefix)) {
+            _ = module.c_macros.orderedRemove(i);
+        } else i += 1;
     }
-    return null;
 }
 
 /// nghttp2 - the HTTP/2 library libcurl speaks HTTP/2 through - compiled from
@@ -1883,7 +1963,7 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("infra", infra_mod);
 
     // Configure libcurl for network requests
-    const webcrypto_mbedtls = if (use_system_curl) blk: {
+    const linked_mbedtls = if (use_system_curl) blk: {
         // Development: Use system libcurl for faster builds
         fetch_mod.linkSystemLibrary("curl", .{});
         // ...which may be a libcurl without WebSockets. Say so now rather than
@@ -1895,9 +1975,10 @@ pub fn build(b: *std.Build) void {
         break :blk configureStaticLibcurl(b, fetch_mod, target, optimize, enable_http2);
     };
 
-    // WebCrypto shares curl's exact mbedTLS artifact, including its installed
-    // headers. The root package's independent pin need not match curl's pin.
-    if (webcrypto_mbedtls) |library| webcrypto_mod.linkLibrary(library);
+    // WebCrypto shares curl's exact mbedTLS artifact - build.zig.zon's
+    // `.mbedtls`, which configureStaticLibcurl links into libcurl - including its
+    // installed headers.
+    if (linked_mbedtls) |library| webcrypto_mod.linkLibrary(library);
     const webcrypto_options = b.addOptions();
     webcrypto_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
     webcrypto_mod.addOptions("options", webcrypto_options);
@@ -2189,6 +2270,26 @@ pub fn build(b: *std.Build) void {
     webcrypto_test_step.dependOn(&run_webcrypto_tests.step);
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) {
         test_step.dependOn(&run_webcrypto_tests.step);
+    }
+
+    // The mbedTLS and zlib versions the binary links, asked of the linked code
+    // (tests/linked_libraries/versions_test.zig). Built against the same mbedTLS
+    // artifact, headers and threading macros as libcurl and WebCrypto. Not under
+    // -Dsystem-curl: there is no mbedTLS artifact, and the versions are the system's.
+    if (linked_mbedtls) |mbedtls_library| {
+        const deps_test_mod = b.createModule(.{
+            .root_source_file = b.path("tests/linked_libraries/versions_test.zig"),
+            .target = target,
+            .imports = &.{.{ .name = "fetch", .module = fetch_mod }},
+        });
+        deps_test_mod.linkLibrary(mbedtls_library);
+        deps_test_mod.addCMacro("MBEDTLS_THREADING_C", "");
+        deps_test_mod.addCMacro("MBEDTLS_THREADING_PTHREAD", "");
+        const run_deps_tests = b.addRunArtifact(b.addTest(.{ .root_module = deps_test_mod }));
+        b.step("test-deps", "Check the mbedTLS and zlib versions libcurl and WebCrypto link").dependOn(&run_deps_tests.step);
+        if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) {
+            test_step.dependOn(&run_deps_tests.step);
+        }
     }
 
     const test_all = spec_filter == null or std.mem.eql(u8, spec_filter.?, "all");

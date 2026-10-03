@@ -1,6 +1,7 @@
 # Architecture: Link the library your dependency actually built
 
 **Date**: 2026-10-02
+**Status**: 2026-10-03 - the root entries are now the ones linked: configureStaticLibcurl builds root's `.mbedtls` (3.6.6) and `.zlib` (1.3.2) and points libcurl's link entries at them, so libcurl and WebCrypto share mbedTLS 3.6.6. The takeaway stands; see [Override a transitive Zig pin in the build graph](architecture-override-a-transitive-zig-pin-in-the-build-graph.md).
 **Lesson**: A root dependency declaration does not identify the library linked by a transitive consumer.
 
 **Why**: Two package declarations can name different versions of the same C library. Linking both introduces separate global stores and can pair headers with an incompatible binary.
