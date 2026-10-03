@@ -10,6 +10,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -166,19 +167,77 @@ pub fn call_databases(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    const db_list = internal.factory.databases() catch |err| {
-        return switch (err) {
-            error.SecurityError => error.SecurityError,
-            error.OutOfMemory => error.OutOfMemory,
-            else => error.InvalidState,
-        };
-    };
+    // Steps 1-2: the factory supplies the existing storage entry point.
+    const db_list = try internal.factory.databases();
+    defer internal.allocator.free(db_list);
+    const realm = engine.currentRealm() orelse instance.ctx;
 
-    // TODO: Convert db_list to Promise<sequence<IDBDatabaseInfo>>
-    // For now, return the raw pointer - V8 integration layer will handle conversion
-    _ = db_list;
-    return error.InvalidState; // Placeholder until Promise integration is complete
+    // Step 4.2-3: take a snapshot as IDBDatabaseInfo dictionaries. Each
+    // dictionary is held until the array has taken its references.
+    const values = try internal.allocator.alloc(runtime.JSValue, db_list.len);
+    defer internal.allocator.free(values);
+    var made: usize = 0;
+    defer for (values[0..made]) |value| (engine.Owned{ .value = value }).release();
+    for (db_list) |db| {
+        // Step 4.3.1: newly created, uncommitted databases are omitted.
+        if (db.version == 0) continue;
+        const dictionary = try engine.createDictionaryObject(realm, &.{
+            .{ .name = "name", .value = runtime.JSValue.fromStringRef(db.name) },
+            .{ .name = "version", .value = runtime.JSValue.fromNumber(@floatFromInt(db.version)) },
+        });
+        values[made] = dictionary.take();
+        made += 1;
+    }
+    const snapshot = try engine.createSequenceOfValues(realm, values[0..made]);
+    errdefer snapshot.release();
+
+    // Step 3 and 4.4: return a new promise, resolved from a database task.
+    var capability = try engine.createPromise(realm);
+    errdefer engine.releasePromiseCapability(&capability);
+    const promise = try engine.retainValue(realm, capability.promise);
+    errdefer promise.release();
+    const task = try realm.allocator.create(DatabasesTask);
+    task.* = .{ .realm = realm, .capability = capability, .snapshot = snapshot };
+    if (realm.getOptionalEventLoop()) |loop| {
+        loop.queueTask(.{ .callback = DatabasesTask.run, .context = task, .drop = DatabasesTask.drop });
+    } else {
+        // Engine-less unit-test contexts have no task queue.
+        DatabasesTask.run(task);
+    }
+    return promise.take();
 }
+
+/// The promise and snapshot stay owned by their task through script and its
+/// microtasks. A queued task dropped by realm teardown releases them too.
+const DatabasesTask = struct {
+    realm: runtime.Context,
+    capability: engine.PromiseCapability,
+    snapshot: engine.Owned,
+
+    fn run(context: ?*anyopaque) void {
+        const self: *DatabasesTask = @ptrCast(@alignCast(context.?));
+        defer self.finish();
+        if (self.realm.hasEngine()) {
+            engine.runTaskInRealm(self.realm, steps, self) catch {};
+        }
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *DatabasesTask = @ptrCast(@alignCast(data.?));
+        engine.resolvePromise(&self.capability, self.snapshot.value) catch {};
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *DatabasesTask = @ptrCast(@alignCast(context.?));
+        self.finish();
+    }
+
+    fn finish(self: *DatabasesTask) void {
+        self.snapshot.release();
+        engine.releasePromiseCapability(&self.capability);
+        self.realm.allocator.destroy(self);
+    }
+};
 
 /// Operation: deleteDatabase
 ///
