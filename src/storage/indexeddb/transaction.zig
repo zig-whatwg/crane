@@ -77,6 +77,11 @@ pub const IDBTransaction = struct {
 
     /// Object store names in scope
     scope: []const []const u8,
+    owns_scope: bool,
+    references: usize = 1,
+    destroy_on_release: bool = false,
+    rollback_schema: ?IDBDatabase.Schema = null,
+    rollback_version: u64 = 0,
 
     /// Transaction mode
     mode: IDBTransactionMode,
@@ -95,6 +100,7 @@ pub const IDBTransaction = struct {
 
     /// Object store handles
     object_stores: std.StringHashMap(*IDBObjectStore),
+    retired_stores: std.ArrayListUnmanaged(*IDBObjectStore) = .empty,
 
     /// Event handlers
     onabort: ?*const fn (*Self) void,
@@ -108,10 +114,12 @@ pub const IDBTransaction = struct {
         scope: []const []const u8,
         mode: IDBTransactionMode,
     ) Self {
+        db.retain();
         return Self{
             .allocator = allocator,
             .db = db,
             .scope = scope,
+            .owns_scope = false,
             .mode = mode,
             .state = .active,
             .durability = .default,
@@ -124,8 +132,33 @@ pub const IDBTransaction = struct {
         };
     }
 
+    /// Store/index/cursor wrappers hold leases independently of GC order.
+    pub fn retain(self: *Self) void {
+        std.debug.assert(self.references > 0);
+        self.references += 1;
+    }
+    /// Transfer destruction of a heap transaction to its final wrapper lease.
+    pub fn releaseHeapOwnership(self: *Self) void {
+        self.destroy_on_release = true;
+        self.deinit();
+    }
     /// Clean up resources
     pub fn deinit(self: *Self) void {
+        std.debug.assert(self.references > 0);
+        self.references -= 1;
+        if (self.references != 0) return;
+        if (self.rollback_schema) |*schema_map| IDBDatabase.deinitSchema(schema_map, self.allocator);
+        if (self.owns_scope) {
+            for (self.scope) |name| self.allocator.free(name);
+            self.allocator.free(self.scope);
+        }
+        // The database borrows live transactions; remove before destruction.
+        for (self.db.transactions.items, 0..) |transaction, index| {
+            if (transaction == self) {
+                _ = self.db.transactions.orderedRemove(index);
+                break;
+            }
+        }
         self.requests.deinit(self.allocator);
 
         var it = self.object_stores.iterator();
@@ -134,6 +167,40 @@ pub const IDBTransaction = struct {
             self.allocator.destroy(entry.value_ptr.*);
         }
         self.object_stores.deinit();
+        for (self.retired_stores.items) |store| {
+            store.deinit();
+            self.allocator.destroy(store);
+        }
+        self.retired_stores.deinit(self.allocator);
+        self.db.deinit();
+        if (self.destroy_on_release) self.allocator.destroy(self);
+    }
+
+    /// IDB 5.5 step 2: keep the pre-write schema, records and generators until
+    /// commit succeeds. Native storage is synchronous; dispatch remains queued.
+    pub fn ensureRollbackSnapshot(self: *Self) !void {
+        if (self.rollback_schema != null) return;
+        if (self.mode == .readonly) return;
+        self.rollback_schema = try self.db.cloneSchema();
+        self.rollback_version = if (self.db.backing) |database| database.version else self.db.version;
+    }
+
+    /// Snapshot converted scope names before their caller releases them.
+    pub fn copyScope(self: *Self, names: []const []const u8) !void {
+        const copies = try self.allocator.alloc([]const u8, names.len);
+        errdefer self.allocator.free(copies);
+        var copied: usize = 0;
+        errdefer for (copies[0..copied]) |name| self.allocator.free(name);
+        for (names, 0..) |name, index| {
+            copies[index] = try self.allocator.dupe(u8, name);
+            copied += 1;
+        }
+        if (self.owns_scope) {
+            for (self.scope) |name| self.allocator.free(name);
+            self.allocator.free(self.scope);
+        }
+        self.scope = copies;
+        self.owns_scope = true;
     }
 
     /// Get an object store
@@ -150,7 +217,7 @@ pub const IDBTransaction = struct {
         }
 
         // Step 2: Check name is in scope
-        var found = false;
+        var found = self.mode == .versionchange and self.db.schema().contains(name);
         for (self.scope) |scope_name| {
             if (std.mem.eql(u8, scope_name, name)) {
                 found = true;
@@ -172,13 +239,16 @@ pub const IDBTransaction = struct {
 
         store.* = IDBObjectStore.init(self.allocator, name, self);
 
+        errdefer store.deinit();
+
         // Get metadata from database
-        if (self.db.object_stores.get(name)) |metadata| {
-            store.key_path = metadata.key_path;
+        if (self.db.schema().get(name)) |metadata| {
+            try store.copyDefinition(metadata.name, metadata.key_path);
             store.auto_increment = metadata.auto_increment;
+            store.attachRecords(metadata.record_data);
         }
 
-        try self.object_stores.put(name, store);
+        try self.object_stores.put(store.name, store);
 
         return store;
     }
@@ -192,9 +262,13 @@ pub const IDBTransaction = struct {
     /// 3. Process pending requests and commit.
     pub fn commit(self: *Self) IDBError!void {
         // Step 1: Check state
-        if (self.state != .active and self.state != .inactive) {
+        if (self.state == .finished) {
             return IDBError.InvalidStateError;
         }
+
+        if (self.mode == .versionchange) self.db.publishVersion();
+        if (self.rollback_schema) |*schema_map| IDBDatabase.deinitSchema(schema_map, self.allocator);
+        self.rollback_schema = null;
 
         // Step 2: Set state to committing
         self.state = .committing;
@@ -223,14 +297,35 @@ pub const IDBTransaction = struct {
             return IDBError.InvalidStateError;
         }
 
-        // Step 2: Set state to finished
+        // IDB 5.5 step 2: restore schema, records and key generators atomically.
+        if (self.rollback_schema) |snapshot| {
+            if (self.mode == .versionchange) {
+                var changed = self.db.schema().*;
+                self.db.schema().* = snapshot;
+                self.rollback_schema = null;
+                IDBDatabase.deinitSchema(&changed, self.allocator);
+                self.db.version = self.rollback_version;
+            } else {
+                // Disjoint scopes may commit independently. Restore only this
+                // transaction's stores, preserving other committed changes.
+                var backup = snapshot;
+                for (self.scope) |name| {
+                    const live = self.db.schema().getEntry(name) orelse continue;
+                    const previous = backup.getEntry(name) orelse continue;
+                    std.mem.swap(@import("database.zig").ObjectStoreMetadata, live.value_ptr, previous.value_ptr);
+                    live.key_ptr.* = live.value_ptr.name;
+                    previous.key_ptr.* = previous.value_ptr.name;
+                }
+                self.rollback_schema = null;
+                IDBDatabase.deinitSchema(&backup, self.allocator);
+            }
+        }
+
+        // Step 4: Set state to finished
         self.state = .finished;
         self.err = IDBError.AbortError;
 
-        // Step 3: Undo changes (implementation-specific)
-        // In a real implementation, this would rollback changes
-
-        // Step 4: Fire abort event
+        // Native notification; the binding queues the DOM abort event (step 7).
         if (self.onabort) |handler| {
             handler(self);
         }

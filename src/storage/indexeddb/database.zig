@@ -25,6 +25,7 @@ const IDBTransaction = @import("transaction.zig").IDBTransaction;
 const IDBTransactionMode = @import("transaction.zig").IDBTransactionMode;
 const IDBTransactionDurability = @import("transaction.zig").IDBTransactionDurability;
 const IDBObjectStore = @import("object_store.zig").IDBObjectStore;
+const RecordData = @import("object_store.zig").RecordData;
 const IDBError = @import("errors.zig").IDBError;
 
 /// Options for createObjectStore
@@ -41,7 +42,8 @@ pub const IDBTransactionOptions = struct {
 };
 
 /// Object store metadata
-const ObjectStoreMetadata = struct {
+pub const ObjectStoreMetadata = struct {
+    record_data: *RecordData,
     name: []const u8,
     key_path: ?[]const u8,
     auto_increment: bool,
@@ -50,7 +52,25 @@ const ObjectStoreMetadata = struct {
     /// Index names
     index_names: std.ArrayListUnmanaged([]const u8),
 
+    fn clone(self: *const ObjectStoreMetadata, allocator: std.mem.Allocator) !ObjectStoreMetadata {
+        const name = try allocator.dupe(u8, self.name);
+        errdefer allocator.free(name);
+        const path = if (self.key_path) |value| try allocator.dupe(u8, value) else null;
+        errdefer if (path) |value| allocator.free(value);
+        const data = try self.record_data.clone();
+        errdefer data.release();
+        var names: std.ArrayListUnmanaged([]const u8) = .empty;
+        errdefer {
+            for (names.items) |value| allocator.free(value);
+            names.deinit(allocator);
+        }
+        try names.ensureTotalCapacity(allocator, self.index_names.items.len);
+        for (self.index_names.items) |value| names.appendAssumeCapacity(try allocator.dupe(u8, value));
+        return .{ .name = name, .key_path = path, .auto_increment = self.auto_increment, .key_generator = self.key_generator, .index_names = names, .record_data = data };
+    }
+
     fn deinit(self: *ObjectStoreMetadata, allocator: std.mem.Allocator) void {
+        self.record_data.release();
         allocator.free(self.name);
         if (self.key_path) |kp| {
             allocator.free(kp);
@@ -68,8 +88,15 @@ const ObjectStoreMetadata = struct {
 /// Represents a connection to a database.
 pub const IDBDatabase = struct {
     const Self = @This();
+    pub const Schema = std.StringHashMap(ObjectStoreMetadata);
 
     allocator: std.mem.Allocator,
+
+    // Native transactions hold a lease independent of wrapper GC order.
+    backing: ?*Self = null,
+    references: usize = 1,
+    destroy_on_release: bool = false,
+    owned_name: ?[]u8 = null,
 
     /// Database name
     name: []const u8,
@@ -113,23 +140,67 @@ pub const IDBDatabase = struct {
     }
 
     /// Clean up resources
+    pub fn deinitSchema(schema_map: *Schema, allocator: std.mem.Allocator) void {
+        var iterator = schema_map.valueIterator();
+        while (iterator.next()) |metadata| metadata.deinit(allocator);
+        schema_map.deinit();
+    }
+
+    pub fn cloneSchema(self: *Self) !Schema {
+        var copy = Schema.init(self.allocator);
+        errdefer deinitSchema(&copy, self.allocator);
+        var iterator = self.schema().valueIterator();
+        while (iterator.next()) |metadata| {
+            var cloned = try metadata.clone(self.allocator);
+            errdefer cloned.deinit(self.allocator);
+            try copy.put(cloned.name, cloned);
+        }
+        return copy;
+    }
+
+    pub fn schema(self: *Self) *std.StringHashMap(ObjectStoreMetadata) {
+        return if (self.backing) |database| database.schema() else &self.object_stores;
+    }
+
+    pub fn publishVersion(self: *Self) void {
+        if (self.backing) |database| database.version = self.version;
+    }
+
+    pub fn retain(self: *Self) void {
+        std.debug.assert(self.references > 0);
+        self.references += 1;
+    }
+
+    /// Release a heap-allocated wrapper's owner lease. The final transaction
+    /// releases the allocation if the wrapper was collected first.
+    pub fn releaseHeapOwnership(self: *Self) void {
+        self.destroy_on_release = true;
+        self.deinit();
+    }
+
     pub fn deinit(self: *Self) void {
+        std.debug.assert(self.references > 0);
+        self.references -= 1;
+        if (self.references != 0) return;
         var it = self.object_stores.iterator();
         while (it.next()) |entry| {
             entry.value_ptr.deinit(self.allocator);
         }
         self.object_stores.deinit();
         self.transactions.deinit(self.allocator);
+        if (self.backing) |database| database.deinit();
+        if (self.owned_name) |name| self.allocator.free(name);
+        if (self.destroy_on_release) self.allocator.destroy(self);
     }
 
     /// Get object store names
     /// https://w3c.github.io/IndexedDB/#dom-idbdatabase-objectstorenames
     pub fn objectStoreNames(self: *Self) ![][]const u8 {
-        const names = try self.allocator.alloc([]const u8, self.object_stores.count());
+        const names = try self.allocator.alloc([]const u8, self.schema().count());
         errdefer self.allocator.free(names);
 
         var idx: usize = 0;
-        var it = self.object_stores.iterator();
+        var it = self.schema().iterator();
         while (it.next()) |entry| {
             names[idx] = entry.value_ptr.name;
             idx += 1;
@@ -138,7 +209,7 @@ pub const IDBDatabase = struct {
         // Sort in ascending order per spec
         std.mem.sort([]const u8, names, {}, struct {
             fn lessThan(_: void, a: []const u8, b: []const u8) bool {
-                return std.mem.order(u8, a, b) == .lt;
+                return @import("key.zig").compareStrings(a, b) < 0;
             }
         }.lessThan);
 
@@ -171,7 +242,7 @@ pub const IDBDatabase = struct {
 
         // Verify all store names exist
         for (store_names) |name| {
-            if (!self.object_stores.contains(name)) {
+            if (!self.schema().contains(name)) {
                 return IDBError.NotFoundError;
             }
         }
@@ -180,7 +251,9 @@ pub const IDBDatabase = struct {
         const txn = try self.allocator.create(IDBTransaction);
         errdefer self.allocator.destroy(txn);
 
-        txn.* = IDBTransaction.init(self.allocator, self, store_names, mode);
+        txn.* = IDBTransaction.init(self.allocator, self, &.{}, mode);
+        errdefer txn.deinit();
+        try txn.copyScope(store_names);
         txn.durability = options.durability;
 
         try self.transactions.append(self.allocator, txn);
@@ -215,9 +288,11 @@ pub const IDBDatabase = struct {
         }
 
         // Step 4: Check name doesn't exist
-        if (self.object_stores.contains(name)) {
+        if (self.schema().contains(name)) {
             return IDBError.ConstraintError;
         }
+
+        try txn.ensureRollbackSnapshot();
 
         // Step 5: Create object store
         const name_copy = try self.allocator.dupe(u8, name);
@@ -229,7 +304,11 @@ pub const IDBDatabase = struct {
         }
         errdefer if (key_path_copy) |kp| self.allocator.free(kp);
 
+        const data = try self.allocator.create(RecordData);
+        data.* = .{ .allocator = self.allocator };
+        errdefer data.release();
         const metadata = ObjectStoreMetadata{
+            .record_data = data,
             .name = name_copy,
             .key_path = key_path_copy,
             .auto_increment = options.auto_increment,
@@ -237,15 +316,18 @@ pub const IDBDatabase = struct {
             .index_names = .empty,
         };
 
-        try self.object_stores.put(name_copy, metadata);
-
+        // Allocate the handle before transferring metadata to the map.
+        // No fallible operation may run after the transfer while its errdefers own it.
         // Create IDBObjectStore handle
         const store = try self.allocator.create(IDBObjectStore);
         errdefer self.allocator.destroy(store);
 
-        store.* = IDBObjectStore.init(self.allocator, name, txn);
-        store.key_path = options.key_path;
+        store.* = IDBObjectStore.init(self.allocator, name_copy, txn);
+        errdefer store.deinit();
+        try store.copyDefinition(name_copy, key_path_copy);
         store.auto_increment = options.auto_increment;
+        try self.schema().put(name_copy, metadata);
+        store.attachRecords(data);
 
         return store;
     }
@@ -265,13 +347,19 @@ pub const IDBDatabase = struct {
             return IDBError.TransactionInactiveError;
         }
 
-        // Check name exists
-        if (self.object_stores.fetchRemove(name)) |kv| {
-            var metadata = kv.value;
-            metadata.deinit(self.allocator);
-        } else {
-            return IDBError.NotFoundError;
-        }
+        // Step 4: validate the name before allocating any rollback storage.
+        if (!self.schema().contains(name)) return IDBError.NotFoundError;
+        try txn.ensureRollbackSnapshot();
+        // Reserve the retirement slot before publishing deletion. The handle
+        // remains allocated for existing wrappers, but a recreation gets a new one.
+        if (txn.object_stores.contains(name))
+            try txn.retired_stores.ensureUnusedCapacity(txn.allocator, 1);
+        var metadata = self.schema().fetchRemove(name).?.value;
+        // Steps 5-7: invalidate every handle sharing this definition.
+        metadata.record_data.deleted = true;
+        if (txn.object_stores.fetchRemove(name)) |entry|
+            txn.retired_stores.appendAssumeCapacity(entry.value);
+        metadata.deinit(self.allocator);
     }
 
     /// Close the database connection
@@ -281,17 +369,9 @@ pub const IDBDatabase = struct {
 
         self.closed = true;
 
-        // Abort any active transactions
-        for (self.transactions.items) |txn| {
-            if (txn.state != .finished) {
-                txn.abort() catch {};
-            }
-        }
+        // Closing a connection, steps 1-2: accepted transactions keep running.
+        // Its owner waits for their completion before releasing the connection.
 
-        // Fire close event
-        if (self.onclose) |handler| {
-            handler(self);
-        }
     }
 };
 

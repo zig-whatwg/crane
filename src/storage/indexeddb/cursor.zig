@@ -96,11 +96,11 @@ pub const IDBCursor = struct {
         object_store: *IDBObjectStore,
         range: ?IDBKeyRange,
         direction: IDBCursorDirection,
-    ) Self {
+    ) IDBError!Self {
         var cursor = Self{
             .allocator = allocator,
             .source = .{ .object_store = object_store },
-            .range = range,
+            .range = try copyRange(allocator, range),
             .direction = direction,
             .position = null,
             .key = null,
@@ -112,7 +112,8 @@ pub const IDBCursor = struct {
         };
 
         // Position cursor at first matching record
-        cursor.moveToFirst();
+        errdefer cursor.deinit();
+        _ = try cursor.seek(false);
 
         return cursor;
     }
@@ -123,11 +124,11 @@ pub const IDBCursor = struct {
         index: *IDBIndex,
         range: ?IDBKeyRange,
         direction: IDBCursorDirection,
-    ) Self {
+    ) IDBError!Self {
         var cursor = Self{
             .allocator = allocator,
             .source = .{ .index = index },
-            .range = range,
+            .range = try copyRange(allocator, range),
             .direction = direction,
             .position = null,
             .key = null,
@@ -139,15 +140,49 @@ pub const IDBCursor = struct {
         };
 
         // Position cursor at first matching entry
-        cursor.moveToFirstIndex();
+        errdefer cursor.deinit();
+        _ = try cursor.seek(false);
 
         return cursor;
     }
 
-    /// Clean up resources
+    /// Range and visible record state are snapshots, never borrowed storage.
     pub fn deinit(self: *Self) void {
-        _ = self;
-        // Keys are borrowed from records, don't free
+        self.clearSnapshot();
+        if (self.range) |*range| range.deinit();
+    }
+    fn copyRange(allocator: std.mem.Allocator, range: ?IDBKeyRange) IDBError!?IDBKeyRange {
+        const borrowed = range orelse return null;
+        var result = IDBKeyRange.unbounded();
+        result.allocator = allocator;
+        result.lower_open = borrowed.lower_open;
+        result.upper_open = borrowed.upper_open;
+        errdefer result.deinit();
+        if (borrowed.lower) |key| result.lower = try key.clone(allocator);
+        if (borrowed.upper) |key| result.upper = try key.clone(allocator);
+        return result;
+    }
+    fn clearSnapshot(self: *Self) void {
+        if (self.key) |*key| key.deinit();
+        if (self.primary_key) |*key| key.deinit();
+        if (self.value) |value| self.allocator.free(value);
+        self.key = null;
+        self.primary_key = null;
+        self.value = null;
+    }
+    fn setSnapshot(self: *Self, position: usize, key: IDBKey, primary: IDBKey, value: ?[]const u8) IDBError!void {
+        var copied_key = try key.clone(self.allocator);
+        errdefer copied_key.deinit();
+        var copied_primary = try primary.clone(self.allocator);
+        errdefer copied_primary.deinit();
+        const copied_value = if (!self.key_only and value != null) try self.allocator.dupe(u8, value.?) else null;
+        // IDB 6.7 steps 10-14: publish only after every snapshot allocation succeeds.
+        self.clearSnapshot();
+        self.position = position;
+        self.key = copied_key;
+        self.primary_key = copied_primary;
+        self.value = copied_value;
+        self.got_value = true;
     }
 
     /// Advance cursor by count positions
@@ -183,7 +218,7 @@ pub const IDBCursor = struct {
         // Step 5: Iterate cursor by count
         var i: u32 = 0;
         while (i < cnt) : (i += 1) {
-            if (!self.moveToNext()) {
+            if (!try self.moveToNext()) {
                 break;
             }
         }
@@ -238,7 +273,7 @@ pub const IDBCursor = struct {
         // Step 6: Iterate cursor
         if (key) |k| {
             // Continue to specific key
-            while (self.moveToNext()) {
+            while (try self.moveToNext()) {
                 if (self.key) |current_key| {
                     const cmp = compareKeys(current_key, k);
                     if (self.direction == .next or self.direction == .nextunique) {
@@ -250,7 +285,7 @@ pub const IDBCursor = struct {
             }
         } else {
             // Continue to next
-            _ = self.moveToNext();
+            _ = try self.moveToNext();
         }
     }
 
@@ -328,7 +363,7 @@ pub const IDBCursor = struct {
         self.got_value = false;
 
         // Step 20: Iterate cursor to find matching keys
-        while (self.moveToNext()) {
+        while (try self.moveToNext()) {
             if (self.key != null and self.primary_key != null) {
                 const key_cmp = compareKeys(self.key.?, key);
                 const pk_cmp = compareKeys(self.primary_key.?, primary_key);
@@ -386,25 +421,10 @@ pub const IDBCursor = struct {
             .index => |idx| idx.object_store,
         };
 
-        // Update the record
-        if (self.primary_key orelse self.key) |pk| {
-            for (store.records.items) |*record| {
-                if (compareKeys(record.key, pk) == 0) {
-                    store.allocator.free(record.value);
-                    record.value = try store.allocator.dupe(u8, value);
-                    break;
-                }
-            }
-        }
-
-        // Create request
-        const request = try self.allocator.create(IDBRequest);
-        request.* = IDBRequest.init(self.allocator);
+        // IDB cursor update steps 10-11 run the ordinary store operation.
+        // It recreates a deleted record and shares its allocation/rollback rules.
+        const request = try store.put(value, self.primary_key orelse self.key);
         request.source_type = .cursor;
-        request.setResult(.{ .key = self.key.? });
-
-        try txn.addRequest(request);
-
         return request;
     }
 
@@ -444,28 +464,10 @@ pub const IDBCursor = struct {
             .index => |idx| idx.object_store,
         };
 
-        // Delete the record
-        if (self.primary_key orelse self.key) |pk| {
-            var i: usize = 0;
-            while (i < store.records.items.len) {
-                const record = &store.records.items[i];
-                if (compareKeys(record.key, pk) == 0) {
-                    var removed = store.records.orderedRemove(i);
-                    removed.deinit(store.allocator);
-                    break;
-                }
-                i += 1;
-            }
-        }
-
-        // Create request
-        const request = try self.allocator.create(IDBRequest);
-        request.* = IDBRequest.init(self.allocator);
+        // Cursor delete steps 7-8 share the store operation's preallocation
+        // and rollback. The visible cursor snapshot remains unchanged.
+        const request = try store.delete(IDBKeyRange.only((self.primary_key orelse self.key).?));
         request.source_type = .cursor;
-        request.setResult(.{ .undefined = {} });
-
-        try txn.addRequest(request);
-
         return request;
     }
 
@@ -478,205 +480,64 @@ pub const IDBCursor = struct {
         };
     }
 
-    fn moveToFirst(self: *Self) void {
-        const store = self.source.object_store;
-        const records = store.records.items;
-
-        if (records.len == 0) {
-            self.position = null;
-            self.key = null;
-            self.value = null;
-            self.got_value = false;
-            return;
-        }
-
-        // Find first matching record based on direction
-        if (self.direction == .prev or self.direction == .prevunique) {
-            // Start from end
-            var i: usize = records.len;
-            while (i > 0) {
-                i -= 1;
-                if (self.matchesRange(records[i].key)) {
-                    self.position = i;
-                    self.key = records[i].key;
-                    self.primary_key = records[i].key;
-                    self.value = records[i].value;
-                    self.got_value = true;
-                    return;
-                }
-            }
-        } else {
-            // Start from beginning
-            for (records, 0..) |*record, i| {
-                if (self.matchesRange(record.key)) {
-                    self.position = i;
-                    self.key = record.key;
-                    self.primary_key = record.key;
-                    self.value = record.value;
-                    self.got_value = true;
-                    return;
-                }
-            }
-        }
-
-        // No match found
-        self.position = null;
-        self.key = null;
-        self.value = null;
-        self.got_value = false;
-    }
-
-    fn moveToFirstIndex(self: *Self) void {
-        const idx = self.source.index;
-        const entries = idx.entries.items;
-
-        if (entries.len == 0) {
-            self.position = null;
-            self.key = null;
-            self.primary_key = null;
-            self.got_value = false;
-            return;
-        }
-
-        // Find first matching entry based on direction
-        if (self.direction == .prev or self.direction == .prevunique) {
-            var i: usize = entries.len;
-            while (i > 0) {
-                i -= 1;
-                if (self.matchesRange(entries[i].index_key)) {
-                    self.position = i;
-                    self.key = entries[i].index_key;
-                    self.primary_key = entries[i].primary_key;
-                    self.got_value = true;
-                    return;
-                }
-            }
-        } else {
-            for (entries, 0..) |*entry, i| {
-                if (self.matchesRange(entry.index_key)) {
-                    self.position = i;
-                    self.key = entry.index_key;
-                    self.primary_key = entry.primary_key;
-                    self.got_value = true;
-                    return;
-                }
-            }
-        }
-
-        self.position = null;
-        self.key = null;
-        self.primary_key = null;
-        self.got_value = false;
-    }
-
-    fn moveToNext(self: *Self) bool {
+    fn moveToNext(self: *Self) IDBError!bool {
         if (self.position == null) return false;
-
-        return switch (self.source) {
-            .object_store => self.moveToNextStore(),
-            .index => self.moveToNextIndex(),
-        };
+        return self.seek(true);
     }
-
-    fn moveToNextStore(self: *Self) bool {
-        const store = self.source.object_store;
-        const records = store.records.items;
-        var pos = self.position.?;
-
-        if (self.direction == .prev or self.direction == .prevunique) {
-            // Move backward
-            while (pos > 0) {
-                pos -= 1;
-                if (self.matchesRange(records[pos].key)) {
-                    // Check for unique direction
-                    if (self.direction == .prevunique) {
-                        if (self.key != null and compareKeys(records[pos].key, self.key.?) == 0) {
-                            continue;
-                        }
-                    }
-                    self.position = pos;
-                    self.key = records[pos].key;
-                    self.primary_key = records[pos].key;
-                    self.value = records[pos].value;
-                    self.got_value = true;
-                    return true;
-                }
-            }
-        } else {
-            // Move forward
-            pos += 1;
-            while (pos < records.len) {
-                if (self.matchesRange(records[pos].key)) {
-                    // Check for unique direction
-                    if (self.direction == .nextunique) {
-                        if (self.key != null and compareKeys(records[pos].key, self.key.?) == 0) {
-                            pos += 1;
-                            continue;
-                        }
-                    }
-                    self.position = pos;
-                    self.key = records[pos].key;
-                    self.primary_key = records[pos].key;
-                    self.value = records[pos].value;
-                    self.got_value = true;
-                    return true;
-                }
-                pos += 1;
-            }
-        }
-
-        // No more records
-        self.position = null;
-        self.key = null;
-        self.value = null;
-        self.got_value = false;
-        return false;
+    fn afterPosition(self: *Self, key: IDBKey, primary: IDBKey, advancing: bool) bool {
+        if (!self.matchesRange(key)) return false;
+        if (!advancing) return true;
+        const order = compareKeys(key, self.key.?);
+        const reverse = self.direction == .prev or self.direction == .prevunique;
+        if (order != 0) return if (reverse) order < 0 else order > 0;
+        if (self.source == .object_store or self.direction == .nextunique or self.direction == .prevunique) return false;
+        const primary_order = compareKeys(primary, self.primary_key.?);
+        return if (reverse) primary_order < 0 else primary_order > 0;
     }
-
-    fn moveToNextIndex(self: *Self) bool {
-        const idx = self.source.index;
-        const entries = idx.entries.items;
-        var pos = self.position.?;
-
-        if (self.direction == .prev or self.direction == .prevunique) {
-            while (pos > 0) {
-                pos -= 1;
-                if (self.matchesRange(entries[pos].index_key)) {
+    fn seek(self: *Self, advancing: bool) IDBError!bool {
+        const reverse = self.direction == .prev or self.direction == .prevunique;
+        // IDB 6.7 step 9: search by key/primary position every time. A record
+        // index cannot be a cursor position: writes insert/delete earlier rows.
+        switch (self.source) {
+            .object_store => |store| {
+                const records = store.recordsList().items;
+                var offset: usize = 0;
+                while (offset < records.len) : (offset += 1) {
+                    const i = if (reverse) records.len - 1 - offset else offset;
+                    const record = records[i];
+                    if (!self.afterPosition(record.key, record.key, advancing)) continue;
+                    try self.setSnapshot(i, record.key, record.key, record.value);
+                    return true;
+                }
+            },
+            .index => |index| {
+                const entries = index.entriesList().items;
+                var offset: usize = 0;
+                while (offset < entries.len) : (offset += 1) {
+                    var i = if (reverse) entries.len - 1 - offset else offset;
+                    var entry = entries[i];
+                    if (!self.afterPosition(entry.index_key, entry.primary_key, advancing)) continue;
+                    // Step 9.1 prevunique: choose the FIRST record with this key,
+                    // hence the lowest primary key, in both unique directions.
                     if (self.direction == .prevunique) {
-                        if (self.key != null and compareKeys(entries[pos].index_key, self.key.?) == 0) {
-                            continue;
+                        while (i > 0 and compareKeys(entries[i - 1].index_key, entry.index_key) == 0) i -= 1;
+                        entry = entries[i];
+                    }
+                    var value: ?[]const u8 = null;
+                    for (index.object_store.recordsList().items) |record| {
+                        if (compareKeys(record.key, entry.primary_key) == 0) {
+                            value = record.value;
+                            break;
                         }
                     }
-                    self.position = pos;
-                    self.key = entries[pos].index_key;
-                    self.primary_key = entries[pos].primary_key;
-                    self.got_value = true;
+                    try self.setSnapshot(i, entry.index_key, entry.primary_key, value);
                     return true;
                 }
-            }
-        } else {
-            pos += 1;
-            while (pos < entries.len) {
-                if (self.matchesRange(entries[pos].index_key)) {
-                    if (self.direction == .nextunique) {
-                        if (self.key != null and compareKeys(entries[pos].index_key, self.key.?) == 0) {
-                            pos += 1;
-                            continue;
-                        }
-                    }
-                    self.position = pos;
-                    self.key = entries[pos].index_key;
-                    self.primary_key = entries[pos].primary_key;
-                    self.got_value = true;
-                    return true;
-                }
-                pos += 1;
-            }
+            },
         }
-
+        // Step 9.2: no record. No later iteration can use this cursor.
+        self.clearSnapshot();
         self.position = null;
-        self.key = null;
-        self.primary_key = null;
         self.got_value = false;
         return false;
     }
@@ -701,9 +562,9 @@ pub const IDBCursorWithValue = struct {
         object_store: *IDBObjectStore,
         range: ?IDBKeyRange,
         direction: IDBCursorDirection,
-    ) IDBCursorWithValue {
+    ) IDBError!IDBCursorWithValue {
         return IDBCursorWithValue{
-            .cursor = IDBCursor.init(allocator, object_store, range, direction),
+            .cursor = try IDBCursor.init(allocator, object_store, range, direction),
         };
     }
 
@@ -734,7 +595,7 @@ test "IDBCursor - init empty store" {
     var store = IDBObjectStore.init(allocator, "store1", &txn);
     defer store.deinit();
 
-    var cursor = IDBCursor.init(allocator, &store, null, .next);
+    var cursor = try IDBCursor.init(allocator, &store, null, .next);
     defer cursor.deinit();
 
     // Empty store - position should be null
@@ -768,7 +629,7 @@ test "IDBCursor - advance with zero count throws TypeError" {
     const req2 = try store.put("value2", IDBKey.number(2));
     defer allocator.destroy(req2);
 
-    var cursor = IDBCursor.init(allocator, &store, null, .next);
+    var cursor = try IDBCursor.init(allocator, &store, null, .next);
     defer cursor.deinit();
 
     // advance(0) should throw TypeError
@@ -789,7 +650,7 @@ test "IDBCursor - advance throws InvalidStateError when got_value is false" {
     defer store.deinit();
 
     // Empty store - cursor has no value
-    var cursor = IDBCursor.init(allocator, &store, null, .next);
+    var cursor = try IDBCursor.init(allocator, &store, null, .next);
     defer cursor.deinit();
 
     // got_value should be false for empty store
@@ -813,7 +674,7 @@ test "IDBCursor - continue throws InvalidStateError when got_value is false" {
     defer store.deinit();
 
     // Empty store - cursor has no value
-    var cursor = IDBCursor.init(allocator, &store, null, .next);
+    var cursor = try IDBCursor.init(allocator, &store, null, .next);
     defer cursor.deinit();
 
     // got_value should be false for empty store
@@ -844,7 +705,7 @@ test "IDBCursor - continue with key in wrong direction throws DataError" {
     const req3 = try store.put("value3", IDBKey.number(3));
     defer allocator.destroy(req3);
 
-    var cursor = IDBCursor.init(allocator, &store, null, .next);
+    var cursor = try IDBCursor.init(allocator, &store, null, .next);
     defer cursor.deinit();
 
     // Cursor should be at position 0 with key 1
@@ -873,7 +734,7 @@ test "IDBCursor - continuePrimaryKey throws InvalidAccessError for non-index cur
     const req1 = try store.put("value1", IDBKey.number(1));
     defer allocator.destroy(req1);
 
-    var cursor = IDBCursor.init(allocator, &store, null, .next);
+    var cursor = try IDBCursor.init(allocator, &store, null, .next);
     defer cursor.deinit();
 
     // continuePrimaryKey should throw InvalidAccessError for object store cursor
@@ -902,7 +763,7 @@ test "IDBCursor - got_value is true after cursor finds record" {
     const req2 = try store.put("value2", IDBKey.number(2));
     defer allocator.destroy(req2);
 
-    var cursor = IDBCursor.init(allocator, &store, null, .next);
+    var cursor = try IDBCursor.init(allocator, &store, null, .next);
     defer cursor.deinit();
 
     // After init with records, got_value should be true
@@ -936,7 +797,7 @@ test "IDBCursor - advance sets got_value to false then true on success" {
     const req3 = try store.put("value3", IDBKey.number(3));
     defer allocator.destroy(req3);
 
-    var cursor = IDBCursor.init(allocator, &store, null, .next);
+    var cursor = try IDBCursor.init(allocator, &store, null, .next);
     defer cursor.deinit();
 
     // After init, at position 1
@@ -968,7 +829,7 @@ test "IDBCursor - advance past end sets got_value to false" {
     const req2 = try store.put("value2", IDBKey.number(2));
     defer allocator.destroy(req2);
 
-    var cursor = IDBCursor.init(allocator, &store, null, .next);
+    var cursor = try IDBCursor.init(allocator, &store, null, .next);
     defer cursor.deinit();
 
     // After init, at position 1

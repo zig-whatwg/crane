@@ -78,15 +78,9 @@ pub const ExtractedValue = union(enum) {
     };
 };
 
-/// Result of key extraction
-pub const ExtractionResult = union(enum) {
-    /// Successfully extracted a key
-    key: IDBKey,
-    /// Key path doesn't exist in the value
-    failure: void,
-    /// Value cannot be converted to a valid key
-    invalid: void,
-};
+/// Key extraction returns OWNED keys; release every successful key with deinit().
+pub const ExtractionResult = OwnedExtractionResult;
+pub const extractKey = extractKeyOwned;
 
 // ============================================================================
 // Key Path Validation
@@ -96,29 +90,16 @@ pub const ExtractionResult = union(enum) {
 /// https://tc39.es/ecma262/#prod-IdentifierName
 ///
 /// An identifier consists of IdentifierStart followed by IdentifierPart*.
-/// For simplicity, we check for ASCII letters, digits, $, and _.
-/// A full implementation would handle Unicode.
 pub fn isValidIdentifier(str: []const u8) bool {
-    if (str.len == 0) return false;
-
-    // First character must be IdentifierStart: letter, _, $
-    const first = str[0];
-    if (!isIdentifierStart(first)) return false;
-
-    // Remaining characters must be IdentifierPart: letter, digit, _, $
-    for (str[1..]) |c| {
-        if (!isIdentifierPart(c)) return false;
+    const view = std.unicode.Wtf8View.init(str) catch return false;
+    var points = view.iterator();
+    const identifiers = @import("infra").unicode_identifiers;
+    const first = points.nextCodepoint() orelse return false;
+    if (!identifiers.isIdentifierStart(first)) return false;
+    while (points.nextCodepoint()) |point| {
+        if (!identifiers.isIdentifierPart(point)) return false;
     }
-
     return true;
-}
-
-fn isIdentifierStart(c: u8) bool {
-    return std.ascii.isAlphabetic(c) or c == '_' or c == '$';
-}
-
-fn isIdentifierPart(c: u8) bool {
-    return std.ascii.isAlphanumeric(c) or c == '_' or c == '$';
 }
 
 /// Validate a key path string
@@ -280,71 +261,6 @@ fn getPropertyValue(value: ExtractedValue, identifier: []const u8) EvaluationRes
 // Key Extraction
 // ============================================================================
 
-/// Extract a key from a value using a key path
-/// https://w3c.github.io/IndexedDB/#extract-a-key-from-a-value-using-a-key-path
-///
-/// From specs/algorithms/IndexedDB-3.json lines 3070-3090
-///
-/// Steps:
-/// 1. Let r = evaluate key path on value. Rethrow exceptions.
-/// 2. If r is failure, return failure.
-/// 3. Let key = convert value to key (or multiEntry key if flag set)
-/// 4. If key is invalid, return invalid.
-/// 5. Return key.
-pub fn extractKey(
-    allocator: std.mem.Allocator,
-    value: ExtractedValue,
-    key_path: KeyPath,
-    multi_entry: bool,
-) IDBError!ExtractionResult {
-    // Step 1: Evaluate key path
-    const eval_result = try evaluateKeyPath(allocator, value, key_path);
-
-    // Step 2: Check for failure
-    switch (eval_result) {
-        .failure => return .failure,
-        .value => |v| {
-            // Step 3: Convert to key
-            if (multi_entry) {
-                return convertToMultiEntryKey(allocator, v);
-            } else {
-                return convertToKey(v);
-            }
-        },
-    }
-}
-
-/// Convert an extracted value to a key (borrowed - not for storage)
-/// https://w3c.github.io/IndexedDB/#convert-a-value-to-a-key
-fn convertToKey(value: ExtractedValue) ExtractionResult {
-    return switch (value) {
-        .number => |n| {
-            // NaN is invalid
-            if (std.math.isNan(n)) return .invalid;
-            return .{ .key = IDBKey.number(n) };
-        },
-        .date => |d| .{ .key = IDBKey.date(d) },
-        .string => |s| .{ .key = IDBKey.string(s) },
-        .binary => |b| .{ .key = IDBKey.binary(b) },
-        .array => |arr| {
-            // Convert array elements to keys
-            // Note: In a full implementation, we'd need to allocate
-            // and handle nested arrays recursively
-            var keys: [256]IDBKey = undefined;
-            for (arr, 0..) |elem, i| {
-                if (i >= keys.len) return .invalid;
-                const result = convertToKey(elem);
-                switch (result) {
-                    .key => |k| keys[i] = k,
-                    .failure, .invalid => return .invalid,
-                }
-            }
-            return .{ .key = IDBKey.array(keys[0..arr.len]) };
-        },
-        .null_value, .undefined, .object => .invalid,
-    };
-}
-
 /// Result of owned key extraction - the key owns its data
 pub const OwnedExtractionResult = union(enum) {
     /// Successfully extracted an owned key
@@ -436,7 +352,11 @@ fn convertToKeyOwned(allocator: std.mem.Allocator, value: ExtractedValue) IDBErr
             for (arr) |elem| {
                 const result = try convertToKeyOwned(allocator, elem);
                 switch (result) {
-                    .key => |k| try keys.append(allocator, k),
+                    .key => |k| {
+                        var child = k;
+                        errdefer child.deinit();
+                        try keys.append(allocator, child);
+                    },
                     .failure, .invalid => {
                         // Clean up already converted keys
                         for (keys.items) |*k| {
@@ -491,7 +411,9 @@ fn convertToMultiEntryKeyOwned(allocator: std.mem.Allocator, value: ExtractedVal
                             var k_mut = k;
                             k_mut.deinit();
                         } else {
-                            try keys.append(allocator, k);
+                            var child = k;
+                            errdefer child.deinit();
+                            try keys.append(allocator, child);
                         }
                     },
                     // Invalid values are ignored in multiEntry
@@ -509,46 +431,6 @@ fn convertToMultiEntryKeyOwned(allocator: std.mem.Allocator, value: ExtractedVal
         else => {
             // Non-arrays use regular conversion
             return convertToKeyOwned(allocator, value);
-        },
-    }
-}
-
-/// Convert a value to a multiEntry key
-/// https://w3c.github.io/IndexedDB/#convert-a-value-to-a-multientry-key
-fn convertToMultiEntryKey(allocator: std.mem.Allocator, value: ExtractedValue) IDBError!ExtractionResult {
-    switch (value) {
-        .array => |arr| {
-            // For arrays with multiEntry, extract valid keys from elements
-            var keys: std.ArrayListUnmanaged(IDBKey) = .empty;
-            errdefer keys.deinit(allocator);
-
-            for (arr) |elem| {
-                const result = convertToKey(elem);
-                switch (result) {
-                    .key => |k| {
-                        // Skip duplicates
-                        var duplicate = false;
-                        for (keys.items) |existing| {
-                            if (key_mod.compare(k, existing) == 0) {
-                                duplicate = true;
-                                break;
-                            }
-                        }
-                        if (!duplicate) {
-                            try keys.append(allocator, k);
-                        }
-                    },
-                    // Invalid values are ignored in multiEntry
-                    .failure, .invalid => {},
-                }
-            }
-
-            const key_array = try keys.toOwnedSlice(allocator);
-            return .{ .key = IDBKey.array(key_array) };
-        },
-        else => {
-            // Non-arrays use regular conversion
-            return convertToKey(value);
         },
     }
 }
@@ -573,33 +455,21 @@ fn convertToMultiEntryKey(allocator: std.mem.Allocator, value: ExtractedValue) I
 ///    - Get property value
 /// 5. Return true if final value is Object or Array
 pub fn checkKeyInjectable(value: ExtractedValue, key_path: []const u8) bool {
-    // Step 1: Split on periods
+    // Steps 1-3: consume all identifiers except the last with one-item
+    // lookahead. The algorithm has no fixed component-count limit.
     var identifiers = std.mem.splitScalar(u8, key_path, '.');
-    var parts: [64][]const u8 = undefined;
-    var part_count: usize = 0;
-
-    while (identifiers.next()) |part| {
-        if (part_count >= parts.len) return false;
-        parts[part_count] = part;
-        part_count += 1;
-    }
-
-    // Step 2: Assert not empty
-    if (part_count == 0) return false;
-
-    // Step 3: Remove last item
-    part_count -= 1;
-
-    // Step 4: For each remaining identifier
+    var identifier = identifiers.next() orelse return false;
     var current = value;
-    for (parts[0..part_count]) |identifier| {
+    while (identifiers.next()) |next| {
+        const parent_identifier = identifier;
+        identifier = next;
         // Check if value is Object or Array
         switch (current) {
             .object => |props| {
                 // Check HasOwnProperty
                 var found = false;
                 for (props) |prop| {
-                    if (std.mem.eql(u8, prop.key, identifier)) {
+                    if (std.mem.eql(u8, prop.key, parent_identifier)) {
                         current = prop.value;
                         found = true;
                         break;
@@ -1017,4 +887,12 @@ test "extractKeyOwned - multiEntry with array value" {
         },
         .failure, .invalid => return error.UnexpectedResult,
     }
+}
+
+test "key paths accept Unicode IdentifierName characters but not arbitrary non-ASCII" {
+    try std.testing.expect(isValidKeyPath("\u{3b1}.\u{4e00}"));
+    try std.testing.expect(isValidKeyPath("a\u{200c}\u{200d}"));
+    try std.testing.expect(!isValidKeyPath("\u{200c}a"));
+    try std.testing.expect(!isValidKeyPath("\u{1f600}"));
+    try std.testing.expect(!isValidKeyPath("a\u{a0}b"));
 }

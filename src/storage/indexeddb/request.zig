@@ -133,6 +133,24 @@ pub const IDBRequest = struct {
         };
     }
 
+    /// Reserve the request and transaction-list storage before an operation
+    /// mutates records. The caller owns this request until completion.
+    pub fn prepare(allocator: std.mem.Allocator, transaction: *IDBTransaction, source: RequestSourceType) IDBError!*Self {
+        const request = try allocator.create(Self);
+        errdefer allocator.destroy(request);
+        try transaction.requests.ensureUnusedCapacity(transaction.allocator, 1);
+        request.* = init(allocator);
+        request.transaction = transaction;
+        request.source_type = source;
+        return request;
+    }
+
+    /// IDB 5.6 step 4 precedes notification. No allocation follows publication.
+    pub fn completePrepared(self: *Self, result: RequestResult) void {
+        self.transaction.?.requests.appendAssumeCapacity(self);
+        self.setResult(result);
+    }
+
     /// Clean up resources
     pub fn deinit(self: *Self) void {
         // Result cleanup is handled by specific result types

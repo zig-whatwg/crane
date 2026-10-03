@@ -1,0 +1,167 @@
+//! Generate the Unicode 15.1 ECMAScript IdentifierName classifier.
+//! Download https://www.unicode.org/Public/15.1.0/ucd/DerivedCoreProperties.txt
+//! into tmp/, then on the build host run:
+//! zig run tools/unicode/generate_identifier_tables.zig -- tmp/DerivedCoreProperties.txt > src/infra/unicode_identifiers.zig
+const std = @import("std");
+const expected_hash = "f55d0db69123431a7317868725b1fcbf1eab6b265d756d1bd7f0f6d9f9ee108b";
+const Range = struct { first: u21, last: u21 };
+const Entry = struct { range: Range, property: []const u8 };
+
+fn parse(line: []const u8) !?Entry {
+    const content = std.mem.trim(u8, line[0 .. std.mem.indexOfScalar(u8, line, '#') orelse line.len], " \t\r");
+    if (content.len == 0) return null;
+    var fields = std.mem.splitScalar(u8, content, ';');
+    const codes = std.mem.trim(u8, fields.next().?, " \t");
+    const property = std.mem.trim(u8, fields.next() orelse return error.InvalidProperty, " \t");
+    if (!std.mem.eql(u8, property, "ID_Start") and !std.mem.eql(u8, property, "ID_Continue")) return null;
+    const split = std.mem.indexOf(u8, codes, "..");
+    const first = try std.fmt.parseInt(u21, if (split) |i| codes[0..i] else codes, 16);
+    const last = if (split) |i| try std.fmt.parseInt(u21, codes[i + 2 ..], 16) else first;
+    if (last < first or last > 0x10ffff) return error.InvalidRange;
+    return .{ .range = .{ .first = first, .last = last }, .property = property };
+}
+fn append(allocator: std.mem.Allocator, ranges: *std.ArrayList(Range), range: Range) !void {
+    if (ranges.items.len != 0) {
+        const previous = &ranges.items[ranges.items.len - 1];
+        if (range.first < previous.first) return error.UnsortedRanges;
+        if (@as(u32, range.first) <= @as(u32, previous.last) + 1) {
+            previous.last = @max(previous.last, range.last);
+            return;
+        }
+    }
+    try ranges.append(allocator, range);
+}
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    var args = try init.minimal.args.iterateAllocator(allocator);
+    defer args.deinit();
+    _ = args.next();
+    const path = args.next() orelse return error.InputPathRequired;
+    if (args.next() != null) return error.TooManyArguments;
+    const file = try std.Io.Dir.cwd().openFile(init.io, path, .{});
+    defer file.close(init.io);
+    var reader = file.reader(init.io, &.{});
+    const bytes = try reader.interface.allocRemaining(allocator, .limited(2 * 1024 * 1024));
+    defer allocator.free(bytes);
+    var hash: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(bytes, &hash, .{});
+    if (!std.mem.eql(u8, &std.fmt.bytesToHex(hash, .lower), expected_hash)) return error.InputHashMismatch;
+    var starts: std.ArrayList(Range) = .empty;
+    defer starts.deinit(allocator);
+    var parts: std.ArrayList(Range) = .empty;
+    defer parts.deinit(allocator);
+    var lines = std.mem.splitScalar(u8, bytes, '\n');
+    while (lines.next()) |line| {
+        if (try parse(line)) |entry| try append(allocator, if (std.mem.eql(u8, entry.property, "ID_Start")) &starts else &parts, entry.range);
+    }
+    var buffer: [8192]u8 = undefined;
+    var output = std.Io.File.stdout().writer(init.io, &buffer);
+    const writer = &output.interface;
+    try writer.writeAll(header);
+    try writer.writeAll(classifier);
+    for ([_]struct { name: []const u8, ranges: []const Range }{ .{ .name = "starts", .ranges = starts.items }, .{ .name = "parts", .ranges = parts.items } }) |table| {
+        try writer.print("\nconst {s} = [_]Range{{\n", .{table.name});
+        for (table.ranges) |range| try writer.print("    .{{ .first = 0x{x}, .last = 0x{x} }},\n", .{ range.first, range.last });
+        try writer.writeAll("};\n");
+    }
+    try writer.flush();
+}
+
+test "parse property ranges and singletons, ignore unrelated properties" {
+    const range = (try parse("0041..005A ; ID_Start # uppercase")).?;
+    try std.testing.expectEqual(@as(u21, 0x41), range.range.first);
+    try std.testing.expectEqual(@as(u21, 0x5a), range.range.last);
+    const singleton = (try parse("005F ; ID_Continue")).?;
+    try std.testing.expectEqual(singleton.range.first, singleton.range.last);
+    try std.testing.expectEqual(@as(?Entry, null), try parse("002B ; Math"));
+    try std.testing.expectEqual(@as(?Entry, null), try parse(" # comment"));
+    try std.testing.expectError(error.InvalidRange, parse("005A..0041 ; ID_Start"));
+}
+test "merge adjacent ranges without filling holes" {
+    var ranges: std.ArrayList(Range) = .empty;
+    defer ranges.deinit(std.testing.allocator);
+    try append(std.testing.allocator, &ranges, .{ .first = 0x41, .last = 0x45 });
+    try append(std.testing.allocator, &ranges, .{ .first = 0x46, .last = 0x5a });
+    try append(std.testing.allocator, &ranges, .{ .first = 0x61, .last = 0x7a });
+    try std.testing.expectEqual(@as(usize, 2), ranges.items.len);
+    try std.testing.expectEqual(@as(u21, 0x5a), ranges.items[0].last);
+}
+
+const header =
+    \\//! GENERATED by tools/unicode/generate_identifier_tables.zig; do not hand edit.
+    \\//! Unicode 15.1.0, matching ICU 74 in V8 13.1.
+    \\//! Input: https://www.unicode.org/Public/15.1.0/ucd/DerivedCoreProperties.txt
+    \\//! SHA256: f55d0db69123431a7317868725b1fcbf1eab6b265d756d1bd7f0f6d9f9ee108b
+    \\//! Download that URL into tmp/, then run the generator with its path on the build host.
+    \\//!
+    \\//! UNICODE LICENSE V3
+    \\//! Copyright © 1991-2023 Unicode, Inc.
+    \\//!
+    \\//! Permission is hereby granted, free of charge, to any person obtaining a
+    \\//! copy of data files and any associated documentation (the "Data Files") or
+    \\//! software and any associated documentation (the "Software") to deal in the
+    \\//! Data Files or Software without restriction, including without limitation
+    \\//! the rights to use, copy, modify, merge, publish, distribute, and/or sell
+    \\//! copies of the Data Files or Software, and to permit persons to whom the
+    \\//! Data Files or Software are furnished to do so, provided that either (a)
+    \\//! this copyright and permission notice appear with all copies of the Data
+    \\//! Files or Software, or (b) this copyright and permission notice appear in
+    \\//! associated Documentation.
+    \\//!
+    \\//! THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+    \\//! KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+    \\//! MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF
+    \\//! THIRD PARTY RIGHTS.
+    \\//!
+    \\//! IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN THIS NOTICE
+    \\//! BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL DAMAGES,
+    \\//! OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+    \\//! WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+    \\//! ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THE DATA
+    \\//! FILES OR SOFTWARE.
+    \\//!
+    \\//! Except as contained in this notice, the name of a copyright holder shall
+    \\//! not be used in advertising or otherwise to promote the sale, use or other
+    \\//! dealings in these Data Files or Software without prior written
+    \\//! authorization of the copyright holder.
+    \\
+;
+
+const classifier =
+    \\const std = @import("std");
+    \\const Range = struct { first: u21, last: u21 };
+    \\
+    \\pub fn isIdentifierStart(cp: u21) bool {
+    \\    return cp == '$' or cp == '_' or contains(&starts, cp);
+    \\}
+    \\pub fn isIdentifierPart(cp: u21) bool {
+    \\    return cp == '$' or cp == 0x200c or cp == 0x200d or contains(&parts, cp);
+    \\}
+    \\fn contains(ranges: []const Range, cp: u21) bool {
+    \\    var low: usize = 0;
+    \\    var high = ranges.len;
+    \\    while (low < high) {
+    \\        const middle = low + (high - low) / 2;
+    \\        const range = ranges[middle];
+    \\        if (cp < range.first) high = middle else if (cp > range.last) low = middle + 1 else return true;
+    \\    }
+    \\    return false;
+    \\}
+    \\test "IdentifierName range boundaries and supplementary characters" {
+    \\    try std.testing.expect(isIdentifierStart(0x41));
+    \\    try std.testing.expect(isIdentifierStart(0x5a));
+    \\    try std.testing.expect(!isIdentifierStart(0x40));
+    \\    try std.testing.expect(!isIdentifierStart(0x5b));
+    \\    try std.testing.expect(isIdentifierStart(0x10400));
+    \\    try std.testing.expect(!isIdentifierStart(0x1f600));
+    \\    for ([_]u21{ '$', '_' }) |cp| {
+    \\        try std.testing.expect(isIdentifierStart(cp));
+    \\        try std.testing.expect(isIdentifierPart(cp));
+    \\    }
+    \\    for ([_]u21{ 0x200c, 0x200d, '0' }) |cp| {
+    \\        try std.testing.expect(!isIdentifierStart(cp));
+    \\        try std.testing.expect(isIdentifierPart(cp));
+    \\    }
+    \\}
+    \\
+;
