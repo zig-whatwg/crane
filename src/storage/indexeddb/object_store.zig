@@ -833,8 +833,12 @@ pub const IDBObjectStore = struct {
         if (self.record_data) |records| if (records.indexes.contains(name)) return IDBError.ConstraintError;
         switch (path) {
             .single => |key_path| if (!key_path_mod.isValidKeyPath(key_path)) return IDBError.InvalidKeyPathError,
-            .array => |paths| for (paths) |key_path| {
-                if (!key_path_mod.isValidKeyPath(key_path)) return IDBError.InvalidKeyPathError;
+            .array => |paths| {
+                // ED 2.5 and createIndex step 7: the list must be non-empty.
+                if (paths.len == 0) return IDBError.InvalidKeyPathError;
+                for (paths) |key_path| {
+                    if (!key_path_mod.isValidKeyPath(key_path)) return IDBError.InvalidKeyPathError;
+                }
             },
         }
         // ED 4.5 createIndex step 10.

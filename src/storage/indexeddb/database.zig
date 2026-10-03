@@ -326,11 +326,12 @@ pub const IDBDatabase = struct {
     /// Can only be called during a versionchange transaction.
     ///
     /// Steps:
-    /// 1. Let transaction be this's upgrade transaction.
-    /// 2. If transaction is null, throw InvalidStateError.
+    /// 1-2. Get the database's upgrade transaction, or throw InvalidStateError.
     /// 3. If transaction is not active, throw TransactionInactiveError.
-    /// 4. If name already exists, throw ConstraintError.
-    /// 5. Create object store and return IDBObjectStore.
+    /// 4-5. Validate the key path.
+    /// 6. If name already exists, throw ConstraintError.
+    /// 7-8. Check the key generator restrictions.
+    /// 9-10. Create the object store and return its handle.
     pub fn createObjectStore(
         self: *Self,
         name: []const u8,
@@ -348,9 +349,13 @@ pub const IDBDatabase = struct {
 
         // 4.4 createObjectStore steps 4-6: validate the path before the name.
         if (options.key_path) |path| if (!key_path_mod.isValidKeyPath(path)) return IDBError.InvalidKeyPathError;
-        if (options.compound_key_path) |paths| for (paths) |path| {
-            if (!key_path_mod.isValidKeyPath(path)) return IDBError.InvalidKeyPathError;
-        };
+        if (options.compound_key_path) |paths| {
+            // ED 2.5: a list key path must contain at least one string.
+            if (paths.len == 0) return IDBError.InvalidKeyPathError;
+            for (paths) |path| {
+                if (!key_path_mod.isValidKeyPath(path)) return IDBError.InvalidKeyPathError;
+            }
+        }
         if (self.schema().contains(name)) {
             return IDBError.ConstraintError;
         }
@@ -360,7 +365,7 @@ pub const IDBDatabase = struct {
 
         try txn.ensureRollbackSnapshot();
 
-        // Step 5: Create object store
+        // Steps 9-10: create the object store and its handle.
         const name_copy = try self.allocator.dupe(u8, name);
         errdefer self.allocator.free(name_copy);
         const visible_name = try self.allocator.dupe(u8, name);
