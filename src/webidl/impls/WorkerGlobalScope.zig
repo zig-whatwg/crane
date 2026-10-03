@@ -65,6 +65,12 @@ pub const InternalState = struct {
     /// The WorkerNavigator object, [SameObject], pinned the same way.
     navigator_instance: ?*runtime.Instance = null,
     navigator_pin: same_object.Pin = .{},
+    /// WebCrypto §10: this worker's Crypto, kept by a collector-traced edge.
+    crypto: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: same_object.Traced = .{ .slot = .{ .name = "crypto" } },
+    } = null,
 
     /// Reference to the worker's event loop (for timer APIs)
     /// This is set when the worker is fully initialized with an event loop.
@@ -97,6 +103,7 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *InternalState) void {
+        if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         // The WorkerLocation and WorkerNavigator objects are the wrapper
         // cache's: they are freed with it, not here. Only the pins are ours.
         self.location_pin.release();
@@ -160,6 +167,7 @@ pub fn installHooks() void {
         .origin = &settingsOrigin,
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
+        .crypto = &settingsCrypto,
         .cookie_jar = &settingsCookieJar,
     });
 }
@@ -198,6 +206,16 @@ fn settingsCrossOriginIsolated(instance: *runtime.Instance) bool {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return false;
     return internal.cross_origin_isolated;
+}
+
+/// WebCrypto §10: each worker global gets its own Crypto instance.
+fn settingsCrypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    if (internal.crypto) |crypto| return crypto.value;
+    const crypto = try interfaces.Crypto.init(internal.allocator, instance.ctx);
+    internal.crypto = .{ .owner = instance, .value = crypto };
+    internal.crypto.?.edge.hold(instance, crypto);
+    return crypto;
 }
 
 /// Initialize with worker URL and type
