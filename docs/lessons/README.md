@@ -161,6 +161,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Ownership decided by content leaks the copy that looks like the default](architecture-ownership-decided-by-content-leaks-the-copy-that-looks-like-the-default.md) - Ownership is a fact recorded where the value is stored, not read off the value later.
 - [A snapshot's external reference table must not depend on the optimizer](architecture-a-snapshot-s-external-reference-table-must-not-depend-on-the-optimizer.md) - Anything a build writes and a different build reads must be a function of the source, not of the optimizer; read a runner's warnings in each build mode.
 - [A collected wrapper's instance is torn down in V8's second pass](architecture-a-collected-wrapper-s-instance-is-torn-down-in-v8-s-second-pass.md) - A finalizer that touches the engine belongs in V8's second pass; the first pass only makes the dying thing unreachable.
+- [A declared union does not prove its input conversion](architecture-a-declared-union-does-not-prove-its-input-conversion.md) - Check union selection and argument cleanup at the binding seam.
+- [Link the library your dependency actually built](architecture-link-the-library-your-dependency-actually-built.md) - Trace the linked artifact, headers and lifetime owner before sharing a C library.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -197,6 +199,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A "return" inside a state-override parse ends the parse](spec-compliance-a-return-inside-a-state-override-parse-ends-the-parse.md) - In a parser that runs spec steps inside a loop, every spec "return" must stop the loop; test override cases for "no failure", not only for the result.
 - ["Upon rejection" is a reaction, even for a promise already rejected](spec-compliance-upon-rejection-is-a-reaction.md) - Where the spec says "upon fulfillment" or "upon rejection", react to a promise - even one you know is settled - so the step lands behind the microtasks already queued.
 - [importScripts() fetches no-cors and runs with rethrow errors](spec-compliance-importscripts-rethrows-and-fetches-no-cors.md) - "Rethrow errors" means the report never happens: keep the thrown value from the engine's reporter and throw it into the caller once the script has been cleaned up after.
+- [Validating a buffer does not copy its bytes](spec-compliance-validating-a-buffer-does-not-copy-its-bytes.md) - Validation, object lifetime and byte-copy timing are separate requirements.
+- [Parsing a key is not validating its mathematics](spec-compliance-parsing-a-key-is-not-validating-its-mathematics.md) - Prove mathematical validation separately from parser acceptance.
+- [An internal dictionary can still expose prototype getters](spec-compliance-an-internal-dictionary-can-still-expose-prototype-getters.md) - Preserve observable prototype reads in ECMAScript conversions.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
