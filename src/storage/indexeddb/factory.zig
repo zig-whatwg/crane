@@ -128,26 +128,36 @@ pub const IDBFactory = struct {
         // Step 5: Open database connection (simplified - synchronous for now)
         // In a real implementation, this would be async
         const db_key = try self.makeDatabaseKey(name);
-        errdefer self.allocator.free(db_key);
+        // The temporary lookup key remains ours until insertion succeeds.
+        var key_transferred = false;
+        defer if (!key_transferred) self.allocator.free(db_key);
 
         const existing = self.databases_map.get(db_key);
         const target_version = version orelse if (existing) |e| e.version else 1;
 
         if (existing) |metadata| {
+            if (target_version < metadata.version) {
+                request.base.setError(IDBError.VersionError);
+                return request;
+            }
+        }
+
+        // Allocate the connection before publishing metadata: no fallible work
+        // follows the ownership transfer into databases_map.
+        const db = try self.allocator.create(IDBDatabase);
+        errdefer self.allocator.destroy(db);
+        db.* = IDBDatabase.init(self.allocator, name, target_version);
+        errdefer db.deinit();
+
+        if (existing) |metadata| {
             // Database exists - check version
             if (version) |v| {
-                if (v < metadata.version) {
-                    // Requested version is lower than current
-                    request.base.setError(IDBError.VersionError);
-                    self.allocator.free(db_key);
-                    return request;
-                } else if (v > metadata.version) {
+                if (v > metadata.version) {
                     // Upgrade needed
                     request.old_version = metadata.version;
                     request.new_version = v;
                 }
             }
-            self.allocator.free(db_key);
         } else {
             // New database
             request.old_version = 0;
@@ -164,13 +174,8 @@ pub const IDBFactory = struct {
             };
 
             try self.databases_map.put(db_key, metadata);
+            key_transferred = true;
         }
-
-        // Create the database connection
-        const db = try self.allocator.create(IDBDatabase);
-        errdefer self.allocator.destroy(db);
-
-        db.* = IDBDatabase.init(self.allocator, name, target_version);
 
         // Set result
         request.base.setResult(.{ .database = db });
