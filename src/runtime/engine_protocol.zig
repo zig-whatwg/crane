@@ -83,6 +83,16 @@ pub const Agent = runtime.Agent;
 pub const JSValue = runtime.JSValue;
 
 /// A platform object: the host's side of a wrapper.
+///
+/// An Instance lives no longer than its realm: when the realm is torn down,
+/// its wrapper cache frees every Instance it alone wraps (a node still in a
+/// tree excepted) and severs the wrapper, whatever still points at it - a
+/// traceChild edge or an Owned value roots the wrapper, not the Instance.
+/// So a pointer to an Instance kept across turns is valid only while its
+/// realm `hasEngine()`: whoever keeps one keeps that realm's Context beside
+/// it and checks it before every dereference - never through the Instance's
+/// own `ctx`, which goes with it. (Blink keeps a reachable object alive past
+/// its context's end; Crane does not yet.)
 pub const Instance = runtime.Instance;
 
 /// Steps an operation runs inside a realm; `data` is the pointer the caller
