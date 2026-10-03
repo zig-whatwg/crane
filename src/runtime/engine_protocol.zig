@@ -1349,7 +1349,10 @@ pub inline fn getViewedArrayBuffer(realm: Context, view: JSValue) Error!Owned {
 // 4.11 Structured serialization (HTML 2.7)
 // ============================================================================
 
-/// StructuredSerializeForStorage. OWNED bytes (`allocator`).
+/// StructuredSerializeForStorage of any value: an inline primitive is
+/// serialized as it is (HTML StructuredSerializeInternal step 4); a platform
+/// object that is not [Serializable] throws DataCloneError. OWNED bytes
+/// (`allocator`).
 pub inline fn structuredSerializeForStorage(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error![]u8 {
     return impl.structuredSerializeForStorage(realm, value, allocator);
 }
