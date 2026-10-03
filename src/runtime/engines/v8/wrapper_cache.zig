@@ -806,6 +806,15 @@ pub const WrapperCache = struct {
     /// address reissued leaves nothing to a newcomer.
     edges_before_wrap: std.AutoHashMapUnmanaged(*runtime.Instance, DeferredEdges) = .empty,
 
+    /// Past `small_deferred_map` owners, `deferEdge` prunes dead owners'
+    /// edges only once the map has grown to this many - then to twice what
+    /// the prune left. Pruning on every call walked the whole map each time: a
+    /// page whose owners stay unwrapped and alive - every testharness Test
+    /// keeps an AbortController whose signal script never reads, and aborts it
+    /// at cleanup, keeping the reason (traceValue) - paid O(n) per edge, and
+    /// 8,000 test() calls took 1.5 s instead of 0.3 s.
+    prune_watermark: usize = small_deferred_map,
+
     /// Its realm is detached (`detach`): the realm's global object - the
     /// hidden one behind the global proxy - as a WEAK handle the cache owns,
     /// empty once collected. Every wrapper that would be held strongly is
@@ -926,7 +935,11 @@ pub const WrapperCache = struct {
     /// hold is strong. Replaces an edge in the same key.
     pub fn deferEdge(self: *Self, owner: *runtime.Instance, key: []const u8, child: *v8.Value) error{OutOfMemory}!void {
         errdefer v8.v8_Global_Dispose(child);
-        self.pruneDeferredEdges();
+        const owners = self.edges_before_wrap.count();
+        if (owners < small_deferred_map or owners >= self.prune_watermark) {
+            self.pruneDeferredEdges();
+            self.prune_watermark = @max(small_deferred_map, 2 * self.edges_before_wrap.count());
+        }
         const generation = runtime.SlabAllocator.generationOf(owner);
         const gop = try self.edges_before_wrap.getOrPut(self.allocator, owner);
         if (!gop.found_existing) {
@@ -1001,6 +1014,11 @@ pub const WrapperCache = struct {
             self.edges_before_wrap.removeByPtr(kv.key_ptr);
         }
     }
+
+    /// A map of fewer owners than this is pruned on every `deferEdge` - a walk
+    /// that cheap costs less than the edges it lets go; past it, pruning is
+    /// amortized (`prune_watermark`).
+    const small_deferred_map = 64;
 
     /// The edges waiting for their owners' wrappers, in this cache.
     pub fn deferredEdgeCount(self: *const Self) usize {
