@@ -618,3 +618,25 @@ test "AbortSignal.timeout(-1) through the binding is a TypeError, not a panic" {
         \\})()
     ));
 }
+
+test "getRandomValues returns the very view it was given, over a hold of the binding's own" {
+    try cryptoObject();
+    // The argument's reference is released before the result is converted,
+    // and the result is the binding's: the impl returns the view over its
+    // own hold (ArrayBufferView.withJsHandle), so the object is the same and
+    // nothing is read after it was released.
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\(() => {
+        \\  for (let i = 0; i < 64; i++) {
+        \\    const view = new Uint32Array(4);
+        \\    if (testCrypto.getRandomValues(view) !== view) return 0;
+        \\  }
+        \\  return 1;
+        \\})()
+    ));
+    try expectNoMoreThanControl(
+        "testCrypto.getRandomValues(view) === view",
+        "testCrypto.getRandomValues(new Uint8Array(4));",
+        "testCrypto.randomUUID();",
+    );
+}
