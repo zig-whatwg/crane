@@ -32,7 +32,6 @@ const DOMTokenListImpl = @import("DOMTokenList.zig");
 
 // Import html_core for IFrameIntegration (interface-free module)
 const html_core = @import("html_core");
-const InternalStateAccessor = webidl.utils.InternalStateAccessor;
 const IFrameIntegration = html_core.IFrameIntegration;
 const Origin = html_core.Origin;
 const SandboxFlags = html_core.SandboxFlags;
@@ -143,11 +142,13 @@ pub const InternalState = struct {
     }
 };
 
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
+/// `instance`'s iframe state, or null when it is no HTMLIFrameElement. A
+/// checked cast: the DOM's steps reach this with any element whose name is
+/// "iframe" - createElementNS(other, "iframe") is a plain Element - and an
+/// unchecked read of its state as an iframe's was a wild pointer.
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
