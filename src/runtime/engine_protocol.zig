@@ -281,9 +281,22 @@ pub const PromiseCapability = struct {
 
 /// WebIDL "react to" a promise: steps for fulfillment and for rejection. The
 /// value each is given is BORROWED for the call.
+///
+/// For each `reactToPromise` that succeeded, exactly ONE of `fulfilled`,
+/// `rejected` and `dropped` runs, once - so the host frees its `data` at the
+/// end of its steps and in `dropped`, and nowhere else.
 pub const PromiseReactionSteps = struct {
     fulfilled: ?*const fn (data: ?*anyopaque, value: JSValue) void = null,
     rejected: ?*const fn (data: ?*anyopaque, reason: JSValue) void = null,
+    /// The reaction ended without running a step of these: the promise
+    /// settled the way no step is given for, or the engine dropped the
+    /// reaction while the promise was pending - its realm ended (before the
+    /// realm's objects are torn down), the engine collected the promise with
+    /// the reaction, or the agent ended. Frees `data`. Never runs script, and
+    /// never runs while the engine collects (4.12, "Teardown and the
+    /// collector"), so it may release engine values. `reactToPromise` on a
+    /// realm that has ended fails, and `data` stays the caller's.
+    dropped: ?*const fn (data: ?*anyopaque) void = null,
 };
 
 /// WebIDL's steps behind an asynchronous iterator object (3.7.10): the
@@ -298,7 +311,9 @@ pub const AsyncIteratorSteps = struct {
     @"return": ?*const fn (data: ?*anyopaque, value: JSValue) Error!Owned = null,
     /// The iterator object was collected: free `data`. Called after the
     /// collection, never while the engine collects (see 4.12, "Teardown and
-    /// the collector"), so it may release engine values.
+    /// the collector"), so it may release engine values. Or when the realm
+    /// ends, whichever is first; after the realm ends, next() and return()
+    /// reject with a TypeError and never call the steps.
     finalize: ?*const fn (data: ?*anyopaque) void = null,
 };
 
