@@ -28,24 +28,28 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for CustomEvent implementation
-/// Contains the detail property which is any JavaScript value.
+/// Internal state for CustomEvent implementation. Its detail is not here:
+/// the event's wrapper keeps it (`detail_slot`).
 pub const InternalState = struct {
-    /// The detail attribute's value, held by this event (OWNED). The value the
-    /// constructor receives belongs to the argument conversion - a string's
-    /// bytes are freed when the constructor returns, which is how `e.detail`
-    /// came back as U+FFFD garbage - so the event holds a value of its own
-    /// (the same fix as ErrorEvent.error).
-    detail: engine.Owned = .{ .value = runtime.JSValue.jsNull },
-
-    /// Set the detail attribute to `value` (borrowed), in the event's
-    /// `realm`. A platform object is held as its wrapper in its relevant realm.
-    fn setDetail(self: *InternalState, realm: runtime.Context, value: runtime.JSValue) !void {
-        const held = try engine.retainValue(if (value == .instance) value.instance.ctx else realm, value);
-        self.detail.release();
-        self.detail = held;
-    }
+    /// The event was made by its constructor (or createEvent).
+    initialized: bool = true,
 };
+
+/// Where the event keeps its detail attribute's value: an edge from its
+/// wrapper (engine.traceValue), never a root. The value the constructor
+/// receives belongs to the argument conversion - a string's bytes are freed
+/// when the constructor returns, which is how `e.detail` once came back as
+/// U+FFFD garbage - so the event keeps a value of its own; held as a root (an
+/// engine.Owned), a detail that closed over its event, or one of another
+/// realm, kept that realm alive for as long as the event's instance lived.
+/// Blink: CustomEvent::detail_ is a TraceWrapperV8Reference.
+const detail_slot: engine.TracedSlot = .{ .name = "detail" };
+
+/// Set `event`'s detail attribute to `value` (borrowed). A platform object is
+/// kept as its wrapper in its relevant realm.
+fn setDetail(event: *runtime.Instance, value: runtime.JSValue) void {
+    engine.traceValue(event, value, detail_slot);
+}
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
@@ -74,8 +78,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     // so delegating alone left this one held for the life of the process.
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.detail.release();
-        internal.detail = .{ .value = runtime.JSValue.jsNull };
+        // An event freed before script saw it (its constructor failed) lets
+        // the detail waiting for its wrapper go; a collected one's went with
+        // the wrapper.
+        engine.forgetTracedChild(instance, detail_slot);
         const Arena = @import("runtime").ArenaAllocator;
         if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
         state.own._internal = null;
@@ -109,10 +115,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         eventInitDict.value.detail.?
     else
         runtime.JSValue.jsNull;
-    try internal.setDetail(ctx, detail_value);
-
-    // Store detail in state (for direct access): BORROWED, the event keeps it.
-    state.own.detail = internal.detail.borrow();
+    setDetail(instance, detail_value);
 
     state.base.own.type = try @"type".clone(ctx.allocator);
 
@@ -144,8 +147,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// Returns the value it was initialized with.
 pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // The event keeps its detail; the binding gets a hold of its own.
-    const internal = getInternal(instance) orelse return runtime.JSValue.jsNull;
-    return (try engine.retainValue(instance.ctx, internal.detail.value)).take();
+    _ = getInternal(instance) orelse return runtime.JSValue.jsNull;
+    const detail = engine.tracedValue(instance, detail_slot) orelse return runtime.JSValue.jsNull;
+    return detail.take();
 }
 
 /// Operation: initCustomEvent (legacy)
@@ -165,7 +169,6 @@ pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMStr
 
     // Step 3: Set this's detail attribute to detail (`optional any detail =
     // null`).
-    const internal = getInternal(instance) orelse return;
-    try internal.setDetail(instance.ctx, if (detail.was_passed) detail.value else runtime.JSValue.jsNull);
-    instance.getState(State).own.detail = internal.detail.borrow();
+    _ = getInternal(instance) orelse return;
+    setDetail(instance, if (detail.was_passed) detail.value else runtime.JSValue.jsNull);
 }

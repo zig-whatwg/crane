@@ -55,8 +55,14 @@ pub const InternalState = struct {
     /// only in a signal made before any reason existed.
     aborted: bool = false,
 
-    /// Abort reason: a value the signal holds (OWNED), or null for undefined.
-    reason: ?engine.Owned = null,
+    /// The abort reason is kept (not undefined): by an edge from the
+    /// signal's wrapper (`reason_slot`, engine.traceValue), never a root -
+    /// held as one (an engine.Owned), a reason of another realm, or one
+    /// reaching the signal, kept them alive for as long as the signal's
+    /// instance lived. Blink: AbortSignal::abort_reason_ is a
+    /// TraceWrapperV8Reference. A signal script has not seen holds it
+    /// strongly until its wrapper is made.
+    has_reason: bool = false,
 
     /// DOM § 3.3 "abort algorithms": run, in order, when the signal is aborted.
     abort_algorithms: std.ArrayListUnmanaged(AbortAlgorithm) = .empty,
@@ -71,7 +77,6 @@ pub const InternalState = struct {
     timeout: ?*TimeoutTask = null,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        self.releaseReason();
         // A signal that dies unaborted never runs these; their owners gave
         // them to the signal, so it hands each back to be freed.
         for (self.abort_algorithms.items) |algorithm| {
@@ -83,13 +88,27 @@ pub const InternalState = struct {
         if (self.timeout) |task| task.cancel();
         allocator.destroy(self);
     }
-
-    fn releaseReason(self: *InternalState) void {
-        const reason = self.reason orelse return;
-        self.reason = null;
-        reason.release();
-    }
 };
+
+/// Where a signal keeps its abort reason.
+const reason_slot: engine.TracedSlot = .{ .name = "reason" };
+
+/// `signal`'s abort reason, as a hold of the caller's own; null for undefined.
+fn reasonOf(signal: *runtime.Instance, internal: *const InternalState) ?engine.Owned {
+    if (!internal.has_reason) return null;
+    return engine.tracedValue(signal, reason_slot);
+}
+
+/// Set `signal`'s abort reason to `reason` (borrowed); undefined keeps none.
+fn keepReason(signal: *runtime.Instance, internal: *InternalState, reason: runtime.JSValue) void {
+    if (reason.isUndefined()) {
+        if (internal.has_reason) engine.forgetTracedChild(signal, reason_slot);
+        internal.has_reason = false;
+        return;
+    }
+    engine.traceValue(signal, reason, reason_slot);
+    internal.has_reason = true;
+}
 
 /// An abort algorithm (DOM § 3.3): `run(ctx)` once, when the signal aborts.
 /// Identified by `ctx` for removal.
@@ -159,6 +178,10 @@ fn newSignal(ctx: runtime.Context) !*runtime.Instance {
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // A signal freed before script saw it lets the reason waiting for its
+        // wrapper go; a collected one's went with the wrapper.
+        if (internal.has_reason) engine.forgetTracedChild(instance, reason_slot);
+        internal.has_reason = false;
         internal.deinit(internal.allocator);
         state.own._internal = null;
     }
@@ -179,9 +202,9 @@ pub fn get_aborted(instance: *runtime.Instance) anyerror!bool {
 /// Spec: "return this's abort reason."
 pub fn get_reason(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidState;
-    const reason = internal.reason orelse return runtime.JSValue.jsUndefined;
-    // The signal keeps its hold; the binding gets one of its own.
-    return (try engine.retainValue(instance.ctx, reason.value)).take();
+    // The signal keeps its reason; the binding gets a hold of its own.
+    const reason = reasonOf(instance, internal) orelse return runtime.JSValue.jsUndefined;
+    return reason.take();
 }
 
 /// Getter for onabort
@@ -224,7 +247,9 @@ fn releasePendingActivity(signal: *runtime.Instance) void {
 pub fn call_static_abort(instance: *runtime.Instance, reason: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
     const signal = try newSignal(instance.ctx);
     const internal = getInternal(signal).?;
-    internal.reason = try reasonOrDefault(signal, if (reason.was_passed) reason.value else runtime.JSValue.jsUndefined, "AbortError", "signal is aborted without reason");
+    const kept = try reasonOrDefault(signal, if (reason.was_passed) reason.value else runtime.JSValue.jsUndefined, "AbortError", "signal is aborted without reason");
+    defer kept.release();
+    keepReason(signal, internal, kept.value);
     internal.aborted = true;
     return signal;
 }
@@ -306,7 +331,9 @@ const TimeoutTask = struct {
 pub fn call_throwIfAborted(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     if (!internal.aborted) return;
-    try engine.throwValue(instance.ctx, if (internal.reason) |reason| reason.value else runtime.JSValue.jsUndefined);
+    const reason = reasonOf(instance, internal);
+    defer if (reason) |r| r.release();
+    try engine.throwValue(instance.ctx, if (reason) |r| r.value else runtime.JSValue.jsUndefined);
     // In flight: the binding leaves it for the calling script.
     return error.ExceptionPending;
 }
@@ -371,8 +398,7 @@ fn signalAbortWith(signal: *runtime.Instance, reason: runtime.JSValue) void {
 /// reason the engine cannot hold leaves the signal aborted with undefined.
 fn setReason(signal: *runtime.Instance, internal: *InternalState, reason: runtime.JSValue) void {
     internal.aborted = true;
-    internal.releaseReason();
-    internal.reason = engine.retainValue(signal.ctx, reason) catch null;
+    keepReason(signal, internal, reason);
 }
 
 /// DOM § 3.3 "run the abort steps" for `signal`.
@@ -412,7 +438,10 @@ pub fn createDependentAbortSignal(ctx: runtime.Context, signals: []const *runtim
         const internal = getInternal(signal) orelse continue;
         if (!internal.aborted) continue;
         result_internal.aborted = true;
-        if (internal.reason) |r| result_internal.reason = engine.retainValue(ctx, r.value) catch null;
+        if (reasonOf(signal, internal)) |r| {
+            defer r.release();
+            keepReason(result, result_internal, r.value);
+        }
         return result;
     }
 

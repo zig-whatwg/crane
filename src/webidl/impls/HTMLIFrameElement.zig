@@ -3195,11 +3195,16 @@ fn realmForNewDocument(integration: *IFrameIntegration, new_origin: html_core.Or
 /// open()'s return value, a window[name] on the parent - now reaches the new
 /// Window.
 ///
-/// The old realm is retired, not destroyed: script elsewhere may still hold
-/// its document, its nodes and its functions, and the page tears it down with
-/// the integration (`IFrameIntegration.retired_realms`). Its timers were
-/// cleared when its document unloaded. Code still running in it sees a
-/// detached global (V8 gives API callbacks a holder with no Window).
+/// The old realm is not destroyed: its document was unloaded (runCommit) and
+/// is destroyed ("destroy a document": its timers were cleared, its tasks go,
+/// its child navigables are destroyed), and its Window and realm live on for
+/// as long as script reaches anything of them - its document, its nodes, its
+/// functions - and no longer: the engine ends the realm once the collector
+/// takes it, or with its page (engine.WindowRealmEnd.global_detached).
+/// Kept by the integration until the iframe went, as they once were, 200
+/// navigations of one iframe kept 200 realms (crane/td-frame-navigation-
+/// churn.html). Code still running in it sees a detached global (V8 gives
+/// API callbacks a holder with no Window).
 fn replaceRealm(integration: *IFrameIntegration) bool {
     const old: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return false));
     const browsing_context = integration.browsing_context orelse return false;
@@ -3218,10 +3223,20 @@ fn replaceRealm(integration: *IFrameIntegration) bool {
     const origin_copy: ?[]u8 = if (integration.window_origin) |o| allocator.dupe(u8, o) catch return false else null;
     defer if (origin_copy) |o| allocator.free(o);
 
-    // Retire the old realm with its Window and documents; the new one is
-    // built around its WindowProxy (engine: window_proxy_of detaches it).
-    integration.retireCurrentRealm(null) catch return false;
-    return attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, allocator) != null;
+    // The old realm leaves the integration with its Window and documents;
+    // the new one is built around its WindowProxy (engine: window_proxy_of
+    // detaches it).
+    const old_data = integration.releaseCurrentRealm() orelse return false;
+    if (attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, allocator) == null) {
+        // No new realm: the old one ends with the integration, as every
+        // replaced realm once did.
+        integration.keepRetiredRealm(old_data) catch engine.destroyWindowRealm(old, .global_detached);
+        return false;
+    }
+    // HTML "destroy a document" for the old document: the engine keeps its
+    // realm while script reaches it.
+    engine.destroyWindowRealm(old, .global_detached);
+    return true;
 }
 
 /// dom.auxiliary_navigables: HTML "definitely close" the top-level
