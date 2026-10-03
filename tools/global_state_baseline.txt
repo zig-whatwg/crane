@@ -30,6 +30,7 @@ src/dom/child_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/cloning_steps.zig installed 1 G H decl:7233c1f9921baf3d
 src/dom/cloning_steps.zig installed_count 1 G H decl:3796f88280404836
 src/dom/content_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/crypto_keys.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/cssom.zig rule_lists 1 TL I/engine decl:aee1b21ecd071830
 src/dom/cssom.zig rule_objects 1 TL I/engine decl:2ff910def65b901b
 src/dom/cssom.zig sheets 1 TL I/engine decl:d5da0433784f149e
@@ -39,6 +40,7 @@ src/dom/document_lifecycle.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_modules.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_origin.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_scripts.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/dom_exceptions.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/element_attributes.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/event_construction.zig event_steps 1 G H decl:f85775e0ca95f00d
 src/dom/event_construction.zig ui_event_steps 1 G H decl:c0a9c4ee7c8461cf
