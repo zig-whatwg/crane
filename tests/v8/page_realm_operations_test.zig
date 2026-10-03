@@ -1228,6 +1228,39 @@ test "protocol: a frame's realm whose WindowProxy went on lives while script rea
     try expectEval(base, "delete globalThis.reader", "true");
 }
 
+test "protocol: a replaced realm whose frames were already destroyed leaves them detached" {
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    var old_realm: FrameRealm = .{ .parent = parent };
+    const old = try old_realm.make();
+    // Two frames of the old document, removed before it goes - and script
+    // keeps one of their WindowProxies.
+    var first_realm: FrameRealm = .{ .parent = old };
+    const first = try first_realm.make();
+    var second_realm: FrameRealm = .{ .parent = old };
+    const second = try second_realm.make();
+    {
+        const kept = try evalOwned(second, "globalThis.kept = 1; globalThis");
+        defer kept.release();
+        try setGlobal(parent, "keptFrame", kept.value);
+    }
+    protocol.destroyWindowRealm(first, .navigable_destroyed);
+    protocol.destroyWindowRealm(second, .navigable_destroyed);
+
+    // The navigation replaces the old realm: its frames' realms stay detached
+    // - neither ended under script that holds one, nor read from a list their
+    // end shortened.
+    var new_realm: FrameRealm = .{ .parent = parent, .global_this = .{ .window_proxy_of = old } };
+    const new = try new_realm.make();
+    defer protocol.destroyWindowRealm(new, .global_detached);
+    protocol.destroyWindowRealm(old, .global_detached);
+    collectTwice();
+    try std.testing.expect(second.engine_ctx != null);
+    try expectEval(parent, "keptFrame.kept", "1");
+    try expectEval(parent, "delete globalThis.keptFrame", "true");
+}
+
 test "protocol: a frame's realm a navigation replaced is collected once nothing reaches it" {
     _ = try realm();
     var host: WindowHost = .{};

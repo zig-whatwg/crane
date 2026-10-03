@@ -710,9 +710,17 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // If the CleanupCoordinator is handling teardown, type-specific cleanup
     // must still happen for an instance nothing has cleaned up yet - unless
     // another realm still wraps it.
+    //
+    // Except a node still in a tree: its tree's teardown frees it. Node
+    // tracing lets a whole detached tree's wrappers die in one collection, so
+    // the realm's end can find a parented node's entry pending beside its
+    // root's - freed here first, the root's teardown then walked into it
+    // (gc_bench's host-in-dropped-parent body, a segfault in Node.deinit at the
+    // page's end).
     if (runtime.cleanup_coordinator.isContextTearingDown()) {
         if (!runtime.instance_lifecycle.isCleanupStarted(entry.instance) and
-            !wrappedElsewhere(entry.instance, entry.cache))
+            !wrappedElsewhere(entry.instance, entry.cache) and
+            !treeOwns(entry.instance))
         {
             runtime.gc.onObjectFreed(entry.instance);
         }

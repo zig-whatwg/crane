@@ -619,7 +619,24 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     ending_realms = &ending;
     defer ending_realms = ending.next;
 
-    for (state.children.items) |child| destroyWindowRealm(child, .navigable_destroyed);
+    // A child already detached - its iframe was removed before this realm's
+    // document went - is left as it is: it ends when the collector takes it,
+    // or with its page, like this one. Ending it here freed a Window script
+    // may still reach, and took it off this list mid-walk (removeChild's
+    // swapRemove leaves the vacated slot undefined): the walk read that slot
+    // as a realm, 0xaaaa... (joint-session-history-only-fully-active.html,
+    // srcdoc-history-entries.html). Backwards, so that a child that does end
+    // (its detach failed) moves only an already-visited child into its slot.
+    var i = state.children.items.len;
+    while (i > 0) {
+        i -= 1;
+        if (i >= state.children.items.len) continue;
+        const child = state.children.items[i];
+        if (window_realms.get(child)) |child_state| {
+            if (child_state.detached != null) continue;
+        }
+        destroyWindowRealm(child, .navigable_destroyed);
+    }
 
     const context = contextOf(realm) orelse return;
     const key = context_manager.keyOf(context) orelse return;
