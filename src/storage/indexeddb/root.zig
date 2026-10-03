@@ -146,19 +146,6 @@ pub const IDBObjectStoreParameters = webidl_types.IDBObjectStoreParameters;
 pub const IDBIndexParameters = webidl_types.IDBIndexParameters;
 pub const IDBGetAllOptions = webidl_types.IDBGetAllOptions;
 
-// Storage integration (Phase 5.1)
-pub const storage_integration = @import("storage_integration.zig");
-pub const IDBStorageArea = storage_integration.IDBStorageArea;
-pub const StorageIntegrationManager = storage_integration.StorageIntegrationManager;
-pub const DatabaseMetadata = storage_integration.DatabaseMetadata;
-pub const initGlobalIntegrationManager = storage_integration.initGlobalIntegrationManager;
-pub const getGlobalIntegrationManager = storage_integration.getGlobalIntegrationManager;
-pub const deinitGlobalIntegrationManager = storage_integration.deinitGlobalIntegrationManager;
-pub const openDatabase = storage_integration.openDatabase;
-// Note: deleteDatabase conflicts with factory.deleteDatabase, using qualified name
-pub const listDatabases = storage_integration.listDatabases;
-pub const getDatabaseInfo = storage_integration.getDatabaseInfo;
-
 // SQLite transaction mapping (Phase 5.2)
 pub const sqlite_transactions = @import("sqlite_transactions.zig");
 pub const SQLiteTransaction = sqlite_transactions.SQLiteTransaction;
@@ -265,7 +252,6 @@ test {
     _ = events;
     _ = async_operations;
     _ = webidl_types;
-    _ = storage_integration;
     _ = sqlite_transactions;
     _ = mvcc;
     _ = object_store_persistence;
