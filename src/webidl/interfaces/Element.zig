@@ -25,11 +25,11 @@ const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
 const USVString = @import("typedefs").USVString;
-const TrustedType = @import("typedefs").TrustedType;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
@@ -38,9 +38,10 @@ const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const Range = @import("interfaces").Range;
 const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
-const DOMRectList = @import("interfaces").DOMRectList;
+const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
 const DOMString = @import("typedefs").DOMString;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
+const DOMRectList = @import("interfaces").DOMRectList;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const Document = @import("interfaces").Document;
 const ScrollToOptions = @import("dictionaries").ScrollToOptions;
@@ -977,7 +978,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_innerHTML(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -991,7 +992,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_outerHTML(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1893,7 +1894,7 @@ pub const Element = struct {
     pub const call_before = mixins.ChildNode.call_before;
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, value: DOMString) anyerror!void {
+    pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, value: TrustedTypeOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -1974,7 +1975,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: DOMString, value: DOMString) anyerror!void {
+    pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: DOMString, value: TrustedTypeOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2005,7 +2006,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: DOMString) anyerror!void {
+    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2092,7 +2093,7 @@ pub const Element = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: DOMString, string: DOMString) anyerror!void {
+    pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: DOMString, string: TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

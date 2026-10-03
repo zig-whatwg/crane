@@ -14,11 +14,10 @@ const EventTarget = @import("interfaces").EventTarget;
 const AbstractWorker = @import("mixins").AbstractWorker;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
-const USVString = @import("typedefs").USVString;
+const TrustedScriptURLOrUSVString = @import("typedefs").TrustedScriptURLOrUSVString;
 const WorkerOptions = @import("dictionaries").WorkerOptions;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
-const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const MessagePort = @import("interfaces").MessagePort;
@@ -128,7 +127,7 @@ pub const SharedWorker = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, scriptURL: DOMString, options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, scriptURL: TrustedScriptURLOrUSVString, options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try SharedWorkerImpl.call_constructor(ctx, scriptURL, options);
     }

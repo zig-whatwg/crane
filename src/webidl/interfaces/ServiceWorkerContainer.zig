@@ -14,12 +14,12 @@ const EventTarget = @import("interfaces").EventTarget;
 const ServiceWorker = @import("interfaces").ServiceWorker;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const TrustedScriptURLOrUSVString = @import("typedefs").TrustedScriptURLOrUSVString;
 const USVString = @import("typedefs").USVString;
 const Observable = @import("interfaces").Observable;
 const ServiceWorkerRegistration = @import("interfaces").ServiceWorkerRegistration;
 const Event = @import("interfaces").Event;
 const RegistrationOptions = @import("dictionaries").RegistrationOptions;
-const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
@@ -206,7 +206,7 @@ pub const ServiceWorkerContainer = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_register(instance: *runtime.Instance, scriptURL: DOMString, options: webidl.Opt(RegistrationOptions)) anyerror!runtime.JSValue {
+    pub fn call_register(instance: *runtime.Instance, scriptURL: TrustedScriptURLOrUSVString, options: webidl.Opt(RegistrationOptions)) anyerror!runtime.JSValue {
         // [NewObject] - Caller owns the returned object
 
         return try ServiceWorkerContainerImpl.call_register(instance, scriptURL, options);

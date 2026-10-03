@@ -32,6 +32,7 @@ const XPathExpression = @import("interfaces").XPathExpression;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const XPathResult = @import("interfaces").XPathResult;
 const Location = @import("interfaces").Location;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const StyleSheetList = @import("interfaces").StyleSheetList;
@@ -72,10 +73,9 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const HTMLElement = @import("interfaces").HTMLElement;
 const WindowProxy = @import("typedefs").WindowProxy;
 const Attr = @import("interfaces").Attr;
-const TrustedHTML = @import("interfaces").TrustedHTML;
 const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
-const NodeList = @import("interfaces").NodeList;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
+const NodeList = @import("interfaces").NodeList;
 const ElementCreationOptions = @import("dictionaries").ElementCreationOptions;
 const DOMPoint = @import("interfaces").DOMPoint;
 const Observable = @import("interfaces").Observable;
@@ -2099,12 +2099,12 @@ pub const Document = struct {
         return try DocumentImpl.call_elementsFromPoint(instance, x, y);
     }
 
-    pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: DOMString) anyerror!*runtime.Instance {
+    pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString) anyerror!*runtime.Instance {
         return try DocumentImpl.call_static_parseHTMLUnsafe(instance, html);
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_writeln(instance: *runtime.Instance, text: []const DOMString) anyerror!void {
+    pub fn call_writeln(instance: *runtime.Instance, text: []const TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -2281,7 +2281,7 @@ pub const Document = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_write(instance: *runtime.Instance, text: []const DOMString) anyerror!void {
+    pub fn call_write(instance: *runtime.Instance, text: []const TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

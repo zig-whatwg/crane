@@ -11,9 +11,8 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Document = @import("interfaces").Document;
-const TrustedHTML = @import("interfaces").TrustedHTML;
-const DOMString = @import("typedefs").DOMString;
 const DOMParserSupportedType = @import("enums").DOMParserSupportedType;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 
 pub const DOMParser = struct {
     pub const Meta = struct {
@@ -109,7 +108,7 @@ pub const DOMParser = struct {
     }
 
     /// Extended attributes: [NewObject]
-    pub fn call_parseFromString(instance: *runtime.Instance, string: DOMString, @"type": DOMParserSupportedType) anyerror!*runtime.Instance {
+    pub fn call_parseFromString(instance: *runtime.Instance, string: TrustedHTMLOrDOMString, @"type": DOMParserSupportedType) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
 
         return try DOMParserImpl.call_parseFromString(instance, string, @"type");

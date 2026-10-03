@@ -24,7 +24,6 @@ const TimerHandler = @import("typedefs").TimerHandler;
 const USVString = @import("typedefs").USVString;
 const Scheduler = @import("interfaces").Scheduler;
 const Crypto = @import("interfaces").Crypto;
-const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const ImageBitmapOptions = @import("dictionaries").ImageBitmapOptions;
@@ -32,6 +31,7 @@ const WorkerLocation = @import("interfaces").WorkerLocation;
 const EventHandler = @import("typedefs").EventHandler;
 const ImageBitmap = @import("interfaces").ImageBitmap;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const TrustedScriptURLOrUSVString = @import("typedefs").TrustedScriptURLOrUSVString;
 const VoidFunction = @import("callbacks").VoidFunction;
 const RequestInfo = @import("typedefs").RequestInfo;
 const IDBFactory = @import("interfaces").IDBFactory;
@@ -397,7 +397,7 @@ pub const WorkerGlobalScope = struct {
 
     pub const call_createImageBitmap = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap;
 
-    pub fn call_importScripts(instance: *runtime.Instance, urls: []const DOMString) anyerror!void {
+    pub fn call_importScripts(instance: *runtime.Instance, urls: []const TrustedScriptURLOrUSVString) anyerror!void {
         return try WorkerGlobalScopeImpl.call_importScripts(instance, urls);
     }
 
