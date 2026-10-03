@@ -18,11 +18,14 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// The event's own hold on `state` when it is a script value: `state` is a
+/// view of it, released in deinit. The dictionary member's handle the
+/// binding converted is the binding's, released once the constructor returns
+/// (WebIDL: an `any` value is borrowed for the call). Interim: `state` moves
+/// onto the engine's traced-value pair when it lands (queued).
+pub const InternalState = struct {
+    state_hold: ?engine.Owned = null,
+};
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -39,7 +42,14 @@ pub fn init(
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
+    // A cloned string is freed; a script value's view is the hold's.
     state.own.state.deinit(instance.ctx.allocator);
+    if (state.own._internal) |internal| {
+        if (internal.state_hold) |held| held.release();
+        instance.ctx.allocator.destroy(internal);
+        state.own._internal = null;
+        state.own.state = runtime.JSValue.jsNull;
+    }
     // The Event part: the cloned type and the inherited internal state.
     interfaces.Event.deinit(instance);
 }
@@ -72,9 +82,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     state.base.own.returnValue = true;
     state.base.own.defaultPrevented = false;
 
-    // Cloned: the binding frees the dictionary's strings when the
-    // constructor returns (see MessageEvent's `data`).
-    state.own.state = if (init_dict.state) |value| try value.clone(ctx.allocator) else runtime.JSValue.jsNull;
+    // The event's own: a string cloned (the binding frees the dictionary's
+    // strings when the constructor returns), a script value held.
+    state.own.state = if (init_dict.state) |value| try keepState(ctx, instance, value) else runtime.JSValue.jsNull;
     state.own.hasUAVisualTransition = init_dict.hasUAVisualTransition orelse false;
 
     // The inherited Event internal state and its initialized flag: without
@@ -82,6 +92,23 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
 
     return instance;
+}
+
+/// The event's own copy of `value`: a script value under a hold of the
+/// event's (`InternalState.state_hold`), anything else cloned.
+fn keepState(ctx: runtime.Context, instance: *runtime.Instance, value: runtime.JSValue) !runtime.JSValue {
+    switch (value) {
+        .handle, .instance => {
+            const state = instance.getState(State);
+            const internal = try ctx.allocator.create(InternalState);
+            internal.* = .{};
+            state.own._internal = internal;
+            const held = try engine.retainValue(ctx, value);
+            internal.state_hold = held;
+            return held.value;
+        },
+        else => return value.clone(ctx.allocator),
+    }
 }
 
 /// Getter for state. The event keeps the value it was initialized to; a

@@ -479,3 +479,41 @@ test "a dictionary with a copied BodyInit member releases its handle once" {
         "try { new Request('https://example.test/') } catch (e) {}",
     );
 }
+
+// ---------------------------------------------------------------------------
+// A dictionary's `any` member is borrowed for the call, as an `any` argument is
+// ---------------------------------------------------------------------------
+
+test "an object `any` dictionary member is released once the call returns" {
+    _ = try realm();
+    // Each event takes a hold of its own on an object member, released when
+    // the event is collected; the Get handle the conversion made for the
+    // member is the binding's, and must go when the constructor returns.
+    // Kept, it was a strong handle per call: realms3's probe found
+    // `new w.CustomEvent("x", { detail: new w.Object() })` keeping a removed
+    // frame alive with the event dropped.
+    try expectNoMoreThanControl("new CustomEvent('x', { detail: {} })", "new CustomEvent('x', { detail: {} });", "new CustomEvent('x', {});");
+    try expectNoMoreThanControl("new ErrorEvent('x', { error: {} })", "new ErrorEvent('x', { error: {} });", "new ErrorEvent('x', {});");
+    try expectNoMoreThanControl("new MessageEvent('x', { data: {} })", "new MessageEvent('x', { data: {} });", "new MessageEvent('x', {});");
+    try expectNoMoreThanControl("new PopStateEvent('x', { state: {} })", "new PopStateEvent('x', { state: {} });", "new PopStateEvent('x', {});");
+}
+
+test "an event keeps an object member past the call through a hold of its own" {
+    _ = try realm();
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\globalThis.keptEvents = [];
+        \\for (let i = 0; i < 16; i++) {
+        \\  const o = { i };
+        \\  keptEvents.push([o, new CustomEvent('x', { detail: o }), new ErrorEvent('x', { error: o }),
+        \\                   new MessageEvent('x', { data: o }), new PopStateEvent('x', { state: o })]);
+        \\}
+        \\1
+    ));
+    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    // Allocate over whatever a freed handle's slot was.
+    _ = try evalInt("globalThis.churn = []; for (let i = 0; i < 20000; i++) churn.push({ j: i }); churn = null; 1");
+    ffi.v8_Isolate_RequestGarbageCollection(isolate_once.?);
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\keptEvents.every(([o, c, e, m, p]) => c.detail === o && e.error === o && m.data === o && p.state === o) ? 1 : 0
+    ));
+}

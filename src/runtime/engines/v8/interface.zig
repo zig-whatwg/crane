@@ -3692,11 +3692,26 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 }
             } else if (@typeInfo(T) == .@"struct") {
-                // Struct types (dictionaries) - free any fields that need cleanup
+                // Struct types (dictionaries) - free any fields that need
+                // cleanup, and release each `any`-family member's handle (an
+                // `any` or `object` member, a union typed JSValue, an
+                // `object` union arm): the Get handle the dictionary loop
+                // kept as the member's `.handle`, BORROWED for the call as
+                // an `any` argument's is (releaseAnyArgument). An impl that
+                // keeps a member takes a hold of its own; every keeper was
+                // read for that (2026-10-02, 108 dictionaries with a JSValue
+                // member): the events take holds, Navigation retains or
+                // serializes, PopStateEvent now holds its state. Kept, an
+                // object `detail` held its realm for the process's life
+                // (realms3: a removed frame kept alive by a dropped
+                // CustomEvent). A sequence<any> element inside a dictionary
+                // keeps the conservative answer (kept): its keepers are not
+                // read yet.
                 inline for (std.meta.fields(T)) |field| {
                     if (comptime needsArgCleanup(field.type)) {
                         freeConvertedArg(field.type, allocator, @field(arg, field.name));
                     }
+                    releaseAnyArgument(field.type, @field(arg, field.name));
                 }
             } else if (@typeInfo(T) == .@"union") {
                 // Union types (WebIDL union types) - free the active variant if it needs cleanup
