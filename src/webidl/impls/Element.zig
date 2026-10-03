@@ -2406,17 +2406,6 @@ pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMS
 pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    // Step 1: "Let verifiedValue be the result of calling get trusted type
-    // compliant attribute value with attr's local name, attr's namespace,
-    // element, and attr's value." Deviation: see setAttributeNS.
-
-    // Step 2: "If attr's element is neither null nor element, throw an
-    // "InUseAttributeError" DOMException."
-    const attr_element = interfaces.Attr.get_ownerElement(attr) catch null;
-    if (attr_element) |element| {
-        if (element != instance) return error.InUseAttributeError;
-    }
-
     // The getters clone into the Attr's context allocator; this frame owns
     // the copies. An Attr with no namespace or prefix reports "".
     const attr_allocator = attr.ctx.allocator;
@@ -2431,12 +2420,27 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
     const namespace: ?[]const u8 = if (namespace_string.len() == 0) null else namespace_string.asSlice();
     const prefix: ?[]const u8 = if (prefix_string.len() == 0) null else prefix_string.asSlice();
 
+    // Step 1: "Let verifiedValue be the result of calling get trusted type
+    // compliant attribute value with attr's local name, attr's namespace,
+    // element, and attr's value." A default policy runs script: everything
+    // below reads the attribute and the element again, after it.
+    const verified = try dom.trusted_types.getCompliantAttributeValue(internal.allocator, local_name.asSlice(), namespace, instance, .{ .string = value.asSlice() });
+    defer internal.allocator.free(verified);
+
+    // Step 2: "If attr's element is neither null nor element, throw an
+    // "InUseAttributeError" DOMException."
+    const attr_element = interfaces.Attr.get_ownerElement(attr) catch null;
+    if (attr_element) |element| {
+        if (element != instance) return error.InUseAttributeError;
+    }
+
     // Step 3: "Let oldAttr be the result of getting an attribute given attr's
     // namespace, attr's local name, and element."
     const old_index = internal.indexOfAttribute(namespace, local_name.asSlice()) orelse {
-        // Step 7: "Otherwise, append attr to element." attr becomes the node
-        // for the new attribute before the attribute change steps run.
-        try appendAttribute(instance, internal, namespace, prefix, local_name.asSlice(), value.asSlice());
+        // Step 5: "Set attr's value to verifiedValue." Step 7: "Otherwise,
+        // append attr to element." attr becomes the node for the new
+        // attribute before the attribute change steps run.
+        try appendAttribute(instance, internal, namespace, prefix, local_name.asSlice(), verified);
         // Found again by name: the change steps can run script.
         const new_index = internal.indexOfAttribute(namespace, local_name.asSlice()) orelse return null;
         try adoptAttrNode(instance, internal, new_index, attr);
@@ -2449,14 +2453,15 @@ pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instanc
         if (link.isLive() and link.instance == attr) return attr;
     }
 
-    // Step 5: "Set attr's value to verifiedValue." It is unchanged.
+    // Step 5: "Set attr's value to verifiedValue" - the value the replacing
+    // attribute takes below.
 
     // Step 6: "If oldAttr is non-null, then replace oldAttr with attr."
     // "Set oldAttribute's element to null": oldAttr - the node script may
     // already hold, or one made now to hand back - keeps its last value.
     const old_attr = try ensureAttrNode(instance, internal, old_index);
     detachAttrNode(instance, internal.attributeAt(old_index).?);
-    try replaceAttributeAt(instance, internal, old_index, prefix, value.asSlice());
+    try replaceAttributeAt(instance, internal, old_index, prefix, verified);
     // Found again by name: the change steps can run script.
     if (internal.indexOfAttribute(namespace, local_name.asSlice())) |index| {
         try adoptAttrNode(instance, internal, index, attr);

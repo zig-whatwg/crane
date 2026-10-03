@@ -184,6 +184,24 @@ pub const Input = union(enum) {
     }
 };
 
+/// A sink's argument as the binding converted it - a generated union of
+/// Trusted Type arms (`*runtime.Instance`) and a string arm (DOMString or
+/// USVString) - as an Input. A string arm is borrowed from `value`.
+pub fn inputFrom(value: anytype) Input {
+    const T = @TypeOf(value);
+    const info = @typeInfo(T).@"union";
+    inline for (info.fields) |field| {
+        if (value == @field(std.meta.Tag(T), field.name)) {
+            const arm = @field(value, field.name);
+            if (field.type == *runtime.Instance) return .{ .object = arm };
+            if (field.type == runtime.DOMString) return .{ .string = arm.asSlice() };
+            if (comptime field.type == []const u8 or field.type == []u8) return .{ .string = arm };
+            @compileError("a Trusted Types sink union arm is an interface or a string: " ++ @typeName(field.type));
+        }
+    }
+    unreachable;
+}
+
 // ============================================================================
 // The global's CSP list and factory
 // ============================================================================
@@ -302,6 +320,17 @@ pub fn getCompliantString(
     return error.TypeError;
 }
 
+/// A sink's step: "Let compliantString be the result of invoking the get
+/// trusted type compliant string algorithm with `expected`, this's relevant
+/// global object, the given value, `sink`, and "script"." `value` is the
+/// binding's union (`inputFrom`). OWNED by `allocator`. An object with no
+/// global (a realm that is gone) has no policies: its value as given.
+pub fn compliantStringFor(allocator: std.mem.Allocator, expected: Kind, this: *runtime.Instance, value: anytype, sink: []const u8) anyerror![]u8 {
+    const input = inputFrom(value);
+    const global = relevantGlobalOf(this) orelse return allocator.dupe(u8, input.stringified());
+    return getCompliantString(allocator, expected, global, input, sink, script_sink_group);
+}
+
 // ============================================================================
 // 3.7, 3.8: attributes
 // ============================================================================
@@ -394,6 +423,14 @@ pub fn getCompliantAttributeValue(
     const document = (try interfaces.Node.get_ownerDocument(element)) orelse return allocator.dupe(u8, new_value.stringified());
     const global = relevantGlobalOf(document) orelse return allocator.dupe(u8, new_value.stringified());
     return getCompliantString(allocator, data.kind, global, new_value, sink, script_sink_group);
+}
+
+test "a sink union converts to an Input arm by arm" {
+    const U = union(enum) { trusted_html: *runtime.Instance, domstring: runtime.DOMString };
+    const input = inputFrom(U{ .domstring = runtime.DOMString.initInterned("<b>") });
+    try std.testing.expectEqualStrings("<b>", input.string);
+    const V = union(enum) { trusted_script_url: *runtime.Instance, usvstring: []const u8 };
+    try std.testing.expectEqualStrings("a.js", inputFrom(V{ .usvstring = "a.js" }).string);
 }
 
 test "event handler content attribute names: GlobalEventHandlers, the body's, Element's own; nothing else" {
