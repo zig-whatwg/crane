@@ -96,6 +96,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         engine.forgetTracedChild(instance, .{ .name = "idb.transaction" });
+        engine.forgetTracedChild(instance, .{ .name = "idb.keyPath" });
         for (internal.index_wrappers.items) |wrapper|
             engine.forgetTracedChild(instance, .{ .name = wrapper.slot });
         internal.deinit(internal.allocator);
@@ -105,7 +106,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 pub fn installHooks() void {
-    dom.indexeddb.installStores(.{ .attach = attachStore });
+    dom.indexeddb.installStores(.{ .attach = attachStore, .execute = executeOperation });
 }
 fn attachStore(instance: *runtime.Instance, store: *BackendObjectStore, transaction: *runtime.Instance, transfer: bool) !void {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
@@ -132,14 +133,7 @@ pub fn get_keyPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
 
-    if (store.getKeyPathString()) |path| return runtime.JSValue.fromStringRef(path);
-    if (store.getKeyPathArray()) |paths| {
-        const values = try internal.allocator.alloc(runtime.JSValue, paths.len);
-        defer internal.allocator.free(values);
-        for (paths, 0..) |path, i| values[i] = runtime.JSValue.fromStringRef(path);
-        return (try engine.createSequenceOfValues(instance.ctx, values)).take();
-    }
-    return .jsNull;
+    return dom.indexeddb_keys.keyPathValue(instance, dom.indexeddb.storeKeyPath(store));
 }
 
 /// Getter for indexNames
@@ -180,279 +174,130 @@ pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
 
-    // Renaming object stores is only allowed during versionchange transactions
-    _ = store;
-    _ = value;
-    return error.InvalidState; // TODO: Implement rename
+    // ED 4.5 name setter: native schema and this handle change together.
+    try store.rename(value.asSlice());
 }
 
-/// Operation: put
+/// ED 4.5 add-or-put: validate and clone at placement, execute later.
 pub fn call_put(instance: *runtime.Instance, value: runtime.JSValue, key: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const store = internal.store orelse return error.InvalidState;
-
-    // TODO: Convert JS value to serialized bytes
-    // TODO: Convert JS key to IDBKey
-    _ = value;
-    _ = key;
-
-    const request = store.put(&.{}, null) catch |err| {
-        return switch (err) {
-            error.ReadOnlyError => error.ReadOnlyError,
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            error.DataError => error.DataError,
-            error.ConstraintError => error.ConstraintError,
-            else => error.InvalidState,
-        };
-    };
-
-    // Create WebIDL IDBRequest wrapper
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    _ = request;
-    return req_instance;
+    return addOrPut(instance, value, key, false);
 }
-
-/// Operation: add
 pub fn call_add(instance: *runtime.Instance, value: runtime.JSValue, key: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const store = internal.store orelse return error.InvalidState;
-
-    _ = value;
-    _ = key;
-
-    const request = store.add(&.{}, null) catch |err| {
-        return switch (err) {
-            error.ReadOnlyError => error.ReadOnlyError,
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            error.DataError => error.DataError,
-            error.ConstraintError => error.ConstraintError,
-            else => error.InvalidState,
-        };
-    };
-
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    _ = request;
-    return req_instance;
+    return addOrPut(instance, value, key, true);
 }
-
-/// Operation: delete
+fn usable(instance: *runtime.Instance, writing: bool) !*InternalState {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const store = internal.store orelse return error.InvalidStateError;
+    // ED 4.5 steps 3-5: deletion precedes transaction state, then mode.
+    if (store.isDeleted()) return error.InvalidStateError;
+    if (store.transaction.state != .active) return error.TransactionInactiveError;
+    if (writing and store.transaction.mode == .readonly) return error.ReadOnlyError;
+    return internal;
+}
+fn addOrPut(instance: *runtime.Instance, value: runtime.JSValue, key: webidl.Opt(runtime.JSValue), no_overwrite: bool) !*runtime.Instance {
+    const internal = try usable(instance, true);
+    const store = internal.store.?;
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = if (no_overwrite) .add else .put };
+    errdefer operation.deinit();
+    // Steps 6-8: an explicitly undefined optional key is absent.
+    const given = key.wasPassed() and !key.value.isUndefined();
+    if (store.usesInlineKeys() and given) return error.DataError;
+    if (!store.usesInlineKeys() and !store.auto_increment and !given) return error.DataError;
+    if (given) operation.key = try dom.indexeddb_keys.require(instance.ctx, key.value, internal.allocator);
+    // Steps 9-11, clone algorithm 1-5: getters run while inactive.
+    store.transaction.state = .inactive;
+    operation.bytes = try engine.structuredSerializeForStorage(instance.ctx, value, internal.allocator);
+    const clone = try engine.structuredDeserialize(instance.ctx, operation.bytes.?);
+    defer clone.release();
+    if (store.transaction.state == .inactive) store.transaction.state = .active;
+    if (dom.indexeddb.storeKeyPath(store)) |path| {
+        switch (try dom.indexeddb_keys.extract(instance.ctx, clone.value, path, false, internal.allocator)) {
+            .key => |extracted| operation.key = extracted,
+            .invalid => return error.DataError,
+            .failure => {
+                if (!store.auto_increment or path != .single) return error.DataError;
+                if (!try dom.indexeddb_keys.canInject(instance.ctx, clone.value, path.single)) return error.DataError;
+            },
+        }
+    }
+    // Steps 12-13: the queue takes ownership only after placement succeeds.
+    try dom.indexeddb.captureWriteIndexes(store, &operation);
+    return dom.indexeddb.enqueueRequest(internal.transaction.?, instance, operation, null);
+}
+fn queueQuery(instance: *runtime.Instance, kind: dom.indexeddb.OperationKind, query: runtime.JSValue, unbounded: bool, writing: bool) !*runtime.Instance {
+    const internal = try usable(instance, writing);
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = kind };
+    errdefer operation.deinit();
+    operation.range = try dom.indexeddb_keys.queryRange(instance.ctx, query, unbounded, internal.allocator);
+    return dom.indexeddb.enqueueRequest(internal.transaction.?, instance, operation, null);
+}
 pub fn call_delete(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const store = internal.store orelse return error.InvalidState;
-
-    _ = query;
-
-    const request = store.delete(BackendKeyRange.unbounded()) catch |err| {
-        return switch (err) {
-            error.ReadOnlyError => error.ReadOnlyError,
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            else => error.InvalidState,
-        };
-    };
-
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    _ = request;
-    return req_instance;
+    return queueQuery(instance, .delete, query, false, true);
 }
-
-/// Operation: clear
 pub fn call_clear(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const store = internal.store orelse return error.InvalidState;
-
-    const request = store.clear() catch |err| {
-        return switch (err) {
-            error.ReadOnlyError => error.ReadOnlyError,
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            else => error.InvalidState,
-        };
-    };
-
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    _ = request;
-    return req_instance;
+    return queueQuery(instance, .clear, .jsUndefined, true, true);
 }
-
-/// Operation: get
 pub fn call_get(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const store = internal.store orelse return error.InvalidState;
-
-    _ = query;
-
-    const request = store.get(BackendKeyRange.unbounded()) catch |err| {
-        return switch (err) {
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            else => error.InvalidState,
-        };
-    };
-
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    _ = request;
-    return req_instance;
+    return queueQuery(instance, .get, query, false, false);
 }
-
-/// Operation: getKey
 pub fn call_getKey(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const store = internal.store orelse return error.InvalidState;
-
-    _ = query;
-
-    const request = store.getKey(BackendKeyRange.unbounded()) catch |err| {
-        return switch (err) {
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            else => error.InvalidState,
-        };
-    };
-
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    _ = request;
-    return req_instance;
+    return queueQuery(instance, .get_key, query, false, false);
 }
-
-/// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    _ = internal.store orelse return error.InvalidState;
-
-    _ = queryOrOptions;
-    _ = count;
-
-    // TODO: Implement getAll with proper query conversion
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    return req_instance;
-}
-
-/// Operation: getAllKeys
-pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    _ = internal.store orelse return error.InvalidState;
-
-    _ = queryOrOptions;
-    _ = count;
-
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    return req_instance;
-}
-
-/// Operation: getAllRecords
-pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IDBGetAllOptions)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    _ = internal.store orelse return error.InvalidState;
-
-    _ = options;
-
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    return req_instance;
-}
-
-/// Operation: count
 pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const store = internal.store orelse return error.InvalidState;
-
-    _ = query;
-
-    const request = store.count(null) catch |err| {
-        return switch (err) {
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            else => error.InvalidState,
-        };
-    };
-
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    _ = request;
-    return req_instance;
+    return queueQuery(instance, .count, if (query.wasPassed()) query.value else .jsUndefined, true, false);
 }
-
-/// Operation: openCursor
+pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+    return queueAll(instance, .all_values, queryOrOptions, count);
+}
+pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+    return queueAll(instance, .all_keys, queryOrOptions, count);
+}
+fn queueAll(instance: *runtime.Instance, kind: dom.indexeddb.OperationKind, query: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) !*runtime.Instance {
+    const internal = try usable(instance, false);
+    var operation = try dom.indexeddb_keys.multipleItems(instance.ctx, kind, if (query.wasPassed()) query.value else .jsUndefined, if (count.wasPassed()) count.value else null, internal.allocator);
+    errdefer operation.deinit();
+    return dom.indexeddb.enqueueRequest(internal.transaction.?, instance, operation, null);
+}
+pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IDBGetAllOptions)) anyerror!*runtime.Instance {
+    const internal = try usable(instance, false);
+    const converted = if (options.wasPassed()) options.value else dictionaries.IDBGetAllOptions{};
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = .all_records, .limit = converted.count, .direction = dom.indexeddb_keys.cursorDirection(converted.direction orelse ._next_) };
+    errdefer operation.deinit();
+    operation.range = try dom.indexeddb_keys.queryRange(instance.ctx, converted.query orelse .jsUndefined, true, internal.allocator);
+    return dom.indexeddb.enqueueRequest(internal.transaction.?, instance, operation, null);
+}
 pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const store = internal.store orelse return error.InvalidState;
-
-    _ = query;
-
-    // Unwrap Opt for direction (default to "next")
-    const direction_val = if (direction.wasPassed()) direction.value else ._next_;
-    const backend_direction = switch (direction_val) {
-        ._next_ => BackendCursorDirection.next,
-        ._nextunique_ => BackendCursorDirection.nextunique,
-        ._prev_ => BackendCursorDirection.prev,
-        ._prevunique_ => BackendCursorDirection.prevunique,
-    };
-
-    const request = store.openCursor(BackendKeyRange.unbounded(), backend_direction) catch |err| {
-        return switch (err) {
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            else => error.InvalidState,
-        };
-    };
-
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    _ = request;
-    return req_instance;
+    return queueCursor(instance, query, direction, false);
 }
-
-/// Operation: openKeyCursor
 pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    _ = internal.store orelse return error.InvalidState;
-
-    _ = query;
-    _ = direction;
-
-    // TODO: Implement openKeyCursor
-    const req_instance = interfaces.IDBRequest.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
+    return queueCursor(instance, query, direction, true);
+}
+fn queueCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection), key_only: bool) !*runtime.Instance {
+    const internal = try usable(instance, false);
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = if (key_only) .open_key_cursor else .open_cursor, .direction = dom.indexeddb_keys.cursorDirection(if (direction.wasPassed()) direction.value else ._next_) };
+    errdefer operation.deinit();
+    operation.range = try dom.indexeddb_keys.queryRange(instance.ctx, if (query.wasPassed()) query.value else .jsUndefined, true, internal.allocator);
+    return dom.indexeddb.enqueueRequest(internal.transaction.?, instance, operation, null);
+}
+fn executeOperation(instance: *runtime.Instance, request: *runtime.Instance, operation: *dom.indexeddb.Operation) !void {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const store = internal.store orelse return error.InvalidStateError;
+    switch (operation.kind) {
+        .all_values, .all_keys, .all_records, .open_cursor, .open_key_cursor => return dom.indexeddb.retrieve(instance, request, .{ .object_store = store }, operation),
+        else => {},
+    }
+    const native = switch (operation.kind) {
+        .put, .add => try dom.indexeddb.executeStorageWrite(instance.ctx, store, operation),
+        .get => try store.get(operation.range),
+        .get_key => try store.getKey(operation.range),
+        .count => try store.count(operation.range),
+        .delete => try store.delete(operation.range),
+        .clear => try store.clear(),
+        else => unreachable,
     };
-
-    return req_instance;
+    defer internal.allocator.destroy(native);
+    defer native.deinit();
+    try dom.indexeddb.completeNativeRequest(request, native);
 }
 
 /// Operation: index
@@ -486,29 +331,27 @@ fn wrapIndex(instance: *runtime.Instance, internal: *InternalState, index: *stor
 
 /// Operation: createIndex
 pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, keyPath: runtime.JSValue, options: webidl.Opt(dictionaries.IDBIndexParameters)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const store = internal.store orelse return error.InvalidState;
-
-    const name_slice = name.asSlice();
-    _ = keyPath;
-
-    // Unwrap Opt for options
+    // WebIDL union conversion precedes the algorithm's duplicate/path checks.
+    var path = try dom.indexeddb_keys.keyPath(instance.ctx, keyPath, instance.ctx.allocator);
+    defer path.deinit();
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const store = internal.store orelse return error.InvalidStateError;
     const backend_options = storage.indexeddb.object_store.IDBIndexParameters{
         .unique = if (options.wasPassed()) options.value.unique orelse false else false,
         .multi_entry = if (options.wasPassed()) options.value.multiEntry orelse false else false,
     };
 
-    const index = store.createIndex(name_slice, "", backend_options) catch |err| {
+    const index = store.createIndexWithKeyPath(name.asSlice(), path.value, backend_options) catch |err| {
         return switch (err) {
-            error.ConstraintError => error.ConstraintError,
-            error.InvalidStateError => error.InvalidState,
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            else => error.InvalidState,
+            error.InvalidKeyPathError => error.SyntaxError,
+            else => err,
         };
     };
-
-    return wrapIndex(instance, internal, index);
+    const wrapper = try wrapIndex(instance, internal, index);
+    // ED 4.5 createIndex: the handle exists synchronously, but population
+    // follows earlier requests and any failure aborts the whole upgrade.
+    try dom.indexeddb.enqueueInternal(internal.transaction.?, wrapper, .{ .allocator = internal.allocator, .kind = .populate_index });
+    return wrapper;
 }
 
 /// Operation: deleteIndex

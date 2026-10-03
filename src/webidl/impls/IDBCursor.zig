@@ -15,9 +15,7 @@ const IDBCursor = interfaces.IDBCursor;
 
 pub const State = IDBCursor.State;
 
-pub const ImplError = error{
-    NotImplemented,
-};
+pub const ImplError = error{InvalidStateError};
 
 /// Internal state for implementation-specific data
 /// Implementations can replace this with a real struct containing:
@@ -30,7 +28,7 @@ pub const InternalState = struct {
     request: ?*runtime.Instance = null,
 };
 pub fn installHooks() void {
-    dom.indexeddb.installCursors(.{ .attach = attachCursor, .state = cursorState });
+    dom.indexeddb.installCursors(.{ .attach = attachCursor, .state = cursorState, .execute = executeOperation });
 }
 fn cursorState(instance: *runtime.Instance) ?*storage.indexeddb.IDBCursor {
     return (instance.getState(State).own._internal orelse return null).cursor;
@@ -75,6 +73,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         engine.forgetTracedChild(instance, .{ .name = "idb.source" });
         engine.forgetTracedChild(instance, .{ .name = "idb.request" });
+        engine.forgetTracedChild(instance, .{ .name = "idb.cursor.key" });
+        engine.forgetTracedChild(instance, .{ .name = "idb.cursor.primaryKey" });
         if (internal.cursor) |cursor| {
             const store = switch (cursor.source) {
                 .object_store => |store| store,
@@ -110,16 +110,22 @@ pub fn get_direction(instance: *runtime.Instance) anyerror!enums.IDBCursorDirect
 
 /// Getter for key
 pub fn get_key(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    if (engine.tracedValue(instance, .{ .name = "idb.cursor.key" })) |value| return value.take();
     const cursor = cursorState(instance) orelse return error.InvalidStateError;
     const key = cursor.key orelse return .jsUndefined;
-    return (try dom.indexeddb_keys.toValue(instance.ctx, key)).take();
+    const value = try dom.indexeddb_keys.toValue(instance.ctx, key);
+    engine.traceValue(instance, value.value, .{ .name = "idb.cursor.key" });
+    return value.take();
 }
 
 /// Getter for primaryKey
 pub fn get_primaryKey(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    if (engine.tracedValue(instance, .{ .name = "idb.cursor.primaryKey" })) |value| return value.take();
     const cursor = cursorState(instance) orelse return error.InvalidStateError;
     const key = cursor.primary_key orelse return .jsUndefined;
-    return (try dom.indexeddb_keys.toValue(instance.ctx, key)).take();
+    const value = try dom.indexeddb_keys.toValue(instance.ctx, key);
+    engine.traceValue(instance, value.value, .{ .name = "idb.cursor.primaryKey" });
+    return value.take();
 }
 
 /// Getter for request
@@ -129,35 +135,141 @@ pub fn get_request(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Operation: delete
 pub fn call_delete(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = try usable(instance, true);
+    const cursor = internal.cursor.?;
+    // ED 4.9 delete steps 5-8: snapshot the effective key at placement.
+    if (!cursor.got_value or cursor.key_only) return error.InvalidStateError;
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = .delete, .cursor = instance };
+    errdefer operation.deinit();
+    operation.key = try cursor.primary_key.?.clone(internal.allocator);
+    return dom.indexeddb.enqueueRequest(try requestTransaction(internal), instance, operation, null);
 }
 
 /// Operation: continue
 pub fn call_continue(instance: *runtime.Instance, key: webidl.Opt(runtime.JSValue)) anyerror!void {
-    _ = instance;
-    _ = key;
-    return error.NotImplemented;
+    const internal = try usable(instance, false);
+    const cursor = internal.cursor.?;
+    if (!cursor.got_value) return error.InvalidStateError;
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = .iterate_cursor, .cursor = instance };
+    errdefer operation.deinit();
+    // continue step 5: undefined is the optional argument's missing value.
+    if (key.wasPassed() and !key.value.isUndefined()) {
+        operation.key = try dom.indexeddb_keys.require(instance.ctx, key.value, internal.allocator);
+        const order = storage.indexeddb.compareKeys(operation.key.?, cursor.key.?);
+        if ((forward(cursor) and order <= 0) or (!forward(cursor) and order >= 0)) return error.DataError;
+    }
+    try enqueueIteration(internal, operation);
 }
 
 /// Operation: continuePrimaryKey
 pub fn call_continuePrimaryKey(instance: *runtime.Instance, key: runtime.JSValue, primaryKey: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = key;
-    _ = primaryKey;
-    return error.NotImplemented;
+    const internal = try usable(instance, false);
+    const cursor = internal.cursor.?;
+    // continuePrimaryKey steps 4-6 precede either argument's key conversion.
+    if (cursor.source != .index or (cursor.direction != .next and cursor.direction != .prev)) return error.InvalidAccessError;
+    if (!cursor.got_value) return error.InvalidStateError;
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = .iterate_cursor, .cursor = instance };
+    errdefer operation.deinit();
+    operation.key = try dom.indexeddb_keys.require(instance.ctx, key, internal.allocator);
+    operation.primary_key = try dom.indexeddb_keys.require(instance.ctx, primaryKey, internal.allocator);
+    // Steps 13-16 compare the saved (index key, object-store key) position.
+    const order = storage.indexeddb.compareKeys(operation.key.?, cursor.key.?);
+    const primary_order = storage.indexeddb.compareKeys(operation.primary_key.?, cursor.primary_key.?);
+    if (cursor.direction == .next) {
+        if (order < 0 or (order == 0 and primary_order <= 0)) return error.DataError;
+    } else if (order > 0 or (order == 0 and primary_order >= 0)) return error.DataError;
+    try enqueueIteration(internal, operation);
 }
 
 /// Operation: update
 pub fn call_update(instance: *runtime.Instance, value: runtime.JSValue) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    const internal = try usable(instance, true);
+    const cursor = internal.cursor.?;
+    if (!cursor.got_value or cursor.key_only) return error.InvalidStateError;
+    const store = effectiveStore(cursor);
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = .put, .cursor = instance };
+    errdefer operation.deinit();
+    operation.key = try cursor.primary_key.?.clone(internal.allocator);
+    // update step 8 and 5.11: clone with the transaction inactive.
+    store.transaction.state = .inactive;
+    operation.bytes = try engine.structuredSerializeForStorage(instance.ctx, value, internal.allocator);
+    const clone = try engine.structuredDeserialize(instance.ctx, operation.bytes.?);
+    defer clone.release();
+    if (store.transaction.state == .inactive) store.transaction.state = .active;
+    // Step 9: an inline key must equal the cursor's saved effective key.
+    if (dom.indexeddb.storeKeyPath(store)) |path| {
+        var key = switch (try dom.indexeddb_keys.extract(instance.ctx, clone.value, path, false, internal.allocator)) {
+            .key => |extracted| extracted,
+            .invalid, .failure => return error.DataError,
+        };
+        defer key.deinit();
+        if (storage.indexeddb.compareKeys(key, operation.key.?) != 0) return error.DataError;
+    }
+    try dom.indexeddb.captureWriteIndexes(store, &operation);
+    return dom.indexeddb.enqueueRequest(try requestTransaction(internal), instance, operation, null);
 }
 
 /// Operation: advance
 pub fn call_advance(instance: *runtime.Instance, count: u32) anyerror!void {
-    _ = instance;
-    _ = count;
-    return error.NotImplemented;
+    // advance step 1 runs even for an inactive transaction or deleted source.
+    if (count == 0) return error.TypeError;
+    const internal = try usable(instance, false);
+    if (!internal.cursor.?.got_value) return error.InvalidStateError;
+    try enqueueIteration(internal, .{ .allocator = internal.allocator, .kind = .iterate_cursor, .cursor = instance, .advance = count });
+}
+
+fn effectiveStore(cursor: *storage.indexeddb.IDBCursor) *storage.indexeddb.IDBObjectStore {
+    return switch (cursor.source) {
+        .object_store => |store| store,
+        .index => |index| index.object_store,
+    };
+}
+fn usable(instance: *runtime.Instance, writing: bool) !*InternalState {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const cursor = internal.cursor orelse return error.InvalidStateError;
+    const store = effectiveStore(cursor);
+    // ED 4.9: active, mode (for writes), then source deletion, in that order.
+    if (store.transaction.state != .active) return error.TransactionInactiveError;
+    if (writing and store.transaction.mode == .readonly) return error.ReadOnlyError;
+    if (store.isDeleted() or (cursor.source == .index and cursor.source.index.deleted)) return error.InvalidStateError;
+    return internal;
+}
+fn requestTransaction(internal: *InternalState) !*runtime.Instance {
+    return (try interfaces.IDBRequest.get_transaction(internal.request.?)) orelse error.InvalidStateError;
+}
+fn forward(cursor: *storage.indexeddb.IDBCursor) bool {
+    return cursor.direction == .next or cursor.direction == .nextunique;
+}
+fn enqueueIteration(internal: *InternalState, operation: dom.indexeddb.Operation) !void {
+    // advance 6-11, continue 6-11, continuePrimaryKey 17-22: reuse the same
+    // request, preserving its source and the visible cursor snapshot for now.
+    _ = try dom.indexeddb.enqueueRequest(try requestTransaction(internal), internal.source.?, operation, internal.request.?);
+    internal.cursor.?.got_value = false;
+}
+fn executeOperation(instance: *runtime.Instance, request: *runtime.Instance, operation: *dom.indexeddb.Operation) !void {
+    const cursor = cursorState(instance) orelse return error.InvalidStateError;
+    if (operation.kind == .iterate_cursor) {
+        // Placement already validated the got-value flag. Temporarily restore
+        // it for the native iteration entry point, without running script.
+        cursor.got_value = true;
+        if (operation.advance) |count| {
+            try cursor.advance(count);
+        } else if (operation.primary_key) |primary| {
+            try cursor.continuePrimaryKey(operation.key.?, primary);
+        } else try cursor.@"continue"(operation.key);
+        // 6.7 steps 10-14 replace the JS snapshots only as data is loaded.
+        engine.forgetTracedChild(instance, .{ .name = "idb.cursor.key" });
+        engine.forgetTracedChild(instance, .{ .name = "idb.cursor.primaryKey" });
+        engine.forgetTracedChild(instance, .{ .name = "idb.cursor.value" });
+        return dom.indexeddb.completeRequest(request, if (cursor.got_value) .{ .instance = instance } else .jsNull, null);
+    }
+    const store = effectiveStore(cursor);
+    const native = switch (operation.kind) {
+        .put => try dom.indexeddb.executeStorageWrite(instance.ctx, store, operation),
+        .delete => try store.delete(storage.indexeddb.IDBKeyRange.only(operation.key.?)),
+        else => return error.InvalidStateError,
+    };
+    defer native.allocator.destroy(native);
+    defer native.deinit();
+    try dom.indexeddb.completeNativeRequest(request, native);
 }

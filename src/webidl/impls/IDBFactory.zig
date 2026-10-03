@@ -272,7 +272,15 @@ pub fn call_cmp(instance: *runtime.Instance, first: runtime.JSValue, second: run
 }
 
 pub fn installHooks() void {
-    dom.indexeddb.installFactories(.{ .register = registerConnection, .unregister = unregisterConnection, .advance = advanceQueue });
+    dom.indexeddb.installFactories(.{ .register = registerConnection, .unregister = unregisterConnection, .advance = advanceQueue, .wake_transactions = wakeTransactions });
+}
+
+fn wakeTransactions(instance: *runtime.Instance) void {
+    const internal = instance.getState(State).own._internal orelse return;
+    for (internal.connections.items) |connection| dom.indexeddb.wakeDatabaseTransactions(connection.instance);
+    for (internal.pending.items) |task| {
+        if (task.phase == .commit or task.phase == .failed) task.schedule();
+    }
 }
 fn storageKey(instance: *runtime.Instance) ![]u8 {
     // Storage 4.2: the relevant settings object's origin; opaque is failure.
@@ -398,7 +406,11 @@ const ConnectionTask = struct {
         engine.runTaskInRealm(self.factory.ctx, steps, self) catch {};
         self.running = false;
         // Task ownership extends through runTaskInRealm's checkpoint.
-        if (self.phase == .finished) self.finish(true) else if (self.phase != .wait or !self.waiting or !self.hasConnections()) self.schedule();
+        if (self.phase == .finished) self.finish(true) else if (self.phase == .commit or self.phase == .failed) {
+            if (self.transaction) |transaction| {
+                if (dom.indexeddb.transactionOutcome(transaction) != null) self.schedule();
+            }
+        } else if (self.phase != .wait or !self.waiting or !self.hasConnections()) self.schedule();
     }
     fn steps(data: ?*anyopaque) void {
         const self: *ConnectionTask = @ptrCast(@alignCast(data.?));
@@ -486,7 +498,9 @@ const ConnectionTask = struct {
                 self.phase = if (try dom.indexeddb.endTransactionEvent(transaction, did_throw)) .failed else .commit;
             },
             .failed => {
-                if (self.transaction) |transaction| _ = try dom.indexeddb.finishTransaction(transaction, true);
+                if (self.transaction) |transaction| {
+                    if (dom.indexeddb.transactionOutcome(transaction) == null) return;
+                }
                 dom.indexeddb.setRequestTransaction(self.request, null);
                 dom.indexeddb.endUpgrade(self.database.?);
                 try interfaces.IDBDatabase.call_close(self.database.?);
@@ -496,7 +510,7 @@ const ConnectionTask = struct {
             .error_event => try self.fail("AbortError"),
             .commit => {
                 if (self.transaction) |transaction| {
-                    const committed = try dom.indexeddb.finishTransaction(transaction, false);
+                    const committed = dom.indexeddb.transactionOutcome(transaction) orelse return;
                     dom.indexeddb.setRequestTransaction(self.request, null);
                     dom.indexeddb.endUpgrade(self.database.?);
                     if (!committed) {

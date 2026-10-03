@@ -11,15 +11,19 @@ pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *con
     return interfaces.IDBCursor.initWithState(allocator, StateType, vtable, ctx);
 }
 pub fn deinit(instance: *runtime.Instance) void {
+    engine.forgetTracedChild(instance, .{ .name = "idb.cursor.value" });
     interfaces.IDBCursor.deinit(instance);
 }
 pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
     return readValue(instance);
 }
-// Q12 accepted interim: rebuild on every read until REALMS3 ON MAIN. No
-// strong result root: a script value can contain a cycle back to its cursor.
+// 4.9 value getter: keep identity until the cursor loads another record. The
+// traced edge permits a value that refers back to the cursor to be collected.
 fn readValue(instance: *runtime.Instance) !runtime.JSValue {
+    if (engine.tracedValue(instance, .{ .name = "idb.cursor.value" })) |value| return value.take();
     const cursor = dom.indexeddb.cursorState(instance) orelse return error.InvalidStateError;
     const bytes = cursor.value orelse return .jsUndefined;
-    return (try engine.structuredDeserialize(instance.ctx, bytes)).take();
+    const value = try engine.structuredDeserialize(instance.ctx, bytes);
+    engine.traceValue(instance, value.value, .{ .name = "idb.cursor.value" });
+    return value.take();
 }

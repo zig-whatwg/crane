@@ -48,6 +48,9 @@ pub const InternalState = struct {
     finish_event_fired: bool = false,
     exception: ?*runtime.Instance = null,
     store_wrappers: std.ArrayListUnmanaged(StoreWrapper) = .empty,
+    task: ?*TransactionTask = null,
+    database_generation: u64 = 0,
+    registered: bool = false,
 
     /// Event handlers
     onabort: typedefs.EventHandler,
@@ -61,6 +64,7 @@ pub const InternalState = struct {
     };
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
+        if (self.task) |task| task.cancel();
         if (self.transaction) |txn| {
             txn.releaseHeapOwnership();
         }
@@ -94,6 +98,9 @@ pub fn init(
     internal.finish_event_fired = false;
     internal.exception = null;
     internal.store_wrappers = .empty;
+    internal.task = null;
+    internal.database_generation = 0;
+    internal.registered = false;
 
     // Transaction pointer is set by IDBDatabase.transaction() - start as null
     internal.transaction = null;
@@ -110,6 +117,10 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        if (internal.registered) if (internal.database) |database| {
+            if (runtime.SlabAllocator.generationOf(database) == internal.database_generation)
+                dom.indexeddb.removeDatabaseTransaction(database, instance);
+        };
         if (internal.cleanup_list) |list| list.remove(instance);
         engine.forgetTracedChild(instance, .{ .name = "idb.error" });
         engine.forgetTracedChild(instance, .{ .name = "idb.database" });
@@ -263,6 +274,7 @@ pub fn call_commit(instance: *runtime.Instance) anyerror!void {
     // IDL commit step 1: only active; outstanding requests finish asynchronously.
     if (txn.state != .active) return error.InvalidStateError;
     txn.state = .committing;
+    if (internal.task) |task| task.schedule();
 }
 
 /// Operation: abort
@@ -280,10 +292,11 @@ pub fn call_abort(instance: *runtime.Instance) anyerror!void {
     internal.aborted = true;
     // Aborting with null leaves transaction.error null.
     txn.err = null;
+    if (internal.task) |task| task.schedule();
 }
 
 pub fn installHooks() void {
-    dom.indexeddb.installTransactions(.{ .end_event = endEvent, .attach = attachTransaction, .finish = finishTransaction, .get_the_parent = getParent, .cleanup = cleanupTransaction });
+    dom.indexeddb.installTransactions(.{ .end_event = endEvent, .attach = attachTransaction, .finish = finishTransaction, .get_the_parent = getParent, .cleanup = cleanupTransaction, .enqueue = enqueueRequest, .enqueue_internal = enqueueInternal, .outcome = transactionOutcome, .wake = wakeTransaction });
 }
 fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
     return (instance.getState(State).own._internal orelse return null).database;
@@ -293,6 +306,7 @@ fn cleanupTransaction(instance: *runtime.Instance) void {
     // IndexedDB 2.7 cleanup step 2: active -> inactive, and clear cleanup loop.
     if (internal.transaction) |transaction| transaction.setInactive();
     internal.cleanup_list = null;
+    if (internal.task) |task| task.schedule();
 }
 
 fn attachTransaction(instance: *runtime.Instance, transaction: *BackendTransaction, database: *runtime.Instance) !void {
@@ -300,10 +314,18 @@ fn attachTransaction(instance: *runtime.Instance, transaction: *BackendTransacti
     std.debug.assert(internal.transaction == null);
     const cleanup_list = dom.indexeddb.agentCleanupList(instance.ctx);
     if (cleanup_list) |list| try list.add(instance);
+    errdefer if (cleanup_list) |list| list.remove(instance);
+    try dom.indexeddb.registerDatabaseTransaction(database, instance);
+    errdefer dom.indexeddb.removeDatabaseTransaction(database, instance);
+    const task = try TransactionTask.create(instance, transaction);
     internal.cleanup_list = cleanup_list;
     internal.transaction = transaction;
     internal.database = database;
+    internal.database_generation = runtime.SlabAllocator.generationOf(database);
+    internal.registered = true;
+    internal.task = task;
     engine.traceChild(instance, database, .{ .name = "idb.database" });
+    task.schedule();
 }
 fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
@@ -313,7 +335,7 @@ fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
     internal.aborted = aborted;
     if (internal.finish_event_fired) return !aborted;
     if (transaction.state != .finished) {
-        if (aborted) try transaction.abort() else try transaction.commit();
+        if (aborted) try transaction.abortForError(transaction.err orelse error.AbortError) else try transaction.commit();
     }
     if (transaction.mode == .versionchange) dom.indexeddb.endUpgrade(internal.database.?);
     internal.finish_event_fired = true;
@@ -321,7 +343,9 @@ fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
     const root = try engine.retainValue(instance.ctx, .{ .instance = event });
     defer root.release();
     var did_throw = false;
+    const running_task = internal.task;
     _ = try dom.fire_event.dispatchTrustedWithThrows(instance, event, &did_throw);
+    if (running_task) |task| if (task.cancelled) return !aborted;
     dom.indexeddb.closeConnectionIfReady(internal.database.?);
     return !aborted;
 }
@@ -339,5 +363,224 @@ fn endEvent(instance: *runtime.Instance, did_throw: bool) !bool {
             try transaction.abort();
         }
     }
+    if (internal.task) |task| task.schedule();
     return internal.aborted;
+}
+
+fn transactionOutcome(instance: *runtime.Instance) ?bool {
+    const internal = instance.getState(State).own._internal orelse return false;
+    return if (internal.finish_event_fired) !internal.aborted else null;
+}
+fn wakeTransaction(instance: *runtime.Instance) void {
+    const internal = instance.getState(State).own._internal orelse return;
+    if (internal.task) |task| task.schedule();
+}
+
+fn enqueueRequest(instance: *runtime.Instance, source: *runtime.Instance, operation: dom.indexeddb.Operation, reused: ?*runtime.Instance) !*runtime.Instance {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const transaction = internal.transaction orelse return error.InvalidStateError;
+    // ED 5.6 steps 1-4: accept now, even if scheduling prevents execution yet.
+    if (transaction.state != .active) return error.TransactionInactiveError;
+    const task = internal.task orelse return error.InvalidStateError;
+    try task.pending.ensureUnusedCapacity(task.allocator, 1);
+    const request = reused orelse try interfaces.IDBRequest.init(task.allocator, instance.ctx);
+    errdefer if (reused == null and !engine.hasWrapper(request)) runtime.Instance.deinit(request);
+    const root = try engine.retainValue(instance.ctx, .{ .instance = request });
+    errdefer root.release();
+    const cursor_root = if (operation.cursor) |cursor| try engine.retainValue(instance.ctx, .{ .instance = cursor }) else null;
+    errdefer if (cursor_root) |held| held.release();
+    dom.indexeddb.setRequestTransaction(request, instance);
+    dom.indexeddb.setRequestSource(request, source);
+    dom.indexeddb.setRequestPending(request);
+    task.pending.appendAssumeCapacity(.{ .source = source, .request = request, .root = root, .cursor_root = cursor_root, .operation = operation });
+    task.schedule();
+    return request;
+}
+
+fn enqueueInternal(instance: *runtime.Instance, source: *runtime.Instance, operation: dom.indexeddb.Operation) !void {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const transaction = internal.transaction orelse return error.InvalidStateError;
+    if (transaction.state != .active) return error.TransactionInactiveError;
+    const task = internal.task orelse return error.InvalidStateError;
+    try task.pending.ensureUnusedCapacity(task.allocator, 1);
+    const root = try engine.retainValue(instance.ctx, .{ .instance = source });
+    task.pending.appendAssumeCapacity(.{ .source = source, .request = null, .root = root, .operation = operation });
+    task.schedule();
+}
+
+/// Pending activity roots last through the task's microtask checkpoint. They
+/// never store a request result; script results belong to traced owner slots.
+const TransactionTask = struct {
+    allocator: std.mem.Allocator,
+    instance: *runtime.Instance,
+    backend: *BackendTransaction,
+    root: ?engine.Owned,
+    pending: std.ArrayList(Work) = .empty,
+    current: ?Work = null,
+    queued: bool = false,
+    running: bool = false,
+    cancelled: bool = false,
+    finished: bool = false,
+
+    const Work = struct {
+        source: *runtime.Instance,
+        request: ?*runtime.Instance,
+        root: engine.Owned,
+        cursor_root: ?engine.Owned = null,
+        operation: dom.indexeddb.Operation,
+        fn deinit(self: *Work) void {
+            self.operation.deinit();
+            if (self.cursor_root) |root| root.release();
+            self.root.release();
+        }
+    };
+
+    fn create(instance: *runtime.Instance, backend: *BackendTransaction) !*TransactionTask {
+        const allocator = instance.ctx.allocator;
+        if (instance.ctx.getOptionalEventLoop() == null) return error.NoEventLoop;
+        const task = try allocator.create(TransactionTask);
+        errdefer allocator.destroy(task);
+        const root = try engine.retainValue(instance.ctx, .{ .instance = instance });
+        backend.retain();
+        task.* = .{ .allocator = allocator, .instance = instance, .backend = backend, .root = root };
+        return task;
+    }
+    fn schedule(self: *TransactionTask) void {
+        if (self.queued or self.running or self.cancelled or self.finished) return;
+        if (self.backend.state != .finished and !self.backend.canStart()) return;
+        const loop = self.instance.ctx.getOptionalEventLoop() orelse return;
+        self.queued = true;
+        loop.queueTask(.{ .callback = run, .context = self, .drop = drop });
+    }
+    fn run(data: ?*anyopaque) void {
+        const self: *TransactionTask = @ptrCast(@alignCast(data.?));
+        self.queued = false;
+        if (self.cancelled) return self.destroy();
+        self.running = true;
+        engine.runTaskInRealm(self.instance.ctx, steps, self) catch {};
+        // A listener or its microtasks may have retired the realm and cancelled
+        // this task. Never inspect the wrapper after that cancellation.
+        if (self.current) |work| {
+            self.current = null;
+            var completed = work;
+            completed.deinit();
+        }
+        self.running = false;
+        if (self.cancelled) return self.destroy();
+        if (self.finished) {
+            if (self.instance.getState(State).own._internal) |internal| {
+                internal.task = null;
+                dom.indexeddb.removeDatabaseTransaction(internal.database.?, self.instance);
+                internal.registered = false;
+                dom.indexeddb.databaseTransactionFinished(internal.database.?);
+            }
+            return self.destroy();
+        }
+        if (self.pending.items.len != 0 or self.backend.state != .active) self.schedule();
+    }
+    fn steps(data: ?*anyopaque) void {
+        const self: *TransactionTask = @ptrCast(@alignCast(data.?));
+        self.perform() catch |err| {
+            if (!self.cancelled) self.abortWithName(@errorName(err)) catch {};
+        };
+    }
+    fn perform(self: *TransactionTask) !void {
+        if (self.backend.state != .finished and !self.backend.canStart()) return;
+        const internal = self.instance.getState(State).own._internal orelse return error.InvalidStateError;
+        if (self.pending.items.len == 0) {
+            if (self.backend.state == .active) return;
+            _ = try finishTransaction(self.instance, internal.aborted);
+            if (!self.cancelled) self.finished = true;
+            return;
+        }
+        // ED 5.6.5: execute FIFO; remove the request before dispatch so a cursor
+        // can place the same request again from its success event.
+        self.current = self.pending.orderedRemove(0);
+        const work = &self.current.?;
+        if (internal.aborted) {
+            const request = work.request orelse return;
+            const exception = try makeException(self.instance, "AbortError");
+            try dom.indexeddb.completeRequest(request, .jsUndefined, exception);
+            try self.dispatch(request, true);
+            return;
+        }
+        try self.backend.beginRequestExecution();
+        const execution = if (work.request) |request| dom.indexeddb.executeRequest(work.source, request, &work.operation) else dom.indexeddb.executeInternal(work.source);
+        self.backend.endRequestExecution();
+        execution catch |err| {
+            const request = work.request orelse return self.abortWithName(@errorName(err));
+            // 5.6.5.3: an error after explicit commit aborts, regardless of an
+            // error listener's eventual preventDefault().
+            if (self.backend.state == .committing) try self.abortWithName(@errorName(err));
+            const exception = try makeException(self.instance, if (internal.aborted) "AbortError" else @errorName(err));
+            try dom.indexeddb.completeRequest(request, .jsUndefined, exception);
+            try self.dispatch(request, true);
+            return;
+        };
+        if (work.request) |request| try self.dispatch(request, false);
+    }
+    fn dispatch(self: *TransactionTask, request: *runtime.Instance, is_error: bool) !void {
+        // ED 5.9/5.10 steps 1-7: only inactive transactions become active.
+        const event = try interfaces.Event.call_constructor(self.instance.ctx, runtime.DOMString.initInterned(if (is_error) "error" else "success"), @import("webidl").Opt(dictionaries.EventInit).passed(.{ .bubbles = is_error, .cancelable = is_error }));
+        const root = try engine.retainValue(self.instance.ctx, .{ .instance = event });
+        defer root.release();
+        if (self.backend.state == .inactive) self.backend.state = .active;
+        var did_throw = false;
+        const uncancelled = try dom.fire_event.dispatchTrustedWithThrows(request, event, &did_throw);
+        if (self.cancelled) return;
+        if (self.backend.state == .active) {
+            self.backend.setInactive();
+            // Steps 8.2-4: exceptions take precedence over request errors.
+            if (did_throw) return self.abortWithName("AbortError");
+            if (is_error and uncancelled) {
+                const exception = try interfaces.IDBRequest.get_error(request);
+                const internal = self.instance.getState(State).own._internal.?;
+                internal.exception = exception;
+                if (exception) |child| engine.traceChild(self.instance, child, .{ .name = "idb.error" });
+                internal.aborted = true;
+                try self.backend.abortForError(error.AbortError);
+            }
+            if (self.backend.state != .finished and self.pending.items.len == 0) self.backend.state = .committing;
+        }
+    }
+    fn abortWithName(self: *TransactionTask, name: []const u8) !void {
+        const internal = self.instance.getState(State).own._internal orelse return;
+        if (self.backend.state == .finished) return;
+        internal.exception = try makeException(self.instance, name);
+        engine.traceChild(self.instance, internal.exception.?, .{ .name = "idb.error" });
+        internal.aborted = true;
+        try self.backend.abortForError(error.AbortError);
+    }
+    fn drop(data: ?*anyopaque) void {
+        const self: *TransactionTask = @ptrCast(@alignCast(data.?));
+        self.queued = false;
+        self.cancel();
+    }
+    fn cancel(self: *TransactionTask) void {
+        if (!self.cancelled) {
+            self.cancelled = true;
+            if (self.instance.getState(State).own._internal) |internal| {
+                if (internal.task == self) internal.task = null;
+            }
+            if (self.backend.state != .finished) self.backend.abortForError(error.AbortError) catch {};
+            if (self.root) |root| root.release();
+            self.root = null;
+        }
+        if (!self.queued and !self.running) self.destroy();
+    }
+    fn destroy(self: *TransactionTask) void {
+        // Releasing pending roots can synchronously destroy wrappers. This
+        // task is detached before that starts and remains its own last holder.
+        self.running = true;
+        for (self.pending.items) |*work| work.deinit();
+        self.pending.deinit(self.allocator);
+        if (self.current) |*work| work.deinit();
+        if (self.root) |root| root.release();
+        self.backend.deinit();
+        self.allocator.destroy(self);
+    }
+};
+
+fn makeException(instance: *runtime.Instance, name: []const u8) !*runtime.Instance {
+    return interfaces.DOMException.call_constructor(instance.ctx, @import("webidl").Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(name)), @import("webidl").Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(name)));
 }

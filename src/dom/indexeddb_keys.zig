@@ -204,8 +204,7 @@ pub const Path = struct {
         }
     }
 };
-pub fn keyPath(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) !?Path {
-    if (value.isNullOrUndefined()) return null;
+pub fn keyPath(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) !Path {
     // WebIDL's string/sequence union: object iterables select sequence.
     if (engine.typeOf(realm, value) == .object) {
         if (try engine.convertToSequenceOfDOMStrings(realm, value, allocator)) |paths| {
@@ -213,14 +212,26 @@ pub fn keyPath(realm: runtime.Context, value: runtime.JSValue, allocator: std.me
                 for (paths) |path| allocator.free(path);
                 allocator.free(paths);
             }
-            for (paths) |path| if (!storage.indexeddb.isValidKeyPath(path)) return error.SyntaxError;
             return .{ .allocator = allocator, .value = .{ .array = paths } };
         }
     }
     const path = try engine.convertToDOMString(realm, value, allocator);
     errdefer allocator.free(path);
-    if (!storage.indexeddb.isValidKeyPath(path)) return error.SyntaxError;
     return .{ .allocator = allocator, .value = .{ .single = path } };
+}
+
+/// ED 4.5/4.6 keyPath: each handle keeps one mutable Array for a list path.
+pub fn keyPathValue(owner: *runtime.Instance, path: ?storage.indexeddb.KeyPath) !runtime.JSValue {
+    const actual = path orelse return .jsNull;
+    if (actual == .single) return runtime.JSValue.fromStringRef(actual.single);
+    const slot: engine.TracedSlot = .{ .name = "idb.keyPath" };
+    if (engine.tracedValue(owner, slot)) |value| return value.take();
+    const values = try owner.ctx.allocator.alloc(runtime.JSValue, actual.array.len);
+    defer owner.ctx.allocator.free(values);
+    for (actual.array, 0..) |part, index| values[index] = runtime.JSValue.fromStringRef(part);
+    const result = try engine.createSequenceOfValues(owner.ctx, values);
+    engine.traceValue(owner, result.value, slot);
+    return result.take();
 }
 
 /// ED 7.1: only run on StructuredDeserialize's output, never the original value.
@@ -365,4 +376,57 @@ pub fn queryRange(realm: runtime.Context, value: runtime.JSValue, allow_unbounde
 // Shared keys stay red until the AllowSharedBufferSource operation is available.
 fn copyBufferSourceBytes(realm: runtime.Context, input: runtime.JSValue, allocator: std.mem.Allocator) engine.Error!?[]u8 {
     return engine.getCopyOfBufferSourceBytes(realm, input, allocator);
+}
+
+pub fn cursorDirection(direction: anytype) storage.indexeddb.IDBCursorDirection {
+    return switch (direction) {
+        ._next_ => .next,
+        ._nextunique_ => .nextunique,
+        ._prev_ => .prev,
+        ._prevunique_ => .prevunique,
+    };
+}
+
+/// ED 5.12: select the range form or convert the options dictionary, after
+/// the owning handle has checked deletion and transaction state.
+pub fn multipleItems(realm: runtime.Context, kind: @import("indexeddb.zig").OperationKind, query_or_options: runtime.JSValue, count: ?u32, allocator: std.mem.Allocator) !@import("indexeddb.zig").Operation {
+    var operation = @import("indexeddb.zig").Operation{ .allocator = allocator, .kind = kind, .limit = count };
+    errdefer operation.deinit();
+    var range_form = false;
+    if (engine.convertToPlatformObject(realm, query_or_options)) |object| {
+        range_form = object.stateAs(@import("interfaces").IDBKeyRange.State) != null;
+    }
+    if (!range_form and !query_or_options.isNullOrUndefined()) {
+        var converted = try convert(realm, query_or_options, allocator);
+        range_form = converted != .invalid_type;
+        if (converted == .key) converted.key.deinit();
+    }
+    if (range_form) {
+        operation.range = try queryRange(realm, query_or_options, true, allocator);
+        return operation;
+    }
+    // WebIDL dictionary members convert in lexical order: count, direction,
+    // query. Null and undefined mean an empty dictionary.
+    if (query_or_options.isNullOrUndefined()) return operation;
+    if (engine.typeOf(realm, query_or_options) != .object) return error.TypeError;
+    const count_value = try engine.getProperty(realm, query_or_options, "count");
+    defer count_value.release();
+    operation.limit = null;
+    if (!count_value.value.isUndefined()) {
+        const number = try engine.convertToUnrestrictedDouble(realm, count_value.value);
+        const integer = @trunc(number);
+        if (!std.math.isFinite(number) or integer < 0 or integer > 4294967295) return error.TypeError;
+        operation.limit = @intFromFloat(integer);
+    }
+    const direction_value = try engine.getProperty(realm, query_or_options, "direction");
+    defer direction_value.release();
+    if (!direction_value.value.isUndefined()) {
+        const direction = try engine.convertToDOMString(realm, direction_value.value, allocator);
+        defer allocator.free(direction);
+        operation.direction = if (std.mem.eql(u8, direction, "next")) .next else if (std.mem.eql(u8, direction, "nextunique")) .nextunique else if (std.mem.eql(u8, direction, "prev")) .prev else if (std.mem.eql(u8, direction, "prevunique")) .prevunique else return error.TypeError;
+    }
+    const query = try engine.getProperty(realm, query_or_options, "query");
+    defer query.release();
+    operation.range = try queryRange(realm, query.value, true, allocator);
+    return operation;
 }

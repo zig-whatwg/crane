@@ -38,6 +38,9 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        engine.forgetTracedChild(instance, .{ .name = "idb.record.key" });
+        engine.forgetTracedChild(instance, .{ .name = "idb.record.primaryKey" });
+        engine.forgetTracedChild(instance, .{ .name = "idb.record.value" });
         if (internal.snapshot) |*snapshot| snapshot.deinit();
         internal.allocator.destroy(internal);
         state.own._internal = null;
@@ -74,13 +77,21 @@ fn snapshotFor(instance: *runtime.Instance) !*const storage.indexeddb.RecordSnap
 }
 // 4.8 key and primaryKey getters: convert owned native keys in this realm.
 fn readKey(instance: *runtime.Instance) !runtime.JSValue {
-    return (try dom.indexeddb_keys.toValue(instance.ctx, (try snapshotFor(instance)).key)).take();
+    if (engine.tracedValue(instance, .{ .name = "idb.record.key" })) |value| return value.take();
+    const value = try dom.indexeddb_keys.toValue(instance.ctx, (try snapshotFor(instance)).key);
+    engine.traceValue(instance, value.value, .{ .name = "idb.record.key" });
+    return value.take();
 }
 fn readPrimaryKey(instance: *runtime.Instance) !runtime.JSValue {
-    return (try dom.indexeddb_keys.toValue(instance.ctx, (try snapshotFor(instance)).primary_key)).take();
+    if (engine.tracedValue(instance, .{ .name = "idb.record.primaryKey" })) |value| return value.take();
+    const value = try dom.indexeddb_keys.toValue(instance.ctx, (try snapshotFor(instance)).primary_key);
+    engine.traceValue(instance, value.value, .{ .name = "idb.record.primaryKey" });
+    return value.take();
 }
-// Q12/Q17 accepted interim until REALMS3 ON MAIN: one rebuild site, no strong
-// value root field. Value identity remains pinned by the pending Crane test.
+// 4.8 value getter: deserialize once; later reads preserve script mutations.
 fn readValue(instance: *runtime.Instance) !runtime.JSValue {
-    return (try engine.structuredDeserialize(instance.ctx, (try snapshotFor(instance)).value)).take();
+    if (engine.tracedValue(instance, .{ .name = "idb.record.value" })) |value| return value.take();
+    const value = try engine.structuredDeserialize(instance.ctx, (try snapshotFor(instance)).value);
+    engine.traceValue(instance, value.value, .{ .name = "idb.record.value" });
+    return value.take();
 }

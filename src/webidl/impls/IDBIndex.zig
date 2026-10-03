@@ -29,7 +29,10 @@ pub const InternalState = struct {
     store: ?*runtime.Instance = null,
 };
 pub fn installHooks() void {
-    dom.indexeddb.installIndexes(.{ .attach = attachIndex });
+    dom.indexeddb.installIndexes(.{ .attach = attachIndex, .execute = executeOperation, .populate = populate });
+}
+fn populate(instance: *runtime.Instance) !void {
+    try dom.indexeddb.populateIndex(instance.ctx, try indexState(instance));
 }
 fn attachIndex(instance: *runtime.Instance, index: *storage.indexeddb.IDBIndex, store: *runtime.Instance) !void {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
@@ -67,6 +70,7 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         engine.forgetTracedChild(instance, .{ .name = "idb.store" });
+        engine.forgetTracedChild(instance, .{ .name = "idb.keyPath" });
         if (internal.index) |index| {
             const store = index.object_store;
             const transaction = store.transaction;
@@ -91,7 +95,7 @@ pub fn get_objectStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Getter for keyPath
 pub fn get_keyPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const index = try indexState(instance);
-    return if (index.key_path) |path| runtime.JSValue.fromStringRef(path) else .jsNull;
+    return dom.indexeddb_keys.keyPathValue(instance, index.effectiveKeyPath());
 }
 
 /// Getter for multiEntry
@@ -106,67 +110,81 @@ pub fn get_unique(instance: *runtime.Instance) anyerror!bool {
 
 /// Setter for name
 pub fn set_name(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
+    try (try indexState(instance)).rename(value.asSlice());
 }
 
-/// Operation: getAll
-pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = queryOrOptions;
-    _ = count;
-    return error.NotImplemented;
+// ED 4.6: source deletion precedes active-transaction validation.
+fn usable(instance: *runtime.Instance) !*InternalState {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const index = internal.index orelse return error.InvalidStateError;
+    if (index.deleted or index.object_store.isDeleted()) return error.InvalidStateError;
+    if (index.object_store.transaction.state != .active) return error.TransactionInactiveError;
+    return internal;
 }
-
-/// Operation: openKeyCursor
-pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = query;
-    _ = direction;
-    return error.NotImplemented;
+fn enqueue(instance: *runtime.Instance, operation: dom.indexeddb.Operation) !*runtime.Instance {
+    const internal = instance.getState(State).own._internal.?;
+    const transaction = try interfaces.IDBObjectStore.get_transaction(internal.store.?);
+    return dom.indexeddb.enqueueRequest(transaction, instance, operation, null);
 }
-
-/// Operation: getAllRecords
-pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IDBGetAllOptions)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = options;
-    return error.NotImplemented;
+fn queueQuery(instance: *runtime.Instance, kind: dom.indexeddb.OperationKind, query: runtime.JSValue, unbounded: bool) !*runtime.Instance {
+    const internal = try usable(instance);
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = kind };
+    errdefer operation.deinit();
+    operation.range = try dom.indexeddb_keys.queryRange(instance.ctx, query, unbounded, internal.allocator);
+    return enqueue(instance, operation);
 }
-
-/// Operation: count
-pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = query;
-    return error.NotImplemented;
-}
-
-/// Operation: getKey
-pub fn call_getKey(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = query;
-    return error.NotImplemented;
-}
-
-/// Operation: get
 pub fn call_get(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = query;
-    return error.NotImplemented;
+    return queueQuery(instance, .get, query, false);
 }
-
-/// Operation: getAllKeys
+pub fn call_getKey(instance: *runtime.Instance, query: runtime.JSValue) anyerror!*runtime.Instance {
+    return queueQuery(instance, .get_key, query, false);
+}
+pub fn call_count(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
+    return queueQuery(instance, .count, if (query.wasPassed()) query.value else .jsUndefined, true);
+}
+pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
+    return queueAll(instance, .all_values, queryOrOptions, count);
+}
 pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = queryOrOptions;
-    _ = count;
-    return error.NotImplemented;
+    return queueAll(instance, .all_keys, queryOrOptions, count);
 }
-
-/// Operation: openCursor
+fn queueAll(instance: *runtime.Instance, kind: dom.indexeddb.OperationKind, query: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) !*runtime.Instance {
+    const internal = try usable(instance);
+    var operation = try dom.indexeddb_keys.multipleItems(instance.ctx, kind, if (query.wasPassed()) query.value else .jsUndefined, if (count.wasPassed()) count.value else null, internal.allocator);
+    errdefer operation.deinit();
+    return enqueue(instance, operation);
+}
+pub fn call_getAllRecords(instance: *runtime.Instance, options: webidl.Opt(dictionaries.IDBGetAllOptions)) anyerror!*runtime.Instance {
+    const internal = try usable(instance);
+    const converted = if (options.wasPassed()) options.value else dictionaries.IDBGetAllOptions{};
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = .all_records, .limit = converted.count, .direction = dom.indexeddb_keys.cursorDirection(converted.direction orelse ._next_) };
+    errdefer operation.deinit();
+    operation.range = try dom.indexeddb_keys.queryRange(instance.ctx, converted.query orelse .jsUndefined, true, internal.allocator);
+    return enqueue(instance, operation);
+}
 pub fn call_openCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = query;
-    _ = direction;
-    return error.NotImplemented;
+    return queueCursor(instance, query, direction, false);
+}
+pub fn call_openKeyCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection)) anyerror!*runtime.Instance {
+    return queueCursor(instance, query, direction, true);
+}
+fn queueCursor(instance: *runtime.Instance, query: webidl.Opt(runtime.JSValue), direction: webidl.Opt(enums.IDBCursorDirection), key_only: bool) !*runtime.Instance {
+    const internal = try usable(instance);
+    var operation = dom.indexeddb.Operation{ .allocator = internal.allocator, .kind = if (key_only) .open_key_cursor else .open_cursor, .direction = dom.indexeddb_keys.cursorDirection(if (direction.wasPassed()) direction.value else ._next_) };
+    errdefer operation.deinit();
+    operation.range = try dom.indexeddb_keys.queryRange(instance.ctx, if (query.wasPassed()) query.value else .jsUndefined, true, internal.allocator);
+    return enqueue(instance, operation);
+}
+fn executeOperation(instance: *runtime.Instance, request: *runtime.Instance, operation: *dom.indexeddb.Operation) !void {
+    const index = try indexState(instance);
+    const native = switch (operation.kind) {
+        .get => try index.get(operation.range),
+        .get_key => try index.getKey(operation.range),
+        .count => try index.count(operation.range),
+        .all_values, .all_keys, .all_records, .open_cursor, .open_key_cursor => return dom.indexeddb.retrieve(instance, request, .{ .index = index }, operation),
+        else => return error.InvalidStateError,
+    };
+    defer index.allocator.destroy(native);
+    defer native.deinit();
+    try dom.indexeddb.completeNativeRequest(request, native);
 }

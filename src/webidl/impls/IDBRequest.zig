@@ -50,15 +50,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 
 fn completeRequest(instance: *runtime.Instance, result: runtime.JSValue, exception: ?*runtime.Instance) !void {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
-    const serialized: ?[]u8 = switch (result) {
-        .undefined, .null, .number, .boolean, .instance => null,
-        else => try engine.structuredSerializeForStorage(instance.ctx, result, internal.allocator),
-    };
     if (internal.serialized_result) |bytes| internal.allocator.free(bytes);
-    internal.serialized_result = serialized;
-    internal.result = if (serialized == null) result else .jsUndefined;
+    internal.serialized_result = null;
     engine.forgetTracedChild(instance, .{ .name = "idb.result" });
-    if (internal.result == .instance) engine.traceChild(instance, internal.result.instance, .{ .name = "idb.result" });
+    // 5.6.5.6: keep the operation's result itself, including arrays containing
+    // IDBRecords. Serializing it again would discard identity or reject records.
+    internal.result = switch (result) {
+        .undefined, .null, .number, .boolean, .instance => result,
+        else => .jsUndefined,
+    };
+    switch (result) {
+        .instance => |child| engine.traceChild(instance, child, .{ .name = "idb.result" }),
+        .undefined, .null, .number, .boolean => {},
+        else => engine.traceValue(instance, result, .{ .name = "idb.result" }),
+    }
     internal.exception = exception;
     engine.forgetTracedChild(instance, .{ .name = "idb.error" });
     if (exception) |child| engine.traceChild(instance, child, .{ .name = "idb.error" });
@@ -114,11 +119,14 @@ fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
     return (instance.getState(State).own._internal orelse return null).transaction;
 }
 
-/// Q12's accepted interim: native bytes retain no script object. Rebuild on
-/// every read until the traced-value protocol pair lands (identity stays red).
+/// 4.1 result getter: repeated reads return the same value, with a traced edge
+/// so a result that refers to this request does not become a rooted cycle.
 fn readResult(instance: *runtime.Instance, internal: *InternalState) !runtime.JSValue {
+    if (engine.tracedValue(instance, .{ .name = "idb.result" })) |value| return value.take();
     if (internal.serialized_result) |bytes| {
-        return (try engine.structuredDeserialize(instance.ctx, bytes)).take();
+        const value = try engine.structuredDeserialize(instance.ctx, bytes);
+        engine.traceValue(instance, value.value, .{ .name = "idb.result" });
+        return value.take();
     }
     return (try engine.retainValue(instance.ctx, internal.result)).take();
 }
