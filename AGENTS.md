@@ -148,7 +148,7 @@ After every feature commit:
    `journal*.jsonl` there afterwards with `cp -p` - `-p` keeps the mtime, and
    the mtime decides which result is latest. Several runs under one label go
    side by side as `journal.<area>.jsonl`, never in subdirectories.
-2. **Regenerate:** `zig build wpt-progress -j2 --cache-dir /tmp/crane-z16-cache`.
+2. **Regenerate:** `zig build wpt-progress -j2 --cache-dir ~/Library/Caches/crane-z16-cache`.
    `wpt-progress` also regenerates Crane's public results site
    (tools/wpt_site/generate.zig, published at https://zig-whatwg.github.io/crane/) into
    `wpt-results/site/`, and when that is the `gh-pages` worktree it commits there as
@@ -243,13 +243,19 @@ hottest paths.
 
 ```bash
 zig fmt src/ tests/ tools/
-zig build wpt-runner -j2 --cache-dir /tmp/crane-z16-cache   # the one artifact WPT needs
-zig build test       -j2 --cache-dir /tmp/crane-z16-cache   # includes lint-impls
+zig build wpt-runner -j2 --cache-dir ~/Library/Caches/crane-z16-cache   # the one artifact WPT needs
+zig build test       -j2 --cache-dir ~/Library/Caches/crane-z16-cache   # includes lint-impls
 ```
 
 `zig build test` runs `lint-impls`, the impls-boundary ratchet (see "The impls
 boundary"), so it fails on any new reference into an impl from code that does
 not own it.
+
+**Local builds use `--cache-dir ~/Library/Caches/crane-z16-cache`, never a cache in `/tmp`.** macOS
+deletes `/tmp` files untouched for three days (`com.apple.tmp_cleaner`, nightly at 00:00), and Zig trusts a
+cache hit without re-checking its output, so a half-pruned cache entry stays a "hit" with files missing: on
+2026-10-02 it made the iOS build fail with `'mbedtls/version.h' file not found` and looked like a build.zig
+regression ([lesson](docs/lessons/workflow-a-zig-cache-in-tmp-is-pruned-by-macos-and-zig-still-trusts-it.md)).
 
 **Never run a bare `zig build`, and always pass `-j2`.** `build.zig` installs
 19 artifacts, and every one that embeds the tree is a separate root-module
@@ -478,8 +484,8 @@ which the old rule allowed). A change that touches such a line converts it.
 **Checked by `zig build lint-impls`** (part of `zig build test`), counting ancestors since 1a94e0043:
 
 ```bash
-zig build lint-impls -j2 --cache-dir /tmp/crane-z16-cache                # fails on any new reference into an impl
-zig build lint-impls -j2 --cache-dir /tmp/crane-z16-cache -- --update    # after paying debt down: record the lower baseline
+zig build lint-impls -j2 --cache-dir ~/Library/Caches/crane-z16-cache                # fails on any new reference into an impl
+zig build lint-impls -j2 --cache-dir ~/Library/Caches/crane-z16-cache -- --update    # after paying debt down: record the lower baseline
 ```
 
 `tools/lint_impls_boundary.zig` counts references into impls per file AND per
@@ -577,8 +583,8 @@ everything else                      `const engine = @import("engine");`, runtim
 **Checked, and `zig build test` runs the check:**
 
 ```bash
-zig build lint-engine -j2 --cache-dir /tmp/crane-z16-cache               # fails on any new V8 reference outside the adapter
-zig build lint-engine -j2 --cache-dir /tmp/crane-z16-cache -- --update   # after paying debt down: record the lower baseline
+zig build lint-engine -j2 --cache-dir ~/Library/Caches/crane-z16-cache               # fails on any new V8 reference outside the adapter
+zig build lint-engine -j2 --cache-dir ~/Library/Caches/crane-z16-cache -- --update   # after paying debt down: record the lower baseline
 ```
 
 `tools/lint_engine_boundary.zig` counts, per file AND per name, every import
@@ -675,7 +681,7 @@ Concretely, while working:
 - **Long session?** Check disk periodically — `df -h /` and
   `du -sh /tmp/* 2>/dev/null | sort -h | tail -5`. Do not wait to be surprised.
 
-Build caches are the big one. `/tmp/crane-z16-cache` reached **31 GB** in a
+Build caches are the big one. `~/Library/Caches/crane-z16-cache` reached **31 GB** in a
 single session; deleting it returned 398 GB free to 429 GB. It is worth keeping
 while you are still building and worth deleting the moment you are not — a cold
 rebuild is ~10 minutes, since V8 itself is prebuilt.

@@ -1127,6 +1127,16 @@ pub const Context = struct {
             .multipart, .external => return,
         };
 
+        // "Create and initialize a Document object" step 9: the document's
+        // policy container is the one "determine navigation params policy
+        // container" chose - for a top-level page with no initiator, the
+        // response's ("create a policy container from a fetch response"), or
+        // a new one for a response from no network. It is the document's
+        // before any of its script runs.
+        if (self.document_instance) |document| {
+            if (result.takePolicyContainer()) |container| dom_mod.policy_containers.set(document, container);
+        }
+
         // Steps 3-5: parse and execute scripts using loadHTML - the full
         // HTML parser with script loading.
         try self.loadHTML(markup, .{

@@ -426,6 +426,11 @@ pub fn platformObjectDestroyed(_: *Instance) void {}
 /// No engine, no collector: nothing to keep.
 pub fn traceChild(_: *Instance, _: *Instance, _: engine.TracedSlot) void {}
 pub fn forgetTracedChild(_: *Instance, _: engine.TracedSlot) void {}
+/// No traced values kept (the protocol's contract): the slot reads empty.
+pub fn traceValue(_: *Instance, _: JSValue, _: engine.TracedSlot) void {}
+pub fn tracedValue(_: *Instance, _: engine.TracedSlot) ?Owned {
+    return null;
+}
 
 // 4.13 Diagnostics tier
 pub fn heapStatistics(_: *Agent) engine.HeapStatistics {

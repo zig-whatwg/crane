@@ -58,7 +58,7 @@ static void releaseWeakArmRaw(void* handle);
 // ---- lane: realms (realm-tagged handles) ----
 // Handles the engine protocol made for a realm's callbacks (an event
 // listener, an event handler), tagged with the realm whose API stored them,
-// so that the realm's detach can make them weak (v8_Context_WeakenTaggedHandles)
+// so that the realm's detach can make them weak (v8_Object_WeakenTaggedHandles)
 // rather than leave a strong root into it. A dispose drops the tag.
 static std::unordered_map<const void*, uintptr_t>& realmTaggedHandles() {
     static std::unordered_map<const void*, uintptr_t> map;
@@ -12628,36 +12628,133 @@ void v8_Object_DeletePrivateRef(Global<Object>* holder, const char* key, int key
     (void)holder->Get(isolate)->DeletePrivate(context, priv);
 }
 
-/// Keep `value` alive for exactly as long as `context`'s global object: it is
-/// appended to an array held in a private property of the HIDDEN global
-/// object (behind the global proxy), made on first use. An edge, never a
-/// root - what a realm whose navigable was destroyed holds its wrappers by,
-/// so the collector can take the realm once script lets its WindowProxy go
-/// (the engine protocol's Window realm end, `.navigable_destroyed`). A no-op
-/// for a context already collected.
-void v8_Context_RetainOnGlobal(Global<Context>* context, const char* key, int key_len, Global<Value>* value) {
-    if (!context || context->IsEmpty() || !value || value->IsEmpty()) return;
+/// The value `v8_Object_SetPrivateRef` keeps on `holder` under `key`, as a
+/// Global the caller owns; null when `holder` has no such private property
+/// (never set, or deleted). Script cannot reach it; this is how the engine
+/// protocol's tracedValue reads a value traceValue keeps. Needs an entered
+/// context, as SetPrivateRef does.
+Global<Value>* v8_Object_GetPrivateRef(Global<Object>* holder, const char* key, int key_len) {
+    if (!holder || holder->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return nullptr;
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return nullptr;
+    Local<Private> priv = Private::ForApi(isolate, name);
+    Local<Object> object = holder->Get(isolate);
+    if (!object->HasPrivate(context, priv).FromMaybe(false)) return nullptr;
+    Local<Value> value;
+    if (!object->GetPrivate(context, priv).ToLocal(&value)) return nullptr;
+    return trackHandle(new Global<Value>(isolate, value));
+}
+
+/// Keep `value` alive for exactly as long as `holder` (an object): it is
+/// appended to an array held in `holder`'s private property `key`, made on
+/// first use. An edge, never a root - what a Window realm whose navigable was
+/// destroyed, or whose document a navigation replaced, holds its wrappers and
+/// callbacks by: `holder` is its HIDDEN global object (never the global proxy,
+/// which a navigation hands to the next realm - a private property set through
+/// it lands on whichever global object it reaches now), so the collector can
+/// take the realm once nothing reaches it (the engine protocol's Window realm
+/// ends). Runs in `holder`'s creation context. A no-op for an empty holder -
+/// a global object already collected.
+void v8_Object_RetainInPrivateArray(Global<Value>* holder, const char* key, int key_len, Global<Value>* value) {
+    if (!holder || holder->IsEmpty() || !value || value->IsEmpty()) return;
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return;
     HandleScope handle_scope(isolate);
-    Local<Context> ctx = context->Get(isolate);
+    Local<Value> held = holder->Get(isolate);
+    if (!held->IsObject()) return;
+    Local<Object> object = held.As<Object>();
+    Local<Context> ctx;
+    if (!object->GetCreationContext(isolate).ToLocal(&ctx)) {
+        ctx = isolate->GetCurrentContext();
+        if (ctx.IsEmpty()) return;
+    }
     Context::Scope context_scope(ctx);
-    // V1 GetPrototype on a global proxy answers the hidden global object.
-    Local<Value> hidden = ctx->Global()->GetPrototype();
-    if (hidden.IsEmpty() || !hidden->IsObject()) return;
-    Local<Object> global = hidden.As<Object>();
     Local<String> name;
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
     Local<Private> priv = Private::ForApi(isolate, name);
     Local<Value> existing;
     Local<Array> list;
-    if (global->GetPrivate(ctx, priv).ToLocal(&existing) && existing->IsArray()) {
+    if (object->GetPrivate(ctx, priv).ToLocal(&existing) && existing->IsArray()) {
         list = existing.As<Array>();
     } else {
         list = Array::New(isolate);
-        if (global->SetPrivate(ctx, priv, list).IsNothing()) return;
+        if (object->SetPrivate(ctx, priv, list).IsNothing()) return;
     }
     (void)list->Set(ctx, list->Length(), value->Get(isolate));
+}
+
+/// Set `holder`'s private property `key` to `value`, or delete it when
+/// `value` is null: an edge from `holder` to `value`, never a root - a node's
+/// wrapper keeping its parent's (the engine's node tracing). Runs in
+/// `holder`'s creation context, so it needs none entered. A no-op for an
+/// empty holder.
+void v8_Object_PrivateRefUpdate(Global<Value>* holder, const char* key, int key_len, Global<Value>* value) {
+    if (!holder || holder->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Local<Value> held = holder->Get(isolate);
+    if (!held->IsObject()) return;
+    Local<Object> object = held.As<Object>();
+    Local<Context> ctx;
+    if (!object->GetCreationContext(isolate).ToLocal(&ctx)) {
+        ctx = isolate->GetCurrentContext();
+        if (ctx.IsEmpty()) return;
+    }
+    Context::Scope context_scope(ctx);
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
+    Local<Private> priv = Private::ForApi(isolate, name);
+    if (value && !value->IsEmpty()) {
+        (void)object->SetPrivate(ctx, priv, value->Get(isolate));
+    } else {
+        (void)object->DeletePrivate(ctx, priv);
+    }
+}
+
+/// Add `member` to (`add`), or remove it from, the JS Set held in `holder`'s
+/// private property `key`, made on the first add. An edge from `holder` to
+/// each member, never a root: how a parent node's wrapper keeps the wrappers
+/// of its children (the engine's node tracing - Blink's Node::Trace visits a
+/// node's children, WebKit keeps a node's wrapper for as long as its tree's
+/// root is reachable). Runs in `holder`'s creation context. A no-op for an
+/// empty holder or member, and for a remove that finds no set.
+void v8_Object_PrivateSetUpdate(Global<Value>* holder, const char* key, int key_len, Global<Value>* member, bool add) {
+    if (!holder || holder->IsEmpty() || !member || member->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Local<Value> held = holder->Get(isolate);
+    if (!held->IsObject()) return;
+    Local<Object> object = held.As<Object>();
+    Local<Context> ctx;
+    if (!object->GetCreationContext(isolate).ToLocal(&ctx)) {
+        ctx = isolate->GetCurrentContext();
+        if (ctx.IsEmpty()) return;
+    }
+    Context::Scope context_scope(ctx);
+    Local<String> name;
+    if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
+    Local<Private> priv = Private::ForApi(isolate, name);
+    Local<Value> existing;
+    Local<Set> set;
+    if (object->GetPrivate(ctx, priv).ToLocal(&existing) && existing->IsSet()) {
+        set = existing.As<Set>();
+    } else {
+        if (!add) return;
+        set = Set::New(isolate);
+        if (object->SetPrivate(ctx, priv, set).IsNothing()) return;
+    }
+    if (add) {
+        (void)set->Add(ctx, member->Get(isolate));
+    } else {
+        (void)set->Delete(ctx, member->Get(isolate));
+    }
 }
 
 /// Make `context`'s handle weak: `callback(user_data)` runs (first pass,
@@ -12677,13 +12774,13 @@ void v8_Global_TagRealm(Global<Value>* global, uintptr_t realm_key) {
 
 static void taggedHandleCollected(void*, size_t) {}
 
-/// A realm whose navigable was destroyed (`realm_key` its context's key):
-/// every handle tagged with it is kept by an edge from its global object
-/// (v8_Context_RetainOnGlobal, `key`) instead, and made weak - its holder
-/// still owns and disposes it; it reads empty once the realm is collected.
-/// Returns how many it weakened.
-int v8_Context_WeakenTaggedHandles(Global<Context>* context, uintptr_t realm_key, const char* key, int key_len) {
-    if (!context || context->IsEmpty() || !realm_key) return 0;
+/// A Window realm that is detached (`realm_key` its context's key): every
+/// handle tagged with it is kept by an edge from `holder` - its hidden global
+/// object (v8_Object_RetainInPrivateArray, `key`) - instead, and made weak; its
+/// holder still owns and disposes it, and it reads empty once the realm is
+/// collected. Returns how many it weakened.
+int v8_Object_WeakenTaggedHandles(Global<Value>* holder, uintptr_t realm_key, const char* key, int key_len) {
+    if (!holder || holder->IsEmpty() || !realm_key) return 0;
     auto& tagged = realmTaggedHandles();
     std::vector<const void*> handles;
     for (const auto& kv : tagged) {
@@ -12693,7 +12790,7 @@ int v8_Context_WeakenTaggedHandles(Global<Context>* context, uintptr_t realm_key
         tagged.erase(h);
         Global<Value>* global = const_cast<Global<Value>*>(static_cast<const Global<Value>*>(h));
         if (global->IsEmpty()) continue;
-        v8_Context_RetainOnGlobal(context, key, key_len, global);
+        v8_Object_RetainInPrivateArray(holder, key, key_len, global);
         v8_Global_SetWeak(static_cast<void*>(global), nullptr, taggedHandleCollected);
     }
     return static_cast<int>(handles.size());

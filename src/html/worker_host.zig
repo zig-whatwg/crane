@@ -231,6 +231,10 @@ pub const ScopeSettings = struct {
     /// The user agent's cookie jar: the creating global's, which the
     /// worker's settings object hands out in turn.
     cookie_jar: ?*CookieJar = null,
+    /// The WorkerGlobalScope's policy container (HTML 7.1.6), which its
+    /// settings object hands to every request it makes. BORROWED from the
+    /// host, which owns it for as long as the worker lives.
+    policy_container: ?*const fetch_mod.internal.PolicyContainer = null,
 };
 
 /// The settings for a global scope created in the realm whose runtime
@@ -242,6 +246,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
         .worker_type = wctx.worker_type,
         .name = if (wctx.dedicated_worker) |dw| dw.getName() else if (wctx.shared) |shared| shared.name else "",
         .cookie_jar = wctx.cookie_jar,
+        .policy_container = &wctx.policy_container,
     };
 }
 
@@ -686,6 +691,11 @@ pub const WorkerHost = struct {
     /// Worker type (classic or module)
     worker_type: WorkerType,
 
+    /// The worker global scope's policy container: a new one until "run a
+    /// worker" gives it the one "initialize a worker global scope's policy
+    /// container" chose (`setPolicyContainer`). Owned.
+    policy_container: fetch_mod.internal.PolicyContainer,
+
     /// The loop the worker's tasks run on: HTML gives a worker an event loop
     /// of its own, and here its tasks - timers, message delivery, fetch
     /// settling, its end - are timers on its creator's loop. Recorded when
@@ -810,6 +820,7 @@ pub const WorkerHost = struct {
             .agent = agent,
             .script_url = url_copy,
             .worker_type = worker_type,
+            .policy_container = fetch_mod.internal.PolicyContainer.init(allocator),
             .timer = timer,
             .allocator = allocator,
         };
@@ -1221,8 +1232,17 @@ pub const WorkerHost = struct {
         self.pending_imports.deinit(self.allocator);
         self.disposeModules();
         self.freeClassicScripts();
+        self.policy_container.deinit();
         self.allocator.free(self.script_url);
         self.allocator.destroy(self);
+    }
+
+    /// Give the worker global scope `container` (taken), replacing its new
+    /// one: HTML "initialize a worker global scope's policy container", done
+    /// by "run a worker" before the script runs.
+    pub fn setPolicyContainer(self: *Self, container: fetch_mod.internal.PolicyContainer) void {
+        self.policy_container.deinit();
+        self.policy_container = container;
     }
 
     // ------------------------------------------------------------------
@@ -2201,6 +2221,12 @@ const SharedConnect = struct {
         var fetched = workers.fetchWorkerScript(allocator, self.url, .{
             .worker_type = self.worker_type,
             .requesting_origin = self.origin,
+            .shared = true,
+            // The outside settings' policy container: its CSP decides
+            // whether the script may be fetched at all.
+            .policy_container = creatorPolicyContainer(self.owner_realm),
+            // Its violations are reported to the outside settings' global.
+            .csp_violation_reporter = @import("dom").csp_violations.reporterForRealm(self.owner_realm),
         }) catch return self.fireError();
         defer fetched.deinit();
 
@@ -2210,6 +2236,8 @@ const SharedConnect = struct {
         // The manager owns the worker: its memory goes when its agent does.
         host.owner_released = true;
         host.cookie_jar = creatorCookieJar(self.owner_realm);
+        // Its policy container, before any of its script runs.
+        host.setPolicyContainer(workerPolicyContainer(allocator, &fetched, self.owner_realm));
         // 10. The constructor origin, URL, type and credentials; 8. the name.
         host.shared = sharedScopeOf(allocator, self) catch {
             host.phase = .disposed;
@@ -2275,6 +2303,42 @@ fn sharedScopeOf(allocator: Allocator, connect: *const SharedConnect) !SharedSco
         .worker_type = connect.worker_type,
         .credentials = connect.credentials,
     };
+}
+
+/// HTML "initialize a worker global scope's policy container" for a worker
+/// whose script `fetched` is, created by the global whose realm is
+/// `owner_realm`: a clone of the owner's for a local URL (a data: or blob:
+/// script - for blob:, "create a policy container from a fetch response"
+/// step 1 takes its blob URL entry's environment's, which is the creator's
+/// here: the blob store answers only the creator's origin), else the
+/// response's. A new container when neither can be had.
+pub fn workerPolicyContainer(allocator: Allocator, fetched: *workers.FetchedScript, owner_realm: runtime.Context) fetch_mod.internal.PolicyContainer {
+    const PolicyContainer = fetch_mod.internal.PolicyContainer;
+    // Step 2: the response's, when a network fetch made one. Upgrade
+    // Insecure Requests 3.3: a worker inherits its creator's insecure
+    // requests policy ("set up a worker environment settings object").
+    if (fetched.takePolicyContainer()) |container| {
+        var result = container;
+        if (creatorPolicyContainer(owner_realm)) |owner| {
+            if (owner.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
+        }
+        return result;
+    }
+    // Step 1: "If workerGlobalScope's url is local but its scheme is not
+    // "blob"": a clone of its owner's - the one owner a dedicated worker,
+    // or a shared worker's creator, has.
+    if (creatorPolicyContainer(owner_realm)) |owner| return owner.clone(allocator) catch PolicyContainer.init(allocator);
+    return PolicyContainer.init(allocator);
+}
+
+/// The policy container of the global whose realm is `realm`: the
+/// worker's creator's settings object's.
+pub fn creatorPolicyContainer(realm: runtime.Context) ?*const fetch_mod.internal.PolicyContainer {
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    const settings = @import("dom").global_settings.of(global) orelse return null;
+    const container_of = settings.policy_container orelse return null;
+    return container_of(global);
 }
 
 /// The cookie jar of the global whose realm is `realm`: the worker's

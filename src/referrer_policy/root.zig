@@ -40,6 +40,7 @@ pub const determine_referrer = @import("determine_referrer.zig");
 // Re-export main types and functions
 pub const ReferrerPolicy = policy.ReferrerPolicy;
 pub const parseReferrerPolicyHeader = policy.parseReferrerPolicyHeader;
+pub const parseMetaReferrer = policy.parseMetaReferrer;
 
 pub const Referrer = determine_referrer.Referrer;
 pub const ReferrerSource = determine_referrer.ReferrerSource;

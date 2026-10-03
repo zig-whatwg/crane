@@ -12,6 +12,12 @@ const HeaderList = header_list.HeaderList;
 const body_mod = @import("body.zig");
 const origins = @import("origins.zig");
 const cookiestore = @import("cookiestore");
+const csp = @import("csp");
+
+/// Where a request's CSP violations go (CSP §5.5): its client's global.
+pub const CspViolationReporter = csp.violation_events.Reporter;
+/// What a CspViolationReporter is handed.
+pub const CspViolation = csp.violation_events.Violation;
 
 /// The user agent's cookie jar (src/cookiestore). Reached through fetch by
 /// modules that take a request's client but not cookiestore itself.
@@ -190,16 +196,18 @@ pub const RequestOrigin = union(enum) {
     origin: []const u8,
 };
 
-/// Policy container - either "client" sentinel or actual container.
-/// KEEP: container uses *anyopaque because this is an internal Fetch spec concept
-/// (policy container per HTML spec), not a WebIDL interface type. The actual
-/// policy container type is implementation-defined per the HTML spec.
+/// A request's policy container: "client" or a policy container.
+/// Spec: https://fetch.spec.whatwg.org/#concept-request-policy-container
 pub const RequestPolicyContainer = union(enum) {
-    /// "client" - will be resolved during fetch
+    /// "client": "populate request from client" replaces it with a clone of
+    /// the client's.
     client,
-    /// Actual policy container (internal HTML spec concept, not WebIDL)
-    container: *anyopaque,
+    /// A policy container, OWNED by the request: `deinit` releases it and
+    /// `clone` copies it.
+    container: PolicyContainer,
 };
+
+pub const PolicyContainer = @import("policy_container.zig").PolicyContainer;
 
 /// Referrer - either special value or URL string.
 pub const Referrer = union(enum) {
@@ -313,10 +321,19 @@ pub const InternalRequest = struct {
     /// for itself, which neither sends nor keeps cookies.
     cookie_jar: ?*CookieJar = null,
 
+    /// Where CSP violations this request causes are reported (CSP §2.4.2:
+    /// a request's violation's global object is its client's global), as
+    /// "populate request from client" takes it from the client. BORROWED:
+    /// main fetch reports only while its client is there - a fetch whose
+    /// client is gone is terminated (async_fetch's `alive`). Null: a request
+    /// with no client, whose violations nobody hears.
+    csp_violation_reporter: ?CspViolationReporter = null,
+
     /// Top-level navigation initiator origin
     top_level_navigation_initiator_origin: ?[]const u8 = null,
 
-    /// Policy container ("client" or actual)
+    /// Policy container ("client" or one the request owns): set it with
+    /// `setPolicyContainer`, which releases one being replaced.
     policy_container: RequestPolicyContainer = .client,
 
     /// Referrer
@@ -352,8 +369,11 @@ pub const InternalRequest = struct {
     /// Subresource integrity metadata
     integrity_metadata: []const u8 = "",
 
-    /// Cryptographic nonce for CSP
+    /// Cryptographic nonce for CSP. Borrowed when assigned directly; owned
+    /// (and freed by `deinit`, copied by `clone`) when set with
+    /// `setCryptographicNonceMetadata`.
     cryptographic_nonce_metadata: []const u8 = "",
+    cryptographic_nonce_owned: bool = false,
 
     /// Parser metadata
     parser_metadata: ParserMetadata = .empty,
@@ -431,12 +451,16 @@ pub const InternalRequest = struct {
         // A URL referrer is owned - see the field's doc comment.
         if (self.referrer == .url) self.allocator.free(self.referrer.url);
         if (self.origin_owned and self.origin == .origin) self.allocator.free(self.origin.origin);
+        // So is a policy container.
+        if (self.policy_container == .container) self.policy_container.container.deinit();
 
         // Free URL list entries
         for (self.url_list.items) |url| {
             self.allocator.free(url);
         }
         self.url_list.deinit(self.allocator);
+
+        if (self.cryptographic_nonce_owned) self.allocator.free(self.cryptographic_nonce_metadata);
 
         // Free integrity_metadata if it was allocated (non-empty means it was set)
         if (self.integrity_metadata.len > 0) {
@@ -500,6 +524,41 @@ pub const InternalRequest = struct {
         if (self.origin_owned and self.origin == .origin) self.allocator.free(self.origin.origin);
         self.origin = .{ .origin = copy };
         self.origin_owned = true;
+    }
+
+    /// Set the request's cryptographic nonce metadata to a copy of `nonce`,
+    /// which the request owns.
+    pub fn setCryptographicNonceMetadata(self: *Self, nonce: []const u8) !void {
+        const copy = try self.allocator.dupe(u8, nonce);
+        if (self.cryptographic_nonce_owned) self.allocator.free(self.cryptographic_nonce_metadata);
+        self.cryptographic_nonce_metadata = copy;
+        self.cryptographic_nonce_owned = true;
+    }
+
+    /// Set the request's integrity metadata to a copy of `metadata` (owned:
+    /// `deinit` frees non-empty integrity metadata).
+    pub fn setIntegrityMetadata(self: *Self, metadata: []const u8) !void {
+        const copy: []const u8 = if (metadata.len > 0) try self.allocator.dupe(u8, metadata) else "";
+        if (self.integrity_metadata.len > 0) self.allocator.free(self.integrity_metadata);
+        self.integrity_metadata = copy;
+    }
+
+    /// Give the request `container` (taken: the request owns it now),
+    /// releasing a container it owned before.
+    pub fn setPolicyContainer(self: *Self, container: PolicyContainer) void {
+        if (self.policy_container == .container) self.policy_container.container.deinit();
+        self.policy_container = .{ .container = container };
+    }
+
+    /// The referrer policy main fetch step 8 gives a request whose own is
+    /// the empty string: its policy container's, or - for a request still on
+    /// "client", which no client populated (a request the user agent makes
+    /// for itself) - the empty string, which the default stands in for.
+    pub fn policyContainerReferrerPolicy(self: *const Self) ReferrerPolicy {
+        return switch (self.policy_container) {
+            .client => .empty,
+            .container => |c| c.referrer_policy,
+        };
     }
 
     /// Whether request's current URL's origin is same origin with request's
@@ -630,7 +689,9 @@ pub const InternalRequest = struct {
             .origin = if (self.origin_owned) .client else self.origin,
             .top_level_navigation_initiator_origin = self.top_level_navigation_initiator_origin,
             .cookie_jar = self.cookie_jar,
-            .policy_container = self.policy_container,
+            .csp_violation_reporter = self.csp_violation_reporter,
+            // Cloned below: each request owns its own.
+            .policy_container = .client,
             // Copied below when it is an owned URL.
             .referrer = if (self.referrer == .url) .client else self.referrer,
             .referrer_policy = self.referrer_policy,
@@ -642,7 +703,8 @@ pub const InternalRequest = struct {
             .redirect_mode = self.redirect_mode,
             // Copied below: deinit frees a non-empty one.
             .integrity_metadata = "",
-            .cryptographic_nonce_metadata = self.cryptographic_nonce_metadata,
+            // Copied below when it is owned.
+            .cryptographic_nonce_metadata = if (self.cryptographic_nonce_owned) "" else self.cryptographic_nonce_metadata,
             .parser_metadata = self.parser_metadata,
             .reload_navigation = self.reload_navigation,
             .history_navigation = self.history_navigation,
@@ -662,9 +724,14 @@ pub const InternalRequest = struct {
         if (self.referrer == .url) try new_request.setReferrerUrl(self.referrer.url);
         // So is an origin set through `setOrigin`.
         if (self.origin_owned and self.origin == .origin) try new_request.setOrigin(self.origin.origin);
+        // And a policy container.
+        if (self.policy_container == .container) {
+            new_request.policy_container = .{ .container = try self.policy_container.container.clone(self.allocator) };
+        }
 
         // So is non-empty integrity metadata: `deinit` frees it, and a shared
         // slice was freed twice.
+        if (self.cryptographic_nonce_owned) try new_request.setCryptographicNonceMetadata(self.cryptographic_nonce_metadata);
         if (self.integrity_metadata.len > 0) {
             new_request.integrity_metadata = try self.allocator.dupe(u8, self.integrity_metadata);
         }
@@ -922,4 +989,35 @@ test "a request origin serializes as null once a redirect went elsewhere" {
     const after_two = try request.serializeOrigin(allocator);
     defer allocator.free(after_two);
     try std.testing.expectEqualStrings("null", after_two);
+}
+
+test "a request owns its policy container: set, replaced, cloned, released" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://example.com/a");
+    defer request.deinit();
+    try std.testing.expectEqual(ReferrerPolicy.empty, request.policyContainerReferrerPolicy());
+
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, "origin"));
+    try std.testing.expectEqual(ReferrerPolicy.origin, request.policyContainerReferrerPolicy());
+    // A second one replaces the first, which is released.
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, "no-referrer"));
+
+    const copy = try request.clone();
+    defer copy.deinit();
+    request.policy_container.container.referrer_policy = .unsafe_url;
+    try std.testing.expectEqual(ReferrerPolicy.no_referrer, copy.policyContainerReferrerPolicy());
+}
+
+test "a request owns a nonce and integrity metadata set through their setters" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "https://example.com/s.js");
+    defer request.deinit();
+    try request.setCryptographicNonceMetadata("abc");
+    try request.setCryptographicNonceMetadata("def");
+    try request.setIntegrityMetadata("sha256-x");
+    const copy = try request.clone();
+    defer copy.deinit();
+    try std.testing.expectEqualStrings("def", copy.cryptographic_nonce_metadata);
+    try std.testing.expect(copy.cryptographic_nonce_metadata.ptr != request.cryptographic_nonce_metadata.ptr);
+    try std.testing.expectEqualStrings("sha256-x", copy.integrity_metadata);
 }

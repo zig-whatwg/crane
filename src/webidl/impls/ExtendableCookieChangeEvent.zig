@@ -40,10 +40,11 @@ pub const InternalState = struct {
 
     /// The attributes' values: `[SameObject] FrozenArray<CookieListItem>`,
     /// each made on its first read and returned on every read after - one
-    /// frozen array per attribute for the event's life. OWNED, released in
-    /// deinit.
-    changed_array: ?engine.Owned = null,
-    deleted_array: ?engine.Owned = null,
+    /// frozen array per attribute for the event's life, kept by an edge from
+    /// the event's wrapper (`changed_slot`, `deleted_slot`; engine.traceValue),
+    /// never a root.
+    has_changed_array: bool = false,
+    has_deleted_array: bool = false,
 
     /// Allocator for internal allocations
     allocator: std.mem.Allocator,
@@ -58,13 +59,15 @@ pub const InternalState = struct {
         return internal;
     }
 
-    /// The attributes' arrays go back to the engine - where the event ends,
-    /// its instance deinit; the Zig state (`deinit`) holds no engine value.
-    fn releaseArrays(self: *InternalState) void {
-        if (self.changed_array) |array| array.release();
-        if (self.deleted_array) |array| array.release();
-        self.changed_array = null;
-        self.deleted_array = null;
+    /// The attributes' arrays are let go - where the event ends, its
+    /// instance deinit; the Zig state (`deinit`) holds no engine value. An
+    /// event the collector freed lost them with its wrapper; one freed before
+    /// script saw it lets go of the arrays waiting for its wrapper.
+    fn releaseArrays(self: *InternalState, event: *runtime.Instance) void {
+        if (self.has_changed_array) engine.forgetTracedChild(event, changed_slot);
+        if (self.has_deleted_array) engine.forgetTracedChild(event, deleted_slot);
+        self.has_changed_array = false;
+        self.has_deleted_array = false;
     }
 
     pub fn deinit(self: *InternalState) void {
@@ -114,7 +117,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.releaseArrays();
+        internal.releaseArrays(instance);
         internal.deinit();
         state.own._internal = null;
     }
@@ -204,31 +207,39 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 //
 // `changed` and `deleted` are `[SameObject] FrozenArray<CookieListItem>`: the
 // attribute returns the same frozen array on every read. Each is made on its
-// first read - in the event's relevant realm - kept (OWNED) and returned
-// BORROWED. The getters built a fresh, unfrozen array per read and handed it
+// first read - in the event's relevant realm - kept by an edge from the
+// event's wrapper, and returned as a hold of the binding's own. The getters built a fresh, unfrozen array per read and handed it
 // back as non-owning, which leaked the array's handle on every read.
 // ============================================================================
 
 /// The array `slot` holds, made from `items` on the first call.
-fn frozenAttribute(instance: *runtime.Instance, internal: *InternalState, slot: *?engine.Owned, items: []const CookieListItem) !runtime.JSValue {
-    if (slot.* == null) slot.* = try cookie_values.frozenList(instance.ctx, items, internal.allocator);
+fn frozenAttribute(instance: *runtime.Instance, internal: *InternalState, slot: engine.TracedSlot, made: *bool, items: []const CookieListItem) !runtime.JSValue {
     // The event keeps its array ([SameObject]); the binding gets a hold of
     // its own.
-    return (try engine.retainValue(instance.ctx, slot.*.?.value)).take();
+    if (made.*) {
+        if (engine.tracedValue(instance, slot)) |array| return array.take();
+    }
+    const array = try cookie_values.frozenList(instance.ctx, items, internal.allocator);
+    engine.traceValue(instance, array.value, slot);
+    made.* = true;
+    return array.take();
 }
+
+const changed_slot: engine.TracedSlot = .{ .name = "changed" };
+const deleted_slot: engine.TracedSlot = .{ .name = "deleted" };
 
 /// Getter for changed
 /// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-changed
 pub fn get_changed(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
-    return frozenAttribute(instance, internal, &internal.changed_array, internal.changed.items);
+    return frozenAttribute(instance, internal, changed_slot, &internal.has_changed_array, internal.changed.items);
 }
 
 /// Getter for deleted
 /// https://cookiestore.spec.whatwg.org/#dom-extendablecookiechangeevent-deleted
 pub fn get_deleted(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternalState(instance) orelse return error.NotImplemented;
-    return frozenAttribute(instance, internal, &internal.deleted_array, internal.deleted.items);
+    return frozenAttribute(instance, internal, deleted_slot, &internal.has_deleted_array, internal.deleted.items);
 }
 
 // ============================================================================

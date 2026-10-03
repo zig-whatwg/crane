@@ -62,19 +62,21 @@ pub const InternalState = struct {
 
     /// history.state for the entry it was deserialized from: HTML "restore
     /// the history object state" keeps one value per entry, so reading it
-    /// twice gives the same object.
+    /// twice gives the same object. Kept by an edge from the History's
+    /// wrapper (`state_slot`, engine.traceValue), never a root; false: the
+    /// next read deserializes the entry's state. (Every state ever
+    /// deserialized used to be held, as roots, until the History went: an
+    /// event or script that still holds an earlier one keeps it itself.)
     state_entry: u64 = 0,
-    state_value: ?runtime.JSValue = null,
-    /// Every state deserialized, kept (OWNED) until the History goes:
-    /// `state_value` borrows the latest, and an event or script may still
-    /// hold an earlier one past the entry that made it.
-    state_values: std.ArrayListUnmanaged(engine.Owned) = .empty,
+    has_state: bool = false,
 
     pub fn deinit(self: *InternalState) void {
-        for (self.state_values.items) |value| value.release();
-        self.state_values.deinit(self.allocator);
+        _ = self;
     }
 };
+
+/// Where a History keeps its state value.
+const state_slot: engine.TracedSlot = .{ .name = "state" };
 
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
@@ -125,6 +127,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        // A History freed before script saw it lets its state go.
+        if (internal.has_state) engine.forgetTracedChild(instance, state_slot);
+        internal.has_state = false;
         internal.deinit();
         internal.allocator.destroy(internal);
         state.own._internal = null;
@@ -201,24 +206,21 @@ pub fn get_state(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const history = try ensureEntries(bc);
     const entry = history.currentEntry(bc.id) orelse return runtime.JSValue.jsNull;
     // The History keeps the state; the binding gets a hold of its own.
-    return (try engine.retainValue(instance.ctx, try stateValue(internal, entry))).take();
+    return (try stateValue(instance, internal, entry)).take();
 }
 
-/// The deserialized state of `entry`, cached for as long as it is the entry.
-/// BORROWED from the History.
-fn stateValue(internal: *InternalState, entry: *joint_history.Entry) !runtime.JSValue {
-    if (internal.state_value) |value| {
-        if (internal.state_entry == entry.id) return value;
+/// The deserialized state of `entry`, kept by `history` for as long as it is
+/// the entry: a hold of the caller's own.
+fn stateValue(history: *runtime.Instance, internal: *InternalState, entry: *joint_history.Entry) !engine.Owned {
+    if (internal.has_state and internal.state_entry == entry.id) {
+        if (engine.tracedValue(history, state_slot)) |value| return value;
     }
     // Restored in the History's relevant realm - its window's.
     const owned = try navigation_entries.deserialize(internal.window.?.ctx, entry.state);
-    internal.state_values.append(internal.allocator, owned) catch {
-        owned.release();
-        return error.OutOfMemory;
-    };
+    engine.traceValue(history, owned.value, state_slot);
     internal.state_entry = entry.id;
-    internal.state_value = owned.borrow();
-    return owned.borrow();
+    internal.has_state = true;
+    return owned;
 }
 
 // =============================================================================
@@ -455,7 +457,7 @@ fn urlAndHistoryUpdate(
     try history.commitSameDocument(bc.id, new_url, serialized, handling, .undefined);
     // Step 7: "Restore the history object state" - the next read deserializes
     // the new entry's state.
-    internal.state_value = null;
+    internal.has_state = false;
     // Step 8: "Set document's URL to newURL."
     setDocumentUrl(window, new_url);
     // Step 9: "Update the navigation API entries for a same-document
@@ -658,8 +660,10 @@ fn applySameDocumentEntry(window: *runtime.Instance, old_url: []const u8, entry:
 
     setDocumentUrl(window, new_url);
     // 6.3: "Restore the history object state given document and entry."
-    internal.state_value = null;
-    const state = stateValue(internal, entry) catch runtime.JSValue.jsNull;
+    internal.has_state = false;
+    const kept_state: ?engine.Owned = stateValue(history_instance, internal, entry) catch null;
+    defer if (kept_state) |k| k.release();
+    const state = if (kept_state) |k| k.value else runtime.JSValue.jsNull;
     // 6.4.1: "Update the navigation API entries for a same-document
     // navigation given navigation, entry, and "traverse"" - before popstate.
     @import("dom").navigation_api.sameDocumentNavigation(window, .traverse);

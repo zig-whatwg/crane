@@ -30,6 +30,7 @@ const scheme_fetch = @import("scheme_fetch.zig");
 const validation = @import("../internal/validation.zig");
 const referrer_policy = @import("referrer_policy");
 const mime_blocking = @import("mime_blocking.zig");
+const csp_check = @import("csp_check.zig");
 const origins = @import("../internal/origins.zig");
 const clock = @import("clock");
 
@@ -155,7 +156,7 @@ pub const MainFetchStart = union(enum) {
 /// 1. Let request be fetchParams's request
 /// 2. Let response be null
 /// 3. If request's local-URLs-only flag is set and request's current URL is not local, return network error
-/// 4. Report CSP violations for request
+/// 4. Report CSP violations for request (report-only policies)
 /// 5. Upgrade mixed content request
 /// 6. If should request be blocked due to a bad port, return network error
 /// 7. If should request be blocked due to mime type, return network error
@@ -178,25 +179,42 @@ pub fn mainFetchStart(
         }
     }
 
-    // Step 4: Report CSP violations (stubbed - requires CSP implementation)
-    // TODO: Implement CSP violation reporting
+    // Step 4: "Run report Content Security Policy violations for request":
+    // its report-only policies' violations go to its client's global.
+    csp_check.reportViolationsForRequest(request);
 
-    // Step 5: Upgrade mixed content (stubbed - requires mixed content spec)
-    // TODO: Implement mixed content upgrading
+    // Step 5: "Upgrade request to a potentially trustworthy URL, if
+    // appropriate" (Upgrade Insecure Requests 4.1).
+    upgradeRequestToPotentiallyTrustworthyUrl(request) catch return MainFetchError.OutOfMemory;
 
-    // Step 6: Check bad port
+    // Step 6: "Upgrade a mixed content request to a potentially trustworthy
+    // URL, if appropriate" - not modelled yet (Mixed Content).
+
+    // Step 7 (bad port): Check bad port
     if (shouldBlockDueToBadPort(request)) {
+        return .{ .response = try internal_response.networkError(allocator) };
+    }
+
+    // Step 7 (CSP's part): "If ... should request be blocked by Content
+    // Security Policy ... returns blocked, then set response to a network
+    // error." Each redirect runs main fetch again, so a redirect to a URL
+    // the policy does not allow is blocked too.
+    if (csp_check.shouldRequestBeBlocked(request)) {
         return .{ .response = try internal_response.networkError(allocator) };
     }
 
     // Step 7: Check MIME type blocking (stubbed - requires nosniff implementation)
     // TODO: Implement MIME type blocking
 
-    // Step 8: Set referrer policy if empty
-    // Note: In full implementation, would get from policy container
-    // For now, default to strict-origin-when-cross-origin
+    // Step 8: "If request's referrer policy is the empty string, then set
+    // request's referrer policy to request's policy container's referrer
+    // policy." A container's policy can be the empty string too (a response
+    // that named none), and so can a request no client populated: Referrer
+    // Policy 3.9 - "falling back to the default referrer policy" when no
+    // higher-level policy is available.
     if (request.referrer_policy == .empty) {
-        request.referrer_policy = .strict_origin_when_cross_origin;
+        request.referrer_policy = request.policyContainerReferrerPolicy();
+        if (request.referrer_policy == .empty) request.referrer_policy = .strict_origin_when_cross_origin;
     }
 
     // Step 9: If request's referrer is not "no-referrer", set request's
@@ -276,6 +294,56 @@ pub fn mainFetchStart(
     request.response_tainting = .cors;
     if (needsCorsPreflight(allocator, request) catch return MainFetchError.OutOfMemory) return .http_fetch_with_cors_preflight;
     return .http_fetch;
+}
+
+/// Upgrade Insecure Requests 4.1, "Upgrade request to a potentially
+/// trustworthy URL, if appropriate" - main fetch step 5, so a redirect's
+/// main fetch upgrades the redirected request too.
+///
+/// Not modelled, stated: the "upgrade insecure navigations set" (step 2.3-
+/// 2.4) - a top-level navigation is never upgraded - and HSTS preload
+/// knowledge for the header (step 1).
+fn upgradeRequestToPotentiallyTrustworthyUrl(request: *InternalRequest) !void {
+    const url = request.currentUrl();
+    const scheme = extractScheme(url);
+    const is_navigation = isNavigationDestination(request.destination);
+    // 1. "If request is a navigation request, append a header named
+    // Upgrade-Insecure-Requests with a value of 1 to request's header list"
+    // when its URL is not a potentially trustworthy URL.
+    if (is_navigation and !std.ascii.eqlIgnoreCase(scheme, "https") and !std.ascii.eqlIgnoreCase(scheme, "wss")) {
+        if (!request.header_list.contains("Upgrade-Insecure-Requests")) {
+            try request.header_list.append("Upgrade-Insecure-Requests", "1");
+        }
+    }
+    // 2. A navigation request is upgraded only when it is a form submission
+    // or its client's target browsing context is nested: a frame's
+    // navigation (destination "iframe" or "frame"). A top-level navigation
+    // returns here.
+    if (is_navigation and request.destination == .document) return;
+    // 3-4. "Let upgrade state be the result of executing Should insecure
+    // requests be upgraded for client? upon request's client": its
+    // policy container's (UIR 4.2). Do Not Upgrade returns.
+    const container = switch (request.policy_container) {
+        .client => return,
+        .container => |*c| c,
+    };
+    if (!container.upgradesInsecureRequests()) return;
+    // 5. "If request's URL's scheme is "http", set request's URL's scheme to
+    // "https", and return." The port is left as it is.
+    if (!std.ascii.eqlIgnoreCase(scheme, "http")) return;
+    const upgraded = try std.mem.concat(request.allocator, u8, &.{ "https", url[scheme.len..] });
+    const last = &request.url_list.items[request.url_list.items.len - 1];
+    request.allocator.free(last.*);
+    last.* = upgraded;
+}
+
+/// Fetch "navigation request": "a request whose destination is "document",
+/// "embed", "frame", "iframe", or "object"".
+fn isNavigationDestination(destination: internal_request.Destination) bool {
+    return switch (destination) {
+        .document, .embed, .frame, .iframe, .object => true,
+        else => false,
+    };
 }
 
 /// Main fetch step 12's condition for HTTP fetch with makeCORSPreflight.
@@ -895,6 +963,95 @@ test "main fetch step 9: a URL referrer is replaced by the referrer its policy a
     request.referrer_policy = .no_referrer;
     _ = try mainFetchStart(allocator, params, true);
     try std.testing.expect(request.referrer == .no_referrer);
+}
+
+test "main fetch step 8: an empty referrer policy is the policy container's, else the default" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+    const PolicyContainer = internal_request.PolicyContainer;
+
+    const request = try InternalRequest.init(allocator, "http://b.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    try request.setReferrerUrl("http://a.test/page");
+    request.mode = .no_cors;
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, "no-referrer"));
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    // The container's no-referrer: no referrer at all.
+    _ = try mainFetchStart(allocator, params, false);
+    try std.testing.expectEqual(internal_request.ReferrerPolicy.no_referrer, request.referrer_policy);
+    try std.testing.expect(request.referrer == .no_referrer);
+
+    // A container whose policy is the empty string (its response named
+    // none): the default, strict-origin-when-cross-origin.
+    request.referrer_policy = .empty;
+    try request.setReferrerUrl("http://a.test/page");
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, null));
+    _ = try mainFetchStart(allocator, params, true);
+    try std.testing.expectEqual(internal_request.ReferrerPolicy.strict_origin_when_cross_origin, request.referrer_policy);
+    try std.testing.expectEqualStrings("http://a.test/", request.referrer.url);
+
+    // A request's own policy wins over its container's.
+    request.referrer_policy = .unsafe_url;
+    try request.setReferrerUrl("http://a.test/page");
+    request.setPolicyContainer(try PolicyContainer.fromResponse(allocator, "no-referrer"));
+    _ = try mainFetchStart(allocator, params, true);
+    try std.testing.expectEqualStrings("http://a.test/page", request.referrer.url);
+}
+
+test "main fetch step 5: a client that upgrades insecure requests upgrades http to https, port kept" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+    const PolicyContainer = internal_request.PolicyContainer;
+
+    const request = try InternalRequest.init(allocator, "http://www1.web-platform.test:8443/x?y");
+    defer request.deinit();
+    request.mode = .no_cors;
+    request.setReferrer(.no_referrer);
+    const controller = try FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    // No container, or one that does not upgrade: the URL stands.
+    _ = try mainFetchStart(allocator, params, true);
+    try std.testing.expectEqualStrings("http://www1.web-platform.test:8443/x?y", request.currentUrl());
+    request.setPolicyContainer(try PolicyContainer.fromResponseHeaders(allocator, .{ .url = "https://a.test/", .csp_report_only = "upgrade-insecure-requests" }));
+    _ = try mainFetchStart(allocator, params, true);
+    try std.testing.expectEqualStrings("http://www1.web-platform.test:8443/x?y", request.currentUrl());
+
+    // An enforced upgrade-insecure-requests: https, the same port.
+    request.setPolicyContainer(try PolicyContainer.fromResponseHeaders(allocator, .{ .url = "https://a.test/", .csp = "upgrade-insecure-requests" }));
+    _ = try mainFetchStart(allocator, params, true);
+    try std.testing.expectEqualStrings("https://www1.web-platform.test:8443/x?y", request.currentUrl());
+
+    // A top-level navigation is not upgraded, and says it would like to be.
+    const navigation = try InternalRequest.init(allocator, "http://a.test/");
+    defer navigation.deinit();
+    navigation.destination = .document;
+    navigation.mode = .navigate;
+    navigation.setReferrer(.no_referrer);
+    navigation.setPolicyContainer(try PolicyContainer.fromResponseHeaders(allocator, .{ .url = "https://a.test/", .csp = "upgrade-insecure-requests" }));
+    const nav_params = try FetchParams.init(allocator, navigation, controller, &timing);
+    defer nav_params.deinit();
+    _ = try mainFetchStart(allocator, nav_params, true);
+    try std.testing.expectEqualStrings("http://a.test/", navigation.currentUrl());
+    try std.testing.expect(navigation.header_list.contains("Upgrade-Insecure-Requests"));
+
+    // A frame's navigation is.
+    navigation.destination = .iframe;
+    _ = try mainFetchStart(allocator, nav_params, true);
+    try std.testing.expectEqualStrings("https://a.test/", navigation.currentUrl());
 }
 
 test "splitSerializedOrigin: scheme, host and a non-default port" {

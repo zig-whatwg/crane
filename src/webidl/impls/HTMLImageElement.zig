@@ -19,6 +19,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/images.html#update-the-image-data
 
 const std = @import("std");
+const log = std.log.scoped(.img);
 const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
@@ -277,31 +278,83 @@ pub fn get_sharedStorageWritable(instance: *runtime.Instance) anyerror!bool {
     return error.NotImplemented;
 }
 
-/// Setter for src - sets the "src" content attribute and initiates async image loading
-/// Spec: https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-src
-///
-/// Per HTML spec §4.8.3, when src is set:
-/// 1. Set the src content attribute on the element
-/// 2. Queue a microtask to run the "update the image data" algorithm
-///    - This allows `img.onload = fn` to be set AFTER `img.src = url`
-/// 3. The microtask fetches the image and queues a task to fire events
-///    - Events fire asynchronously via task queue (macrotask), not synchronously
-/// 4. Generation counter enables cancellation if src changes before load completes
-///
-/// TODO: "update the image data" is owed on every relevant mutation - the
-/// src, srcset, sizes, crossorigin or referrerpolicy attribute being set,
-/// changed or removed, however that happens - not only on this setter, so
-/// `img.setAttribute("src", url)` starts no load yet. It belongs in the
-/// element's attribute change steps.
-pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    const allocator = instance.ctx.allocator;
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // HTML 4.8.4.3.2's relevant mutations of an img element's attributes run
+    // "update the image data" - however the attribute is set: the IDL
+    // setters reflect into the content attributes, and setAttribute.
+    @import("dom").attribute_change_steps.install("img", &attributeChangeSteps);
+}
 
-    // Step 1: Set the src attribute using Element.setAttribute
+/// The img element's attribute change steps: its relevant mutations - the
+/// src, srcset, width or sizes attributes set, changed or removed (src set
+/// to its own value included: that restarts animations, which nothing here
+/// keeps), the crossorigin or referrerpolicy attribute's state changed.
+///
+/// Not modelled, stated: the other relevant mutations - the img or a source
+/// sibling inserted, removed or moved, a picture parent's source changing,
+/// the adopting steps, auto-sizes.
+fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    if (namespace != null) return;
+    const always = [_][]const u8{ "src", "srcset", "width", "sizes" };
+    const on_state_change = [_][]const u8{ "crossorigin", "referrerpolicy" };
+    for (always) |name| {
+        if (std.mem.eql(u8, local_name, name)) return updateTheImageData(element);
+    }
+    for (on_state_change) |name| {
+        if (!std.mem.eql(u8, local_name, name)) continue;
+        // An enumerated attribute's state: the same value is the same state.
+        const same = if (old_value) |o| (if (value) |v| std.ascii.eqlIgnoreCase(o, v) else false) else value == null;
+        if (!same) updateTheImageData(element);
+        return;
+    }
+}
+
+/// HTML "update the image data", as far as this engine models it: the
+/// selected source is the src attribute (no srcset or picture source
+/// selection - stated); a non-empty one is fetched, after a microtask (the
+/// spec's "await a stable state"), and load or error fires in a task. A
+/// newer update cancels an older one (the generation counter).
+fn updateTheImageData(instance: *runtime.Instance) void {
+    const src = (Element.call_getAttribute(instance, runtime.DOMString.initInterned("src")) catch return) orelse return;
+    if (src.asSlice().len == 0) return;
+    // "Parse selected source, relative to the element's node document": the
+    // fetch needs an absolute URL. One that does not parse loads nothing.
+    const url = resolveAgainstBaseUrl(instance, src.asSlice()) orelse return;
+    defer instance.ctx.allocator.free(url);
+    startLoad(instance, url) catch |err| log.debug("img: the load did not start: {s}", .{@errorName(err)});
+}
+
+/// `url` parsed against `element`'s base URL (its node document's), and
+/// serialized; owned by the element's context allocator, null when it does
+/// not parse.
+fn resolveAgainstBaseUrl(element: *runtime.Instance, url: []const u8) ?[]const u8 {
+    const base = interfaces.Node.get_baseURI(element) catch return null;
+    defer element.ctx.allocator.free(base);
+    const base_arg = if (base.len > 0) webidl.Opt(runtime.USVString).passed(base) else webidl.Opt(runtime.USVString).notPassed();
+    const parsed = (interfaces.URL.call_static_parse(element, url, base_arg) catch return null) orelse return null;
+    defer runtime.Instance.deinit(parsed);
+    return interfaces.URL.get_href(parsed) catch null;
+}
+
+/// Setter for src: it reflects the src content attribute
+/// (https://html.spec.whatwg.org/multipage/embedded-content.html#dom-img-src),
+/// whose change is a relevant mutation: the attribute change steps run
+/// "update the image data".
+pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const dom_value = runtime.DOMString.initInterned(value);
     try Element.call_setAttribute(instance, runtime.DOMString.initInterned("src"), dom_value);
+}
 
-    // Step 2: Get the URL string from the value (USVString is already []const u8)
-    const url_str = value;
+/// Start loading `url_str` for `instance`, superseding any load in flight.
+///
+/// 1. Queue a microtask to run the fetch - so `img.onload = fn` set after
+///    `img.src = url` still hears the event.
+/// 2. The microtask fetches the image and queues a task to fire the event.
+/// 3. A generation counter cancels a load a newer one superseded.
+fn startLoad(instance: *runtime.Instance, url_str: []const u8) !void {
+    const allocator = instance.ctx.allocator;
 
     // Skip empty URLs
     if (url_str.len == 0) {
@@ -395,43 +448,32 @@ fn loadMicrotaskCallback(data: ?*anyopaque) void {
         return; // Cancelled
     }
 
-    // Perform the fetch
-    var fetch_result = fetch.webidl.globalFetch(allocator, .{ .url = url_str }, .{});
-    defer fetch_result.deinit();
-
-    // Check generation again after fetch
-    if (internal.load_generation != generation) {
-        return; // Cancelled during fetch
-    }
-
-    // Mark as complete
-    internal.complete = true;
-
-    // Determine event type based on fetch result
-    const event_type: ImageEventType = switch (fetch_result) {
-        .response => |response| if (response.ok()) .load else .@"error",
-        .err => .@"error",
+    // "In parallel": the image request is fetched without blocking the
+    // event loop; its response arrives from the loop's network step
+    // (ImageFetch). One that cannot start is an error.
+    startImageFetch(instance, url_str, generation) catch |err| {
+        log.debug("img: the fetch did not start: {s}", .{@errorName(err)});
+        internal.complete = true;
+        queueImageEvent(instance, generation, .@"error", allocator);
     };
+}
 
+/// Queue the task that fires `event_type` at `instance` for the load
+/// `generation` names (a newer load cancels it when it runs).
+fn queueImageEvent(instance: *runtime.Instance, generation: u64, event_type: ImageEventType, allocator: std.mem.Allocator) void {
+    const event_name = switch (event_type) {
+        .load => "load",
+        .@"error" => "error",
+    };
     // Queue a task to fire the event (per spec, events fire via task queue)
     // Use setTimeout(0) for task queue semantics
     const timer = instance.ctx.getOptionalTimer() orelse {
         // No timer support - fire event synchronously as fallback
-        const event_name = switch (event_type) {
-            .load => "load",
-            .@"error" => "error",
-        };
         fireEventOnElement(instance, event_name) catch {};
         return;
     };
-
-    // Allocate task context
     const task_ctx = allocator.create(FireEventTaskContext) catch {
         // OOM - fire synchronously as fallback
-        const event_name = switch (event_type) {
-            .load => "load",
-            .@"error" => "error",
-        };
         fireEventOnElement(instance, event_name) catch {};
         return;
     };
@@ -441,9 +483,127 @@ fn loadMicrotaskCallback(data: ?*anyopaque) void {
         .event_type = event_type,
         .allocator = allocator,
     };
-
-    // Schedule task via setTimeout(0)
     _ = timer.setTimeout(0, &fireEventTaskCallback, task_ctx);
+}
+
+/// The image request of one "update the image data", fetched in parallel
+/// (fetch.algorithms.AsyncFetch, as a link's style sheet is). It does not
+/// keep the element alive: the element's slab generation says whether it
+/// is still there, and a fetch whose element or realm is gone is
+/// terminated.
+///
+/// Not modelled, stated: the image is not decoded - a response that is not
+/// a network error and is ok (or opaque, which cannot be read) is a
+/// loaded image; the list of available images; delaying the document's
+/// load event.
+const ImageFetch = struct {
+    allocator: std.mem.Allocator,
+    element: *runtime.Instance,
+    element_generation: u64,
+    /// The load this fetch is for (InternalState.load_generation).
+    load_generation: u64,
+    realm: runtime.Context,
+
+    fn client(self: *ImageFetch) fetch.algorithms.AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = alive, .gone = gone };
+    }
+
+    fn elementIsLive(self: *const ImageFetch) bool {
+        return runtime.SlabAllocator.generationOf(self.element) == self.element_generation;
+    }
+
+    fn alive(context: *anyopaque) bool {
+        const self: *ImageFetch = @ptrCast(@alignCast(context));
+        return self.realm.engine_ctx != null and self.elementIsLive();
+    }
+
+    /// The element or its realm went with the fetch in flight; the fetch
+    /// has been terminated, and no event fires.
+    fn gone(context: *anyopaque) void {
+        const self: *ImageFetch = @ptrCast(@alignCast(context));
+        self.allocator.destroy(self);
+    }
+
+    /// The response, body and all: the image is available, or the request
+    /// failed - load or error, in a task, unless a newer load superseded
+    /// this one.
+    fn done(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
+        const self: *ImageFetch = @ptrCast(@alignCast(context));
+        defer self.allocator.destroy(self);
+        const event_type: ImageEventType = blk: {
+            var result = outcome catch break :blk .@"error";
+            defer result.deinit();
+            const response = result.response;
+            if (response.response_type == .@"error") break :blk .@"error";
+            if (response.response_type == .@"opaque") break :blk .load;
+            break :blk if (fetch.internal.isOkStatus(response.status)) .load else .@"error";
+        };
+        if (!self.elementIsLive()) return;
+        const internal = getInternal(self.element) orelse return;
+        if (internal.load_generation != self.load_generation) return;
+        internal.complete = true;
+        queueImageEvent(self.element, self.load_generation, event_type, self.element.ctx.allocator);
+    }
+};
+
+/// HTML "update the image data" step 23's request: "create a potential-CORS
+/// request given urlString, "image", and the current state of the element's
+/// crossorigin content attribute"; its client the element's node
+/// document's relevant settings object; its initiator type "img"; its
+/// referrer policy the element's referrerpolicy attribute's state - then
+/// fetched in parallel.
+fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64) !void {
+    const allocator = instance.ctx.allocator;
+    const request = try fetch.internal.InternalRequest.init(allocator, url);
+    var request_owned = true;
+    defer if (request_owned) request.deinit();
+    request.destination = .image;
+    request.initiator_type = .img;
+    // "Create a potential-CORS request": mode "no-cors" for No CORS,
+    // "cors" otherwise; credentials "include", or "same-origin" for
+    // Anonymous; the use-URL-credentials flag set.
+    const cors = attributeValue(instance, "crossorigin");
+    if (cors) |state| {
+        request.mode = .cors;
+        request.credentials_mode = if (std.ascii.eqlIgnoreCase(state, "use-credentials")) .include else .same_origin;
+    } else {
+        request.mode = .no_cors;
+        request.credentials_mode = .include;
+    }
+    request.use_url_credentials = true;
+    request.referrer_policy = fetch.internal.policy_container.referrerPolicyFromAttribute(attributeValue(instance, "referrerpolicy"));
+    // The client: the element's node document's relevant settings object -
+    // its realm's global's.
+    if (realmGlobal(instance.ctx)) |global| {
+        var client = try @import("dom").global_settings.requestClient(global);
+        defer client.deinit();
+        try fetch.internal.populateRequestFromClient(request, client.request);
+    }
+
+    const image_fetch = try allocator.create(ImageFetch);
+    errdefer allocator.destroy(image_fetch);
+    image_fetch.* = .{
+        .allocator = allocator,
+        .element = instance,
+        .element_generation = runtime.SlabAllocator.generationOf(instance),
+        .load_generation = generation,
+        .realm = instance.ctx,
+    };
+    // The fetch owns the request from here, even when it fails to start.
+    request_owned = false;
+    _ = try fetch.algorithms.AsyncFetch.start(allocator, request, .{}, fetch.network.scheduler.threadScheduler(), image_fetch.client());
+}
+
+/// The value of `instance`'s attribute `name`, or null when it has none.
+fn attributeValue(instance: *runtime.Instance, name: []const u8) ?[]const u8 {
+    const value = (Element.call_getAttribute(instance, runtime.DOMString.initInterned(name)) catch return null) orelse return null;
+    return value.asSlice();
+}
+
+/// The global of `realm`.
+fn realmGlobal(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    return @ptrCast(@alignCast(record.global_object orelse return null));
 }
 
 /// Task callback - fires load/error event on the element
@@ -478,26 +638,29 @@ fn fireEventTaskSteps(data: ?*anyopaque) void {
     fireEventOnElement(ctx.instance, event_name) catch {};
 }
 
-/// Helper function to create and dispatch an event on an element
+/// DOM "fire an event" named `event_type` at the element: an Event created
+/// in the element's relevant realm with its type initialized, then
+/// dispatched. HTML's image loads fire load and error without bubbles or
+/// cancelable ("fire an event named load at the img element").
+///
+/// The event is made by the constructor, which gives it its internal state
+/// and its type: `Event.init` makes a bare instance that `initEvent` then
+/// leaves untouched (it returns early on an event without state), so the
+/// event this used to build had no type and reached no listener - no img
+/// ever fired load or error.
 fn fireEventOnElement(instance: *runtime.Instance, event_type: []const u8) !void {
-    const allocator = instance.ctx.allocator;
-    const ctx = instance.ctx;
+    const event = try Event.call_constructor(
+        instance.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = false, .cancelable = false, .composed = false }),
+    );
+    // Not `defer deinit`: a listener can keep the event, and its wrapper then
+    // owns it.
+    const generation = runtime.SlabAllocator.generationOf(event);
+    defer event.releaseIfUnwrapped(generation);
 
-    // Create the event using the interface's init function (2 args, not 4)
-    const event = try Event.init(allocator, ctx);
-    errdefer Event.deinit(event);
-
-    // Initialize the event with the given type
-    // Per spec: bubbles = true for load/error events on elements, cancelable = false
-    const event_type_str = runtime.DOMString.initInterned(event_type);
-    const bubbles = webidl.Opt(bool).passed(true);
-    const cancelable = webidl.Opt(bool).passed(false);
-    try Event.call_initEvent(event, event_type_str, bubbles, cancelable);
-
-    // Dispatch the event on the element
-    // HTMLImageElement inherits from Element which inherits from EventTarget
     // Fired by the user agent, so trusted (DOM 2.10). EventTarget is an
-    // ancestor, so its impl.
+    // ancestor, so its impl (existing debt, unchanged).
     _ = try @import("EventTarget.zig").dispatchTrusted(instance, event);
 }
 

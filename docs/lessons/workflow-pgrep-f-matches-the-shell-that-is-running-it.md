@@ -31,3 +31,5 @@ exactly as above (`pat=...; pat="${pat}fr_"`, excluding `$$`) never exited -
 up to three days old) left by servers killed with `lsof ... | xargs kill`:
 kill a server's children with it, and sweep `ps -eo pid,ppid,command | awk
 '$2==1 && /multiprocessing/'` when done.
+
+**Again (2026-10-02, secfeatures lane)**: four `ssh chat 'until ! pgrep -f "<pattern>"; ...'` waiters hung the same way - the remote `zsh -c` carries the loop text. Besides waiting on a PID or on a file the job writes, a bracketed character breaks the self-match: `pgrep -f "wpt_runne[r] crane/x"`.

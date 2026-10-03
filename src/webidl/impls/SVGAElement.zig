@@ -36,9 +36,10 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+    // Through its ancestors: SVGElement's init chains to Element, Node and
+    // EventTarget, whose state an a element in a tree needs. (SVGGraphicsElement,
+    // between them, keeps no state.)
+    return interfaces.SVGElement.initWithState(allocator, StateType, vtable, ctx);
 }
 
 /// dom.activation: every SVG a element has activation behaviour.
@@ -62,10 +63,10 @@ fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) vo
     navigables.followHyperlink(target, @import("html").user_activation.userNavigationInvolvement(event));
 }
 
-/// Deinitialize instance
+/// Deinitialize instance, through its ancestors: SVGElement's deinit frees
+/// what Element, Node and EventTarget keep.
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    interfaces.SVGElement.deinit(instance);
 }
 
 /// Getter for target

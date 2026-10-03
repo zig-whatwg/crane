@@ -100,6 +100,12 @@ pub const ModuleScript = struct {
     /// Resolved module requests, in the order the source makes them.
     children: std.ArrayListUnmanaged(Child) = .empty,
 
+    /// The script's fetch options, as far as an import() from it reads them
+    /// (HTML "new descendant script fetch options"): its cryptographic nonce
+    /// (OWNED when not empty) and referrer policy.
+    nonce: []const u8 = "",
+    referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+
     /// Depth-first walk state. `visiting` is set while this script's requests
     /// are being loaded, so a cycle back to it stops instead of recursing
     /// forever - the spec's LoadRequestedModules does the same through
@@ -126,15 +132,28 @@ pub const ModuleScript = struct {
         script: *ModuleScript,
     };
 
-    fn create(allocator: std.mem.Allocator, base_url: []const u8) !*ModuleScript {
+    /// A module script with `base_url`, fetched (or inline) with `options`.
+    fn create(allocator: std.mem.Allocator, base_url: []const u8, options: FetchOptions) !*ModuleScript {
         const self = try allocator.create(ModuleScript);
         errdefer allocator.destroy(self);
+        const owned_base_url = try allocator.dupe(u8, base_url);
+        errdefer allocator.free(owned_base_url);
         self.* = .{
             .allocator = allocator,
-            .base_url = try allocator.dupe(u8, base_url),
+            .base_url = owned_base_url,
+            .nonce = if (options.nonce.len > 0) try allocator.dupe(u8, options.nonce) else "",
+            .referrer_policy = options.referrer_policy,
         };
         track(self);
         return self;
+    }
+
+    /// HTML "new descendant script fetch options" for this script's fetch
+    /// options: its cryptographic nonce and referrer policy; integrity
+    /// metadata "", parser metadata "not-parser-inserted". Borrowed from the
+    /// script.
+    pub fn descendantFetchOptions(self: *const ModuleScript) FetchOptions {
+        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy };
     }
 
     /// Release the script, its record and values, and its edge list.
@@ -149,6 +168,7 @@ pub const ModuleScript = struct {
         for (self.children.items) |child| self.allocator.free(child.specifier);
         self.children.deinit(self.allocator);
         self.allocator.free(self.base_url);
+        if (self.nonce.len > 0) self.allocator.free(self.nonce);
         self.allocator.destroy(self);
     }
 
@@ -190,6 +210,19 @@ pub fn disposeEntry(value: *anyopaque) void {
     script.destroy();
 }
 
+/// HTML's script fetch options, as far as a module graph's requests use
+/// them: the cryptographic nonce, integrity metadata, parser metadata and
+/// referrer policy (the credentials mode stays "same-origin", as before).
+/// Borrowed for as long as the graph is fetched.
+pub const FetchOptions = struct {
+    nonce: []const u8 = "",
+    /// The root's: a descendant's comes from the import map's integrity
+    /// section, which is not modelled, so descendants have none.
+    integrity: []const u8 = "",
+    parser_inserted: bool = false,
+    referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+};
+
 /// Everything the loader needs from the document it loads for.
 pub const Environment = struct {
     allocator: std.mem.Allocator,
@@ -211,6 +244,10 @@ pub const Environment = struct {
     /// interface is exposed in the settings object's realm - a Window's, not
     /// a worker's.
     css_allowed: bool = true,
+    /// The script fetch options the graph's requests carry: the root's, and
+    /// - "fetch the descendants of a module script" gets the descendant
+    /// script fetch options from the referrer script's - its descendants'.
+    fetch_options: FetchOptions = .{},
 
     /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#module-type-allowed
     pub fn moduleTypeAllowed(self: *const Environment, module_type: ModuleType) bool {
@@ -239,7 +276,7 @@ pub fn createJavaScriptModuleScript(
     base_url: []const u8,
 ) !*ModuleScript {
     if (!supported) return error.NotSupported;
-    const script = try ModuleScript.create(env.allocator, base_url);
+    const script = try ModuleScript.create(env.allocator, base_url, env.fetch_options);
     errdefer script.destroy();
 
     switch (try engine.parseModule(env.realm(), source, base_url, script)) {
@@ -293,6 +330,16 @@ pub fn scriptOf(host_defined: *anyopaque) ?*ModuleScript {
 /// time.
 pub const ClassicScript = struct {
     base_url: []const u8,
+    /// Its fetch options, as far as an import() from it reads them (HTML
+    /// "new descendant script fetch options"): the cryptographic nonce and
+    /// the referrer policy. Owned by whoever owns the script.
+    nonce: []const u8 = "",
+    referrer_policy: fetch.internal.ReferrerPolicy = .empty,
+
+    /// HTML "new descendant script fetch options" for this script's.
+    pub fn descendantFetchOptions(self: *const ClassicScript) FetchOptions {
+        return .{ .nonce = self.nonce, .referrer_policy = self.referrer_policy };
+    }
 };
 
 /// The base URL of the classic script a Script Record's [[HostDefined]] is.
@@ -317,7 +364,7 @@ pub fn importMetaUrl(host: ?*anyopaque, module_host_defined: *anyopaque) []const
 /// Step 5: ParseJSONModule - a SyntaxError becomes the parse error.
 fn createJsonModuleScript(env: *const Environment, source: []const u8, url: []const u8) !*ModuleScript {
     if (!supported) return error.NotSupported;
-    const script = try ModuleScript.create(env.allocator, url);
+    const script = try ModuleScript.create(env.allocator, url, env.fetch_options);
     errdefer script.destroy();
 
     switch (try engine.parseJSONModule(env.realm(), source, url, script)) {
@@ -342,7 +389,7 @@ fn createJsonModuleScript(env: *const Environment, source: []const u8, url: []co
 /// nothing reads for a CSS module (it has no import.meta and no imports).
 fn createCssModuleScript(env: *const Environment, source: []const u8, url: []const u8) !*ModuleScript {
     if (!supported) return error.NotSupported;
-    const script = try ModuleScript.create(env.allocator, url);
+    const script = try ModuleScript.create(env.allocator, url, env.fetch_options);
     errdefer script.destroy();
     const realm = env.realm();
 
@@ -422,14 +469,20 @@ fn fetchAndCreate(env: *const Environment, url: []const u8, module_type: ModuleT
     // initiator type to "script"." Then "set up the module script request":
     // its credentials mode is the fetch options', "same-origin" by default.
     //
-    // Deviation, stated: the script fetch options are not carried here, so
-    // the credentials mode is always "same-origin" - a module script with
-    // crossorigin=use-credentials fetches without credentials - and the
-    // referrer is the client's.
+    // "Set up the module script request given request and options": its
+    // cryptographic nonce metadata, integrity metadata, parser metadata and
+    // referrer policy are the options'. Deviation, stated: the credentials
+    // mode is always "same-origin" - a module script with
+    // crossorigin=use-credentials fetches without credentials.
     const request = script_request.InternalRequest.init(env.allocator, url) catch return null;
     defer request.deinit();
     request.mode = .cors;
     request.credentials_mode = .same_origin;
+    const options = env.fetch_options;
+    if (options.nonce.len > 0) request.setCryptographicNonceMetadata(options.nonce) catch return null;
+    request.setIntegrityMetadata(options.integrity) catch return null;
+    request.parser_metadata = if (options.parser_inserted) .parser_inserted else .not_parser_inserted;
+    request.referrer_policy = options.referrer_policy;
     request.destination = switch (module_type) {
         .javascript => .script,
         .json => .json,
@@ -657,8 +710,13 @@ pub fn fetchExternalModuleScriptGraph(env: *const Environment, url: []const u8) 
     // Step 1: fetch a single module script, "javascript-or-wasm".
     // Step 1.1: if result is null, onComplete is given null.
     const result = fetchSingleModuleScript(env, url, .javascript) orelse return null;
-    // Step 1.2: fetch the descendants of and link result.
-    return fetchDescendantsAndLink(env, result);
+    // Step 1.2: fetch the descendants of and link result - with the
+    // descendant script fetch options, whose integrity metadata is not the
+    // root's.
+    var descendants = env.*;
+    descendants.fetch_options.integrity = "";
+    descendants.fetch_options.parser_inserted = false;
+    return fetchDescendantsAndLink(&descendants, result);
 }
 
 /// Fetch a module worker script graph, with the root's response in hand.

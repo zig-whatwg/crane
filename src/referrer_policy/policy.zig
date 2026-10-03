@@ -121,6 +121,31 @@ pub fn parseReferrerPolicyHeader(header_value: []const u8) ?ReferrerPolicy {
     return result;
 }
 
+/// HTML 4.2.5.1, the "referrer" metadata name, steps 4-6: the referrer
+/// policy a meta element named referrer sets from its `content`, or null
+/// when its content is not one (step 6 then does nothing).
+///
+/// Spec: https://html.spec.whatwg.org/multipage/semantics.html#meta-referrer
+pub fn parseMetaReferrer(content: []const u8) ?ReferrerPolicy {
+    // 4. "Let value be the value of element's content attribute, converted
+    // to ASCII lowercase." (The comparisons below are that, ASCII
+    // case-insensitive.) Step 3 returned already for the empty string.
+    if (content.len == 0) return null;
+    // 5. The legacy values: never, default, always, origin-when-crossorigin.
+    if (eqlIgnoreCase(content, "never")) return .no_referrer;
+    if (eqlIgnoreCase(content, "default")) return ReferrerPolicy.default();
+    if (eqlIgnoreCase(content, "always")) return .unsafe_url;
+    if (eqlIgnoreCase(content, "origin-when-crossorigin")) return .origin_when_cross_origin;
+    // 6. "If value is a referrer policy": one of the policy strings, as they
+    // are - no whitespace trimmed. The empty string is a referrer policy too,
+    // but step 3 already returned for it.
+    for (std.enums.values(ReferrerPolicy)) |candidate| {
+        if (candidate == .empty) continue;
+        if (eqlIgnoreCase(content, candidate.toString())) return candidate;
+    }
+    return null;
+}
+
 /// Case-insensitive string comparison for ASCII.
 fn eqlIgnoreCase(a: []const u8, b: []const u8) bool {
     if (a.len != b.len) return false;
@@ -215,4 +240,27 @@ test "parseReferrerPolicyHeader all invalid returns null" {
 
 test "parseReferrerPolicyHeader with whitespace" {
     try std.testing.expectEqual(ReferrerPolicy.origin, parseReferrerPolicyHeader("  no-referrer  ,  origin  ").?);
+}
+
+test "parseMetaReferrer: the referrer policies, ASCII case-insensitively" {
+    try std.testing.expectEqual(ReferrerPolicy.no_referrer, parseMetaReferrer("no-referrer").?);
+    try std.testing.expectEqual(ReferrerPolicy.no_referrer, parseMetaReferrer("NO-REFERRER").?);
+    try std.testing.expectEqual(ReferrerPolicy.origin, parseMetaReferrer("origin").?);
+    try std.testing.expectEqual(ReferrerPolicy.unsafe_url, parseMetaReferrer("Unsafe-URL").?);
+    try std.testing.expectEqual(ReferrerPolicy.strict_origin_when_cross_origin, parseMetaReferrer("strict-origin-when-cross-origin").?);
+}
+
+test "parseMetaReferrer: the legacy values" {
+    try std.testing.expectEqual(ReferrerPolicy.no_referrer, parseMetaReferrer("never").?);
+    try std.testing.expectEqual(ReferrerPolicy.strict_origin_when_cross_origin, parseMetaReferrer("default").?);
+    try std.testing.expectEqual(ReferrerPolicy.unsafe_url, parseMetaReferrer("ALWAYS").?);
+    try std.testing.expectEqual(ReferrerPolicy.origin_when_cross_origin, parseMetaReferrer("origin-when-crossorigin").?);
+}
+
+test "parseMetaReferrer: anything else sets nothing" {
+    try std.testing.expect(parseMetaReferrer("") == null);
+    try std.testing.expect(parseMetaReferrer("bogus") == null);
+    // No whitespace is stripped: " origin" is not a referrer policy.
+    try std.testing.expect(parseMetaReferrer(" origin") == null);
+    try std.testing.expect(parseMetaReferrer("no-referrer, origin") == null);
 }

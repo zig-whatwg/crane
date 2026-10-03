@@ -124,6 +124,16 @@ pub const WorkerScriptFetchOptions = struct {
     credentials: CredentialsMode = .same_origin,
     /// Whether this is for importScripts (stricter rules apply)
     is_import_scripts: bool = false,
+    /// A shared worker's script: the request's destination is
+    /// "sharedworker", not "worker".
+    shared: bool = false,
+    /// The fetch client's policy container - the outside settings', for a
+    /// worker's script - whose CSP list main fetch step 7 checks the request
+    /// against. BORROWED; null: no client, nothing to check.
+    policy_container: ?*const fetch.internal.PolicyContainer = null,
+    /// Where the fetch client's global hears of the CSP violations the
+    /// request causes (CSP 2.4.2). BORROWED; null: nobody hears them.
+    csp_violation_reporter: ?fetch.internal.CspViolationReporter = null,
 
     pub const CredentialsMode = enum {
         omit,
@@ -152,6 +162,13 @@ pub const FetchedScript = struct {
     /// Whether the script is from same origin
     same_origin: bool,
 
+    /// HTML "create a policy container from a fetch response" for the
+    /// response a network fetch made: what the worker global scope's policy
+    /// container becomes ("initialize a worker global scope's policy
+    /// container" step 2). Null for a data: or blob: script, whose container
+    /// is its owner's. Owned until taken (`takePolicyContainer`).
+    policy_container: ?fetch.internal.PolicyContainer = null,
+
     pub fn init(
         allocator: Allocator,
         source: []const u8,
@@ -172,6 +189,14 @@ pub const FetchedScript = struct {
         self.allocator.free(self.source);
         self.allocator.free(self.final_url);
         self.allocator.free(self.content_type);
+        if (self.policy_container) |*container| container.deinit();
+    }
+
+    /// The response's policy container, handed over: the result keeps none.
+    pub fn takePolicyContainer(self: *FetchedScript) ?fetch.internal.PolicyContainer {
+        const container = self.policy_container;
+        self.policy_container = null;
+        return container;
     }
 };
 
@@ -197,6 +222,19 @@ pub fn fetchWorkerScript(
     // Step 1: Validate URL
     if (url.len == 0) {
         return WorkerScriptError.InvalidUrl;
+    }
+
+    // Main fetch step 7: "should request be blocked by Content Security
+    // Policy?" - for the data: and blob: scripts answered below without
+    // main fetch (an HTTP(S) one, or a relative one, goes through main
+    // fetch, which checks it, each redirect included, and reports it once).
+    // A blocked request is a network error.
+    if (options.policy_container) |container| {
+        const destination: fetch.internal.Destination = if (options.is_import_scripts) .script else if (options.shared) .sharedworker else .worker;
+        const answered_here = std.mem.startsWith(u8, url, "data:") or std.mem.startsWith(u8, url, "blob:");
+        if (answered_here and fetch.algorithms.csp_check.isBlockedFor(container, url, destination, options.csp_violation_reporter)) {
+            return WorkerScriptError.NetworkError;
+        }
     }
 
     // Step 2: Check for special URLs
@@ -386,10 +424,16 @@ fn fetchHttpWorkerScript(
     // Set destination based on worker type
     internal_request.destination = if (options.is_import_scripts)
         .script // importScripts uses script destination
-    else switch (options.worker_type) {
+    else if (options.shared) .sharedworker else switch (options.worker_type) {
         .classic => .worker,
         .module => .worker,
     };
+    // The client's policy container, for main fetch step 7 (and 8).
+    if (options.policy_container) |container| {
+        internal_request.setPolicyContainer(container.clone(allocator) catch return WorkerScriptError.OutOfMemory);
+    }
+    // Its violations are its client's (CSP 2.4.2).
+    internal_request.csp_violation_reporter = options.csp_violation_reporter;
 
     // Set credentials mode
     internal_request.credentials_mode = switch (options.credentials) {
@@ -454,7 +498,7 @@ fn fetchHttpWorkerScript(
         true;
 
     // Step 10: Create FetchedScript result
-    return FetchedScript.init(
+    var script = FetchedScript.init(
         allocator,
         body_bytes,
         final_url,
@@ -463,6 +507,22 @@ fn fetchHttpWorkerScript(
     ) catch {
         return WorkerScriptError.OutOfMemory;
     };
+    errdefer script.deinit();
+    // The response's policy container: its CSP headers and its
+    // `Referrer-Policy` header.
+    const csp_value = response.header_list.get(allocator, "Content-Security-Policy") catch return WorkerScriptError.OutOfMemory;
+    defer if (csp_value) |value| allocator.free(value);
+    const csp_report_only = response.header_list.get(allocator, "Content-Security-Policy-Report-Only") catch return WorkerScriptError.OutOfMemory;
+    defer if (csp_report_only) |value| allocator.free(value);
+    const referrer_policy_value = response.header_list.get(allocator, "Referrer-Policy") catch return WorkerScriptError.OutOfMemory;
+    defer if (referrer_policy_value) |value| allocator.free(value);
+    script.policy_container = fetch.internal.PolicyContainer.fromResponseHeaders(allocator, .{
+        .url = final_url,
+        .csp = csp_value,
+        .csp_report_only = csp_report_only,
+        .referrer_policy = referrer_policy_value,
+    }) catch return WorkerScriptError.OutOfMemory;
+    return script;
 }
 
 /// Check if two URLs have the same origin
