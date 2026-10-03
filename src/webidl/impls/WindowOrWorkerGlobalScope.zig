@@ -103,8 +103,9 @@ pub fn get_scheduler(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for crypto
 pub fn get_crypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const settings = global_settings.of(instance) orelse return error.InvalidStateError;
+    const crypto = settings.crypto orelse return error.NotImplemented;
+    return crypto(instance);
 }
 
 /// Operation: reportError

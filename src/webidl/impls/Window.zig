@@ -148,6 +148,12 @@ pub const InternalState = struct {
     /// for the Window's life the same way.
     navigation: ?*runtime.Instance = null,
     performance: ?*runtime.Instance = null,
+    /// WebCrypto §10: this global's Crypto, traced for its whole lifetime.
+    crypto: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "crypto" } },
+    } = null,
     /// LocalDOMWindow::Trace visits custom_elements_.
     custom_elements: ?*runtime.Instance = null,
 
@@ -248,6 +254,7 @@ pub const InternalState = struct {
     }
 
     pub fn deinit(self: *InternalState) void {
+        if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         // The children traced from the global object need nothing here: the
         // edges go with it, and the realm's end frees the children.
         // The popups first: each integration ends its navigable's realm (a
@@ -427,7 +434,9 @@ pub fn installHooks() void {
         .indexed_db = &settingsIndexedDB,
         .caches = &settingsCaches,
         .performance = &settingsPerformance,
+        .crypto = &settingsCrypto,
         .cookie_jar = &settingsCookieJar,
+        .policy_container = &settingsPolicyContainer,
     });
 }
 
@@ -491,6 +500,14 @@ fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
 fn settingsCookieJar(instance: *runtime.Instance) ?*@import("cookiestore").CookieJar {
     const internal = getInternal(instance) orelse return null;
     return internal.browsing_context.cookieJar();
+}
+
+/// The settings object's policy container: the window's associated
+/// Document's (HTML 7.1.6), reached through dom.policy_containers.
+fn settingsPolicyContainer(instance: *runtime.Instance) ?*const @import("fetch").internal.PolicyContainer {
+    const internal = getInternal(instance) orelse return null;
+    const document = internal.document orelse return null;
+    return @import("dom").policy_containers.of(document);
 }
 
 fn settingsIsSecureContext(instance: *runtime.Instance) bool {
@@ -572,6 +589,16 @@ fn settingsCaches(instance: *runtime.Instance) anyerror!*runtime.Instance {
 fn settingsPerformance(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.performance orelse error.NotImplemented;
+}
+
+/// WebCrypto §10: one Crypto per global, reached through the settings hook.
+fn settingsCrypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.crypto) |crypto| return crypto.value;
+    const crypto = try interfaces.Crypto.init(internal.allocator, instance.ctx);
+    internal.crypto = .{ .owner = instance, .value = crypto };
+    internal.crypto.?.edge.hold(instance, crypto);
+    return crypto;
 }
 
 /// Deinitialize Window instance

@@ -80,8 +80,18 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMString), name: webidl.Opt(runtime.DOMString)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &DOMException.vtable, ctx);
-    errdefer deinit(instance);
+    errdefer runtime.Instance.deinit(instance);
 
+    // WebIDL §2.8.1 constructor steps 1-2, shared with derived exceptions.
+    try initializeException(instance, if (name.was_passed) name.value.asSlice() else "Error", if (message.was_passed) message.value.asSlice() else "");
+    return instance;
+}
+
+pub fn installHooks() void {
+    @import("dom").dom_exceptions.install(.{ .initialize = initializeException });
+}
+
+fn initializeException(instance: *runtime.Instance, name_str: []const u8, msg_str: []const u8) !void {
     const state = instance.getState(State);
 
     // Use arena allocator for InternalState and strings.
@@ -93,11 +103,6 @@ pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMStr
     // Create internal state using arena
     const internal = try arena.create(InternalState);
 
-    // Get message (default to empty string)
-    const msg_str = if (message.was_passed) message.value.asSlice() else "";
-    // Get name (default to "Error")
-    const name_str = if (name.was_passed) name.value.asSlice() else "Error";
-
     // Duplicate strings using arena - no manual cleanup needed
     const owned_message = if (msg_str.len > 0) try arena.dupe(u8, msg_str) else "";
     const owned_name = try arena.dupe(u8, name_str);
@@ -107,7 +112,7 @@ pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMStr
 
     internal.* = .{
         // Store ctx.allocator for compatibility, but arena handles cleanup
-        .allocator = ctx.allocator,
+        .allocator = instance.ctx.allocator,
         .message = owned_message,
         .name = owned_name,
         .code = code,
@@ -117,8 +122,6 @@ pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMStr
     };
 
     state.own._internal = internal;
-
-    return instance;
 }
 
 /// Getter for name

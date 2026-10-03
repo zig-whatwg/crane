@@ -484,32 +484,23 @@ pub fn resolveImportSpecifier(instance: *runtime.Instance, specifier: []const u8
 /// Get the CSP list for this document.
 pub fn getCSPList(instance: *runtime.Instance) ?*csp.CSPList {
     const internal = getInternal(instance) orelse return null;
-    return internal.csp_list;
+    return &internal.policy_container.csp_list;
 }
 
 /// Set the CSP list for this document.
 pub fn setCSPList(instance: *runtime.Instance, csp_list: *csp.CSPList) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    if (internal.csp_list) |old_list| {
-        old_list.deinit();
-        internal.allocator.destroy(old_list);
-    }
-
-    internal.csp_list = csp_list;
+    // The policy container\'s list is replaced by this one, which was
+    // allocated with the document\'s allocator.
+    internal.policy_container.csp_list.deinit();
+    internal.policy_container.csp_list = csp_list.*;
+    internal.allocator.destroy(csp_list);
 }
 
 /// Add a policy to the document's CSP list.
 pub fn addCSPPolicy(instance: *runtime.Instance, policy: csp.Policy) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    if (internal.csp_list == null) {
-        const new_list = try internal.allocator.create(csp.CSPList);
-        new_list.* = csp.CSPList.init(internal.allocator);
-        internal.csp_list = new_list;
-    }
-
-    try internal.csp_list.?.append(policy);
+    try internal.policy_container.csp_list.append(policy);
 }
 
 /// Get the document's CSP self-origin.
@@ -540,7 +531,7 @@ pub fn isInlineScriptAllowedByCSP(
     hash_value: ?[]const u8,
 ) bool {
     const internal = getInternal(instance) orelse return true;
-    const csp_list = internal.csp_list orelse return true;
+    const csp_list = &internal.policy_container.csp_list;
 
     for (csp_list.policies.items) |*policy| {
         if (policy.disposition != .enforce) continue;
@@ -592,8 +583,10 @@ pub fn isExternalScriptAllowedByCSP(
     nonce: ?[]const u8,
 ) bool {
     const internal = getInternal(instance) orelse return true;
-    const csp_list = internal.csp_list orelse return true;
-    const self_origin = if (internal.csp_self_origin) |*o| o else null;
+    const csp_list = &internal.policy_container.csp_list;
+    // 'self' is each policy's self-origin (CSP 2.2), set as it was
+    // delivered; the document's own is the fallback for one without.
+    const fallback_origin = if (internal.csp_self_origin) |*o| o else null;
 
     for (csp_list.policies.items) |*policy| {
         if (policy.disposition != .enforce) continue;
@@ -622,7 +615,7 @@ pub fn isExternalScriptAllowedByCSP(
             url_port,
             url_path,
             &directive.value,
-            self_origin,
+            if (policy.self_origin) |*o| o else fallback_origin,
             0,
         )) {
             continue;
@@ -637,7 +630,7 @@ pub fn isExternalScriptAllowedByCSP(
 /// Check if eval() is allowed by CSP.
 pub fn isEvalAllowedByCSP(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return true;
-    const csp_list = internal.csp_list orelse return true;
+    const csp_list = &internal.policy_container.csp_list;
 
     for (csp_list.policies.items) |*policy| {
         if (policy.disposition != .enforce) continue;

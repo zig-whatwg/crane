@@ -102,8 +102,13 @@ fn recordSlot(buffer: []u8, kind: []const u8, id: u64) engine.TracedSlot {
 const Tracker = struct {
     /// Its key: a traversal's destination key; null for navigate()/reload().
     key: ?[36]u8 = null,
-    /// Its info (undefined when null), for the navigate event.
-    info: ?engine.Owned = null,
+    /// Its info, for the navigate event: kept by an edge from the
+    /// navigation's wrapper in this slot (engine.traceValue), never a root -
+    /// HTML leaves a cross-document navigation's tracker ongoing on the
+    /// document it left, and an info held as a root kept that document's
+    /// realm alive. Null: undefined.
+    info_slot: ?engine.TracedSlot = null,
+    info_slot_name: [40]u8 = undefined,
     /// Its serialized state: navigate()'s and reload()'s navigation API state.
     serialized_state: ?joint_history.SerializedState = null,
     /// The NavigationHistoryEntry it committed to.
@@ -118,10 +123,11 @@ const Tracker = struct {
     /// it up before.
     held: bool = false,
 
-    fn destroy(self: *Tracker, allocator: Allocator) void {
+    /// `navigation`: the Navigation that keeps its info.
+    fn destroy(self: *Tracker, allocator: Allocator, navigation: *runtime.Instance) void {
         engine.releasePromiseCapability(&self.committed);
         engine.releasePromiseCapability(&self.finished);
-        if (self.info) |info| info.release();
+        if (self.info_slot) |slot| engine.forgetTracedChild(navigation, slot);
         if (self.serialized_state) |*s| s.deinit(allocator);
         allocator.destroy(self);
     }
@@ -238,7 +244,7 @@ pub const InternalState = struct {
         self.handed.deinit(self.allocator);
         for (self.records.items) |record| record.destroy(self.allocator);
         self.records.deinit(self.allocator);
-        for (self.trackers.items) |tracker| tracker.destroy(self.allocator);
+        for (self.trackers.items) |tracker| tracker.destroy(self.allocator, self.navigation);
         self.trackers.deinit(self.allocator);
         self.upcoming.deinit(self.allocator);
         if (self.transition) |t| t.destroy(self.allocator);
@@ -757,12 +763,18 @@ fn newTracker(instance: *runtime.Instance, internal: *InternalState, info: runti
     var finished = try engine.createPromise(realm);
     errdefer engine.releasePromiseCapability(&finished);
     engine.markPromiseAsHandled(realm, finished.promise);
-    const kept_info: ?engine.Owned = if (info == .undefined) null else try engine.retainValue(realm, info);
-    errdefer if (kept_info) |i| i.release();
     const tracker = try internal.allocator.create(Tracker);
     errdefer internal.allocator.destroy(tracker);
-    tracker.* = .{ .info = kept_info, .committed = committed, .finished = finished, .pending = true };
+    tracker.* = .{ .committed = committed, .finished = finished, .pending = true };
     try internal.trackers.append(internal.allocator, tracker);
+    if (info != .undefined) {
+        const id = internal.next_record_id;
+        internal.next_record_id += 1;
+        if (std.fmt.bufPrint(&tracker.info_slot_name, "tracker-info:{d}", .{id})) |name| {
+            tracker.info_slot = .{ .name = name };
+            engine.traceValue(instance, info, tracker.info_slot.?);
+        } else |_| {}
+    }
     return tracker;
 }
 
@@ -861,7 +873,7 @@ fn collect(internal: *InternalState) void {
             continue;
         }
         _ = internal.trackers.swapRemove(t);
-        tracker.destroy(internal.allocator);
+        tracker.destroy(internal.allocator, internal.navigation);
     }
 }
 
@@ -1272,6 +1284,9 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     const form_data: ?*runtime.Instance = if (firing.form_data) |source| formDataIn(realm, source) catch null else null;
     const form_data_generation = if (form_data) |fd| runtime.SlabAllocator.generationOf(fd) else 0;
     defer if (form_data) |fd| fd.releaseIfUnwrapped(form_data_generation);
+    // The tracker's info, read back from the navigation's wrapper.
+    const info: ?engine.Owned = if (api_tracker.info_slot) |slot| engine.tracedValue(instance, slot) else null;
+    defer if (info) |i| i.release();
     // Steps 1, 12-24: the event.
     const event = interfaces.NavigateEvent.call_constructor(realm, runtime.DOMString.initInterned("navigate"), .{
         .base = .{ .cancelable = cancelable },
@@ -1283,7 +1298,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
         .signal = signal,
         .formData = form_data,
         .downloadRequest = null,
-        .info = if (api_tracker.info) |info| info.borrow() else null,
+        .info = if (info) |i| i.borrow() else null,
         .hasUAVisualTransition = false,
         .sourceElement = firing.source_element,
     }) catch |err| {

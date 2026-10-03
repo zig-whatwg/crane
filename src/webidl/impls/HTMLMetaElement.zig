@@ -14,6 +14,7 @@ const callbacks = @import("callbacks");
 const HTMLMetaElement = interfaces.HTMLMetaElement;
 const Element = interfaces.Element;
 const dom_module = @import("dom");
+const fetch = @import("fetch");
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.NodeBase;
 
@@ -34,6 +35,8 @@ pub const InternalState = struct {};
 pub fn installHooks() void {
     // A meta element's pragma runs when it is inserted into a document.
     dom_module.mutation.registerInsertionStepsCallback(&insertionSteps) catch {};
+    // The "referrer" metadata name runs again when name or content changes.
+    dom_module.attribute_change_steps.install("meta", &attributeChangeSteps);
 }
 
 /// Initialize instance (creates the instance)
@@ -84,9 +87,9 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// attribute is present and represents one of the above states, then the
 /// user agent must run the algorithm appropriate for that state."
 ///
-/// Only the Refresh state is modelled; the other states (content language,
-/// encoding declaration, default style, set-cookie, X-UA-Compatible,
-/// Content-Security-Policy) do nothing here.
+/// The Refresh and Content Security Policy states are modelled; the other
+/// states (content language, encoding declaration, default style,
+/// set-cookie, X-UA-Compatible) do nothing here.
 fn insertionSteps(node: *NodeBase) void {
     if (node.node_type != 1) return;
     // Brand-checked by the instance's state, not by `node.node_name`: an
@@ -98,11 +101,102 @@ fn insertionSteps(node: *NodeBase) void {
     // now in a document tree - not a shadow tree
     // (attr-meta-http-equiv-refresh/not-in-shadow-tree).
     if (!inDocumentTree(node)) return;
+    // The "referrer" metadata name runs for a meta element inserted into the
+    // document.
+    referrerMetadataName(instance);
     const ElementImpl = @import("Element.zig");
     const http_equiv = (ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("http-equiv")) catch return) orelse return;
     // The attribute is an enumerated attribute: its keywords match ASCII
     // case-insensitively.
     if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "refresh")) refreshState(instance);
+    if (std.ascii.eqlIgnoreCase(http_equiv.asSlice(), "content-security-policy")) contentSecurityPolicyState(instance, node);
+}
+
+/// The Content Security Policy state (`http-equiv="content-security-policy"`):
+/// it "enforces a Content Security Policy on a Document".
+///
+/// Spec: https://html.spec.whatwg.org/multipage/semantics.html#attr-meta-http-equiv-content-security-policy
+fn contentSecurityPolicyState(meta: *runtime.Instance, node: *NodeBase) void {
+    // 1. "If the meta element is not a child of a head element, return."
+    const parent = node.parent_node orelse return;
+    if (parent.node_type != 1) return;
+    const parent_instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(parent) orelse return));
+    var parent_name = interfaces.Element.get_localName(parent_instance) catch return;
+    defer parent_name.deinit(parent_instance.ctx.allocator);
+    if (!std.mem.eql(u8, parent_name.asSlice(), "head")) return;
+    // 2. "If the meta element has no content attribute, or if that
+    // attribute's value is the empty string, then return."
+    const content = (interfaces.Element.call_getAttribute(meta, runtime.DOMString.initInterned("content")) catch return) orelse return;
+    if (content.asSlice().len == 0) return;
+    const document = (interfaces.Node.get_ownerDocument(meta) catch return) orelse return;
+    const container = dom_module.policy_containers.of(document) orelse return;
+    const allocator = container.allocator;
+    // 3. Parse a serialized CSP, with a source of "meta" and a disposition of
+    // "enforce".
+    var policy = @import("csp").parsing.parseSerializedCSP(allocator, content.asSlice(), .meta, .enforce) catch return;
+    // 4. "Remove all occurrences of the report-uri, frame-ancestors, and
+    // sandbox directives from policy."
+    for ([_][]const u8{ "report-uri", "frame-ancestors", "sandbox" }) |name| {
+        if (policy.directive_set.items.fetchOrderedRemove(name)) |removed| {
+            var directive = removed.value;
+            directive.deinit();
+        }
+    }
+    // The policy's self-origin: its CSP list's (CSP 2.2) - the URL origin of
+    // the response the document was created from, which a sandboxed
+    // document's opaque origin does not change - else, for a list that came
+    // from no response, the document's origin.
+    policy.self_origin = if (container.csp_list.self_origin) |*origin|
+        @import("csp").Origin.create(allocator, origin.scheme, origin.host, origin.port) catch null
+    else
+        documentSelfOrigin(document, allocator);
+    // 5. "Enforce the policy policy": it joins the document's CSP list.
+    container.csp_list.append(policy) catch policy.deinit();
+}
+
+/// `document`'s origin as a CSP self-origin, through its window's settings
+/// object; null for an opaque one or a document with no window.
+fn documentSelfOrigin(document: *runtime.Instance, allocator: std.mem.Allocator) ?@import("csp").Origin {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return null;
+    const settings = dom_module.global_settings.of(window) orelse return null;
+    const origin = settings.origin(window) catch return null;
+    defer window.ctx.allocator.free(origin);
+    return fetch.internal.policy_container.selfOriginOf(allocator, origin) catch null;
+}
+
+/// The meta element's attribute change steps: HTML's "referrer" metadata
+/// name runs when a meta element "has its name or content attributes
+/// changed".
+fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    _ = old_value;
+    _ = value;
+    if (namespace != null) return;
+    if (std.mem.eql(u8, local_name, "name") or std.mem.eql(u8, local_name, "content")) referrerMetadataName(element);
+}
+
+/// HTML 4.2.5.1, the "referrer" metadata name: "If any meta element element
+/// is inserted into the document, or has its name or content attributes
+/// changed, user agents must run the following algorithm." Removing one
+/// changes nothing, and the last inserted or changed one wins - there is no
+/// tree order.
+fn referrerMetadataName(element: *runtime.Instance) void {
+    const node = instance_bridge.getNodeBase(element) orelse return;
+    // 1. "If element is not in a document tree, then return."
+    if (!inDocumentTree(node)) return;
+    // 2. "If element does not have a name attribute whose value is an ASCII
+    // case-insensitive match for "referrer", then return."
+    const name = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("name")) catch return) orelse return;
+    if (!std.ascii.eqlIgnoreCase(name.asSlice(), "referrer")) return;
+    // 3. "If element does not have a content attribute, or that attribute's
+    // value is the empty string, then return."
+    const content = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("content")) catch return) orelse return;
+    // 4-5. The value, ASCII lowercased, with the legacy values mapped.
+    const policy = fetch.internal.policy_container.referrerPolicyFromMeta(content.asSlice()) orelse return;
+    // 6. "If value is a referrer policy, then set element's node document's
+    // policy container's referrer policy to policy."
+    const document = (interfaces.Node.get_ownerDocument(element) catch return) orelse return;
+    const container = dom_module.policy_containers.of(document) orelse return;
+    container.referrer_policy = policy;
 }
 
 /// Whether `node`'s root is a document: it is in a document tree.

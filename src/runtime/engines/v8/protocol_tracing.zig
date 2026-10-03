@@ -1,5 +1,6 @@
 //! The engine protocol's traced edges (design 4.12, "Platform objects"), as
-//! V8 draws them: `traceChild` and `forgetTracedChild`.
+//! V8 draws them: `traceChild`, `traceValue`, `tracedValue` and
+//! `forgetTracedChild`.
 //!
 //! Blink keeps a platform object's children alive by TRACING them from the
 //! owner (LocalDOMWindow::Trace visits navigator_, TreeScope::Trace visits
@@ -112,6 +113,54 @@ pub fn traceChild(owner: *Instance, child: *Instance, slot: TracedSlot) void {
         // The cache takes the child's Global over, on failure too.
         .unwrapped => |cache| cache.deferEdge(owner, key, child_wrapper) catch {},
         .none => ffi.v8_Global_Dispose(child_wrapper),
+    }
+}
+
+/// engine.traceValue: a private property on `owner`'s wrapper - its global
+/// object, for a Window - holding `value` (a platform object as its wrapper
+/// in its relevant realm), in `traceChild`'s namespace. An owner with no
+/// wrapper yet keeps the value strongly in its realm's wrapper cache until it
+/// gets one, as `traceChild` does - and `tracedValue` reads it there.
+pub fn traceValue(owner: *Instance, value: engine.JSValue, slot: TracedSlot) void {
+    var buffer: [128]u8 = undefined;
+    const key = keyOf(&buffer, slot) orelse return;
+    if (owner.ctx.engine_ctx == null) return;
+    const entered = support.enter(owner.ctx) catch return;
+    defer entered.leave();
+    // Held for the length of the call, so nothing made below collects it.
+    const held = support.ownGlobal(entered, value) catch return;
+    switch (holderOf(owner)) {
+        .object => |holder| {
+            defer ffi.v8_Global_Dispose(holder);
+            defer ffi.v8_Global_Dispose(held);
+            ffi.v8_Object_SetPrivateRef(@ptrCast(holder), key.ptr, @intCast(key.len), held);
+        },
+        // The cache takes the Global over, on failure too.
+        .unwrapped => |cache| cache.deferEdge(owner, key, held) catch {},
+        .none => ffi.v8_Global_Dispose(held),
+    }
+}
+
+/// engine.tracedValue: the private property `traceValue` set on `owner`'s
+/// wrapper, or the value waiting in its realm's wrapper cache for that
+/// wrapper; null when there is neither. Never makes a wrapper.
+pub fn tracedValue(owner: *Instance, slot: TracedSlot) ?engine.Owned {
+    var buffer: [128]u8 = undefined;
+    const key = keyOf(&buffer, slot) orelse return null;
+    if (owner.ctx.engine_ctx == null) return null;
+    const entered = support.enter(owner.ctx) catch return null;
+    defer entered.leave();
+    switch (holderOf(owner)) {
+        .object => |holder| {
+            defer ffi.v8_Global_Dispose(holder);
+            const value = ffi.v8_Object_GetPrivateRef(@ptrCast(holder), key.ptr, @intCast(key.len)) orelse return null;
+            return support.owned(value);
+        },
+        .unwrapped => |cache| {
+            const waiting = cache.deferredEdge(owner, key) orelse return null;
+            return support.owned(ffi.v8_Global_Clone(waiting) orelse return null);
+        },
+        .none => return null,
     }
 }
 

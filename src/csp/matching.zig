@@ -12,14 +12,17 @@ const types = @import("types.zig");
 // URL Matching
 // ============================================================================
 
-/// Check if a URL matches a source list.
-/// Spec: CSP Level 3 § 6.7.2.1
+/// § 6.7.2.7 Does url match source list in origin with redirect count?
 ///
 /// Arguments:
-/// - url_scheme, url_host, url_port, url_path: URL components
-/// - source_list: The source list to match against
-/// - self_origin: Origin for 'self' matching (may be null)
-/// - redirect_count: Number of redirects (affects path matching)
+/// - url_scheme, url_host, url_port, url_path: the URL's parts. A host of
+///   "" is a URL with no host (data:, blob:); a port equal to the scheme's
+///   default port is the URL's null port, as the URL Standard records it.
+/// - source_list: the source list to match against
+/// - self_origin: the policy's self-origin, for 'self' and schemeless
+///   expressions (null: none)
+/// - redirect_count: the request's redirect count (path parts are ignored
+///   after a redirect)
 pub fn doesUrlMatchSourceList(
     url_scheme: []const u8,
     url_host: []const u8,
@@ -29,36 +32,19 @@ pub fn doesUrlMatchSourceList(
     self_origin: ?*const types.Origin,
     redirect_count: u32,
 ) bool {
-    // If source list is empty, nothing matches
-    if (source_list.isEmpty()) {
-        return false;
-    }
-
-    // Check for 'none' - nothing matches 'none'
-    if (source_list.isNone()) {
-        return false;
-    }
-
-    // Check each expression
+    // 2. "If source list is empty, return "Does Not Match"."
+    if (source_list.isEmpty()) return false;
+    // 3. A list holding only 'none' matches nothing.
+    if (source_list.isNone()) return false;
+    // 4. "For each expression of source list": any match is a match.
     for (source_list.expressions.items) |*expr| {
-        if (doesUrlMatchExpression(
-            url_scheme,
-            url_host,
-            url_port,
-            url_path,
-            expr,
-            self_origin,
-            redirect_count,
-        )) {
-            return true;
-        }
+        if (doesUrlMatchExpression(url_scheme, url_host, url_port, url_path, expr, self_origin, redirect_count)) return true;
     }
-
+    // 5. "Return "Does Not Match"."
     return false;
 }
 
-/// Check if a URL matches a single source expression.
-/// Spec: CSP Level 3 § 6.7.2.8
+/// § 6.7.2.8 Does url match expression in origin with redirect count?
 pub fn doesUrlMatchExpression(
     url_scheme: []const u8,
     url_host: []const u8,
@@ -68,193 +54,199 @@ pub fn doesUrlMatchExpression(
     self_origin: ?*const types.Origin,
     redirect_count: u32,
 ) bool {
+    // The URL's port as the URL Standard records it: null for the scheme's
+    // default.
+    const port: ?u16 = if (url_port) |p| (if (getDefaultPort(url_scheme) == p) null else p) else null;
     switch (expr.type) {
-        .keyword_none => return false,
-
-        .keyword_self => {
-            if (self_origin) |origin| {
-                return doesUrlMatchOrigin(url_scheme, url_host, url_port, origin);
-            }
-            return false;
-        },
-
-        .scheme => {
-            if (expr.scheme_part) |scheme| {
-                return doesSchemeMatch(url_scheme, scheme);
-            }
-            return false;
-        },
-
-        .host => {
-            return doesUrlMatchHost(
-                url_scheme,
-                url_host,
-                url_port,
-                url_path,
-                expr,
-                self_origin,
-                redirect_count,
-            );
-        },
-
+        // 1. "*" matches an HTTP(S) URL, or a URL of origin's scheme.
         .wildcard => {
-            // Wildcard (*) matches any URL
-            return true;
+            if (std.ascii.eqlIgnoreCase(url_scheme, "http") or std.ascii.eqlIgnoreCase(url_scheme, "https")) return true;
+            const origin = self_origin orelse return false;
+            return std.ascii.eqlIgnoreCase(url_scheme, origin.scheme);
         },
-
-        // Keywords that don't match URLs - they're checked separately
-        .keyword_unsafe_inline,
-        .keyword_unsafe_eval,
-        .keyword_unsafe_hashes,
-        .keyword_strict_dynamic,
-        .keyword_wasm_unsafe_eval,
-        .keyword_report_sample,
-        .keyword_trusted_types_eval,
-        .keyword_allow_duplicates,
-        => return false,
-
-        // Nonce and hash are checked separately for inline content
-        .nonce, .hash => return false,
-
-        // Policy names are for trusted-types directive, not URL matching
-        .policy_name => return false,
+        // 2. scheme-source: its scheme-part must scheme-part match the URL's
+        // scheme, and then it matches.
+        .scheme => {
+            const scheme = expr.scheme_part orelse return false;
+            return schemePartMatches(trimColon(scheme), url_scheme);
+        },
+        // 2-3. host-source.
+        .host => return doesUrlMatchHostSource(url_scheme, url_host, port, url_path, expr, self_origin, redirect_count),
+        // 4. 'self'.
+        .keyword_self => {
+            const origin = self_origin orelse return false;
+            // 4.1. "If url's scheme is "blob", return "Does Not Match"."
+            if (std.ascii.eqlIgnoreCase(url_scheme, "blob")) return false;
+            // 4.2.1. origin and url's origin are same origin.
+            const origin_port: ?u16 = if (origin.port) |p| (if (getDefaultPort(origin.scheme) == p) null else p) else null;
+            if (url_host.len > 0 and std.ascii.eqlIgnoreCase(url_scheme, origin.scheme) and
+                std.ascii.eqlIgnoreCase(url_host, origin.host) and port == origin_port) return true;
+            // 4.2.2. Same host, ports the same or both default, and the URL
+            // is https/wss, or origin is http and the URL http/ws.
+            if (url_host.len == 0 or !std.ascii.eqlIgnoreCase(url_host, origin.host)) return false;
+            if (port != origin_port) return false;
+            if (std.ascii.eqlIgnoreCase(url_scheme, "https") or std.ascii.eqlIgnoreCase(url_scheme, "wss")) return true;
+            return std.ascii.eqlIgnoreCase(origin.scheme, "http") and
+                (std.ascii.eqlIgnoreCase(url_scheme, "http") or std.ascii.eqlIgnoreCase(url_scheme, "ws"));
+        },
+        // 5. Everything else - the other keywords, nonces, hashes, policy
+        // names - matches no URL.
+        else => return false,
     }
 }
 
-/// Check if URL's scheme matches scheme source.
-/// Spec: CSP Level 3 § 6.7.2.3
-fn doesSchemeMatch(url_scheme: []const u8, scheme_expr: []const u8) bool {
-    // Remove trailing : from scheme expression if present
-    const expr_scheme = if (scheme_expr.len > 0 and scheme_expr[scheme_expr.len - 1] == ':')
-        scheme_expr[0 .. scheme_expr.len - 1]
-    else
-        scheme_expr;
-
-    // Case-insensitive comparison
-    if (std.ascii.eqlIgnoreCase(url_scheme, expr_scheme)) {
-        return true;
-    }
-
-    // http: also matches https: (scheme upgrade)
-    if (std.ascii.eqlIgnoreCase(expr_scheme, "http") and
-        std.ascii.eqlIgnoreCase(url_scheme, "https"))
-    {
-        return true;
-    }
-
-    // ws: also matches wss: (scheme upgrade)
-    if (std.ascii.eqlIgnoreCase(expr_scheme, "ws") and
-        std.ascii.eqlIgnoreCase(url_scheme, "wss"))
-    {
-        return true;
-    }
-
-    return false;
-}
-
-/// Check if URL matches 'self' (same origin).
-fn doesUrlMatchOrigin(
+/// Step 3 of § 6.7.2.8, for a host-source `expr`.
+fn doesUrlMatchHostSource(
     url_scheme: []const u8,
     url_host: []const u8,
-    url_port: ?u16,
-    origin: *const types.Origin,
-) bool {
-    // Compare scheme (case-insensitive)
-    if (!std.ascii.eqlIgnoreCase(url_scheme, origin.scheme)) {
-        return false;
-    }
-
-    // Compare host (case-insensitive)
-    if (!std.ascii.eqlIgnoreCase(url_host, origin.host)) {
-        return false;
-    }
-
-    // Port comparison (consider default ports)
-    const url_effective_port = url_port orelse getDefaultPort(url_scheme);
-    const origin_effective_port = origin.port orelse getDefaultPort(origin.scheme);
-
-    return url_effective_port == origin_effective_port;
-}
-
-/// Check if URL matches a host source expression.
-/// Spec: CSP Level 3 § 6.7.2.5-6.7.2.8
-fn doesUrlMatchHost(
-    url_scheme: []const u8,
-    url_host: []const u8,
-    url_port: ?u16,
+    port: ?u16,
     url_path: []const u8,
     expr: *const types.SourceExpression,
     self_origin: ?*const types.Origin,
     redirect_count: u32,
 ) bool {
-    // If expression has scheme, it must match
+    // 2.1. A scheme-part must scheme-part match the URL's scheme.
     if (expr.scheme_part) |scheme| {
-        if (!doesSchemeMatch(url_scheme, scheme)) {
-            return false;
-        }
-    } else {
-        // No scheme in expression - use default rules
-        // http: and https: are acceptable, ws: and wss: are acceptable
-        if (!std.ascii.eqlIgnoreCase(url_scheme, "http") and
-            !std.ascii.eqlIgnoreCase(url_scheme, "https") and
-            !std.ascii.eqlIgnoreCase(url_scheme, "ws") and
-            !std.ascii.eqlIgnoreCase(url_scheme, "wss"))
-        {
-            // For other schemes, must match self-origin scheme
-            if (self_origin) |origin| {
-                if (!std.ascii.eqlIgnoreCase(url_scheme, origin.scheme)) {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
+        if (!schemePartMatches(trimColon(scheme), url_scheme)) return false;
     }
-
-    // Host matching
-    if (expr.host_part) |host_expr| {
-        // Wildcard host (*.example.com)
-        if (host_expr.len > 2 and host_expr[0] == '*' and host_expr[1] == '.') {
-            const suffix = host_expr[1..]; // .example.com
-
-            if (!std.ascii.endsWithIgnoreCase(url_host, suffix)) {
-                return false;
-            }
-
-            // Ensure it's a subdomain, not just suffix match
-            // url_host must be longer than suffix (minus the dot)
-            if (url_host.len <= suffix.len - 1) {
-                return false;
-            }
+    // 3.1. "If url's host is null, return "Does Not Match"."
+    if (url_host.len == 0) return false;
+    // 3.2. With no scheme-part, origin's scheme must scheme-part match the
+    // URL's scheme.
+    if (expr.scheme_part == null) {
+        if (self_origin) |origin| {
+            if (!schemePartMatches(origin.scheme, url_scheme)) return false;
         } else {
-            // Exact host match (case-insensitive)
-            if (!std.ascii.eqlIgnoreCase(url_host, host_expr)) {
-                return false;
-            }
+            // Deviation, stated: a policy whose self-origin is not known
+            // (none was recorded as it was delivered) lets a schemeless
+            // host-source match the HTTP(S) and WS(S) schemes, as this
+            // matcher always did.
+            const web = std.ascii.eqlIgnoreCase(url_scheme, "http") or std.ascii.eqlIgnoreCase(url_scheme, "https") or
+                std.ascii.eqlIgnoreCase(url_scheme, "ws") or std.ascii.eqlIgnoreCase(url_scheme, "wss");
+            if (!web) return false;
         }
     }
-
-    // Port matching
-    if (expr.port_part) |expr_port| {
-        const url_effective_port = url_port orelse getDefaultPort(url_scheme);
-        if (url_effective_port != expr_port) {
-            return false;
-        }
+    // 3.3. The host-part must host-part match the URL's host.
+    const host_part = expr.host_part orelse return false;
+    if (!hostPartMatches(host_part, url_host)) return false;
+    // 3.4-3.5. The port-part (null when absent) must port-part match.
+    if (!portPartMatches(expr, port, url_scheme)) return false;
+    // 3.6. A non-empty path-part, with redirect count 0, must path-part
+    // match the URL's path.
+    if (expr.path_part) |path_part| {
+        if (path_part.len > 0 and redirect_count == 0 and !pathPartMatches(path_part, url_path)) return false;
     }
-
-    // Path matching
-    // Per spec: if redirect_count > 0, path matching is relaxed
-    if (expr.path_part) |path_expr| {
-        if (redirect_count == 0) {
-            // Exact path prefix matching
-            if (!std.mem.startsWith(u8, url_path, path_expr)) {
-                return false;
-            }
-        }
-        // If redirect_count > 0, path matching is skipped
-    }
-
+    // 3.7. "Return "Matches"."
     return true;
+}
+
+fn trimColon(scheme: []const u8) []const u8 {
+    return if (scheme.len > 0 and scheme[scheme.len - 1] == ':') scheme[0 .. scheme.len - 1] else scheme;
+}
+
+/// § 6.7.2.9 scheme-part matching: `a` (an expression's) matches `b` (a
+/// URL's) when they are equal, or `b` is the secure upgrade of `a`.
+pub fn schemePartMatches(a: []const u8, b: []const u8) bool {
+    if (std.ascii.eqlIgnoreCase(a, b)) return true;
+    if (std.ascii.eqlIgnoreCase(a, "http") and std.ascii.eqlIgnoreCase(b, "https")) return true;
+    if (std.ascii.eqlIgnoreCase(a, "ws") and (std.ascii.eqlIgnoreCase(b, "wss") or std.ascii.eqlIgnoreCase(b, "http") or std.ascii.eqlIgnoreCase(b, "https"))) return true;
+    if (std.ascii.eqlIgnoreCase(a, "wss") and std.ascii.eqlIgnoreCase(b, "https")) return true;
+    return false;
+}
+
+/// § 6.7.2.10 host-part matching.
+fn hostPartMatches(pattern: []const u8, host: []const u8) bool {
+    // 1. "If host is not a domain, return "Does Not Match"": an IP address
+    // (IPv6 in brackets, or all digits and dots) is not one.
+    if (host.len > 0 and host[0] == '[') return false;
+    if (std.mem.indexOfNone(u8, host, "0123456789.") == null) return false;
+    // 2. "*" matches any domain.
+    if (std.mem.eql(u8, pattern, "*")) return true;
+    // 3. "*.example.com": the host ends with ".example.com".
+    if (pattern.len >= 2 and pattern[0] == '*' and pattern[1] == '.') {
+        return std.ascii.endsWithIgnoreCase(host, pattern[1..]);
+    }
+    // 4-5. Otherwise an ASCII case-insensitive match.
+    return std.ascii.eqlIgnoreCase(pattern, host);
+}
+
+/// § 6.7.2.11 port-part matching, given the URL's port (null for its
+/// scheme's default) and scheme.
+fn portPartMatches(expr: *const types.SourceExpression, port: ?u16, scheme: []const u8) bool {
+    // 2. "If input is equal to "*", return "Matches"."
+    if (expr.port_wildcard) return true;
+    // 3-4. normalizedInput equal to url's port.
+    const input = expr.port_part;
+    if (input == port) return true;
+    // 5. "If url's port is null": normalizedInput equal to the default port.
+    if (port == null) {
+        if (getDefaultPort(scheme)) |default_port| {
+            if (input != null and input.? == default_port) return true;
+        }
+    }
+    // 6. "Return "Does Not Match"."
+    return false;
+}
+
+/// § 6.7.2.12 path-part matching.
+fn pathPartMatches(path_a: []const u8, path_b: []const u8) bool {
+    // 1. An empty path A matches.
+    if (path_a.len == 0) return true;
+    // 2. "/" matches an empty path B.
+    if (std.mem.eql(u8, path_a, "/") and path_b.len == 0) return true;
+    // 3. Exact match unless path A ends with "/".
+    const exact_match = path_a[path_a.len - 1] != '/';
+    // 4. Strictly split both on "/".
+    const count_a = std.mem.count(u8, path_a, "/") + 1;
+    const count_b = std.mem.count(u8, path_b, "/") + 1;
+    // 5. Path list A longer than path list B: no match.
+    if (count_a > count_b) return false;
+    // 6. An exact match needs as many pieces.
+    if (exact_match and count_a != count_b) return false;
+    // 7. Otherwise the final, empty, piece of A is dropped.
+    const pieces_a = if (exact_match) count_a else count_a - 1;
+    // 8. Each piece of A, percent-decoded, equals B's.
+    var it_a = std.mem.splitScalar(u8, path_a, '/');
+    var it_b = std.mem.splitScalar(u8, path_b, '/');
+    var i: usize = 0;
+    while (i < pieces_a) : (i += 1) {
+        const a = it_a.next() orelse return false;
+        const b = it_b.next() orelse return false;
+        if (!percentDecodedEql(a, b)) return false;
+    }
+    // 9. "Return "Matches"."
+    return true;
+}
+
+/// Whether `a` and `b` percent-decode to the same bytes.
+fn percentDecodedEql(a: []const u8, b: []const u8) bool {
+    var ia: usize = 0;
+    var ib: usize = 0;
+    while (true) {
+        const ca = nextDecoded(a, &ia);
+        const cb = nextDecoded(b, &ib);
+        if (ca == null and cb == null) return true;
+        if (ca == null or cb == null or ca.? != cb.?) return false;
+    }
+}
+
+fn nextDecoded(s: []const u8, i: *usize) ?u8 {
+    if (i.* >= s.len) return null;
+    const c = s[i.*];
+    if (c == '%' and i.* + 2 < s.len) {
+        const hi = std.fmt.charToDigit(s[i.* + 1], 16) catch {
+            i.* += 1;
+            return c;
+        };
+        const lo = std.fmt.charToDigit(s[i.* + 2], 16) catch {
+            i.* += 1;
+            return c;
+        };
+        i.* += 3;
+        return @as(u8, hi) * 16 + lo;
+    }
+    i.* += 1;
+    return c;
 }
 
 // ============================================================================
@@ -359,40 +351,68 @@ pub fn getDefaultPort(scheme: []const u8) ?u16 {
 // Tests
 // ============================================================================
 
-test "doesSchemeMatch - exact match" {
-    try std.testing.expect(doesSchemeMatch("https", "https:"));
-    try std.testing.expect(doesSchemeMatch("http", "http:"));
-    try std.testing.expect(doesSchemeMatch("data", "data:"));
+test "scheme-part matching: equal, or the secure upgrade of the expression's" {
+    try std.testing.expect(schemePartMatches("https", "https"));
+    try std.testing.expect(schemePartMatches("data", "DATA"));
+    try std.testing.expect(schemePartMatches("http", "https"));
+    try std.testing.expect(!schemePartMatches("https", "http"));
+    try std.testing.expect(schemePartMatches("ws", "wss"));
+    try std.testing.expect(schemePartMatches("ws", "https"));
+    try std.testing.expect(schemePartMatches("wss", "https"));
+    try std.testing.expect(!schemePartMatches("wss", "ws"));
 }
 
-test "doesSchemeMatch - scheme upgrade" {
-    // http: matches https:
-    try std.testing.expect(doesSchemeMatch("https", "http:"));
-    try std.testing.expect(!doesSchemeMatch("http", "https:"));
-
-    // ws: matches wss:
-    try std.testing.expect(doesSchemeMatch("wss", "ws:"));
-    try std.testing.expect(!doesSchemeMatch("ws", "wss:"));
+fn listOf(expressions: []const types.SourceExpression) types.SourceList {
+    var list = types.SourceList.init(std.testing.allocator);
+    for (expressions) |e| list.append(e) catch unreachable;
+    return list;
 }
 
-test "doesSchemeMatch - case insensitive" {
-    try std.testing.expect(doesSchemeMatch("HTTPS", "https:"));
-    try std.testing.expect(doesSchemeMatch("https", "HTTPS:"));
+test "'self': same origin, or a secure upgrade on the same host and port; never blob:" {
+    const origin = types.Origin.createBorrowed("http", "a.test", 8000);
+    var list = listOf(&.{types.SourceExpression.createBorrowed(.keyword_self, "'self'")});
+    defer list.deinit();
+    try std.testing.expect(doesUrlMatchSourceList("http", "a.test", 8000, "/w.js", &list, &origin, 0));
+    try std.testing.expect(doesUrlMatchSourceList("https", "a.test", 8000, "/w.js", &list, &origin, 0));
+    try std.testing.expect(doesUrlMatchSourceList("ws", "a.test", 8000, "/", &list, &origin, 0));
+    try std.testing.expect(!doesUrlMatchSourceList("https", "a.test", 8443, "/w.js", &list, &origin, 0));
+    try std.testing.expect(!doesUrlMatchSourceList("http", "www1.a.test", 8000, "/w.js", &list, &origin, 0));
+    try std.testing.expect(!doesUrlMatchSourceList("data", "", null, "text/javascript,", &list, &origin, 0));
+    try std.testing.expect(!doesUrlMatchSourceList("blob", "", null, "http://a.test:8000/uuid", &list, &origin, 0));
 }
 
-test "doesUrlMatchOrigin - same origin" {
-    const origin = types.Origin.createBorrowed("https", "example.com", 443);
-
-    try std.testing.expect(doesUrlMatchOrigin("https", "example.com", 443, &origin));
-    try std.testing.expect(doesUrlMatchOrigin("https", "example.com", null, &origin)); // default port
+test "'*' matches HTTP(S) URLs and URLs of the origin's scheme, not data:" {
+    const origin = types.Origin.createBorrowed("http", "a.test", 8000);
+    var list = listOf(&.{types.SourceExpression.createBorrowed(.wildcard, "*")});
+    defer list.deinit();
+    try std.testing.expect(doesUrlMatchSourceList("https", "b.test", 8443, "/", &list, &origin, 0));
+    try std.testing.expect(!doesUrlMatchSourceList("data", "", null, "x", &list, &origin, 0));
+    try std.testing.expect(!doesUrlMatchSourceList("blob", "", null, "x", &list, &origin, 0));
+    try std.testing.expect(!doesUrlMatchSourceList("ws", "a.test", 8000, "/", &list, &origin, 0));
 }
 
-test "doesUrlMatchOrigin - different origin" {
-    const origin = types.Origin.createBorrowed("https", "example.com", 443);
+test "a host-source without a port matches only the scheme's default port; ':*' any" {
+    const origin = types.Origin.createBorrowed("https", "a.test", null);
+    var plain = types.SourceExpression.createBorrowed(.host, "b.test");
+    plain.host_part = "b.test";
+    var any_port = types.SourceExpression.createBorrowed(.host, "c.test:*");
+    any_port.host_part = "c.test";
+    any_port.port_wildcard = true;
+    var list = listOf(&.{ plain, any_port });
+    defer list.deinit();
+    try std.testing.expect(doesUrlMatchSourceList("https", "b.test", 443, "/", &list, &origin, 0));
+    try std.testing.expect(doesUrlMatchSourceList("https", "b.test", null, "/", &list, &origin, 0));
+    try std.testing.expect(!doesUrlMatchSourceList("https", "b.test", 8443, "/", &list, &origin, 0));
+    try std.testing.expect(doesUrlMatchSourceList("https", "c.test", 8443, "/", &list, &origin, 0));
+}
 
-    try std.testing.expect(!doesUrlMatchOrigin("http", "example.com", 80, &origin)); // wrong scheme
-    try std.testing.expect(!doesUrlMatchOrigin("https", "other.com", 443, &origin)); // wrong host
-    try std.testing.expect(!doesUrlMatchOrigin("https", "example.com", 8080, &origin)); // wrong port
+test "path-part matching: a trailing slash is a prefix, otherwise exact, after percent-decoding" {
+    try std.testing.expect(pathPartMatches("/scripts/", "/scripts/app.js"));
+    try std.testing.expect(!pathPartMatches("/scripts/", "/other/app.js"));
+    try std.testing.expect(pathPartMatches("/a.js", "/a.js"));
+    try std.testing.expect(!pathPartMatches("/a.js", "/a.js/b"));
+    try std.testing.expect(pathPartMatches("/a%2Ejs", "/a.js"));
+    try std.testing.expect(pathPartMatches("/", ""));
 }
 
 test "doesNonceMatch" {

@@ -39,9 +39,15 @@ pub const Settings = struct {
     caches: ?*const fn (global: *runtime.Instance) anyerror!*runtime.Instance = null,
     /// The global's Performance; null where this kind of global has none yet.
     performance: ?*const fn (global: *runtime.Instance) anyerror!*runtime.Instance = null,
+    /// The global's Crypto, retained as a traced child of this global.
+    crypto: ?*const fn (global: *runtime.Instance) anyerror!*runtime.Instance = null,
     /// The user agent's cookie jar, as the global's settings object reaches
     /// it - null where there is none (a global no Browser made).
     cookie_jar: ?*const fn (global: *runtime.Instance) ?*cookiestore.CookieJar = null,
+    /// The settings object's policy container (HTML 7.1.6): a Window's
+    /// associated Document's, a WorkerGlobalScope's own. Borrowed; null where
+    /// the global has none.
+    policy_container: ?*const fn (global: *runtime.Instance) ?*const fetch.internal.PolicyContainer = null,
 };
 
 /// The cookie jar `global`'s settings object reaches, if any.
@@ -84,6 +90,10 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     // A Window stands in for its navigable's traversable.
     if (std.mem.eql(u8, global.vtable.name, "Window")) client.request.traversable = @ptrCast(global);
     client.request.cookie_jar = cookieJarOf(global);
+    // The policy container "populate request from client" step 3 clones.
+    if (settings.policy_container) |container_of| client.request.policy_container = container_of(global);
+    // CSP 2.4.2: the global its requests' violations are reported to.
+    client.request.csp_violation_reporter = @import("csp_violations.zig").reporterFor(global);
     return client;
 }
 
