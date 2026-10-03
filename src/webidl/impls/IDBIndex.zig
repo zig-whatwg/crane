@@ -1,6 +1,9 @@
 //! Implementation for IDBIndex interface
 
 const std = @import("std");
+const dom = @import("dom");
+const engine = @import("engine");
+const storage = @import("storage");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -20,7 +23,27 @@ pub const ImplError = error{
 /// Implementations can replace this with a real struct containing:
 /// - Private data not exposed via WebIDL attributes
 /// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    index: ?*storage.indexeddb.IDBIndex = null,
+    store: ?*runtime.Instance = null,
+};
+pub fn installHooks() void {
+    dom.indexeddb.installIndexes(.{ .attach = attachIndex });
+}
+fn attachIndex(instance: *runtime.Instance, index: *storage.indexeddb.IDBIndex, store: *runtime.Instance) !void {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    std.debug.assert(internal.index == null);
+    index.object_store.retain();
+    index.object_store.transaction.retain();
+    internal.index = index;
+    internal.store = store;
+    engine.traceChild(instance, store, .{ .name = "idb.store" });
+}
+fn indexState(instance: *runtime.Instance) !*storage.indexeddb.IDBIndex {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    return internal.index orelse error.InvalidStateError;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,44 +53,55 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+    const state = instance.getState(StateType);
+    state.own._internal = null;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    state.own._internal = internal;
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        engine.forgetTracedChild(instance, .{ .name = "idb.store" });
+        if (internal.index) |index| {
+            const store = index.object_store;
+            const transaction = store.transaction;
+            store.deinit();
+            transaction.deinit();
+        }
+        internal.allocator.destroy(internal);
+        state.own._internal = null;
+    }
 }
 
 /// Getter for name
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned((try indexState(instance)).name);
 }
 
 /// Getter for objectStore
 pub fn get_objectStore(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return (instance.getState(State).own._internal orelse return error.InvalidStateError).store orelse error.InvalidStateError;
 }
 
 /// Getter for keyPath
 pub fn get_keyPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    const index = try indexState(instance);
+    return if (index.key_path) |path| runtime.JSValue.fromStringRef(path) else .jsNull;
 }
 
 /// Getter for multiEntry
 pub fn get_multiEntry(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try indexState(instance)).multi_entry;
 }
 
 /// Getter for unique
 pub fn get_unique(instance: *runtime.Instance) anyerror!bool {
-    _ = instance;
-    return error.NotImplemented;
+    return (try indexState(instance)).unique;
 }
 
 /// Setter for name

@@ -199,3 +199,11 @@ pub fn getStrings(instance: *runtime.Instance) ?[]const []const u8 {
     const internal = getInternal(instance) orelse return null;
     return internal.strings.items;
 }
+
+pub fn installHooks() void {
+    @import("dom").string_lists.install(.{ .create = struct {
+        fn create(ctx: runtime.Context, strings: []const []const u8) !*runtime.Instance {
+            return createFromSlice(ctx.allocator, ctx, strings);
+        }
+    }.create });
+}

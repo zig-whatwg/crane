@@ -54,6 +54,7 @@ const std = @import("std");
 pub const key = @import("key.zig");
 pub const IDBKey = key.IDBKey;
 pub const IDBKeyType = key.IDBKeyType;
+pub const RecordSnapshot = @import("record_snapshot.zig").RecordSnapshot;
 pub const compareKeys = key.compare;
 
 pub const key_range = @import("key_range.zig");

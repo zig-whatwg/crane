@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const dom = @import("dom");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -43,7 +44,7 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    const instance = try interfaces.Event.initWithState(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
     const state = instance.getState(StateType);
@@ -67,6 +68,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.deinit(internal.allocator);
         state.own._internal = null;
     }
+    interfaces.Event.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
@@ -75,34 +77,17 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventInitDict: webidl.Opt(dictionaries.IDBVersionChangeEventInit)) !*runtime.Instance {
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &IDBVersionChangeEventInterface.vtable, ctx);
-    errdefer deinit(instance);
+    errdefer runtime.Instance.deinit(instance);
 
     const state = instance.getState(State);
     const internal = state.own._internal.?;
 
-    // Initialize Event base - set the type on the event base state
-    // The Event's type field is stored in state.base.own (Event.State's own fields)
-
-    state.base.own.type = try @"type".clone(ctx.allocator);
-
-    // Initialize Event properties from eventInitDict
-    // IDBVersionChangeEventInit inherits from EventInit (bubbles, cancelable are in .base)
-    if (eventInitDict.wasPassed()) {
-        state.base.own.bubbles = eventInitDict.value.base.bubbles orelse false;
-        state.base.own.cancelable = eventInitDict.value.base.cancelable orelse false;
-        internal.old_version = eventInitDict.value.oldVersion orelse 0;
-        internal.new_version = eventInitDict.value.newVersion;
-    } else {
-        state.base.own.bubbles = false;
-        state.base.own.cancelable = false;
-        internal.old_version = 0;
-        internal.new_version = null;
-    }
-
-    // Create the INHERITED Event internal state and set the initialized flag.
-    // Without it dispatchEvent throws InvalidStateError, so the event can be
-    // constructed but never dispatched. Same thing MouseEvent does by hand.
-    try webidl.utils.initEventBase(&state.base.own, runtime.ArenaAllocator.get(), ctx.allocator);
+    const dictionary = if (eventInitDict.wasPassed()) eventInitDict.value else dictionaries.IDBVersionChangeEventInit{ .base = .{} };
+    internal.old_version = dictionary.oldVersion orelse 0;
+    internal.new_version = dictionary.newVersion;
+    // DOM 2.5 inner event creation steps: inherited initialized flag,
+    // timestamp, type, bubbles, cancelable and composed are the Event owner's.
+    try dom.event_construction.innerEventCreationSteps(instance, @"type", dom.event_construction.eventInitFrom(dictionary.base));
 
     return instance;
 }

@@ -214,7 +214,7 @@ fn promiseRejectionTracker(host: ?*anyopaque, realm: runtime.Context, promise: e
 /// frames' share one, a worker's is its own. Every tracked global used to
 /// be notified at every checkpoint, which once workers track rejections too
 /// would notify the page's at a worker's.
-fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
+pub fn afterMicrotaskCheckpoint(host: ?*anyopaque, agent: *engine.Agent) void {
     _ = host;
     var i: usize = 0;
     while (i < tracked.items.len) {

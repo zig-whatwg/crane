@@ -7,6 +7,8 @@
 //! IDBObjectStore represents an object store in a database. It provides CRUD operations.
 
 const std = @import("std");
+const dom = @import("dom");
+const engine = @import("engine");
 const webidl = @import("webidl");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -43,9 +45,23 @@ pub const InternalState = struct {
 
     /// Parent transaction instance
     transaction: ?*runtime.Instance,
+    index_wrappers: std.ArrayListUnmanaged(IndexWrapper) = .empty,
+    next_index_slot: usize = 0,
+
+    const IndexWrapper = struct {
+        index: *storage.indexeddb.IDBIndex,
+        instance: *runtime.Instance,
+        slot: []const u8,
+    };
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        // Don't destroy backend store - it's owned by the database
+        if (self.store) |store| {
+            const transaction = store.transaction;
+            store.deinit();
+            transaction.deinit();
+        }
+        for (self.index_wrappers.items) |wrapper| allocator.free(wrapper.slot);
+        self.index_wrappers.deinit(allocator);
         allocator.destroy(self);
     }
 };
@@ -69,6 +85,8 @@ pub fn init(
     internal.allocator = allocator;
     internal.store = null;
     internal.transaction = null;
+    internal.index_wrappers = .empty;
+    internal.next_index_slot = 0;
 
     return instance;
 }
@@ -77,10 +95,27 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        engine.forgetTracedChild(instance, .{ .name = "idb.transaction" });
+        for (internal.index_wrappers.items) |wrapper|
+            engine.forgetTracedChild(instance, .{ .name = wrapper.slot });
         internal.deinit(internal.allocator);
         state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+}
+
+pub fn installHooks() void {
+    dom.indexeddb.installStores(.{ .attach = attachStore });
+}
+fn attachStore(instance: *runtime.Instance, store: *BackendObjectStore, transaction: *runtime.Instance, transfer: bool) !void {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    std.debug.assert(internal.store == null);
+    store.retain();
+    store.transaction.retain();
+    if (transfer) store.releaseHeapOwnership();
+    internal.store = store;
+    internal.transaction = transaction;
+    engine.traceChild(instance, transaction, .{ .name = "idb.transaction" });
 }
 
 /// Getter for name
@@ -97,13 +132,14 @@ pub fn get_keyPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
 
-    // Get key path from backend
-    if (store.getKeyPathString()) |_| {
-        // TODO: Convert to JS value
-        return error.InvalidState;
+    if (store.getKeyPathString()) |path| return runtime.JSValue.fromStringRef(path);
+    if (store.getKeyPathArray()) |paths| {
+        const values = try internal.allocator.alloc(runtime.JSValue, paths.len);
+        defer internal.allocator.free(values);
+        for (paths, 0..) |path, i| values[i] = runtime.JSValue.fromStringRef(path);
+        return (try engine.createSequenceOfValues(instance.ctx, values)).take();
     }
-    // Return null/undefined for no key path
-    return error.InvalidState;
+    return .jsNull;
 }
 
 /// Getter for indexNames
@@ -112,9 +148,15 @@ pub fn get_indexNames(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = state.own._internal orelse return error.InvalidState;
     const store = internal.store orelse return error.InvalidState;
 
-    _ = store.indexNames() catch return error.OutOfMemory;
-    // TODO: Create DOMStringList from names
-    return error.InvalidState;
+    const names = try store.indexNames();
+    defer store.allocator.free(names);
+    // create a sorted name list step 1: UTF-16 code unit order.
+    std.mem.sort([]const u8, names, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return storage.indexeddb.key.compareStrings(a, b) < 0;
+        }
+    }.lessThan);
+    return dom.string_lists.create(instance.ctx, names);
 }
 
 /// Getter for transaction
@@ -421,20 +463,25 @@ pub fn call_index(instance: *runtime.Instance, name: runtime.DOMString) anyerror
 
     const name_slice = name.asSlice();
 
-    const index = store.index(name_slice) catch |err| {
-        return switch (err) {
-            error.NotFoundError => error.NotFound,
-            error.InvalidStateError => error.InvalidState,
-            else => error.InvalidState,
-        };
-    };
+    // index steps 3-5: validate deletion, finished state, and the name.
+    const index = try store.index(name_slice);
+    // Step 6: preserve identity for this store handle.
+    return wrapIndex(instance, internal, index);
+}
 
-    const index_instance = interfaces.IDBIndex.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    _ = index;
-    return index_instance;
+fn wrapIndex(instance: *runtime.Instance, internal: *InternalState, index: *storage.indexeddb.IDBIndex) !*runtime.Instance {
+    for (internal.index_wrappers.items) |wrapper|
+        if (wrapper.index == index) return wrapper.instance;
+    try internal.index_wrappers.ensureUnusedCapacity(internal.allocator, 1);
+    const slot = try std.fmt.allocPrint(internal.allocator, "idb.index.{d}", .{internal.next_index_slot});
+    errdefer internal.allocator.free(slot);
+    const wrapper = try interfaces.IDBIndex.init(internal.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(wrapper);
+    try dom.indexeddb.attachIndex(wrapper, index, instance);
+    internal.index_wrappers.appendAssumeCapacity(.{ .index = index, .instance = wrapper, .slot = slot });
+    internal.next_index_slot += 1;
+    engine.traceChild(instance, wrapper, .{ .name = slot });
+    return wrapper;
 }
 
 /// Operation: createIndex
@@ -461,12 +508,7 @@ pub fn call_createIndex(instance: *runtime.Instance, name: runtime.DOMString, ke
         };
     };
 
-    const index_instance = interfaces.IDBIndex.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    _ = index;
-    return index_instance;
+    return wrapIndex(instance, internal, index);
 }
 
 /// Operation: deleteIndex
@@ -477,12 +519,17 @@ pub fn call_deleteIndex(instance: *runtime.Instance, name: runtime.DOMString) an
 
     const name_slice = name.asSlice();
 
-    store.deleteIndex(name_slice) catch |err| {
-        return switch (err) {
-            error.NotFoundError => error.NotFound,
-            error.InvalidStateError => error.InvalidState,
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            else => error.InvalidState,
-        };
-    };
+    try store.deleteIndex(name_slice);
+    // Remove the cache edge; script may still keep the deleted index itself.
+    var i: usize = 0;
+    while (i < internal.index_wrappers.items.len) {
+        const wrapper = internal.index_wrappers.items[i];
+        if (!wrapper.index.deleted) {
+            i += 1;
+            continue;
+        }
+        _ = internal.index_wrappers.orderedRemove(i);
+        engine.forgetTracedChild(instance, .{ .name = wrapper.slot });
+        internal.allocator.free(wrapper.slot);
+    }
 }
