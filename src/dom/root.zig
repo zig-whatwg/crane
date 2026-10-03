@@ -88,6 +88,10 @@ pub const navigation_history_entries = @import("navigation_history_entries.zig")
 pub const history_traversal = @import("history_traversal.zig");
 pub const auxiliary_navigables = @import("auxiliary_navigables.zig");
 pub const global_settings = @import("global_settings.zig");
+pub const policy_containers = @import("policy_containers.zig");
+/// CSP 5.5 report a violation: the securitypolicyviolation event at the
+/// global's side.
+pub const csp_violations = @import("csp_violations.zig");
 pub const fetch_objects = @import("fetch_objects.zig");
 pub const blob_bytes = @import("blob_bytes.zig");
 pub const names = @import("names.zig");

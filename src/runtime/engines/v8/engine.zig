@@ -15,6 +15,7 @@ const EngineError = runtime.EngineError;
 const ffi = @import("ffi.zig");
 const js_scope = @import("js_scope.zig");
 const v8_conversions = @import("conversions.zig");
+const context_manager = @import("context_manager.zig");
 const pointer_tag = @import("pointer_tag.zig");
 const TaggedPointer = pointer_tag.TaggedPointer;
 const DebugAssertions = pointer_tag.DebugAssertions;
@@ -46,14 +47,28 @@ pub fn v8CreatePromise(
     const resolver = ffi.v8_PromiseResolver_New(context) orelse
         return EngineError.PromiseError;
 
-    const promise = ffi.v8_PromiseResolver_GetPromise(resolver) orelse {
-        ffi.v8_PromiseResolver_Dispose(resolver);
-        return EngineError.PromiseError;
-    };
+    errdefer ffi.v8_Global_Dispose(@ptrCast(resolver));
+    const promise = ffi.v8_PromiseResolver_GetPromise(resolver) orelse return EngineError.PromiseError;
+    errdefer ffi.v8_Global_Dispose(@ptrCast(promise));
 
     // Allocate handle to track the promise
     const handle = allocator.create(V8PromiseHandle) catch
         return EngineError.OutOfMemory;
+
+    // Both handles are tagged with the realm the promise is made in. If that
+    // realm is detached - its navigable destroyed, or its document replaced
+    // by a navigation - its detach keeps them by an edge from its global
+    // object instead of as roots (protocol_realms,
+    // v8_Object_WeakenTaggedHandles): a capability that realm's own objects
+    // keep, such as a navigation API method tracker's, which HTML leaves
+    // ongoing on a document a cross-document navigation left, must not keep
+    // the realm forever. A collected realm's capability then reads empty, and
+    // settling it does nothing (no one can observe the promise). Released
+    // through v8_Global_Dispose, which untags.
+    if (context_manager.keyOf(context)) |key| {
+        ffi.v8_Global_TagRealm(@ptrCast(resolver), key);
+        ffi.v8_Global_TagRealm(@ptrCast(promise), key);
+    }
 
     handle.* = .{
         .resolver = resolver,
@@ -73,6 +88,8 @@ pub fn v8ResolvePromise(
 ) EngineError!void {
     _ = engine_ctx;
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
+    // Its realm was collected: the promise with it - nothing to settle.
+    if (promiseCollected(handle)) return;
 
     // Convert value to V8 Value, untagging if necessary
     const v8_value: *ffi.Value = if (value) |v| blk: {
@@ -87,6 +104,14 @@ pub fn v8ResolvePromise(
     if (!ffi.v8_PromiseResolver_Resolve(handle.resolver, handle.context, v8_value)) {
         return EngineError.PromiseError;
     }
+}
+
+/// Whether the capability's promise is gone: its realm was detached and
+/// collected, and the handles its detach made weak read empty (see
+/// v8CreatePromise). Settling it is then unobservable, and must not enter its
+/// realm's context, which may be gone too.
+pub fn promiseCollected(handle: *const V8PromiseHandle) bool {
+    return ffi.v8_Global_IsEmpty(@ptrCast(handle.resolver));
 }
 
 /// Get the V8 Promise object to return to JavaScript
@@ -104,7 +129,9 @@ pub fn v8DestroyPromiseHandle(promise_handle: *anyopaque, allocator: std.mem.All
     // handle is gone, and a Global to the resolver keeps the promise - and its
     // page - alive, whatever the GC would do otherwise. The promise's own
     // handle is not: getPromiseObject gave it to the caller, which returns it.
-    ffi.v8_PromiseResolver_Dispose(handle.resolver);
+    // v8_Global_Dispose, not v8_PromiseResolver_Dispose: it also drops the
+    // realm tag v8CreatePromise put on it.
+    ffi.v8_Global_Dispose(@ptrCast(handle.resolver));
     allocator.destroy(handle);
 }
 
@@ -214,6 +241,8 @@ pub fn v8StructuredDeserialize(realm: runtime.Context, bytes: []const u8) Engine
 
 pub fn v8RejectPromiseWithValue(promise_handle: *anyopaque, value: runtime.JSValue) EngineError!void {
     const handle: *V8PromiseHandle = @ptrCast(@alignCast(promise_handle));
+    // Its realm was collected: the promise with it - nothing to settle.
+    if (promiseCollected(handle)) return;
     const scope = js_scope.JsScope.initFromV8Context(handle.context) orelse return EngineError.OperationFailed;
     defer scope.deinit();
     const reason = v8_conversions.toV8Value(runtime.JSValue, handle.isolate, handle.context, value) catch

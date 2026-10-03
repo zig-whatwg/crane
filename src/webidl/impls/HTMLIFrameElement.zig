@@ -402,6 +402,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
         return null;
     };
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
+    givePolicyContainer(document_instance, browsing_ctx_ptr);
     // HTML "create a new browsing context and document" step 15: the initial
     // about:blank document's type is "html" and its content type
     // "text/html". Set before the elements below are created, which it makes
@@ -526,6 +527,7 @@ fn parseHtmlForIframe(
     document_internals.setDocumentType(document_instance, .html) catch {};
     document_internals.setContentType(document_instance, "text/html") catch {};
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
+    givePolicyContainer(document_instance, browsing_ctx_ptr);
 
     const DocumentImpl = @import("Document.zig");
     if (window_instance) |window_inst| {
@@ -789,6 +791,10 @@ pub const NavigateOptions = struct {
     post_resource: ?dom_module.navigables.PostResource = null,
     /// With it, "formDataEntryList" as a FormData holding it. BORROWED.
     form_data: ?*runtime.Instance = null,
+    /// "referrerPolicy": a hyperlink's referrerpolicy attribute (or
+    /// no-referrer for noreferrer), an iframe's for "navigate an iframe or
+    /// frame". The empty string defers to the initiator's policy container.
+    referrer_policy: fetch_mod.internal.ReferrerPolicy = .empty,
 };
 
 /// One navigation, from "navigate" step 19 until its document commits or it
@@ -828,6 +834,19 @@ const Navigation = struct {
     /// document base URL - which an about:blank or about:srcdoc document the
     /// navigation makes takes as its about base URL. Owned.
     initiator_base_url: ?[]u8 = null,
+    /// "Create navigation params by fetching" step 3's referrer policy: the
+    /// navigation's referrerPolicy.
+    referrer_policy: fetch_mod.internal.ReferrerPolicy = .empty,
+    /// Navigate step 4's source snapshot params' source policy container: a
+    /// clone of the source document's, taken as the navigation starts - the
+    /// request's policy container, and the initiator's a local URL's
+    /// document inherits. Owned; null with no source document.
+    initiator_policy_container: ?fetch_mod.internal.PolicyContainer = null,
+    /// Where the navigation request's CSP violations go: the source
+    /// document's global, the request's client's (CSP 2.4.2) - guarded, as
+    /// the source document can go while the fetch is in flight. Null with
+    /// no source document.
+    csp_reporter: ?dom_module.csp_violations.GuardedReporter = null,
     /// The fetch in flight, until it answers.
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
@@ -845,6 +864,7 @@ const Navigation = struct {
         if (self.post_content_type) |t| self.allocator.free(t);
         if (self.target_origin) |o| self.allocator.free(o);
         if (self.referrer) |r| self.allocator.free(r);
+        if (self.initiator_policy_container) |*container| container.deinit();
         self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
@@ -1121,6 +1141,19 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // is the document state's request referrer, "client" - the source
     // document, as Fetch resolves it.
     if (options.source_document) |source| record.referrer = requestReferrerOf(source, allocator);
+    record.referrer_policy = options.referrer_policy;
+    // Step 4: "Let sourceSnapshotParams be the result of snapshotting source
+    // snapshot params given sourceDocument" - its source policy container a
+    // clone of sourceDocument's policy container.
+    if (options.source_document) |source| {
+        if (dom_module.policy_containers.of(source)) |container| {
+            record.initiator_policy_container = container.clone(allocator) catch null;
+        }
+        // The source snapshot params' fetch client is sourceDocument's
+        // relevant settings object: the request's client, whose global a
+        // violation of the request is (CSP 2.4.2).
+        record.csp_reporter = dom_module.csp_violations.GuardedReporter.forRealm(source.ctx);
+    }
     // Step 5: "Let initiatorBaseURLSnapshot be sourceDocument's document base
     // URL" - kept only where it can be used, for a document at about:blank
     // or about:srcdoc (navigate step 22.3's document state).
@@ -1308,17 +1341,20 @@ fn startFetch(record: *Navigation) void {
             // The navigable's cookie jar: a frame's top's, a popup's own
             // (its opener's).
             .cookie_jar = if (record.integration.browsing_context) |bc| bc.cookieJar() else null,
-            // The request's referrer; main fetch applies the referrer
-            // policy. Not modelled, stated: the policy itself - the source
-            // document's policy container's, or an iframe's referrerpolicy
-            // attribute for "navigate an iframe or frame" - since documents
-            // here carry no policy container: the request keeps the default,
-            // strict-origin-when-cross-origin (main fetch step 8).
+            // The request's referrer, referrer policy and policy container
+            // (the source snapshot params'): main fetch step 8 gives a
+            // request whose own policy is empty its container's.
             .referrer = record.referrer,
+            .referrer_policy = record.referrer_policy,
+            .policy_container = if (record.initiator_policy_container) |*container| container else null,
         }) catch {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
+        // Main fetch steps 4 and 7 report the request's CSP violations to its
+        // client's global (CSP 2.4.2). The record outlives the fetch: its
+        // destroy terminates it.
+        if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
         // Step 3's POST resource: "set request's body to documentResource's
         // request body" and "Content-Type" to its request content-type. The
         // body is the record's, borrowed for as long as the fetch runs.
@@ -1455,6 +1491,20 @@ fn runCommit(context: ?*anyopaque) void {
     if (!isOngoing(integration, id)) return;
     const response = if (record.response) |*r| r else return;
 
+    // HTML "navigate" step 23's process the navigation response: "if should
+    // navigation response to navigation request of type in target be blocked
+    // by Content Security Policy? returns "Blocked"", the response is a
+    // network error - the frame shows an error document, of an opaque
+    // origin, and its load event still fires.
+    if (frameAncestorsBlock(integration, record, response)) {
+        response.deinit();
+        record.response = navigation_fetch.networkErrorResult(integration.allocator, record.url) catch null;
+        if (record.response == null) {
+            integration.ongoing_navigation = .none;
+            return endLoadDelay(integration);
+        }
+    }
+
     // A 204, a 205 or a download commits no document: the navigable keeps
     // the one it has, and no load event is owed. Decided before anything is
     // unloaded.
@@ -1509,7 +1559,136 @@ fn runCommit(context: ?*anyopaque) void {
     // about:srcdoc document: the initiator's base URL snapshot.
     integration.setNextAboutBaseUrl(record.initiator_base_url);
     defer integration.setNextAboutBaseUrl(null);
+    // "Create and initialize a Document object" step 9: the document's policy
+    // container, waiting for whatever makes the document.
+    integration.setNextPolicyContainer(navigationParamsPolicyContainer(integration, record, response));
+    defer integration.setNextPolicyContainer(null);
     commitNavigation(integration, record, response);
+}
+
+/// HTML "determine navigation params policy container" for the document
+/// `record`'s navigation makes from `response`, owned by the caller; null
+/// when it could not be made (out of memory: the document keeps a new one).
+///
+/// Not modelled, stated: step 1's history policy container - a traversal's
+/// document state keeps none, so a traversal to a local URL takes its
+/// initiator's or the response's, as a first visit does.
+fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) ?fetch_mod.internal.PolicyContainer {
+    const allocator = integration.allocator;
+    const PolicyContainer = fetch_mod.internal.PolicyContainer;
+    const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+    // 2. "If responseURL is about:srcdoc": a clone of parentPolicyContainer,
+    // the container document's.
+    if (record.srcdoc != null or navigate_steps.matchesAboutSrcdoc(response_url)) {
+        if (integration.iframe_element) |element_ptr| {
+            const element: *runtime.Instance = @ptrCast(@alignCast(element_ptr));
+            if (interfaces.Node.get_ownerDocument(element) catch null) |parent| {
+                if (dom_module.policy_containers.of(parent)) |container| return container.clone(allocator) catch null;
+            }
+        }
+    }
+    // 3. "If responseURL is local and initiatorPolicyContainer is not null,
+    // then return a clone of initiatorPolicyContainer."
+    const scheme = navigate_steps.schemeOf(response_url);
+    const is_local = std.mem.eql(u8, scheme, "about") or std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
+    if (is_local) {
+        if (record.initiator_policy_container) |*container| return container.clone(allocator) catch null;
+    }
+    // 4. "If responsePolicyContainer is not null, then return
+    // responsePolicyContainer": "create a policy container from a fetch
+    // response" for the response a fetch made.
+    var result = if (std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https") or std.mem.eql(u8, scheme, "data")) blk: {
+        const headers = response.headers;
+        break :blk PolicyContainer.fromResponseHeaders(allocator, .{
+            .url = response_url,
+            .csp = if (headers) |h| h.get("content-security-policy") else null,
+            .csp_report_only = if (headers) |h| h.get("content-security-policy-report-only") else null,
+            .referrer_policy = if (headers) |h| h.get("referrer-policy") else null,
+        }) catch return null;
+    } else PolicyContainer.init(allocator); // 5. "Return a new policy container."
+    // Upgrade Insecure Requests 3.3: a nested browsing context whose
+    // embedding document's insecure requests policy is Upgrade has Upgrade,
+    // and so does every Document created in it.
+    if (containerDocumentOf(integration)) |parent| {
+        if (dom_module.policy_containers.of(parent)) |container| {
+            if (container.upgradesInsecureRequests()) result.inherited_upgrade_insecure_requests = true;
+        }
+    }
+    return result;
+}
+
+/// CSP 4.2.5 for a frame's navigation: whether the response's own
+/// frame-ancestors (its CSP headers) rejects one of the target's container
+/// documents' origins. Not modelled, stated: violation reports; and a
+/// navigation request's own CSP list's navigation response checks (step 3),
+/// which only frame-ancestors would have, and it ignores "source".
+fn frameAncestorsBlock(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) bool {
+    if (integration.iframe_element == null or response.is_network_error) return false;
+    const headers = response.headers orelse return false;
+    const csp_value = headers.get("content-security-policy") orelse return false;
+    const allocator = integration.allocator;
+    const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+    var container = fetch_mod.internal.PolicyContainer.fromResponseHeaders(allocator, .{ .url = response_url, .csp = csp_value }) catch return false;
+    defer container.deinit();
+    const scheme = navigate_steps.schemeOf(response_url);
+    const is_local = std.mem.eql(u8, scheme, "about") or std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
+
+    // § 6.4.2.1 steps 5-6: the container documents' origins, innermost
+    // first, as their ASCII serializations parse.
+    const csp = @import("csp");
+    const AncestorOrigin = csp.directives.frame_ancestors.AncestorOrigin;
+    var ancestors: [64]AncestorOrigin = undefined;
+    var serialized: [64]?[]u8 = @splat(null);
+    defer for (serialized) |o| if (o) |bytes| allocator.free(bytes);
+    var count: usize = 0;
+    var document = containerDocumentOf(integration);
+    while (document) |doc| : (count += 1) {
+        if (count == ancestors.len) break;
+        const origin = documentOriginOf(doc, allocator);
+        serialized[count] = origin;
+        ancestors[count] = if (origin) |o| ancestorOriginOf(o) else null;
+        const window = (interfaces.Document.get_defaultView(doc) catch null) orelse {
+            count += 1;
+            break;
+        };
+        const parent_container = dom_module.navigable_container.of(window) orelse {
+            count += 1;
+            break;
+        };
+        document = interfaces.Node.get_ownerDocument(parent_container) catch null;
+    }
+    return csp.directives.frame_ancestors.shouldNavigationResponseBeBlocked(&container.csp_list, is_local, ancestors[0..count]);
+}
+
+/// A serialized tuple origin ("scheme://host[:port]") as frame-ancestors
+/// matches it; null for "null", an opaque origin.
+fn ancestorOriginOf(origin: []const u8) @import("csp").directives.frame_ancestors.AncestorOrigin {
+    const sep = std.mem.indexOf(u8, origin, "://") orelse return null;
+    const authority = origin[sep + 3 ..];
+    const host_end = if (authority.len > 0 and authority[0] == '[')
+        (std.mem.indexOfScalar(u8, authority, ']') orelse return null) + 1
+    else
+        std.mem.indexOfScalar(u8, authority, ':') orelse authority.len;
+    const port: ?u16 = if (host_end < authority.len and authority[host_end] == ':')
+        std.fmt.parseInt(u16, authority[host_end + 1 ..], 10) catch return null
+    else
+        null;
+    return .{ .scheme = origin[0..sep], .host = authority[0..host_end], .port = port };
+}
+
+/// The document `integration`'s iframe element is in - its navigable's
+/// embedding document - or null for a popup.
+fn containerDocumentOf(integration: *IFrameIntegration) ?*runtime.Instance {
+    const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return null));
+    return interfaces.Node.get_ownerDocument(element) catch null;
+}
+
+/// "Create and initialize a Document object" step 9: `document`, which
+/// `browsing_context`'s navigable just made, takes the policy container its
+/// commit chose, if one is waiting.
+fn givePolicyContainer(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse return;
+    if (integration.takeNextPolicyContainer()) |container| dom_module.policy_containers.set(document, container);
 }
 
 /// `document`'s document base URL, serialized, owned by `allocator`; null
@@ -2211,9 +2390,27 @@ fn runIframeLoadEventSteps(element: *runtime.Instance) void {
     const was_delaying = internal.integration.delaying_load;
     internal.integration.delaying_load = false;
     const generation = runtime.SlabAllocator.generationOf(element);
-    // Steps 1-3 (mute iframe load) and 4 (resource timing) are not modelled.
-    // Step 6: "Fire an event named load at element."
-    fireLoadEventOnIframe(element);
+    // Step 2: "Let childDocument be element's content navigable's active
+    // document." (Step 1 asserts there is a content navigable; step 4,
+    // resource timing, is not modelled.)
+    const child_document = activeDocumentOf(internal.integration);
+    // Step 3: "If childDocument has its mute iframe load flag set, then
+    // return." The document was opened during an earlier load event at this
+    // element (the document open steps, step 14). Its load still no longer
+    // delays the container document's, below.
+    const muted = if (child_document) |child| document_lifecycle.isIframeLoadMuted(child) else false;
+    if (!muted) {
+        // Step 5: "Set childDocument's iframe load in progress flag."
+        const child_generation = if (child_document) |child| runtime.SlabAllocator.generationOf(child) else 0;
+        if (child_document) |child| document_lifecycle.setIframeLoadInProgress(child, true);
+        // Step 6: "Fire an event named load at element."
+        fireLoadEventOnIframe(element);
+        // Step 7: "Unset childDocument's iframe load in progress flag." The
+        // handlers may have navigated the frame and dropped the document.
+        if (child_document) |child| {
+            if (runtime.SlabAllocator.generationOf(child) == child_generation) document_lifecycle.setIframeLoadInProgress(child, false);
+        }
+    }
     // The handlers may have taken the element away.
     if (!was_delaying or runtime.SlabAllocator.generationOf(element) != generation) return;
     const NodeImpl = @import("Node.zig");
@@ -2294,6 +2491,13 @@ fn frameWindowByName(current_document: *runtime.Instance, name: []const u8) ?*ru
 /// stated: the top-level page cannot be replaced - navigating it does only
 /// what its Location can (a fragment navigation).
 fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navigables.Request) void {
+    navigateByTargetWithReferrerPolicy(source_document, request, .empty);
+}
+
+/// `navigateByTarget`, with navigate's referrerPolicy - a hyperlink's. It
+/// reaches a frame's navigation; a page's top-level navigation and a new
+/// popup do not carry it yet (stated).
+fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, request: dom_module.navigables.Request, referrer_policy: fetch_mod.internal.ReferrerPolicy) void {
     const name = request.target;
     // "The rules for choosing a navigable" start from currentNavigable: the
     // source document's, unless the caller names another.
@@ -2326,6 +2530,7 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
                 .navigation_api_state = request.navigation_api_state,
                 .post_resource = request.post_resource,
                 .form_data = request.form_data,
+                .referrer_policy = referrer_policy,
             });
         },
         .page => |page| {
@@ -2363,8 +2568,8 @@ fn navigateByTarget(source_document: *runtime.Instance, request: dom_module.navi
 /// dom.navigables: HTML "follow the hyperlink created by" `subject`, an `a`
 /// or `area` element (4.6.4), with no hyperlink suffix.
 ///
-/// Not modelled, stated: the hyperlink's referrer policy, and blob URL
-/// entries (step 6's noopener for a blob: URL).
+/// Not modelled, stated: blob URL entries (step 6's noopener for a blob:
+/// URL).
 fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navigation_api.UserInvolvement) void {
     const document = (interfaces.Node.get_ownerDocument(subject) catch null) orelse return;
     // Step 1: "If subject cannot navigate, then return": its node document is
@@ -2401,8 +2606,16 @@ fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navi
     const noopener = hasLinkType(rel_value, "noopener") or hasLinkType(rel_value, "noreferrer") or
         (!hasLinkType(rel_value, "opener") and std.ascii.eqlIgnoreCase(target, "_blank"));
 
+    // Step 11's referrerPolicy: subject's hyperlink referrer policy -
+    // "no-referrer" when its link types include noreferrer, else the current
+    // state of its referrerpolicy content attribute.
+    const referrer_policy: fetch_mod.internal.ReferrerPolicy = if (hasLinkType(rel_value, "noreferrer")) .no_referrer else blk: {
+        const attr = interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("referrerpolicy")) catch null;
+        break :blk fetch_mod.internal.policy_container.referrerPolicyFromAttribute(if (attr) |a| a.asSlice() else null);
+    };
+
     // Steps 7-11: navigate with the given user involvement.
-    navigateByTarget(document, .{ .target = target, .url = url, .noopener = noopener, .source_element = subject, .user_involvement = user_involvement });
+    navigateByTargetWithReferrerPolicy(document, .{ .target = target, .url = url, .noopener = noopener, .source_element = subject, .user_involvement = user_involvement }, referrer_policy);
 }
 
 /// The target of the first base element in `document` that has one, or "".
@@ -2600,12 +2813,17 @@ fn navigateIframeOrFrame(element: *runtime.Instance, url: []const u8, srcdoc: ?[
     const NodeImpl = @import("Node.zig");
     const container_document = NodeImpl.getOwnerDocument(element);
     const load_for_fragment = crossOriginFragmentNavigation(integration, container_document, url, srcdoc != null);
+    // Step 3: "Let referrerPolicy be the current state of element's
+    // referrerpolicy content attribute."
+    const referrer_attr = interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("referrerpolicy")) catch null;
+    const referrer_policy = fetch_mod.internal.policy_container.referrerPolicyFromAttribute(if (referrer_attr) |a| a.asSlice() else null);
     // Step 4: navigate, using element's node document.
     navigate(integration, url, .{
         .source_document = container_document,
         .history_behavior = behavior,
         .srcdoc = srcdoc,
         .initial_insertion = initial_insertion,
+        .referrer_policy = referrer_policy,
     });
     if (load_for_fragment) queueIframeLoadEventSteps(element);
 }
@@ -2831,10 +3049,23 @@ fn attachNavigableContext(
     // HTML "create a new browsing context and document" step 15: this
     // document "is initial about:blank"; step 21 completely finishes loading
     // it.
-    if (createDocumentForIframe(@ptrCast(realm), browsing_context)) |document| {
-        dom_module.document_lifecycle.markInitialAboutBlank(@ptrCast(@alignCast(document)));
+    if (createDocumentForIframe(@ptrCast(realm), browsing_context)) |document_ptr| {
+        const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
+        dom_module.document_lifecycle.markInitialAboutBlank(document);
+        // Step 19.2: "If creator is non-null, set document's policy container
+        // to a clone of creator's policy container."
+        if (creator) |creator_document| inheritPolicyContainer(document, creator_document);
     }
     return realm;
+}
+
+/// Give `document` a clone of `from`'s policy container (HTML "clone a
+/// policy container"): an initial about:blank document's creator's, a
+/// srcdoc document's parent's, a local URL's initiator's.
+fn inheritPolicyContainer(document: *runtime.Instance, from: *runtime.Instance) void {
+    const source = dom_module.policy_containers.of(from) orelse return;
+    const clone = source.clone(document.ctx.allocator) catch return;
+    dom_module.policy_containers.set(document, clone);
 }
 
 /// A realm for `integration`'s navigable (engine.createWindowRealm with
@@ -2964,11 +3195,16 @@ fn realmForNewDocument(integration: *IFrameIntegration, new_origin: html_core.Or
 /// open()'s return value, a window[name] on the parent - now reaches the new
 /// Window.
 ///
-/// The old realm is retired, not destroyed: script elsewhere may still hold
-/// its document, its nodes and its functions, and the page tears it down with
-/// the integration (`IFrameIntegration.retired_realms`). Its timers were
-/// cleared when its document unloaded. Code still running in it sees a
-/// detached global (V8 gives API callbacks a holder with no Window).
+/// The old realm is not destroyed: its document was unloaded (runCommit) and
+/// is destroyed ("destroy a document": its timers were cleared, its tasks go,
+/// its child navigables are destroyed), and its Window and realm live on for
+/// as long as script reaches anything of them - its document, its nodes, its
+/// functions - and no longer: the engine ends the realm once the collector
+/// takes it, or with its page (engine.WindowRealmEnd.global_detached).
+/// Kept by the integration until the iframe went, as they once were, 200
+/// navigations of one iframe kept 200 realms (crane/td-frame-navigation-
+/// churn.html). Code still running in it sees a detached global (V8 gives
+/// API callbacks a holder with no Window).
 fn replaceRealm(integration: *IFrameIntegration) bool {
     const old: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return false));
     const browsing_context = integration.browsing_context orelse return false;
@@ -2987,10 +3223,20 @@ fn replaceRealm(integration: *IFrameIntegration) bool {
     const origin_copy: ?[]u8 = if (integration.window_origin) |o| allocator.dupe(u8, o) catch return false else null;
     defer if (origin_copy) |o| allocator.free(o);
 
-    // Retire the old realm with its Window and documents; the new one is
-    // built around its WindowProxy (engine: window_proxy_of detaches it).
-    integration.retireCurrentRealm(null) catch return false;
-    return attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, allocator) != null;
+    // The old realm leaves the integration with its Window and documents;
+    // the new one is built around its WindowProxy (engine: window_proxy_of
+    // detaches it).
+    const old_data = integration.releaseCurrentRealm() orelse return false;
+    if (attachRealm(integration, parent, browsing_context, origin_copy, .{ .window_proxy_of = old }, allocator) == null) {
+        // No new realm: the old one ends with the integration, as every
+        // replaced realm once did.
+        integration.keepRetiredRealm(old_data) catch engine.destroyWindowRealm(old, .global_detached);
+        return false;
+    }
+    // HTML "destroy a document" for the old document: the engine keeps its
+    // realm while script reaches it.
+    engine.destroyWindowRealm(old, .global_detached);
+    return true;
 }
 
 /// dom.auxiliary_navigables: HTML "definitely close" the top-level

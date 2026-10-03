@@ -208,7 +208,8 @@ pub const XMLHttpRequestState = struct {
     /// This XHR's relevant settings object as send()'s request's client,
     /// recorded when send() runs: what "populate request from client"
     /// applies once the request exists. Its origin and referrer source are
-    /// owned copies; its traversable and cookie jar are borrowed.
+    /// owned copies, and so is its policy container (a clone, allocated);
+    /// its traversable and cookie jar are borrowed.
     client: fetch.internal.RequestClient,
 
     /// Initialize state
@@ -258,18 +259,36 @@ pub const XMLHttpRequestState = struct {
         const origin: ?[]const u8 = if (client.origin) |o| try self.allocator.dupe(u8, o) else null;
         errdefer if (origin) |o| self.allocator.free(o);
         const referrer_source: ?[]const u8 = if (client.referrer_source) |r| try self.allocator.dupe(u8, r) else null;
+        errdefer if (referrer_source) |r| self.allocator.free(r);
+        // The policy container is the settings object's, which may be gone by
+        // the time the request is made: keep a clone.
+        const policy_container: ?*fetch.internal.PolicyContainer = if (client.policy_container) |container| blk: {
+            const copy = try self.allocator.create(fetch.internal.PolicyContainer);
+            errdefer self.allocator.destroy(copy);
+            copy.* = try container.clone(self.allocator);
+            break :blk copy;
+        } else null;
         self.freeClient();
         self.client = .{
             .origin = origin,
             .referrer_source = referrer_source,
             .traversable = client.traversable,
             .cookie_jar = client.cookie_jar,
+            .policy_container = policy_container,
+            // Borrowed, as the client's: the global the request's CSP
+            // violations go to (CSP 2.4.2).
+            .csp_violation_reporter = client.csp_violation_reporter,
         };
     }
 
     fn freeClient(self: *XMLHttpRequestState) void {
         if (self.client.origin) |o| self.allocator.free(o);
         if (self.client.referrer_source) |r| self.allocator.free(r);
+        if (self.client.policy_container) |container| {
+            const owned: *fetch.internal.PolicyContainer = @constCast(container);
+            owned.deinit();
+            self.allocator.destroy(owned);
+        }
         self.client = .{};
     }
 
@@ -525,4 +544,38 @@ test "State - isNetworkError" {
     // getResponse creates a network error
     _ = try state.getResponse();
     try std.testing.expect(state.isNetworkError());
+}
+
+test "State - setClient keeps its own clone of the client's policy container" {
+    const allocator = std.testing.allocator;
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+
+    var container = try fetch.internal.PolicyContainer.fromResponse(allocator, "no-referrer");
+    defer container.deinit();
+    try state.setClient(.{ .origin = "https://example.com", .policy_container = &container });
+    // A clone: a later change to the client's does not reach it.
+    container.referrer_policy = .unsafe_url;
+    try std.testing.expect(state.client.policy_container.? != &container);
+    try std.testing.expectEqual(fetch.internal.ReferrerPolicy.no_referrer, state.client.policy_container.?.referrer_policy);
+
+    // A second send() replaces it - the first clone is freed, not leaked -
+    // and a client with none leaves none.
+    try state.setClient(.{ .policy_container = &container });
+    try std.testing.expectEqual(fetch.internal.ReferrerPolicy.unsafe_url, state.client.policy_container.?.referrer_policy);
+    try state.setClient(.{});
+    try std.testing.expect(state.client.policy_container == null);
+}
+
+fn testReport(_: *anyopaque, _: *const fetch.internal.CspViolation) void {}
+
+test "State - setClient keeps the client's CSP violation reporter" {
+    const allocator = std.testing.allocator;
+    var state = XMLHttpRequestState.init(allocator);
+    defer state.deinit();
+    var global: u8 = 0;
+    try state.setClient(.{ .csp_violation_reporter = .{ .context = &global, .report = &testReport } });
+    try std.testing.expect(state.client.csp_violation_reporter.?.context == @as(*anyopaque, &global));
+    try state.setClient(.{});
+    try std.testing.expect(state.client.csp_violation_reporter == null);
 }

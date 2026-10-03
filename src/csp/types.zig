@@ -81,6 +81,8 @@ pub const SourceExpression = struct {
     host_part: ?[]const u8 = null,
     /// For host expressions with port: the port number
     port_part: ?u16 = null,
+    /// For host expressions whose port-part is "*": any port matches.
+    port_wildcard: bool = false,
     /// For host expressions with path: the path prefix
     path_part: ?[]const u8 = null,
     /// For nonce expressions: the nonce value (without 'nonce-' prefix)
@@ -391,6 +393,14 @@ pub const CSPList = struct {
     policies: std.ArrayListUnmanaged(Policy),
     allocator: std.mem.Allocator,
 
+    /// CSP 2.2: "a self-origin (an origin which is used when matching the
+    /// 'self' keyword)" - the response URL's origin for a list parsed from a
+    /// response, so a local-scheme or sandboxed document with an opaque
+    /// origin still has one. Owned; null when the list was not made from a
+    /// response. Matching reads each policy's own self-origin: a policy
+    /// appended later (a <meta> policy) takes a copy of this one.
+    self_origin: ?Origin = null,
+
     /// Optimization flag for quick header check
     contains_header_policy: bool = false,
 
@@ -438,6 +448,8 @@ pub const CSPList = struct {
             policy.deinit();
         }
         self.policies.deinit(self.allocator);
+        if (self.self_origin) |*origin| origin.deinit();
+        self.self_origin = null;
     }
 };
 

@@ -75,11 +75,14 @@ pub const InternalState = struct {
     /// pending keeps its own wrapper (`keep_alive`), and with it this edge.
     upload_edge: same_object.Traced,
 
-    /// This's response object when it is an object - the ArrayBuffer, Blob
-    /// or JSON value `response` made - held so every later read returns that
-    /// same object. OWNED. (Null and failure are xhr_state.response_object's.)
-    /// It holds nothing that can reach this XHR, so the hold makes no cycle.
-    response_value: ?engine.Owned = null,
+    /// This's response object is an object - the ArrayBuffer, Blob or JSON
+    /// value `response` made - kept so every later read returns that same
+    /// object: by an edge from the XHR's wrapper (`response_slot`,
+    /// engine.traceValue), never a root. (Null and failure are
+    /// xhr_state.response_object's.) Held as a root (an engine.Owned), a JSON
+    /// response of a frame's XHR kept the frame's realm for as long as the
+    /// XHR's instance lived, whatever script held.
+    has_response_value: bool = false,
 
     pub fn initState(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -100,18 +103,19 @@ pub const InternalState = struct {
         pending.cancel();
     }
 
-    /// Set this's response object to null (open() step 11).
-    fn releaseResponseValue(self: *InternalState) void {
-        const value = self.response_value orelse return;
-        self.response_value = null;
-        value.release();
+    /// Set this's response object to null (open() step 11). `owner`: the
+    /// XHR this state is.
+    fn releaseResponseValue(self: *InternalState, owner: *runtime.Instance) void {
+        if (!self.has_response_value) return;
+        self.has_response_value = false;
+        engine.forgetTracedChild(owner, response_slot);
     }
 
     /// `owner`: the XHR this state is, whose edge to its upload object goes.
     pub fn deinitState(self: *InternalState, owner: *runtime.Instance) void {
         // The upload object's lifetime is the wrapper cache's from here.
         self.upload_edge.release(owner);
-        self.releaseResponseValue();
+        self.releaseResponseValue(owner);
         // Before anything else: a fetch in flight, or its queued task, would
         // otherwise reach an instance that is going away.
         self.cancelFetch();
@@ -340,7 +344,11 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // same object every time. This XHR keeps holding it; the binding gets a
     // hold of its own.
     const internal = getInternal(instance);
-    if (internal.response_value) |value| return (try engine.retainValue(instance.ctx, value.value)).take();
+    if (internal.has_response_value) {
+        if (engine.tracedValue(instance, response_slot)) |value| return value.take();
+    }
+    // What the steps below set this's response object to: OWNED until kept.
+    var made: engine.Owned = undefined;
 
     switch (xhr_state.response_type) {
         // Step 8: the JSON response.
@@ -359,14 +367,14 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
                 return .{ .null = {} };
             }
             // 8.4. Set this's response object to jsonObject.
-            internal.response_value = parse.value orelse return .{ .null = {} };
+            made = parse.value orelse return .{ .null = {} };
         },
         // Step 5: the ArrayBuffer response. "Set this's response object to a
         // new ArrayBuffer object representing this's received bytes. If this
         // throws an exception, then set this's response object to failure and
         // return null."
         .arraybuffer => {
-            internal.response_value = engine.createArrayBuffer(instance.ctx, xhr_state.received_bytes.items) catch {
+            made = engine.createArrayBuffer(instance.ctx, xhr_state.received_bytes.items) catch {
                 xhr_state.response_object = .failure;
                 return .{ .null = {} };
             };
@@ -378,7 +386,7 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
             const mime_type = try response_algo.finalMimeTypeBytes(allocator, xhr_state);
             defer allocator.free(mime_type);
             const blob = try blob_bytes.create(instance.ctx, xhr_state.received_bytes.items, mime_type);
-            internal.response_value = engine.retainValue(instance.ctx, .{ .instance = blob }) catch |err| {
+            made = engine.retainValue(instance.ctx, .{ .instance = blob }) catch |err| {
                 blob.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(blob));
                 return err;
             };
@@ -388,9 +396,17 @@ pub fn get_response(instance: *runtime.Instance) anyerror!runtime.JSValue {
         .empty, .text => unreachable, // handled by step 1
     }
 
-    // Step 9: Return this's response object (a hold of the binding's own).
-    return (try engine.retainValue(instance.ctx, internal.response_value.?.value)).take();
+    // This's response object is kept by the XHR's wrapper from here.
+    engine.traceValue(instance, made.value, response_slot);
+    internal.has_response_value = true;
+    // Step 9: Return this's response object (the hold made above, now the
+    // binding's own).
+    return made.take();
 }
+
+/// Where an XHR keeps its response object (Blink: XMLHttpRequest's
+/// response_array_buffer_, response_blob_ and json are Members it traces).
+const response_slot: engine.TracedSlot = .{ .name = "response" };
 
 /// Getter for responseText
 ///
@@ -630,7 +646,7 @@ fn openSteps(
     internal.cancelFetch();
     // Step 11: "Set this's response object to null" - the object half of it;
     // open_algo reset the rest.
-    internal.releaseResponseValue();
+    internal.releaseResponseValue(instance);
 
     // Step 12: If this's state is not opened, set it to opened and fire an
     // event named readystatechange at this.

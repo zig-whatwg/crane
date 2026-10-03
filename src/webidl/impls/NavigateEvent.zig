@@ -50,19 +50,25 @@ pub const InternalState = struct {
     signal_edge: same_object.Traced = .{ .slot = .{ .name = "signal" } },
     form_data_edge: same_object.Traced = .{ .slot = .{ .name = "formData" } },
     source_element_edge: same_object.Traced = .{ .slot = .{ .name = "sourceElement" } },
-    /// `info`: undefined when null. Still a strong hold (a value, not a
-    /// platform object: traceChild cannot keep it).
-    info: ?engine.Owned = null,
+    /// `info` is kept by an edge from the event's wrapper too (`info_slot`,
+    /// engine.traceValue); undefined when there is none. Held as a root (an
+    /// engine.Owned), an info that reached the event's realm kept it alive
+    /// for as long as the event's instance lived.
+    has_info: bool = false,
 
     fn release(self: *InternalState, event: *runtime.Instance) void {
         self.destination_edge.release(event);
         self.signal_edge.release(event);
         self.form_data_edge.release(event);
         self.source_element_edge.release(event);
-        if (self.info) |value| value.release();
-        self.info = null;
+        if (self.has_info) engine.forgetTracedChild(event, info_slot);
+        self.has_info = false;
     }
 };
+
+/// Where the event keeps `info` (Blink: NavigateEvent::info_, a
+/// TraceWrapperV8Reference).
+const info_slot: engine.TracedSlot = .{ .name = "info" };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     const state = instance.stateAs(State) orelse return null;
@@ -146,7 +152,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     if (init_dict.downloadRequest) |request| state.own.downloadRequest = try request.clone(ctx.allocator);
     // `info` defaults to undefined: an absent member, and one present as
     // undefined, are the same for `any`.
-    if (init_dict.info) |value| internal.info = try hold(ctx, value);
+    if (init_dict.info) |value| keepInfo(instance, internal, value);
     state.own.hasUAVisualTransition = init_dict.hasUAVisualTransition orelse false;
     state.own.sourceElement = init_dict.sourceElement;
     if (init_dict.sourceElement) |element| internal.source_element_edge.hold(instance, element);
@@ -199,14 +205,16 @@ pub fn get_info(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return runtime.JSValue.jsUndefined;
     // The event keeps `info`; the binding releases what a getter returns, so
     // it gets a hold of its own.
-    if (internal.info) |value| return (try engine.retainValue(instance.ctx, value.value)).take();
-    return runtime.JSValue.jsUndefined;
+    if (!internal.has_info) return runtime.JSValue.jsUndefined;
+    const info = engine.tracedValue(instance, info_slot) orelse return runtime.JSValue.jsUndefined;
+    return info.take();
 }
 
-/// `value`, kept: a platform object in its relevant realm, anything else in
-/// `realm`.
-fn hold(realm: runtime.Context, value: runtime.JSValue) !engine.Owned {
-    return engine.retainValue(if (value == .instance) value.instance.ctx else realm, value);
+/// Keep `value` (borrowed) as `event`'s info: a platform object as its
+/// wrapper in its relevant realm.
+fn keepInfo(event: *runtime.Instance, internal: *InternalState, value: runtime.JSValue) void {
+    engine.traceValue(event, value, info_slot);
+    internal.has_info = true;
 }
 
 pub fn get_hasUAVisualTransition(instance: *runtime.Instance) anyerror!bool {
@@ -295,7 +303,5 @@ fn setNavigationType(instance: *runtime.Instance, kind: dom.navigation_api.Kind)
 
 fn setInfo(instance: *runtime.Instance, info: runtime.JSValue) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const kept = try hold(instance.ctx, info);
-    if (internal.info) |old| old.release();
-    internal.info = kept;
+    keepInfo(instance, internal, info);
 }

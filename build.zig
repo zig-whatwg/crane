@@ -1320,6 +1320,11 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("runtime", runtime_mod);
     dom_mod.addImport("interfaces", interfaces_mod);
     dom_mod.addImport("impls", impls_mod); // For document_internals to access Document.InternalState
+    // CSP violation events (csp_violations.zig): a queued task run in the
+    // global's realm (the engine protocol), and the event's init dictionary.
+    dom_mod.addImport("engine", engine_mod);
+    dom_mod.addImport("dictionaries", dictionaries_mod);
+    dom_mod.addImport("enums", enums_mod);
 
     // Quirks module (WHATWG Quirks Mode Standard)
     const quirks_mod = b.addModule("quirks", .{
@@ -1931,6 +1936,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    // CSP module (W3C Content Security Policy Level 3)
+    const csp_mod = b.addModule("csp", .{
+        .root_source_file = b.path("src/csp/root.zig"),
+        .target = target,
+    });
+    csp_mod.addImport("clock", clock_mod);
+    csp_mod.addImport("host", host_mod);
+
     // Fetch API module (WHATWG Fetch Standard)
     const fetch_mod = b.addModule("fetch", .{
         .root_source_file = b.path("src/fetch/root.zig"),
@@ -1939,6 +1952,9 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("clock", clock_mod);
     fetch_mod.addImport("host", host_mod);
     fetch_mod.addImport("referrer_policy", referrer_policy_mod);
+    // A request's policy container holds its client's CSP list, which main
+    // fetch checks the request against (CSP 4.1).
+    fetch_mod.addImport("csp", csp_mod);
     // HTTP-redirect fetch parses a `Location` value against the response URL.
     // The same three URL modules `xhr_mod` takes, for the same reason.
     fetch_mod.addImport("url_record", url_internal_url_record_mod);
@@ -2035,14 +2051,6 @@ pub fn build(b: *std.Build) void {
 
     // Add trusted_types to impls for TrustedHTML, TrustedScript, etc. implementations
     impls_mod.addImport("trusted_types", trusted_types_mod);
-
-    // CSP module (W3C Content Security Policy Level 3)
-    const csp_mod = b.addModule("csp", .{
-        .root_source_file = b.path("src/csp/root.zig"),
-        .target = target,
-    });
-    csp_mod.addImport("clock", clock_mod);
-    csp_mod.addImport("host", host_mod);
 
     // Add csp to impls for Document CSP checks
     impls_mod.addImport("csp", csp_mod);

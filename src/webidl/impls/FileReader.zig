@@ -47,11 +47,17 @@ pub const InternalState = struct {
 
     /// fr's state: "empty", "loading" or "done".
     state: ReadyState = .empty,
-    /// fr's result: null, or the string or ArrayBuffer a read made. OWNED.
-    result: ?engine.Owned = null,
-    /// fr's error: null, or the DOMException a failed read set. OWNED (the
-    /// exception's wrapper), with the platform object it is.
-    error_value: ?engine.Owned = null,
+    /// The reader this state is: the owner of the edges below.
+    reader: ?*runtime.Instance = null,
+    /// fr's result is non-null: the string or ArrayBuffer a read made, kept
+    /// by an edge from the reader's wrapper (`result_slot`,
+    /// engine.traceValue), never a root. Held as a root (an engine.Owned), a
+    /// finished reader's result kept its realm alive for as long as the
+    /// reader's instance lived - a removed frame whose own global held the
+    /// reader was never collected.
+    has_result: bool = false,
+    /// fr's error: null, or the DOMException a failed read set, kept by an
+    /// edge from the reader's wrapper (`error_slot`, engine.traceChild).
     error_instance: ?*runtime.Instance = null,
     /// The read operation whose tasks are queued, from the read method until
     /// its last task runs or abort() terminates it.
@@ -72,16 +78,35 @@ pub const InternalState = struct {
         self.allocator.destroy(self);
     }
 
-    /// Set fr's result, taking `value`.
+    /// Set fr's result, taking `value`: the reader's wrapper keeps it from
+    /// here, and the hold `value` is goes.
     fn setResult(self: *InternalState, value: ?engine.Owned) void {
-        if (self.result) |old| old.release();
-        self.result = value;
+        const reader = self.reader orelse {
+            if (value) |v| v.release();
+            return;
+        };
+        if (value) |v| {
+            defer v.release();
+            engine.traceValue(reader, v.value, result_slot);
+            self.has_result = true;
+        } else if (self.has_result) {
+            engine.forgetTracedChild(reader, result_slot);
+            self.has_result = false;
+        }
     }
 
-    /// Set fr's error, taking `value` (the wrapper of `instance`).
+    /// Set fr's error to `instance`, taking `value` (its wrapper): the
+    /// reader's wrapper keeps it from here.
     fn setError(self: *InternalState, value: ?engine.Owned, instance: ?*runtime.Instance) void {
-        if (self.error_value) |old| old.release();
-        self.error_value = value;
+        // The hold goes only once the edge is drawn: until then it is what
+        // keeps the exception.
+        defer if (value) |v| v.release();
+        const reader = self.reader orelse return;
+        if (instance) |exception| {
+            engine.traceChild(reader, exception, error_slot);
+        } else if (self.error_instance != null) {
+            engine.forgetTracedChild(reader, error_slot);
+        }
         self.error_instance = instance;
     }
 };
@@ -125,7 +150,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
     const instance = try init(ctx.allocator, State, &FileReader.vtable, ctx);
     errdefer deinit(instance);
-    instance.getState(State).own._internal = try InternalState.init(ctx.allocator);
+    const internal = try InternalState.init(ctx.allocator);
+    internal.reader = instance;
+    instance.getState(State).own._internal = internal;
     return instance;
 }
 
@@ -140,9 +167,15 @@ pub fn get_readyState(instance: *runtime.Instance) anyerror!u16 {
 /// holding it; the binding gets a hold of its own.
 pub fn get_result(instance: *runtime.Instance) anyerror!?runtime.JSValue {
     const internal = getInternal(instance) orelse return null;
-    const result = internal.result orelse return null;
-    return (try engine.retainValue(instance.ctx, result.value)).take();
+    if (!internal.has_result) return null;
+    const result = engine.tracedValue(instance, result_slot) orelse return null;
+    return result.take();
 }
+
+/// Where a reader keeps its result and its error (Blink: FileReader's
+/// result is a TraceWrapperV8Reference-backed value, its error_ a Member).
+const result_slot: engine.TracedSlot = .{ .name = "result" };
+const error_slot: engine.TracedSlot = .{ .name = "error" };
 
 /// The error getter steps are to return this's error.
 pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
