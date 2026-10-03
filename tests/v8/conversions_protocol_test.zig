@@ -1,5 +1,10 @@
+//! The protocol operations the conversions lane added, as V8 implements them:
+//! parseJsonInNewGlobal (WebCrypto "parse a JWK"), and IndexedDB's key
+//! conversion needs - hasOwnProperty, thisTimeValue, isArrayExoticObject,
+//! createDate - and agentHost.
+//!
 //! engine.parseJsonInNewGlobal: ECMAScript JSON.parse "in the context of a new
-//! global object" (WebCrypto "parse a JWK" step 4), as V8 implements it.
+//! global object" (WebCrypto "parse a JWK" step 4).
 //!
 //! `engine.parseJsonToValue` uses the intrinsic parser but parses in the
 //! caller's realm, so its result inherits the caller's Object.prototype: an
@@ -166,4 +171,100 @@ test "the new global is collected once the result is dropped, and no handle is l
     }
     try std.testing.expectEqual(globals_before, ffi.v8_Debug_LiveContextGlobals());
     try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate) <= handles_before);
+}
+
+// ---------------------------------------------------------------------------
+// IndexedDB's key conversion: HasOwnProperty, thisTimeValue, Array exotic
+// objects, Date creation
+// ---------------------------------------------------------------------------
+
+fn handleValue(handle: *ffi.Value) runtime.JSValue {
+    return .{ .handle = .{ .ptr = @ptrCast(handle) } };
+}
+
+test "hasOwnProperty: own, not inherited, and a Proxy trap's throw surfaces" {
+    const ctx = try realm();
+    const object = try eval("({ own: 1, __proto__: { inherited: 2 } })");
+    defer ffi.v8_Value_Dispose(object);
+    try std.testing.expect(try protocol.hasOwnProperty(ctx, handleValue(object), "own"));
+    try std.testing.expect(!try protocol.hasOwnProperty(ctx, handleValue(object), "inherited"));
+    try std.testing.expect(!try protocol.hasOwnProperty(ctx, handleValue(object), "absent"));
+    try std.testing.expectError(error.TypeError, protocol.hasOwnProperty(ctx, .{ .number = 1 }, "own"));
+
+    const proxy = try eval("new Proxy({}, { getOwnPropertyDescriptor() { throw globalThis.trapError = new Error('trap'); } })");
+    defer ffi.v8_Value_Dispose(proxy);
+    var body: struct {
+        ctx: runtime.Context,
+        object: runtime.JSValue,
+        result: protocol.Error!bool = undefined,
+        fn run(self: *@This()) void {
+            self.result = protocol.hasOwnProperty(self.ctx, self.object, "x");
+        }
+    } = .{ .ctx = ctx, .object = handleValue(proxy) };
+    const thrown = thrownBy(&body) orelse return error.NothingThrown;
+    defer ffi.v8_Global_Dispose(thrown);
+    try std.testing.expectError(error.ExceptionPending, body.result);
+    try std.testing.expect(try holds("hasOwnThrown", thrown, "hasOwnThrown === trapError ? 1 : 0"));
+}
+
+test "thisTimeValue: a Date's [[DateValue]], and null for anything without the slot" {
+    const ctx = try realm();
+    const date = try eval("new Date(5)");
+    defer ffi.v8_Value_Dispose(date);
+    try std.testing.expectEqual(@as(?f64, 5), protocol.thisTimeValue(ctx, handleValue(date)));
+    const invalid = try eval("new Date(NaN)");
+    defer ffi.v8_Value_Dispose(invalid);
+    try std.testing.expect(std.math.isNan(protocol.thisTimeValue(ctx, handleValue(invalid)).?));
+    // An object inheriting from Date.prototype has no [[DateValue]]; nor does
+    // a number.
+    const fake = try eval("Object.create(Date.prototype)");
+    defer ffi.v8_Value_Dispose(fake);
+    try std.testing.expectEqual(@as(?f64, null), protocol.thisTimeValue(ctx, handleValue(fake)));
+    try std.testing.expectEqual(@as(?f64, null), protocol.thisTimeValue(ctx, .{ .number = 5 }));
+    // And reading it runs no script.
+    _ = try evalInt("globalThis.savedDateMethods = [Date.prototype.valueOf, Date.prototype.getTime]; Date.prototype.valueOf = () => { throw new Error('ran'); }; Date.prototype.getTime = Date.prototype.valueOf; 1");
+    defer _ = evalInt("[Date.prototype.valueOf, Date.prototype.getTime] = savedDateMethods; 1") catch {};
+    try std.testing.expectEqual(@as(?f64, 5), protocol.thisTimeValue(ctx, handleValue(date)));
+}
+
+test "isArrayExoticObject: an array, a subclass instance; not a Proxy of one" {
+    const ctx = try realm();
+    const cases = [_]struct { code: []const u8, is: bool }{
+        .{ .code = "[]", .is = true },
+        .{ .code = "new (class extends Array {})()", .is = true },
+        .{ .code = "new Proxy([], {})", .is = false },
+        .{ .code = "({ length: 0 })", .is = false },
+        .{ .code = "new Uint8Array(1)", .is = false },
+    };
+    for (cases) |case| {
+        const value = try eval(case.code);
+        defer ffi.v8_Value_Dispose(value);
+        try std.testing.expectEqual(case.is, protocol.isArrayExoticObject(ctx, handleValue(value)));
+    }
+    try std.testing.expect(!protocol.isArrayExoticObject(ctx, .{ .number = 1 }));
+}
+
+test "createDate: a Date of the realm, its time clipped" {
+    const ctx = try realm();
+    const date = try protocol.createDate(ctx, 1000);
+    defer date.release();
+    try std.testing.expect(try holds("createdDate", date.value.handle.ptr, "Object.getPrototypeOf(createdDate) === Date.prototype ? 1 : 0"));
+    try std.testing.expectEqual(@as(?f64, 1000), protocol.thisTimeValue(ctx, date.value));
+    const clipped = try protocol.createDate(ctx, 8.64e15 + 1);
+    defer clipped.release();
+    try std.testing.expect(std.math.isNan(protocol.thisTimeValue(ctx, clipped.value).?));
+}
+
+test "agentHost: the host pointer the agent was made with, and null once it is destroyed" {
+    _ = try realm();
+    try protocol.initializeEngine(.{});
+    const no_hooks: protocol.HostHooks = .{};
+    var marker: u32 = 7;
+    const agent = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks, .host = &marker });
+    try std.testing.expectEqual(@as(?*anyopaque, @ptrCast(&marker)), protocol.agentHost(agent));
+    const without = try protocol.createAgent(.{ .can_block = true, .from_snapshot = false, .hooks = &no_hooks });
+    try std.testing.expectEqual(@as(?*anyopaque, null), protocol.agentHost(without));
+    protocol.destroyAgent(without);
+    protocol.destroyAgent(agent);
+    try std.testing.expectEqual(@as(?*anyopaque, null), protocol.agentHost(agent));
 }

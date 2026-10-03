@@ -155,6 +155,10 @@ pub fn destroyAgent(agent: *Agent) void {
     worker_realm.destroyAgent(agent);
 }
 
+pub fn agentHost(agent: *Agent) ?*anyopaque {
+    return protocol_agents.agentHost(agent);
+}
+
 pub fn hasRunningScript(agent: *Agent) bool {
     return worker_realm.hasRunningScript(agent);
 }
@@ -312,6 +316,10 @@ pub const getProperty = protocol_values.getProperty;
 pub const setProperty = protocol_values.setProperty;
 pub const defineOwnProperty = protocol_values.defineOwnProperty;
 pub const hasProperty = protocol_values.hasProperty;
+pub const hasOwnProperty = protocol_values.hasOwnProperty;
+pub const thisTimeValue = protocol_values.thisTimeValue;
+pub const isArrayExoticObject = protocol_values.isArrayExoticObject;
+pub const createDate = protocol_values.createDate;
 pub const typeOf = protocol_values.typeOf;
 pub const sameValue = protocol_values.sameValue;
 pub const toBoolean = protocol_values.toBoolean;

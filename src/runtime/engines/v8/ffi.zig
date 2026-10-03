@@ -1005,6 +1005,9 @@ pub extern fn v8_Object_Delete(object: *Object, context: *Context, key: *Value) 
 pub extern fn v8_Object_CreateDataProperty(object: *Object, context: *Context, key: *String, value: *Value) bool;
 pub extern fn v8_Object_Get(object: *Object, context: *Context, key: *Value) ?*Value;
 pub extern fn v8_Object_HasOwnProperty(object: *Object, context: *Context, key: *Value) bool;
+/// ECMAScript HasOwnProperty(O, P) with its throw reported: 1 or 0, or -1 when
+/// [[GetOwnProperty]] threw (the exception left pending) or the key is no Name.
+pub extern fn v8_Object_HasOwnPropertyOrThrow(object: *Object, context: *Context, key: *Value) c_int;
 pub extern fn v8_Object_GetOwnPropertyDescriptor(object: *Object, context: *Context, key: *Value) ?*Value;
 pub extern fn v8_Object_GetOwnPropertyNames(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetOwnPropertyNamesAsStrings(context: *Context, obj: *Object) ?*Array;

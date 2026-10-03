@@ -232,6 +232,51 @@ pub fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
     return support.owned(ffi.v8_Value_ToGlobal(entered.isolate, @ptrCast(local)) orelse return error.OperationFailed);
 }
 
+/// ECMAScript HasOwnProperty(O, P) (7.3.12). A throw is left pending.
+pub fn hasOwnProperty(realm: Context, object: JSValue, property: []const u8) Error!bool {
+    const entered = try support.enter(realm);
+    defer entered.leave();
+    const target = try objectOf(entered, object);
+    defer ffi.v8_Global_Dispose(target);
+    const key = try support.newString(entered.isolate, property);
+    defer ffi.v8_String_Dispose(key);
+    // 1. Let desc be ? O.[[GetOwnProperty]](P).
+    // 2-3. Return desc is not undefined.
+    return switch (ffi.v8_Object_HasOwnPropertyOrThrow(@ptrCast(target), entered.context(), @ptrCast(key))) {
+        1 => true,
+        0 => false,
+        else => error.ExceptionPending,
+    };
+}
+
+/// thisTimeValue(value), without its TypeError: null when no [[DateValue]].
+pub fn thisTimeValue(realm: Context, value: JSValue) ?f64 {
+    const handle = support.handleOf(value) orelse return null;
+    const entered = support.enter(realm) catch return null;
+    defer entered.leave();
+    // 1. If value is an Object and value has a [[DateValue]] internal slot,
+    //    return value.[[DateValue]]. (V8's IsDate is that slot.)
+    if (!ffi.v8_Value_IsDate(handle)) return null;
+    return ffi.v8_Date_ValueOf(handle);
+}
+
+/// An Array exotic object: V8's IsArray is JSArray alone (a Proxy is not
+/// one), which is the definition, where ECMAScript IsArray looks through
+/// proxies.
+pub fn isArrayExoticObject(realm: Context, value: JSValue) bool {
+    const handle = support.handleOf(value) orelse return false;
+    const entered = support.enter(realm) catch return false;
+    defer entered.leave();
+    return ffi.v8_Value_IsArray(handle);
+}
+
+/// A new Date of `realm`: Date::New applies TimeClip. OWNED.
+pub fn createDate(realm: Context, time_value: f64) Error!Owned {
+    const entered = try support.enter(realm);
+    defer entered.leave();
+    return support.owned(ffi.v8_Date_New(entered.isolate, entered.context(), time_value) orelse return error.OperationFailed);
+}
+
 /// ECMAScript JSON.parse "in the context of a new global object" (WebCrypto
 /// "parse a JWK" step 4). OWNED.
 ///

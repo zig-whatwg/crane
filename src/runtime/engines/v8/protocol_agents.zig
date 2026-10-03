@@ -124,6 +124,13 @@ pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     return agents.get(isolate);
 }
 
+/// engine.agentHost: the host pointer `agent` was made with; null once
+/// endAgent has forgotten it, or for an isolate createAgent did not make.
+pub fn agentHost(agent: *Agent) ?*anyopaque {
+    const record = recordOf(@ptrCast(@alignCast(agent))) orelse return null;
+    return record.host;
+}
+
 /// HTML "obtain an agent" (a similar-origin window agent or a worker's): a
 /// new isolate - restored from the engine's snapshot when asked for and one
 /// was given - with [[CanBlock]] as the options say and the host's hooks

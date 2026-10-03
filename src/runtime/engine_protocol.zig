@@ -607,6 +607,14 @@ pub inline fn destroyAgent(agent: *Agent) void {
     impl.destroyAgent(agent);
 }
 
+/// The `host` pointer `agent` was created with (AgentOptions.host): the
+/// embedder's own pointer handed back, no engine handle. Null when none was
+/// given, once the agent is destroyed, or for an agent the adapter did not
+/// make.
+pub inline fn agentHost(agent: *Agent) ?*anyopaque {
+    return impl.agentHost(agent);
+}
+
 /// Whether the agent's execution context stack is non-empty.
 pub inline fn hasRunningScript(agent: *Agent) bool {
     return impl.hasRunningScript(agent);
@@ -949,9 +957,37 @@ pub inline fn hasProperty(realm: Context, object: JSValue, property: []const u8)
     return impl.hasProperty(realm, object, property);
 }
 
+/// ECMAScript HasOwnProperty(O, P) (7.3.12): whether O.[[GetOwnProperty]](P)
+/// is not undefined. What that throws (a Proxy's getOwnPropertyDescriptor
+/// trap) is left pending: ExceptionPending, never a silent false. TypeError
+/// when `object` is not an Object.
+pub inline fn hasOwnProperty(realm: Context, object: JSValue, property: []const u8) Error!bool {
+    return impl.hasOwnProperty(realm, object, property);
+}
+
 /// Type(V).
 pub inline fn typeOf(realm: Context, value: JSValue) ValueType {
     return impl.typeOf(realm, value);
+}
+
+/// ECMAScript thisTimeValue(value) (21.4.4), without the TypeError: a Date's
+/// [[DateValue]] - NaN for an invalid date - or null when `value` has no
+/// [[DateValue]] internal slot. Never runs script.
+pub inline fn thisTimeValue(realm: Context, value: JSValue) ?f64 {
+    return impl.thisTimeValue(realm, value);
+}
+
+/// Whether `value` is an Array exotic object (ECMAScript 10.4.2) - NOT
+/// IsArray, which looks through a Proxy: a Proxy of an array is no Array
+/// exotic object (IndexedDB "convert a value to a key"). Never runs script.
+pub inline fn isArrayExoticObject(realm: Context, value: JSValue) bool {
+    return impl.isArrayExoticObject(realm, value);
+}
+
+/// A new Date of `realm` whose [[DateValue]] is TimeClip(`time_value`)
+/// (ECMAScript 21.4.2.1, Date(value) given a number). OWNED.
+pub inline fn createDate(realm: Context, time_value: f64) Error!Owned {
+    return impl.createDate(realm, time_value);
 }
 
 /// SameValue(x, y).

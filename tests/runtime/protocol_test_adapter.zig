@@ -60,6 +60,10 @@ pub fn createAgent(_: engine.AgentOptions) Error!*Agent {
     return error.NotSupported;
 }
 pub fn destroyAgent(_: *Agent) void {}
+/// No agent is made here (createAgent is NotSupported): none has a host.
+pub fn agentHost(_: *Agent) ?*anyopaque {
+    return null;
+}
 pub fn hasRunningScript(_: *Agent) bool {
     return false;
 }
@@ -239,6 +243,20 @@ pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {
 }
 /// No engine: NotSupported.
 pub fn parseJsonInNewGlobal(_: Context, _: []const u8) Error!Owned {
+    return error.NotSupported;
+}
+pub fn hasOwnProperty(_: Context, _: JSValue, _: []const u8) Error!bool {
+    return error.NotSupported;
+}
+/// No engine values: nothing has a [[DateValue]].
+pub fn thisTimeValue(_: Context, _: JSValue) ?f64 {
+    return null;
+}
+/// No engine values: nothing is an Array exotic object.
+pub fn isArrayExoticObject(_: Context, _: JSValue) bool {
+    return false;
+}
+pub fn createDate(_: Context, _: f64) Error!Owned {
     return error.NotSupported;
 }
 pub fn serializeJsonToBytes(_: Context, _: JSValue, _: Allocator) Error![]u8 {

@@ -80,6 +80,12 @@ pub fn createAgent(_: engine.AgentOptions) Error!*Agent {
     return error.NotSupported;
 }
 pub fn destroyAgent(_: *Agent) void {}
+/// No agent is made here (createAgent is NotSupported): no host to hand
+/// back. When agents are made, the adapter keeps AgentOptions.host to call
+/// the hooks with, and answers it.
+pub fn agentHost(_: *Agent) ?*anyopaque {
+    return null;
+}
 pub fn hasRunningScript(_: *Agent) bool {
     return false;
 }
@@ -268,6 +274,26 @@ pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {
 /// invalid JSON, so the caller's SyntaxError is made in the caller's context
 /// (a generic message) and thrown there.
 pub fn parseJsonInNewGlobal(_: Context, _: []const u8) Error!Owned {
+    return error.NotSupported;
+}
+/// JSC: JSObjectGetPropertyForKey would run getters; the C API's
+/// JSObjectHasPropertyForKey is HasProperty, not HasOwnProperty - an own-key
+/// check needs JSObjectCopyPropertyNames or the Reflect intrinsic.
+pub fn hasOwnProperty(_: Context, _: JSValue, _: []const u8) Error!bool {
+    return error.NotSupported;
+}
+/// JSC: JSValueIsDate, then the Date's valueOf through the intrinsic
+/// Date.prototype.valueOf (the C API has no [[DateValue]] accessor).
+pub fn thisTimeValue(_: Context, _: JSValue) ?f64 {
+    return null;
+}
+/// JSC: JSValueIsArray is ECMAScript IsArray (it looks through a Proxy); an
+/// Array exotic object check needs the Proxy excluded first.
+pub fn isArrayExoticObject(_: Context, _: JSValue) bool {
+    return false;
+}
+/// JSC: JSObjectMakeDate(ctx, 1, &number, &exception).
+pub fn createDate(_: Context, _: f64) Error!Owned {
     return error.NotSupported;
 }
 /// JSC: JSValueCreateJSONString(ctx, value, 0, &exception) - null with no

@@ -12721,3 +12721,25 @@ bool v8_Isolate_IsExecutionTerminating(Isolate* isolate) {
 
 } // extern "C"
 // ---- end lane: speed ----
+
+// ---- lane: conversions ----
+// engine.hasOwnProperty: ECMAScript HasOwnProperty(O, P), whose throw (a
+// Proxy's getOwnPropertyDescriptor trap) v8_Object_HasOwnProperty swallows
+// into false.
+extern "C" {
+
+int v8_Object_HasOwnPropertyOrThrow(Global<Object>* object, Global<Context>* context, Global<Value>* key) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Local<Object> obj = object->Get(isolate);
+    Local<Value> k = key->Get(isolate);
+    if (!k->IsName()) return -1;
+    Maybe<bool> result = obj->HasOwnProperty(ctx, k.As<Name>());
+    // Nothing: [[GetOwnProperty]] threw, and the exception stays pending.
+    if (result.IsNothing()) return -1;
+    return result.FromJust() ? 1 : 0;
+}
+
+} // extern "C"
+// ---- end lane: conversions ----
