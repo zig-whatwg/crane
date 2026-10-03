@@ -77,6 +77,7 @@ pub const form_submission = @import("form_submission.zig");
 pub const node_lists = @import("node_lists.zig");
 pub const teardown_sweeps = @import("teardown_sweeps.zig");
 pub const unloading_cleanup = @import("unloading_cleanup.zig");
+pub const idle_periods = @import("idle_periods.zig");
 pub const process_start = @import("process_start.zig");
 pub const event_construction = @import("event_construction.zig");
 pub const navigables = @import("navigables.zig");

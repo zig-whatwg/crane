@@ -1,16 +1,19 @@
 //! Implementation for IdleDeadline interface
 //!
 //! Spec: https://w3c.github.io/requestidlecallback/#the-idledeadline-interface
-//! This interface is used to determine the time remaining for idle callbacks.
+//!
+//! What an idle callback is given: how long its idle period has left, and
+//! whether it was invoked by its timeout instead. Window's idle callback
+//! steps make one through dom.idle_periods (`createDeadline`), which this
+//! type installs: nothing else names this impl.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const clock = @import("clock");
+const hr_time = @import("hr_time");
+const idle_periods = @import("dom").idle_periods;
 const IdleDeadline = interfaces.IdleDeadline;
 
 pub const State = IdleDeadline.State;
@@ -20,32 +23,24 @@ pub const ImplError = error{
     InvalidStateError,
 };
 
-/// Internal state for IdleDeadline implementation
-/// Stores the deadline timestamp and whether this was invoked due to timeout.
+/// An IdleDeadline's internal state.
 pub const InternalState = struct {
-    /// The deadline timestamp (in milliseconds since epoch)
-    /// After this time, the browser wants to do other work.
-    deadline: i64,
-
-    /// Whether this callback was invoked because the timeout expired
-    /// rather than because the browser had idle time.
-    did_timeout: bool,
-
-    /// Allocator
     allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator, deadline: i64, did_timeout: bool) InternalState {
-        return .{
-            .deadline = deadline,
-            .did_timeout = did_timeout,
-            .allocator = allocator,
-        };
-    }
+    /// The get deadline time algorithm (and with it the timeout: true for
+    /// `.timed_out`).
+    deadline: idle_periods.Deadline,
+    /// For an idle period's deadline: the earliest it has been (ns). The
+    /// period's deadline only ever comes earlier - a timer that brought it
+    /// forward and then ran must not move it back.
+    earliest_ns: i64,
 };
 
-// Use shared InstanceRegistry utility for internal state management
-const utils = @import("webidl").utils;
-const Registry = utils.InstanceRegistry(InternalState);
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md):
+/// Window's idle callback steps make IdleDeadlines here.
+pub fn installHooks() void {
+    idle_periods.installDeadlines(.{ .create = &createDeadline });
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -54,108 +49,96 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
-}
-
-/// Create an IdleDeadline instance with specific deadline and timeout info
-pub fn createWithDeadline(
-    allocator: std.mem.Allocator,
-    deadline: i64,
-    did_timeout: bool,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &IdleDeadline.vtable, .{});
-    errdefer deinit(instance);
-
-    // Create internal state
-    const internal = try allocator.create(InternalState);
-    internal.* = InternalState.init(allocator, deadline, did_timeout);
-    try Registry.set(instance, internal);
-
-    return instance;
+    return runtime.Instance.init(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up from registry
-    if (Registry.get(instance)) |internal| {
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
-    Registry.remove(instance);
+    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Getter for didTimeout
-/// Spec: Returns true if the callback was invoked because timeout expired,
-/// false if invoked during an idle period.
+/// dom.idle_periods: a new IdleDeadline in `realm` whose get deadline time
+/// algorithm is `deadline` ("invoke idle callbacks" step 3.2, "invoke idle
+/// callback timeout" step 2.3). The caller's until the engine wraps it.
+fn createDeadline(realm: runtime.Context, deadline: idle_periods.Deadline) anyerror!*runtime.Instance {
+    const instance = try IdleDeadline.init(realm.allocator, realm);
+    errdefer runtime.Instance.deinit(instance);
+    const internal = try realm.allocator.create(InternalState);
+    internal.* = .{
+        .allocator = realm.allocator,
+        .deadline = deadline,
+        .earliest_ns = switch (deadline) {
+            .period => |period| period.end_ns,
+            .timed_out => |at| at,
+        },
+    };
+    instance.getState(State).own._internal = internal;
+    return instance;
+}
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
+}
+
+/// Getter for didTimeout: "The didTimeout getter MUST return timeout" -
+/// true only for a callback "invoke idle callback timeout" ran.
 pub fn get_didTimeout(instance: *runtime.Instance) anyerror!bool {
-    const internal = Registry.get(instance) orelse return false;
-    return internal.did_timeout;
+    const internal = getInternal(instance) orelse return false;
+    return internal.deadline == .timed_out;
 }
 
 /// Operation: timeRemaining
-/// Spec: Returns the estimated number of milliseconds remaining in the current
-/// idle period. If the deadline has passed, returns 0.
+/// Spec: https://w3c.github.io/requestidlecallback/#the-timeremaining-method
 pub fn call_timeRemaining(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeStamp {
-    const internal = Registry.get(instance) orelse return 0;
+    const internal = getInternal(instance) orelse return 0;
+    // 1. "Let now be a DOMHighResTimeStamp representing current high
+    // resolution time in milliseconds."
+    const now: i64 = @intCast(clock.monotonicNanos());
+    // 2. "Let deadline be the result of calling IdleDeadline's get deadline
+    // time algorithm." An idle period's is computeDeadline, asked again
+    // now: a timer or an animation frame requested since brings it forward.
+    const deadline_ns: i64 = switch (internal.deadline) {
+        .timed_out => |at| at,
+        .period => |period| blk: {
+            const now_deadline = idle_periods.deadline(instance.ctx, period);
+            internal.earliest_ns = @min(internal.earliest_ns, now_deadline);
+            break :blk internal.earliest_ns;
+        },
+    };
+    // 3-5: deadline - now, never negative; both coarsened as the clock
+    // performance.now() reads is (HR-TIME "coarsen time"; the privacy
+    // section asks it of these estimates).
+    return remainingMillis(deadline_ns, now);
+}
 
-    const now = clock.monotonicMillis();
-    const remaining = internal.deadline - now;
-
-    // Return 0 if deadline has passed, otherwise return remaining time
-    return if (remaining > 0) @floatFromInt(remaining) else 0;
+/// `deadline_ns - now_ns` in milliseconds, each coarsened, and 0 when the
+/// deadline has passed.
+fn remainingMillis(deadline_ns: i64, now_ns: i64) f64 {
+    const deadline = hr_time.coarsenTime(deadline_ns, false);
+    const now = hr_time.coarsenTime(now_ns, false);
+    if (deadline <= now) return 0;
+    return @as(f64, @floatFromInt(deadline - now)) / std.time.ns_per_ms;
 }
 
 // ============================================================================
 // Tests
 // ============================================================================
 
-test "IdleDeadline - didTimeout returns correct value" {
-    const allocator = std.testing.allocator;
-
-    // Test with did_timeout = false
-    {
-        const future_deadline = clock.monotonicMillis() + 1000;
-        const deadline = try createWithDeadline(allocator, future_deadline, false);
-        defer deinit(deadline);
-
-        try std.testing.expectEqual(false, try get_didTimeout(deadline));
-    }
-
-    // Test with did_timeout = true
-    {
-        const future_deadline = clock.monotonicMillis() + 1000;
-        const deadline = try createWithDeadline(allocator, future_deadline, true);
-        defer deinit(deadline);
-
-        try std.testing.expectEqual(true, try get_didTimeout(deadline));
-    }
+test "remaining time is the coarsened deadline less the coarsened now, in milliseconds" {
+    const ms = std.time.ns_per_ms;
+    try std.testing.expectEqual(@as(f64, 10), remainingMillis(1_000 * ms + 10 * ms, 1_000 * ms));
+    // 100 microsecond resolution: 10.05 ms from a boundary reads 10.
+    try std.testing.expectEqual(@as(f64, 10), remainingMillis(1_000 * ms + 10 * ms + 50_000, 1_000 * ms));
 }
 
-test "IdleDeadline - timeRemaining returns positive for future deadline" {
-    const allocator = std.testing.allocator;
-
-    // Set deadline 1 second in the future
-    const future_deadline = clock.monotonicMillis() + 1000;
-    const deadline = try createWithDeadline(allocator, future_deadline, false);
-    defer deinit(deadline);
-
-    const remaining = try call_timeRemaining(deadline);
-
-    // Should have some time remaining (less than 1000ms due to execution time)
-    try std.testing.expect(remaining > 0);
-    try std.testing.expect(remaining <= 1000);
-}
-
-test "IdleDeadline - timeRemaining returns 0 for past deadline" {
-    const allocator = std.testing.allocator;
-
-    // Set deadline 1 second in the past
-    const past_deadline = clock.monotonicMillis() - 1000;
-    const deadline = try createWithDeadline(allocator, past_deadline, true);
-    defer deinit(deadline);
-
-    const remaining = try call_timeRemaining(deadline);
-
-    // Should be 0 since deadline has passed
-    try std.testing.expectEqual(@as(typedefs.DOMHighResTimeStamp, 0), remaining);
+test "a deadline that has passed leaves no time" {
+    const ms = std.time.ns_per_ms;
+    try std.testing.expectEqual(@as(f64, 0), remainingMillis(1_000 * ms, 1_000 * ms));
+    try std.testing.expectEqual(@as(f64, 0), remainingMillis(1_000 * ms, 2_000 * ms));
 }

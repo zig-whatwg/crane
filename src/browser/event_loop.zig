@@ -11,7 +11,9 @@
 //! One turn (`runOnceBlocking`) follows the Node.js/Chromium pattern:
 //! checkpoint; the tasks queued before the turn began, each followed by a
 //! checkpoint; the engine's own tasks; the network; then a wait for the next
-//! timer, the deadline, or I/O; timer callbacks; a last checkpoint.
+//! timer, the deadline, or I/O; timer callbacks; a last checkpoint. A turn
+//! that finds no task queued starts an idle period for the windows that asked
+//! for one (HTML 8.1.7.3 step 5; requestIdleCallback).
 //!
 //! ## Bfcache support
 //!
@@ -20,8 +22,10 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const clock = @import("clock");
 const engine = @import("engine");
 const runtime = @import("runtime");
+const idle_periods = @import("dom").idle_periods;
 
 const TimerManager = runtime.native_timer.NativeTimerManager;
 const Task = runtime.EventLoopTask;
@@ -51,6 +55,27 @@ pub const EventLoop = struct {
 
     /// Whether this event loop is frozen (for bfcache)
     frozen: bool,
+
+    /// The same-loop windows that asked for an idle period
+    /// (requestIdleCallback), in the order they asked: each runs its "start
+    /// an idle period" steps when the next one starts.
+    idle_requests: std.ArrayListUnmanaged(IdleRequest) = .empty,
+
+    /// HTML 8.1.7.1: the window event loop's last idle period start time
+    /// (clock.monotonicNanos); 0 before the first.
+    last_idle_period_start_ns: i64 = 0,
+
+    /// The current idle period's deadline: computeDeadline when it started,
+    /// brought forward by timers that came due sooner while it lasted. One
+    /// idle period at a time: the next starts once this has passed.
+    idle_period_end_ns: i64 = 0,
+
+    /// Which idle period is current (Period.id); 0 before the first.
+    idle_period_id: u64 = 0,
+
+    /// No idle period starts before this time: the loop has just run work a
+    /// frame long or longer (`noteWork`).
+    idle_blocked_until_ns: i64 = 0,
 
     const Self = @This();
 
@@ -84,6 +109,10 @@ pub const EventLoop = struct {
             if (task.drop) |drop| drop(task.context);
         }
         self.tasks.deinit(self.allocator);
+        // A window still waiting for an idle period is told nothing: its
+        // idle callbacks went with its document (Window's unloading cleanup
+        // step), and a request holds no data of its own.
+        self.idle_requests.deinit(self.allocator);
         self.promise_arena.deinit();
     }
 
@@ -108,16 +137,25 @@ pub const EventLoop = struct {
 
     /// The EventLoop interface host algorithms queue on (streams, Blob).
     pub fn eventLoop(self: *Self) runtime.EventLoop {
-        return .{
-            .ptr = self,
-            .vtable = &.{
-                .queueMicrotask = queueMicrotask,
-                .queueTask = queueTask,
-                .runMicrotasks = runMicrotasks,
-                .runOnce = runOnce,
-                .promiseAllocator = promiseAllocator,
-            },
-        };
+        return .{ .ptr = self, .vtable = &interface_vtable };
+    }
+
+    /// One table for every loop, so that a realm's EventLoop interface tells
+    /// whether it is this type's (`of`).
+    const interface_vtable: runtime.EventLoop.VTable = .{
+        .queueMicrotask = queueMicrotask,
+        .queueTask = queueTask,
+        .runMicrotasks = runMicrotasks,
+        .runOnce = runOnce,
+        .promiseAllocator = promiseAllocator,
+    };
+
+    /// The Browser event loop `realm` queues on, when it is one (a worker's
+    /// realm runs on another kind).
+    pub fn of(realm: runtime.Context) ?*Self {
+        const loop = realm.getOptionalEventLoop() orelse return null;
+        if (loop.vtable != &interface_vtable) return null;
+        return @ptrCast(@alignCast(loop.ptr));
     }
 
     // ========================================================================
@@ -163,6 +201,8 @@ pub const EventLoop = struct {
         // Step 1: the microtasks pending from before the turn.
         self.checkpoint();
 
+        const work_start = monotonicNs();
+
         // Step 2: the tasks queued before this turn began.
         if (self.runQueuedTasks()) did_work = true;
 
@@ -177,20 +217,35 @@ pub const EventLoop = struct {
         // loop never sleeps through a response.
         if (async_fetch.pump()) did_work = true;
 
+        const now = monotonicNs();
+        self.noteWork(work_start, now);
+
+        // Step 2d (HTML 8.1.7.3 step 5): no runnable task, so an idle period
+        // for the same-loop windows that asked for one. Each queues its
+        // "invoke idle callbacks" task, which the next turn runs.
+        if (self.startIdlePeriod(now)) did_work = true;
+
         // Step 3: how long to wait - until the next timer or max_wait_ms.
         const wait_time = blk: {
             // A task left for the next turn is work waiting now: poll, but
             // do not block.
             if (self.tasks.items.len > 0) break :blk 0;
+            var wait = max_wait_ms;
             if (self.timer_manager) |mgr| {
-                if (mgr.getNextTimerDeadline()) |deadline| break :blk @min(deadline, max_wait_ms);
+                if (mgr.getNextTimerDeadline()) |deadline| wait = @min(deadline, wait);
             }
-            break :blk max_wait_ms;
+            // A window waiting for an idle period: wake when one can start.
+            if (self.idleWaitMs(now)) |idle_wait| wait = @min(idle_wait, wait);
+            break :blk wait;
         };
 
         // Step 4: wait for a timer or I/O, and run the timer callbacks.
         if (self.timer_manager) |mgr| {
+            const poll_start = monotonicNs();
             if (mgr.pollBlocking(wait_time)) did_work = true;
+            // The wait is at most a millisecond slice (native_timer.zig);
+            // the rest is timer callbacks.
+            self.noteWork(poll_start + std.time.ns_per_ms, monotonicNs());
         }
 
         // Step 5: the microtasks the timer callbacks queued.
@@ -227,12 +282,138 @@ pub const EventLoop = struct {
     /// Whether there is pending work that should keep the loop from idling.
     pub fn hasPendingWork(self: *Self) bool {
         if (self.tasks.items.len > 0) return true;
+        // A window waiting for an idle period: one will start.
+        if (self.idle_requests.items.len > 0) return true;
         // A fetch in flight will queue a task when it ends.
         if (async_fetch.inFlight() > 0) return true;
         if (self.timer_manager) |mgr| {
             if (mgr.getActiveTimerCount() > 0) return true;
         }
         return false;
+    }
+
+    // ========================================================================
+    // Idle periods (HTML 8.1.7.3 step 5; requestIdleCallback)
+    // ========================================================================
+    //
+    // Crane renders nothing. Its rendering opportunities are the animation
+    // frame timer (browser/Context.zig, a timer every 16 ms while frame
+    // callbacks wait), so the timers bound a deadline as the next rendering
+    // opportunity would. Every timer of this loop counts, not only the
+    // windows' maps of active timers: the engine's own and the idle
+    // callbacks' timeouts make deadlines earlier, which a user agent may
+    // always do ("The user agent is free to end an idle period early").
+
+    /// The longest an idle period lasts: "last idle period start time plus
+    /// 50" (computeDeadline step 1).
+    pub const max_idle_period_ns: i64 = 50 * std.time.ns_per_ms;
+
+    /// Work this long, in one stretch of a turn, keeps idle periods away for
+    /// as long again: a frame. HTML lets the user agent delay an idle period
+    /// ("start an idle period" step 1); a browser starts one after a frame,
+    /// and a long task leaves the frame pipeline behind
+    /// (requestidlecallback/callback-timeout-when-busy.html: no idle callback
+    /// between the tasks of a busy chain of timers).
+    pub const long_work_ns: i64 = 16 * std.time.ns_per_ms;
+
+    /// `realm`'s window asks for an idle period: `start` runs when the next
+    /// one starts. Asking again before then is asking once.
+    pub fn requestIdlePeriod(self: *Self, realm: runtime.Context, start: idle_periods.StartIdlePeriod) void {
+        for (self.idle_requests.items) |request| {
+            if (request.realm == realm) return;
+        }
+        self.idle_requests.append(self.allocator, .{ .realm = realm, .start = start }) catch {
+            std.log.err("event loop: out of memory asking for an idle period; dropped", .{});
+        };
+    }
+
+    /// computeDeadline now (ns) for `period`: its end, brought forward by a
+    /// timer due sooner - and by the loop's own record when `period` is the
+    /// current one, which kept every timer it saw come due.
+    pub fn idleDeadline(self: *Self, period: idle_periods.Period) i64 {
+        var deadline = period.end_ns;
+        if (period.id == self.idle_period_id) deadline = @min(deadline, self.idle_period_end_ns);
+        if (self.nextTimerDueNs(monotonicNs())) |due| deadline = @min(deadline, due);
+        return deadline;
+    }
+
+    /// Step 5, when this turn has no runnable task: "Set this event loop's
+    /// last idle period start time to the unsafe shared current time", and
+    /// for each same-loop window, "start an idle period" with
+    /// computeDeadline. Whether one started.
+    fn startIdlePeriod(self: *Self, now: i64) bool {
+        if (self.idle_requests.items.len == 0) return false;
+        // A runnable task: not idle.
+        if (self.tasks.items.len > 0) return false;
+        if (!self.idlePeriodMayStart(now)) return false;
+
+        // Step 5.1.
+        self.last_idle_period_start_ns = now;
+        // Step 5.2: computeDeadline.
+        var end = now + max_idle_period_ns;
+        if (self.nextTimerDueNs(now)) |due| end = @min(end, due);
+        self.idle_period_id += 1;
+        self.idle_period_end_ns = end;
+        const period: idle_periods.Period = .{ .id = self.idle_period_id, .end_ns = end };
+
+        // Step 5.3: the windows that asked before now. One that asks while
+        // its steps run waits for the next idle period.
+        var requests = self.idle_requests;
+        self.idle_requests = .empty;
+        defer requests.deinit(self.allocator);
+        for (requests.items) |request| request.start(request.realm, period);
+        return true;
+    }
+
+    /// Whether a new idle period may start at `now`: the current one has
+    /// ended ("There can only be one idle period active at a given time for
+    /// any given Window"), and the loop has not just run long work.
+    fn idlePeriodMayStart(self: *Self, now: i64) bool {
+        if (now < self.idle_blocked_until_ns) return false;
+        if (now >= self.idle_period_end_ns) return true;
+        // Still current: a timer due sooner ends it sooner.
+        if (self.nextTimerDueNs(now)) |due| self.idle_period_end_ns = @min(self.idle_period_end_ns, due);
+        return now >= self.idle_period_end_ns;
+    }
+
+    /// How long until a waiting window's idle period can start (ms), when
+    /// one is waiting.
+    fn idleWaitMs(self: *Self, now: i64) ?u64 {
+        if (self.idle_requests.items.len == 0) return null;
+        const at = @max(self.idle_blocked_until_ns, self.idle_period_end_ns);
+        if (at <= now) return 0;
+        return @intCast(@divTrunc(at - now + std.time.ns_per_ms - 1, std.time.ns_per_ms));
+    }
+
+    /// Work from `start` to `end` (ns) a frame long or longer keeps idle
+    /// periods away for a frame after it.
+    fn noteWork(self: *Self, start: i64, end: i64) void {
+        if (end - start >= long_work_ns) self.idle_blocked_until_ns = end + long_work_ns;
+    }
+
+    /// When the next timer of this loop comes due (ns), if one is armed.
+    fn nextTimerDueNs(self: *Self, now: i64) ?i64 {
+        const mgr = self.timer_manager orelse return null;
+        // Whole milliseconds, rounded down: never later than the timer.
+        const due_in_ms = mgr.getNextTimerDeadline() orelse return null;
+        return now + @as(i64, @intCast(due_in_ms)) * std.time.ns_per_ms;
+    }
+
+    /// dom.idle_periods' loop half: the browser layer installs it at process
+    /// start (Context.installHooks).
+    pub const idle_period_hooks: idle_periods.Loop = .{
+        .request = hookRequestIdlePeriod,
+        .deadline = hookIdleDeadline,
+    };
+
+    fn hookRequestIdlePeriod(realm: runtime.Context, start: idle_periods.StartIdlePeriod) void {
+        const self = of(realm) orelse return;
+        self.requestIdlePeriod(realm, start);
+    }
+
+    fn hookIdleDeadline(realm: runtime.Context, period: idle_periods.Period) i64 {
+        const self = of(realm) orelse return period.end_ns;
+        return self.idleDeadline(period);
     }
 
     // ========================================================================
@@ -276,6 +457,19 @@ pub const EventLoop = struct {
         const self: *Self = @ptrCast(@alignCast(ptr));
         return self.promise_arena.allocator();
     }
+};
+
+/// The monotonic clock, in nanoseconds (the idle periods' time base).
+fn monotonicNs() i64 {
+    return @intCast(clock.monotonicNanos());
+}
+
+/// A same-loop window waiting for an idle period. Its realm is BORROWED: work
+/// on the realm's own agent may keep it across turns, and the start steps
+/// check `hasEngine()` before they reach the window.
+const IdleRequest = struct {
+    realm: runtime.Context,
+    start: idle_periods.StartIdlePeriod,
 };
 
 /// A host microtask in the agent's queue, until it runs.
