@@ -3927,6 +3927,21 @@ pub fn V8Interface(comptime Interface: type) type {
                     };
                     defer freeArgument(Param1Type, allocator, arg1);
 
+                    // A trailing variadic `T... rest` collects every argument
+                    // from its index, as a sole one does: converting the one
+                    // value at that index as a slice threw a TypeError for
+                    // createHTML("x", "a") and console.assert(c, "m").
+                    if (comptime isVariadicParam(Param2Type)) {
+                        const ElemType = @typeInfo(Param2Type).pointer.child;
+                        const rest = try collectVariadicArgs(ElemType, allocator, isolate, v8_context, info.raw, 1);
+                        defer {
+                            for (rest) |elem| freeArgument(ElemType, allocator, elem);
+                            if (rest.len > 0) allocator.free(rest);
+                        }
+                        if (comptime restrictedBit(modes.restricted, 1)) try conv.requireFinite(Param2Type, rest);
+                        break :blk try method_fn(instance, arg1, rest);
+                    }
+
                     const arg2 = if (js_arg_count >= 2) arg_blk: {
                         const v8_arg2 = info.get(1);
                         break :arg_blk try convertArg(Param2Type, comptime argMode(modes, 1), allocator, isolate, v8_context, v8_arg2);
@@ -3976,6 +3991,18 @@ pub fn V8Interface(comptime Interface: type) type {
                         }
                     };
                     defer freeArgument(Param2Type, allocator, arg2);
+
+                    // A trailing variadic, as in the two-parameter branch.
+                    if (comptime isVariadicParam(Param3Type)) {
+                        const ElemType = @typeInfo(Param3Type).pointer.child;
+                        const rest = try collectVariadicArgs(ElemType, allocator, isolate, v8_context, info.raw, 2);
+                        defer {
+                            for (rest) |elem| freeArgument(ElemType, allocator, elem);
+                            if (rest.len > 0) allocator.free(rest);
+                        }
+                        if (comptime restrictedBit(modes.restricted, 2)) try conv.requireFinite(Param3Type, rest);
+                        break :blk try method_fn(instance, arg1, arg2, rest);
+                    }
 
                     const arg3 = if (js_arg_count >= 3) arg_blk: {
                         const v8_arg3 = info.get(2);
@@ -4697,6 +4724,18 @@ pub fn V8Interface(comptime Interface: type) type {
                     return try Interface.call_constructor(ctx, args);
                 }
 
+                // A sole variadic `T... args` (CSSMathSum's) collects every
+                // argument, as an operation's does.
+                if (comptime isVariadicParam(Param1Type)) {
+                    const ElemType = @typeInfo(Param1Type).pointer.child;
+                    const rest = try collectVariadicArgs(ElemType, allocator, isolate, v8_context, info, 0);
+                    defer {
+                        for (rest) |elem| freeArgument(ElemType, allocator, elem);
+                        if (rest.len > 0) allocator.free(rest);
+                    }
+                    return try Interface.call_constructor(ctx, rest);
+                }
+
                 // Normal single-parameter constructor
                 // Parameter may be optional - check type and provide default if needed
                 const arg1 = if (js_arg_count >= 1) blk: {
@@ -4749,6 +4788,17 @@ pub fn V8Interface(comptime Interface: type) type {
                     }
                 };
                 defer freeArgument(Param1Type, allocator, arg1);
+
+                // A trailing variadic collects every argument from its index.
+                if (comptime isVariadicParam(Param2Type)) {
+                    const ElemType = @typeInfo(Param2Type).pointer.child;
+                    const rest = try collectVariadicArgs(ElemType, allocator, isolate, v8_context, info, 1);
+                    defer {
+                        for (rest) |elem| freeArgument(ElemType, allocator, elem);
+                        if (rest.len > 0) allocator.free(rest);
+                    }
+                    return try Interface.call_constructor(ctx, arg1, rest);
+                }
 
                 // Second param may be optional (use default if not provided)
                 const arg2 = if (js_arg_count >= 2) blk: {
