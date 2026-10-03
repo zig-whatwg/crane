@@ -12,11 +12,11 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const FontFaceLoadStatus = @import("enums").FontFaceLoadStatus;
 const CSSOMString = @import("typedefs").CSSOMString;
-const BufferSource = @import("typedefs").BufferSource;
 const FontFaceVariations = @import("interfaces").FontFaceVariations;
+const CSSOMStringOrBufferSource = @import("typedefs").CSSOMStringOrBufferSource;
 const FontFacePalettes = @import("interfaces").FontFacePalettes;
-const FontFaceFeatures = @import("interfaces").FontFaceFeatures;
 const FontFaceDescriptors = @import("dictionaries").FontFaceDescriptors;
+const FontFaceFeatures = @import("interfaces").FontFaceFeatures;
 
 pub const FontFace = struct {
     pub const Meta = struct {
@@ -188,7 +188,7 @@ pub const FontFace = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, family: CSSOMString, source: runtime.JSValue, descriptors: webidl.Opt(FontFaceDescriptors)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, family: CSSOMString, source: CSSOMStringOrBufferSource, descriptors: webidl.Opt(FontFaceDescriptors)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try FontFaceImpl.call_constructor(ctx, family, source, descriptors);
     }

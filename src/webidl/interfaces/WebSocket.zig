@@ -279,9 +279,13 @@ pub const WebSocket = struct {
     }
 
     pub fn call_close(instance: *runtime.Instance, code: webidl.Opt(u16), reason: webidl.Opt(runtime.USVString)) anyerror!void {
-        // [Clamp] on code
-        const clamped_code = if (code.wasPassed()) webidl.Opt(u16).passed(runtime.clamp(u16, code.value)) else webidl.Opt(u16).notPassed();
-
-        return try WebSocketImpl.call_close(instance, clamped_code, reason);
+        return try WebSocketImpl.call_close(instance, code, reason);
     }
+
+    /// WebIDL [Clamp]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const clamp = .{
+        .{ "call_close", 0b1 },
+    };
 };

@@ -171,9 +171,6 @@ pub const IDBCursor = struct {
     }
 
     pub fn call_advance(instance: *runtime.Instance, count: u32) anyerror!void {
-        // [EnforceRange] on count
-        if (!runtime.isInRange(u32, count)) return error.TypeError;
-
         return try IDBCursorImpl.call_advance(instance, count);
     }
 
@@ -197,4 +194,11 @@ pub const IDBCursor = struct {
 
         return try IDBCursorImpl.call_update(instance, value);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_advance", 0b1 },
+    };
 };

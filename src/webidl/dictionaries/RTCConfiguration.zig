@@ -15,4 +15,7 @@ pub const RTCConfiguration = struct {
     certificates: ?[]const *runtime.Instance = null,
     iceCandidatePoolSize: ?u8 = null,
     peerIdentity: ?runtime.DOMString = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"iceCandidatePoolSize"};
 };

@@ -168,8 +168,6 @@ pub const AbortSignal = struct {
     /// Extended attributes: [Exposed=(Window,Worker)], [NewObject]
     pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        // [EnforceRange] on milliseconds
-        if (!runtime.isInRange(u64, milliseconds)) return error.TypeError;
 
         return try AbortSignalImpl.call_static_timeout(instance, milliseconds);
     }
@@ -180,4 +178,11 @@ pub const AbortSignal = struct {
 
         return try AbortSignalImpl.call_static_any(instance, signals);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_static_timeout", 0b1 },
+    };
 };

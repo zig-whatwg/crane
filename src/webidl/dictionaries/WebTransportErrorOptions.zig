@@ -8,4 +8,7 @@ const enums = @import("enums");
 pub const WebTransportErrorOptions = struct {
     source: ?enums.WebTransportErrorSource = null,
     streamErrorCode: ?u32 = null,
+
+    /// [Clamp] members: converted with that branch of ConvertToInt.
+    pub const clamp_members = .{"streamErrorCode"};
 };

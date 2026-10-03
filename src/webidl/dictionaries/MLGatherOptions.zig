@@ -10,4 +10,7 @@ pub const MLGatherOptions = struct {
     base: MLOperatorOptions,
 
     axis: ?u32 = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"axis"};
 };

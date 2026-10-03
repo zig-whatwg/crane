@@ -158,6 +158,9 @@ pub const OffscreenCanvas = struct {
         return try OffscreenCanvasImpl.call_constructor(ctx, width, height);
     }
 
+    /// WebIDL [EnforceRange] constructor arguments (bit i = argument i).
+    pub const constructor_enforce_range: u32 = 0b11;
+
     /// Extended attributes: [EnforceRange]
     pub fn get_width(instance: *runtime.Instance) anyerror!u64 {
         return try OffscreenCanvasImpl.get_width(instance);
@@ -205,6 +208,14 @@ pub const OffscreenCanvas = struct {
     pub fn call_convertToBlob(instance: *runtime.Instance, options: webidl.Opt(ImageEncodeOptions)) anyerror!runtime.JSValue {
         return try OffscreenCanvasImpl.call_convertToBlob(instance, options);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "set_width", 0b1 },
+        .{ "set_height", 0b1 },
+    };
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.

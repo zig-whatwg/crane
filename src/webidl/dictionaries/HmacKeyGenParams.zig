@@ -12,4 +12,7 @@ pub const HmacKeyGenParams = struct {
 
     hash: typedefs.HashAlgorithmIdentifier,
     length: ?u32 = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"length"};
 };

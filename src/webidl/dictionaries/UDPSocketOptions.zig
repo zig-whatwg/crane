@@ -18,4 +18,7 @@ pub const UDPSocketOptions = struct {
     multicastTimeToLive: ?u8 = null,
     multicastLoopback: ?bool = null,
     multicastAllowAddressSharing: ?bool = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "remotePort", "localPort", "sendBufferSize", "receiveBufferSize", "multicastTimeToLive" };
 };

@@ -226,6 +226,103 @@ pub fn convertToInt(comptime T: type, x: f64) T {
     return @bitCast(bits);
 }
 
+/// Which of WebIDL 3.2.4 ConvertToInt's branches an integer conversion takes:
+/// the default (`modulo`, steps 8-12), [EnforceRange] (step 6) or [Clamp]
+/// (step 7). Codegen lists the arguments, attribute values and dictionary
+/// members that carry either extended attribute (`enforce_range`, `clamp`,
+/// `enforce_range_members`, `clamp_members`).
+pub const IntegerConversion = enum { modulo, enforce_range, clamp };
+
+/// WebIDL 3.2.4 ConvertToInt for `T`, given x = ToNumber(V) (step 4).
+///
+/// 1-3. bitLength, lowerBound and upperBound: for a 64-bit type the bounds
+///      are those of a safe integer, [0, 2^53 - 1] unsigned and
+///      [-(2^53 - 1), 2^53 - 1] signed; otherwise the type's own range.
+/// 5.   -0 is +0 (no integer type holds a -0).
+/// 6.   [EnforceRange]: NaN or an infinity is a TypeError; x = IntegerPart(x);
+///      outside [lowerBound, upperBound] is a TypeError.
+/// 7.   [Clamp], x not NaN: clamped to [lowerBound, upperBound], then rounded
+///      to the nearest integer, ties to even.
+/// 8-12. Otherwise `convertToInt` (NaN, +-0, +-Infinity give 0; modulo).
+pub fn convertToIntAs(comptime T: type, comptime conversion: IntegerConversion, x: f64) ConversionError!T {
+    const info = @typeInfo(T).int;
+    // Steps 1-3.
+    const safe: f64 = 0x1p53 - 1;
+    const lower: f64 = if (info.signedness == .unsigned) 0 else if (info.bits == 64) -safe else @floatFromInt(std.math.minInt(T));
+    const upper: f64 = if (info.bits == 64) safe else @floatFromInt(std.math.maxInt(T));
+    switch (conversion) {
+        .modulo => return convertToInt(T, x),
+        .enforce_range => {
+            // Step 6.1.
+            if (std.math.isNan(x) or std.math.isInf(x)) return ConversionError.TypeError;
+            // Step 6.2 (step 5's -0 truncates to 0 either way).
+            const whole = @trunc(x);
+            // Step 6.3.
+            if (whole < lower or whole > upper) return ConversionError.TypeError;
+            // Step 6.4.
+            return @intFromFloat(whole);
+        },
+        .clamp => {
+            // Step 7 applies only to a number; NaN goes to step 8 (0).
+            if (std.math.isNan(x)) return 0;
+            // Step 7.1.
+            const clamped = @min(@max(x, lower), upper);
+            // Step 7.2: round half to even, +0 rather than -0.
+            const floor = @floor(clamped);
+            const fraction = clamped - floor;
+            const rounded = if (fraction < 0.5) floor else if (fraction > 0.5) floor + 1 else if (@mod(floor, 2) == 0) floor else floor + 1;
+            // Step 7.3.
+            return @intFromFloat(rounded);
+        },
+    }
+}
+
+/// An argument, attribute value or dictionary member of integer type `T` - or
+/// a nullable form of one, or an optional argument (`webidl.Opt`) of either -
+/// converted with `conversion`'s branch of ConvertToInt. A nullable's null and
+/// undefined are null; an optional argument's undefined is "not passed" (and,
+/// as `fromV8Value`'s optional path has it, so is null). Any other type
+/// converts as `fromV8Value` does.
+pub fn fromV8ValueInteger(
+    comptime T: type,
+    comptime conversion: IntegerConversion,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    value: *v8.Value,
+) ConversionError!T {
+    if (comptime conversion == .modulo) return fromV8Value(T, allocator, isolate, context, value);
+    const info = @typeInfo(T);
+    if (info == .int) {
+        // Step 4: x = ? ToNumber(V) (a Symbol or a BigInt is a TypeError).
+        return convertToIntAs(T, conversion, try toNumber(context, value));
+    }
+    if (info == .optional) {
+        if (v8.v8_Value_IsNullOrUndefined(value)) return null;
+        return try fromV8ValueInteger(info.optional.child, conversion, allocator, isolate, context, value);
+    }
+    if (info == .@"struct" and @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) {
+        if (v8.v8_Value_IsNullOrUndefined(value)) return T.notPassed();
+        return T.passed(try fromV8ValueInteger(@FieldType(T, "value"), conversion, allocator, isolate, context, value));
+    }
+    return fromV8Value(T, allocator, isolate, context, value);
+}
+
+/// The ConvertToInt branch dictionary `T`'s member `name` takes: codegen lists
+/// [EnforceRange] and [Clamp] members in `enforce_range_members` and
+/// `clamp_members`.
+fn memberIntegerConversion(comptime T: type, comptime name: []const u8) IntegerConversion {
+    comptime {
+        if (@hasDecl(T, "enforce_range_members")) {
+            for (T.enforce_range_members) |member| if (std.mem.eql(u8, member, name)) return .enforce_range;
+        }
+        if (@hasDecl(T, "clamp_members")) {
+            for (T.clamp_members) |member| if (std.mem.eql(u8, member, name)) return .clamp;
+        }
+        return .modulo;
+    }
+}
+
 /// WebIDL `long long`: ToNumber, then ConvertToInt (modulo 2^64).
 pub fn fromV8LongLong(
     context: *v8.Context,
@@ -1440,6 +1537,30 @@ pub fn fromV8Value(
             }
         }
 
+        // Steps 15, 17 and 18 for an Object that no member type above took
+        // (no interface, buffer source, callback, dictionary or `object` arm
+        // matched it): converted to the string type - ToString, so its
+        // toString() runs and what it throws propagates - else the numeric
+        // type, else boolean. The instance path above does step 15 itself for
+        // a union with interface arms; this is the rest:
+        // FontFace(family, (CSSOMString or BufferSource) source, ...) given
+        // an object with a toString was a TypeError. A union with a sequence
+        // arm is left as it was: step 11.2 would take an iterable object as a
+        // sequence before step 15, and this path takes only an Array.
+        if (comptime sequence_idx == null and instance_idx == null) {
+            if (v8.v8_Value_IsObject(value)) {
+                if (string_idx) |idx| {
+                    return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+                }
+                if (number_idx) |idx| {
+                    return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+                }
+                if (boolean_idx) |idx| {
+                    return @unionInit(T, fields[idx].name, try fromV8Value(fields[idx].type, allocator, isolate, context, value));
+                }
+            }
+        }
+
         // WebIDL §3.2.25 "converting to a union", for a value that is not an
         // object and that no step above took.
         if (!v8.v8_Value_IsObject(value)) {
@@ -1761,6 +1882,17 @@ pub fn fromV8Value(
                     };
                     if (interface_mod.keptArgumentHandle(field.type, member) == null) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = member;
+                } else if (comptime memberIntegerConversion(T, field.name) != .modulo) {
+                    // An [EnforceRange] or [Clamp] member: its branch of
+                    // ConvertToInt, on the number before it wraps.
+                    @field(result, field.name) = try fromV8ValueInteger(
+                        field.type,
+                        comptime memberIntegerConversion(T, field.name),
+                        allocator,
+                        isolate,
+                        context,
+                        field_v8,
+                    );
                 } else {
                     // Convert field value
                     @field(result, field.name) = try fromV8Value(

@@ -131,16 +131,10 @@ pub const SmartCardConnection = struct {
     }
 
     pub fn call_control(instance: *runtime.Instance, controlCode: u32, data: BufferSource) anyerror!runtime.JSValue {
-        // [EnforceRange] on controlCode
-        if (!runtime.isInRange(u32, controlCode)) return error.TypeError;
-
         return try SmartCardConnectionImpl.call_control(instance, controlCode, data);
     }
 
     pub fn call_getAttribute(instance: *runtime.Instance, tag: u32) anyerror!runtime.JSValue {
-        // [EnforceRange] on tag
-        if (!runtime.isInRange(u32, tag)) return error.TypeError;
-
         return try SmartCardConnectionImpl.call_getAttribute(instance, tag);
     }
 
@@ -153,15 +147,21 @@ pub const SmartCardConnection = struct {
     }
 
     pub fn call_setAttribute(instance: *runtime.Instance, tag: u32, value: BufferSource) anyerror!runtime.JSValue {
-        // [EnforceRange] on tag
-        if (!runtime.isInRange(u32, tag)) return error.TypeError;
-
         return try SmartCardConnectionImpl.call_setAttribute(instance, tag, value);
     }
 
     pub fn call_startTransaction(instance: *runtime.Instance, transaction: SmartCardTransactionCallback, options: webidl.Opt(SmartCardTransactionOptions)) anyerror!runtime.JSValue {
         return try SmartCardConnectionImpl.call_startTransaction(instance, transaction, options);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_control", 0b1 },
+        .{ "call_getAttribute", 0b1 },
+        .{ "call_setAttribute", 0b1 },
+    };
 
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.

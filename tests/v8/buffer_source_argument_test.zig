@@ -517,3 +517,104 @@ test "an event keeps an object member past the call through a hold of its own" {
         \\keptEvents.every(([o, c, e, m, p]) => c.detail === o && e.error === o && m.data === o && p.state === o) ? 1 : 0
     ));
 }
+
+// ---------------------------------------------------------------------------
+// A named argument union (src/webidl/codegen/argument_unions.zig) converts
+// every member WebIDL 3.2.25 gives it
+// ---------------------------------------------------------------------------
+
+test "an object no other arm takes converts to the string arm by ToString" {
+    _ = try realm();
+    const U = typedefs.CSSOMStringOrBufferSource;
+    const object = try eval("({ toString() { return 'url(x)'; } })");
+    defer ffi.v8_Value_Dispose(object);
+    var text = try conv.fromV8Value(U, testing_allocator, isolate_once.?, context_once.?, object);
+    try std.testing.expect(text == .cssomstring);
+    defer text.cssomstring.deinit(testing_allocator);
+    try std.testing.expectEqualStrings("url(x)", text.cssomstring.asSlice());
+    // A buffer still goes to the buffer source arm, before step 15.
+    const buffer = try eval("new ArrayBuffer(2)");
+    defer ffi.v8_Value_Dispose(buffer);
+    const source = try conv.fromV8Value(U, testing_allocator, isolate_once.?, context_once.?, buffer);
+    try std.testing.expect(source == .buffer_source);
+    testing_allocator.destroy(source.buffer_source.array_buffer);
+}
+
+// ---------------------------------------------------------------------------
+// [EnforceRange] and [Clamp]: ConvertToInt steps 6 and 7, on the number
+// ---------------------------------------------------------------------------
+
+test "convertToIntAs [EnforceRange]: NaN, the infinities and out-of-range values are TypeErrors" {
+    const enforce = conv.IntegerConversion.enforce_range;
+    // unsigned long long: [0, 2^53 - 1], not the type's own range.
+    try std.testing.expectError(error.TypeError, conv.convertToIntAs(u64, enforce, -1));
+    try std.testing.expectError(error.TypeError, conv.convertToIntAs(u64, enforce, 0x1p53));
+    try std.testing.expectError(error.TypeError, conv.convertToIntAs(u64, enforce, 0x1p64));
+    try std.testing.expectError(error.TypeError, conv.convertToIntAs(u64, enforce, std.math.nan(f64)));
+    try std.testing.expectError(error.TypeError, conv.convertToIntAs(u64, enforce, std.math.inf(f64)));
+    try std.testing.expectError(error.TypeError, conv.convertToIntAs(u64, enforce, -std.math.inf(f64)));
+    try std.testing.expectEqual(@as(u64, 0x1p53 - 1), try conv.convertToIntAs(u64, enforce, 0x1p53 - 1));
+    // IntegerPart, toward zero; -0.5 truncates to -0, which is in range.
+    try std.testing.expectEqual(@as(u64, 1), try conv.convertToIntAs(u64, enforce, 1.9));
+    try std.testing.expectEqual(@as(u64, 0), try conv.convertToIntAs(u64, enforce, -0.5));
+    // long long: [-(2^53 - 1), 2^53 - 1].
+    try std.testing.expectError(error.TypeError, conv.convertToIntAs(i64, enforce, -0x1p53));
+    try std.testing.expectEqual(@as(i64, -(0x1p53 - 1)), try conv.convertToIntAs(i64, enforce, -(0x1p53 - 1)));
+    // A narrower type's own range.
+    try std.testing.expectError(error.TypeError, conv.convertToIntAs(u8, enforce, 256));
+    try std.testing.expectError(error.TypeError, conv.convertToIntAs(i32, enforce, 2147483648));
+    try std.testing.expectEqual(@as(i32, -2147483648), try conv.convertToIntAs(i32, enforce, -2147483648.7));
+}
+
+test "convertToIntAs [Clamp]: clamped to the range, rounded half to even, NaN is 0" {
+    const clamp = conv.IntegerConversion.clamp;
+    try std.testing.expectEqual(@as(u8, 255), try conv.convertToIntAs(u8, clamp, 300));
+    try std.testing.expectEqual(@as(u8, 0), try conv.convertToIntAs(u8, clamp, -5));
+    try std.testing.expectEqual(@as(u8, 2), try conv.convertToIntAs(u8, clamp, 2.5));
+    try std.testing.expectEqual(@as(u8, 4), try conv.convertToIntAs(u8, clamp, 3.5));
+    try std.testing.expectEqual(@as(u8, 3), try conv.convertToIntAs(u8, clamp, 2.6));
+    try std.testing.expectEqual(@as(u8, 0), try conv.convertToIntAs(u8, clamp, std.math.nan(f64)));
+    try std.testing.expectEqual(@as(u8, 255), try conv.convertToIntAs(u8, clamp, std.math.inf(f64)));
+    try std.testing.expectEqual(@as(i64, 0x1p53 - 1), try conv.convertToIntAs(i64, clamp, 0x1p64));
+    try std.testing.expectEqual(@as(i64, -(0x1p53 - 1)), try conv.convertToIntAs(i64, clamp, -0x1p64));
+    try std.testing.expectEqual(@as(i16, -2), try conv.convertToIntAs(i16, clamp, -2.5));
+    // The default still wraps.
+    try std.testing.expectEqual(@as(u8, 44), try conv.convertToIntAs(u8, .modulo, 300));
+}
+
+test "fromV8ValueInteger: an optional argument left out is not passed, never a TypeError" {
+    _ = try realm();
+    const webidl = @import("webidl");
+    const Optional = webidl.Opt(u64);
+    const undefined_value = try eval("undefined");
+    defer ffi.v8_Value_Dispose(undefined_value);
+    const omitted = try conv.fromV8ValueInteger(Optional, .enforce_range, testing_allocator, isolate_once.?, context_once.?, undefined_value);
+    try std.testing.expect(!omitted.was_passed);
+    const negative = try eval("-1");
+    defer ffi.v8_Value_Dispose(negative);
+    // u64 with a negative value: a TypeError, not a wrap and not a panic.
+    try std.testing.expectError(error.TypeError, conv.fromV8ValueInteger(Optional, .enforce_range, testing_allocator, isolate_once.?, context_once.?, negative));
+    try std.testing.expectError(error.TypeError, conv.fromV8ValueInteger(u64, .enforce_range, testing_allocator, isolate_once.?, context_once.?, negative));
+    const seven = try eval("7.9");
+    defer ffi.v8_Value_Dispose(seven);
+    const passed = try conv.fromV8ValueInteger(Optional, .enforce_range, testing_allocator, isolate_once.?, context_once.?, seven);
+    try std.testing.expect(passed.was_passed);
+    try std.testing.expectEqual(@as(u64, 7), passed.value);
+    const nullable = try conv.fromV8ValueInteger(?u32, .clamp, testing_allocator, isolate_once.?, context_once.?, undefined_value);
+    try std.testing.expectEqual(@as(?u32, null), nullable);
+}
+
+test "AbortSignal.timeout(-1) through the binding is a TypeError, not a panic" {
+    _ = try realm();
+    // A static operation with an [EnforceRange] unsigned long long argument:
+    // the generated check read the wrapped value through an i64 cast that
+    // panicked for anything at or above 2^63.
+    try std.testing.expectEqual(@as(i32, 1), try evalInt(
+        \\(() => {
+        \\  for (const bad of [-1, 2 ** 53, NaN, Infinity, -Infinity]) {
+        \\    try { AbortSignal.timeout(bad); return 0; } catch (e) { if (!(e instanceof TypeError)) return 0; }
+        \\  }
+        \\  return 1;
+        \\})()
+    ));
+}

@@ -7,4 +7,7 @@ const runtime = @import("runtime");
 pub const PlaneLayout = struct {
     offset: u32,
     stride: u32,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "offset", "stride" };
 };

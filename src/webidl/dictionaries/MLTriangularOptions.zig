@@ -11,4 +11,7 @@ pub const MLTriangularOptions = struct {
 
     upper: ?bool = null,
     diagonal: ?i32 = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"diagonal"};
 };

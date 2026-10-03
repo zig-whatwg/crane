@@ -16,4 +16,7 @@ pub const WebTransportOptions = struct {
     anticipatedConcurrentIncomingBidirectionalStreams: ?u16 = null,
     protocols: ?[]const runtime.DOMString = null,
     datagramsReadableType: ?enums.ReadableStreamType = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "anticipatedConcurrentIncomingUnidirectionalStreams", "anticipatedConcurrentIncomingBidirectionalStreams" };
 };

@@ -14,4 +14,7 @@ pub const OpusEncoderConfig = struct {
     packetlossperc: ?u32 = null,
     useinbandfec: ?bool = null,
     usedtx: ?bool = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "frameDuration", "complexity", "packetlossperc" };
 };

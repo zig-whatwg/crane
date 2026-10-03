@@ -11,4 +11,7 @@ pub const BrowsingTopic = struct {
     configVersion: ?runtime.DOMString = null,
     modelVersion: ?runtime.DOMString = null,
     taxonomyVersion: ?runtime.DOMString = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"topic"};
 };

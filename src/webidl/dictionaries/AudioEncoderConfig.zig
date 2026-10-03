@@ -18,4 +18,7 @@ pub const AudioEncoderConfig = struct {
     aac: ?AacEncoderConfig = null,
     flac: ?FlacEncoderConfig = null,
     opus: ?OpusEncoderConfig = null,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{ "sampleRate", "numberOfChannels", "bitrate" };
 };

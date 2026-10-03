@@ -12,10 +12,10 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const Element = @import("interfaces").Element;
-const HTMLElement = @import("interfaces").HTMLElement;
 const HTMLOptionElement = @import("interfaces").HTMLOptionElement;
+const HTMLOptionElementOrHTMLOptGroupElement = @import("typedefs").HTMLOptionElementOrHTMLOptGroupElement;
+const HTMLElement = @import("interfaces").HTMLElement;
 const DOMString = @import("typedefs").DOMString;
-const HTMLOptGroupElement = @import("interfaces").HTMLOptGroupElement;
 
 pub const HTMLOptionsCollection = struct {
     pub const Meta = struct {
@@ -164,7 +164,7 @@ pub const HTMLOptionsCollection = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_add(instance: *runtime.Instance, element: runtime.JSValue, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
+    pub fn call_add(instance: *runtime.Instance, element: HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

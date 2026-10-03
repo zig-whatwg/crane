@@ -463,11 +463,6 @@ pub const MLGraphBuilder = struct {
     }
 
     pub fn call_gru(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: webidl.Opt(MLGruOptions)) anyerror!runtime.JSValue {
-        // [EnforceRange] on steps
-        if (!runtime.isInRange(u32, steps)) return error.TypeError;
-        // [EnforceRange] on hiddenSize
-        if (!runtime.isInRange(u32, hiddenSize)) return error.TypeError;
-
         return try MLGraphBuilderImpl.call_gru(instance, input, weight, recurrentWeight, steps, hiddenSize, options);
     }
 
@@ -500,9 +495,6 @@ pub const MLGraphBuilder = struct {
     }
 
     pub fn call_argMin(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(MLArgMinMaxOptions)) anyerror!*runtime.Instance {
-        // [EnforceRange] on axis
-        if (!runtime.isInRange(u32, axis)) return error.TypeError;
-
         return try MLGraphBuilderImpl.call_argMin(instance, input, axis, options);
     }
 
@@ -531,9 +523,6 @@ pub const MLGraphBuilder = struct {
     }
 
     pub fn call_softmax(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
-        // [EnforceRange] on axis
-        if (!runtime.isInRange(u32, axis)) return error.TypeError;
-
         return try MLGraphBuilderImpl.call_softmax(instance, input, axis, options);
     }
 
@@ -662,18 +651,10 @@ pub const MLGraphBuilder = struct {
     }
 
     pub fn call_lstmCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, cellState: *runtime.Instance, hiddenSize: u32, options: webidl.Opt(MLLstmCellOptions)) anyerror!runtime.JSValue {
-        // [EnforceRange] on hiddenSize
-        if (!runtime.isInRange(u32, hiddenSize)) return error.TypeError;
-
         return try MLGraphBuilderImpl.call_lstmCell(instance, input, weight, recurrentWeight, hiddenState, cellState, hiddenSize, options);
     }
 
     pub fn call_lstm(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, steps: u32, hiddenSize: u32, options: webidl.Opt(MLLstmOptions)) anyerror!runtime.JSValue {
-        // [EnforceRange] on steps
-        if (!runtime.isInRange(u32, steps)) return error.TypeError;
-        // [EnforceRange] on hiddenSize
-        if (!runtime.isInRange(u32, hiddenSize)) return error.TypeError;
-
         return try MLGraphBuilderImpl.call_lstm(instance, input, weight, recurrentWeight, steps, hiddenSize, options);
     }
 
@@ -726,9 +707,6 @@ pub const MLGraphBuilder = struct {
     }
 
     pub fn call_gruCell(instance: *runtime.Instance, input: *runtime.Instance, weight: *runtime.Instance, recurrentWeight: *runtime.Instance, hiddenState: *runtime.Instance, hiddenSize: u32, options: webidl.Opt(MLGruCellOptions)) anyerror!*runtime.Instance {
-        // [EnforceRange] on hiddenSize
-        if (!runtime.isInRange(u32, hiddenSize)) return error.TypeError;
-
         return try MLGraphBuilderImpl.call_gruCell(instance, input, weight, recurrentWeight, hiddenState, hiddenSize, options);
     }
 
@@ -765,9 +743,6 @@ pub const MLGraphBuilder = struct {
     }
 
     pub fn call_concat(instance: *runtime.Instance, inputs: runtime.JSValue, axis: u32, options: webidl.Opt(MLOperatorOptions)) anyerror!*runtime.Instance {
-        // [EnforceRange] on axis
-        if (!runtime.isInRange(u32, axis)) return error.TypeError;
-
         return try MLGraphBuilderImpl.call_concat(instance, inputs, axis, options);
     }
 
@@ -788,9 +763,6 @@ pub const MLGraphBuilder = struct {
     }
 
     pub fn call_argMax(instance: *runtime.Instance, input: *runtime.Instance, axis: u32, options: webidl.Opt(MLArgMinMaxOptions)) anyerror!*runtime.Instance {
-        // [EnforceRange] on axis
-        if (!runtime.isInRange(u32, axis)) return error.TypeError;
-
         return try MLGraphBuilderImpl.call_argMax(instance, input, axis, options);
     }
 
@@ -884,6 +856,20 @@ pub const MLGraphBuilder = struct {
             .{ .function = "call_constant__1", .implemented = @hasDecl(MLGraphBuilderImpl, "call_constant__1"), .args = &.{ .{ .kinds = &.{.string} }, .{ .kinds = &.{.other} } } },
             .{ .function = "call_constant__2", .implemented = @hasDecl(MLGraphBuilderImpl, "call_constant__2"), .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "MLTensor")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").MLTensor.State) } else .other)} }} },
         } },
+    };
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_gru", 0b11000 },
+        .{ "call_argMin", 0b10 },
+        .{ "call_softmax", 0b10 },
+        .{ "call_lstmCell", 0b100000 },
+        .{ "call_lstm", 0b11000 },
+        .{ "call_gruCell", 0b10000 },
+        .{ "call_concat", 0b10 },
+        .{ "call_argMax", 0b10 },
     };
 
     /// WebIDL: operations whose return type is a promise - an exception in

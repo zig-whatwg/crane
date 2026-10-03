@@ -12,4 +12,7 @@ pub const AesCtrParams = struct {
 
     counter: typedefs.BufferSource,
     length: u8,
+
+    /// [EnforceRange] members: converted with that branch of ConvertToInt.
+    pub const enforce_range_members = .{"length"};
 };

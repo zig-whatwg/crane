@@ -223,8 +223,6 @@ pub const IDBObjectStore = struct {
     /// Extended attributes: [NewObject]
     pub fn call_getAllKeys(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        // [EnforceRange] on count
-        if (!runtime.isInRange(u32, count)) return error.TypeError;
 
         return try IDBObjectStoreImpl.call_getAllKeys(instance, queryOrOptions, count);
     }
@@ -289,8 +287,6 @@ pub const IDBObjectStore = struct {
     /// Extended attributes: [NewObject]
     pub fn call_getAll(instance: *runtime.Instance, queryOrOptions: webidl.Opt(runtime.JSValue), count: webidl.Opt(u32)) anyerror!*runtime.Instance {
         // [NewObject] - Caller owns the returned object
-        // [EnforceRange] on count
-        if (!runtime.isInRange(u32, count)) return error.TypeError;
 
         return try IDBObjectStoreImpl.call_getAll(instance, queryOrOptions, count);
     }
@@ -308,4 +304,12 @@ pub const IDBObjectStore = struct {
 
         return try IDBObjectStoreImpl.call_openKeyCursor(instance, query, direction);
     }
+
+    /// WebIDL [EnforceRange]: the integer arguments and attribute values
+    /// whose conversion takes that branch of ConvertToInt (bit i = argument i;
+    /// an attribute setter's value is bit 0).
+    pub const enforce_range = .{
+        .{ "call_getAllKeys", 0b10 },
+        .{ "call_getAll", 0b10 },
+    };
 };
