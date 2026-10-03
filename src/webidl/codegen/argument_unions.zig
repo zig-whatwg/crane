@@ -25,6 +25,18 @@
 //! The typedef is recorded in the IR under `source`, so every writer sees an
 //! ordinary typedef: the typedef file, its root.zig entry, the interface's
 //! parameter type and the impl stub's.
+//!
+//! Trusted Types sinks (`nameTrustedTypeUnions`): a union with a Trusted Type
+//! member - `(TrustedHTML or DOMString)`, `(TrustedType or DOMString)`,
+//! `(TrustedScriptURL or USVString)` - is named in EVERY position: the
+//! sink's steps ("get trusted type compliant string" step 1: "if input is an
+//! instance of expectedType") need the arm the binding took, which a string
+//! cannot carry. Arguments - the last, a variadic's element, a constructor's
+//! and a static operation's included - take the typedef as their type; an
+//! attribute keeps its union (its getter returns the string arm's type) and
+//! its setter takes the typedef (`trustedTypeSetterUnion`). The typedef
+//! `TrustedType` is flattened into its three interfaces, so every arm is an
+//! interface or a string the binding's union conversion takes.
 
 const std = @import("std");
 const types = @import("types.zig");
@@ -75,10 +87,100 @@ pub fn nameArgumentUnions(ir: *ir_mod.IR) !void {
     }
 }
 
+/// Name every union with a Trusted Type member (see the file comment): an
+/// operation's or constructor's argument becomes the typedef; a writable
+/// attribute's union gets its typedef recorded for its setter. Runs before
+/// `nameArgumentUnions`, which then never sees one.
+pub fn nameTrustedTypeUnions(ir: *ir_mod.IR) !void {
+    var names = std.ArrayList([]const u8).empty;
+    defer names.deinit(ir.allocator);
+    var iter = ir.interfaces.keyIterator();
+    while (iter.next()) |key| try names.append(ir.allocator, key.*);
+    std.mem.sort([]const u8, names.items, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+
+    for (names.items) |name| {
+        const iface = ir.interfaces.getPtr(name) orelse continue;
+        if (iface.callback) continue;
+        for (iface.members.items) |member| {
+            switch (member.type) {
+                .operation => if (member.operation) |op| try nameTrustedArguments(ir, op.arguments),
+                .constructor => if (member.constructor) |ctor| try nameTrustedArguments(ir, ctor.arguments),
+                .attribute => if (member.attribute) |attr| {
+                    if (attr.readonly) continue;
+                    const members = attr.idlType.unionTypes orelse continue;
+                    if (!hasTrustedTypeMember(members)) continue;
+                    _ = try trustedTypeUnionTypedef(ir, members);
+                },
+                else => {},
+            }
+        }
+    }
+}
+
+fn nameTrustedArguments(ir: *ir_mod.IR, arguments: []types.Argument) !void {
+    for (arguments) |*argument| {
+        const members = argument.idlType.unionTypes orelse continue;
+        if (!hasTrustedTypeMember(members)) continue;
+        argument.idlType.type = try trustedTypeUnionTypedef(ir, members);
+        argument.idlType.unionTypes = null;
+    }
+}
+
+/// Whether `members` has a Trusted Type (TrustedHTML, TrustedScript,
+/// TrustedScriptURL, or the typedef TrustedType).
+pub fn hasTrustedTypeMember(members: []const types.IDLType) bool {
+    for (members) |member| {
+        if (std.mem.startsWith(u8, member.type, "Trusted")) return true;
+    }
+    return false;
+}
+
+/// The typedef an attribute of union type `members` - one with a Trusted
+/// Type member - takes in its setter, named as `nameTrustedTypeUnions`
+/// recorded it; null for any other type. OWNED by `allocator`.
+pub fn trustedTypeSetterUnion(allocator: std.mem.Allocator, idl_type: types.IDLType) !?[]const u8 {
+    const members = idl_type.unionTypes orelse return null;
+    if (!hasTrustedTypeMember(members)) return null;
+    return try unionName(allocator, members);
+}
+
+/// The typedef for a union with a Trusted Type member: named for its members
+/// as written ("TrustedTypeOrDOMString"), its arms with TrustedType
+/// flattened into TrustedHTML, TrustedScript and TrustedScriptURL.
+fn trustedTypeUnionTypedef(ir: *ir_mod.IR, members: []types.IDLType) ![]const u8 {
+    const arena = ir.merged.allocator();
+    const name = try unionName(arena, members);
+    if (ir.source_map.get(name)) |sources| {
+        for (sources.items) |s| if (std.mem.eql(u8, s, source)) return ir.source_map.getKey(name).?;
+        std.log.err("Trusted Types union {s} is already defined", .{name});
+        return error.DuplicateDefinition;
+    }
+    var arms = std.ArrayList(types.IDLType).empty;
+    for (members) |member| {
+        if (std.mem.eql(u8, member.type, "TrustedType")) {
+            for ([_][]const u8{ "TrustedHTML", "TrustedScript", "TrustedScriptURL" }) |interface| {
+                try arms.append(arena, .{ .type = interface });
+            }
+        } else {
+            var arm = member;
+            // The binding applies [LegacyNullToEmptyString] before it
+            // converts (the attribute's legacy_null_to_empty table).
+            arm.legacy_null_to_empty = false;
+            try arms.append(arena, arm);
+        }
+    }
+    try ir.addTypedef(.{ .name = name, .idlType = .{ .type = name, .unionTypes = arms.items } }, source);
+    return ir.source_map.getKey(name).?;
+}
+
 /// A union the writers already give a type of its own, which the binding
-/// converts in place: (Node or DOMString) is mixins.ParentNode.NodeOrString,
-/// and a union with a Trusted Types member is a DOMString (generator.zig's
-/// isNodeOrDOMStringUnion and isTrustedTypeOrStringUnion, signature.zig's).
+/// converts in place: (Node or DOMString) is mixins.ParentNode.NodeOrString.
+/// A union with a Trusted Types member never reaches here: it is named first
+/// (nameTrustedTypeUnions).
 fn writtenAsAnotherType(members: []const types.IDLType) bool {
     var node = false;
     var string = false;

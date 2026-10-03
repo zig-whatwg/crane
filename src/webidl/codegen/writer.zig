@@ -9,10 +9,12 @@ const overload = @import("overload.zig");
 const reflect = @import("reflect.zig");
 const property_classifier = @import("property_classifier.zig");
 const ir = @import("ir.zig");
+const argument_unions = @import("argument_unions.zig");
 
-/// Check if a union type is a (TrustedType or DOMString/USVString) pattern
-/// These unions are used for Trusted Types API integration but since TrustedTypes
-/// are not yet implemented, we treat them as plain DOMString/USVString.
+/// Whether `union_types` is a (TrustedType or DOMString/USVString) pattern -
+/// a Trusted Types sink's type. Its arguments and attribute setters take a
+/// named union (argument_unions.zig); what is left - an attribute's getter -
+/// returns the string member's type (`trustedUnionStringType`).
 ///
 /// Matches patterns like:
 /// - (TrustedType or DOMString)
@@ -38,6 +40,15 @@ fn isTrustedTypeOrStringUnion(union_types: []const types.IDLType) bool {
     }
 
     return has_trusted_type and has_string;
+}
+
+/// The string member of a Trusted Types union, as a getter returns it:
+/// "USVString" for (TrustedScriptURL or USVString), else "DOMString".
+fn trustedUnionStringType(union_types: []const types.IDLType, usv: []const u8, dom: []const u8) []const u8 {
+    for (union_types) |ut| {
+        if (std.mem.eql(u8, ut.type, "USVString")) return usv;
+    }
+    return dom;
 }
 
 /// Check if a union type is the (Node or DOMString) pattern used by DOM mutation methods
@@ -1243,7 +1254,7 @@ fn writeIDLType(writer: anytype, idl_type: types.IDLType) !void {
         // Check for (TrustedType or DOMString/USVString) pattern
         // TrustedTypes are not yet implemented, so we treat these as plain strings
         if (isTrustedTypeOrStringUnion(union_types)) {
-            try writer.writeAll("DOMString");
+            try writer.writeAll(trustedUnionStringType(union_types, "runtime.USVString", "DOMString"));
             return;
         }
         // Check for (Node or DOMString) pattern used by DOM mutation methods
@@ -4023,12 +4034,20 @@ pub fn writeDelegateFunctions(
             // Extended attributes apply to setter too
             try writeExtendedAttributesComment(writer, attr.extAttrs);
 
+            // A Trusted Types sink's setter takes the named union of its
+            // attribute's type (argument_unions.zig): the getter returns the
+            // string arm's type, the setter must see which arm it got.
+            const trusted_union = try argument_unions.trustedTypeSetterUnion(allocator, attr.idlType);
+            defer if (trusted_union) |n| allocator.free(n);
+            const setter_type = if (trusted_union) |n| try std.fmt.allocPrint(allocator, "typedefs.{s}", .{n}) else try allocator.dupe(u8, return_type);
+            defer allocator.free(setter_type);
+
             // For nullable types, the setter parameter must also be nullable
             // Per WebIDL spec: undefined/null JS values convert to null for nullable types
             if (is_nullable) {
-                try writer.print("    pub fn {s}{s}(instance: *runtime.Instance, value: ?{s}) anyerror!void {{\n", .{ set_prefix, sanitized_name, return_type });
+                try writer.print("    pub fn {s}{s}(instance: *runtime.Instance, value: ?{s}) anyerror!void {{\n", .{ set_prefix, sanitized_name, setter_type });
             } else {
-                try writer.print("    pub fn {s}{s}(instance: *runtime.Instance, value: {s}) anyerror!void {{\n", .{ set_prefix, sanitized_name, return_type });
+                try writer.print("    pub fn {s}{s}(instance: *runtime.Instance, value: {s}) anyerror!void {{\n", .{ set_prefix, sanitized_name, setter_type });
             }
 
             if (has_ce_reactions) {
@@ -4444,7 +4463,7 @@ fn mapWebIDLTypeWithRegistry(idl_type: types.IDLType, type_registry: *const @imp
         // TrustedTypes are not yet implemented, so treat as plain string
         if (isTrustedTypeOrStringUnion(union_types)) {
             return .{
-                .type_name = "DOMString",
+                .type_name = trustedUnionStringType(union_types, "runtime.USVString", "DOMString"),
                 .needs_import = false,
             };
         }
@@ -4508,7 +4527,7 @@ fn mapWebIDLType(idl_type: types.IDLType) []const u8 {
         // Check for (TrustedType or DOMString/USVString) pattern
         // TrustedTypes are not yet implemented, so treat as plain string
         if (isTrustedTypeOrStringUnion(union_types)) {
-            return "DOMString";
+            return trustedUnionStringType(union_types, "runtime.USVString", "DOMString");
         }
         // Other union types fall back to runtime.JSValue for type safety
         return "runtime.JSValue";

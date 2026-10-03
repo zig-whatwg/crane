@@ -13,6 +13,7 @@ const ir_mod = @import("ir.zig");
 const config_mod = @import("config.zig");
 const overload = @import("overload.zig");
 const reflect = @import("reflect.zig");
+const argument_unions = @import("argument_unions.zig");
 const host = @import("host");
 const CodegenConfig = config_mod.CodegenConfig;
 
@@ -948,8 +949,15 @@ fn writeTypeSimple(w: anytype, webidl_type: types.IDLType, type_registry: ?*cons
             return;
         }
         if (isTrustedTypeOrStringUnion(union_types)) {
-            // TrustedTypes are not yet implemented - treat as DOMString
-            // This handles (TrustedType or DOMString), (TrustedHTML or DOMString), etc.
+            // A Trusted Types sink's union reaches here only as an attribute
+            // getter's type (arguments and setters take the named union,
+            // argument_unions.zig): the string member's type.
+            for (union_types) |ut| {
+                if (std.mem.eql(u8, ut.type, "USVString")) {
+                    try w.writeAll("runtime.USVString");
+                    return;
+                }
+            }
             try w.writeAll("runtime.DOMString");
             return;
         }
@@ -1301,7 +1309,13 @@ fn generateImplFile(
             if (attr.idlType.nullable) {
                 try w.writeAll("?");
             }
-            try writeTypeSimple(w, attr.idlType, type_reg);
+            // A Trusted Types sink's setter takes its named union.
+            if (try argument_unions.trustedTypeSetterUnion(allocator, attr.idlType)) |union_name| {
+                defer allocator.free(union_name);
+                try w.print("typedefs.{s}", .{union_name});
+            } else {
+                try writeTypeSimple(w, attr.idlType, type_reg);
+            }
             try w.writeAll(") anyerror!void {\n");
             try w.writeAll("    _ = instance;\n");
             try w.writeAll("    _ = value;\n");

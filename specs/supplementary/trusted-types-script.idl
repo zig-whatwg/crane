@@ -1,0 +1,23 @@
+// Trusted Types 4.1.2, "Enforcement for scripts"
+// https://w3c.github.io/trusted-types/dist/spec/#enforcement-in-scripts
+//
+// Crane's own copy of a partial interface the Trusted Types spec defines and
+// webref's trusted-types.idl (specs/idl, pinned) omits: it restates two
+// members html.idl already declares - text and src - with Trusted Types
+// unions, so reffy drops it as a conflict. Without it the bindings stringify
+// a TrustedScript or TrustedScriptURL before HTMLScriptElement sees it, and
+// the setters cannot tell a trusted value from a string.
+//
+// innerText and textContent are new members of HTMLScriptElement (they
+// shadow HTMLElement's and Node's); text and src REPLACE html.idl's, which
+// src/webidl/codegen/member_overrides.zig lists - any other member declared
+// twice still stops codegen. src loses html.idl's [ReflectURL]: the setter
+// steps here run "get trusted type compliant string" before they set the
+// content attribute, and the getter keeps the reflecting steps in the impl.
+
+partial interface HTMLScriptElement {
+  [CEReactions] attribute (TrustedScript or [LegacyNullToEmptyString] DOMString) innerText;
+  [CEReactions] attribute (TrustedScript or DOMString)? textContent;
+  [CEReactions] attribute (TrustedScriptURL or USVString) src;
+  [CEReactions] attribute (TrustedScript or DOMString) text;
+};

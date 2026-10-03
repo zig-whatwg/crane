@@ -1,0 +1,6 @@
+// The file member_overrides.zig names: its src and text replace html.idl's.
+partial interface HTMLScriptElement {
+  [CEReactions] attribute (TrustedScript or DOMString)? textContent;
+  [CEReactions] attribute (TrustedScriptURL or USVString) src;
+  [CEReactions] attribute (TrustedScript or DOMString) text;
+};

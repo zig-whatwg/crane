@@ -7,6 +7,7 @@ const std = @import("std");
 const log = std.log.scoped(.ir);
 const types = @import("types.zig");
 const duplicates = @import("duplicates.zig");
+const member_overrides = @import("member_overrides.zig");
 const type_registry_mod = @import("type_registry.zig");
 
 // Re-export TypeRegistry and TypeKind from type_registry module for backward compatibility
@@ -119,6 +120,10 @@ pub const IR = struct {
     /// Rebuilt on every add; freed with the IR.
     merged: std.heap.ArenaAllocator,
 
+    /// The source keys of supplementary files (markSupplementary); owns its
+    /// keys.
+    supplementary: std.StringHashMap(void),
+
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) !IR {
@@ -139,6 +144,7 @@ pub const IR = struct {
             .file_positions = std.StringHashMap(u32).init(allocator),
             .unresolved = std.StringHashMap(void).init(allocator),
             .merged = std.heap.ArenaAllocator.init(allocator),
+            .supplementary = std.StringHashMap(void).init(allocator),
             .allocator = allocator,
         };
     }
@@ -167,6 +173,10 @@ pub const IR = struct {
         while (position_iter.next()) |key| self.allocator.free(key.*);
         self.file_positions.deinit();
         self.unresolved.deinit();
+
+        var supplementary_iter = self.supplementary.keyIterator();
+        while (supplementary_iter.next()) |key| self.allocator.free(key.*);
+        self.supplementary.deinit();
 
         self.merged.deinit();
 
@@ -273,6 +283,64 @@ pub const IR = struct {
         if (failed) return error.DuplicateDefinition;
     }
 
+    /// `file` (a source key) comes from a supplementary source - Crane's own
+    /// IDL, not webref's (pipeline: every source after the first).
+    pub fn markSupplementary(self: *IR, file: []const u8) !void {
+        if (self.supplementary.contains(file)) return;
+        try self.supplementary.put(try self.allocator.dupe(u8, file), {});
+    }
+
+    /// Merge interface `name`'s partial from `file` into `merged`. An
+    /// attribute `merged` already has:
+    /// - listed in member_overrides.zig: the declaration from the file the
+    ///   entry names takes the member's place, whichever came first;
+    /// - otherwise, when either declaration comes from a supplementary file:
+    ///   error.DuplicateMember - Crane's own IDL may not restate a member
+    ///   silently;
+    /// - otherwise (two webref files, e.g. cssom-view's MouseEvent.screenX
+    ///   over uievents'): appended, and the writers keep the first, as they
+    ///   always have.
+    fn mergeInterfacePartial(self: *IR, merged: *Interface, partial: types.Interface, name: []const u8, file: []const u8, from_supplementary: *std.StringHashMap(void)) !void {
+        const incoming_supplementary = self.supplementary.contains(file);
+        var rest = std.ArrayList(types.Member).empty;
+        defer rest.deinit(self.allocator);
+        for (partial.members) |member| {
+            const attribute = (if (member.type == .attribute) member.attribute else null) orelse {
+                try rest.append(self.allocator, member);
+                continue;
+            };
+            const index = attributeIndex(merged.members.items, attribute.name) orelse {
+                if (incoming_supplementary) try from_supplementary.put(attribute.name, {});
+                try rest.append(self.allocator, member);
+                continue;
+            };
+            if (member_overrides.find(&member_overrides.table, name, attribute.name)) |override| {
+                // The replacing declaration wins, in the replaced one's place.
+                if (std.mem.eql(u8, override.file, file)) merged.members.items[index] = member;
+                continue;
+            }
+            if (incoming_supplementary or from_supplementary.contains(attribute.name)) {
+                // Printed, not logged: the caller reports the error (a
+                // logged error fails a test that expects it).
+                std.debug.print("  error: {s}.{s} is declared twice (again in {s}); a supplementary file that replaces a member names it in member_overrides.zig\n", .{ name, attribute.name, file });
+                return error.DuplicateMember;
+            }
+            try rest.append(self.allocator, member);
+        }
+        var trimmed = partial;
+        trimmed.members = rest.items;
+        try merged.mergePartial(self.allocator, trimmed);
+    }
+
+    fn attributeIndex(members: []const types.Member, attribute_name: []const u8) ?usize {
+        for (members, 0..) |member, i| {
+            if (member.type != .attribute) continue;
+            const attribute = member.attribute orelse continue;
+            if (std.mem.eql(u8, attribute.name, attribute_name)) return i;
+        }
+        return null;
+    }
+
     /// Rebuild `key`'s merged definition from all of its occurrences (see
     /// "Merging" above).
     ///
@@ -332,9 +400,17 @@ pub const IR = struct {
                 const first = base orelse 0;
                 var merged = try Interface.fromTypes(self.allocator, occurrences[first].definition.interface, key, occurrences[first].source_index);
                 errdefer merged.deinit(self.allocator);
+                // The attributes a supplementary file declared, so far.
+                var from_supplementary = std.StringHashMap(void).init(self.allocator);
+                defer from_supplementary.deinit();
+                if (self.supplementary.contains(occurrences[first].file)) {
+                    for (merged.members.items) |member| {
+                        if (member.type == .attribute) if (member.attribute) |a| try from_supplementary.put(a.name, {});
+                    }
+                }
                 for (occurrences, 0..) |occurrence, i| {
                     if (i == first or !occurrence.definition.isPartial()) continue;
-                    try merged.mergePartial(self.allocator, occurrence.definition.interface);
+                    try self.mergeInterfacePartial(&merged, occurrence.definition.interface, key, occurrence.file, &from_supplementary);
                 }
                 const def = occurrences[first].definition.interface;
                 const type_kind: TypeKind = if (def.callback) .callback_interface else if (def.mixin) .mixin else .interface;
