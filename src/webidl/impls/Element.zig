@@ -1427,7 +1427,14 @@ fn attributeChangeSteps(
     eventHandlerAttributeChangeSteps(instance, local_name, value);
 
     // The steps the element's own type defines (an iframe's src and srcdoc),
-    // which its impl installs (dom.attribute_change_steps).
+    // which its impl installs (dom.attribute_change_steps) - for an HTML
+    // element only, as the hook's contract says: its steps are keyed by HTML
+    // local name, and a foreign element named "iframe" or "script" is no
+    // HTMLIFrameElement or HTMLScriptElement (createElementNS(other, "iframe")
+    // ran the iframe's steps on a plain Element, whose state they read as an
+    // iframe's - a wild pointer).
+    const element_namespace = if (internal.namespace_uri) |ns| ns.asSlice() else return;
+    if (!std.mem.eql(u8, element_namespace, "http://www.w3.org/1999/xhtml")) return;
     dom.attribute_change_steps.run(instance, internal.local_name.asSlice(), local_name, old_value, value, namespace);
 }
 
