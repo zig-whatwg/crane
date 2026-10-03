@@ -390,7 +390,7 @@ const ConnectionTask = struct {
         return self.factory.getState(State).own._internal.?;
     }
     fn schedule(self: *ConnectionTask) void {
-        if (self.queued or self.running or self.phase == .finished) return;
+        if (self.queued or self.running or self.cancelled or self.phase == .finished) return;
         const loop = self.factory.ctx.getOptionalEventLoop() orelse return;
         self.queued = true;
         loop.queueTask(.{ .callback = run, .context = self, .drop = drop });
@@ -402,10 +402,15 @@ const ConnectionTask = struct {
             self.destroy();
             return;
         }
+        if (!self.factory.ctx.hasEngine() or !self.request.ctx.hasEngine()) return self.finish(false);
         self.running = true;
         engine.runTaskInRealm(self.factory.ctx, steps, self) catch {};
         self.running = false;
         // Task ownership extends through runTaskInRealm's checkpoint.
+        // Teardown cancels the task before freeing its owning factory. Do not
+        // inspect any wrapper after script or its microtasks cancelled it.
+        if (self.cancelled) return self.destroy();
+        if (!self.factory.ctx.hasEngine() or !self.request.ctx.hasEngine()) return self.finish(false);
         if (self.phase == .finished) self.finish(true) else if (self.phase == .commit or self.phase == .failed) {
             if (self.transaction) |transaction| {
                 if (dom.indexeddb.transactionOutcome(transaction) != null) self.schedule();
@@ -415,25 +420,25 @@ const ConnectionTask = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *ConnectionTask = @ptrCast(@alignCast(data.?));
         self.perform() catch |err| {
-            self.fail(@errorName(err)) catch {};
+            if (!self.cancelled and self.factory.ctx.hasEngine() and self.request.ctx.hasEngine()) self.fail(@errorName(err)) catch {};
         };
     }
     fn perform(self: *ConnectionTask) !void {
-        const backend = self.internal().factory;
-        backend.setStorageKey(self.origin);
-        defer backend.storage_key = null;
         switch (self.phase) {
             .start => {
                 // Opening steps 2-6 / deletion steps 2-4: inspect version first.
+                const backend = self.internal().factory;
+                backend.setStorageKey(self.origin);
+                defer backend.storage_key = null;
                 const databases = try backend.databases();
-                defer self.internal().allocator.free(databases);
+                defer self.allocator.free(databases);
                 for (databases) |database| if (std.mem.eql(u8, database.name, self.name)) {
                     self.old_version = database.version;
                     break;
                 };
                 if (!self.deletion) {
                     self.version = self.version orelse if (self.old_version == 0) @as(u64, 1) else self.old_version;
-                    if (self.version.? < self.old_version) return self.fail("VersionError");
+                    if (self.version.? < self.old_version) return error.VersionError;
                 }
                 if (self.deletion or self.version.? > self.old_version) {
                     // Snapshot before dispatch: a listener may close/remove a connection.
@@ -464,14 +469,26 @@ const ConnectionTask = struct {
                     return;
                 }
                 if (self.deletion) {
-                    const request = try backend.deleteDatabase(self.name);
+                    const request = blk: {
+                        // Finish the native borrow before script can retire
+                        // the factory and destroy its backend during dispatch.
+                        const backend = self.internal().factory;
+                        backend.setStorageKey(self.origin);
+                        defer backend.storage_key = null;
+                        break :blk try backend.deleteDatabase(self.name);
+                    };
                     dom.indexeddb.attachOpenRequest(self.request, request);
                     try dom.indexeddb.completeRequest(self.request, .jsUndefined, null);
                     try self.versionEvent(self.request, "success", null);
                     self.phase = .finished;
                     return;
                 }
-                const request = try backend.openPending(self.name, self.version);
+                const request = blk: {
+                    const backend = self.internal().factory;
+                    backend.setStorageKey(self.origin);
+                    defer backend.storage_key = null;
+                    break :blk try backend.openPending(self.name, self.version);
+                };
                 dom.indexeddb.attachOpenRequest(self.request, request);
                 if (request.base.err) |err| return self.fail(@errorName(err));
                 const database = try interfaces.IDBDatabase.init(self.internal().allocator, self.factory.ctx);
@@ -495,6 +512,7 @@ const ConnectionTask = struct {
                 const event_root = try engine.retainValue(self.factory.ctx, .{ .instance = event });
                 defer event_root.release();
                 _ = try dom.fire_event.dispatchTrustedWithThrows(self.request, event, &did_throw);
+                if (self.cancelled or !self.factory.ctx.hasEngine() or !self.request.ctx.hasEngine()) return;
                 self.phase = if (try dom.indexeddb.endTransactionEvent(transaction, did_throw)) .failed else .commit;
             },
             .failed => {
@@ -546,12 +564,14 @@ const ConnectionTask = struct {
         return interfaces.IDBVersionChangeEvent.call_constructor(self.factory.ctx, runtime.DOMString.initInterned(event_type), webidl.Opt(dictionaries.IDBVersionChangeEventInit).passed(.{ .base = .{}, .oldVersion = self.old_version, .newVersion = version }));
     }
     fn versionEvent(self: *ConnectionTask, target: *runtime.Instance, event_type: []const u8, version: ?u64) !void {
+        if (!target.ctx.hasEngine()) return;
         const event = try self.newVersionEvent(event_type, version);
         const root = try engine.retainValue(self.factory.ctx, .{ .instance = event });
         defer root.release();
         _ = try dom.fire_event.dispatchTrusted(target, event);
     }
     fn simpleEvent(self: *ConnectionTask, target: *runtime.Instance, event_type: []const u8, bubbles: bool, cancelable: bool) !void {
+        if (!target.ctx.hasEngine()) return;
         const event = try interfaces.Event.call_constructor(self.factory.ctx, runtime.DOMString.initInterned(event_type), webidl.Opt(dictionaries.EventInit).passed(.{ .bubbles = bubbles, .cancelable = cancelable }));
         const root = try engine.retainValue(self.factory.ctx, .{ .instance = event });
         defer root.release();

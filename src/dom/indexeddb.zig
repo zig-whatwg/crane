@@ -53,6 +53,8 @@ pub const CursorSteps = struct {
     attach: *const fn (*runtime.Instance, *storage.indexeddb.IDBCursor, *runtime.Instance, *runtime.Instance) anyerror!void,
     /// Native cursor state for the descendant's value getter, borrowed for call.
     state: *const fn (*runtime.Instance) ?*storage.indexeddb.IDBCursor,
+    /// Target realm of the iteration that produced the visible value.
+    value_realm: *const fn (*runtime.Instance) runtime.Context,
     execute: ?*const fn (*runtime.Instance, *runtime.Instance, *Operation) anyerror!void = null,
 };
 
@@ -92,6 +94,11 @@ pub const OperationKind = enum { put, add, get, get_key, count, delete, clear, a
 pub const Operation = struct {
     allocator: std.mem.Allocator,
     kind: OperationKind,
+    /// ED 4.5/4.6/4.9 capture the current realm for retrieval/iteration.
+    /// Borrowed and not a root: these tasks run only on their own agent's
+    /// event loop, so the inert Context record outlives them (Q22 contract).
+    /// A queued step must check hasEngine() before using this realm.
+    target_realm: ?runtime.Context = null,
     key: ?storage.indexeddb.IDBKey = null,
     primary_key: ?storage.indexeddb.IDBKey = null,
     range: storage.indexeddb.IDBKeyRange = storage.indexeddb.IDBKeyRange.unbounded(),
@@ -298,6 +305,7 @@ fn extractIndexKey(realm: runtime.Context, index: *storage.indexeddb.IDBIndex, v
 /// and duplicate selection, while the realm owns all returned values.
 pub fn retrieve(source: *runtime.Instance, request: *runtime.Instance, native_source: storage.indexeddb.cursor.CursorSource, operation: *Operation) !void {
     const allocator = operation.allocator;
+    const realm = operation.target_realm orelse request.ctx;
     const cursor = try allocator.create(storage.indexeddb.IDBCursor);
     cursor.* = (switch (native_source) {
         .object_store => |store| storage.indexeddb.IDBCursor.init(allocator, store, operation.range, operation.direction),
@@ -314,7 +322,7 @@ pub fn retrieve(source: *runtime.Instance, request: *runtime.Instance, native_so
     if (operation.kind == .open_cursor or operation.kind == .open_key_cursor) {
         if (!cursor.got_value) return completeRequest(request, .jsNull, null);
         cursor.key_only = operation.kind == .open_key_cursor;
-        const wrapper = if (cursor.key_only) try interfaces.IDBCursor.init(allocator, request.ctx) else try interfaces.IDBCursorWithValue.init(allocator, request.ctx);
+        const wrapper = if (cursor.key_only) try interfaces.IDBCursor.init(realm.allocator, realm) else try interfaces.IDBCursorWithValue.init(realm.allocator, realm);
         errdefer if (!engine.hasWrapper(wrapper)) runtime.Instance.deinit(wrapper);
         try attachCursor(wrapper, cursor, source, request);
         transferred = true;
@@ -328,13 +336,13 @@ pub fn retrieve(source: *runtime.Instance, request: *runtime.Instance, native_so
     const limit: usize = if (operation.limit) |count| if (count == 0) std.math.maxInt(usize) else count else std.math.maxInt(usize);
     while (cursor.got_value and values.items.len < limit) {
         const value = switch (operation.kind) {
-            .all_keys => try @import("indexeddb_keys.zig").toValue(request.ctx, cursor.primary_key.?),
-            .all_values => try engine.structuredDeserialize(request.ctx, cursor.value.?),
+            .all_keys => try @import("indexeddb_keys.zig").toValue(realm, cursor.primary_key.?),
+            .all_values => try engine.structuredDeserialize(realm, cursor.value.?),
             .all_records => blk: {
-                const record = try interfaces.IDBRecord.init(allocator, request.ctx);
+                const record = try interfaces.IDBRecord.init(realm.allocator, realm);
                 errdefer if (!engine.hasWrapper(record)) runtime.Instance.deinit(record);
                 try attachRecordSnapshot(record, cursor.key.?, cursor.primary_key.?, cursor.value.?);
-                break :blk try engine.retainValue(request.ctx, .{ .instance = record });
+                break :blk try engine.retainValue(realm, .{ .instance = record });
             },
             else => return error.InvalidStateError,
         };
@@ -344,7 +352,7 @@ pub fn retrieve(source: *runtime.Instance, request: *runtime.Instance, native_so
         };
         try cursor.@"continue"(null);
     }
-    const result = try engine.createSequenceOfValues(request.ctx, values.items);
+    const result = try engine.createSequenceOfValues(realm, values.items);
     defer result.release();
     try completeRequest(request, result.value, null);
 }
@@ -391,6 +399,10 @@ pub fn attachCursor(instance: *runtime.Instance, cursor: *storage.indexeddb.IDBC
 }
 pub fn cursorState(instance: *runtime.Instance) ?*storage.indexeddb.IDBCursor {
     return (cursors orelse return null).state(instance);
+}
+/// Borrow the visible value's realm; check hasEngine() before using it.
+pub fn cursorValueRealm(instance: *runtime.Instance) runtime.Context {
+    return (cursors orelse return instance.ctx).value_realm(instance);
 }
 
 pub fn installRequests(steps: RequestSteps) void {

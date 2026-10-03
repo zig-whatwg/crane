@@ -26,12 +26,17 @@ pub const InternalState = struct {
     cursor: ?*storage.indexeddb.IDBCursor = null,
     source: ?*runtime.Instance = null,
     request: ?*runtime.Instance = null,
+    /// Realm captured by the iteration that produced the visible value.
+    value_realm: runtime.Context,
 };
 pub fn installHooks() void {
-    dom.indexeddb.installCursors(.{ .attach = attachCursor, .state = cursorState, .execute = executeOperation });
+    dom.indexeddb.installCursors(.{ .attach = attachCursor, .state = cursorState, .value_realm = valueRealm, .execute = executeOperation });
 }
 fn cursorState(instance: *runtime.Instance) ?*storage.indexeddb.IDBCursor {
     return (instance.getState(State).own._internal orelse return null).cursor;
+}
+fn valueRealm(instance: *runtime.Instance) runtime.Context {
+    return (instance.getState(State).own._internal orelse return instance.ctx).value_realm;
 }
 fn attachCursor(instance: *runtime.Instance, cursor: *storage.indexeddb.IDBCursor, source: *runtime.Instance, request: *runtime.Instance) !void {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
@@ -62,7 +67,7 @@ pub fn init(
     const state = instance.getState(State);
     state.own._internal = null;
     const internal = try allocator.create(InternalState);
-    internal.* = .{ .allocator = allocator };
+    internal.* = .{ .allocator = allocator, .value_realm = ctx };
     state.own._internal = internal;
     return instance;
 }
@@ -110,6 +115,7 @@ pub fn get_direction(instance: *runtime.Instance) anyerror!enums.IDBCursorDirect
 
 /// Getter for key
 pub fn get_key(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    if (!instance.ctx.hasEngine()) return error.InvalidStateError;
     if (engine.tracedValue(instance, .{ .name = "idb.cursor.key" })) |value| return value.take();
     const cursor = cursorState(instance) orelse return error.InvalidStateError;
     const key = cursor.key orelse return .jsUndefined;
@@ -120,6 +126,7 @@ pub fn get_key(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
 /// Getter for primaryKey
 pub fn get_primaryKey(instance: *runtime.Instance) anyerror!runtime.JSValue {
+    if (!instance.ctx.hasEngine()) return error.InvalidStateError;
     if (engine.tracedValue(instance, .{ .name = "idb.cursor.primaryKey" })) |value| return value.take();
     const cursor = cursorState(instance) orelse return error.InvalidStateError;
     const key = cursor.primary_key orelse return .jsUndefined;
@@ -258,6 +265,9 @@ fn executeOperation(instance: *runtime.Instance, request: *runtime.Instance, ope
             try cursor.continuePrimaryKey(operation.key.?, primary);
         } else try cursor.@"continue"(operation.key);
         // 6.7 steps 10-14 replace the JS snapshots only as data is loaded.
+        // Step 13 captures each invocation's realm, including when the
+        // original request and cursor were created in a different realm.
+        instance.getState(State).own._internal.?.value_realm = operation.target_realm orelse request.ctx;
         engine.forgetTracedChild(instance, .{ .name = "idb.cursor.key" });
         engine.forgetTracedChild(instance, .{ .name = "idb.cursor.primaryKey" });
         engine.forgetTracedChild(instance, .{ .name = "idb.cursor.value" });

@@ -122,6 +122,7 @@ fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
 /// 4.1 result getter: repeated reads return the same value, with a traced edge
 /// so a result that refers to this request does not become a rooted cycle.
 fn readResult(instance: *runtime.Instance, internal: *InternalState) !runtime.JSValue {
+    if (!instance.ctx.hasEngine()) return error.InvalidStateError;
     if (engine.tracedValue(instance, .{ .name = "idb.result" })) |value| return value.take();
     if (internal.serialized_result) |bytes| {
         const value = try engine.structuredDeserialize(instance.ctx, bytes);

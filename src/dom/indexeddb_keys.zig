@@ -390,7 +390,7 @@ pub fn cursorDirection(direction: anytype) storage.indexeddb.IDBCursorDirection 
 /// ED 5.12: select the range form or convert the options dictionary, after
 /// the owning handle has checked deletion and transaction state.
 pub fn multipleItems(realm: runtime.Context, kind: @import("indexeddb.zig").OperationKind, query_or_options: runtime.JSValue, count: ?u32, allocator: std.mem.Allocator) !@import("indexeddb.zig").Operation {
-    var operation = @import("indexeddb.zig").Operation{ .allocator = allocator, .kind = kind, .limit = count };
+    var operation = @import("indexeddb.zig").Operation{ .allocator = allocator, .kind = kind, .limit = count, .target_realm = engine.currentRealm() orelse realm };
     errdefer operation.deinit();
     var range_form = false;
     if (engine.convertToPlatformObject(realm, query_or_options)) |object| {

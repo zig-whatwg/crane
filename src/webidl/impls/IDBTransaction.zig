@@ -346,6 +346,7 @@ fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
     const running_task = internal.task;
     _ = try dom.fire_event.dispatchTrustedWithThrows(instance, event, &did_throw);
     if (running_task) |task| if (task.cancelled) return !aborted;
+    if (!instance.ctx.hasEngine()) return !aborted;
     dom.indexeddb.closeConnectionIfReady(internal.database.?);
     return !aborted;
 }
@@ -383,7 +384,12 @@ fn enqueueRequest(instance: *runtime.Instance, source: *runtime.Instance, operat
     if (transaction.state != .active) return error.TransactionInactiveError;
     const task = internal.task orelse return error.InvalidStateError;
     try task.pending.ensureUnusedCapacity(task.allocator, 1);
-    const request = reused orelse try interfaces.IDBRequest.init(task.allocator, instance.ctx);
+    // ED 5.6 step 3 creates a request in the current realm; ED 4.9 captures
+    // that realm again when iteration reuses a request from another realm.
+    const realm = operation.target_realm orelse engine.currentRealm() orelse instance.ctx;
+    var captured = operation;
+    captured.target_realm = realm;
+    const request = reused orelse try interfaces.IDBRequest.init(realm.allocator, realm);
     errdefer if (reused == null and !engine.hasWrapper(request)) runtime.Instance.deinit(request);
     const root = try engine.retainValue(instance.ctx, .{ .instance = request });
     errdefer root.release();
@@ -392,7 +398,7 @@ fn enqueueRequest(instance: *runtime.Instance, source: *runtime.Instance, operat
     dom.indexeddb.setRequestTransaction(request, instance);
     dom.indexeddb.setRequestSource(request, source);
     dom.indexeddb.setRequestPending(request);
-    task.pending.appendAssumeCapacity(.{ .source = source, .request = request, .root = root, .cursor_root = cursor_root, .operation = operation });
+    task.pending.appendAssumeCapacity(.{ .source = source, .request = request, .request_realm = request.ctx, .root = root, .cursor_root = cursor_root, .operation = captured });
     task.schedule();
     return request;
 }
@@ -404,7 +410,10 @@ fn enqueueInternal(instance: *runtime.Instance, source: *runtime.Instance, opera
     const task = internal.task orelse return error.InvalidStateError;
     try task.pending.ensureUnusedCapacity(task.allocator, 1);
     const root = try engine.retainValue(instance.ctx, .{ .instance = source });
-    task.pending.appendAssumeCapacity(.{ .source = source, .request = null, .root = root, .operation = operation });
+    var captured = operation;
+    // Index population has no script result; its clone uses the source realm.
+    captured.target_realm = source.ctx;
+    task.pending.appendAssumeCapacity(.{ .source = source, .request = null, .root = root, .operation = captured });
     task.schedule();
 }
 
@@ -425,6 +434,9 @@ const TransactionTask = struct {
     const Work = struct {
         source: *runtime.Instance,
         request: ?*runtime.Instance,
+        // Retirement may destroy the request wrapper even while its task is
+        // rooted. Inspect the inert Context before dereferencing that wrapper.
+        request_realm: ?runtime.Context = null,
         root: engine.Owned,
         cursor_root: ?engine.Owned = null,
         operation: dom.indexeddb.Operation,
@@ -456,8 +468,13 @@ const TransactionTask = struct {
         const self: *TransactionTask = @ptrCast(@alignCast(data.?));
         self.queued = false;
         if (self.cancelled) return self.destroy();
+        if (!self.instance.ctx.hasEngine()) return self.cancel();
         self.running = true;
-        engine.runTaskInRealm(self.instance.ctx, steps, self) catch {};
+        var realm = self.instance.ctx;
+        if (self.pending.items.len != 0) if (self.pending.items[0].request_realm) |request_realm| {
+            if (request_realm.hasEngine()) realm = request_realm;
+        };
+        engine.runTaskInRealm(realm, steps, self) catch {};
         // A listener or its microtasks may have retired the realm and cancelled
         // this task. Never inspect the wrapper after that cancellation.
         if (self.current) |work| {
@@ -467,6 +484,7 @@ const TransactionTask = struct {
         }
         self.running = false;
         if (self.cancelled) return self.destroy();
+        if (!self.instance.ctx.hasEngine()) return self.cancel();
         if (self.finished) {
             if (self.instance.getState(State).own._internal) |internal| {
                 internal.task = null;
@@ -481,7 +499,7 @@ const TransactionTask = struct {
     fn steps(data: ?*anyopaque) void {
         const self: *TransactionTask = @ptrCast(@alignCast(data.?));
         self.perform() catch |err| {
-            if (!self.cancelled) self.abortWithName(@errorName(err)) catch {};
+            if (!self.cancelled and self.instance.ctx.hasEngine()) self.abortWithName(@errorName(err)) catch {};
         };
     }
     fn perform(self: *TransactionTask) !void {
@@ -497,11 +515,21 @@ const TransactionTask = struct {
         // can place the same request again from its success event.
         self.current = self.pending.orderedRemove(0);
         const work = &self.current.?;
+        // Retired request globals run no script. The task still releases the
+        // operation and its roots after this queued step returns.
+        if (work.request_realm) |request_realm| if (!request_realm.hasEngine()) return;
         if (internal.aborted) {
             const request = work.request orelse return;
-            const exception = try makeException(self.instance, "AbortError");
+            const exception = try makeException(request, "AbortError");
             try dom.indexeddb.completeRequest(request, .jsUndefined, exception);
             try self.dispatch(request, true);
+            return;
+        }
+        if (!work.operation.target_realm.?.hasEngine()) {
+            // Deviation (integrator Q22, 2026-10-03): when only the result
+            // realm retired, leave this request without an event. ED 6.2 /
+            // 6.7 use ! StructuredDeserialize and define no failure branch;
+            // the engine cannot yet reconstruct a value in that dead realm.
             return;
         }
         try self.backend.beginRequestExecution();
@@ -512,7 +540,7 @@ const TransactionTask = struct {
             // 5.6.5.3: an error after explicit commit aborts, regardless of an
             // error listener's eventual preventDefault().
             if (self.backend.state == .committing) try self.abortWithName(@errorName(err));
-            const exception = try makeException(self.instance, if (internal.aborted) "AbortError" else @errorName(err));
+            const exception = try makeException(request, if (internal.aborted) "AbortError" else @errorName(err));
             try dom.indexeddb.completeRequest(request, .jsUndefined, exception);
             try self.dispatch(request, true);
             return;
@@ -520,16 +548,19 @@ const TransactionTask = struct {
         if (work.request) |request| try self.dispatch(request, false);
     }
     fn dispatch(self: *TransactionTask, request: *runtime.Instance, is_error: bool) !void {
+        const realm = self.current.?.request_realm.?;
+        if (!realm.hasEngine()) return;
         // ED 5.9/5.10 steps 1-7: only inactive transactions become active.
-        const event = try interfaces.Event.call_constructor(self.instance.ctx, runtime.DOMString.initInterned(if (is_error) "error" else "success"), @import("webidl").Opt(dictionaries.EventInit).passed(.{ .bubbles = is_error, .cancelable = is_error }));
-        const root = try engine.retainValue(self.instance.ctx, .{ .instance = event });
+        const event = try interfaces.Event.call_constructor(realm, runtime.DOMString.initInterned(if (is_error) "error" else "success"), @import("webidl").Opt(dictionaries.EventInit).passed(.{ .bubbles = is_error, .cancelable = is_error }));
+        const root = try engine.retainValue(realm, .{ .instance = event });
         defer root.release();
         if (self.backend.state == .inactive) self.backend.state = .active;
         var did_throw = false;
         const uncancelled = try dom.fire_event.dispatchTrustedWithThrows(request, event, &did_throw);
-        if (self.cancelled) return;
+        if (self.cancelled or !self.instance.ctx.hasEngine()) return;
         if (self.backend.state == .active) {
             self.backend.setInactive();
+            if (!realm.hasEngine()) return;
             // Steps 8.2-4: exceptions take precedence over request errors.
             if (did_throw) return self.abortWithName("AbortError");
             if (is_error and uncancelled) {

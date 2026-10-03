@@ -77,12 +77,14 @@ fn snapshotFor(instance: *runtime.Instance) !*const storage.indexeddb.RecordSnap
 }
 // 4.8 key and primaryKey getters: convert owned native keys in this realm.
 fn readKey(instance: *runtime.Instance) !runtime.JSValue {
+    if (!instance.ctx.hasEngine()) return error.InvalidStateError;
     if (engine.tracedValue(instance, .{ .name = "idb.record.key" })) |value| return value.take();
     const value = try dom.indexeddb_keys.toValue(instance.ctx, (try snapshotFor(instance)).key);
     engine.traceValue(instance, value.value, .{ .name = "idb.record.key" });
     return value.take();
 }
 fn readPrimaryKey(instance: *runtime.Instance) !runtime.JSValue {
+    if (!instance.ctx.hasEngine()) return error.InvalidStateError;
     if (engine.tracedValue(instance, .{ .name = "idb.record.primaryKey" })) |value| return value.take();
     const value = try dom.indexeddb_keys.toValue(instance.ctx, (try snapshotFor(instance)).primary_key);
     engine.traceValue(instance, value.value, .{ .name = "idb.record.primaryKey" });
@@ -90,6 +92,7 @@ fn readPrimaryKey(instance: *runtime.Instance) !runtime.JSValue {
 }
 // 4.8 value getter: deserialize once; later reads preserve script mutations.
 fn readValue(instance: *runtime.Instance) !runtime.JSValue {
+    if (!instance.ctx.hasEngine()) return error.InvalidStateError;
     if (engine.tracedValue(instance, .{ .name = "idb.record.value" })) |value| return value.take();
     const value = try engine.structuredDeserialize(instance.ctx, (try snapshotFor(instance)).value);
     engine.traceValue(instance, value.value, .{ .name = "idb.record.value" });
