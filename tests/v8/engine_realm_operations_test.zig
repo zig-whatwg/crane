@@ -134,9 +134,36 @@ test "an object survives StructuredSerializeForStorage and StructuredDeserialize
     defer ffi.v8_String_Dispose(copy_key);
     _ = ffi.v8_Object_Set(global, context, @ptrCast(copy_key), @ptrCast(@alignCast(copy.handle.ptr)));
     try std.testing.expectEqual(@as(i32, 1), try globalInt("globalThis.copy !== globalThis.state && globalThis.copy.a === 1 && globalThis.copy.b[1] === 3 && globalThis.copy.c === 'x' ? 1 : 0"));
+}
 
-    // Primitives are the caller's to keep, not the engine's to serialize.
-    try std.testing.expectError(error.DataCloneError, v8.engine.v8StructuredSerializeForStorage(ctx, .{ .number = 1 }, std.testing.allocator));
+/// Serialize `value` for storage, deserialize it, put the copy on the global
+/// as `copy`, and answer `check` (an expression over `copy`, 1 or 0).
+fn roundTrip(ctx: runtime.Context, value: runtime.JSValue, check: []const u8) !i32 {
+    const bytes = try v8.engine.v8StructuredSerializeForStorage(ctx, value, std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    const copy = try v8.engine.v8StructuredDeserialize(ctx, bytes);
+    defer v8.engine.v8ReleaseValue(copy);
+    const context = context_once.?;
+    const global = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
+    defer ffi.v8_Object_Dispose(global);
+    const copy_key = ffi.v8_String_NewFromUtf8(isolate_once.?, "copy", 4) orelse return error.StringFailed;
+    defer ffi.v8_String_Dispose(copy_key);
+    _ = ffi.v8_Object_Set(global, context, @ptrCast(copy_key), @ptrCast(@alignCast(copy.handle.ptr)));
+    return globalInt(check);
+}
+
+test "structuredSerializeForStorage serializes a primitive the binding hands over inline" {
+    // HTML StructuredSerializeInternal step 4: a primitive value is serialized
+    // as it is - forStorage too. The binding hands an `any` primitive over as an
+    // inline tag, not a handle (IndexedDB's put/add values, codex-indexeddb Q24).
+    const ctx = try realm();
+    try std.testing.expectEqual(@as(i32, 1), try roundTrip(ctx, .undefined, "globalThis.copy === undefined ? 1 : 0"));
+    try std.testing.expectEqual(@as(i32, 1), try roundTrip(ctx, .null, "globalThis.copy === null ? 1 : 0"));
+    try std.testing.expectEqual(@as(i32, 1), try roundTrip(ctx, .{ .boolean = true }, "globalThis.copy === true ? 1 : 0"));
+    try std.testing.expectEqual(@as(i32, 1), try roundTrip(ctx, .{ .number = 1.5 }, "globalThis.copy === 1.5 ? 1 : 0"));
+    try std.testing.expectEqual(@as(i32, 1), try roundTrip(ctx, .{ .number = -0.0 }, "Object.is(globalThis.copy, -0) ? 1 : 0"));
+    try std.testing.expectEqual(@as(i32, 1), try roundTrip(ctx, .{ .string = .{ .data = "h\xc3\xa9llo", .owned = false } }, "globalThis.copy === 'h\\u00e9llo' ? 1 : 0"));
+    try std.testing.expectEqual(@as(i32, 1), try roundTrip(ctx, .{ .string = .{ .data = "", .owned = false } }, "globalThis.copy === '' ? 1 : 0"));
 }
 
 test "a promise is rejected with any value, and marked as handled" {
