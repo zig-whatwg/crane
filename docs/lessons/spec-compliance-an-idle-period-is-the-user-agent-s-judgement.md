@@ -1,0 +1,12 @@
+# Spec Compliance: An idle period is the user agent's judgement, and the deadline is asked again
+
+**Date**: 2026-10-03
+**Lesson**: HTML's "no runnable task" sees the gap between two timers of a busy chain as idle, and a deadline computed once at the start of the period is stale the moment the callback arms a timer or requests an animation frame. Browsers pass the WPT tests for both because they model neither literally.
+
+**Why**: In HTML a timer is not a task until it fires, so a page running `setTimeout(busy40ms, 0)` in a chain (clamped to 4 ms after five levels) has a window event loop with no runnable task between iterations; step 5 starts an idle period with a deadline up to 4 ms away, and the idle callback runs mid-chain. `requestidlecallback/callback-timeout-when-busy.html` asserts it does not - and Chrome, Edge and Firefox pass it (wpt.fyi, 2026-10-03). The spec allows them to: "start an idle period" step 1, "Optionally, if the user agent determines the idle period should be delayed, return", and "the user agent is free to end an idle period early". And `computeDeadline` is an algorithm the IdleDeadline calls each time (`getDeadline`), not a value: `deadline-max-rAF-dynamic.html` and `deadline-max-timeout-dynamic.html` arm work inside the callback and expect `timeRemaining()` to shrink at once.
+
+**What Happened**: Two rules that read as obviously right failed. "Not idle while a timer is due within a few ms" would have passed the busy test but starved idle callbacks on any page with an open WebSocket, whose pump re-arms a 1 ms timer for as long as the socket lives. A deadline fixed at the period's start passed `deadline-max.html` and failed both dynamic tests.
+
+**Fix**: (src/browser/event_loop.zig) After work a frame long or longer (16 ms) in one stretch of a turn - the tasks, or the timer callbacks - no idle period starts for a frame: a busy chain never leaves one, a 1 ms pump never triggers it. The deadline is `computeDeadline` asked again on every `timeRemaining()` and before every callback: the period's end, brought forward by the loop's next timer (Crane's rendering opportunity is the animation frame timer, so timers stand in for the next render), never moved back. Every timer of the loop counts - shorter deadlines are always allowed.
+
+**Takeaway**: **Where the spec hands a decision to the user agent, read what browsers decide (and wpt.fyi's results) before picking the rule - and test the rule against the pages that never stop (a busy timer chain, an open WebSocket), not only the quiet one.**
