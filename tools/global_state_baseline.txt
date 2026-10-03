@@ -62,6 +62,7 @@ src/dom/indexeddb.zig factories 1 G P-res decl:4d290a7b91478b29
 src/dom/indexeddb.zig indexes 1 G P-res decl:24a26ecc3681d076
 src/dom/indexeddb.zig key_ranges 1 G P-res decl:79106825d45c9b31
 src/dom/indexeddb.zig open_requests 1 G P-res decl:bb198fa462213969
+src/dom/indexeddb.zig records 1 G P-res decl:9298618a82f473d9
 src/dom/indexeddb.zig requests 1 G P-res decl:30978182fd939a7b
 src/dom/indexeddb.zig stores 1 G P-res decl:d69009bc151fed96
 src/dom/indexeddb.zig transactions 1 G P-res decl:0aff5c30d889fb93
