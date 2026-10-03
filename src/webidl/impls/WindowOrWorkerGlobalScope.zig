@@ -75,10 +75,12 @@ pub fn get_indexedDB(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return indexed_db(instance);
 }
 
-/// Getter for trustedTypes
+/// Getter for trustedTypes (Trusted Types 4.1.1): "return this's relevant
+/// global object's trusted type policy factory."
 pub fn get_trustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const settings = global_settings.of(instance) orelse return error.InvalidStateError;
+    const trusted_types = settings.trusted_types orelse return error.NotImplemented;
+    return trusted_types(instance);
 }
 
 /// Getter for performance

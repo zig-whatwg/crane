@@ -55,14 +55,14 @@
 //! - `require-trusted-types-for`: Enables enforcement for DOM XSS sinks
 //!
 //! ```zig
-//! // Check if Trusted Types are required
-//! if (csp.directives.isScriptSinkEnforcementRequired(&csp_list)) {
-//!     // DOM XSS sinks require Trusted Types
+//! // Trusted Types 4.2.3: are Trusted Types required at 'script' sinks?
+//! if (csp.directives.doesSinkTypeRequireTrustedTypes(&csp_list, "'script'", true)) {
+//!     // run the default policy, else report (4.2.4)
 //! }
 //!
-//! // Check if a policy name is allowed
-//! const result = csp.directives.shouldTrustedTypePolicyCreationBeBlocked(
-//!     &csp_list, "my-policy", .enforce,
+//! // Trusted Types 4.2.5: may a policy of this name be created?
+//! const result = csp.directives.shouldPolicyCreationBeBlocked(
+//!     &csp_list, "my-policy", created_names, reporter,
 //! );
 //! ```
 

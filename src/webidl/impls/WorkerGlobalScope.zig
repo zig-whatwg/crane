@@ -71,6 +71,13 @@ pub const InternalState = struct {
         value: *runtime.Instance,
         edge: same_object.Traced = .{ .slot = .{ .name = "crypto" } },
     } = null,
+    /// Trusted Types 4.1: this worker's trusted type policy factory, kept by a
+    /// collector-traced edge.
+    trusted_types: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: same_object.Traced = .{ .slot = .{ .name = "trustedTypes" } },
+    } = null,
 
     /// Reference to the worker's event loop (for timer APIs)
     /// This is set when the worker is fully initialized with an event loop.
@@ -104,6 +111,7 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
+        if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
         // The WorkerLocation and WorkerNavigator objects are the wrapper
         // cache's: they are freed with it, not here. Only the pins are ours.
         self.location_pin.release();
@@ -168,6 +176,7 @@ pub fn installHooks() void {
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .crypto = &settingsCrypto,
+        .trusted_types = &settingsTrustedTypes,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
     });
@@ -224,6 +233,17 @@ fn settingsCrypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
     internal.crypto = .{ .owner = instance, .value = crypto };
     internal.crypto.?.edge.hold(instance, crypto);
     return crypto;
+}
+
+/// Trusted Types 4.1: each worker global gets its own trusted type policy
+/// factory.
+fn settingsTrustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    if (internal.trusted_types) |factory| return factory.value;
+    const factory = try interfaces.TrustedTypePolicyFactory.init(internal.allocator, instance.ctx);
+    internal.trusted_types = .{ .owner = instance, .value = factory };
+    internal.trusted_types.?.edge.hold(instance, factory);
+    return factory;
 }
 
 /// Initialize with worker URL and type

@@ -1,237 +1,109 @@
-//! require-trusted-types-for CSP Directive
+//! The `require-trusted-types-for` directive (Trusted Types 4.2.1), "does
+//! sink type require trusted types?" (4.2.3) and "should sink type mismatch
+//! violation be blocked by Content Security Policy?" (4.2.4).
 //!
-//! W3C Trusted Types Spec: https://w3c.github.io/trusted-types/dist/spec/ § 4.3.2
+//!     directive-name  = "require-trusted-types-for"
+//!     directive-value = trusted-types-sink-group-keyword *( required-ascii-whitespace trusted-types-sink-group-keyword)
+//!     trusted-types-sink-group-keyword = "'" trusted-types-sink-group "'"
+//!     trusted-types-sink-group = "script"
 //!
-//! This module implements the require-trusted-types-for directive that enables
-//! Trusted Types enforcement for DOM XSS sinks.
+//! A sink group is named with its quotes ("'script'"), as the algorithms
+//! pass it, and matches ASCII case-insensitively (an RFC 5234 terminal).
+//!
+//! The pre-navigation check for `javascript:` URLs (4.2.1.1) runs the
+//! default policy, so it lives with the global (src/dom/trusted_types.zig).
+//!
+//! Spec: https://w3c.github.io/trusted-types/dist/spec/#require-trusted-types-for-csp-directive
 
 const std = @import("std");
 const types = @import("../types.zig");
+const violation_events = @import("../violation_events.zig");
+const firstCharacters = @import("trusted_types.zig").firstCharacters;
 
-// ============================================================================
-// Constants
-// ============================================================================
+pub const directive_name = "require-trusted-types-for";
 
-/// Sink groups that can be protected by Trusted Types
-/// Currently only 'script' is defined in the spec
-pub const SINK_GROUP_SCRIPT = "'script'";
+/// The one sink group the spec defines, as the algorithms pass it.
+pub const script_sink_group = "'script'";
 
-// ============================================================================
-// Enforcement Checking
-// ============================================================================
+pub const Result = enum { allowed, blocked };
 
-/// Check if a sink group requires Trusted Types.
-/// Spec: Trusted Types spec § 4.3.3
-///
-/// Algorithm (Does sink type require trusted types?):
-/// 1. For each policy in global's CSP list:
-///    a. Let directive be result of getting 'require-trusted-types-for'
-///    b. If directive is null, continue
-///    c. If directive value does not contain sink group, continue
-///    d. If policy disposition is 'enforce', return true
-///    e. If includeReportOnly, return true
-/// 2. Return false
-///
-/// Arguments:
-/// - csp_list: The document's CSP list
-/// - sink_group: The sink group to check (e.g., "'script'")
-/// - include_report_only: Whether to consider report-only policies
-pub fn doesSinkTypeRequireTrustedTypes(
-    csp_list: *const types.CSPList,
-    sink_group: []const u8,
-    include_report_only: bool,
-) bool {
+/// The policy's require-trusted-types-for directive, if its value contains a
+/// sink group matching `sink_group` (4.2.3 steps 1.1-1.3, 4.2.4 steps
+/// 4.1-4.3).
+fn requiringDirective(policy: *const types.Policy, sink_group: []const u8) ?*const types.Directive {
+    const directive = policy.getDirective(directive_name) orelse return null;
+    for (directive.value.expressions.items) |expression| {
+        if (std.ascii.eqlIgnoreCase(expression.raw_value, sink_group)) return directive;
+    }
+    return null;
+}
+
+/// 4.2.3 "Does sink type require trusted types?", given the global's CSP
+/// list.
+pub fn doesSinkTypeRequireTrustedTypes(csp_list: *const types.CSPList, sink_group: []const u8, include_report_only_policies: bool) bool {
+    // 1. For each policy in global's CSP list:
     for (csp_list.policies.items) |*policy| {
-        // Step 1a: Get require-trusted-types-for directive
-        const directive = policy.getDirective("require-trusted-types-for") orelse continue;
+        // 1.1-1.3. Skip a policy without the directive, or whose value has
+        // no matching sink group.
+        _ = requiringDirective(policy, sink_group) orelse continue;
+        // 1.4-1.5. An enforced policy requires.
+        if (policy.disposition == .enforce) return true;
+        // 1.6. So does a report-only one, when those are included.
+        if (include_report_only_policies) return true;
+    }
+    // 2. Return false.
+    return false;
+}
 
-        // Step 1c: Check if sink group is in directive value
-        var contains_sink_group = false;
-        for (directive.value.expressions.items) |expr| {
-            if (std.ascii.eqlIgnoreCase(expr.raw_value, sink_group)) {
-                contains_sink_group = true;
+/// 4.2.4 "Should sink type mismatch violation be blocked by Content Security
+/// Policy?", given the global's CSP list, the sink, the sink group and the
+/// source. Each violation goes to `reporter` (CSP 5.5); `allocator` builds
+/// the sample for the call.
+pub fn shouldSinkTypeMismatchViolationBeBlocked(
+    allocator: std.mem.Allocator,
+    csp_list: *const types.CSPList,
+    sink: []const u8,
+    sink_group: []const u8,
+    source: []const u8,
+    reporter: ?violation_events.Reporter,
+) error{OutOfMemory}!Result {
+    // 1. Let result be "Allowed".
+    var result: Result = .allowed;
+    // 2. Let sample be source.
+    var sample = source;
+    // 3. If sink is "Function", strip the anonymous function's prefix.
+    if (std.mem.eql(u8, sink, "Function")) {
+        const prefixes = [_][]const u8{ "function anonymous", "async function anonymous", "function* anonymous", "async function* anonymous" };
+        for (prefixes) |prefix| {
+            if (std.mem.startsWith(u8, sample, prefix)) {
+                sample = sample[prefix.len..];
                 break;
             }
         }
-
-        if (!contains_sink_group) continue;
-
-        // Step 1d: Check disposition
-        if (policy.disposition == .enforce) {
-            return true;
-        }
-
-        // Step 1e: Include report-only if requested
-        if (include_report_only) {
-            return true;
-        }
     }
+    // 4.6-4.7: "the substring of sample, containing its first 40
+    // characters", after the sink and "|" - the same for every policy.
+    const violation_sample = try std.mem.concat(allocator, u8, &.{ sink, "|", firstCharacters(sample, 40) });
+    defer allocator.free(violation_sample);
 
-    // Step 2: No matching policy found
-    return false;
-}
-
-/// Check if enforcement is required for the 'script' sink group.
-/// Convenience function for the most common case.
-///
-/// This checks if DOM XSS sinks (innerHTML, eval, etc.) require Trusted Types.
-pub fn isScriptSinkEnforcementRequired(csp_list: *const types.CSPList) bool {
-    return doesSinkTypeRequireTrustedTypes(csp_list, SINK_GROUP_SCRIPT, false);
-}
-
-/// Check if any Trusted Types enforcement is active (including report-only).
-/// Useful for determining if Trusted Types should be enforced at all.
-pub fn isTrustedTypesEnforcementActive(csp_list: *const types.CSPList) bool {
-    return doesSinkTypeRequireTrustedTypes(csp_list, SINK_GROUP_SCRIPT, true);
-}
-
-/// Check if Trusted Types should be reported (but not blocked).
-/// Returns true only for report-only mode.
-pub fn isTrustedTypesReportOnly(csp_list: *const types.CSPList) bool {
-    // Report-only is active if enforcement is active but not required
-    return isTrustedTypesEnforcementActive(csp_list) and
-        !isScriptSinkEnforcementRequired(csp_list);
-}
-
-// ============================================================================
-// Directive Presence
-// ============================================================================
-
-/// Check if any policy has require-trusted-types-for directive.
-pub fn hasRequireTrustedTypesForDirective(csp_list: *const types.CSPList) bool {
+    // 4. For each policy in global's CSP list:
     for (csp_list.policies.items) |*policy| {
-        if (policy.containsDirective("require-trusted-types-for")) {
-            return true;
+        // 4.1-4.3.
+        _ = requiringDirective(policy, sink_group) orelse continue;
+        // 4.4-4.8. The violation, its resource "trusted-types-sink", its
+        // sample, reported.
+        if (reporter) |r| {
+            r.reportViolation(&.{
+                .policy = policy,
+                .effective_directive = directive_name,
+                .resource = .trusted_types_sink,
+                .sample = violation_sample,
+            });
         }
+        // 4.9. "If policy's disposition is "enforce", then set result to
+        // "Blocked"."
+        if (policy.disposition == .enforce) result = .blocked;
     }
-    return false;
-}
-
-/// Get the list of required sink groups from CSP.
-pub fn getRequiredSinkGroups(
-    allocator: std.mem.Allocator,
-    csp_list: *const types.CSPList,
-) !std.ArrayList([]const u8) {
-    var result = std.ArrayList([]const u8).init(allocator);
-    errdefer result.deinit();
-
-    for (csp_list.policies.items) |*policy| {
-        const directive = policy.getDirective("require-trusted-types-for") orelse continue;
-
-        for (directive.value.expressions.items) |expr| {
-            // Avoid duplicates
-            var found = false;
-            for (result.items) |existing| {
-                if (std.ascii.eqlIgnoreCase(existing, expr.raw_value)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                try result.append(expr.raw_value);
-            }
-        }
-    }
-
+    // 5. Return result.
     return result;
-}
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "doesSinkTypeRequireTrustedTypes - no CSP" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    // No CSP policies - should not require
-    try std.testing.expect(!doesSinkTypeRequireTrustedTypes(&csp_list, SINK_GROUP_SCRIPT, false));
-}
-
-test "doesSinkTypeRequireTrustedTypes - enforce mode" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    var policy = types.Policy.init(allocator, .enforce, .header);
-    var rttf_directive = try types.Directive.create(allocator, "require-trusted-types-for");
-    try rttf_directive.value.append(types.SourceExpression.createBorrowed(.policy_name, "'script'"));
-    try policy.directive_set.append(rttf_directive);
-    try csp_list.append(policy);
-
-    // Should require Trusted Types
-    try std.testing.expect(doesSinkTypeRequireTrustedTypes(&csp_list, SINK_GROUP_SCRIPT, false));
-    try std.testing.expect(isScriptSinkEnforcementRequired(&csp_list));
-}
-
-test "doesSinkTypeRequireTrustedTypes - report-only mode" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    var policy = types.Policy.init(allocator, .report, .header);
-    var rttf_directive = try types.Directive.create(allocator, "require-trusted-types-for");
-    try rttf_directive.value.append(types.SourceExpression.createBorrowed(.policy_name, "'script'"));
-    try policy.directive_set.append(rttf_directive);
-    try csp_list.append(policy);
-
-    // Should not require (enforce only)
-    try std.testing.expect(!doesSinkTypeRequireTrustedTypes(&csp_list, SINK_GROUP_SCRIPT, false));
-    try std.testing.expect(!isScriptSinkEnforcementRequired(&csp_list));
-
-    // Should be active when including report-only
-    try std.testing.expect(doesSinkTypeRequireTrustedTypes(&csp_list, SINK_GROUP_SCRIPT, true));
-    try std.testing.expect(isTrustedTypesEnforcementActive(&csp_list));
-}
-
-test "doesSinkTypeRequireTrustedTypes - wrong sink group" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    var policy = types.Policy.init(allocator, .enforce, .header);
-    var rttf_directive = try types.Directive.create(allocator, "require-trusted-types-for");
-    try rttf_directive.value.append(types.SourceExpression.createBorrowed(.policy_name, "'other'"));
-    try policy.directive_set.append(rttf_directive);
-    try csp_list.append(policy);
-
-    // Should not require (wrong sink group)
-    try std.testing.expect(!doesSinkTypeRequireTrustedTypes(&csp_list, SINK_GROUP_SCRIPT, false));
-}
-
-test "isTrustedTypesReportOnly" {
-    const allocator = std.testing.allocator;
-
-    // Report-only mode
-    {
-        var csp_list = types.CSPList.init(allocator);
-        defer csp_list.deinit();
-
-        var policy = types.Policy.init(allocator, .report, .header);
-        var rttf_directive = try types.Directive.create(allocator, "require-trusted-types-for");
-        try rttf_directive.value.append(types.SourceExpression.createBorrowed(.policy_name, "'script'"));
-        try policy.directive_set.append(rttf_directive);
-        try csp_list.append(policy);
-
-        try std.testing.expect(isTrustedTypesReportOnly(&csp_list));
-    }
-
-    // Enforce mode
-    {
-        var csp_list = types.CSPList.init(allocator);
-        defer csp_list.deinit();
-
-        var policy = types.Policy.init(allocator, .enforce, .header);
-        var rttf_directive = try types.Directive.create(allocator, "require-trusted-types-for");
-        try rttf_directive.value.append(types.SourceExpression.createBorrowed(.policy_name, "'script'"));
-        try policy.directive_set.append(rttf_directive);
-        try csp_list.append(policy);
-
-        try std.testing.expect(!isTrustedTypesReportOnly(&csp_list));
-    }
 }
