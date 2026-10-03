@@ -184,20 +184,24 @@ pub fn call_static_bound(instance: *runtime.Instance, lower: runtime.JSValue, up
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
-    // Convert JS values to IDBKey
+    // ED 4.7 bound() steps 1-2: convert lower, rethrow, or reject an invalid key.
     var lower_key = try dom.indexeddb_keys.require(instance.ctx, lower, instance.ctx.allocator);
     defer lower_key.deinit();
+    // Steps 3-4: convert upper, rethrow, or reject an invalid key.
     var upper_key = try dom.indexeddb_keys.require(instance.ctx, upper, instance.ctx.allocator);
     defer upper_key.deinit();
 
     // Create the range - unwrap Opt bools (default false)
     const lower_open = if (lowerOpen.wasPassed()) lowerOpen.value else false;
     const upper_open = if (upperOpen.wasPassed()) upperOpen.value else false;
+    // Step 5: reject lower > upper. Between steps 5 and 6 the backend also
+    // rejects equal/open bounds: the documented Blink/Gecko/WebKit deviation
+    // beside BackendKeyRange.bound's check in storage/indexeddb/key_range.zig.
     const range = BackendKeyRange.bound(lower_key, upper_key, lower_open, upper_open) catch {
         return error.DataError;
     };
 
-    // Create new range instance
+    // Step 6: create and return the key range with its bounds and open flags.
     const new_instance = IDBKeyRangeInterface.init(allocator, instance.ctx) catch {
         return error.OutOfMemory;
     };

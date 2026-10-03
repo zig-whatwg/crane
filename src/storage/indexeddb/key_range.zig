@@ -125,13 +125,19 @@ pub const IDBKeyRange = struct {
         lower_open: bool,
         upper_open: bool,
     ) IDBError!Self {
-        // Validate: lower must be <= upper
+        // IndexedDB 4.7 bound() step 5: lower must be <= upper.
         const cmp = compare(lower_key, upper_key);
         if (cmp > 0) {
             return IDBError.DataError;
         }
 
-        // If lower == upper and either bound is open, range is empty (invalid)
+        // Deviation from IndexedDB 3.0 ED bound() step 5, which rejects only
+        // lower > upper: Blink, Gecko and WebKit also throw DataError when
+        // the keys are equal and either bound is open (such a range is empty).
+        // Blink: third_party/blink/renderer/modules/indexeddb/idb_key_range.cc
+        // Gecko: dom/indexedDB/IDBKeyRange.cpp
+        // WebKit: Source/WebCore/Modules/indexeddb/IDBKeyRange.cpp
+        // Spec correction: w3c/IndexedDB#510.
         if (cmp == 0 and (lower_open or upper_open)) {
             return IDBError.DataError;
         }
