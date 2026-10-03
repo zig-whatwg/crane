@@ -140,6 +140,14 @@ pub const InternalState = struct {
     /// HTML "is initial about:blank": the document "create a new browsing
     /// context and document" made, until something replaces it.
     is_initial_about_blank: bool = false,
+    /// HTML "iframe load in progress": set while the iframe load event steps
+    /// fire load at the iframe whose content navigable shows this document
+    /// (steps 5-7).
+    iframe_load_in_progress: bool = false,
+    /// HTML "mute iframe load": the document was opened (document open steps
+    /// step 14) while its iframe load was in progress, and the iframe load
+    /// event steps fire no load for it (step 3).
+    mute_iframe_load: bool = false,
     /// HTML "salvageable"; set false by "unload" (Crane keeps no bfcache).
     salvageable: bool = true,
     /// HTML "destroy" has run: the document's browsing context is null. It
@@ -611,6 +619,8 @@ pub fn installHooks() void {
         .set_about_base_url = &lifecycleSetAboutBaseUrl,
         .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
         .declarative_refresh = &lifecycleDeclarativeRefresh,
+        .set_iframe_load_in_progress = &lifecycleSetIframeLoadInProgress,
+        .is_iframe_load_muted = &lifecycleIsIframeLoadMuted,
     });
     @import("dom").document_origin.install(.{ .domain = &originDomain });
     // Its policy container, for whatever sets or reads one without naming
@@ -2583,6 +2593,11 @@ pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(runtime.DOMStr
     // Step 13: "Set document's is initial about:blank to false."
     internal.is_initial_about_blank = false;
 
+    // Step 14: "If document's iframe load in progress flag is set, then set
+    // document's mute iframe load flag." A load handler that writes to its
+    // frame's document does not make the frame fire load again.
+    if (internal.iframe_load_in_progress) internal.mute_iframe_load = true;
+
     // Step 15: "Set document to no-quirks mode."
     internal.mode = .no_quirks;
 
@@ -3949,6 +3964,16 @@ fn lifecycleIsCompletelyLoaded(document: *runtime.Instance) bool {
 fn lifecycleIsInitialAboutBlank(document: *runtime.Instance) bool {
     const internal = getInternal(document) orelse return false;
     return internal.is_initial_about_blank;
+}
+
+fn lifecycleSetIframeLoadInProgress(document: *runtime.Instance, in_progress: bool) void {
+    const internal = getInternal(document) orelse return;
+    internal.iframe_load_in_progress = in_progress;
+}
+
+fn lifecycleIsIframeLoadMuted(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    return internal.mute_iframe_load;
 }
 
 /// HTML "create a new browsing context and document": step 15 makes the

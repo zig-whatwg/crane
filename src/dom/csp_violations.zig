@@ -48,6 +48,41 @@ pub fn reporterForRealm(realm: runtime.Context) ?Reporter {
     return reporterFor(global);
 }
 
+/// A reporter for a global that can end before the reporter's last use: it
+/// reports only while `global` is still the instance it was made for (its
+/// slab generation unchanged) and its realm still runs.
+///
+/// A navigation's request holds one. Its client is the source document's
+/// settings object (HTML "create navigation params by fetching": the source
+/// snapshot params' fetch client), but the fetch's liveness follows the
+/// navigable being navigated - so the source document, and its global, can
+/// go while the fetch is in flight, and every redirect runs main fetch's
+/// CSP check again. The holder keeps it at a fixed address for as long as a
+/// request holds its `reporter()`.
+pub const GuardedReporter = struct {
+    global: *runtime.Instance,
+    generation: u64,
+
+    /// For violations of the policies of `realm`'s global - a document's
+    /// relevant global, for its `ctx` - if the realm has one.
+    pub fn forRealm(realm: runtime.Context) ?GuardedReporter {
+        const record = realm.getRealm() orelse return null;
+        const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+        return .{ .global = global, .generation = runtime.SlabAllocator.generationOf(global) };
+    }
+
+    pub fn reporter(self: *GuardedReporter) Reporter {
+        return .{ .context = self, .report = &reportWhileAlive };
+    }
+
+    fn reportWhileAlive(context: *anyopaque, violation: *const Violation) void {
+        const self: *GuardedReporter = @ptrCast(@alignCast(context));
+        if (runtime.SlabAllocator.generationOf(self.global) != self.generation) return;
+        if (!self.global.ctx.hasEngine()) return;
+        reportViolation(self.global, violation);
+    }
+};
+
 /// Report `violation` of `global`'s policy: §5.5 steps 1-3, the event in a
 /// queued task. Nothing is reported when the task cannot be made.
 pub fn reportViolation(global: *runtime.Instance, violation: *const Violation) void {

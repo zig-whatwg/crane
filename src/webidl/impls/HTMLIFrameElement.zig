@@ -842,6 +842,11 @@ const Navigation = struct {
     /// request's policy container, and the initiator's a local URL's
     /// document inherits. Owned; null with no source document.
     initiator_policy_container: ?fetch_mod.internal.PolicyContainer = null,
+    /// Where the navigation request's CSP violations go: the source
+    /// document's global, the request's client's (CSP 2.4.2) - guarded, as
+    /// the source document can go while the fetch is in flight. Null with
+    /// no source document.
+    csp_reporter: ?dom_module.csp_violations.GuardedReporter = null,
     /// The fetch in flight, until it answers.
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
@@ -1144,6 +1149,10 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         if (dom_module.policy_containers.of(source)) |container| {
             record.initiator_policy_container = container.clone(allocator) catch null;
         }
+        // The source snapshot params' fetch client is sourceDocument's
+        // relevant settings object: the request's client, whose global a
+        // violation of the request is (CSP 2.4.2).
+        record.csp_reporter = dom_module.csp_violations.GuardedReporter.forRealm(source.ctx);
     }
     // Step 5: "Let initiatorBaseURLSnapshot be sourceDocument's document base
     // URL" - kept only where it can be used, for a document at about:blank
@@ -1342,6 +1351,10 @@ fn startFetch(record: *Navigation) void {
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
         };
+        // Main fetch steps 4 and 7 report the request's CSP violations to its
+        // client's global (CSP 2.4.2). The record outlives the fetch: its
+        // destroy terminates it.
+        if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
         // Step 3's POST resource: "set request's body to documentResource's
         // request body" and "Content-Type" to its request content-type. The
         // body is the record's, borrowed for as long as the fetch runs.
@@ -2377,9 +2390,27 @@ fn runIframeLoadEventSteps(element: *runtime.Instance) void {
     const was_delaying = internal.integration.delaying_load;
     internal.integration.delaying_load = false;
     const generation = runtime.SlabAllocator.generationOf(element);
-    // Steps 1-3 (mute iframe load) and 4 (resource timing) are not modelled.
-    // Step 6: "Fire an event named load at element."
-    fireLoadEventOnIframe(element);
+    // Step 2: "Let childDocument be element's content navigable's active
+    // document." (Step 1 asserts there is a content navigable; step 4,
+    // resource timing, is not modelled.)
+    const child_document = activeDocumentOf(internal.integration);
+    // Step 3: "If childDocument has its mute iframe load flag set, then
+    // return." The document was opened during an earlier load event at this
+    // element (the document open steps, step 14). Its load still no longer
+    // delays the container document's, below.
+    const muted = if (child_document) |child| document_lifecycle.isIframeLoadMuted(child) else false;
+    if (!muted) {
+        // Step 5: "Set childDocument's iframe load in progress flag."
+        const child_generation = if (child_document) |child| runtime.SlabAllocator.generationOf(child) else 0;
+        if (child_document) |child| document_lifecycle.setIframeLoadInProgress(child, true);
+        // Step 6: "Fire an event named load at element."
+        fireLoadEventOnIframe(element);
+        // Step 7: "Unset childDocument's iframe load in progress flag." The
+        // handlers may have navigated the frame and dropped the document.
+        if (child_document) |child| {
+            if (runtime.SlabAllocator.generationOf(child) == child_generation) document_lifecycle.setIframeLoadInProgress(child, false);
+        }
+    }
     // The handlers may have taken the element away.
     if (!was_delaying or runtime.SlabAllocator.generationOf(element) != generation) return;
     const NodeImpl = @import("Node.zig");
