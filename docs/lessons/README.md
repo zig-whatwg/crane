@@ -163,6 +163,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A collected wrapper's instance is torn down in V8's second pass](architecture-a-collected-wrapper-s-instance-is-torn-down-in-v8-s-second-pass.md) - A finalizer that touches the engine belongs in V8's second pass; the first pass only makes the dying thing unreachable.
 - [A declared union does not prove its input conversion](architecture-a-declared-union-does-not-prove-its-input-conversion.md) - Check union selection and argument cleanup at the binding seam.
 - [Link the library your dependency actually built](architecture-link-the-library-your-dependency-actually-built.md) - Trace the linked artifact, headers and lifetime owner before sharing a C library.
+- [A request carries a clone of its client's policies, not a pointer to them](architecture-a-request-carries-a-clone-of-its-clients-policies.md) - Security state a request reads travels with the request as a clone taken when the client populates it, never as a pointer back to the document or a lookup at fetch time.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -202,6 +203,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Validating a buffer does not copy its bytes](spec-compliance-validating-a-buffer-does-not-copy-its-bytes.md) - Validation, object lifetime and byte-copy timing are separate requirements.
 - [Parsing a key is not validating its mathematics](spec-compliance-parsing-a-key-is-not-validating-its-mathematics.md) - Prove mathematical validation separately from parser acceptance.
 - [An internal dictionary can still expose prototype getters](spec-compliance-an-internal-dictionary-can-still-expose-prototype-getters.md) - Preserve observable prototype reads in ECMAScript conversions.
+- [A policy nothing delivered hid every defect behind it](spec-compliance-a-policy-nothing-delivered-hid-every-defect-behind-it.md) - A check whose inputs are never set is not tested by the suite that passes through it: when you deliver the policy, budget for the defects it hid - and enforce, report and match hashes together.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
@@ -298,6 +300,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A tag in the low bits of an aligned pointer type is UB, and the optimizer may drop the untag](debugging-a-tag-in-the-low-bits-of-an-aligned-pointer-is-ub-the-optimizer-drops-the-untag.md) - Tag only `*anyopaque`/`usize`; an untag the optimizer can prove redundant is gone in every release build.
 - [Equal constants share one address in a release build](debugging-equal-constants-share-one-address-in-a-release-build.md) - An identity built on the address of a `const` is an identity only in Debug; use a `var`.
 - [A full process-wide table shows up in the next file, as a wrong prototype](debugging-a-full-process-wide-table-shows-up-in-the-next-file.md) - Grep the sweep log for every error line before theorising; never give a per-isolate cache a fixed process-wide capacity.
+- [An event made by init has no type and reaches no listener](debugging-an-event-made-by-init-has-no-type-and-reaches-no-listener.md) - When an event "never fires", check that it has a type: initEvent on an event without internal state is a silent no-op; build engine events with the constructor.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.
