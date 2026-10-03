@@ -202,7 +202,7 @@ pub const IDBCursor = struct {
 
         // Step 2: If transaction's state is not active, throw TransactionInactiveError
         const txn = self.getTransaction();
-        if (txn.state != .active) {
+        if (!txn.canExecuteRequest()) {
             return IDBError.TransactionInactiveError;
         }
 
@@ -237,7 +237,7 @@ pub const IDBCursor = struct {
     pub fn @"continue"(self: *Self, key: ?IDBKey) IDBError!void {
         // Step 1: If transaction's state is not active, throw TransactionInactiveError
         const txn = self.getTransaction();
-        if (txn.state != .active) {
+        if (!txn.canExecuteRequest()) {
             return IDBError.TransactionInactiveError;
         }
 
@@ -304,7 +304,7 @@ pub const IDBCursor = struct {
     pub fn continuePrimaryKey(self: *Self, key: IDBKey, primary_key: IDBKey) IDBError!void {
         // Step 1: If transaction's state is not active, throw TransactionInactiveError
         const txn = self.getTransaction();
-        if (txn.state != .active) {
+        if (!txn.canExecuteRequest()) {
             return IDBError.TransactionInactiveError;
         }
 
@@ -396,7 +396,7 @@ pub const IDBCursor = struct {
     /// 5. If cursor's key only flag is true, throw InvalidStateError
     pub fn update(self: *Self, value: []const u8) IDBError!*IDBRequest {
         const txn = self.getTransaction();
-        if (txn.state != .active) {
+        if (!txn.canExecuteRequest()) {
             return IDBError.TransactionInactiveError;
         }
 
@@ -439,7 +439,7 @@ pub const IDBCursor = struct {
     /// 5. If cursor's key only flag is true, throw InvalidStateError
     pub fn delete(self: *Self) IDBError!*IDBRequest {
         const txn = self.getTransaction();
-        if (txn.state != .active) {
+        if (!txn.canExecuteRequest()) {
             return IDBError.TransactionInactiveError;
         }
 

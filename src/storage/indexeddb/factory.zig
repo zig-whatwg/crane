@@ -161,6 +161,7 @@ pub const IDBFactory = struct {
         if (existing) |metadata| {
             db.backing = metadata.database;
             metadata.database.retain();
+            try db.copyConnectionNames();
             // Database exists - check version
             if (version) |v| {
                 if (v > metadata.database.version) {
@@ -271,7 +272,9 @@ pub const IDBFactory = struct {
         var count: usize = 0;
         var it = self.databases_map.iterator();
         while (it.next()) |entry| {
-            if (std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
+            // ED 4.3 databases step 4.3.1: omit a version-zero database whose
+            // first upgrade has not committed.
+            if (entry.value_ptr.database.version != 0 and std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
                 count += 1;
             }
         }
@@ -284,7 +287,7 @@ pub const IDBFactory = struct {
         var idx: usize = 0;
         it = self.databases_map.iterator();
         while (it.next()) |entry| {
-            if (std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
+            if (entry.value_ptr.database.version != 0 and std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
                 result[idx] = IDBDatabaseInfo{
                     .name = entry.value_ptr.name,
                     .version = entry.value_ptr.database.version,

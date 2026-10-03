@@ -81,7 +81,10 @@ pub const IDBTransaction = struct {
     references: usize = 1,
     destroy_on_release: bool = false,
     rollback_schema: ?IDBDatabase.Schema = null,
+    rollback_names: ?IDBDatabase.NameSet = null,
     rollback_version: u64 = 0,
+    executing_request: bool = false,
+    started: bool = false,
 
     /// Transaction mode
     mode: IDBTransactionMode,
@@ -120,6 +123,8 @@ pub const IDBTransaction = struct {
             .db = db,
             .scope = scope,
             .owns_scope = false,
+            // ED 5.8.3 applies even when no write creates a lazy snapshot.
+            .rollback_version = if (db.backing) |database| database.version else db.version,
             .mode = mode,
             .state = .active,
             .durability = .default,
@@ -148,6 +153,7 @@ pub const IDBTransaction = struct {
         self.references -= 1;
         if (self.references != 0) return;
         if (self.rollback_schema) |*schema_map| IDBDatabase.deinitSchema(schema_map, self.allocator);
+        if (self.rollback_names) |*names| IDBDatabase.deinitNames(self.allocator, names);
         if (self.owns_scope) {
             for (self.scope) |name| self.allocator.free(name);
             self.allocator.free(self.scope);
@@ -156,6 +162,12 @@ pub const IDBTransaction = struct {
         for (self.db.transactions.items, 0..) |transaction, index| {
             if (transaction == self) {
                 _ = self.db.transactions.orderedRemove(index);
+                break;
+            }
+        }
+        for (self.db.transactionQueue().items, 0..) |transaction, index| {
+            if (transaction == self) {
+                _ = self.db.transactionQueue().orderedRemove(index);
                 break;
             }
         }
@@ -181,8 +193,68 @@ pub const IDBTransaction = struct {
     pub fn ensureRollbackSnapshot(self: *Self) !void {
         if (self.rollback_schema != null) return;
         if (self.mode == .readonly) return;
-        self.rollback_schema = try self.db.cloneSchema();
-        self.rollback_version = if (self.db.backing) |database| database.version else self.db.version;
+        var snapshot = try self.db.cloneSchema();
+        errdefer IDBDatabase.deinitSchema(&snapshot, self.allocator);
+        const names = if (self.mode == .versionchange) try self.db.cloneConnectionNames() else null;
+        self.rollback_schema = snapshot;
+        self.rollback_names = names;
+    }
+
+    /// ED 2.7.2: only earlier, unfinished transactions with overlapping
+    /// scopes constrain a start. Two readers can run together.
+    pub fn canStart(self: *Self) bool {
+        for (self.db.transactionQueue().items) |earlier| {
+            if (earlier == self) break;
+            if (earlier.state == .finished) continue;
+            if (self.mode == .readonly and earlier.mode == .readonly) continue;
+            if (self.mode == .versionchange or earlier.mode == .versionchange) return false;
+            for (self.scope) |name| for (earlier.scope) |other| {
+                if (std.mem.eql(u8, name, other)) return false;
+            };
+        }
+        return true;
+    }
+
+    /// ED 5.6: accepted work executes after script's active period, including
+    /// after commit(). This does not make the transaction active for script.
+    pub fn beginRequestExecution(self: *Self) IDBError!void {
+        if (self.state == .finished or !self.canStart()) return IDBError.TransactionInactiveError;
+        std.debug.assert(!self.executing_request);
+        if (!self.started and self.mode != .versionchange) {
+            // A previous writer may have aborted after these handles were
+            // made. Their first operation uses the restored canonical data.
+            var stores = self.object_stores.valueIterator();
+            while (stores.next()) |entry| {
+                const store = entry.*;
+                const metadata = self.db.schema().get(store.name) orelse return IDBError.NotFoundError;
+                const fresh = metadata.record_data;
+                if (store.record_data == fresh) continue;
+                var indexes = store.indexes.valueIterator();
+                while (indexes.next()) |index_entry| {
+                    const index = index_entry.*;
+                    const index_data = fresh.indexes.get(index.name) orelse return IDBError.NotFoundError;
+                    const old = index.data;
+                    index.data = null;
+                    try index.attachData(index_data);
+                    if (old) |data| data.release();
+                }
+                const old = store.record_data;
+                store.record_data = null;
+                store.attachRecords(fresh);
+                if (old) |data| data.release();
+            }
+        }
+        self.started = true;
+        self.executing_request = true;
+    }
+
+    pub fn endRequestExecution(self: *Self) void {
+        std.debug.assert(self.executing_request);
+        self.executing_request = false;
+    }
+
+    pub fn canExecuteRequest(self: *const Self) bool {
+        return self.state == .active or (self.executing_request and self.state != .finished);
     }
 
     /// Snapshot converted scope names before their caller releases them.
@@ -244,8 +316,10 @@ pub const IDBTransaction = struct {
         // Get metadata from database
         if (self.db.schema().get(name)) |metadata| {
             try store.copyDefinition(metadata.name, metadata.key_path);
+            if (metadata.compound_key_path) |paths| try store.copyCompoundKeyPath(paths);
             store.auto_increment = metadata.auto_increment;
             store.attachRecords(metadata.record_data);
+            try store.snapshotIndexNames();
         }
 
         try self.object_stores.put(store.name, store);
@@ -269,6 +343,8 @@ pub const IDBTransaction = struct {
         if (self.mode == .versionchange) self.db.publishVersion();
         if (self.rollback_schema) |*schema_map| IDBDatabase.deinitSchema(schema_map, self.allocator);
         self.rollback_schema = null;
+        if (self.rollback_names) |*names| IDBDatabase.deinitNames(self.allocator, names);
+        self.rollback_names = null;
 
         // Step 2: Set state to committing
         self.state = .committing;
@@ -296,6 +372,14 @@ pub const IDBTransaction = struct {
         if (self.state == .committing or self.state == .finished) {
             return IDBError.InvalidStateError;
         }
+        return self.abortForError(IDBError.AbortError);
+    }
+
+    /// ED 5.5 is also used when an accepted operation fails during commit.
+    /// The IDL abort() state restriction does not apply to this algorithm.
+    pub fn abortForError(self: *Self, reason: IDBError) IDBError!void {
+        // Step 1: an already finished transaction is unchanged.
+        if (self.state == .finished) return;
 
         // IDB 5.5 step 2: restore schema, records and key generators atomically.
         if (self.rollback_schema) |snapshot| {
@@ -303,8 +387,17 @@ pub const IDBTransaction = struct {
                 var changed = self.db.schema().*;
                 self.db.schema().* = snapshot;
                 self.rollback_schema = null;
+                // 5.8 step 4 restores the connection's own set too.
+                var changed_names = self.db.connection_names;
+                self.db.connection_names = self.rollback_names.?;
+                self.rollback_names = null;
+                IDBDatabase.deinitNames(self.allocator, &changed_names);
+                // 5.8 steps 5-6 restore every associated handle by definition
+                // identity, including handles retired by deletion/recreation.
+                var handles = self.object_stores.valueIterator();
+                while (handles.next()) |handle| self.rollbackStoreHandle(handle.*);
+                for (self.retired_stores.items) |handle| self.rollbackStoreHandle(handle);
                 IDBDatabase.deinitSchema(&changed, self.allocator);
-                self.db.version = self.rollback_version;
             } else {
                 // Disjoint scopes may commit independently. Restore only this
                 // transaction's stores, preserving other committed changes.
@@ -321,14 +414,30 @@ pub const IDBTransaction = struct {
             }
         }
 
+        // ED 5.8.3: version changes belong to every upgrade, including an
+        // otherwise empty transaction with no record/schema rollback snapshot.
+        if (self.mode == .versionchange) self.db.version = self.rollback_version;
+
         // Step 4: Set state to finished
         self.state = .finished;
-        self.err = IDBError.AbortError;
+        self.err = reason;
 
         // Native notification; the binding queues the DOM abort event (step 7).
         if (self.onabort) |handler| {
             handler(self);
         }
+    }
+
+    fn rollbackStoreHandle(self: *Self, store: *IDBObjectStore) void {
+        const data = store.record_data orelse return;
+        var definitions = self.db.schema().valueIterator();
+        while (definitions.next()) |metadata| {
+            if (metadata.record_data.definition_id == data.definition_id) {
+                store.rollbackSchema(metadata);
+                return;
+            }
+        }
+        store.rollbackSchema(null);
     }
 
     /// Add a request to this transaction

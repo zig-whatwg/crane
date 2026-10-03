@@ -33,6 +33,7 @@ const IDBCursorDirection = @import("cursor.zig").IDBCursorDirection;
 const IDBKey = @import("key.zig").IDBKey;
 const IDBKeyRange = @import("key_range.zig").IDBKeyRange;
 const IDBError = @import("errors.zig").IDBError;
+const key_path_mod = @import("key_path.zig");
 
 /// Index entry mapping index key to primary key
 const IndexEntry = struct {
@@ -48,28 +49,47 @@ const IndexEntry = struct {
     }
 };
 
+fn removeEntriesFromList(entries: *std.ArrayListUnmanaged(IndexEntry), allocator: std.mem.Allocator, range: IDBKeyRange) void {
+    var offset: usize = 0;
+    while (offset < entries.items.len) {
+        if (range.includes(entries.items[offset].primary_key)) {
+            var removed = entries.orderedRemove(offset);
+            removed.deinit(allocator);
+        } else offset += 1;
+    }
+}
+
 /// Persistent index definition and records, shared by transaction handles.
 pub const IndexData = struct {
     allocator: std.mem.Allocator,
     references: usize = 1,
+    definition_id: u64 = 0,
     name: []u8,
-    key_path: []u8,
+    key_path: ?[]const u8,
+    compound_key_path: ?[]const []const u8 = null,
     unique: bool,
     multi_entry: bool,
     entries: std.ArrayListUnmanaged(IndexEntry) = .empty,
 
     pub fn create(allocator: std.mem.Allocator, name: []const u8, path: []const u8, unique: bool, multi_entry: bool) std.mem.Allocator.Error!*IndexData {
+        return createWithKeyPath(allocator, name, .{ .single = path }, unique, multi_entry);
+    }
+    pub fn createWithKeyPath(allocator: std.mem.Allocator, name: []const u8, path: key_path_mod.KeyPath, unique: bool, multi_entry: bool) std.mem.Allocator.Error!*IndexData {
         const data = try allocator.create(IndexData);
         errdefer allocator.destroy(data);
         const copied_name = try allocator.dupe(u8, name);
         errdefer allocator.free(copied_name);
-        const copied_path = try allocator.dupe(u8, path);
-        data.* = .{ .allocator = allocator, .name = copied_name, .key_path = copied_path, .unique = unique, .multi_entry = multi_entry };
+        const copied_path = if (path == .single) try allocator.dupe(u8, path.single) else null;
+        errdefer if (copied_path) |value| allocator.free(value);
+        const compound = if (path == .array) try key_path_mod.copyPathList(allocator, path.array) else null;
+        data.* = .{ .allocator = allocator, .name = copied_name, .key_path = copied_path, .compound_key_path = compound, .unique = unique, .multi_entry = multi_entry };
         return data;
     }
     pub fn clone(self: *const IndexData) std.mem.Allocator.Error!*IndexData {
-        const copy = try create(self.allocator, self.name, self.key_path, self.unique, self.multi_entry);
+        const path: key_path_mod.KeyPath = if (self.compound_key_path) |paths| .{ .array = paths } else .{ .single = self.key_path.? };
+        const copy = try createWithKeyPath(self.allocator, self.name, path, self.unique, self.multi_entry);
         errdefer copy.release();
+        copy.definition_id = self.definition_id;
         try copy.entries.ensureTotalCapacity(self.allocator, self.entries.items.len);
         for (self.entries.items) |entry| {
             var key = try entry.index_key.clone(self.allocator);
@@ -82,6 +102,9 @@ pub const IndexData = struct {
     pub fn retain(self: *IndexData) void {
         self.references += 1;
     }
+    pub fn removeEntriesInRange(self: *IndexData, range: IDBKeyRange) void {
+        removeEntriesFromList(&self.entries, self.allocator, range);
+    }
     pub fn release(self: *IndexData) void {
         std.debug.assert(self.references > 0);
         self.references -= 1;
@@ -89,7 +112,8 @@ pub const IndexData = struct {
         for (self.entries.items) |*entry| entry.deinit(self.allocator);
         self.entries.deinit(self.allocator);
         self.allocator.free(self.name);
-        self.allocator.free(self.key_path);
+        if (self.key_path) |path| self.allocator.free(path);
+        if (self.compound_key_path) |paths| key_path_mod.freePathList(self.allocator, paths);
         self.allocator.destroy(self);
     }
 };
@@ -105,12 +129,15 @@ pub const IDBIndex = struct {
 
     /// Index name
     name: []const u8,
+    owned_name: ?[]u8 = null,
+    rollback_name: ?[]u8 = null,
 
     /// Associated object store
     object_store: *IDBObjectStore,
 
     /// Key path for extracting index keys
     key_path: ?[]const u8,
+    compound_key_path: ?[]const []const u8 = null,
 
     /// Whether keys must be unique
     unique: bool,
@@ -137,30 +164,91 @@ pub const IDBIndex = struct {
         };
     }
 
-    pub fn attachData(self: *Self, data: *IndexData) void {
+    pub fn attachData(self: *Self, data: *IndexData) std.mem.Allocator.Error!void {
         std.debug.assert(self.data == null);
+        if (self.owned_name == null) self.owned_name = try self.allocator.dupe(u8, data.name);
         data.retain();
         self.data = data;
-        self.name = data.name;
+        self.name = self.owned_name.?;
         self.key_path = data.key_path;
+        self.compound_key_path = data.compound_key_path;
         self.unique = data.unique;
         self.multi_entry = data.multi_entry;
     }
     pub fn entriesList(self: *const Self) *std.ArrayListUnmanaged(IndexEntry) {
         return if (self.data) |data| &data.entries else @constCast(&self.entries);
     }
+    pub fn effectiveKeyPath(self: *const Self) ?key_path_mod.KeyPath {
+        if (self.compound_key_path) |paths| return .{ .array = paths };
+        if (self.key_path) |path| return .{ .single = path };
+        return null;
+    }
     /// Clean up resources; the database retains the persistent definition.
     pub fn deinit(self: *Self) void {
+        if (self.owned_name) |name| self.allocator.free(name);
+        if (self.rollback_name) |name| self.allocator.free(name);
         if (self.data) |data| data.release() else {
             for (self.entries.items) |*entry| entry.deinit(self.allocator);
             self.entries.deinit(self.allocator);
         }
     }
 
+    pub fn rename(self: *Self, name: []const u8) IDBError!void {
+        const store = self.object_store;
+        // ED 4.6 name setter steps 4-8: state precedes deletion for indexes.
+        if (store.transaction.mode != .versionchange) return IDBError.InvalidStateError;
+        if (store.transaction.state != .active) return IDBError.TransactionInactiveError;
+        if (self.deleted or store.isDeleted()) return IDBError.InvalidStateError;
+        if (std.mem.eql(u8, self.name, name)) return;
+        if (store.index_names_view.contains(name)) return IDBError.ConstraintError;
+        const data = self.data orelse return IDBError.InvalidStateError;
+        try store.transaction.ensureRollbackSnapshot();
+        try store.preserveSchemaForRollback();
+        const definition_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(definition_name);
+        const handle_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(handle_name);
+        const view_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(view_name);
+        if (self.rollback_name == null) self.rollback_name = try self.allocator.dupe(u8, self.name);
+        // Steps 9-10: no allocation follows any map/name replacement.
+        if (store.record_data) |records| _ = records.indexes.remove(data.name);
+        _ = store.indexes.remove(self.name);
+        const old_view = store.index_names_view.fetchRemove(self.name).?;
+        self.allocator.free(old_view.key);
+        self.allocator.free(data.name);
+        data.name = definition_name;
+        if (self.owned_name) |old| self.allocator.free(old);
+        self.owned_name = handle_name;
+        self.name = handle_name;
+        if (store.record_data) |records| records.indexes.putAssumeCapacity(definition_name, data);
+        store.indexes.putAssumeCapacity(handle_name, self);
+        store.index_names_view.putAssumeCapacity(view_name, {});
+    }
+
+    pub fn rollbackSchema(self: *Self, original_store: ?*const @import("object_store.zig").RecordData) void {
+        var existed = false;
+        if (original_store) |store| if (self.data) |data| {
+            var definitions = store.indexes.valueIterator();
+            while (definitions.next()) |definition| {
+                if (definition.*.definition_id == data.definition_id) {
+                    existed = true;
+                    break;
+                }
+            }
+        };
+        self.deleted = !existed;
+        // ED 5.8.6: newly created indexes retain their last name on abort.
+        if (existed and self.rollback_name != null) {
+            std.mem.swap(?[]u8, &self.owned_name, &self.rollback_name);
+            self.name = self.owned_name.?;
+        }
+    }
+
     /// Get a record by index key
     /// https://w3c.github.io/IndexedDB/#dom-idbindex-get
     pub fn get(self: *Self, query: IDBKeyRange) IDBError!*IDBRequest {
-        if (self.deleted) return IDBError.InvalidStateError;
+        if ((self.deleted or self.object_store.isDeleted()) and !self.object_store.transaction.executing_request) return IDBError.InvalidStateError;
         const txn = self.object_store.transaction;
 
         // Check transaction state
@@ -203,7 +291,7 @@ pub const IDBIndex = struct {
     /// Get a primary key by index key
     /// https://w3c.github.io/IndexedDB/#dom-idbindex-getkey
     pub fn getKey(self: *Self, query: IDBKeyRange) IDBError!*IDBRequest {
-        if (self.deleted) return IDBError.InvalidStateError;
+        if ((self.deleted or self.object_store.isDeleted()) and !self.object_store.transaction.executing_request) return IDBError.InvalidStateError;
         const txn = self.object_store.transaction;
 
         // Check transaction state
@@ -235,7 +323,7 @@ pub const IDBIndex = struct {
     /// Count matching entries
     /// https://w3c.github.io/IndexedDB/#dom-idbindex-count
     pub fn count(self: *Self, query: ?IDBKeyRange) IDBError!*IDBRequest {
-        if (self.deleted) return IDBError.InvalidStateError;
+        if ((self.deleted or self.object_store.isDeleted()) and !self.object_store.transaction.executing_request) return IDBError.InvalidStateError;
         const txn = self.object_store.transaction;
 
         // Check transaction state
@@ -345,9 +433,18 @@ pub const IDBIndex = struct {
         }
     };
     pub fn prepareEntries(self: *Self, keys: []const IDBKey, primary_key: IDBKey) IDBError!PreparedEntries {
+        return self.prepareEntriesForWrite(keys, primary_key, false);
+    }
+    pub fn prepareReplacementEntries(self: *Self, keys: []const IDBKey, primary_key: IDBKey) IDBError!PreparedEntries {
+        return self.prepareEntriesForWrite(keys, primary_key, true);
+    }
+    fn prepareEntriesForWrite(self: *Self, keys: []const IDBKey, primary_key: IDBKey, replacement: bool) IDBError!PreparedEntries {
         // IDB 6.1 steps 5.3-5.4: validate ALL subkeys before inserting any.
         if (self.unique) for (keys, 0..) |key, i| {
             for (self.entriesList().items) |entry| {
+                // 6.1 step 3 removes this record's old index entries before
+                // checking uniqueness; staging must model the same result.
+                if (replacement and @import("key.zig").compare(entry.primary_key, primary_key) == 0) continue;
                 if (@import("key.zig").compare(entry.index_key, key) == 0) return IDBError.ConstraintError;
             }
             for (keys[0..i]) |previous| {
@@ -389,16 +486,14 @@ pub const IDBIndex = struct {
         value: @import("key_path.zig").ExtractedValue,
         primary_key: IDBKey,
     ) IDBError!void {
-        const key_path_mod = @import("key_path.zig");
-
         // Get the key path
-        const kp = self.key_path orelse return;
+        const kp = self.effectiveKeyPath() orelse return;
 
         // Extract key using the key path
         const result = try key_path_mod.extractKeyOwned(
             allocator,
             value,
-            .{ .single = kp },
+            kp,
             self.multi_entry,
         );
 
@@ -426,16 +521,10 @@ pub const IDBIndex = struct {
 
     /// Remove entries for a primary key (internal use)
     pub fn removeEntriesForPrimaryKey(self: *Self, primary_key: IDBKey) void {
-        var i: usize = 0;
-        while (i < self.entriesList().items.len) {
-            const entry = &self.entriesList().items[i];
-            if (@import("key.zig").compare(entry.primary_key, primary_key) == 0) {
-                var removed = self.entriesList().orderedRemove(i);
-                removed.deinit(self.allocator);
-            } else {
-                i += 1;
-            }
-        }
+        self.removeEntriesInRange(IDBKeyRange.only(primary_key));
+    }
+    pub fn removeEntriesInRange(self: *Self, range: IDBKeyRange) void {
+        removeEntriesFromList(self.entriesList(), self.allocator, range);
     }
 };
 
@@ -489,7 +578,6 @@ test "IDBIndex - count empty" {
 
 test "IDBIndex - multiEntry creates multiple entries" {
     const allocator = std.testing.allocator;
-    const key_path_mod = @import("key_path.zig");
 
     var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
     defer db.deinit();
@@ -537,7 +625,6 @@ test "IDBIndex - multiEntry creates multiple entries" {
 
 test "IDBIndex - multiEntry deduplicates array elements" {
     const allocator = std.testing.allocator;
-    const key_path_mod = @import("key_path.zig");
 
     var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
     defer db.deinit();
@@ -575,7 +662,6 @@ test "IDBIndex - multiEntry deduplicates array elements" {
 
 test "IDBIndex - multiEntry retains nested arrays" {
     const allocator = std.testing.allocator;
-    const key_path_mod = @import("key_path.zig");
 
     var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
     defer db.deinit();
@@ -614,7 +700,6 @@ test "IDBIndex - multiEntry retains nested arrays" {
 
 test "IDBIndex - non-multiEntry with array creates single entry" {
     const allocator = std.testing.allocator;
-    const key_path_mod = @import("key_path.zig");
 
     var db = @import("database.zig").IDBDatabase.init(allocator, "testdb", 1);
     defer db.deinit();

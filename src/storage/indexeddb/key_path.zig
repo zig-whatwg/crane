@@ -44,6 +44,24 @@ pub const KeyPath = union(enum) {
     array: []const []const u8,
 };
 
+/// Own every component of a stored compound path, including the empty list.
+pub fn copyPathList(allocator: std.mem.Allocator, paths: []const []const u8) std.mem.Allocator.Error![][]const u8 {
+    const copies = try allocator.alloc([]const u8, paths.len);
+    errdefer allocator.free(copies);
+    var copied: usize = 0;
+    errdefer for (copies[0..copied]) |path| allocator.free(path);
+    for (paths, 0..) |path, index| {
+        copies[index] = try allocator.dupe(u8, path);
+        copied += 1;
+    }
+    return copies;
+}
+
+pub fn freePathList(allocator: std.mem.Allocator, paths: []const []const u8) void {
+    for (paths) |path| allocator.free(path);
+    allocator.free(paths);
+}
+
 /// Result of evaluating a key path on a value
 pub const EvaluationResult = union(enum) {
     /// Successfully extracted a value

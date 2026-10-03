@@ -69,6 +69,8 @@ pub const Record = struct {
 pub const RecordData = struct {
     allocator: std.mem.Allocator,
     references: usize = 1,
+    definition_id: u64 = 0,
+    next_index_id: u64 = 1,
     deleted: bool = false,
     records: std.ArrayListUnmanaged(Record) = .empty,
     key_generator: u64 = 1,
@@ -76,7 +78,7 @@ pub const RecordData = struct {
 
     pub fn clone(self: *const RecordData) std.mem.Allocator.Error!*RecordData {
         const copy = try self.allocator.create(RecordData);
-        copy.* = .{ .allocator = self.allocator, .key_generator = self.key_generator, .deleted = self.deleted };
+        copy.* = .{ .allocator = self.allocator, .key_generator = self.key_generator, .deleted = self.deleted, .definition_id = self.definition_id, .next_index_id = self.next_index_id };
         errdefer copy.release();
         try copy.records.ensureTotalCapacity(self.allocator, self.records.items.len);
         for (self.records.items) |record| {
@@ -123,6 +125,12 @@ pub const IDBObjectStore = struct {
     destroy_on_release: bool = false,
     owned_name: ?[]u8 = null,
     owned_key_path: ?[]u8 = null,
+    owned_compound_key_path: ?[]const []const u8 = null,
+    /// ED 2.6 handles keep their own index set after the transaction finishes.
+    index_names_view: std.StringHashMapUnmanaged(void) = .empty,
+    rollback_index_names: ?std.StringHashMapUnmanaged(void) = null,
+    rollback_name: ?[]u8 = null,
+    next_index_id: u64 = 1,
 
     /// Object store name
     name: []const u8,
@@ -178,16 +186,114 @@ pub const IDBObjectStore = struct {
         const copied_path = if (key_path) |path| try self.allocator.dupe(u8, path) else null;
         if (self.owned_name) |old| self.allocator.free(old);
         if (self.owned_key_path) |old| self.allocator.free(old);
+        if (self.owned_compound_key_path) |old| key_path_mod.freePathList(self.allocator, old);
+        self.owned_compound_key_path = null;
+        self.compound_key_path = null;
         self.owned_name = copied_name;
         self.owned_key_path = copied_path;
         self.name = copied_name;
         self.key_path = copied_path;
     }
 
+    pub fn copyCompoundKeyPath(self: *Self, paths: []const []const u8) !void {
+        const copy = try key_path_mod.copyPathList(self.allocator, paths);
+        if (self.owned_key_path) |old| self.allocator.free(old);
+        if (self.owned_compound_key_path) |old| key_path_mod.freePathList(self.allocator, old);
+        self.owned_key_path = null;
+        self.key_path = null;
+        self.owned_compound_key_path = copy;
+        self.compound_key_path = copy;
+    }
+
     pub fn attachRecords(self: *Self, data: *RecordData) void {
         std.debug.assert(self.record_data == null);
         data.retain();
         self.record_data = data;
+    }
+
+    fn deinitNameSet(allocator: std.mem.Allocator, names: *std.StringHashMapUnmanaged(void)) void {
+        var keys = names.keyIterator();
+        while (keys.next()) |name| allocator.free(name.*);
+        names.deinit(allocator);
+    }
+
+    pub fn snapshotIndexNames(self: *Self) !void {
+        const data = self.record_data orelse return;
+        std.debug.assert(self.index_names_view.count() == 0);
+        try self.index_names_view.ensureTotalCapacity(self.allocator, data.indexes.count());
+        var names = data.indexes.keyIterator();
+        while (names.next()) |name| {
+            const copy = try self.allocator.dupe(u8, name.*);
+            self.index_names_view.putAssumeCapacity(copy, {});
+        }
+    }
+
+    /// Prepare all metadata needed by ED 5.8 before a schema mutation. Abort
+    /// can then restore visible names without allocating while it rolls back.
+    pub fn preserveSchemaForRollback(self: *Self) !void {
+        if (self.rollback_index_names != null) return;
+        var names: std.StringHashMapUnmanaged(void) = .empty;
+        errdefer deinitNameSet(self.allocator, &names);
+        try names.ensureTotalCapacity(self.allocator, self.index_names_view.count());
+        var keys = self.index_names_view.keyIterator();
+        while (keys.next()) |name| {
+            const copy = try self.allocator.dupe(u8, name.*);
+            names.putAssumeCapacity(copy, {});
+        }
+        const name = try self.allocator.dupe(u8, self.name);
+        self.rollback_name = name;
+        self.rollback_index_names = names;
+    }
+
+    pub fn rename(self: *Self, name: []const u8) IDBError!void {
+        // ED 4.5 name setter steps 4-8, in observable exception order.
+        if (self.isDeleted() or self.transaction.mode != .versionchange) return IDBError.InvalidStateError;
+        if (self.transaction.state != .active) return IDBError.TransactionInactiveError;
+        if (std.mem.eql(u8, self.name, name)) return;
+        const schema = self.transaction.db.schema();
+        if (schema.contains(name)) return IDBError.ConstraintError;
+        try self.transaction.ensureRollbackSnapshot();
+        try self.preserveSchemaForRollback();
+        const definition_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(definition_name);
+        const handle_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(handle_name);
+        const visible_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(visible_name);
+        const connection_names = &self.transaction.db.connection_names;
+        try connection_names.ensureUnusedCapacity(self.allocator, 1);
+        // Steps 9-10: both maps have capacity after removing their old keys.
+        var definition = schema.fetchRemove(self.name) orelse return IDBError.NotFoundError;
+        const cached = self.transaction.object_stores.fetchRemove(self.name);
+        if (connection_names.fetchRemove(self.name)) |entry| self.allocator.free(entry.key);
+        connection_names.putAssumeCapacity(visible_name, {});
+        self.allocator.free(definition.value.name);
+        definition.value.name = definition_name;
+        schema.putAssumeCapacity(definition_name, definition.value);
+        if (self.owned_name) |old| self.allocator.free(old);
+        self.owned_name = handle_name;
+        self.name = handle_name;
+        if (cached) |entry| self.transaction.object_stores.putAssumeCapacity(handle_name, entry.value);
+    }
+
+    pub fn rollbackSchema(self: *Self, original: ?*const @import("database.zig").ObjectStoreMetadata) void {
+        // ED 5.5.2 and 5.8.5: identity, not a reused name, decides whether this
+        // is an old store. New stores retain their last name but lose indexes.
+        if (self.record_data) |data| data.deleted = original == null;
+        if (original == null) {
+            self.clearIndexNames();
+        } else if (self.rollback_index_names) |names| {
+            deinitNameSet(self.allocator, &self.index_names_view);
+            self.index_names_view = names;
+            self.rollback_index_names = null;
+            // The finished transaction's handle map still borrows the current
+            // name. Keep that allocation until handle destruction as well.
+            std.mem.swap(?[]u8, &self.owned_name, &self.rollback_name);
+            self.name = self.owned_name.?;
+        }
+        var indexes = self.indexes.valueIterator();
+        while (indexes.next()) |handle| handle.*.rollbackSchema(if (original) |metadata| metadata.record_data else null);
+        for (self.retired_indexes.items) |handle| handle.rollbackSchema(if (original) |metadata| metadata.record_data else null);
     }
 
     pub fn recordsList(self: *Self) *std.ArrayListUnmanaged(Record) {
@@ -289,6 +395,10 @@ pub const IDBObjectStore = struct {
         if (self.references != 0) return;
         if (self.owned_name) |name| self.allocator.free(name);
         if (self.owned_key_path) |path| self.allocator.free(path);
+        if (self.owned_compound_key_path) |paths| key_path_mod.freePathList(self.allocator, paths);
+        if (self.rollback_name) |name| self.allocator.free(name);
+        if (self.rollback_index_names) |*names| deinitNameSet(self.allocator, names);
+        deinitNameSet(self.allocator, &self.index_names_view);
         var it = self.indexes.iterator();
         while (it.next()) |entry| {
             entry.value_ptr.*.deinit();
@@ -310,23 +420,22 @@ pub const IDBObjectStore = struct {
         if (self.destroy_on_release) self.allocator.destroy(self);
     }
 
+    /// ED 4.4 deleteObjectStore step 6 changes only the current handle's set.
+    pub fn clearIndexNames(self: *Self) void {
+        deinitNameSet(self.allocator, &self.index_names_view);
+        self.index_names_view = .empty;
+    }
+
     /// Get index names
     pub fn indexNames(self: *Self) ![][]const u8 {
         // deleteObjectStore step 6: a live deleted handle has an empty index set.
         if (self.isDeleted() and self.transaction.state != .finished)
             return self.allocator.alloc([]const u8, 0);
-        if (self.record_data) |records| {
-            const names = try self.allocator.alloc([]const u8, records.indexes.count());
-            var keys = records.indexes.keyIterator();
-            var i: usize = 0;
-            while (keys.next()) |name| : (i += 1) names[i] = name.*;
-            return names;
-        }
-        const names = try self.allocator.alloc([]const u8, self.indexes.count());
+        const names = try self.allocator.alloc([]const u8, self.index_names_view.count());
         errdefer self.allocator.free(names);
 
         var idx: usize = 0;
-        var it = self.indexes.iterator();
+        var it = self.index_names_view.iterator();
         while (it.next()) |entry| {
             names[idx] = entry.key_ptr.*;
             idx += 1;
@@ -356,9 +465,9 @@ pub const IDBObjectStore = struct {
     /// Internal: Store a record
     /// https://w3c.github.io/IndexedDB/#store-a-record-into-an-object-store
     fn storeRecord(self: *Self, value: []const u8, key: ?IDBKey, no_overwrite: bool) IDBError!*IDBRequest {
-        if (self.isDeleted()) return IDBError.InvalidStateError;
+        if (self.isDeleted() and !self.transaction.executing_request) return IDBError.InvalidStateError;
         // Check transaction state
-        if (self.transaction.state != .active) {
+        if (!self.transaction.canExecuteRequest()) {
             return IDBError.TransactionInactiveError;
         }
 
@@ -425,6 +534,7 @@ pub const IDBObjectStore = struct {
             break :blk record_key;
         };
         request.* = IDBRequest.init(self.allocator);
+        request.transaction = self.transaction;
         request.source_type = .object_store;
         request.setResult(.{ .key = result_key });
         self.transaction.requests.appendAssumeCapacity(request);
@@ -473,9 +583,9 @@ pub const IDBObjectStore = struct {
     /// Delete records
     /// https://w3c.github.io/IndexedDB/#dom-idbobjectstore-delete
     pub fn delete(self: *Self, query: IDBKeyRange) IDBError!*IDBRequest {
-        if (self.isDeleted()) return IDBError.InvalidStateError;
+        if (self.isDeleted() and !self.transaction.executing_request) return IDBError.InvalidStateError;
         // Check transaction state
-        if (self.transaction.state != .active) {
+        if (!self.transaction.canExecuteRequest()) {
             return IDBError.TransactionInactiveError;
         }
 
@@ -488,7 +598,9 @@ pub const IDBObjectStore = struct {
 
         const request = try IDBRequest.prepare(self.allocator, self.transaction, .object_store);
 
-        // Remove matching records
+        // ED 6.4 steps 1-2: records and all referencing index entries change
+        // together, after the last fallible allocation.
+        self.removeIndexEntries(query);
         var i: usize = 0;
         while (i < self.recordsList().items.len) {
             const record = &self.recordsList().items[i];
@@ -509,9 +621,9 @@ pub const IDBObjectStore = struct {
     /// Clear all records
     /// https://w3c.github.io/IndexedDB/#dom-idbobjectstore-clear
     pub fn clear(self: *Self) IDBError!*IDBRequest {
-        if (self.isDeleted()) return IDBError.InvalidStateError;
+        if (self.isDeleted() and !self.transaction.executing_request) return IDBError.InvalidStateError;
         // Check transaction state
-        if (self.transaction.state != .active) {
+        if (!self.transaction.canExecuteRequest()) {
             return IDBError.TransactionInactiveError;
         }
 
@@ -529,6 +641,8 @@ pub const IDBObjectStore = struct {
             record.deinit(self.allocator);
         }
         self.recordsList().clearRetainingCapacity();
+        // ED 6.6 step 2: clear every referencing index as well.
+        self.removeIndexEntries(IDBKeyRange.unbounded());
 
         // Create request
         request.completePrepared(.{ .undefined = {} });
@@ -536,10 +650,23 @@ pub const IDBObjectStore = struct {
         return request;
     }
 
+    fn removeIndexEntries(self: *Self, range: IDBKeyRange) void {
+        if (self.record_data) |data| {
+            var indexes = data.indexes.valueIterator();
+            while (indexes.next()) |index_data| index_data.*.removeEntriesInRange(range);
+        } else {
+            var indexes = self.indexes.valueIterator();
+            while (indexes.next()) |index_handle| index_handle.*.removeEntriesInRange(range);
+        }
+        // Already accepted operations can still name a subsequently deleted
+        // index; its retained physical data follows the same ordered deletion.
+        for (self.retired_indexes.items) |index_handle| index_handle.removeEntriesInRange(range);
+    }
+
     /// Get a record
     /// https://w3c.github.io/IndexedDB/#dom-idbobjectstore-get
     pub fn get(self: *Self, query: IDBKeyRange) IDBError!*IDBRequest {
-        if (self.isDeleted()) return IDBError.InvalidStateError;
+        if (self.isDeleted() and !self.transaction.executing_request) return IDBError.InvalidStateError;
         // Check transaction state
         if (self.transaction.state == .finished) {
             return IDBError.InvalidStateError;
@@ -569,7 +696,7 @@ pub const IDBObjectStore = struct {
     /// Get a key
     /// https://w3c.github.io/IndexedDB/#dom-idbobjectstore-getkey
     pub fn getKey(self: *Self, query: IDBKeyRange) IDBError!*IDBRequest {
-        if (self.isDeleted()) return IDBError.InvalidStateError;
+        if (self.isDeleted() and !self.transaction.executing_request) return IDBError.InvalidStateError;
         // Check transaction state
         if (self.transaction.state == .finished) {
             return IDBError.InvalidStateError;
@@ -599,7 +726,7 @@ pub const IDBObjectStore = struct {
     /// Count records
     /// https://w3c.github.io/IndexedDB/#dom-idbobjectstore-count
     pub fn count(self: *Self, query: ?IDBKeyRange) IDBError!*IDBRequest {
-        if (self.isDeleted()) return IDBError.InvalidStateError;
+        if (self.isDeleted() and !self.transaction.executing_request) return IDBError.InvalidStateError;
         // Check transaction state
         if (self.transaction.state == .finished) {
             return IDBError.InvalidStateError;
@@ -669,7 +796,7 @@ pub const IDBObjectStore = struct {
             const handle = try self.allocator.create(IDBIndex);
             errdefer self.allocator.destroy(handle);
             handle.* = IDBIndex.init(self.allocator, data.name, self);
-            handle.attachData(data);
+            try handle.attachData(data);
             errdefer handle.deinit();
             try self.indexes.put(handle.name, handle);
             return handle;
@@ -686,6 +813,10 @@ pub const IDBObjectStore = struct {
         key_path: []const u8,
         options: IDBIndexParameters,
     ) IDBError!*IDBIndex {
+        return self.createIndexWithKeyPath(name, .{ .single = key_path }, options);
+    }
+
+    pub fn createIndexWithKeyPath(self: *Self, name: []const u8, path: KeyPath, options: IDBIndexParameters) IDBError!*IDBIndex {
         if (self.isDeleted()) return IDBError.InvalidStateError;
         // Check for versionchange transaction
         if (self.transaction.mode != .versionchange) {
@@ -700,21 +831,39 @@ pub const IDBObjectStore = struct {
         // IDB 4.5 createIndex steps 6-7: duplicate-name check precedes path validation.
         if (self.indexes.contains(name)) return IDBError.ConstraintError;
         if (self.record_data) |records| if (records.indexes.contains(name)) return IDBError.ConstraintError;
-        if (!key_path_mod.isValidKeyPath(key_path)) return IDBError.InvalidKeyPathError;
+        switch (path) {
+            .single => |key_path| if (!key_path_mod.isValidKeyPath(key_path)) return IDBError.InvalidKeyPathError,
+            .array => |paths| for (paths) |key_path| {
+                if (!key_path_mod.isValidKeyPath(key_path)) return IDBError.InvalidKeyPathError;
+            },
+        }
+        // ED 4.5 createIndex step 10.
+        if (path == .array and options.multi_entry) return IDBError.InvalidAccessError;
         try self.transaction.ensureRollbackSnapshot();
-        const data = try @import("index.zig").IndexData.create(self.allocator, name, key_path, options.unique, options.multi_entry);
+        try self.preserveSchemaForRollback();
+        const visible_name = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(visible_name);
+        const data = try @import("index.zig").IndexData.createWithKeyPath(self.allocator, name, path, options.unique, options.multi_entry);
         errdefer data.release();
         const idx = try self.allocator.create(IDBIndex);
         errdefer self.allocator.destroy(idx);
         idx.* = IDBIndex.init(self.allocator, data.name, self);
-        idx.attachData(data);
+        try idx.attachData(data);
         errdefer idx.deinit();
         try self.indexes.ensureUnusedCapacity(1);
+        try self.index_names_view.ensureUnusedCapacity(self.allocator, 1);
         if (self.record_data) |records| {
             try records.indexes.ensureUnusedCapacity(self.allocator, 1);
+            data.definition_id = records.next_index_id;
+            records.next_index_id += 1;
             records.indexes.putAssumeCapacity(data.name, data);
-        } else data.release();
+        } else {
+            data.definition_id = self.next_index_id;
+            self.next_index_id += 1;
+            data.release();
+        }
         self.indexes.putAssumeCapacity(idx.name, idx);
+        self.index_names_view.putAssumeCapacity(visible_name, {});
         return idx;
     }
 
@@ -739,6 +888,7 @@ pub const IDBObjectStore = struct {
             if (!records.indexes.contains(name)) return IDBError.NotFoundError;
         } else if (cached == null) return IDBError.NotFoundError;
         if (cached != null) try self.retired_indexes.ensureUnusedCapacity(self.allocator, 1);
+        try self.preserveSchemaForRollback();
         try self.transaction.ensureRollbackSnapshot();
         if (self.record_data) |records| {
             const removed = records.indexes.fetchRemove(name).?;
@@ -748,6 +898,7 @@ pub const IDBObjectStore = struct {
             removed.value.deleted = true;
             self.retired_indexes.appendAssumeCapacity(removed.value);
         }
+        if (self.index_names_view.fetchRemove(name)) |removed| self.allocator.free(removed.key);
     }
 };
 

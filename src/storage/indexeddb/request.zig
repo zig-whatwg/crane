@@ -153,8 +153,18 @@ pub const IDBRequest = struct {
 
     /// Clean up resources
     pub fn deinit(self: *Self) void {
-        // Result cleanup is handled by specific result types
-        _ = self;
+        // ED 5.6.5.6.1: the native request is consumed before its binding
+        // dispatches a result. Never leave freed requests in the borrowed list.
+        if (self.transaction) |transaction| {
+            for (transaction.requests.items, 0..) |request, index| {
+                if (request == self) {
+                    _ = transaction.requests.orderedRemove(index);
+                    break;
+                }
+            }
+            self.transaction = null;
+        }
+        // Result bytes/keys are borrowed from their native store or cursor.
     }
 
     /// Get the result
