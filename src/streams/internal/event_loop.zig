@@ -90,6 +90,20 @@ pub const Task = struct {
     /// Without it, whatever a task carries leaks whenever the page ends before
     /// the loop's next turn - a message posted in the last task, say.
     drop: ?*const fn (context: ?*anyopaque) void = null,
+
+    /// HTML 8.1.7.1: the task's document, or null. A Document - this module
+    /// cannot name runtime.Instance - BORROWED: the task does not keep it.
+    /// "A task is runnable if its document is either null or fully active":
+    /// a window event loop drops a task whose document is not, running its
+    /// `drop` instead (src/browser/event_loop.zig), so a task that sets one
+    /// MUST have a `drop` that frees its context. A worker's tasks have no
+    /// document and are always runnable.
+    document: ?*anyopaque = null,
+
+    /// `document`'s slab generation when the task was queued
+    /// (runtime.SlabAllocator.generationOf): the document may be freed, and
+    /// its slot reused, while the task waits.
+    document_generation: u64 = 0,
 };
 
 /// Event Loop Interface

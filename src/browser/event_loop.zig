@@ -25,7 +25,8 @@ const Allocator = std.mem.Allocator;
 const clock = @import("clock");
 const engine = @import("engine");
 const runtime = @import("runtime");
-const idle_periods = @import("dom").idle_periods;
+const dom = @import("dom");
+const idle_periods = dom.idle_periods;
 
 const TimerManager = runtime.native_timer.NativeTimerManager;
 const Task = runtime.EventLoopTask;
@@ -273,10 +274,28 @@ pub const EventLoop = struct {
         if (budget == 0) return false;
         while (budget > 0 and self.tasks.items.len > 0) : (budget -= 1) {
             const task = self.tasks.orderedRemove(0);
+            if (!isRunnable(task)) {
+                if (task.drop) |drop| drop(task.context);
+                continue;
+            }
             task.callback(task.context);
             self.checkpoint();
         }
         return true;
+    }
+
+    /// HTML 8.1.7.1: "A task is runnable if its document is either null or
+    /// fully active."
+    ///
+    /// Stated simplification: HTML leaves a task that is not runnable in its
+    /// queue, to run once its document is fully active again. Crane keeps no
+    /// bfcache, so a document that stops being fully active never becomes
+    /// so again, and "destroy a document" (step 6) removes its tasks from
+    /// the queues without running them - so the loop drops such a task
+    /// (`drop` frees what it carries) instead of keeping it forever.
+    fn isRunnable(task: Task) bool {
+        const document = task.document orelse return true;
+        return dom.document_activity.fullyActive(document, task.document_generation);
     }
 
     /// Whether there is pending work that should keep the loop from idling.
@@ -436,6 +455,9 @@ pub const EventLoop = struct {
 
     fn queueTask(ptr: *anyopaque, task: Task) void {
         const self: *Self = @ptrCast(@alignCast(ptr));
+        // A task with a document may be dropped without running (isRunnable):
+        // it must be able to free what it carries.
+        std.debug.assert(task.document == null or task.drop != null);
         self.tasks.append(self.allocator, task) catch {
             // If allocation fails, log and drop the task
             // This is safer than crashing the runtime

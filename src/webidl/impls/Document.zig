@@ -648,6 +648,28 @@ pub fn installHooks() void {
     });
     // html's script processing model reaches a document's script state.
     installScriptHooks();
+    // The event loop runs a task only while its document is fully active.
+    @import("dom").document_activity.install(.{ .fully_active = &isFullyActive });
+}
+
+/// dom.document_activity: whether `document` is fully active - "the active
+/// document of a navigable navigable, and either navigable is a top-level
+/// traversable or navigable's container document is fully active". A
+/// document that was unloaded (not salvageable: Crane keeps no bfcache) or
+/// destroyed is no navigable's active document; nor is one whose window is
+/// no navigable's active window any more, or no longer shows it. Removing a
+/// frame discards its navigable and every one inside it (BrowsingContext
+/// .discard closes them all), so the container documents need no walk. A
+/// document with no window (createHTMLDocument, DOMParser) is not fully
+/// active.
+fn isFullyActive(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    if (internal.destroyed or !internal.salvageable) return false;
+    const window = internal.default_view orelse return false;
+    const navigable = html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    if (navigable.is_closed) return false;
+    const shown = interfaces.Window.get_document(window) catch return false;
+    return shown == document;
 }
 
 /// Initialize instance (creates the instance)
