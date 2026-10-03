@@ -58,10 +58,11 @@ pub const InternalState = struct {
     /// Parsed threshold values (sorted)
     thresholds: std.ArrayListUnmanaged(f64),
 
-    /// The `thresholds` attribute's frozen array, made on the first read and
-    /// kept (OWNED), so every read returns the same array: the list never
-    /// changes after construction.
-    thresholds_array: ?engine.Owned = null,
+    /// The `thresholds` attribute's frozen array was made (on the first
+    /// read) and is kept, so every read returns the same array: the list
+    /// never changes after construction. Kept by an edge from the observer's
+    /// wrapper (`thresholds_slot`, engine.traceValue), never a root.
+    has_thresholds_array: bool = false,
 
     /// Root margin values [top, right, bottom, left] in pixels
     root_margin: [4]f64 = .{ 0, 0, 0, 0 },
@@ -108,8 +109,6 @@ pub const InternalState = struct {
 
         // Free thresholds
         self.thresholds.deinit(self.allocator);
-        if (self.thresholds_array) |array| array.release();
-        self.thresholds_array = null;
     }
 };
 
@@ -157,6 +156,8 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal_ptr| {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
+        if (internal.has_thresholds_array) engine.forgetTracedChild(instance, thresholds_slot);
+        internal.has_thresholds_array = false;
         internal.deinit();
         // Return the block itself, not just what it points to. The comment this
         // replaces said the arena manages it; the arena had no way to, so the
@@ -276,15 +277,23 @@ pub fn get_scrollMargin(instance: *runtime.Instance) anyerror!runtime.DOMString 
 /// returns it.
 pub fn get_thresholds(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance);
-    if (internal.thresholds_array == null) {
-        const values = try internal.allocator.alloc(runtime.JSValue, internal.thresholds.items.len);
-        defer internal.allocator.free(values);
-        for (internal.thresholds.items, values) |threshold, *value| value.* = runtime.JSValue.fromNumber(threshold);
-        internal.thresholds_array = try engine.createFrozenArray(instance.ctx, values);
-    }
     // The observer keeps its array; the binding gets a hold of its own.
-    return (try engine.retainValue(instance.ctx, internal.thresholds_array.?.value)).take();
+    if (internal.has_thresholds_array) {
+        if (engine.tracedValue(instance, thresholds_slot)) |array| return array.take();
+    }
+    const values = try internal.allocator.alloc(runtime.JSValue, internal.thresholds.items.len);
+    defer internal.allocator.free(values);
+    for (internal.thresholds.items, values) |threshold, *value| value.* = runtime.JSValue.fromNumber(threshold);
+    const array = try engine.createFrozenArray(instance.ctx, values);
+    engine.traceValue(instance, array.value, thresholds_slot);
+    internal.has_thresholds_array = true;
+    return array.take();
 }
+
+/// Where the observer keeps its `thresholds` array (Blink keeps the
+/// thresholds as data and makes the array per read; Crane keeps one array so
+/// that every read returns the same object).
+const thresholds_slot: engine.TracedSlot = .{ .name = "thresholds" };
 
 /// Getter for delay
 pub fn get_delay(instance: *runtime.Instance) anyerror!i32 {

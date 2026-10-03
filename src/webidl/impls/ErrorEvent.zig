@@ -47,16 +47,8 @@ pub const InternalState = struct {
     /// Spec: "represents the column number where the error occurred in the script"
     colno: u32,
 
-    /// The error value, held by this event (OWNED), or null for undefined
-    /// (the attribute's initial value).
-    /// Spec: "represents the error (e.g., the exception object in the case of an uncaught exception)"
-    ///
-    /// Owned rather than borrowed because nothing else keeps the value alive
-    /// for the event's lifetime: the value a dictionary member arrives in is
-    /// the conversion's, and "report an exception" passes one its caller
-    /// releases. Storing either as it came left `event.error` reading a
-    /// handle someone else frees.
-    @"error": ?engine.Owned,
+    // The error value is not here: the event's wrapper keeps it
+    // (`error_slot`).
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
@@ -65,7 +57,6 @@ pub const InternalState = struct {
             .filename = "", // Empty string for USVString
             .lineno = 0,
             .colno = 0,
-            .@"error" = null,
         };
     }
 
@@ -105,10 +96,10 @@ pub fn deinit(instance: *runtime.Instance) void {
         if (internal.filename.len > 0) {
             internal.allocator.free(internal.filename);
         }
-        if (internal.@"error") |value| {
-            value.release();
-            internal.@"error" = null;
-        }
+        // An event freed before script saw it - "report an exception" fires
+        // one nothing may listen to - lets the error waiting for its wrapper
+        // go; a collected one's went with the wrapper.
+        engine.forgetTracedChild(instance, error_slot);
         internal.deinit();
         // Return the block itself, not just what it points to. `internal.deinit()`
         // releases what the state OWNS; the state struct was staying allocated for
@@ -191,10 +182,8 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             internal.colno = col;
         }
 
-        // error defaults to undefined (null in our representation)
-        if (init_dict.@"error") |err| {
-            internal.@"error" = try hold(ctx, err);
-        }
+        // error defaults to undefined: no value kept
+        if (init_dict.@"error") |err| keepError(instance, err);
     }
 
     // Create the INHERITED Event internal state and set the initialized flag.
@@ -245,19 +234,28 @@ pub fn get_error(instance: *runtime.Instance) anyerror!runtime.JSValue {
         // Return undefined
         return runtime.JSValue.jsUndefined;
     };
+    _ = internal;
     // The event keeps it; the binding gets a hold of its own.
-    if (internal.@"error") |err| return (try engine.retainValue(instance.ctx, err.value)).take();
-    return runtime.JSValue.jsUndefined;
+    const err = engine.tracedValue(instance, error_slot) orelse return runtime.JSValue.jsUndefined;
+    return err.take();
 }
 
-/// This event's own hold on `value` (borrowed), or null for undefined - the
-/// attribute's initial value. A handle is always retained: a JSValue handle
-/// is borrowed (AGENTS.md "One handle kind per layer"), so the event holds
-/// its own. A platform object is held as its wrapper in its
-/// relevant realm; `realm` is the event's.
-fn hold(realm: runtime.Context, value: runtime.JSValue) !?engine.Owned {
-    if (value == .undefined) return null;
-    return try engine.retainValue(if (value == .instance) value.instance.ctx else realm, value);
+/// Where the event keeps its error attribute's value: an edge from its
+/// wrapper (engine.traceValue), never a root. The event keeps a value of its
+/// own because nothing else keeps it for the event's lifetime - the value a
+/// dictionary member arrives in is the conversion's, and "report an
+/// exception" passes one its caller releases; held as a root (an
+/// engine.Owned), an error that reached its event, or another realm, kept
+/// that alive for as long as the event's instance lived. Blink:
+/// ErrorEvent::error_ is a TraceWrapperV8Reference. No slot: undefined, the
+/// attribute's initial value.
+const error_slot: engine.TracedSlot = .{ .name = "error" };
+
+/// Keep `value` (borrowed) as `event`'s error; undefined keeps nothing. A
+/// platform object is kept as its wrapper in its relevant realm.
+fn keepError(event: *runtime.Instance, value: runtime.JSValue) void {
+    if (value == .undefined) return;
+    engine.traceValue(event, value, error_slot);
 }
 
 // =============================================================================

@@ -1186,28 +1186,115 @@ test "protocol: ending a parent's realm ends its frames' realms first" {
     try std.testing.expect(parent.engine_ctx == null);
 }
 
-test "protocol: a frame's realm whose WindowProxy went on is severed from its Window at its end" {
+test "protocol: a frame's realm whose WindowProxy went on lives while script reaches it, and is severed from its Window at its end" {
+    const base = try realm();
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    var old_realm: FrameRealm = .{ .parent = parent };
+    const old = try old_realm.make();
+    const old_window = Watched.of(try platformObjectIn(old, "globalThis"));
+    // A function of the old realm that reads its Window through its global,
+    // held by script elsewhere.
+    {
+        const reader = try evalOwned(old, "(function () { return typeof name; })");
+        defer reader.release();
+        try setGlobal(base, "reader", reader.value);
+    }
+
+    // The navigation's new Window, behind the same WindowProxy. HTML unloads
+    // and destroys the old document; the old Window lives on for as long as
+    // script reaches anything of its realm - here, the reader.
+    var new_realm: FrameRealm = .{ .parent = parent, .global_this = .{ .window_proxy_of = old } };
+    const new = try new_realm.make();
+    protocol.destroyWindowRealm(old, .global_detached);
+    collectTwice();
+    try std.testing.expect(old.engine_ctx != null);
+    try std.testing.expect(old_window.alive());
+    try expectEval(base, "reader()", "string");
+    // Its tasks are not run (HTML "destroy a document" step 7).
+    const Steps = struct {
+        fn steps(_: ?*anyopaque) void {}
+    };
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(old, Steps.steps, null));
+
+    // Its page ends: the old realm ends with it, and its global no longer
+    // names the freed Window - reading a Window member through it is a
+    // TypeError, not a read of freed memory.
+    protocol.destroyWindowRealm(new, .global_detached);
+    protocol.destroyWindowRealm(parent, .global_detached);
+    try std.testing.expect(old.engine_ctx == null);
+    try std.testing.expect(old.getV8WrapperCacheStorage() == null);
+    try expectEval(base, "(() => { try { reader(); return 'read'; } catch (e) { return e.name; } })()", "TypeError");
+    try expectEval(base, "delete globalThis.reader", "true");
+}
+
+test "protocol: a replaced realm whose frames were already destroyed leaves them detached" {
     var host: WindowHost = .{};
     const parent = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(parent, .global_detached);
     var old_realm: FrameRealm = .{ .parent = parent };
     const old = try old_realm.make();
-    // A function of the old realm that reads its Window through its global.
-    const reader = try evalOwned(old, "(function () { return typeof name; })");
-    defer reader.release();
+    // Two frames of the old document, removed before it goes - and script
+    // keeps one of their WindowProxies.
+    var first_realm: FrameRealm = .{ .parent = old };
+    const first = try first_realm.make();
+    var second_realm: FrameRealm = .{ .parent = old };
+    const second = try second_realm.make();
+    {
+        const kept = try evalOwned(second, "globalThis.kept = 1; globalThis");
+        defer kept.release();
+        try setGlobal(parent, "keptFrame", kept.value);
+    }
+    protocol.destroyWindowRealm(first, .navigable_destroyed);
+    protocol.destroyWindowRealm(second, .navigable_destroyed);
 
-    // The navigation's new Window, behind the same WindowProxy; the old realm
-    // ends, and its Window with it.
+    // The navigation replaces the old realm: its frames' realms stay detached
+    // - neither ended under script that holds one, nor read from a list their
+    // end shortened.
     var new_realm: FrameRealm = .{ .parent = parent, .global_this = .{ .window_proxy_of = old } };
     const new = try new_realm.make();
     defer protocol.destroyWindowRealm(new, .global_detached);
     protocol.destroyWindowRealm(old, .global_detached);
+    collectTwice();
+    try std.testing.expect(second.engine_ctx != null);
+    try expectEval(parent, "keptFrame.kept", "1");
+    try expectEval(parent, "delete globalThis.keptFrame", "true");
+}
 
-    // The old global no longer names the freed Window: reading a Window member
-    // through it is a TypeError, not a read of freed memory.
-    try setGlobal(parent, "reader", reader.value);
-    try expectEval(parent, "(() => { try { reader(); return 'read'; } catch (e) { return e.name; } })()", "TypeError");
-    try expectEval(parent, "delete globalThis.reader", "true");
+test "protocol: a frame's realm a navigation replaced is collected once nothing reaches it" {
+    _ = try realm();
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    var old_realm: FrameRealm = .{ .parent = parent };
+    const old = try old_realm.make();
+    // What the old realm's script leaves behind: objects on its global, a
+    // listener whose closure reaches the realm, and an object with pending
+    // activity - a wrapper the cache holds strongly.
+    try expectEval(old, "globalThis.kept = new Headers([['a', '1']]); globalThis.target = new EventTarget(); target.addEventListener('x', () => kept); 'ok'", "ok");
+    const busy = try platformObjectIn(old, "globalThis.busy = new Headers()");
+    protocol.keepPlatformObjectAlive(busy);
+
+    var new_realm: FrameRealm = .{ .parent = parent, .global_this = .{ .window_proxy_of = old } };
+    const new = try new_realm.make();
+    defer protocol.destroyWindowRealm(new, .global_detached);
+    // What lives with both realms - and what the new realm's own wrappers
+    // add - before the old one is let go.
+    try expectEval(new, "globalThis.fresh = new Headers(); 'ok'", "ok");
+    const with_both = liveContexts();
+
+    // The old realm is the engine's to end now: nothing Crane holds is a root
+    // into it - not its wrappers, its listener, its pending activity, and
+    // none of them hung on the NEW realm's global through the shared proxy.
+    protocol.destroyWindowRealm(old, .global_detached);
+    const after = liveContexts();
+    if (after + 1 != with_both) {
+        std.debug.print("native contexts: {d} with both realms, {d} after the replaced one was let go\n", .{ with_both, after });
+        return error.RealmKeptAlive;
+    }
+    try std.testing.expect(old.engine_ctx == null);
+    // The new realm is untouched.
+    try expectEval(new, "fresh instanceof Headers && globalThis.kept === undefined", "true");
 }
 
 test "protocol: a destroyed navigable's realm keeps its Window while script holds its WindowProxy, and ends when it is collected" {
@@ -1698,6 +1785,410 @@ test "protocol: edges waiting for an owner's wrapper leave no global handle behi
         return error.HandlesLeaked;
     }
     try expectEval(w, "delete globalThis.child", "true");
+}
+
+// ============================================================================
+// Promise capabilities and realm lifetime: a capability is tagged with the
+// realm its promise is made in, so a detached realm keeps it by an edge from
+// its global object - never a root - and a live realm's is untouched.
+// ============================================================================
+
+/// The state of `capability`'s promise: 0 pending, 1 fulfilled, 2 rejected.
+fn promiseState(capability: *const protocol.PromiseCapability) c_int {
+    const handle: *ffi.Promise = @ptrCast(@alignCast(capability.promise.handle.ptr));
+    return ffi.v8_Promise_State(handle);
+}
+
+test "protocol: a pending promise capability of a live realm survives collections, and settles" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    // Script holds nothing of either promise: only its capability does.
+    var resolved = try protocol.createPromise(w);
+    defer protocol.releasePromiseCapability(&resolved);
+    var rejected = try protocol.createPromise(w);
+    defer protocol.releasePromiseCapability(&rejected);
+    protocol.markPromiseAsHandled(w, rejected.promise);
+    collectTwice();
+    try std.testing.expectEqual(@as(c_int, 0), promiseState(&resolved));
+    try protocol.resolvePromise(&resolved, runtime.JSValue.fromNumber(5));
+    try protocol.rejectPromise(&rejected, runtime.JSValue.fromNumber(6));
+    collectTwice();
+    try std.testing.expectEqual(@as(c_int, 1), promiseState(&resolved));
+    try std.testing.expectEqual(@as(c_int, 2), promiseState(&rejected));
+    // Script reads what it was settled with.
+    {
+        const held = try protocol.retainValue(w, resolved.promise);
+        defer held.release();
+        try setGlobal(w, "settled", held.value);
+    }
+    try expectEval(w, "globalThis.got = 0; settled.then(v => { globalThis.got = v; }); 'ok'", "ok");
+    try expectEval(w, "got", "5");
+    try expectEval(w, "delete globalThis.settled && delete globalThis.got", "true");
+}
+
+test "protocol: a detached realm's promise capability keeps it while reachable, and goes with it" {
+    _ = try realm();
+    var host: WindowHost = .{};
+    const parent = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(parent, .global_detached);
+    const baseline = liveContexts();
+    var frame_realm: FrameRealm = .{ .parent = parent };
+    const frame = try frame_realm.make();
+    {
+        const frame_global = try evalOwned(frame, "globalThis");
+        defer frame_global.release();
+        try setGlobal(parent, "frameWindow", frame_global.value);
+    }
+    // A capability the frame's own objects keep (a navigation API method
+    // tracker's): made in the frame's realm, held by the host.
+    var kept = try protocol.createPromise(frame);
+    defer protocol.releasePromiseCapability(&kept);
+    var late = try protocol.createPromise(frame);
+    defer protocol.releasePromiseCapability(&late);
+
+    protocol.destroyWindowRealm(frame, .navigable_destroyed);
+    // Script still reaches the frame: the capabilities still settle.
+    collectTwice();
+    try std.testing.expect(frame.engine_ctx != null);
+    try protocol.resolvePromise(&kept, runtime.JSValue.fromNumber(1));
+    try std.testing.expectEqual(@as(c_int, 1), promiseState(&kept));
+
+    // Script lets the frame go: the capabilities are no root that keeps it.
+    try expectEval(parent, "delete globalThis.frameWindow", "true");
+    const after = liveContexts();
+    if (after != baseline) {
+        std.debug.print("native contexts: {d} before the frame, {d} after it was detached and dropped with two capabilities held\n", .{ baseline, after });
+        return error.RealmKeptAlive;
+    }
+    // Settling a collected realm's promise does nothing, and touches no
+    // context of the realm.
+    try protocol.resolvePromise(&late, runtime.JSValue.fromNumber(2));
+    try protocol.rejectPromise(&late, runtime.JSValue.fromNumber(3));
+}
+
+test "protocol: creating and releasing promise capabilities leaves no global handle behind" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    const isolate = isolate_once.?;
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    {
+        var first = try protocol.createPromise(w);
+        protocol.releasePromiseCapability(&first);
+    }
+    collectTwice();
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const rounds = 32;
+    for (0..rounds) |i| {
+        var capability = try protocol.createPromise(w);
+        if (i % 2 == 0) try protocol.resolvePromise(&capability, runtime.JSValue.fromNumber(1));
+        protocol.releasePromiseCapability(&capability);
+    }
+    collectTwice();
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    if (after -| before >= handle_bytes) {
+        std.debug.print("global handles {d} -> {d} bytes over {d} rounds ({d} bytes a handle)\n", .{ before, after, rounds, handle_bytes });
+        return error.HandlesLeaked;
+    }
+}
+
+// ============================================================================
+// traceValue / tracedValue: an owner keeps a JavaScript value for as long as
+// its wrapper lives - Blink's TraceWrapperV8Reference - where Crane once held
+// an engine.Owned, a root that kept the value's realm whatever became of the
+// owner (FileReader.result, CustomEvent.detail, NavigateEvent.info).
+// ============================================================================
+
+/// `owner`'s traced value in `slot`, set as the global `name` of `r`; false
+/// when the slot holds none.
+fn tracedToGlobal(r: runtime.Context, owner: *runtime.Instance, slot: []const u8, name: []const u8) !bool {
+    const value = protocol.tracedValue(owner, .{ .name = slot }) orelse return false;
+    defer value.release();
+    const held = try protocol.retainValue(r, value.value);
+    defer held.release();
+    if (held.value != .handle) {
+        // A primitive kept by value: make it a script value to compare.
+        const made = try evalOwned(r, "undefined");
+        defer made.release();
+        return error.PrimitiveNotAHandle;
+    }
+    try setGlobal(r, name, held.value);
+    return true;
+}
+
+test "protocol: a traced value lives as long as its owner's wrapper, and goes with it" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // Script keeps the owner, and nothing of either value.
+    const owner = Watched.of(try platformObjectIn(w, "globalThis.owner = new Headers()"));
+    const traced = Watched.of(try platformObjectIn(w, "new Headers([['traced', '1']])"));
+    const untraced = Watched.of(try platformObjectIn(w, "new Headers([['untraced', '1']])"));
+    protocol.traceValue(owner.instance, .{ .instance = traced.instance }, .{ .name = "result" });
+    {
+        // A plain object, made by script and handed over as the binding hands
+        // a value: borrowed for the call.
+        const object = try evalOwned(w, "({ plain: 7 })");
+        defer object.release();
+        protocol.traceValue(owner.instance, object.value, .{ .name = "detail" });
+    }
+
+    collectTwice();
+    try std.testing.expect(!untraced.alive());
+    try std.testing.expect(owner.alive());
+    try std.testing.expect(traced.alive());
+    try std.testing.expect(try tracedToGlobal(w, owner.instance, "detail", "detail"));
+    try expectEval(w, "detail.plain", "7");
+    try expectEval(w, "delete globalThis.detail", "true");
+
+    // Script lets the owner go, and the values go with it: an edge, not a root.
+    try expectEval(w, "delete globalThis.owner", "true");
+    collectTwice();
+    try std.testing.expect(!owner.alive());
+    try std.testing.expect(!traced.alive());
+}
+
+test "protocol: tracedValue reads back the value itself; a slot holds one; forgetTracedChild empties it" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    const owner = try platformObjectIn(w, "globalThis.owner = new Headers()");
+
+    // Never set: null.
+    try std.testing.expect(protocol.tracedValue(owner, .{ .name = "info" }) == null);
+    {
+        const first = try evalOwned(w, "globalThis.first = { n: 1 }");
+        defer first.release();
+        protocol.traceValue(owner, first.value, .{ .name = "info" });
+    }
+    try std.testing.expect(try tracedToGlobal(w, owner, "info", "back"));
+    try expectEval(w, "back === first", "true");
+    {
+        // A new value in the slot replaces the old.
+        const second = try evalOwned(w, "globalThis.second = { n: 2 }");
+        defer second.release();
+        protocol.traceValue(owner, second.value, .{ .name = "info" });
+    }
+    try std.testing.expect(try tracedToGlobal(w, owner, "info", "back"));
+    try expectEval(w, "back === second", "true");
+
+    // A primitive is kept too, as itself.
+    protocol.traceValue(owner, runtime.JSValue.fromNumber(42), .{ .name = "number" });
+    {
+        const number = protocol.tracedValue(owner, .{ .name = "number" }) orelse return error.NoValue;
+        defer number.release();
+        try std.testing.expectEqual(@as(f64, 42), try protocol.convertToUnrestrictedDouble(w, number.value));
+    }
+
+    protocol.forgetTracedChild(owner, .{ .name = "info" });
+    try std.testing.expect(protocol.tracedValue(owner, .{ .name = "info" }) == null);
+    try std.testing.expect(protocol.tracedValue(owner, .{ .name = "number" }) != null);
+    try expectEval(w, "delete globalThis.owner && delete globalThis.first && delete globalThis.second && delete globalThis.back", "true");
+}
+
+test "protocol: a value that reaches back to its owner does not keep it" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // A CustomEvent whose detail closes over the event: held as a root, the
+    // detail kept the event, and the event the detail, forever.
+    const owner = Watched.of(try platformObjectIn(w, "globalThis.owner = new Headers()"));
+    {
+        const closure = try evalOwned(w, "(() => { const o = owner; return { back: () => o }; })()");
+        defer closure.release();
+        protocol.traceValue(owner.instance, closure.value, .{ .name = "detail" });
+    }
+    collectTwice();
+    try std.testing.expect(owner.alive());
+    try expectEval(w, "delete globalThis.owner", "true");
+    collectTwice();
+    try std.testing.expect(!owner.alive());
+}
+
+test "protocol: an owner script has not seen keeps its traced value, readable before and after its wrapper is made" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+
+    // A Zig-made event before its dispatch: no wrapper yet.
+    const owner = Watched.of(try unwrappedHeaders(w));
+    const value = Watched.of(try platformObjectIn(w, "new Headers([['v', '1']])"));
+    protocol.traceValue(owner.instance, .{ .instance = value.instance }, .{ .name = "error" });
+    try std.testing.expect(!protocol.hasWrapper(owner.instance));
+    collectTwice();
+    try std.testing.expect(value.alive());
+    // Engine code reads it before script ever sees the owner.
+    {
+        const read = protocol.tracedValue(owner.instance, .{ .name = "error" }) orelse return error.NoValue;
+        defer read.release();
+        try std.testing.expectEqual(value.instance, protocol.convertToPlatformObject(w, read.value).?);
+    }
+
+    // Script sees the owner: the edge is drawn on its wrapper.
+    {
+        const wrapped = try protocol.retainValue(w, .{ .instance = owner.instance });
+        defer wrapped.release();
+        try setGlobal(w, "owner", wrapped.value);
+    }
+    collectTwice();
+    try std.testing.expect(value.alive());
+    try std.testing.expect(try tracedToGlobal(w, owner.instance, "error", "error"));
+    try expectEval(w, "error.get('v')", "1");
+    try expectEval(w, "delete globalThis.error && delete globalThis.owner", "true");
+    collectTwice();
+    try std.testing.expect(!owner.alive());
+    try std.testing.expect(!value.alive());
+}
+
+test "protocol: traceValue and tracedValue leave no global handle behind" {
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    const isolate = isolate_once.?;
+    const handle_bytes = blk: {
+        const start = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        const one = ffi.v8_Number_New(isolate, 1);
+        const with_one = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+        ffi.v8_Value_Dispose(@ptrCast(one));
+        break :blk with_one - start;
+    };
+    const window = try platformObjectIn(w, "globalThis");
+    const owner = try platformObjectIn(w, "globalThis.owner = new Headers()");
+    const unwrapped = try unwrappedHeaders(w);
+    const value = try evalOwned(w, "globalThis.value = { v: 1 }");
+    defer value.release();
+    const round = struct {
+        fn run(owners: []const *runtime.Instance, v: runtime.JSValue) void {
+            for (owners) |o| {
+                protocol.traceValue(o, v, .{ .name = "value" });
+                protocol.traceValue(o, runtime.JSValue.fromNumber(3), .{ .name = "number" });
+                if (protocol.tracedValue(o, .{ .name = "value" })) |read| read.release();
+                if (protocol.tracedValue(o, .{ .name = "number" })) |read| read.release();
+                if (protocol.tracedValue(o, .{ .name = "never" })) |read| read.release();
+                protocol.forgetTracedChild(o, .{ .name = "value" });
+                protocol.forgetTracedChild(o, .{ .name = "number" });
+            }
+        }
+    }.run;
+    const owners = [_]*runtime.Instance{ window, owner, unwrapped };
+    // The first round makes what every later one reuses.
+    round(&owners, value.value);
+    collectTwice();
+    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    const rounds = 32;
+    for (0..rounds) |_| round(&owners, value.value);
+    collectTwice();
+    const after = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
+    if (after -| before >= handle_bytes) {
+        std.debug.print("global handles {d} -> {d} bytes over {d} rounds ({d} bytes a handle)\n", .{ before, after, rounds, handle_bytes });
+        return error.HandlesLeaked;
+    }
+    try expectEval(w, "delete globalThis.owner && delete globalThis.value", "true");
+}
+
+// ============================================================================
+// Node tracing: a node's wrapper keeps its parent's and its parent's its own,
+// so a tree lives exactly as long as script reaches any wrapper in it.
+// ============================================================================
+
+/// The tree hooks crane.Process installs at start-up (initializeEngine): the
+/// insertion, removing and moving steps that keep node tracing's edges.
+fn withTreeHooks() void {
+    v8.wrapper_cache_mod.installTreeHooks();
+}
+
+test "protocol: a node script holds keeps its detached tree's root, and the tree goes once script drops it" {
+    withTreeHooks();
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    try expectEval(w, "globalThis.doc = new Document(); 'ok'", "ok");
+    // Script keeps only the innermost node; the root's last use is done.
+    try expectEval(w,
+        \\globalThis.held = (() => {
+        \\  const root = doc.createElement('section');
+        \\  root.r3 = 'root';
+        \\  const middle = root.appendChild(doc.createElement('div'));
+        \\  root.appendChild(doc.createElement('p')).r3 = 'sibling';
+        \\  return middle.appendChild(doc.createElement('span'));
+        \\})(); 'ok'
+    , "ok");
+    collectTwice();
+    collectTwice();
+    try expectEval(w, "[held.parentNode.parentNode.localName, held.parentNode.parentNode.r3, held.parentNode.parentNode.lastChild.r3].join()", "section,root,sibling");
+    // The tree works: no InvalidStateError from a node freed under script.
+    try expectEval(w, "held.appendChild(doc.createElement('i')).parentNode === held && held.parentNode.parentNode.appendChild(doc.createElement('b')).localName", "b");
+
+    // Dropped, the whole tree goes: the edges are no root.
+    const root = Watched.of(try platformObjectIn(w, "held.parentNode.parentNode"));
+    const kept = Watched.of(try platformObjectIn(w, "held"));
+    try expectEval(w, "delete globalThis.held", "true");
+    collectTwice();
+    collectTwice();
+    try std.testing.expect(!root.alive());
+    try std.testing.expect(!kept.alive());
+    try expectEval(w, "delete globalThis.doc", "true");
+}
+
+test "protocol: a node whose ancestors' wrappers script dropped keeps them, and its tree" {
+    withTreeHooks();
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    try expectEval(w, "globalThis.doc = new Document(); 'ok'", "ok");
+    // A deep clone, walked down to its deepest node: every wrapper on the way
+    // is a temporary, and the clone's root is let go - only the edges keep
+    // them. (A first wrap deep inside a tree script never saw, which wraps the
+    // ancestors with it, is crane/r3-detached-tree-child-keeps-root.html's.)
+    try expectEval(w,
+        \\globalThis.held = (() => {
+        \\  const source = doc.createElement('div');
+        \\  let at = source;
+        \\  for (const name of ['ul', 'li', 'a', 'b']) at = at.appendChild(doc.createElement(name));
+        \\  at.setAttribute('id', 'deep');
+        \\  source.appendChild(doc.createElement('p')).setAttribute('id', 'sibling');
+        \\  return source.cloneNode(true).firstChild.firstChild.firstChild.firstChild;
+        \\})(); 'ok'
+    , "ok");
+    collectTwice();
+    collectTwice();
+    try expectEval(w, "[held.parentNode.parentNode.parentNode.parentNode.localName, held.parentNode.parentNode.parentNode.parentNode.lastChild.localName].join()", "div,p");
+    try expectEval(w, "delete globalThis.held && delete globalThis.doc", "true");
+}
+
+test "protocol: a node's wrapper in a live tree keeps its expandos without being a root" {
+    withTreeHooks();
+    var host: WindowHost = .{};
+    const w = try windowRealm(&host, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    // The tree is kept by script holding its root only: every wrapped node
+    // in it keeps its identity and expandos (the parent's edges to it).
+    try expectEval(w,
+        \\globalThis.doc = new Document();
+        \\globalThis.root = doc.createElement('div');
+        \\(() => { for (let i = 0; i < 50; i++) root.appendChild(doc.createElement('span')).n = i; })();
+        \\'ok'
+    , "ok");
+    collectTwice();
+    collectTwice();
+    try expectEval(w, "(() => { let i = 0; for (let c = root.firstChild; c; c = c.nextSibling, i++) if (c.n !== i) return false; return i === 50; })()", "true");
+    // Removed, a child loses the edge from its old parent: script that drops
+    // it lets it go, while its old siblings stay.
+    const removed = Watched.of(try platformObjectIn(w, "root.removeChild(root.firstChild)"));
+    collectTwice();
+    collectTwice();
+    try std.testing.expect(!removed.alive());
+    try expectEval(w, "root.firstChild.n === 1 && root.lastChild.n === 49", "true");
+    try expectEval(w, "delete globalThis.root && delete globalThis.doc", "true");
 }
 
 test "a window's indexedDB, when making its IDBFactory fails at any allocation, frees what it made once" {
