@@ -14,7 +14,7 @@
 
 Dictionary members carried the same attributes, and the IDL parser dropped a dictionary member's extended attributes entirely, so `IDBGetAllOptions.count` had no check anywhere.
 
-[LegacyNullToEmptyString] and restricted floats were already right because they were tables the binding read (`restricted_floats`, bit i = argument i). The integer attributes were the odd ones out.
+Restricted floats were already right because they were a table the binding read (`restricted_floats`, bit i = argument i). The integer attributes were the odd ones out.
 
 **Fix**:
 1. Codegen emits tables, no check: `enforce_range` / `clamp` per operation and setter (a bit per argument), `constructor_enforce_range` / `constructor_clamp`, and a dictionary's `enforce_range_members` / `clamp_members`.
