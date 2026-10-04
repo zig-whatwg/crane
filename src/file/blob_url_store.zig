@@ -58,7 +58,16 @@ pub const BlobURLEntry = struct {
 /// Maps blob URLs to their associated Blob objects.
 /// Per spec, each origin should have its own store, but for simplicity
 /// we use a single store with origin validation.
+///
+/// Every thread of a Browser reaches it (a page makes a URL, its worker
+/// fetches it - docs/instances.md), so every method takes `mutex`, and
+/// `resolve` hands out a reference of the caller's own, which a revoke on
+/// another thread cannot free under it.
 pub const BlobURLStore = struct {
+    /// Protects `entries` and `prng`; held for one store operation, never
+    /// across a call out of this file.
+    mutex: std.Io.Mutex = .init,
+
     /// Map from UUID string to blob entry
     entries: std.StringHashMap(BlobURLEntry),
 
@@ -123,6 +132,8 @@ pub const BlobURLStore = struct {
     /// keeps `uuid` and `owned_origin`, not this string. The mutable slice says so in
     /// the type, which is what lets `DOMString.initOwned` accept it.
     pub fn createObjectURL(self: *BlobURLStore, blob: *BlobData, origin: []const u8, environment: ?*const anyopaque) ![]u8 {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Generate UUID
         const uuid = try self.generateUUID();
         errdefer self.allocator.free(uuid);
@@ -156,6 +167,8 @@ pub const BlobURLStore = struct {
     /// 2. If entry exists, mark it as invalid
     /// 3. Remove entry from store
     pub fn revokeObjectURL(self: *BlobURLStore, url: []const u8) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Extract UUID from URL (after last '/')
         const uuid = self.extractUUID(url) orelse return;
 
@@ -176,6 +189,8 @@ pub const BlobURLStore = struct {
     /// store lives - the process, in a browser or a test runner that loads
     /// many pages.
     pub fn removeEntriesFor(self: *BlobURLStore, environment: *const anyopaque) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         var doomed: [16][]const u8 = undefined;
         while (true) {
             // Collected first, removed after: removing from a hash map while
@@ -194,7 +209,7 @@ pub const BlobURLStore = struct {
     }
 
     /// Remove the entry keyed by `uuid`: its key, its origin and its
-    /// reference to its blob's data.
+    /// reference to its blob's data. Called with `mutex` held.
     fn removeEntry(self: *BlobURLStore, uuid: []const u8) void {
         const kv = self.entries.fetchRemove(uuid) orelse return;
         self.allocator.free(kv.key);
@@ -211,7 +226,13 @@ pub const BlobURLStore = struct {
     /// 2. Look up in store
     /// 3. Verify origin matches
     /// 4. Return blob if valid
+    ///
+    /// RETAINED: the caller holds a reference of its own and releases it
+    /// (`deinit`) when done with the bytes. A borrowed pointer could be freed
+    /// by a revoke on another thread before the caller had copied them.
     pub fn resolve(self: *BlobURLStore, url: []const u8, requesting_origin: []const u8) ?*BlobData {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const uuid = self.extractUUID(url) orelse return null;
 
         const entry = self.entries.get(uuid) orelse return null;
@@ -225,7 +246,7 @@ pub const BlobURLStore = struct {
             return null;
         }
 
-        return entry.blob;
+        return entry.blob.retain();
     }
 
     /// Generate a random UUID v4.
@@ -284,9 +305,10 @@ test "BlobURLStore - createObjectURL and resolve" {
 
     try std.testing.expect(std.mem.startsWith(u8, url, "blob:https://example.com/"));
 
-    // Should resolve from same origin
+    // Should resolve from same origin - a reference of the caller's own
     const resolved = store.resolve(url, "https://example.com");
     try std.testing.expect(resolved != null);
+    defer resolved.?.deinit();
     try std.testing.expectEqualStrings("Hello", resolved.?.bytes);
 
     // Should not resolve from different origin
@@ -327,7 +349,8 @@ test "BlobURLStore - revokeObjectURL" {
     defer allocator.free(url);
 
     // Should resolve before revocation
-    try std.testing.expect(store.resolve(url, "https://example.com") != null);
+    const before = store.resolve(url, "https://example.com") orelse return error.TestExpectedEntry;
+    before.deinit();
 
     // Revoke
     store.revokeObjectURL(url);
@@ -391,6 +414,7 @@ test "BlobURLStore - an entry holds its blob after the Blob lets go of it" {
     try std.testing.expectEqual(source.len, resolved.bytes.len);
     try std.testing.expectEqualStrings(source, resolved.bytes);
     try std.testing.expectEqualStrings("text/javascript", resolved.mime_type);
+    resolved.deinit();
 
     // Revoking drops the entry's reference, the last one: the data is freed
     // (std.testing.allocator fails the test on a leak).
@@ -431,6 +455,7 @@ test "BlobURLStore - two URLs for one blob hold it independently" {
     const resolved = store.resolve(url2, "https://example.com") orelse return error.TestExpectedEntry;
     try std.testing.expectEqual(@as(usize, 6), resolved.bytes.len);
     try std.testing.expectEqualStrings("shared", resolved.bytes);
+    resolved.deinit();
     store.revokeObjectURL(url2);
 }
 
@@ -462,6 +487,7 @@ test "BlobURLStore - an environment's entries go when it ends, and no one else's
     try std.testing.expect(store.resolve(url_a2, "https://example.com") == null);
     const kept = store.resolve(url_b, "https://example.com") orelse return error.TestExpectedEntry;
     try std.testing.expectEqualStrings("page data", kept.bytes);
+    kept.deinit();
 
     // The last entry's end frees the data (std.testing.allocator fails the
     // test on a leak or a second free).
@@ -488,7 +514,8 @@ test "BlobURLStore - a URL revoked before its environment ends is released once"
     // Revoking works as it always has: that URL is gone, the other resolves.
     store.revokeObjectURL(revoked);
     try std.testing.expect(store.resolve(revoked, "https://example.com") == null);
-    try std.testing.expect(store.resolve(live, "https://example.com") != null);
+    const still = store.resolve(live, "https://example.com") orelse return error.TestExpectedEntry;
+    still.deinit();
 
     // The environment's end then takes only what is left.
     store.removeEntriesFor(&page);

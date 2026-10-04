@@ -100,6 +100,9 @@ pub fn installBlobURLResolver() void {
 fn resolveBlobURL(allocator: std.mem.Allocator, url: []const u8, origin: []const u8) error{OutOfMemory}!?fetch.algorithms.scheme_fetch.ResolvedBlob {
     const store = @import("file").getGlobalBlobURLStore() orelse return null;
     const data = store.resolve(url, origin) orelse return null;
+    // The store hands out a reference of our own: a revoke on another thread
+    // cannot free the bytes while they are copied.
+    defer data.deinit();
     const bytes = try allocator.dupe(u8, data.bytes);
     errdefer allocator.free(bytes);
     return .{ .bytes = bytes, .content_type = try allocator.dupe(u8, data.mime_type) };

@@ -80,28 +80,54 @@ pub const BlobURLEntry = @import("blob_url_store.zig").BlobURLEntry;
 // Global Store Access
 // ============================================================================
 
-/// Global blob URL store singleton (initialized per-context)
-var global_blob_store: ?*BlobURLStore = null;
+/// Global blob URL store singleton, made by the first createObjectURL.
+/// Every thread of a Browser reaches it (docs/instances.md): `mutex` guards
+/// `store`, and the store guards its own entries.
+const GlobalStore = struct {
+    /// Protects `store`: held to read it, or to set it once.
+    mutex: std.Io.Mutex = .init,
+    store: ?*BlobURLStore = null,
+};
+var global_blob_store: GlobalStore = .{};
 
 /// Get the global blob URL store, if initialized.
 /// Returns null if not yet initialized.
 pub fn getGlobalBlobURLStore() ?*BlobURLStore {
-    return global_blob_store;
+    std.Io.Threaded.mutexLock(&global_blob_store.mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_blob_store.mutex);
+    return global_blob_store.store;
 }
 
-/// Set the global blob URL store.
-/// Called during context initialization.
+/// Set the global blob URL store, if none is set yet. A store made on two
+/// threads at once (URL.createObjectURL makes one on first use): the first
+/// set wins, and the other is destroyed here (it was made with its own
+/// allocator, and holds no entry yet). Null clears it.
 pub fn setGlobalBlobURLStore(store: ?*BlobURLStore) void {
-    global_blob_store = store;
+    std.Io.Threaded.mutexLock(&global_blob_store.mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_blob_store.mutex);
+    const new_store = store orelse {
+        global_blob_store.store = null;
+        return;
+    };
+    if (global_blob_store.store) |existing| {
+        if (existing == new_store) return;
+        new_store.deinit();
+        new_store.allocator.destroy(new_store);
+        return;
+    }
+    global_blob_store.store = new_store;
 }
 
 /// Deinitialize and free the global blob URL store.
-/// Called during context cleanup to prevent memory leaks.
+/// Called during process cleanup, after every thread that could reach it.
 pub fn deinitGlobalBlobURLStore(allocator: std.mem.Allocator) void {
-    if (global_blob_store) |store| {
+    std.Io.Threaded.mutexLock(&global_blob_store.mutex);
+    const taken = global_blob_store.store;
+    global_blob_store.store = null;
+    std.Io.Threaded.mutexUnlock(&global_blob_store.mutex);
+    if (taken) |store| {
         store.deinit();
         allocator.destroy(store);
-        global_blob_store = null;
     }
 }
 
