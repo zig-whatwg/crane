@@ -360,7 +360,9 @@ why = """postMessage, workers, storage and history state all use it, and it \
 carries only bytes plus transferred ArrayBuffers."""
 done_when = """A side-data channel carries WebAssembly modules, SharedArrayBuffers \
 and transferable platform objects."""
-progress = []
+progress = [
+  "0c414f3cad - [Serializable] platform objects: codegen routes to each interface's serialization steps, an engine-neutral record on V8's delegate, Blob/File/DOMException/geometry/ImageData/CryptoKey (serializable lane)",
+]
 
   [[infra.items]]
   name = "DataCloneError from the serializer delegate"
@@ -375,7 +377,11 @@ progress = []
   status = "todo"
 
   [[infra.items]]
-  name = "Transferable and serializable platform objects (MessagePort, Blob, File)"
+  name = "Serializable platform objects (Blob, File, DOMException, geometry, ImageData, CryptoKey) through structured serialization"
+  status = "done"
+
+  [[infra.items]]
+  name = "Transferable platform objects inside a message (MessagePort in the value), resizable and length-tracking ArrayBuffer transfer"
   status = "todo"
 
 [[infra]]

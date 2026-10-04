@@ -233,6 +233,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A conversion attribute checked after the conversion checks the wrong value](codegen-a-conversion-attribute-checked-after-conversion-checks-the-wrong-value.md) - A WebIDL attribute that changes a conversion belongs where the conversion runs (the binding, from a codegen table), never as a check on the converted value.
 - [A sink must see which union arm the binding took](codegen-a-sink-must-see-which-union-arm-the-binding-took.md) - When an algorithm branches on an argument's type, the binding must not flatten it - check the generated signature before writing the step.
 - [Restate a member another spec redefines, and list it](codegen-restate-a-redefined-member-and-list-it.md) - Compare the defining spec's IDL with webref's; restate it in specs/supplementary and list the replacement in member_overrides.zig - never merge a redefinition silently.
+- [An `inherit attribute` gets its own State slot - one variable, two copies](codegen-an-inherit-attribute-gets-its-own-state-slot.md) - A variable belongs to the interface that defines it; `inherit attribute` adds a setter, not a second variable - read it through the owner's getters and write it through the owner's hook, whatever slots codegen emitted.
 
 ### Testing
 - [Regression-check handle changes with timers, not DOM](testing-regression-check-handle-changes-with-timers-not.md) - Pick the regression suite that exercises the lifetime you changed, not the one that touches the same file.
@@ -320,6 +321,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A cleanup walk run on every call is quadratic once a new caller makes it hot - time the harness's own per-test path](debugging-a-cleanup-walk-on-every-call-is-quadratic-once-a-new-caller-makes-it-hot.md) - When an A/B times out a few heavy files, run base and tip interleaved under the same load before calling it noise, and time testharness's per-test path.
 - [An OOM or a leak flood at the timeout is a loop the page never ended](debugging-an-oom-or-a-leak-flood-at-the-timeout-is-a-loop-the-page-never-ended.md) - A file that dies or leaks at its timeout is usually running a loop: find the handler that re-arms itself and the spec step - an event, a flag - that should have stopped it. The allocation each pass makes is the symptom, not the bug.
 - [HTML attribute steps must check the element's namespace](debugging-html-steps-must-check-the-namespace.md) - A step HTML defines for HTML elements is keyed by namespace AND local name, and a state cast is checked, never assumed.
+- [A V8 deserialization runs no script - not even to make its exception](debugging-a-v8-deserialization-runs-no-script.md) - Anything a V8 deserializer delegate calls must run no script; report a failure with an exception V8 makes itself, and let the caller turn it into the DOMException once V8 has returned.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.
