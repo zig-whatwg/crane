@@ -46,6 +46,7 @@ src/dom/element_attributes.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/event_construction.zig event_steps 1 G H decl:f85775e0ca95f00d
 src/dom/event_construction.zig ui_event_steps 1 G H decl:c0a9c4ee7c8461cf
 src/dom/event_dispatch.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/event_handlers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/fetch_objects.zig request_steps 1 G H decl:30978182fd939a7b
 src/dom/fetch_objects.zig response_steps 1 G H decl:fb5cd971a78a8840
 src/dom/fire_event.zig implementation 1 G H decl:9c737e7125e9c3d4
@@ -60,6 +61,16 @@ src/dom/global_settings.zig test_owned 1 G X decl:e044c0ca53b0050b
 src/dom/history_traversal.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/idle_periods.zig deadlines 1 G P-res decl:f4400852080f8212
 src/dom/idle_periods.zig loop 1 G P-res decl:1bb591d6c33253d3
+src/dom/indexeddb.zig cursors 1 G P-res decl:4c93a28a998354be
+src/dom/indexeddb.zig databases 1 G P-res decl:799f214b06f1684c
+src/dom/indexeddb.zig factories 1 G P-res decl:4d290a7b91478b29
+src/dom/indexeddb.zig indexes 1 G P-res decl:24a26ecc3681d076
+src/dom/indexeddb.zig key_ranges 1 G P-res decl:79106825d45c9b31
+src/dom/indexeddb.zig open_requests 1 G P-res decl:bb198fa462213969
+src/dom/indexeddb.zig records 1 G P-res decl:9298618a82f473d9
+src/dom/indexeddb.zig requests 1 G P-res decl:30978182fd939a7b
+src/dom/indexeddb.zig stores 1 G P-res decl:d69009bc151fed96
+src/dom/indexeddb.zig transactions 1 G P-res decl:0aff5c30d889fb93
 src/dom/instance_bridge.zig guard 1 G I/engine decl:a60e95beda8aa36b
 src/dom/instance_bridge.zig initialized 1 G I/engine decl:4b877655cb3bb361
 src/dom/instance_bridge.zig instance_to_nodebase 1 G I/engine decl:80a0adf330dcd794
@@ -96,6 +107,7 @@ src/dom/script_elements.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/script_elements.zig svg_implementation 1 G H decl:2b000c56b2bcfae5
 src/dom/shadow_dom_algorithms.zig signal_slots_set 1 G A decl:0950009102e18a50
 src/dom/shadow_hosts.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/string_lists.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/style_sheet_owners.zig load_delay 1 G H decl:8da63f45bc254f79
 src/dom/style_sheet_owners.zig parser_steps 1 G H decl:efc82acf0bf6e79e
 src/dom/style_sheet_owners.zig test_popped 1 G X decl:3796f88280404836
@@ -307,7 +319,6 @@ src/service_worker/client.zig Client.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/job.zig Job.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/registration.zig Registration.next_id 1 G P-res decl:1dfcee87d8da8735
 src/service_worker/service_worker.zig ServiceWorker.next_id 1 G P-res decl:1dfcee87d8da8735
-src/storage/indexeddb/storage_integration.zig global_integration_manager 1 G I/profile decl:bf64a5fd9dcf49af
 src/storage/quota.zig global_config 1 G I/profile decl:2be66457602efcb0
 src/storage/standard.zig global_bucket_manager 1 G I/profile decl:747163131fca0084
 src/storage/standard.zig global_local_storage_shed 1 G I/profile decl:c95c7e834fa1dc16
