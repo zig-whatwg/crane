@@ -95,7 +95,7 @@ const FromSource = struct {
             step.deferred.deinit();
             return err;
         };
-        realm.react(next_promise, PullStep, step, PullStep.fulfilled, PullStep.rejected) catch {
+        realm.react(next_promise, PullStep, step, PullStep.fulfilled, PullStep.rejected, PullStep.finish) catch {
             step.deferred.resolveUndefined(realm);
             step.finish();
         };
@@ -144,7 +144,7 @@ const FromSource = struct {
             step.deferred.deinit();
             return err;
         };
-        realm.react(return_promise, CancelStep, step, CancelStep.fulfilled, CancelStep.rejected) catch {
+        realm.react(return_promise, CancelStep, step, CancelStep.fulfilled, CancelStep.rejected, CancelStep.finish) catch {
             step.deferred.resolveUndefined(realm);
             step.finish();
         };

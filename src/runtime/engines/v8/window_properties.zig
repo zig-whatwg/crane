@@ -492,7 +492,12 @@ fn namedPropertyDescriptor(
         const context = getContextFromHolder(info) orelse return .kNo;
         defer v8.v8_Context_Dispose(context);
         // Not released - see namedPropertyGetter.
-        const val = conv.toV8Value(runtime.JSValue, isolate, context, js_val) catch return .kNo;
+        const borrowed_val = conv.toV8Value(runtime.JSValue, isolate, context, js_val) catch return .kNo;
+        // An element's wrapper is the wrapper cache's, held WEAKLY: hold it
+        // before the descriptor and its keys allocate, which can collect it
+        // (docs/lessons/architecture-a-weakly-held-wrapper-dies-at-the-next-allocation.md).
+        const val = v8.v8_Global_Clone(borrowed_val) orelse return .kNo;
+        defer v8.v8_Global_Dispose(val);
         const desc = v8.v8_Object_New(isolate) orelse return .kNo;
         defer v8.v8_Object_Dispose(desc);
         setDescriptorField(isolate, context, desc, "value", val);

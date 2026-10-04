@@ -370,6 +370,8 @@ pub fn createResolvedPromise(_: Context, _: JSValue) Error!Owned {
 pub fn createRejectedPromise(_: Context, _: JSValue) Error!Owned {
     return error.NotSupported;
 }
+/// Fails: no step and no `dropped` ever runs, and the data stays the
+/// caller's (engine.PromiseReactionSteps).
 pub fn reactToPromise(_: Context, _: JSValue, _: *const engine.PromiseReactionSteps, _: ?*anyopaque) Error!void {
     return error.NotSupported;
 }

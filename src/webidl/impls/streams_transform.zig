@@ -335,7 +335,7 @@ fn performTransform(realm: Realm, controller_instance: *runtime.Instance, chunk:
     const holder = try c.allocator.create(TransformReaction);
     holder.* = .{ .deferred = try Deferred.init(realm), .stream = c.stream, .allocator = c.allocator, .realm = realm };
     const result = try js.clone(holder.deferred.promise);
-    realm.react(transform_promise, TransformReaction, holder, TransformReaction.fulfilled, TransformReaction.rejected) catch {
+    realm.react(transform_promise, TransformReaction, holder, TransformReaction.fulfilled, TransformReaction.rejected, TransformReaction.finish) catch {
         holder.deferred.resolveUndefined(realm);
         holder.finish();
     };
@@ -410,7 +410,7 @@ fn sinkWrite(ctx: ?*anyopaque, realm: Realm, _: *runtime.Instance, chunk: Value)
         const wait = try stream.allocator.create(BackpressureWait);
         wait.* = .{ .deferred = try Deferred.init(realm), .stream = stream_instance, .controller = controller, .chunk = try js.clone(chunk), .allocator = stream.allocator, .realm = realm };
         const result = try js.clone(wait.deferred.promise);
-        realm.react(change.promise, BackpressureWait, wait, BackpressureWait.fulfilled, BackpressureWait.rejected) catch {
+        realm.react(change.promise, BackpressureWait, wait, BackpressureWait.fulfilled, BackpressureWait.rejected, BackpressureWait.finish) catch {
             wait.finish();
         };
         return result;
@@ -511,7 +511,7 @@ fn finishWith(realm: Realm, stream_instance: *runtime.Instance, kind: FinishKind
     // Step 7: react.
     const reaction = try stream.allocator.create(FinishReaction);
     reaction.* = .{ .stream = stream_instance, .kind = kind, .reason = if (reason) |r| try js.clone(r) else null, .allocator = stream.allocator, .realm = realm };
-    realm.react(p, FinishReaction, reaction, FinishReaction.fulfilled, FinishReaction.rejected) catch reaction.finish();
+    realm.react(p, FinishReaction, reaction, FinishReaction.fulfilled, FinishReaction.rejected, FinishReaction.finish) catch reaction.finish();
     // Step 8: Return controller.[[finishPromise]].
     return js.clone(c.finish_promise.?.promise);
 }
