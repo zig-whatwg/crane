@@ -109,7 +109,10 @@ pub fn invokeCallbackFunction(
     };
 
     // The arguments, as V8 values. Most callbacks take one or two; the timer
-    // handlers take whatever `any...` was given.
+    // handlers take whatever `any...` was given. (A platform object's wrapper
+    // here, and `this` above, are the wrapper cache's weak handles, borrowed
+    // across the later toV8 calls that allocate - the window leaks2's audit
+    // found; only tests call this path.)
     var inline_buffer: [4]Converted = undefined;
     const converted: []Converted = if (args.len <= inline_buffer.len)
         inline_buffer[0..args.len]

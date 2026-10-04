@@ -2206,30 +2206,46 @@ void v8_Isolate_QueueMicrotask(Isolate* isolate, ZigMicrotaskCallback callback, 
 /// whether the promise rejected.
 typedef void (*ZigReactionCallback)(void* data, Global<Value>* value, bool rejected);
 
-struct ZigReaction {
-    ZigReactionCallback callback;
-    void* data;
-};
+// A reaction's holder: the [[data]] both reaction functions share, a JS array
+// the collector frees with them. Slot 0 is the host's record (an External),
+// slot 1 the callback; disarming the reaction clears slot 0. Nothing on the C++
+// heap outlives the call that made it, so nothing here can dangle: a reaction
+// function run after its reaction ended - another realm's promise settling it
+// after this realm's end - finds slot 0 cleared and does nothing.
+static constexpr uint32_t kReactionData = 0;
+static constexpr uint32_t kReactionCallback = 1;
 
 static void zigReactionTrampoline(const FunctionCallbackInfo<Value>& info, bool rejected) {
     Isolate* isolate = info.GetIsolate();
     HandleScope scope(isolate);
-    auto* reaction = static_cast<ZigReaction*>(info.Data().As<External>()->Value());
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (!info.Data()->IsArray()) return;
+    Local<Array> holder = info.Data().As<Array>();
+    Local<Value> data_slot;
+    Local<Value> callback_slot;
+    if (!holder->Get(ctx, kReactionData).ToLocal(&data_slot) || !data_slot->IsExternal()) return;
+    if (!holder->Get(ctx, kReactionCallback).ToLocal(&callback_slot) || !callback_slot->IsExternal()) return;
+    void* data = data_slot.As<External>()->Value();
+    auto callback = reinterpret_cast<ZigReactionCallback>(callback_slot.As<External>()->Value());
+    // A promise settles once and `then` registered exactly one reaction, so the
+    // other function sharing this holder never runs; disarm it anyway before
+    // calling out, so nothing can reach the record the callback frees.
+    if (holder->Set(ctx, kReactionData, Undefined(isolate)).IsNothing()) return;
     Local<Value> arg = info.Length() > 0 ? info[0] : Undefined(isolate).As<Value>();
     Global<Value>* value = trackHandle(new Global<Value>(isolate, arg));
-    ZigReactionCallback callback = reaction->callback;
-    void* data = reaction->data;
-    // A promise settles once and `then` registered exactly one reaction, so the
-    // other trampoline sharing this record never runs: free it before calling
-    // out, so a callback that never returns normally cannot leak it.
-    delete reaction;
     callback(data, value, rejected);
 }
 
 /// WebIDL "react to" a promise: promise.then(onFulfilled, onRejected), where
 /// both call `callback(data, value, rejected)`. Exactly one of them runs,
-/// exactly once. Returns false - and `callback` never runs - when the
-/// reaction could not be attached (`promise` is not a promise).
+/// exactly once - unless the reaction is disarmed first (its holder's
+/// `kReactionData` cleared, `v8_Array_ClearElement`). Returns false - and `callback` never runs -
+/// when the reaction could not be attached (`promise` is not a promise).
+///
+/// `*holder_out` receives the reaction's holder (see `kReactionData`) as a
+/// new Global the caller owns - the handle to disarm it by. Strong as made:
+/// the caller weakens it (a strong one would keep the realm alive) or
+/// disposes it.
 ///
 /// The promise `then` derives is marked handled: nothing observes it, and a
 /// throw escaping `callback` must not surface as an unhandled rejection.
@@ -2239,9 +2255,11 @@ bool v8_Promise_React(
     Global<Context>* context,
     Global<Value>* promise,
     ZigReactionCallback callback,
-    void* data
+    void* data,
+    Global<Value>** holder_out
 ) {
-    if (!context || !promise || promise->IsEmpty() || !callback) return false;
+    if (holder_out) *holder_out = nullptr;
+    if (!context || !promise || promise->IsEmpty() || !callback || !holder_out) return false;
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Context> ctx = context->Get(isolate);
@@ -2250,28 +2268,52 @@ bool v8_Promise_React(
     Local<Value> value = promise->Get(isolate);
     if (!value->IsPromise()) return false;
 
-    auto* reaction = new ZigReaction{callback, data};
-    Local<External> external = External::New(isolate, reaction);
+    Local<Value> slots[] = {
+        External::New(isolate, data),
+        External::New(isolate, reinterpret_cast<void*>(callback)),
+    };
+    Local<Array> holder = Array::New(isolate, slots, 2);
 
     Local<Function> on_fulfilled;
     Local<Function> on_rejected;
     if (!Function::New(ctx, [](const FunctionCallbackInfo<Value>& info) {
             zigReactionTrampoline(info, false);
-        }, external, 1).ToLocal(&on_fulfilled) ||
+        }, holder, 1).ToLocal(&on_fulfilled) ||
         !Function::New(ctx, [](const FunctionCallbackInfo<Value>& info) {
             zigReactionTrampoline(info, true);
-        }, external, 1).ToLocal(&on_rejected)) {
-        delete reaction;
+        }, holder, 1).ToLocal(&on_rejected)) {
         return false;
     }
 
     Local<Promise> derived;
     if (!value.As<Promise>()->Then(ctx, on_fulfilled, on_rejected).ToLocal(&derived)) {
-        delete reaction;
         return false;
     }
     derived->MarkAsHandled();
+    *holder_out = trackHandle(new Global<Value>(isolate, holder));
     return true;
+}
+
+/// Set `array[index]` to undefined, in the array's own creation context -
+/// how a reaction (`kReactionData`) or an asynchronous iterator's state is
+/// disarmed when its realm ends. `array` BORROWED; an empty handle (the
+/// collector took the array) or a value that is no array is left alone. The
+/// element is an own data element, so no setter - no script - runs.
+void v8_Array_ClearElement(Global<Value>* array, uint32_t index) {
+    if (!array || array->IsEmpty()) return;
+    // No isolate entered (the manager's own end, after its agents): nothing
+    // can run script to reach the array either.
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Local<Value> value = array->Get(isolate);
+    if (!value->IsArray()) return;
+    Local<Object> object = value.As<Object>();
+    // The array's own context: alive for as long as the array is.
+    Local<Context> ctx;
+    if (!object->GetCreationContext(isolate).ToLocal(&ctx)) return;
+    Context::Scope context_scope(ctx);
+    if (object->Set(ctx, index, Undefined(isolate)).IsNothing()) return;
 }
 
 /// Compile an ES module with TryCatch error handling
@@ -4343,16 +4385,27 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
 /// alive exactly as long as `holder` - the edge Blink draws by TRACING a
 /// [SameObject] child from its owner (Node::Trace visits node_lists_).
 /// Setting it again replaces the edge.
+///
+/// Both handles are read into Locals before anything here allocates: either
+/// may be a wrapper the wrapper cache holds only weakly - the [SameObject]
+/// child `recordSameObjectEdge` wrapped a moment ago, which nothing reaches
+/// until this edge exists - and a collection started by the key's string or
+/// its Private would take it and empty the handle under us - the window
+/// template_registry's cache-hit prototype reset had (docs/lessons/
+/// architecture-a-weakly-held-wrapper-dies-at-the-next-allocation.md).
 void v8_Object_SetPrivateRef(Global<Object>* holder, const char* key, int key_len, Global<Value>* value) {
     if (!holder || !value) return;
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
+    Local<Object> object = holder->Get(isolate);
+    Local<Value> target = value->Get(isolate);
+    if (object.IsEmpty() || target.IsEmpty()) return;
     Local<Context> context = isolate->GetCurrentContext();
     if (context.IsEmpty()) return;
     Local<String> name;
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
     Local<Private> priv = Private::ForApi(isolate, name);
-    (void)holder->Get(isolate)->SetPrivate(context, priv, value->Get(isolate));
+    (void)object->SetPrivate(context, priv, target);
 }
 
 void v8_Object_Dispose(Global<Object>* obj) {
@@ -4973,85 +5026,6 @@ char* v8_Module_GetModuleRequestType(Global<Module>* module, int index, int* sta
 // Event handler content attributes
 // ============================================================================
 
-/// Compile an event handler content attribute's value into its function.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#getting-the-current-value-of-the-event-handler
-/// step 3.9: a function named `name` whose body is `body`, with the single
-/// parameter `event` - or, for a Window's onerror, the five parameters
-/// (event, source, lineno, colno, error) - and whose scope is the global
-/// environment wrapped by the object environments of `scopes`, OUTERMOST FIRST:
-/// [document, form owner, element] for an element's handler, none for a
-/// Window's. v8::ScriptCompiler::CompileFunction pushes context extensions in
-/// order, so the last one is innermost - the order Blink's
-/// JSEventHandlerForContentAttribute passes them in.
-///
-/// Returns the function (Global<Value>*, caller owns), or nullptr with
-/// `*out_error` set (free with v8_FreeErrorInfo; its `exception` is the
-/// SyntaxError) when the body does not parse.
-Global<Value>* v8_CompileEventHandler(
-    Global<Context>* context,
-    const char* name,
-    int name_len,
-    const char* body,
-    int body_len,
-    bool window_onerror,
-    Global<Object>** scopes,
-    int scope_count,
-    V8ErrorInfo** out_error
-) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    *out_error = nullptr;
-
-    Local<Context> ctx = context->Get(isolate);
-    Context::Scope context_scope(ctx);
-    TryCatch try_catch(isolate);
-
-    Local<String> source_text;
-    Local<String> function_name;
-    if (!String::NewFromUtf8(isolate, body, NewStringType::kNormal, body_len).ToLocal(&source_text) ||
-        !String::NewFromUtf8(isolate, name, NewStringType::kNormal, name_len).ToLocal(&function_name)) {
-        return nullptr;
-    }
-
-    Local<String> params[5];
-    int param_count = 1;
-    params[0] = String::NewFromUtf8Literal(isolate, "event");
-    if (window_onerror) {
-        params[1] = String::NewFromUtf8Literal(isolate, "source");
-        params[2] = String::NewFromUtf8Literal(isolate, "lineno");
-        params[3] = String::NewFromUtf8Literal(isolate, "colno");
-        params[4] = String::NewFromUtf8Literal(isolate, "error");
-        param_count = 5;
-    }
-
-    std::vector<Local<Object>> extensions;
-    for (int i = 0; i < scope_count; i++) {
-        if (scopes[i]) extensions.push_back(scopes[i]->Get(isolate));
-    }
-
-    ScriptCompiler::Source source(source_text);
-    Local<Function> function;
-    if (!ScriptCompiler::CompileFunction(
-            ctx, &source, param_count, params,
-            extensions.size(), extensions.empty() ? nullptr : extensions.data())
-             .ToLocal(&function)) {
-        if (try_catch.HasCaught()) {
-            *out_error = extractException(isolate, &try_catch);
-        } else {
-            *out_error = new V8ErrorInfo();
-            (*out_error)->has_error = true;
-            (*out_error)->message = strdup("Event handler could not be compiled");
-            (*out_error)->line_number = -1;
-            (*out_error)->column_number = -1;
-        }
-        return nullptr;
-    }
-
-    function->SetName(function_name);
-    return trackHandle(new Global<Value>(isolate, function.As<Value>()));
-}
-
 // ============================================================================
 // JSON module scripts (synthetic modules)
 // ============================================================================
@@ -5181,6 +5155,11 @@ Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
     if (!context || !value) return nullptr;
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
+    // `value` may be the wrapper cache's weak handle (a CSSStyleSheet's
+    // wrapper): read it before anything below allocates, which can collect
+    // the wrapper and reset the handle.
+    if (value->IsEmpty()) return nullptr;
+    Local<Value> default_export = value->Get(isolate);
     Local<Context> ctx = context->Get(isolate);
     Context::Scope context_scope(ctx);
 
@@ -5199,7 +5178,7 @@ Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
     if (!g_synthetic_json_exports) g_synthetic_json_exports = new std::vector<SyntheticJsonExport*>();
     SyntheticJsonExport* entry = new SyntheticJsonExport();
     entry->module.Reset(isolate, module);
-    entry->value.Reset(isolate, value->Get(isolate));
+    entry->value.Reset(isolate, default_export);
     g_synthetic_json_exports->push_back(entry);
 
     return trackHandle(new Global<Module>(isolate, module));
@@ -7196,6 +7175,13 @@ bool v8_Object_SetAccessorProperty(
 // Create a property descriptor object for Object.getOwnPropertyDescriptor callbacks
 // Returns an object like: { value: <value>, writable: <bool>, enumerable: <bool>, configurable: <bool> }
 // Takes a Global<Value>* for the value parameter - caller must ensure value is a valid global handle
+//
+// `value` may be the wrapper cache's own handle, held WEAKLY (a platform
+// object's wrapper, made a moment ago and reachable from nothing yet): it is
+// read into a Local BEFORE anything allocates, since an allocation can start
+// a collection that takes the wrapper and resets that very handle
+// (docs/lessons/architecture-a-weakly-held-wrapper-dies-at-the-next-allocation.md).
+// Returns nullptr when it is empty.
 Global<Object>* v8_CreateDataPropertyDescriptor(
     Global<Context>* context,
     Global<Value>* value,
@@ -7205,13 +7191,13 @@ Global<Object>* v8_CreateDataPropertyDescriptor(
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
+    if (!value || value->IsEmpty()) return nullptr;
+    Local<Value> val = value->Get(isolate);
     Local<Context> ctx = context->Get(isolate);
     Context::Scope context_scope(ctx);
     
     Local<Object> desc = Object::New(isolate);
     
-    // Get the local value from the global handle
-    Local<Value> val = value->Get(isolate);
     desc->Set(ctx, v8::String::NewFromUtf8(isolate, "value").ToLocalChecked(), val).Check();
     
     // Set writable
@@ -11724,8 +11710,13 @@ bool v8_Isolate_HasJavaScriptOnStack(Isolate* isolate) {
 /// `parameter_names` (event; evt for SVG; the five of a Window's onerror), its
 /// body `body`, and its scope the global environment wrapped by the object
 /// environments of `scopes`, OUTERMOST FIRST (document, form owner, element).
-/// v8_CompileEventHandler with the parameter list given rather than chosen.
+/// v8::ScriptCompiler::CompileFunction pushes context extensions in order, so
+/// the last one is innermost - the order Blink's
+/// JSEventHandlerForContentAttribute passes them in.
 ///
+/// `scopes` may be the wrapper cache's own handles, held WEAKLY: each is read
+/// into a Local before anything here allocates, and an empty one fails the
+/// compile (as a body that does not compile does, with no error to report).
 /// Returns the function (Global<Value>*, caller owns), or nullptr with
 /// `*out_error` set (v8_FreeErrorInfo; its `exception` is the SyntaxError)
 /// when the body does not parse.
@@ -11745,6 +11736,16 @@ Global<Value>* v8_CompileEventHandlerWithParameters(
     HandleScope handle_scope(isolate);
     *out_error = nullptr;
 
+    // The scopes first, before anything allocates (see above).
+    Local<Object> extensions_storage[8];
+    if (scope_count < 0 || scope_count > 8) return nullptr;
+    size_t extension_count = 0;
+    for (int i = 0; i < scope_count; i++) {
+        if (!scopes[i]) continue;
+        if (scopes[i]->IsEmpty()) return nullptr;
+        extensions_storage[extension_count++] = scopes[i]->Get(isolate);
+    }
+
     Local<Context> ctx = context->Get(isolate);
     Context::Scope context_scope(ctx);
     TryCatch try_catch(isolate);
@@ -11763,10 +11764,7 @@ Global<Value>* v8_CompileEventHandlerWithParameters(
         params.push_back(param);
     }
 
-    std::vector<Local<Object>> extensions;
-    for (int i = 0; i < scope_count; i++) {
-        if (scopes[i]) extensions.push_back(scopes[i]->Get(isolate));
-    }
+    std::vector<Local<Object>> extensions(extensions_storage, extensions_storage + extension_count);
 
     ScriptCompiler::Source source(source_text);
     Local<Function> function;
@@ -12620,12 +12618,15 @@ void v8_Object_DeletePrivateRef(Global<Object>* holder, const char* key, int key
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return;
     HandleScope handle_scope(isolate);
+    // Read the holder before the name allocates: a weak one can be collected
+    // and reset by then.
+    Local<Object> object = holder->Get(isolate);
     Local<Context> context = isolate->GetCurrentContext();
     if (context.IsEmpty()) return;
     Local<String> name;
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
     Local<Private> priv = Private::ForApi(isolate, name);
-    (void)holder->Get(isolate)->DeletePrivate(context, priv);
+    (void)object->DeletePrivate(context, priv);
 }
 
 /// The value `v8_Object_SetPrivateRef` keeps on `holder` under `key`, as a
@@ -12638,12 +12639,13 @@ Global<Value>* v8_Object_GetPrivateRef(Global<Object>* holder, const char* key, 
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return nullptr;
     HandleScope handle_scope(isolate);
+    // Read the holder before the name allocates (see DeletePrivateRef).
+    Local<Object> object = holder->Get(isolate);
     Local<Context> context = isolate->GetCurrentContext();
     if (context.IsEmpty()) return nullptr;
     Local<String> name;
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return nullptr;
     Local<Private> priv = Private::ForApi(isolate, name);
-    Local<Object> object = holder->Get(isolate);
     if (!object->HasPrivate(context, priv).FromMaybe(false)) return nullptr;
     Local<Value> value;
     if (!object->GetPrivate(context, priv).ToLocal(&value)) return nullptr;
@@ -12666,6 +12668,8 @@ void v8_Object_RetainInPrivateArray(Global<Value>* holder, const char* key, int 
     if (!isolate) return;
     HandleScope handle_scope(isolate);
     Local<Value> held = holder->Get(isolate);
+    // Read before anything below allocates (see v8_Object_SetPrivateRef).
+    Local<Value> retained = value->Get(isolate);
     if (!held->IsObject()) return;
     Local<Object> object = held.As<Object>();
     Local<Context> ctx;
@@ -12685,7 +12689,7 @@ void v8_Object_RetainInPrivateArray(Global<Value>* holder, const char* key, int 
         list = Array::New(isolate);
         if (object->SetPrivate(ctx, priv, list).IsNothing()) return;
     }
-    (void)list->Set(ctx, list->Length(), value->Get(isolate));
+    (void)list->Set(ctx, list->Length(), retained);
 }
 
 /// Set `holder`'s private property `key` to `value`, or delete it when
@@ -12699,6 +12703,11 @@ void v8_Object_PrivateRefUpdate(Global<Value>* holder, const char* key, int key_
     if (!isolate) return;
     HandleScope handle_scope(isolate);
     Local<Value> held = holder->Get(isolate);
+    // Read before anything below allocates (see v8_Object_SetPrivateRef):
+    // read after, a value a collection took in between read empty, and the
+    // edge was deleted instead of set.
+    Local<Value> target;
+    if (value && !value->IsEmpty()) target = value->Get(isolate);
     if (!held->IsObject()) return;
     Local<Object> object = held.As<Object>();
     Local<Context> ctx;
@@ -12710,8 +12719,8 @@ void v8_Object_PrivateRefUpdate(Global<Value>* holder, const char* key, int key_
     Local<String> name;
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
     Local<Private> priv = Private::ForApi(isolate, name);
-    if (value && !value->IsEmpty()) {
-        (void)object->SetPrivate(ctx, priv, value->Get(isolate));
+    if (!target.IsEmpty()) {
+        (void)object->SetPrivate(ctx, priv, target);
     } else {
         (void)object->DeletePrivate(ctx, priv);
     }
@@ -12730,6 +12739,8 @@ void v8_Object_PrivateSetUpdate(Global<Value>* holder, const char* key, int key_
     if (!isolate) return;
     HandleScope handle_scope(isolate);
     Local<Value> held = holder->Get(isolate);
+    // Read before anything below allocates (see v8_Object_SetPrivateRef).
+    Local<Value> element = member->Get(isolate);
     if (!held->IsObject()) return;
     Local<Object> object = held.As<Object>();
     Local<Context> ctx;
@@ -12751,9 +12762,9 @@ void v8_Object_PrivateSetUpdate(Global<Value>* holder, const char* key, int key_
         if (object->SetPrivate(ctx, priv, set).IsNothing()) return;
     }
     if (add) {
-        (void)set->Add(ctx, member->Get(isolate));
+        (void)set->Add(ctx, element);
     } else {
-        (void)set->Delete(ctx, member->Get(isolate));
+        (void)set->Delete(ctx, element);
     }
 }
 

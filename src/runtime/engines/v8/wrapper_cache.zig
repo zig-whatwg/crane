@@ -65,6 +65,7 @@
 const std = @import("std");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
+const realm_finalizers = @import("realm_finalizers.zig");
 
 const log = std.log.scoped(.wrapper_cache);
 
@@ -827,6 +828,13 @@ pub const WrapperCache = struct {
     /// isolate never ran.
     pending_head: ?*CacheEntry = null,
 
+    /// What this realm's end finalizes that no wrapper owns: its promise
+    /// reactions that have not run and its asynchronous iterators still
+    /// alive (realm_finalizers.zig). The realm's end drains it before the
+    /// realm's objects are torn down (context_manager.removeContextByKey);
+    /// the cache's own end drains what is left.
+    finalizers: realm_finalizers.List = .{},
+
     const Self = @This();
 
     fn linkPending(self: *Self, entry: *CacheEntry) void {
@@ -1073,6 +1081,10 @@ pub const WrapperCache = struct {
         // When Node.deinit calls markInstanceCleanedUp, it will be a no-op.
         self.is_tearing_down = true;
 
+        // The realm's records no wrapper owns - its end drained them
+        // already, unless it ended some other way.
+        self.finalizers.drain();
+
         // PHASE 0: wrappers already collected whose finalizer has not run -
         // it would find this cache gone. Run them now.
         self.finalizePending();
@@ -1237,6 +1249,10 @@ pub const WrapperCache = struct {
     pub fn deinitWithoutCallbacks(self: *Self) void {
         // Mark as tearing down to prevent re-entrant access
         self.is_tearing_down = true;
+
+        // The realm's records no wrapper owns: each is disarmed and its host
+        // data freed, exactly once, as at any realm end.
+        self.finalizers.drain();
 
         // Collected entries waiting for their finalizer: nothing of theirs
         // runs now either; their handles and storage go.

@@ -604,6 +604,7 @@ pub fn getOrCreateWithExternalEventLoop(
     };
 
     // Store pointer in map - entry won't move even if HashMap rehashes
+    try reserveRetirement(state);
     try state.contexts.put(key, entry);
 
     return &entry.runtime_ctx;
@@ -788,6 +789,7 @@ pub fn getOrCreateWithIsolate(v8_ctx: *v8.Context, isolate: ?*v8.Isolate, alloca
     };
 
     // Store pointer in map - entry won't move even if HashMap rehashes
+    try reserveRetirement(state);
     try state.contexts.put(key, entry);
 
     // Return pointer to context data - stable because entry is heap-allocated
@@ -963,6 +965,7 @@ pub fn createContext(
     }
 
     // Store in contexts HashMap
+    try reserveRetirement(state);
     try state.contexts.put(key, entry);
 
     // Hydrate with scope-specific interfaces (already filtered by snapshot)
@@ -1006,6 +1009,7 @@ pub fn register(v8_ctx: *v8.Context, ctx: runtime.Context) !void {
     };
 
     // Store pointer in map - entry won't move even if HashMap rehashes
+    try reserveRetirement(state);
     try state.contexts.put(key, entry);
 }
 
@@ -1046,6 +1050,10 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
         // destroyed below (they go with the slab) and their `ctx` points into
         // this entry. See ManagerState.retired.
         defer retireEntry(state, entry);
+        // First, while every object of the realm is alive: the promise
+        // reactions that have not run and the asynchronous iterators still
+        // alive end, and their host data with them (realm_finalizers.zig).
+        if (@import("realm_finalizers.zig").listOf(&entry.runtime_ctx)) |finalizers| finalizers.drain();
         // The callbacks this context's script registered hold handles into it
         // - one listener is enough to keep the whole page alive - and nothing
         // else releases them, since its EventTargets are never torn down.
@@ -1805,13 +1813,20 @@ fn retireEntry(state: *ManagerState, entry: *ContextEntry) void {
     entry.window_instance = null;
     entry.runtime_ctx.clearDocumentUrl();
 
-    state.retired.append(state.allocator, entry) catch {
-        // Only reachable if this allocator is out of memory, which it is about to
-        // be torn down anyway. Fall back to the old behaviour rather than leak the
-        // entry outright.
-        if (entry.owns_context) entry.runtime_ctx.deinit();
-        state.allocator.destroy(entry);
-    };
+    // Never allocates: every entry reserved its slot before it went into
+    // `contexts` (reserveRetirement). The old fallback - freeing the entry when
+    // this append ran out of memory - left every Context kept across turns
+    // pointing at freed memory, where engine_protocol.zig's Context contract
+    // promises a valid, inert record until the agent ends.
+    state.retired.appendAssumeCapacity(entry);
+}
+
+/// Reserve the `retired` slot an entry about to go into `contexts` will take
+/// when it is retired, so that retireEntry never allocates: capacity stays at
+/// least every retired entry plus every live one. Called before each insert;
+/// out of memory here fails the realm's creation, never its retirement.
+fn reserveRetirement(state: *ManagerState) error{OutOfMemory}!void {
+    try state.retired.ensureTotalCapacity(state.allocator, state.retired.items.len + state.contexts.count() + 1);
 }
 
 /// Get the realm for a V8 context

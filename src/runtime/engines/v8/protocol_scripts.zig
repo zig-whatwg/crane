@@ -359,13 +359,17 @@ pub fn compileEventHandler(realm: Context, source: *const engine.EventHandlerSou
 
     // 9, scope: the global environment, wrapped by object environments of
     // the document (for an element's handler), the form owner, and the
-    // element - outermost first. Each is the platform object's wrapper,
-    // borrowed from the wrapper cache.
+    // element - outermost first. Each is the platform object's wrapper; the
+    // wrapper cache holds it WEAKLY, and the next one made can allocate and
+    // collect it, so each is cloned as it is made (docs/lessons/
+    // architecture-a-weakly-held-wrapper-dies-at-the-next-allocation.md).
     var scopes: [3]?*ffi.Object = .{ null, null, null };
     var scope_count: usize = 0;
+    defer for (scopes[0..scope_count]) |scope| ffi.v8_Global_Dispose(@ptrCast(scope));
     for ([_]?*engine.Instance{ source.document, source.form_owner, source.element }) |maybe| {
         const instance = maybe orelse continue;
-        scopes[scope_count] = @ptrCast(conversions.instanceToV8(isolate, instance));
+        const wrapper = conversions.instanceToV8(isolate, instance);
+        scopes[scope_count] = @ptrCast(ffi.v8_Global_Clone(@ptrCast(wrapper)) orelse continue);
         scope_count += 1;
     }
 

@@ -89,6 +89,32 @@ class finalizer run inside their collectors, so those adapters queue the
 teardown the same way once they wrap platform objects; today they wrap none.
 `AsyncIteratorSteps.finalize` runs under the same rule.
 
+**A realm's end finalizes what no wrapper owns.** The host data behind a
+promise reaction that has not run (`PromiseReactionSteps.dropped`) and behind
+an asynchronous iterator still alive (`AsyncIteratorSteps.finalize`) is freed
+when the reaction or iterator ends: settled, collected, or - whichever comes
+first - its realm's end, before the realm's objects are torn down. After that
+a reaction function or an iterator method script still reaches (from another
+realm's promise, from another realm's variable) does nothing, or rejects with
+a TypeError; it never reaches the freed data. V8: the reaction functions'
+[[data]] is a one-slot holder array whose External points at the adapter's
+record, which keeps a WEAK handle of the holder (strong would keep the realm
+alive) armed with a second-pass finalizer, and sits on its realm's list
+(realm_finalizers.zig, on the realm's WrapperCache); the realm's end
+(context_manager.removeContextByKey) clears each holder's slot, disposes the
+handle - cancelling a second pass still to come - and runs `dropped`. An
+iterator's record is the same over its state array. JavaScriptCore: the
+reaction functions are JSObjectMake objects of a JSClass with
+`callAsFunction` and a private record, attached with
+`JSObjectCallAsFunction(promise.then, ...)`; a per-realm list is drained at
+`destroyWindowRealm` / `destroyWorkerRealm`, `JSObjectSetPrivate(fn, NULL)`
+disarming each function, and the class's `finalize` - which runs inside the
+collector - only queues the record for `dropped` at the next point where
+engine calls are allowed. QuickJS: `JS_NewCFunctionData` functions and a
+class finalizer, the same way. Both answer `reactToPromise` with
+`NotSupported` today: no step and no `dropped` ever runs, and the data stays
+the caller's.
+
 ### Errors
 
 `Error = { OperationFailed, ExceptionReported, OutOfMemory, TypeError, ExceptionPending, DataCloneError, NotSupported }`
@@ -175,7 +201,7 @@ adapter will use Crane's own walker (src/html/structured_clone).
 | WebIDL: ES to IDL | `convertToDOMString`, `convertToUSVString`, `convertToUnrestrictedDouble`, `convertToPlatformObject`, `convertToSequence*`, `convertToRecordOfStrings`, `getCopyOfBufferSourceBytes` (BufferSource, not [AllowShared]: a SharedArrayBuffer is null, a view over one a TypeError), `getCopyOfAllowSharedBufferSourceBytes` (AllowSharedBufferSource: an ArrayBuffer, a SharedArrayBuffer or a view over either), `iterate`, `getIterator`, `iteratorNext`, `iteratorReturn`, `iteratorResult`, `releaseIteratorRecord` |
 | WebIDL: IDL to ES | `createSequenceOfValues`, `createSequenceOfPlatformObjects`, `createDictionaryObject`, `createObservableArray`, `createFrozenArray`, `createAsyncIterator` |
 | Exceptions | `createSimpleException`, `createDOMException` |
-| Promises | `createPromise`, `resolvePromise`, `rejectPromise`, `releasePromiseCapability`, `createResolvedPromise`, `createRejectedPromise`, `reactToPromise`, `markPromiseAsHandled`, `promiseIsHandled` [promise_rejection_tracking] |
+| Promises | `createPromise`, `resolvePromise`, `rejectPromise`, `releasePromiseCapability`, `createResolvedPromise`, `createRejectedPromise`, `reactToPromise` (for each call that succeeded, exactly ONE of the steps' `fulfilled`, `rejected` and `dropped` runs, once: `dropped` when the reaction ends without a step - the promise settled the way no step is given for, or the engine dropped it pending: its realm ended (before the realm's objects are torn down), the collector took the promise with it, or the agent ended; it frees the host's data, never runs script and never runs inside a collection; on an ended realm the call fails and the data stays the caller's), `markPromiseAsHandled`, `promiseIsHandled` [promise_rejection_tracking] |
 | Buffers | `createArrayBuffer`, `allocateArrayBuffer`, `createArrayBufferView`, `describeArrayBufferView`, `writeIntoArrayBufferView`, `borrowArrayBufferBytes`, `isDetachedBuffer`, `canTransferArrayBuffer`, `transferArrayBuffer`, `getViewedArrayBuffer` |
 | Structured serialization | `structuredSerializeForStorage`, `structuredDeserialize`, `structuredSerializeWithTransfer`, `structuredDeserializeWithTransfer` |
 | Platform objects (engine concerns) | `hasWrapper`, `keepPlatformObjectAlive` / `releasePlatformObject` (pending activity - Blink's HasPendingActivity: a root while it lasts), `platformObjectDestroyed`, `traceChild` / `forgetTracedChild` (an owner keeps a child as `TracedSlot`, a member name: the child's wrapper lives exactly as long as the owner's - Blink's `Trace` of a `Member<>`; V8 draws it as a private property on the owner's wrapper, a Window's on its global object; an edge, never a root, so a pair that keep each other still go together. It never makes the OWNER's wrapper: an owner script has not seen holds the child strongly until its wrapper is made - the edge is drawn on it then - and ends that hold with `forgetTracedChild` in its teardown if it is freed unwrapped), `traceValue` / `tracedValue` (the same edge for a JavaScript VALUE an owner keeps for script - a CustomEvent's detail, a FileReader's result, a NavigateEvent's info: Blink's `TraceWrapperV8Reference`; any value, a primitive too, in `traceChild`'s slot namespace, read back as an `Owned` the caller releases - null when there is none - and ended with `forgetTracedChild`. JavaScriptCore would use a private-symbol property on the owner's object; the JSC, QuickJS and test adapters keep nothing and read null) |
@@ -228,8 +254,6 @@ from the integrator, who owns engine_protocol.zig. It lands in one change:
 
 - `setProperty` is V8's sloppy Set: a [[Set]] that returns false does not
   throw the spec's TypeError.
-- A `reactToPromise` on a promise that never settles keeps 32 bytes until
-  process exit.
 - No ByteString string conversion yet (Headers).
 - An asynchronous iterator object gets a per-object prototype with no class
   string (a shared per-interface one needs the interface's identity).

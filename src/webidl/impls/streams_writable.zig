@@ -558,7 +558,7 @@ fn finishErroring(realm: Realm, stream_instance: *runtime.Instance) void {
         return;
     };
     reaction.* = .{ .stream_instance = stream_instance, .request = abort_request.promise };
-    realm.react(promise, AbortReaction, reaction, AbortReaction.onFulfilled, AbortReaction.onRejected) catch {
+    realm.react(promise, AbortReaction, reaction, AbortReaction.onFulfilled, AbortReaction.onRejected, AbortReaction.dropped) catch {
         abort_request.promise.deinit();
         stream.allocator.destroy(reaction);
     };
@@ -585,6 +585,13 @@ const AbortReaction = struct {
 
     fn onRejected(self: *AbortReaction, reason: Value) void {
         self.finish(reason);
+    }
+
+    /// Ended without a step (its realm ended first, or the promise was
+    /// collected unsettled): only what it holds goes.
+    fn dropped(self: *AbortReaction) void {
+        self.request.deinit();
+        streamSlots(self.stream_instance).allocator.destroy(self);
     }
 };
 
@@ -912,7 +919,7 @@ pub fn setUpController(realm: Realm, stream_instance: *runtime.Instance, control
     const start_promise = try realm.promiseResolvedWith(start_value);
     defer js.dispose(start_promise);
     // Steps 17-18
-    try realm.react(start_promise, runtime.Instance, controller_instance, onStartFulfilled, onStartRejected);
+    try realm.react(start_promise, runtime.Instance, controller_instance, onStartFulfilled, onStartRejected, null);
 }
 
 fn onStartFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -1078,7 +1085,7 @@ fn processClose(realm: Realm, controller_instance: *runtime.Instance) void {
     // Step 6: Perform ! WritableStreamDefaultControllerClearAlgorithms(controller).
     clearAlgorithms(controller);
     // Steps 7-8
-    realm.react(sink_close_promise, runtime.Instance, stream_instance, onSinkCloseFulfilled, onSinkCloseRejected) catch {};
+    realm.react(sink_close_promise, runtime.Instance, stream_instance, onSinkCloseFulfilled, onSinkCloseRejected, null) catch {};
 }
 
 fn onSinkCloseFulfilled(stream_instance: *runtime.Instance, _: Value) void {
@@ -1107,7 +1114,7 @@ fn processWrite(realm: Realm, controller_instance: *runtime.Instance, chunk: Val
     } catch return;
     defer js.dispose(sink_write_promise);
     // Steps 4-5
-    realm.react(sink_write_promise, runtime.Instance, controller_instance, onSinkWriteFulfilled, onSinkWriteRejected) catch {};
+    realm.react(sink_write_promise, runtime.Instance, controller_instance, onSinkWriteFulfilled, onSinkWriteRejected, null) catch {};
 }
 
 fn onSinkWriteFulfilled(controller_instance: *runtime.Instance, _: Value) void {

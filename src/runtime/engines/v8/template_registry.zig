@@ -309,7 +309,12 @@ pub fn getTemplateForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) 
 /// - context: V8 context
 ///
 /// ## Returns
-/// A V8 Object wrapping the instance (cached if already wrapped, new if first time)
+/// A V8 Object wrapping the instance (cached if already wrapped, new if first time),
+/// BORROWED: the wrapper cache's own handle, which it holds weakly (unless
+/// something holds the wrapper strongly, see wrapper_cache.shouldBeStrong). Take
+/// a reference of your own - read it into a Local, or `v8_Global_Clone` it -
+/// before anything that can allocate on the V8 heap: a collection in between can
+/// take a wrapper nothing else reaches, and its first pass empties this handle.
 pub fn wrapInstanceAsV8Object(
     instance: *runtime.Instance,
     interface_name: []const u8,
@@ -376,39 +381,33 @@ pub fn wrapInstanceAsV8Object(
             const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
             const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
 
-            // Cache hit? Return existing wrapper (same V8 object)
-            if (cache.get(instance)) |cached_wrapper| {
-                // A worker's global scope is cached as its context's global
-                // PROXY (worker_v8_context binds it there, as a Window is
-                // bound to its global). The V1 SetPrototype below is V8's
-                // from_javascript=false path, which on a JSGlobalProxy works
-                // on the proxy's own map - not immutable-proto, so the call
-                // succeeds - and replaces the proxy's hidden prototype, which
-                // is the global object itself. Every `self.x` would then miss
-                // the global.
-                if (instance.stateAs(@import("interfaces").WorkerGlobalScope.State) != null) return cached_wrapper;
-                // IMPORTANT: Still update the prototype chain on cached wrappers
-                // This ensures instanceof works even for wrappers created before the fix
-                // Create null-terminated string for C function
-                var cached_name_buf: [256]u8 = undefined;
-                const cached_name_z = cached_blk: {
-                    if (interface_name.len >= cached_name_buf.len) break :cached_blk null;
-                    @memcpy(cached_name_buf[0..interface_name.len], interface_name);
-                    cached_name_buf[interface_name.len] = 0;
-                    break :cached_blk @as([*:0]const u8, @ptrCast(&cached_name_buf));
-                };
-                // Same allocation as the fresh-wrap path below, and this branch is
-                // the CACHE HIT - the one taken every time an already-wrapped node
-                // is handed back to JS, so it runs more often than the other.
-                const cached_global_proto = if (cached_name_z) |nz| v8.v8_GetGlobalPrototype(context, nz) else null;
-                defer if (cached_global_proto) |p| v8.v8_Object_Dispose(p);
-
-                if (cached_global_proto) |prototype| {
-                    _ = v8.v8_Object_SetPrototype(cached_wrapper, context, @ptrCast(prototype));
-                }
-
-                return cached_wrapper;
-            }
+            // Cache hit: the one wrapper this instance has in this realm,
+            // returned as it is.
+            //
+            // Nothing else may happen to it here. Its prototype was fixed when
+            // it was made - the interface's prototype on the fresh-wrap path
+            // below, NewTarget's for an object a constructor made (WebIDL
+            // "internally create a new object implementing the interface",
+            // GetPrototypeFromConstructor) - and resetting it to
+            // `globalThis[interface_name].prototype` on every hand-back turned
+            // an instance of `class MyEvent extends Event` into a plain Event
+            // the first time it reached a listener
+            // (crane/c5-subclass-wrapper-keeps-prototype.html).
+            //
+            // And the cache holds this wrapper WEAKLY: only script keeps it,
+            // and between two hand-backs script may not. Anything that
+            // allocates on the V8 heap before the caller takes its own
+            // reference can run a collection that takes the wrapper - its
+            // first-pass callback empties this very handle. The reset did:
+            // v8_GetGlobalPrototype makes a string (and may materialize the
+            // interface object) before SetPrototype read the handle, which
+            // was then empty - "member call on null pointer of type
+            // 'v8::Object'" in v8_Object_SetPrototype, for a MessageEvent
+            // handed to a listener after it had been wrapped once, in
+            // workers/semantics/structured-clone/dedicated.html: 7 runs in 48
+            // after the eleven worker files that precede it in a sweep shard,
+            // each one an emptied handle right after the lookup.
+            if (cache.get(instance)) |cached_wrapper| return cached_wrapper;
         }
     }
 

@@ -230,6 +230,14 @@ pub const Realm = struct {
     /// WebIDL "react to" `promise`. `ctx` must stay valid until one of the
     /// handlers runs. The settled value is borrowed by the handler, as a
     /// Value of the realm the reaction runs in - the one it was made in.
+    ///
+    /// Exactly one of `on_fulfilled`, `on_rejected` and `on_dropped` runs
+    /// (engine.PromiseReactionSteps): `on_dropped` when the reaction ends
+    /// without a handler - its realm ended first, or the collector took the
+    /// promise unsettled. A `ctx` the reaction owns is freed at the end of
+    /// each handler and by `on_dropped`; one it borrows (an instance the
+    /// wrapper cache owns) passes null. On an error none of them runs: `ctx`
+    /// stays the caller's.
     pub fn react(
         self: Realm,
         promise: Value,
@@ -237,9 +245,14 @@ pub const Realm = struct {
         ctx: *Ctx,
         comptime on_fulfilled: fn (*Ctx, Value) void,
         comptime on_rejected: fn (*Ctx, Value) void,
+        comptime on_dropped: ?fn (*Ctx) void,
     ) Error!void {
         const Steps = struct {
-            const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .rejected = rejected };
+            const steps: engine.PromiseReactionSteps = .{
+                .fulfilled = fulfilled,
+                .rejected = rejected,
+                .dropped = if (on_dropped != null) dropped else null,
+            };
 
             /// The reaction's function was made in the reacting realm, so
             /// that is the current realm while it runs.
@@ -248,13 +261,17 @@ pub const Realm = struct {
             }
 
             fn fulfilled(data: ?*anyopaque, value: runtime.JSValue) void {
-                const realm = realmOfReaction() orelse return;
+                const realm = realmOfReaction() orelse return dropped(data);
                 on_fulfilled(@ptrCast(@alignCast(data.?)), .{ .value = value, .realm = realm });
             }
 
             fn rejected(data: ?*anyopaque, reason: runtime.JSValue) void {
-                const realm = realmOfReaction() orelse return;
+                const realm = realmOfReaction() orelse return dropped(data);
                 on_rejected(@ptrCast(@alignCast(data.?)), .{ .value = reason, .realm = realm });
+            }
+
+            fn dropped(data: ?*anyopaque) void {
+                if (on_dropped) |drop| drop(@ptrCast(@alignCast(data.?)));
             }
         };
         engine.reactToPromise(self.ctx, promise.value, &Steps.steps, ctx) catch |err| return fromEngineError(err);
