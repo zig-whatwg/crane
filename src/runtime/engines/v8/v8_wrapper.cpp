@@ -5026,85 +5026,6 @@ char* v8_Module_GetModuleRequestType(Global<Module>* module, int index, int* sta
 // Event handler content attributes
 // ============================================================================
 
-/// Compile an event handler content attribute's value into its function.
-///
-/// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#getting-the-current-value-of-the-event-handler
-/// step 3.9: a function named `name` whose body is `body`, with the single
-/// parameter `event` - or, for a Window's onerror, the five parameters
-/// (event, source, lineno, colno, error) - and whose scope is the global
-/// environment wrapped by the object environments of `scopes`, OUTERMOST FIRST:
-/// [document, form owner, element] for an element's handler, none for a
-/// Window's. v8::ScriptCompiler::CompileFunction pushes context extensions in
-/// order, so the last one is innermost - the order Blink's
-/// JSEventHandlerForContentAttribute passes them in.
-///
-/// Returns the function (Global<Value>*, caller owns), or nullptr with
-/// `*out_error` set (free with v8_FreeErrorInfo; its `exception` is the
-/// SyntaxError) when the body does not parse.
-Global<Value>* v8_CompileEventHandler(
-    Global<Context>* context,
-    const char* name,
-    int name_len,
-    const char* body,
-    int body_len,
-    bool window_onerror,
-    Global<Object>** scopes,
-    int scope_count,
-    V8ErrorInfo** out_error
-) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    *out_error = nullptr;
-
-    Local<Context> ctx = context->Get(isolate);
-    Context::Scope context_scope(ctx);
-    TryCatch try_catch(isolate);
-
-    Local<String> source_text;
-    Local<String> function_name;
-    if (!String::NewFromUtf8(isolate, body, NewStringType::kNormal, body_len).ToLocal(&source_text) ||
-        !String::NewFromUtf8(isolate, name, NewStringType::kNormal, name_len).ToLocal(&function_name)) {
-        return nullptr;
-    }
-
-    Local<String> params[5];
-    int param_count = 1;
-    params[0] = String::NewFromUtf8Literal(isolate, "event");
-    if (window_onerror) {
-        params[1] = String::NewFromUtf8Literal(isolate, "source");
-        params[2] = String::NewFromUtf8Literal(isolate, "lineno");
-        params[3] = String::NewFromUtf8Literal(isolate, "colno");
-        params[4] = String::NewFromUtf8Literal(isolate, "error");
-        param_count = 5;
-    }
-
-    std::vector<Local<Object>> extensions;
-    for (int i = 0; i < scope_count; i++) {
-        if (scopes[i]) extensions.push_back(scopes[i]->Get(isolate));
-    }
-
-    ScriptCompiler::Source source(source_text);
-    Local<Function> function;
-    if (!ScriptCompiler::CompileFunction(
-            ctx, &source, param_count, params,
-            extensions.size(), extensions.empty() ? nullptr : extensions.data())
-             .ToLocal(&function)) {
-        if (try_catch.HasCaught()) {
-            *out_error = extractException(isolate, &try_catch);
-        } else {
-            *out_error = new V8ErrorInfo();
-            (*out_error)->has_error = true;
-            (*out_error)->message = strdup("Event handler could not be compiled");
-            (*out_error)->line_number = -1;
-            (*out_error)->column_number = -1;
-        }
-        return nullptr;
-    }
-
-    function->SetName(function_name);
-    return trackHandle(new Global<Value>(isolate, function.As<Value>()));
-}
-
 // ============================================================================
 // JSON module scripts (synthetic modules)
 // ============================================================================
@@ -5234,6 +5155,11 @@ Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
     if (!context || !value) return nullptr;
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
+    // `value` may be the wrapper cache's weak handle (a CSSStyleSheet's
+    // wrapper): read it before anything below allocates, which can collect
+    // the wrapper and reset the handle.
+    if (value->IsEmpty()) return nullptr;
+    Local<Value> default_export = value->Get(isolate);
     Local<Context> ctx = context->Get(isolate);
     Context::Scope context_scope(ctx);
 
@@ -5252,7 +5178,7 @@ Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
     if (!g_synthetic_json_exports) g_synthetic_json_exports = new std::vector<SyntheticJsonExport*>();
     SyntheticJsonExport* entry = new SyntheticJsonExport();
     entry->module.Reset(isolate, module);
-    entry->value.Reset(isolate, value->Get(isolate));
+    entry->value.Reset(isolate, default_export);
     g_synthetic_json_exports->push_back(entry);
 
     return trackHandle(new Global<Module>(isolate, module));
@@ -7249,6 +7175,13 @@ bool v8_Object_SetAccessorProperty(
 // Create a property descriptor object for Object.getOwnPropertyDescriptor callbacks
 // Returns an object like: { value: <value>, writable: <bool>, enumerable: <bool>, configurable: <bool> }
 // Takes a Global<Value>* for the value parameter - caller must ensure value is a valid global handle
+//
+// `value` may be the wrapper cache's own handle, held WEAKLY (a platform
+// object's wrapper, made a moment ago and reachable from nothing yet): it is
+// read into a Local BEFORE anything allocates, since an allocation can start
+// a collection that takes the wrapper and resets that very handle
+// (docs/lessons/architecture-a-weakly-held-wrapper-dies-at-the-next-allocation.md).
+// Returns nullptr when it is empty.
 Global<Object>* v8_CreateDataPropertyDescriptor(
     Global<Context>* context,
     Global<Value>* value,
@@ -7258,13 +7191,13 @@ Global<Object>* v8_CreateDataPropertyDescriptor(
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
+    if (!value || value->IsEmpty()) return nullptr;
+    Local<Value> val = value->Get(isolate);
     Local<Context> ctx = context->Get(isolate);
     Context::Scope context_scope(ctx);
     
     Local<Object> desc = Object::New(isolate);
     
-    // Get the local value from the global handle
-    Local<Value> val = value->Get(isolate);
     desc->Set(ctx, v8::String::NewFromUtf8(isolate, "value").ToLocalChecked(), val).Check();
     
     // Set writable
@@ -11777,8 +11710,13 @@ bool v8_Isolate_HasJavaScriptOnStack(Isolate* isolate) {
 /// `parameter_names` (event; evt for SVG; the five of a Window's onerror), its
 /// body `body`, and its scope the global environment wrapped by the object
 /// environments of `scopes`, OUTERMOST FIRST (document, form owner, element).
-/// v8_CompileEventHandler with the parameter list given rather than chosen.
+/// v8::ScriptCompiler::CompileFunction pushes context extensions in order, so
+/// the last one is innermost - the order Blink's
+/// JSEventHandlerForContentAttribute passes them in.
 ///
+/// `scopes` may be the wrapper cache's own handles, held WEAKLY: each is read
+/// into a Local before anything here allocates, and an empty one fails the
+/// compile (as a body that does not compile does, with no error to report).
 /// Returns the function (Global<Value>*, caller owns), or nullptr with
 /// `*out_error` set (v8_FreeErrorInfo; its `exception` is the SyntaxError)
 /// when the body does not parse.
@@ -11798,6 +11736,16 @@ Global<Value>* v8_CompileEventHandlerWithParameters(
     HandleScope handle_scope(isolate);
     *out_error = nullptr;
 
+    // The scopes first, before anything allocates (see above).
+    Local<Object> extensions_storage[8];
+    if (scope_count < 0 || scope_count > 8) return nullptr;
+    size_t extension_count = 0;
+    for (int i = 0; i < scope_count; i++) {
+        if (!scopes[i]) continue;
+        if (scopes[i]->IsEmpty()) return nullptr;
+        extensions_storage[extension_count++] = scopes[i]->Get(isolate);
+    }
+
     Local<Context> ctx = context->Get(isolate);
     Context::Scope context_scope(ctx);
     TryCatch try_catch(isolate);
@@ -11816,10 +11764,7 @@ Global<Value>* v8_CompileEventHandlerWithParameters(
         params.push_back(param);
     }
 
-    std::vector<Local<Object>> extensions;
-    for (int i = 0; i < scope_count; i++) {
-        if (scopes[i]) extensions.push_back(scopes[i]->Get(isolate));
-    }
+    std::vector<Local<Object>> extensions(extensions_storage, extensions_storage + extension_count);
 
     ScriptCompiler::Source source(source_text);
     Local<Function> function;
@@ -12673,12 +12618,15 @@ void v8_Object_DeletePrivateRef(Global<Object>* holder, const char* key, int key
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return;
     HandleScope handle_scope(isolate);
+    // Read the holder before the name allocates: a weak one can be collected
+    // and reset by then.
+    Local<Object> object = holder->Get(isolate);
     Local<Context> context = isolate->GetCurrentContext();
     if (context.IsEmpty()) return;
     Local<String> name;
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
     Local<Private> priv = Private::ForApi(isolate, name);
-    (void)holder->Get(isolate)->DeletePrivate(context, priv);
+    (void)object->DeletePrivate(context, priv);
 }
 
 /// The value `v8_Object_SetPrivateRef` keeps on `holder` under `key`, as a
@@ -12691,12 +12639,13 @@ Global<Value>* v8_Object_GetPrivateRef(Global<Object>* holder, const char* key, 
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate) return nullptr;
     HandleScope handle_scope(isolate);
+    // Read the holder before the name allocates (see DeletePrivateRef).
+    Local<Object> object = holder->Get(isolate);
     Local<Context> context = isolate->GetCurrentContext();
     if (context.IsEmpty()) return nullptr;
     Local<String> name;
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return nullptr;
     Local<Private> priv = Private::ForApi(isolate, name);
-    Local<Object> object = holder->Get(isolate);
     if (!object->HasPrivate(context, priv).FromMaybe(false)) return nullptr;
     Local<Value> value;
     if (!object->GetPrivate(context, priv).ToLocal(&value)) return nullptr;
