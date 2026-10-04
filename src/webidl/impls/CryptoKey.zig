@@ -189,7 +189,12 @@ pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.Seriali
 /// build does not know is a DataCloneError: the key is never made as
 /// something else.
 pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
-    _ = target_realm;
+    // HTML StructuredDeserialize step 22.2: "If the interface identified by
+    // interfaceName is not exposed in targetRealm, then throw a
+    // DataCloneError." CryptoKey is [SecureContext], so it is not exposed in
+    // a realm whose settings object is not a secure context - which only its
+    // global's settings can say (dom.global_settings), so the check is here.
+    if (!isSecureContext(target_realm)) return error.DataCloneError;
     // Steps 1-2.
     const kind = try readName(serialized, keys.Kind);
     const extractable = try serialized.readBool();
@@ -211,6 +216,16 @@ pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *
     const material = try serialized.readBytes();
     const internal = value.getState(State).own._internal orelse return error.DataCloneError;
     internal.slots = try keys.Slots.init(internal.allocator, kind, extractable, algorithm, usages, material);
+}
+
+/// Whether `realm`'s settings object is a secure context, as its global
+/// answers (a realm with no global, or one no kind of global owns, is not
+/// one).
+fn isSecureContext(realm: runtime.Context) bool {
+    const record = realm.getRealm() orelse return false;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
+    const settings = @import("dom").global_settings.of(global) orelse return false;
+    return settings.is_secure_context(global);
 }
 
 fn writeOptionalName(serialized: *runtime.SerializationRecord, name: ?[]const u8) !void {
