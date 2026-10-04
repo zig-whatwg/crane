@@ -1959,9 +1959,14 @@ pub fn set_onfullscreenerror(instance: *runtime.Instance, value: typedefs.EventH
 /// 1. Let context element be this (the element)
 /// 2. Parse the string using the HTML fragment parsing algorithm with context
 /// 3. Replace all children of context with the parsed nodes
-pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const html_string = value.asSlice();
+    // Step 1: "Let compliantString be the result of invoking the get trusted
+    // type compliant string algorithm with TrustedHTML, this's relevant
+    // global object, the given value, "Element innerHTML", and "script"."
+    const compliant = try dom.trusted_types.compliantStringFor(internal.allocator, .html, instance, value, "Element innerHTML");
+    defer internal.allocator.free(compliant);
+    const html_string: []const u8 = compliant;
 
     // Import HTMLParser for fragment parsing
     const HTMLParser = @import("HTMLParser.zig");
@@ -2010,9 +2015,15 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anye
 /// 3. If parent is a Document, throw a NoModificationAllowedError
 /// 4. Parse the string using the HTML fragment parsing algorithm with parent as context
 /// 5. Replace this element with the parsed nodes
-pub fn set_outerHTML(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const html_string = value.asSlice();
+    // HTML outerHTML setter step 1: "Let compliantString be the result of
+    // invoking the get trusted type compliant string algorithm with
+    // TrustedHTML, this's relevant global object, the given value, "Element
+    // outerHTML", and "script"."
+    const compliant = try dom.trusted_types.compliantStringFor(internal.allocator, .html, instance, value, "Element outerHTML");
+    defer internal.allocator.free(compliant);
+    const html_string: []const u8 = compliant;
 
     // Step 1-2: Get parent, return if null
     const parent = NodeImpl.getParent(instance) orelse return;
@@ -2378,7 +2389,7 @@ fn adoptAttrNode(instance: *runtime.Instance, internal: *InternalState, index: u
 /// Operation: setAttributeNS
 /// DOM §4.8 - Sets the attribute with the given namespace and qualified name
 /// Spec: https://dom.spec.whatwg.org/#dom-element-setattributens
-pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
+pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, value: typedefs.TrustedTypeOrDOMString) anyerror!void {
     // Step 1: "Let (namespace, prefix, localName) be the result of validating
     // and extracting namespace and qualifiedName given "attribute"."
     const extracted = try dom.names.validateAndExtract(
@@ -2389,12 +2400,13 @@ pub fn call_setAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMS
 
     // Step 2: "Let verifiedValue be the result of calling get trusted type
     // compliant attribute value with localName, namespace, this, and value."
-    // Deviation: Trusted Types enforcement is not wired into attribute
-    // setting; the value is used as given.
+    const allocator = instance.ctx.allocator;
+    const verified = try dom.trusted_types.getCompliantAttributeValue(allocator, extracted.local_name, extracted.namespace, instance, dom.trusted_types.inputFrom(value));
+    defer allocator.free(verified);
 
     // Step 3: "Set an attribute value for this using localName,
     // verifiedValue, prefix, and namespace."
-    try setAttributeValue(instance, extracted.local_name, value.asSlice(), extracted.prefix, extracted.namespace);
+    try setAttributeValue(instance, extracted.local_name, verified, extracted.prefix, extracted.namespace);
 }
 
 /// Operation: setAttributeNode
@@ -2875,10 +2887,15 @@ pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: we
 /// Spec: https://wicg.github.io/sanitizer-api/#dom-element-sethtmlunsafe
 ///
 /// Note: Requires HTML fragment parsing algorithm (not implemented)
-pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = html;
-    // TODO: Requires HTML fragment parsing algorithm
+pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString) anyerror!void {
+    // Step 1: "Let compliantHTML be the result of invoking the get trusted
+    // type compliant string algorithm with TrustedHTML, this's relevant
+    // global object, html, "Element setHTMLUnsafe", and "script"."
+    const allocator = instance.ctx.allocator;
+    const compliant = try dom.trusted_types.compliantStringFor(allocator, .html, instance, html, "Element setHTMLUnsafe");
+    defer allocator.free(compliant);
+    // TODO: steps 2-4 require the fragment parsing algorithm with
+    // declarative shadow roots allowed.
     return error.NotImplemented;
 }
 
@@ -2978,7 +2995,7 @@ pub fn call_pseudo(instance: *runtime.Instance, @"type": typedefs.CSSOMString) a
 
 /// Operation: setAttribute
 /// Spec: https://dom.spec.whatwg.org/#dom-element-setattribute
-pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: runtime.DOMString) anyerror!void {
+pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, value: typedefs.TrustedTypeOrDOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Step 1: "If qualifiedName is not a valid attribute local name, then
@@ -2994,20 +3011,22 @@ pub fn call_setAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOM
 
     // Step 3: "Let verifiedValue be the result of calling get trusted type
     // compliant attribute value with qualifiedName, null, this, and value."
-    // Deviation: see setAttributeNS.
+    // A default policy runs script: step 4 looks the attribute up after it.
+    const verified = try dom.trusted_types.getCompliantAttributeValue(internal.allocator, name.slice, null, instance, dom.trusted_types.inputFrom(value));
+    defer internal.allocator.free(verified);
 
     // Step 4: "Let attribute be the first attribute in this's attribute list
     // whose qualified name is qualifiedName, and null otherwise."
     // Step 5: "If attribute is non-null, then change attribute to
     // verifiedValue and return."
     if (internal.indexOfQualifiedName(name.slice)) |index| {
-        return changeAttribute(instance, internal, index, value.asSlice());
+        return changeAttribute(instance, internal, index, verified);
     }
 
     // Steps 6 and 7: "Set attribute to a new attribute whose local name is
     // qualifiedName, value is verifiedValue, and node document is this's node
     // document. Append attribute to this."
-    try appendAttribute(instance, internal, null, null, name.slice, value.asSlice());
+    try appendAttribute(instance, internal, null, null, name.slice, verified);
 }
 
 // =============================================================================
@@ -3141,11 +3160,15 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
 /// - "afterend": After the element itself
 ///
 /// Note: Requires HTML fragment parsing algorithm (not implemented)
-pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DOMString, string: runtime.DOMString) anyerror!void {
-    _ = instance;
+pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DOMString, string: typedefs.TrustedHTMLOrDOMString) anyerror!void {
     _ = position;
-    _ = string;
-    // TODO: Requires HTML fragment parsing algorithm
+    // Step 1: "Let compliantString be the result of invoking the get trusted
+    // type compliant string algorithm with TrustedHTML, this's relevant
+    // global object, string, "Element insertAdjacentHTML", and "script"."
+    const allocator = instance.ctx.allocator;
+    const compliant = try dom.trusted_types.compliantStringFor(allocator, .html, instance, string, "Element insertAdjacentHTML");
+    defer allocator.free(compliant);
+    // TODO: steps 2-6 require the fragment parsing algorithm.
     return error.NotImplemented;
 }
 

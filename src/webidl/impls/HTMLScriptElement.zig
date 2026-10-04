@@ -354,10 +354,17 @@ pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
     try setContentAttribute(instance, "type", value);
 }
 
-/// Setter for src
-/// Spec: [CEReactions, ReflectURL] attribute USVString src;
-pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    try setContentAttribute(instance, "src", runtime.DOMString.initInterned(value));
+/// Setter for src - Trusted Types 4.1.2.5:
+/// [CEReactions] attribute (TrustedScriptURL or USVString) src;
+pub fn set_src(instance: *runtime.Instance, value: typedefs.TrustedScriptURLOrUSVString) anyerror!void {
+    const allocator = instance.ctx.allocator;
+    // 1. "Let value be the result of calling get trusted type compliant
+    // string with TrustedScriptURL, this's relevant global object, the given
+    // value, HTMLScriptElement src, and script."
+    const compliant = try dom_module.trusted_types.compliantStringFor(allocator, .script_url, instance, value, "HTMLScriptElement src");
+    defer allocator.free(compliant);
+    // 2. "Set this's src content attribute to value."
+    try setContentAttribute(instance, "src", runtime.DOMString.initInterned(compliant));
 }
 
 /// Setter for noModule
@@ -413,12 +420,20 @@ pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) 
     try setContentAttribute(instance, "fetchpriority", value);
 }
 
-/// Setter for text
-/// Spec: [CEReactions] attribute DOMString text;
+/// Setter for text - Trusted Types 4.1.2.4:
+/// [CEReactions] attribute (TrustedScript or DOMString) text;
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#dom-script-text
-pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // Per spec: "On setting, it must string replace all with the given value
-    // within this element."
+pub fn set_text(instance: *runtime.Instance, value: typedefs.TrustedScriptOrDOMString) anyerror!void {
+    const allocator = instance.ctx.allocator;
+    // 1. "Let value be the result of calling get trusted type compliant
+    // string with TrustedScript, this's relevant global object, the given
+    // value, HTMLScriptElement text, and script."
+    const compliant = try dom_module.trusted_types.compliantStringFor(allocator, .script, instance, value, "HTMLScriptElement text");
+    defer allocator.free(compliant);
+    // 2. "Set this's script text value to the given value" - before the
+    // children change, whose steps may prepare the script.
+    try setScriptText(instance, compliant);
+    // 3. "String replace all with the given value within this."
     //
     // Caching alone is not enough. "Prepare the script element" step 5 takes
     // its source from the element's CHILD TEXT CONTENT, and step 6 returns
@@ -426,11 +441,61 @@ pub fn set_text(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
     // followed by an insert produced a script the preparation algorithm
     // considered blank and refused to run. "String replace all" is what puts a
     // Text child there, and `Node.set_textContent` is that algorithm.
-    try interfaces.Node.set_textContent(instance, value);
+    try interfaces.Node.set_textContent(instance, runtime.DOMString.initInterned(compliant));
 
     // Still cached, because `get_text` reads the cache and `runClassicScript`
     // takes its source from it rather than re-walking the children.
-    if (getInternal(instance)) |internal| try internal.cacheSourceText(value.asSlice());
+    if (getInternal(instance)) |internal| try internal.cacheSourceText(compliant);
+}
+
+/// Trusted Types 4.1.2.1: set the script text slot to a copy of `text`.
+fn setScriptText(instance: *runtime.Instance, text: []const u8) !void {
+    const internal = getInternal(instance) orelse return;
+    try internal.script_text.set(instance.ctx.allocator, text);
+}
+
+/// Getter for innerText - Trusted Types 4.1.2.2: "Return the result of
+/// running get the text steps with this" - HTMLElement's.
+pub fn get_innerText(instance: *runtime.Instance) anyerror!runtime.DOMString {
+    return interfaces.HTMLElement.get_innerText(instance);
+}
+
+/// Setter for innerText - Trusted Types 4.1.2.2:
+/// [CEReactions] attribute (TrustedScript or [LegacyNullToEmptyString] DOMString) innerText;
+pub fn set_innerText(instance: *runtime.Instance, value: typedefs.TrustedScriptOrDOMString) anyerror!void {
+    const allocator = instance.ctx.allocator;
+    // 1. Get trusted type compliant string with TrustedScript, this's
+    // relevant global object, the given value, "HTMLScriptElement
+    // innerText", and "script".
+    const compliant = try dom_module.trusted_types.compliantStringFor(allocator, .script, instance, value, "HTMLScriptElement innerText");
+    defer allocator.free(compliant);
+    // 2. "Set this's script text value to value."
+    try setScriptText(instance, compliant);
+    // 3. "Run set the inner text steps with this and value" - HTMLElement's.
+    try interfaces.HTMLElement.set_innerText(instance, runtime.DOMString.initInterned(compliant));
+}
+
+/// Getter for textContent - Trusted Types 4.1.2.3: "Return the result of
+/// running get text content with this" - Node's.
+pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString {
+    return interfaces.Node.get_textContent(instance);
+}
+
+/// Setter for textContent - Trusted Types 4.1.2.3:
+/// [CEReactions] attribute (TrustedScript or DOMString)? textContent;
+pub fn set_textContent(instance: *runtime.Instance, value: ?typedefs.TrustedScriptOrDOMString) anyerror!void {
+    const allocator = instance.ctx.allocator;
+    // "If the given value is null, act as if it was the empty string."
+    const given: typedefs.TrustedScriptOrDOMString = value orelse .{ .domstring = runtime.DOMString.initEmpty() };
+    // 1. Get trusted type compliant string with TrustedScript, this's
+    // relevant global object, the given value, "HTMLScriptElement
+    // textContent", and "script".
+    const compliant = try dom_module.trusted_types.compliantStringFor(allocator, .script, instance, given, "HTMLScriptElement textContent");
+    defer allocator.free(compliant);
+    // 2. "Set this's script text value to value."
+    try setScriptText(instance, compliant);
+    // 3. "Run set text content with this and value" - Node's.
+    try interfaces.Node.set_textContent(instance, runtime.DOMString.initInterned(compliant));
 }
 
 /// Setter for charset (obsolete)

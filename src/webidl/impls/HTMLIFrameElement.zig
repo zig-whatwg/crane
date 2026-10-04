@@ -3522,9 +3522,23 @@ pub fn get_srcdoc(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Setter for srcdoc
 /// HTML "reflect": set the srcdoc content attribute - whose change steps
 /// (`iframeAttributeChangeSteps`) process the iframe attributes.
-pub fn set_srcdoc(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const ElementImpl = @import("Element.zig");
-    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("srcdoc"), value);
+pub fn set_srcdoc(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
+    const allocator = instance.ctx.allocator;
+    // 1. "Let compliantString be the result of invoking the get trusted type
+    // compliant string algorithm with TrustedHTML, this's relevant global
+    // object, the given value, "HTMLIFrameElement srcdoc", and "script"."
+    const compliant = try dom_module.trusted_types.compliantStringFor(allocator, .html, instance, value, "HTMLIFrameElement srcdoc");
+    defer allocator.free(compliant);
+    // 2. "Set an attribute value given this, srcdoc's local name, and
+    // compliantString" - DOM's, which runs no Trusted Types check again.
+    const attributes = dom_module.element_attributes;
+    var index: usize = 0;
+    while (attributes.at(instance, index)) |attribute| : (index += 1) {
+        if (attribute.namespace == null and std.mem.eql(u8, attribute.local_name, "srcdoc")) {
+            return attributes.change(instance, null, "srcdoc", compliant);
+        }
+    }
+    try attributes.append(instance, .{ .namespace = null, .prefix = null, .local_name = "srcdoc", .value = compliant });
 }
 
 /// dom.attribute_change_steps for iframe elements (HTML §4.8.5):

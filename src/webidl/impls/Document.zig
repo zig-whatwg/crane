@@ -2348,9 +2348,15 @@ pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DO
 }
 
 /// Operation: parseHTMLUnsafe
-pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = html;
+pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString) anyerror!*runtime.Instance {
+    // Step 1: "Let compliantHTML be the result of invoking the get trusted
+    // type compliant string algorithm with TrustedHTML, the current global
+    // object, html, "Document parseHTMLUnsafe", and "script"."
+    const allocator = instance.ctx.allocator;
+    const compliant = try @import("dom").trusted_types.compliantStringForRealm(allocator, .html, engine.currentRealm() orelse instance.ctx, html, "Document parseHTMLUnsafe");
+    defer allocator.free(compliant);
+    // TODO: steps 2-5 - a new HTML document, parsed from compliantHTML with
+    // declarative shadow roots allowed.
     return error.NotImplemented;
 }
 
@@ -2833,23 +2839,42 @@ pub fn call_measureElement(instance: *runtime.Instance, element: *runtime.Instan
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-write
 /// "The document.write(...text) method steps are to run the document write
 /// steps with this, text, false, and "Document write"."
-pub fn call_write(instance: *runtime.Instance, text: []const runtime.DOMString) anyerror!void {
-    return documentWriteSteps(instance, text, false);
+pub fn call_write(instance: *runtime.Instance, text: []const typedefs.TrustedHTMLOrDOMString) anyerror!void {
+    return documentWriteSteps(instance, text, false, "Document write");
 }
 
-/// The document write steps, given `instance`, `text` and `line_feed`.
+/// The document write steps, given `instance`, `text`, `line_feed` and
+/// `sink`.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#document-write-steps
-///
-/// Deviation, stated: steps 2 and 4 (Trusted Types) are not run - `text`
-/// arrives as strings.
-fn documentWriteSteps(instance: *runtime.Instance, text: []const runtime.DOMString, line_feed: bool) anyerror!void {
+fn documentWriteSteps(instance: *runtime.Instance, text: []const typedefs.TrustedHTMLOrDOMString, line_feed: bool, sink: []const u8) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const trusted_types = @import("dom").trusted_types;
 
-    // Steps 1, 3 and 5: string is the concatenation of text, then a line feed.
+    // Step 1: "Let string be the empty string."
     var string: std.ArrayList(u8) = .empty;
     defer string.deinit(internal.allocator);
-    for (text) |t| try string.appendSlice(internal.allocator, t.asSlice());
+    // Step 2: "Let isTrusted be false if text contains a string; otherwise
+    // true."
+    var is_trusted = true;
+    // Step 3: "For each value of text: if value is a TrustedHTML object,
+    // then append value's associated data to string; otherwise, append
+    // value to string."
+    for (text) |value| {
+        const input = trusted_types.inputFrom(value);
+        if (input == .string) is_trusted = false;
+        try string.appendSlice(internal.allocator, input.stringified());
+    }
+    // Step 4: "If isTrusted is false, set string to the result of invoking
+    // the get trusted type compliant string algorithm with TrustedHTML,
+    // this's relevant global object, string, sink, and "script"."
+    if (!is_trusted) {
+        const compliant = try trusted_types.compliantStringFor(internal.allocator, .html, instance, typedefs.TrustedHTMLOrDOMString{ .domstring = runtime.DOMString.initInterned(string.items) }, sink);
+        defer internal.allocator.free(compliant);
+        string.clearRetainingCapacity();
+        try string.appendSlice(internal.allocator, compliant);
+    }
+    // Step 5: "If lineFeed is true, append U+000A LINE FEED to string."
     if (line_feed) try string.append(internal.allocator, '\n');
 
     // Step 6: "If document is an XML document, then throw an
@@ -3694,8 +3719,8 @@ fn collectElementsByName(
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-document-writeln
 /// "The document.writeln(...text) method steps are to run the document write
 /// steps with this, text, true, and "Document writeln"."
-pub fn call_writeln(instance: *runtime.Instance, text: []const runtime.DOMString) anyerror!void {
-    return documentWriteSteps(instance, text, true);
+pub fn call_writeln(instance: *runtime.Instance, text: []const typedefs.TrustedHTMLOrDOMString) anyerror!void {
+    return documentWriteSteps(instance, text, true, "Document writeln");
 }
 
 /// Operation: convertRectFromNode

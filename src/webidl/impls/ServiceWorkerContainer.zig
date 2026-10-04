@@ -111,9 +111,15 @@ pub fn call_getRegistration(instance: *runtime.Instance, clientURL: webidl.Opt(r
 }
 
 /// Operation: register
-pub fn call_register(instance: *runtime.Instance, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.RegistrationOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = scriptURL;
+pub fn call_register(instance: *runtime.Instance, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(dictionaries.RegistrationOptions)) anyerror!runtime.JSValue {
     _ = options;
+    // Service Workers register() step 2: "Let compliantScriptURL be the result
+    // of invoking the get trusted type compliant string algorithm with
+    // TrustedScriptURL, this's relevant global object, scriptURL,
+    // "ServiceWorkerContainer register", and "script"."
+    const allocator = instance.ctx.allocator;
+    const compliant = try @import("dom").trusted_types.compliantStringFor(allocator, .script_url, instance, scriptURL, "ServiceWorkerContainer register");
+    defer allocator.free(compliant);
+    // TODO: the rest of register() - service workers are not implemented.
     return error.NotImplemented;
 }

@@ -320,6 +320,15 @@ pub fn getCompliantString(
     return error.TypeError;
 }
 
+/// A sink's step with `realm`'s global object as the global: a
+/// constructor's ("this's relevant global object" of the object being
+/// made) or a static operation's ("the current global object").
+pub fn compliantStringForRealm(allocator: std.mem.Allocator, expected: Kind, realm: runtime.Context, value: anytype, sink: []const u8) anyerror![]u8 {
+    const input = inputFrom(value);
+    const global = globalOf(realm) orelse return allocator.dupe(u8, input.stringified());
+    return getCompliantString(allocator, expected, global, input, sink, script_sink_group);
+}
+
 /// A sink's step: "Let compliantString be the result of invoking the get
 /// trusted type compliant string algorithm with `expected`, this's relevant
 /// global object, the given value, `sink`, and "script"." `value` is the
