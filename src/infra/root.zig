@@ -63,3 +63,5 @@ pub const IPv6Address = u128;
 test {
     std.testing.refAllDecls(@This());
 }
+
+pub const unicode_identifiers = @import("unicode_identifiers.zig");

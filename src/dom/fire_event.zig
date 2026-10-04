@@ -16,6 +16,7 @@ const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 
 pub const Implementation = struct {
+    dispatch_trusted_with_throws: *const fn (*runtime.Instance, *runtime.Instance, *bool) anyerror!bool,
     dispatch_trusted: *const fn (target: *runtime.Instance, event: *runtime.Instance) anyerror!bool,
 };
 
@@ -33,4 +34,11 @@ pub fn install(impl: Implementation) void {
 pub fn dispatchTrusted(target: *runtime.Instance, event: *runtime.Instance) !bool {
     const impl = implementation orelse return error.NotSupported;
     return impl.dispatch_trusted(target, event);
+}
+
+/// DOM dispatch with legacyOutputDidListenersThrowFlag, used by IndexedDB.
+/// The boolean return still reports cancellation; did_throw reports throws.
+pub fn dispatchTrustedWithThrows(target: *runtime.Instance, event: *runtime.Instance, did_throw: *bool) !bool {
+    const impl = implementation orelse return error.NotSupported;
+    return impl.dispatch_trusted_with_throws(target, event, did_throw);
 }

@@ -172,6 +172,20 @@ A lane brief now carries the lessons chosen for its batch.
 - [A wrapper the cache holds weakly can die at your next allocation](architecture-a-weakly-held-wrapper-dies-at-the-next-allocation.md) - A Global* from the wrapper cache is a weak reference you are borrowing: read it into a Local or clone it before the next thing that can allocate; to trace an empty-handle crash, log IsEmpty on the handle before and after each call in between.
 - [A callback the engine may never make needs a dropped end](architecture-a-callback-the-engine-may-never-make-needs-a-dropped-end.md) - Every callback that carries host data needs an end for each way the engine can fail to call it - settled without a step, collected, realm ended, agent ended - and exactly one must run; disarm what script can still reach before freeing.
 - [Fix the event loop that runs, not the spec model beside it](architecture-fix-the-event-loop-that-runs-not-the-spec-model-beside-it.md) - Before wiring a step into "the event loop", follow the runner's pump to the task type it actually runs; src/html/event_loop/ is a model nothing drives, and a fix there compiles, passes its own tests, and changes nothing.
+- [IndexedDB native storage outlives transaction handles](architecture-indexeddb-native-storage-outlives-transaction-handles.md) - Persist data independently of handles and retain native borrows across wrapper destruction order.
+- [Deleted IDB handles outlive their schema entry](architecture-deleted-idb-handles-outlive-their-schema-entry.md) - Retain deleted handles while rejecting operations that require a live schema entry.
+- [IDB cursor positions are keys, not array offsets](architecture-idb-cursor-positions-are-keys-not-array-offsets.md) - Own cursor snapshots and seek by saved keys across record mutations.
+- [Owned key results cannot borrow conversion stack](architecture-owned-key-results-cannot-borrow-conversion-stack.md) - Copy every nested key whose result outlives its conversion.
+- [A retired context contract must cover allocation failure](architecture-a-retired-context-contract-must-cover-allocation-failure.md) - Prove the liveness record survives every retirement path before checking it.
+- [A spec operation must accept the binding's value forms](architecture-a-spec-operation-must-accept-the-bindings-value-forms.md) - Test the protocol with real binding representations and the specification's expected results.
+- [A traced wrapper does not retain its native Instance](architecture-a-traced-wrapper-does-not-retain-its-native-instance.md) - Prove native retention independently of JavaScript reachability.
+- [Bootstrap stubs can shadow native global accessors](architecture-bootstrap-stubs-can-shadow-native-global-accessors.md) - Verify the native object and behavior reached after startup.
+- [A result realm does not own the operation's task](architecture-a-result-realm-does-not-own-the-operations-task.md) - Keep task ownership separate from the realm that supplies result prototypes.
+- [Representation unions need semantic conversion first](architecture-representation-unions-need-semantic-conversion-first.md) - Convert a value's public meaning before its storage variant.
+- [A handle is not a JavaScript type](architecture-a-handle-is-not-a-javascript-type.md) - Use the engine's Type operation for values returned as opaque handles, including missing properties.
+- [Only confirmed cancellation returns payload ownership](architecture-only-confirmed-cancellation-returns-payload-ownership.md) - Free queued callback data only after the queue confirms removal; otherwise the callback still owns it.
+- [An opening task retains its upgrade transaction](architecture-an-opening-task-retains-its-upgrade-transaction.md) - Script-visible association lifetime and algorithm lifetime differ; root through the last native use.
+- [IndexedDB schema handles keep definition identity](architecture-indexeddb-schema-handles-keep-definition-identity.md) - Restore original handles on abort while preserving independent names on finished handles.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -215,6 +229,11 @@ A lane brief now carries the lessons chosen for its batch.
 - [A buffer source argument is a reference to its object, not its bytes](spec-compliance-a-buffer-source-argument-is-a-reference-not-its-bytes.md) - Convert an argument to what the spec says its IDL value IS (a reference) and let the algorithm copy at its own step.
 - [An idle period is the user agent's judgement, and the deadline is asked again](spec-compliance-an-idle-period-is-the-user-agent-s-judgement.md) - Where the spec hands a decision to the user agent, read what browsers decide (and wpt.fyi) before picking the rule, and test it against the pages that never stop (a busy timer chain, an open WebSocket).
 - [A global task follows its Window, and engine code asks the navigable](spec-compliance-a-global-task-follows-its-window.md) - Engine code reads the navigable's record, never script's getter; a global task is keyed on the window, not the document of the moment it was queued.
+- [A predicate precondition is not a type test](spec-compliance-a-predicate-precondition-is-not-a-type-test.md) - Establish an abstract operation's input precondition before interpreting its answer.
+- [A lazy getter can have its own result realm](spec-compliance-a-lazy-getter-can-have-its-own-result-realm.md) - A borrowed iteration method does not borrow a later key getter; follow the allocation algorithm for each value.
+- [Clean up after dispatch in the same task](spec-compliance-clean-up-after-dispatch-in-the-same-task.md) - Preserve callback microtask observations while completing post-dispatch state changes before later tasks.
+- [Restore temporary state on abrupt completion](spec-compliance-restore-temporary-state-on-abrupt-completion.md) - Restore only the temporary state, preserving changes made by reentrant script.
+- [Queued IndexedDB writes keep their schema](spec-compliance-queued-indexeddb-writes-keep-their-schema.md) - Synchronous schema visibility does not rewrite accepted operations.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
@@ -294,6 +313,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [A result that flips with speed is a race over a missing check](testing-a-result-that-flips-with-speed-is-a-race-over-a-missing-check.md) - A pass that depends on speed is not a pass: find the race and the check it is missing.
 - [A trailing variadic takes zero, one and several arguments](testing-a-trailing-variadic-takes-zero-one-and-several.md) - Test a variadic through the real binding with zero, one and several arguments - the empty default proves nothing about conversion.
 - [A javascript: URL test navigates from its own frame, and ends in void](testing-a-javascript-url-test-navigates-from-its-own-frame.md) - Make the realm that navigates the one whose policy you test, and never let javascript: URL code return a string by accident.
+- [A listener's microtasks can run before dispatch returns](testing-a-listeners-microtasks-can-run-before-dispatch-returns.md) - Distinguish callback cleanup from the enclosing algorithm's post-dispatch steps.
+- [Allocator walks propagate injected errors](testing-allocator-walks-propagate-injected-errors.md) - Let injected OutOfMemory reach the walker before asserting the ordinary semantic error.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
@@ -323,6 +344,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [An OOM or a leak flood at the timeout is a loop the page never ended](debugging-an-oom-or-a-leak-flood-at-the-timeout-is-a-loop-the-page-never-ended.md) - A file that dies or leaks at its timeout is usually running a loop: find the handler that re-arms itself and the spec step - an event, a flag - that should have stopped it. The allocation each pass makes is the symptom, not the bug.
 - [HTML attribute steps must check the element's namespace](debugging-html-steps-must-check-the-namespace.md) - A step HTML defines for HTML elements is keyed by namespace AND local name, and a state cast is checked, never assumed.
 - [A V8 deserialization runs no script - not even to make its exception](debugging-a-v8-deserialization-runs-no-script.md) - Anything a V8 deserializer delegate calls must run no script; report a failure with an exception V8 makes itself, and let the caller turn it into the DOMException once V8 has returned.
+- [An errdefer must end at the ownership transfer](debugging-an-errdefer-must-end-at-the-ownership-transfer.md) - Stop error cleanup from freeing an allocation after its owner changes.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.
@@ -345,3 +367,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [A zig local cache shared by two checkouts can serve one the other's binary](workflow-a-zig-local-cache-shared-by-two-checkouts-serves-one-the-others-binary.md) - A build cache is per checkout. Sharing one between checkouts trades minutes of compile time for results that may belong to someone else's tree - and nothing says so.
 - [A zig cache in /tmp is pruned by macOS, and zig still trusts it](workflow-a-zig-cache-in-tmp-is-pruned-by-macos-and-zig-still-trusts-it.md) - A failure that reproduces on an older commit is not proof the code is old - check that the two runs did not share a damaged input. A cache in /tmp on macOS is a cache with an expiry date nobody checks.
 - [A shared build machine shares, it never queues agents behind each other](workflow-a-shared-build-machine-shares-it-never-queues-agents.md) - Share the machine, never queue agents behind each other, and measure EVERY class of run under the new sharing: a utility-QoS clamp quietly turned heavy WPT files into TIMEOUTs.
+- [Validate the worklist before acquiring runner tokens](workflow-validate-the-worklist-before-acquiring-runner-tokens.md) - Validate the selected and discovered file counts before treating a run as a measurement.

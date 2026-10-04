@@ -43,12 +43,12 @@ pub const StorageKey = struct {
 /// Database metadata stored in the database list
 const DatabaseMetadata = struct {
     name: []const u8,
-    version: u64,
+    database: *IDBDatabase,
     /// Connections to this database
     connections: std.ArrayListUnmanaged(*IDBDatabase),
 
     fn deinit(self: *DatabaseMetadata, allocator: std.mem.Allocator) void {
-        allocator.free(self.name);
+        self.database.releaseHeapOwnership();
         self.connections.deinit(allocator);
     }
 };
@@ -63,7 +63,7 @@ pub const IDBFactory = struct {
     allocator: std.mem.Allocator,
 
     /// Map of storage key origin -> database name -> metadata
-    /// Simplified: we use a flat map keyed by "origin:dbname"
+    /// Length-prefixed origins keep (origin, database name) pairs unambiguous.
     databases_map: std.StringHashMap(DatabaseMetadata),
 
     /// Storage key for this factory (determined by environment)
@@ -104,6 +104,15 @@ pub const IDBFactory = struct {
     /// 5. Run steps in parallel to open database connection.
     /// 6. Return a new IDBOpenDBRequest object for request.
     pub fn open(self: *Self, name: []const u8, version: ?u64) IDBError!*IDBOpenDBRequest {
+        return self.openConnection(name, version, false);
+    }
+
+    /// Script queues upgrade completion before making a version durable.
+    pub fn openPending(self: *Self, name: []const u8, version: ?u64) IDBError!*IDBOpenDBRequest {
+        return self.openConnection(name, version, true);
+    }
+
+    fn openConnection(self: *Self, name: []const u8, version: ?u64, pending_upgrade: bool) IDBError!*IDBOpenDBRequest {
         // Step 1: If version is 0, throw TypeError
         if (version) |v| {
             if (v == 0) {
@@ -128,26 +137,40 @@ pub const IDBFactory = struct {
         // Step 5: Open database connection (simplified - synchronous for now)
         // In a real implementation, this would be async
         const db_key = try self.makeDatabaseKey(name);
-        errdefer self.allocator.free(db_key);
+        // The temporary lookup key remains ours until insertion succeeds.
+        var key_transferred = false;
+        defer if (!key_transferred) self.allocator.free(db_key);
 
         const existing = self.databases_map.get(db_key);
-        const target_version = version orelse if (existing) |e| e.version else 1;
+        const target_version = version orelse if (existing) |e| e.database.version else 1;
 
         if (existing) |metadata| {
+            if (target_version < metadata.database.version) {
+                request.base.setError(IDBError.VersionError);
+                return request;
+            }
+        }
+
+        // Allocate the connection before publishing metadata: no fallible work
+        // follows the ownership transfer into databases_map.
+        const db = try self.allocator.create(IDBDatabase);
+        errdefer self.allocator.destroy(db);
+        db.* = IDBDatabase.init(self.allocator, name, target_version);
+        errdefer db.deinit();
+
+        if (existing) |metadata| {
+            db.backing = metadata.database;
+            metadata.database.retain();
+            try db.copyConnectionNames();
             // Database exists - check version
             if (version) |v| {
-                if (v < metadata.version) {
-                    // Requested version is lower than current
-                    request.base.setError(IDBError.VersionError);
-                    self.allocator.free(db_key);
-                    return request;
-                } else if (v > metadata.version) {
+                if (v > metadata.database.version) {
                     // Upgrade needed
-                    request.old_version = metadata.version;
+                    request.old_version = metadata.database.version;
                     request.new_version = v;
                 }
             }
-            self.allocator.free(db_key);
+            if (!pending_upgrade) metadata.database.version = target_version;
         } else {
             // New database
             request.old_version = 0;
@@ -157,20 +180,22 @@ pub const IDBFactory = struct {
             const name_copy = try self.allocator.dupe(u8, name);
             errdefer self.allocator.free(name_copy);
 
+            const durable = try self.allocator.create(IDBDatabase);
+            errdefer self.allocator.destroy(durable);
+            durable.* = IDBDatabase.init(self.allocator, name_copy, if (pending_upgrade) 0 else target_version);
+            errdefer durable.deinit();
             const metadata = DatabaseMetadata{
                 .name = name_copy,
-                .version = target_version,
+                .database = durable,
                 .connections = .empty,
             };
 
             try self.databases_map.put(db_key, metadata);
+            key_transferred = true;
+            durable.owned_name = name_copy;
+            db.backing = durable;
+            durable.retain();
         }
-
-        // Create the database connection
-        const db = try self.allocator.create(IDBDatabase);
-        errdefer self.allocator.destroy(db);
-
-        db.* = IDBDatabase.init(self.allocator, name, target_version);
 
         // Set result
         request.base.setResult(.{ .database = db });
@@ -205,7 +230,7 @@ pub const IDBFactory = struct {
 
         if (self.databases_map.fetchRemove(db_key)) |kv| {
             // Found and removed
-            request.old_version = kv.value.version;
+            request.old_version = kv.value.database.version;
             request.new_version = null; // null indicates deletion
 
             // Clean up metadata
@@ -240,14 +265,16 @@ pub const IDBFactory = struct {
         }
 
         const storage_key = self.storage_key.?;
-        const prefix = try std.fmt.allocPrint(self.allocator, "{s}:", .{storage_key.origin});
+        const prefix = try std.fmt.allocPrint(self.allocator, "{d}:{s}:", .{ storage_key.origin.len, storage_key.origin });
         defer self.allocator.free(prefix);
 
         // Count matching databases
         var count: usize = 0;
         var it = self.databases_map.iterator();
         while (it.next()) |entry| {
-            if (std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
+            // ED 4.3 databases step 4.3.1: omit a version-zero database whose
+            // first upgrade has not committed.
+            if (entry.value_ptr.database.version != 0 and std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
                 count += 1;
             }
         }
@@ -260,10 +287,10 @@ pub const IDBFactory = struct {
         var idx: usize = 0;
         it = self.databases_map.iterator();
         while (it.next()) |entry| {
-            if (std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
+            if (entry.value_ptr.database.version != 0 and std.mem.startsWith(u8, entry.key_ptr.*, prefix)) {
                 result[idx] = IDBDatabaseInfo{
                     .name = entry.value_ptr.name,
-                    .version = entry.value_ptr.version,
+                    .version = entry.value_ptr.database.version,
                 };
                 idx += 1;
             }
@@ -287,7 +314,7 @@ pub const IDBFactory = struct {
 
     fn makeDatabaseKey(self: *Self, name: []const u8) ![]u8 {
         const storage_key = self.storage_key orelse return IDBError.SecurityError;
-        return try std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ storage_key.origin, name });
+        return try std.fmt.allocPrint(self.allocator, "{d}:{s}:{s}", .{ storage_key.origin.len, storage_key.origin, name });
     }
 };
 

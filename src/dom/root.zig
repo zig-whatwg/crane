@@ -189,6 +189,12 @@ pub const target_element = @import("target_element.zig");
 pub const fragment_scroll = @import("fragment_scroll.zig");
 pub const shadow_hosts = @import("shadow_hosts.zig");
 
+pub const indexeddb = @import("indexeddb.zig");
+pub const string_lists = @import("string_lists.zig");
+pub const event_handlers = @import("event_handlers.zig");
+
 test {
     std.testing.refAllDecls(@This());
 }
+
+pub const indexeddb_keys = @import("indexeddb_keys.zig");

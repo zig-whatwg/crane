@@ -26,7 +26,6 @@ const IDBKey = key_mod.IDBKey;
 const IDBKeyType = key_mod.IDBKeyType;
 const KeyPath = key_path_mod.KeyPath;
 const ExtractedValue = key_path_mod.ExtractedValue;
-const ExtractionResult = key_path_mod.ExtractionResult;
 const IDBError = @import("errors.zig").IDBError;
 const IDBIndex = @import("index.zig").IDBIndex;
 
@@ -42,6 +41,25 @@ pub const IndexKeyResult = union(enum) {
     invalid: void,
     /// Extraction threw an exception
     exception: void,
+
+    /// Release an OWNED result returned by generateIndexKey, with its allocator.
+    /// Other operations borrow IndexKeyResult and never release their input.
+    pub fn deinit(self: IndexKeyResult, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .single_key => |owned| {
+                var key = owned;
+                key.deinit();
+            },
+            .multi_keys => |keys| {
+                for (keys) |owned| {
+                    var key = owned;
+                    key.deinit();
+                }
+                allocator.free(keys);
+            },
+            .failure, .invalid, .exception => {},
+        }
+    }
 };
 
 /// Options for index key generation
@@ -73,14 +91,14 @@ pub const IndexKeyGenOptions = struct {
 /// - `options`: Index configuration (key path, multiEntry flag)
 ///
 /// ## Returns
-/// IndexKeyResult indicating success (single or multi keys) or failure
+/// OWNED IndexKeyResult; caller releases it with result.deinit(allocator).
 pub fn generateIndexKey(
     allocator: std.mem.Allocator,
     value: ExtractedValue,
     options: IndexKeyGenOptions,
 ) IDBError!IndexKeyResult {
     // Step 5.1: Extract a key using the key path and multiEntry flag
-    const result = try key_path_mod.extractKey(
+    const result = try key_path_mod.extractKeyOwned(
         allocator,
         value,
         options.key_path,
@@ -141,7 +159,7 @@ pub fn wouldViolateUnique(index: *const IDBIndex, key_result: IndexKeyResult) bo
 
 /// Check if an index already contains a record with the given key.
 fn indexContainsKey(index: *const IDBIndex, key: IDBKey) bool {
-    for (index.entries.items) |entry| {
+    for (index.entriesList().items) |entry| {
         if (key_mod.compare(entry.index_key, key) == 0) {
             return true;
         }
@@ -170,24 +188,17 @@ pub fn addIndexEntries(
     key_result: IndexKeyResult,
     primary_key: IDBKey,
 ) IDBError!void {
-    switch (key_result) {
-        .single_key => |k| {
-            // Step 5.5: Store single record in index
-            try index.addEntry(k, primary_key);
-        },
-        .multi_keys => |keys| {
-            // Step 5.6: For multiEntry arrays, store a record for each subkey
-            for (keys) |k| {
-                // Ignore if key is array (nested arrays not allowed in multiEntry)
-                if (k.key_type != .array) {
-                    try index.addEntry(k, primary_key);
-                }
-            }
-        },
-        .failure, .invalid, .exception => {
-            // Step 5.2: Take no further actions for this index
-        },
-    }
+    var prepared = try prepareIndexEntries(index, key_result, primary_key);
+    defer prepared.deinit();
+    prepared.commit(index);
+}
+
+fn prepareIndexEntries(index: *IDBIndex, result: IndexKeyResult, primary_key: IDBKey) IDBError!IDBIndex.PreparedEntries {
+    return switch (result) {
+        .single_key => |key| index.prepareEntries(&.{key}, primary_key),
+        .multi_keys => |keys| index.prepareEntries(keys, primary_key),
+        .failure, .invalid, .exception => index.prepareEntries(&.{}, primary_key),
+    };
 }
 
 /// Update all indexes when storing a record.
@@ -215,35 +226,27 @@ pub fn updateIndexesForRecord(
     value: ExtractedValue,
     primary_key: IDBKey,
 ) IDBError!void {
-    // Step 5: For each index which references store
+    const Plan = struct { index: *IDBIndex, entries: IDBIndex.PreparedEntries };
+    var plans: std.ArrayList(Plan) = .empty;
+    defer {
+        for (plans.items) |*plan| plan.entries.deinit();
+        plans.deinit(allocator);
+    }
+    try plans.ensureTotalCapacity(allocator, indexes.len);
+    // IDB 2.7: an unsuccessful request undoes ALL changes from its operation.
+    // Stage all of 6.1 step 5 before publishing the first index's new records.
     for (indexes) |*index| {
-        // Convert string key_path to KeyPath union
-        const key_path: KeyPath = if (index.key_path) |kp|
-            .{ .single = kp }
-        else
-            continue; // Skip indexes without key path
-
-        // Step 5.1: Extract index key
-        const key_result = try generateIndexKey(allocator, value, .{
-            .key_path = key_path,
+        const path = index.key_path orelse continue;
+        const result = try generateIndexKey(allocator, value, .{
+            .key_path = .{ .single = path },
             .multi_entry = index.multi_entry,
             .unique = index.unique,
         });
-
-        // Step 5.2: If exception, invalid, or failure, skip this index
-        switch (key_result) {
-            .failure, .invalid, .exception => continue,
-            else => {},
-        }
-
-        // Steps 5.3-5.4: Check unique constraint
-        if (wouldViolateUnique(index, key_result)) {
-            return IDBError.ConstraintError;
-        }
-
-        // Steps 5.5-5.6: Add index entries
-        try addIndexEntries(index, key_result, primary_key);
+        defer result.deinit(allocator);
+        const entries = try prepareIndexEntries(index, result, primary_key);
+        plans.appendAssumeCapacity(.{ .index = index, .entries = entries });
     }
+    for (plans.items) |*plan| plan.entries.commit(plan.index);
 }
 
 /// Remove all index entries for a primary key.
@@ -278,6 +281,7 @@ test "generateIndexKey - simple property" {
     const result = try generateIndexKey(allocator, value, .{
         .key_path = .{ .single = "name" },
     });
+    defer result.deinit(allocator);
 
     switch (result) {
         .single_key => |k| {
@@ -302,6 +306,7 @@ test "generateIndexKey - nested property" {
     const result = try generateIndexKey(allocator, value, .{
         .key_path = .{ .single = "user.id" },
     });
+    defer result.deinit(allocator);
 
     switch (result) {
         .single_key => |k| {
@@ -323,6 +328,7 @@ test "generateIndexKey - missing property returns failure" {
     const result = try generateIndexKey(allocator, value, .{
         .key_path = .{ .single = "missing" },
     });
+    defer result.deinit(allocator);
 
     switch (result) {
         .failure => {},
@@ -348,12 +354,7 @@ test "generateIndexKey - multiEntry with array" {
         .key_path = .{ .single = "tags" },
         .multi_entry = true,
     });
-    defer {
-        switch (result) {
-            .multi_keys => |keys| allocator.free(keys),
-            else => {},
-        }
-    }
+    defer result.deinit(allocator);
 
     switch (result) {
         .multi_keys => |keys| {
@@ -374,6 +375,7 @@ test "generateIndexKey - invalid value type" {
     const result = try generateIndexKey(allocator, value, .{
         .key_path = .{ .single = "" },
     });
+    defer result.deinit(allocator);
 
     switch (result) {
         .invalid => {},
@@ -456,8 +458,8 @@ test "addIndexEntries - single key" {
 
     try addIndexEntries(&index, key_result, primary_key);
 
-    try std.testing.expectEqual(@as(usize, 1), index.entries.items.len);
-    try std.testing.expectEqual(IDBKeyType.string, index.entries.items[0].index_key.key_type);
+    try std.testing.expectEqual(@as(usize, 1), index.entriesList().items.len);
+    try std.testing.expectEqual(IDBKeyType.string, index.entriesList().items[0].index_key.key_type);
 }
 
 test "addIndexEntries - multi keys" {
@@ -487,7 +489,7 @@ test "addIndexEntries - multi keys" {
     try addIndexEntries(&index, key_result, primary_key);
 
     // Should have 3 entries, all pointing to same primary key
-    try std.testing.expectEqual(@as(usize, 3), index.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 3), index.entriesList().items.len);
 }
 
 test "addIndexEntries - failure/invalid skipped" {
@@ -510,11 +512,11 @@ test "addIndexEntries - failure/invalid skipped" {
 
     // Failure should be skipped
     try addIndexEntries(&index, .failure, primary_key);
-    try std.testing.expectEqual(@as(usize, 0), index.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), index.entriesList().items.len);
 
     // Invalid should be skipped
     try addIndexEntries(&index, .invalid, primary_key);
-    try std.testing.expectEqual(@as(usize, 0), index.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), index.entriesList().items.len);
 }
 
 test "updateIndexesForRecord - full workflow" {
