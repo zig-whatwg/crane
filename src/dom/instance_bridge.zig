@@ -41,14 +41,39 @@ pub const BridgeContext = struct {
 /// Registry mapping runtime.Instance pointers to their NodeBase
 /// This is a temporary solution until NodeBase is embedded in InternalState
 ///
-/// Thread safety: This is NOT thread-safe. DOM operations should be single-threaded.
-var instance_to_nodebase: std.AutoHashMap(*anyopaque, *NodeBase) = undefined;
-var initialized: bool = false;
+/// Nodes are a window's, but the map is READ for every platform object of
+/// every thread: the wrapper cache and the template registry ask it whether
+/// an object is a node (wrapper_cache.zig, template_registry.zig), and a
+/// worker's objects live on the worker's own thread (docs/instances.md). So
+/// every access takes `mutex`.
+const Bridge = struct {
+    /// Protects `map`, `initialized` and `guard`; held for one map operation,
+    /// never across a call out of this file.
+    mutex: std.Io.Mutex = .init,
+    map: std.AutoHashMap(*anyopaque, *NodeBase) = undefined,
+    initialized: bool = false,
+    /// Every node a page makes enters this map and leaves it when the page
+    /// ends; the guard rehashes before an insert once the tombstones those
+    /// removals leave could take half the free slots
+    /// (webidl.utils.tombstones).
+    guard: tombstones.TombstoneGuard = .{},
 
-/// Every node a page makes enters this map and leaves it when the page ends;
-/// the guard rehashes before an insert once the tombstones those removals
-/// leave could take half the free slots (webidl.utils.tombstones).
-var guard: tombstones.TombstoneGuard = .{};
+    fn lock(self: *Bridge) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+    }
+
+    fn unlock(self: *Bridge) void {
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+    }
+
+    /// Called with `mutex` held.
+    fn ensure(self: *Bridge) void {
+        if (self.initialized) return;
+        self.map = std.AutoHashMap(*anyopaque, *NodeBase).init(std.heap.page_allocator);
+        self.initialized = true;
+    }
+};
+var instance_to_nodebase: Bridge = .{};
 
 /// How many (instance -> NodeBase) entries are live.
 ///
@@ -57,8 +82,11 @@ var guard: tombstones.TombstoneGuard = .{};
 /// is not merely a leak - it is silently inherited by the next object at that
 /// address. A count that rises with created-and-discarded nodes is the symptom.
 pub fn entryCount() usize {
-    if (!initialized) return 0;
-    return instance_to_nodebase.count();
+    const bridge = &instance_to_nodebase;
+    bridge.lock();
+    defer bridge.unlock();
+    if (!bridge.initialized) return 0;
+    return bridge.map.count();
 }
 
 /// The table's slots by state (free, live, capacity), for the churn test and
@@ -66,24 +94,31 @@ pub fn entryCount() usize {
 /// free slots are what keeps registering the next page's nodes cheap - see
 /// webidl.utils.tombstones.
 pub fn tableSlots() tombstones.SlotCounts {
-    if (!initialized) return .{};
-    return tombstones.slotCounts(&instance_to_nodebase);
+    const bridge = &instance_to_nodebase;
+    bridge.lock();
+    defer bridge.unlock();
+    if (!bridge.initialized) return .{};
+    return tombstones.slotCounts(&bridge.map);
 }
 
 /// Initialize the bridge registry
 /// Called once at startup
 pub fn init() void {
-    if (initialized) return;
-    instance_to_nodebase = std.AutoHashMap(*anyopaque, *NodeBase).init(std.heap.page_allocator);
-    initialized = true;
+    const bridge = &instance_to_nodebase;
+    bridge.lock();
+    defer bridge.unlock();
+    bridge.ensure();
 }
 
 /// Deinitialize the bridge registry
 /// Called at shutdown (optional, as page_allocator doesn't need cleanup)
 pub fn deinit() void {
-    if (!initialized) return;
-    instance_to_nodebase.deinit();
-    initialized = false;
+    const bridge = &instance_to_nodebase;
+    bridge.lock();
+    defer bridge.unlock();
+    if (!bridge.initialized) return;
+    bridge.map.deinit();
+    bridge.initialized = false;
 }
 
 /// Register a bidirectional mapping between a runtime.Instance and its NodeBase
@@ -105,9 +140,12 @@ pub fn deinit() void {
 /// }
 /// ```
 pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
-    if (!initialized) init();
-    guard.beforeInsert(&instance_to_nodebase);
-    try instance_to_nodebase.put(instance, node_base);
+    const bridge = &instance_to_nodebase;
+    bridge.lock();
+    defer bridge.unlock();
+    bridge.ensure();
+    bridge.guard.beforeInsert(&bridge.map);
+    try bridge.map.put(instance, node_base);
     // Reverse direction lives on the node itself - see NodeBase.owner_instance.
     node_base.owner_instance = instance;
 }
@@ -116,14 +154,17 @@ pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
 ///
 /// This should be called during Node deinitialization.
 pub fn unregister(instance: *anyopaque) void {
-    if (!initialized) return;
+    const bridge = &instance_to_nodebase;
+    bridge.lock();
+    defer bridge.unlock();
+    if (!bridge.initialized) return;
 
-    if (instance_to_nodebase.get(instance)) |node_base| {
+    if (bridge.map.get(instance)) |node_base| {
         // Not strictly required - the field dies with the node - but clearing it
         // keeps a freed instance from being observable through a resurrected node.
         node_base.owner_instance = null;
     }
-    if (instance_to_nodebase.remove(instance)) guard.noteRemoval(&instance_to_nodebase);
+    if (bridge.map.remove(instance)) bridge.guard.noteRemoval(&bridge.map);
 }
 
 /// Get the NodeBase for a runtime.Instance
@@ -136,8 +177,11 @@ pub fn unregister(instance: *anyopaque) void {
 /// try dom.mutation.insert(node_base, parent_base, null, false);
 /// ```
 pub fn getNodeBase(instance: *anyopaque) ?*NodeBase {
-    if (!initialized) return null;
-    return instance_to_nodebase.get(instance);
+    const bridge = &instance_to_nodebase;
+    bridge.lock();
+    defer bridge.unlock();
+    if (!bridge.initialized) return null;
+    return bridge.map.get(instance);
 }
 
 /// Get the runtime.Instance for a NodeBase

@@ -28,21 +28,40 @@ const log = std.log.scoped(.report_exception);
 /// globals, and not deeply - so a fixed array is enough; a global that finds
 /// the array full is simply not guarded (the spec's flag cannot overflow, but
 /// neither can a real page nest reports eight globals deep).
-var reporting: [8]?*runtime.Instance = .{null} ** 8;
+///
+/// Every thread that runs script reports here - a Browser's and each of its
+/// workers' (docs/instances.md) - so the slots are reached only under
+/// `mutex`. A global is one thread's, so its check-then-enter cannot race.
+const Reporting = struct {
+    /// Protects `slots`; held for one scan or one store.
+    mutex: std.Io.Mutex = .init,
+    slots: [8]?*runtime.Instance = .{null} ** 8,
+};
+var reporting: Reporting = .{};
 
 fn inErrorReportingMode(global: *runtime.Instance) bool {
-    for (reporting) |g| if (g == global) return true;
+    std.Io.Threaded.mutexLock(&reporting.mutex);
+    defer std.Io.Threaded.mutexUnlock(&reporting.mutex);
+    for (reporting.slots) |g| if (g == global) return true;
     return false;
 }
 
 fn enterErrorReportingMode(global: *runtime.Instance) ?usize {
-    for (&reporting, 0..) |*slot, i| {
+    std.Io.Threaded.mutexLock(&reporting.mutex);
+    defer std.Io.Threaded.mutexUnlock(&reporting.mutex);
+    for (&reporting.slots, 0..) |*slot, i| {
         if (slot.* == null) {
             slot.* = global;
             return i;
         }
     }
     return null;
+}
+
+fn leaveErrorReportingMode(slot: usize) void {
+    std.Io.Threaded.mutexLock(&reporting.mutex);
+    defer std.Io.Threaded.mutexUnlock(&reporting.mutex);
+    reporting.slots[slot] = null;
 }
 
 /// Muting and omitError, for `reportErrorInfo`.
@@ -116,9 +135,7 @@ fn reportExtracted(
         // 6.1: Set global's in error reporting mode to true.
         const slot = enterErrorReportingMode(global);
         // 6.3: ...and back to false.
-        defer if (slot) |s| {
-            reporting[s] = null;
-        };
+        defer if (slot) |s| leaveErrorReportingMode(s);
 
         // 6.2: Set notHandled to the result of firing an event named error
         // at global, using ErrorEvent, cancelable, with errorInfo.
