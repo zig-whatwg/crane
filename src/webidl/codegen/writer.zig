@@ -1980,8 +1980,15 @@ pub fn writeToJSONStruct(
 
     for (attrs) |attr| {
         const zig_type = idlTypeToZigForToJSON(attr.idl_type.type, ir_data);
-        try writer.print("        {s}: {s},\n", .{ attr.name, zig_type });
+        // A nullable attribute's value may be null, and null is a value the
+        // default toJSON steps keep (WebIDL 3.7.4.1: map[id] = value, then
+        // CreateDataProperty for every entry).
+        const optional = attr.idl_type.nullable and zig_type.len > 0 and zig_type[0] != '?';
+        try writer.print("        {s}: {s}{s},\n", .{ attr.name, if (optional) "?" else "", zig_type });
     }
+    // Read by the binding's struct conversion: unlike a dictionary's absent
+    // member, a null attribute value is a property whose value is null.
+    try writer.writeAll("\n        pub const default_to_json = true;\n");
 
     try writer.writeAll("    };\n\n");
 }
@@ -2414,6 +2421,89 @@ pub fn writeRootInstallHooks(writer: anytype, kind: []const u8) !void {
     try writer.writeAll("const members = @This();\n");
 }
 
+/// The Zig type of one constructor argument, as the binding converts it:
+/// `optional T` is `webidl.Opt(T)`, `T...` a slice, an interface type
+/// `*runtime.Instance`, a callback interface `?*runtime.CallbackWrapper`.
+/// Shared by a single constructor's parameters and an overloaded
+/// constructor's ConstructorArgs variants - which typed an interface by its
+/// generated struct (`KeyframeEffect: KeyframeEffect`), a type no
+/// conversion produces.
+fn writeConstructorArgType(
+    writer: anytype,
+    arg: types.Argument,
+    type_registry: ?*const @import("ir.zig").TypeRegistry,
+) !void {
+    // Handle optional parameters: optional T becomes Opt(T)
+    if (arg.optional) {
+        try writer.writeAll("webidl.Opt(");
+    }
+
+    // Handle variadic parameters: T... becomes []const T
+    if (arg.variadic) {
+        try writer.writeAll("[]const ");
+    }
+
+    // Check for union types FIRST (before anyopaque fallback)
+    if (arg.idlType.unionTypes) |union_types| {
+        if (isNodeOrDOMStringUnion(union_types)) {
+            // Handle nullable union types
+            if (arg.idlType.nullable and !arg.variadic) {
+                try writer.writeAll("?");
+            }
+            try writer.writeAll("mixins.ParentNode.NodeOrString");
+
+            // Close optional wrapper if needed
+            if (arg.optional) {
+                try writer.writeAll(")");
+            }
+            return; // Skip rest of type processing
+        }
+    }
+
+    const type_mapping = if (type_registry) |reg|
+        mapWebIDLTypeWithRegistry(arg.idlType, reg)
+    else
+        TypeMapping{ .type_name = mapWebIDLType(arg.idlType), .needs_import = false };
+
+    var arg_type = type_mapping.type_name;
+
+    // Check if this is an interface type - if so, use *runtime.Instance
+    // Callback interfaces use ?*runtime.CallbackWrapper
+    const type_kind = if (type_registry) |reg| reg.lookup(arg.idlType.type) else null;
+    const is_interface = type_kind != null and type_kind.? == .interface;
+    const is_callback_interface = type_kind != null and type_kind.? == .callback_interface;
+
+    // If we got anyopaque (union type or unknown), use JSValue for type safety
+    if (std.mem.eql(u8, arg_type, "anyopaque")) {
+        arg_type = "runtime.JSValue";
+    }
+
+    // For callback interface types, use ?*runtime.CallbackWrapper
+    // For regular interface types, use *runtime.Instance directly
+    // Handle nullable parameters: T? becomes ?T (but not for variadic - slice handles null)
+    if (is_callback_interface) {
+        if (arg.idlType.nullable and !arg.variadic) {
+            try writer.writeAll("?");
+        }
+        try writer.writeAll("?*runtime.CallbackWrapper");
+    } else if (is_interface) {
+        if (arg.idlType.nullable and !arg.variadic) {
+            try writer.writeAll("?");
+        }
+        try writer.writeAll("*runtime.Instance");
+    } else {
+        if (arg.idlType.nullable and !arg.variadic) {
+            try writer.writeAll("?");
+        }
+        try writer.print("{s}", .{arg_type});
+    }
+
+    // Close optional wrapper if needed
+    if (arg.optional) {
+        try writer.writeAll(")");
+    }
+}
+
 /// Write WebIDL constructor function
 ///
 /// Example output:
@@ -2444,76 +2534,7 @@ pub fn writeConstructor(
         try writer.writeAll(", ");
         try writeEscapedInterfaceParamName(writer, arg.name, arg.idlType);
         try writer.writeAll(": ");
-
-        // Handle optional parameters: optional T becomes Opt(T)
-        if (arg.optional) {
-            try writer.writeAll("webidl.Opt(");
-        }
-
-        // Handle variadic parameters: T... becomes []const T
-        if (arg.variadic) {
-            try writer.writeAll("[]const ");
-        }
-
-        // Check for union types FIRST (before anyopaque fallback)
-        if (arg.idlType.unionTypes) |union_types| {
-            if (isNodeOrDOMStringUnion(union_types)) {
-                // Handle nullable union types
-                if (arg.idlType.nullable and !arg.variadic) {
-                    try writer.writeAll("?");
-                }
-                try writer.writeAll("mixins.ParentNode.NodeOrString");
-
-                // Close optional wrapper if needed
-                if (arg.optional) {
-                    try writer.writeAll(")");
-                }
-                continue; // Skip rest of type processing
-            }
-        }
-
-        const type_mapping = if (type_registry) |reg|
-            mapWebIDLTypeWithRegistry(arg.idlType, reg)
-        else
-            TypeMapping{ .type_name = mapWebIDLType(arg.idlType), .needs_import = false };
-
-        var arg_type = type_mapping.type_name;
-
-        // Check if this is an interface type - if so, use *runtime.Instance
-        // Callback interfaces use ?*runtime.CallbackWrapper
-        const type_kind = if (type_registry) |reg| reg.lookup(arg.idlType.type) else null;
-        const is_interface = type_kind != null and type_kind.? == .interface;
-        const is_callback_interface = type_kind != null and type_kind.? == .callback_interface;
-
-        // If we got anyopaque (union type or unknown), use JSValue for type safety
-        if (std.mem.eql(u8, arg_type, "anyopaque")) {
-            arg_type = "runtime.JSValue";
-        }
-
-        // For callback interface types, use ?*runtime.CallbackWrapper
-        // For regular interface types, use *runtime.Instance directly
-        // Handle nullable parameters: T? becomes ?T (but not for variadic - slice handles null)
-        if (is_callback_interface) {
-            if (arg.idlType.nullable and !arg.variadic) {
-                try writer.writeAll("?");
-            }
-            try writer.writeAll("?*runtime.CallbackWrapper");
-        } else if (is_interface) {
-            if (arg.idlType.nullable and !arg.variadic) {
-                try writer.writeAll("?");
-            }
-            try writer.writeAll("*runtime.Instance");
-        } else {
-            if (arg.idlType.nullable and !arg.variadic) {
-                try writer.writeAll("?");
-            }
-            try writer.print("{s}", .{arg_type});
-        }
-
-        // Close optional wrapper if needed
-        if (arg.optional) {
-            try writer.writeAll(")");
-        }
+        try writeConstructorArgType(writer, arg, type_registry);
     }
 
     try writer.writeAll(") !*runtime.Instance {\n");
@@ -2571,58 +2592,11 @@ pub fn writeOverloadedConstructor(
             try writer.writeAll("        /// constructor()\n");
             try writer.print("        {s}: void,\n", .{variant_name});
         } else if (ctor.arguments.len == 1) {
-            // Build type with optional, variadic, nullable, and union handling
-            var buffer: [512]u8 = undefined;
-            var fbs: std.Io.Writer = .fixed(&buffer);
-            const arg = ctor.arguments[0];
-
-            // Optional: optional T -> webidl.Opt(T)
-            if (arg.optional) {
-                try fbs.writeAll("webidl.Opt(");
-            }
-
-            // Variadic: T... -> []const T
-            if (arg.variadic) {
-                try fbs.writeAll("[]const ");
-            }
-
-            // Check for union types FIRST
-            if (arg.idlType.unionTypes) |union_types| {
-                if (isNodeOrDOMStringUnion(union_types)) {
-                    if (arg.idlType.nullable and !arg.variadic) {
-                        try fbs.writeByte('?');
-                    }
-                    try fbs.writeAll("mixins.ParentNode.NodeOrString");
-                    if (arg.optional) {
-                        try fbs.writeByte(')');
-                    }
-                    try writer.print("        /// constructor({s})\n", .{arg.name});
-                    try writer.print("        {s}: {s},\n", .{ variant_name, fbs.buffered() });
-                    continue;
-                }
-            }
-
-            // Nullable: T? -> ?T (but not for variadic)
-            if (arg.idlType.nullable and !arg.variadic) {
-                try fbs.writeByte('?');
-            }
-
-            var base_type = if (type_registry) |reg|
-                mapWebIDLTypeWithRegistry(arg.idlType, reg).type_name
-            else
-                mapWebIDLType(arg.idlType);
-            if (std.mem.eql(u8, base_type, "anyopaque")) {
-                base_type = "runtime.JSValue";
-            }
-            try fbs.writeAll(base_type);
-
-            // Close optional wrapper
-            if (arg.optional) {
-                try fbs.writeByte(')');
-            }
-
-            try writer.print("        /// constructor({s})\n", .{arg.name});
-            try writer.print("        {s}: {s},\n", .{ variant_name, fbs.buffered() });
+            // One argument is the variant itself.
+            try writer.print("        /// constructor({s})\n", .{ctor.arguments[0].name});
+            try writer.print("        {s}: ", .{variant_name});
+            try writeConstructorArgType(writer, ctor.arguments[0], type_registry);
+            try writer.writeAll(",\n");
         } else {
             try writer.writeAll("        /// constructor(");
             for (ctor.arguments, 0..) |arg, i| {
@@ -2633,67 +2607,41 @@ pub fn writeOverloadedConstructor(
 
             try writer.print("        {s}: struct {{\n", .{variant_name});
             for (ctor.arguments) |arg| {
-                // Build type with optional, variadic, nullable, and union handling
-                var buffer: [512]u8 = undefined;
-                var fbs: std.Io.Writer = .fixed(&buffer);
-
-                // Optional: optional T -> webidl.Opt(T)
-                if (arg.optional) {
-                    try fbs.writeAll("webidl.Opt(");
-                }
-
-                // Variadic: T... -> []const T
-                if (arg.variadic) {
-                    try fbs.writeAll("[]const ");
-                }
-
-                // Check for union types FIRST
-                var is_union = false;
-                if (arg.idlType.unionTypes) |union_types| {
-                    if (isNodeOrDOMStringUnion(union_types)) {
-                        if (arg.idlType.nullable and !arg.variadic) {
-                            try fbs.writeByte('?');
-                        }
-                        try fbs.writeAll("mixins.ParentNode.NodeOrString");
-                        if (arg.optional) {
-                            try fbs.writeByte(')');
-                        }
-                        is_union = true;
-                    }
-                }
-
-                if (!is_union) {
-                    // Nullable: T? -> ?T (but not for variadic)
-                    if (arg.idlType.nullable and !arg.variadic) {
-                        try fbs.writeByte('?');
-                    }
-
-                    var base_type = if (type_registry) |reg|
-                        mapWebIDLTypeWithRegistry(arg.idlType, reg).type_name
-                    else
-                        mapWebIDLType(arg.idlType);
-                    if (std.mem.eql(u8, base_type, "anyopaque")) {
-                        base_type = "runtime.JSValue";
-                    }
-                    try fbs.writeAll(base_type);
-
-                    // Close optional wrapper
-                    if (arg.optional) {
-                        try fbs.writeByte(')');
-                    }
-                }
-
                 // Escape Zig keywords using @"..." syntax
                 if (isKeyword(arg.name)) {
-                    try writer.print("            @\"{s}\": {s},\n", .{ arg.name, fbs.buffered() });
+                    try writer.print("            @\"{s}\": ", .{arg.name});
                 } else {
-                    try writer.print("            {s}: {s},\n", .{ arg.name, fbs.buffered() });
+                    try writer.print("            {s}: ", .{arg.name});
                 }
+                try writeConstructorArgType(writer, arg, type_registry);
+                try writer.writeAll(",\n");
             }
             try writer.writeAll("        },\n");
         }
     }
 
+    try writer.writeAll("    };\n\n");
+
+    // The constructors' overload set, for the overload resolution
+    // algorithm (WebIDL 3.6) - the same table an overloaded operation has
+    // (writeOverloadDelegates). Entry k is ConstructorArgs' variant k, and
+    // its `args` say how many arguments that variant holds: one argument is
+    // the variant itself, even a dictionary, which is a struct too.
+    try writer.writeAll("    /// WebIDL overload set of the constructor: one entry per variant of\n");
+    try writer.writeAll("    /// ConstructorArgs, in its order, for the overload resolution algorithm\n");
+    try writer.writeAll("    /// (webidl.overload_resolution) the binding runs to pick the variant.\n");
+    try writer.writeAll("    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{\n");
+    for (set.constructors) |ctor| {
+        const variant_name = try overload.generateConstructorVariantName(allocator, ctor);
+        defer allocator.free(variant_name);
+        try writer.print("        .{{ .function = \"{s}\", .args = &.{{", .{variant_name});
+        for (ctor.arguments, 0..) |arg, i| {
+            if (i > 0) try writer.writeAll(",");
+            try writer.writeAll(" ");
+            try writeOverloadArg(writer, arg, type_registry);
+        }
+        try writer.writeAll(" } },\n");
+    }
     try writer.writeAll("    };\n\n");
 
     // Generate dispatch function

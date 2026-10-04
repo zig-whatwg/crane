@@ -146,12 +146,20 @@ pub const KeyframeEffect = struct {
     pub const ConstructorArgs = union(enum) {
         /// constructor(target, keyframes, options)
         Element_object_union: struct {
-            target: ?Element,
+            target: ?*runtime.Instance,
             keyframes: ?runtime.JSValue,
             options: webidl.Opt(runtime.JSValue),
         },
         /// constructor(source)
-        KeyframeEffect: KeyframeEffect,
+        KeyframeEffect: *runtime.Instance,
+    };
+
+    /// WebIDL overload set of the constructor: one entry per variant of
+    /// ConstructorArgs, in its order, for the overload resolution algorithm
+    /// (webidl.overload_resolution) the binding runs to pick the variant.
+    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
+        .{ .function = "Element_object_union", .args = &.{ .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "Element")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Element.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.object}, .nullable = true }, .{ .kinds = &.{ .numeric, .dictionary }, .optionality = .optional } } },
+        .{ .function = "KeyframeEffect", .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "KeyframeEffect")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").KeyframeEffect.State) } else .other)} }} },
     };
 
     /// WebIDL constructor (overloaded)

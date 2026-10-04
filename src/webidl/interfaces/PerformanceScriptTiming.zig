@@ -131,8 +131,10 @@ pub const PerformanceScriptTiming = struct {
         sourceCharPosition: i64,
         pauseDuration: DOMHighResTimeStamp,
         forcedStyleAndLayoutDuration: DOMHighResTimeStamp,
-        window: *runtime.Instance,
+        window: ?*runtime.Instance,
         windowAttribution: ScriptWindowAttribution,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

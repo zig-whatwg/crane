@@ -97,6 +97,8 @@ pub const PerformanceEntry = struct {
         startTime: DOMHighResTimeStamp,
         duration: DOMHighResTimeStamp,
         navigationId: u64,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

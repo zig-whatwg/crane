@@ -7,4 +7,7 @@ pub const PaymentDelegation = enum {
     _payerName_,
     _payerPhone_,
     _payerEmail_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "shippingAddress", "payerName", "payerPhone", "payerEmail" };
 };

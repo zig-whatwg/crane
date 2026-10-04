@@ -5,4 +5,7 @@
 pub const MediaKeySessionType = enum {
     _temporary_,
     _persistent_license_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "temporary", "persistent-license" };
 };

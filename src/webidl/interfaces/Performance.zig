@@ -145,6 +145,8 @@ pub const Performance = struct {
         timing: *runtime.Instance,
         navigation: *runtime.Instance,
         onresourcetimingbufferfull: EventHandler,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

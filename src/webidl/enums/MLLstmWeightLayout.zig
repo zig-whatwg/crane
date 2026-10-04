@@ -5,4 +5,7 @@
 pub const MLLstmWeightLayout = enum {
     _iofg_,
     _ifgo_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "iofg", "ifgo" };
 };

@@ -11,4 +11,7 @@ pub const AudioSampleFormat = enum {
     _s16_planar_,
     _s32_planar_,
     _f32_planar_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "u8", "s16", "s32", "f32", "u8-planar", "s16-planar", "s32-planar", "f32-planar" };
 };

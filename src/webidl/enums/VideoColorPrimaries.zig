@@ -8,4 +8,7 @@ pub const VideoColorPrimaries = enum {
     _smpte170m_,
     _bt2020_,
     _smpte432_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "bt709", "bt470bg", "smpte170m", "bt2020", "smpte432" };
 };

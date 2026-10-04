@@ -12,4 +12,7 @@ pub const ConnectionType = enum {
     _unknown_,
     _wifi_,
     _wimax_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "bluetooth", "cellular", "ethernet", "mixed", "none", "other", "unknown", "wifi", "wimax" };
 };

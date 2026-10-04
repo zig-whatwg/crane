@@ -6,4 +6,7 @@ pub const RTCBundlePolicy = enum {
     _balanced_,
     _max_compat_,
     _max_bundle_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "balanced", "max-compat", "max-bundle" };
 };

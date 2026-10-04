@@ -90,9 +90,11 @@ pub const InterventionReportBody = struct {
     pub const InterventionReportBodyToJSON = struct {
         id: runtime.DOMString,
         message: runtime.DOMString,
-        sourceFile: runtime.DOMString,
-        lineNumber: u32,
-        columnNumber: u32,
+        sourceFile: ?runtime.DOMString,
+        lineNumber: ?u32,
+        columnNumber: ?u32,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

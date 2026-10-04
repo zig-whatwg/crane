@@ -92,11 +92,13 @@ pub const DeprecationReportBody = struct {
     /// Generated from [Default] toJSON extended attribute
     pub const DeprecationReportBodyToJSON = struct {
         id: runtime.DOMString,
-        anticipatedRemoval: runtime.JSValue,
+        anticipatedRemoval: ?runtime.JSValue,
         message: runtime.DOMString,
-        sourceFile: runtime.DOMString,
-        lineNumber: u32,
-        columnNumber: u32,
+        sourceFile: ?runtime.DOMString,
+        lineNumber: ?u32,
+        columnNumber: ?u32,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

@@ -93,6 +93,8 @@ pub const DigitalCredential = struct {
         type: runtime.DOMString,
         protocol: runtime.DOMString,
         data: runtime.JSValue,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

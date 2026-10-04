@@ -9,4 +9,7 @@ pub const ResponseType = enum {
     _error_,
     _opaque_,
     _opaqueredirect_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "basic", "cors", "default", "error", "opaque", "opaqueredirect" };
 };

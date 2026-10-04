@@ -187,6 +187,14 @@ pub const OfflineAudioContext = struct {
         },
     };
 
+    /// WebIDL overload set of the constructor: one entry per variant of
+    /// ConstructorArgs, in its order, for the overload resolution algorithm
+    /// (webidl.overload_resolution) the binding runs to pick the variant.
+    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
+        .{ .function = "OfflineAudioContextOptions", .args = &.{.{ .kinds = &.{.dictionary} }} },
+        .{ .function = "unsigned_long_unsigned_long_float", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+    };
+
     /// WebIDL constructor (overloaded)
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator

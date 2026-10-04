@@ -87,10 +87,12 @@ pub const VideoColorSpace = struct {
     /// ToJSON result struct for VideoColorSpace
     /// Generated from [Default] toJSON extended attribute
     pub const VideoColorSpaceToJSON = struct {
-        primaries: VideoColorPrimaries,
-        transfer: VideoTransferCharacteristics,
-        matrix: VideoMatrixCoefficients,
-        fullRange: bool,
+        primaries: ?VideoColorPrimaries,
+        transfer: ?VideoTransferCharacteristics,
+        matrix: ?VideoMatrixCoefficients,
+        fullRange: ?bool,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

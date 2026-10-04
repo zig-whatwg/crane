@@ -8,4 +8,7 @@ pub const OscillatorType = enum {
     _sawtooth_,
     _triangle_,
     _custom_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "sine", "square", "sawtooth", "triangle", "custom" };
 };

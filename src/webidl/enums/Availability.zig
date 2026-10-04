@@ -7,4 +7,7 @@ pub const Availability = enum {
     _downloadable_,
     _downloading_,
     _available_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "unavailable", "downloadable", "downloading", "available" };
 };

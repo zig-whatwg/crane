@@ -109,6 +109,8 @@ pub const ContactAddress = struct {
         region: runtime.DOMString,
         sortingCode: runtime.DOMString,
         addressLine: runtime.JSValue,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

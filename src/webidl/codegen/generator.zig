@@ -184,25 +184,24 @@ fn deduplicateConstants(allocator: std.mem.Allocator, constants: *std.ArrayList(
     try constants.appendSlice(allocator, unique.items);
 }
 
-/// Deduplicate constructors by argument count (simple deduplication)
-/// For more complex overloading, argument types should also be compared
-fn deduplicateConstructors(allocator: std.mem.Allocator, constructors: *std.ArrayList(types.Constructor)) !void {
+/// Deduplicate constructors by signature: a constructor restated by a
+/// partial interface (or a second IDL source) is one constructor. Two with
+/// the same NUMBER of arguments are not the same constructor - keyed on the
+/// count, `MediaStream(sequence<MediaStreamTrack> tracks)` was deleted as a
+/// duplicate of `MediaStream(MediaStream stream)`, and the overload
+/// resolution algorithm never saw it (the same shape as
+/// docs/lessons/codegen-deduplicating-operations-by-name-deleted-every.md).
+pub fn deduplicateConstructors(allocator: std.mem.Allocator, constructors: *std.ArrayList(types.Constructor)) !void {
     if (constructors.items.len <= 1) return;
 
     var unique = std.ArrayList(types.Constructor).empty;
     defer unique.deinit(allocator);
 
-    var seen = std.AutoHashMap(usize, void).init(allocator);
-    defer seen.deinit();
-
     for (constructors.items) |ctor| {
-        const arg_count = ctor.arguments.len;
-        const entry = try seen.getOrPut(arg_count);
-        if (!entry.found_existing) {
-            // First occurrence with this argument count - keep it
-            try unique.append(allocator, ctor);
-        }
-        // Duplicate signature - skip it
+        const duplicate = for (unique.items) |kept| {
+            if (sameArgumentList(kept.arguments, ctor.arguments)) break true;
+        } else false;
+        if (!duplicate) try unique.append(allocator, ctor);
     }
 
     // Replace original list with deduplicated one
@@ -300,8 +299,14 @@ fn deduplicateOperationSignatures(allocator: std.mem.Allocator, ops: *std.ArrayL
 }
 
 fn sameOverloadSignature(a: types.Operation, b: types.Operation) bool {
-    if (a.arguments.len != b.arguments.len) return false;
-    for (a.arguments, b.arguments) |x, y| {
+    return sameArgumentList(a.arguments, b.arguments);
+}
+
+/// Two argument lists declare the same signature: the same types, all
+/// string types counting as one (see `sameOverloadSignature`).
+fn sameArgumentList(a: []const types.Argument, b: []const types.Argument) bool {
+    if (a.len != b.len) return false;
+    for (a, b) |x, y| {
         if (x.variadic != y.variadic) return false;
         const tx = x.idlType.type;
         const ty = y.idlType.type;
@@ -2970,6 +2975,19 @@ pub fn generateEnum(
     var file_writer = output_file.writer(io, &buffer);
     const w = &file_writer.interface;
 
+    try writeEnum(w, enum_type);
+    try w.flush();
+}
+
+/// An enumeration's Zig enum: a variant per value, its identifier the value
+/// with every character that cannot appear in one made `_` (the quotes
+/// included, so "back_forward" is `_back_forward_`), and `idl_values`,
+/// variant i's exact IDL string at index i. The variant names are what impls
+/// write; the table is what script sees - the binding converts through it
+/// in both directions (WebIDL 3.2.23/3.2.24), because the name cannot be
+/// turned back into the string: `_back_forward_` is "back_forward", not
+/// "back-forward", and `_same_origin_` is "same-origin".
+pub fn writeEnum(w: *std.Io.Writer, enum_type: types.Enum) !void {
     // Write header
     try w.print("//! WebIDL enum: {s}\n", .{enum_type.name});
     try w.writeAll("//!\n");
@@ -2980,23 +2998,26 @@ pub fn generateEnum(
     try w.print("pub const {s} = enum {{\n", .{enum_type.name});
 
     for (enum_type.values) |value| {
-        // Convert enum value to valid Zig identifier
-        const zig_name = try allocator.dupe(u8, value);
-        defer allocator.free(zig_name);
-
-        // Replace invalid characters with underscores
-        for (zig_name) |*c| {
-            if (!std.ascii.isAlphanumeric(c.*) and c.* != '_') {
-                c.* = '_';
-            }
+        try w.writeAll("    ");
+        // Convert enum value to valid Zig identifier: replace invalid
+        // characters with underscores
+        for (value) |c| {
+            try w.writeByte(if (std.ascii.isAlphanumeric(c) or c == '_') c else '_');
         }
-
-        try w.print("    {s},\n", .{zig_name});
+        try w.writeAll(",\n");
     }
 
+    try w.writeAll("\n");
+    try w.writeAll("    /// Each variant's value exactly as the IDL spells it, by variant index.\n");
+    try w.writeAll("    pub const idl_values = [_][]const u8{");
+    for (enum_type.values, 0..) |value, i| {
+        try w.writeAll(if (i == 0) " " else ", ");
+        // The parser keeps a value's quotes: the string is what they enclose.
+        const unquoted = if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') value[1 .. value.len - 1] else value;
+        try w.print("\"{f}\"", .{std.zig.fmtString(unquoted)});
+    }
+    try w.writeAll(" };\n");
     try w.writeAll("};\n");
-
-    try w.flush();
 }
 
 /// Generate a callback Zig file with proper type resolution

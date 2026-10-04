@@ -122,7 +122,9 @@ pub const PerformanceLongAnimationFrameTiming = struct {
         firstUIEventTimestamp: DOMHighResTimeStamp,
         scripts: runtime.JSValue,
         paintTime: DOMHighResTimeStamp,
-        presentationTime: DOMHighResTimeStamp,
+        presentationTime: ?DOMHighResTimeStamp,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

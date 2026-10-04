@@ -99,6 +99,8 @@ pub const DOMPointReadOnly = struct {
         y: f64,
         z: f64,
         w: f64,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

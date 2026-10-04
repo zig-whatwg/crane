@@ -200,6 +200,8 @@ pub const PerformanceResourceTiming = struct {
         contentType: runtime.DOMString,
         contentEncoding: runtime.DOMString,
         serverTiming: runtime.JSValue,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

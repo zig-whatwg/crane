@@ -79,6 +79,8 @@ pub const GeolocationPosition = struct {
     pub const GeolocationPositionToJSON = struct {
         coords: *runtime.Instance,
         timestamp: EpochTimeStamp,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

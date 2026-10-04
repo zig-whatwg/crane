@@ -9,4 +9,7 @@ pub const AuthenticatorTransport = enum {
     _smart_card_,
     _hybrid_,
     _internal_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "usb", "nfc", "ble", "smart-card", "hybrid", "internal" };
 };

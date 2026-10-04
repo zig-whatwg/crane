@@ -100,9 +100,11 @@ pub const PerformanceEventTiming = struct {
         processingStart: DOMHighResTimeStamp,
         processingEnd: DOMHighResTimeStamp,
         cancelable: bool,
-        target: *runtime.Instance,
+        target: ?*runtime.Instance,
         targetSelector: runtime.DOMString,
         interactionId: u64,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

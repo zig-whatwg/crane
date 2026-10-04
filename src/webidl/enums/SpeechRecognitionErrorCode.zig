@@ -11,4 +11,7 @@ pub const SpeechRecognitionErrorCode = enum {
     _service_not_allowed_,
     _language_not_supported_,
     _phrases_not_supported_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "no-speech", "aborted", "audio-capture", "network", "not-allowed", "service-not-allowed", "language-not-supported", "phrases-not-supported" };
 };

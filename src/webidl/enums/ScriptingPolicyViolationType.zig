@@ -7,4 +7,7 @@ pub const ScriptingPolicyViolationType = enum {
     _inlineScript_,
     _inlineEventHandler_,
     _eval_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "externalScript", "inlineScript", "inlineEventHandler", "eval" };
 };

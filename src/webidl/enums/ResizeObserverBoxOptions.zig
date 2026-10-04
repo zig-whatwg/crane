@@ -6,4 +6,7 @@ pub const ResizeObserverBoxOptions = enum {
     _border_box_,
     _content_box_,
     _device_pixel_content_box_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "border-box", "content-box", "device-pixel-content-box" };
 };

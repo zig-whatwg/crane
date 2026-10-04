@@ -11,4 +11,7 @@ pub const MediaKeyStatus = enum {
     _usable_in_future_,
     _status_pending_,
     _internal_error_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "usable", "expired", "released", "output-restricted", "output-downscaled", "usable-in-future", "status-pending", "internal-error" };
 };

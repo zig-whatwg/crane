@@ -88,6 +88,8 @@ pub const PressureRecord = struct {
         source: PressureSource,
         state: PressureState,
         time: DOMHighResTimeStamp,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

@@ -118,12 +118,28 @@ pub const PasswordCredential = struct {
         }
     }
 
-    /// WebIDL constructor
+    /// Arguments for constructor (WebIDL overloading)
+    pub const ConstructorArgs = union(enum) {
+        /// constructor(form)
+        HTMLFormElement: *runtime.Instance,
+        /// constructor(data)
+        PasswordCredentialData: PasswordCredentialData,
+    };
+
+    /// WebIDL overload set of the constructor: one entry per variant of
+    /// ConstructorArgs, in its order, for the overload resolution algorithm
+    /// (webidl.overload_resolution) the binding runs to pick the variant.
+    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
+        .{ .function = "HTMLFormElement", .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "HTMLFormElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLFormElement.State) } else .other)} }} },
+        .{ .function = "PasswordCredentialData", .args = &.{.{ .kinds = &.{.dictionary} }} },
+    };
+
+    /// WebIDL constructor (overloaded)
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, form: *runtime.Instance) !*runtime.Instance {
-        // Directly return result from impl.call_constructor
-        return try PasswordCredentialImpl.call_constructor(ctx, form);
+    pub fn call_constructor(ctx: runtime.Context, args: ConstructorArgs) !*runtime.Instance {
+        // Pass args union directly to impl
+        return try PasswordCredentialImpl.call_constructor(ctx, args);
     }
 
     pub fn get_password(instance: *runtime.Instance) anyerror!runtime.USVString {

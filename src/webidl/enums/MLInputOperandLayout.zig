@@ -5,4 +5,7 @@
 pub const MLInputOperandLayout = enum {
     _nchw_,
     _nhwc_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "nchw", "nhwc" };
 };

@@ -106,6 +106,8 @@ pub const TaskAttributionTiming = struct {
         containerSrc: runtime.DOMString,
         containerId: runtime.DOMString,
         containerName: runtime.DOMString,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{

@@ -484,11 +484,19 @@ pub const IR = struct {
             .typedef => {
                 try self.typedefs.put(key, occurrences[base.?].definition.typedef);
                 try self.type_registry.register(key, .typedef);
-                // An operation returning a typedef'd sequence returns a JSValue, as a direct
-                // sequence does (writer.zig). Only this flag: underlying_type also feeds the
-                // overload tables, which resolving typedefs would change.
-                const aliased = occurrences[base.?].definition.typedef.idlType.type;
-                if (self.type_registry.types.getPtr(key)) |info| info.aliases_array = std.mem.eql(u8, aliased, "sequence") or std.mem.eql(u8, aliased, "FrozenArray") or std.mem.eql(u8, aliased, "ObservableArray");
+                // The type the typedef names. The overload tables read it
+                // (writer.writeOverloadKinds): WebIDL's overload resolution
+                // picks by type, and a typedef is only a name for one -
+                // without it every typedef'd argument was `.other`, which
+                // step 12 never matches (CanvasImageSource, GLenum,
+                // ImageDataArray). An operation returning a typedef'd
+                // sequence returns a JSValue, as a direct sequence does
+                // (writer.zig, `aliases_array`).
+                const aliased = occurrences[base.?].definition.typedef.idlType;
+                if (self.type_registry.types.getPtr(key)) |info| {
+                    info.underlying_type = aliased;
+                    info.aliases_array = std.mem.eql(u8, aliased.type, "sequence") or std.mem.eql(u8, aliased.type, "FrozenArray") or std.mem.eql(u8, aliased.type, "ObservableArray");
+                }
             },
             .enum_type => {
                 try self.enums.put(key, occurrences[base.?].definition.enum_type);

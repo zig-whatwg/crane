@@ -12,4 +12,7 @@ pub const ClientCapability = enum {
     _signalAllAcceptedCredentials_,
     _signalCurrentUserDetails_,
     _signalUnknownCredential_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "conditionalCreate", "conditionalGet", "hybridTransport", "passkeyPlatformAuthenticator", "userVerifyingPlatformAuthenticator", "relatedOrigins", "signalAllAcceptedCredentials", "signalCurrentUserDetails", "signalUnknownCredential" };
 };

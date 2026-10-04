@@ -6,4 +6,7 @@ pub const IPAddressSpace = enum {
     _public_,
     _local_,
     _loopback_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "public", "local", "loopback" };
 };

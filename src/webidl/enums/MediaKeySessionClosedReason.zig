@@ -8,4 +8,7 @@ pub const MediaKeySessionClosedReason = enum {
     _release_acknowledged_,
     _hardware_context_reset_,
     _resource_evicted_,
+
+    /// Each variant's value exactly as the IDL spells it, by variant index.
+    pub const idl_values = [_][]const u8{ "internal-error", "closed-by-application", "release-acknowledged", "hardware-context-reset", "resource-evicted" };
 };

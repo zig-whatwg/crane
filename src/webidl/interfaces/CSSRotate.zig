@@ -130,14 +130,22 @@ pub const CSSRotate = struct {
     /// Arguments for constructor (WebIDL overloading)
     pub const ConstructorArgs = union(enum) {
         /// constructor(angle)
-        CSSNumericValue: CSSNumericValue,
+        CSSNumericValue: *runtime.Instance,
         /// constructor(x, y, z, angle)
         CSSNumberish_CSSNumberish_CSSNumberish_CSSNumericValue: struct {
             x: CSSNumberish,
             y: CSSNumberish,
             z: CSSNumberish,
-            angle: CSSNumericValue,
+            angle: *runtime.Instance,
         },
+    };
+
+    /// WebIDL overload set of the constructor: one entry per variant of
+    /// ConstructorArgs, in its order, for the overload resolution algorithm
+    /// (webidl.overload_resolution) the binding runs to pick the variant.
+    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
+        .{ .function = "CSSNumericValue", .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "CSSNumericValue")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").CSSNumericValue.State) } else .other)} }} },
+        .{ .function = "CSSNumberish_CSSNumberish_CSSNumberish_CSSNumericValue", .args = &.{ .{ .kinds = &.{ .numeric, (if (@hasDecl(@import("interfaces"), "CSSNumericValue")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").CSSNumericValue.State) } else .other) } }, .{ .kinds = &.{ .numeric, (if (@hasDecl(@import("interfaces"), "CSSNumericValue")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").CSSNumericValue.State) } else .other) } }, .{ .kinds = &.{ .numeric, (if (@hasDecl(@import("interfaces"), "CSSNumericValue")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").CSSNumericValue.State) } else .other) } }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "CSSNumericValue")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").CSSNumericValue.State) } else .other)} } } },
     };
 
     /// WebIDL constructor (overloaded)

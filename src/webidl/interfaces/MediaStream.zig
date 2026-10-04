@@ -157,7 +157,18 @@ pub const MediaStream = struct {
         /// constructor()
         no_params: void,
         /// constructor(stream)
-        MediaStream: MediaStream,
+        MediaStream: *runtime.Instance,
+        /// constructor(tracks)
+        sequence: runtime.JSValue,
+    };
+
+    /// WebIDL overload set of the constructor: one entry per variant of
+    /// ConstructorArgs, in its order, for the overload resolution algorithm
+    /// (webidl.overload_resolution) the binding runs to pick the variant.
+    pub const constructor_overloads = &[_]webidl.overload_resolution.Overload{
+        .{ .function = "no_params", .args = &.{} },
+        .{ .function = "MediaStream", .args = &.{.{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "MediaStream")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").MediaStream.State) } else .other)} }} },
+        .{ .function = "sequence", .args = &.{.{ .kinds = &.{.sequence} }} },
     };
 
     /// WebIDL constructor (overloaded)

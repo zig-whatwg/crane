@@ -111,6 +111,8 @@ pub const DOMRectReadOnly = struct {
         right: f64,
         bottom: f64,
         left: f64,
+
+        pub const default_to_json = true;
     };
 
     const delegates = .{
