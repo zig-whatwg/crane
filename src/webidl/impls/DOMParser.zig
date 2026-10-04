@@ -133,9 +133,14 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 ///      document's error flag.
 ///
 /// 3. Return document.
-pub fn call_parseFromString(instance: *runtime.Instance, string: runtime.DOMString, @"type": enums.DOMParserSupportedType) anyerror!*runtime.Instance {
+pub fn call_parseFromString(instance: *runtime.Instance, string: typedefs.TrustedHTMLOrDOMString, @"type": enums.DOMParserSupportedType) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const html_string = string.asSlice();
+    // Step 1: "Let compliantString be the result of invoking the get trusted
+    // type compliant string algorithm with TrustedHTML, this's relevant
+    // global object, string, "DOMParser parseFromString", and "script"."
+    const compliant = try dom.trusted_types.compliantStringFor(internal.allocator, .html, instance, string, "DOMParser parseFromString");
+    defer internal.allocator.free(compliant);
+    const html_string: []const u8 = compliant;
 
     // Get the DOMParser's relevant global object's document URL
     // Per spec: "URL is this's relevant global object's associated Document's URL"
@@ -215,7 +220,7 @@ test "DOMParser - parseFromString with HTML" {
     defer deinit(parser);
 
     const html = runtime.DOMString.initStatic("<html><body>Hello World</body></html>");
-    const doc = try call_parseFromString(parser, html, ._text_html_);
+    const doc = try call_parseFromString(parser, .{ .domstring = html }, ._text_html_);
     defer interfaces.Document.deinit(doc);
 
     try std.testing.expect(doc != null);

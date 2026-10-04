@@ -176,7 +176,7 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
 pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
     const element = internal.element orelse return parseInto(internal, value.asSlice());
-    try interfaces.Element.call_setAttributeNS(element, null, internal.attr_name.?, value);
+    try interfaces.Element.call_setAttributeNS(element, null, internal.attr_name.?, .{ .domstring = value });
 }
 
 /// Operation: item(index)
@@ -439,7 +439,7 @@ fn runUpdateSteps(internal: *InternalState) !void {
     // token set."
     const text = try serialize(internal, internal.allocator);
     defer internal.allocator.free(text);
-    try interfaces.Element.call_setAttributeNS(element, null, name, runtime.DOMString.initInterned(text));
+    try interfaces.Element.call_setAttributeNS(element, null, name, .{ .domstring = runtime.DOMString.initInterned(text) });
     // The change steps parse that value back into this same set; record it
     // rather than re-parse it on the next read.
     try recordSynced(internal, text);

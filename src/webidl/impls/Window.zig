@@ -171,6 +171,13 @@ pub const InternalState = struct {
         value: *runtime.Instance,
         edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "crypto" } },
     } = null,
+    /// Trusted Types 4.1: this global's trusted type policy factory, traced
+    /// for its whole lifetime.
+    trusted_types: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "trustedTypes" } },
+    } = null,
     /// LocalDOMWindow::Trace visits custom_elements_.
     custom_elements: ?*runtime.Instance = null,
 
@@ -274,6 +281,7 @@ pub const InternalState = struct {
     pub fn deinit(self: *InternalState) void {
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         if (self.own_performance) |*performance| performance.edge.release(performance.owner);
+        if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
         // The children traced from the global object need nothing here: the
         // edges go with it, and the realm's end frees the children.
         // The popups first: each integration ends its navigable's realm (a
@@ -459,6 +467,7 @@ pub fn installHooks() void {
         .performance = &settingsPerformance,
         .time_origin = &settingsTimeOrigin,
         .crypto = &settingsCrypto,
+        .trusted_types = &settingsTrustedTypes,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
     });
@@ -638,6 +647,17 @@ fn settingsCrypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
     internal.crypto = .{ .owner = instance, .value = crypto };
     internal.crypto.?.edge.hold(instance, crypto);
     return crypto;
+}
+
+/// Trusted Types 4.1: one trusted type policy factory per global, reached
+/// through the settings hook.
+fn settingsTrustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    if (internal.trusted_types) |factory| return factory.value;
+    const factory = try interfaces.TrustedTypePolicyFactory.init(internal.allocator, instance.ctx);
+    internal.trusted_types = .{ .owner = instance, .value = factory };
+    internal.trusted_types.?.edge.hold(instance, factory);
+    return factory;
 }
 
 /// Deinitialize Window instance

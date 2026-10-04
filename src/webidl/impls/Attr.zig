@@ -271,17 +271,31 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 
     // "Set an existing attribute value":
     // Step 1: "If attribute's element is null, then set attribute's value to
-    // value."
-    const element = liveElement(internal) orelse {
-        const copy = try internal.allocator.dupe(u8, new_value);
-        if (internal.value.len > 0) internal.allocator.free(internal.value);
-        internal.value = copy;
-        return;
-    };
+    // value and return."
+    const element = liveElement(internal) orelse return setDetachedValue(internal, new_value);
 
-    // Step 2: "Otherwise, change attribute to value" - in its element's list,
+    // Step 2: "Let element be attribute's element."
+    // Step 3: "Let verifiedValue be the result of calling get trusted type
+    // compliant attribute value with attribute's local name, attribute's
+    // namespace, element, and value." A default policy runs script, which
+    // can move this attribute to another element or remove it.
+    const verified = try dom.trusted_types.getCompliantAttributeValue(internal.allocator, internal.local_name, internal.namespace_uri, element, .{ .string = new_value });
+    defer internal.allocator.free(verified);
+
+    // Step 4: "If attribute's element is null, then set attribute's value to
+    // verifiedValue and return."
+    const current = liveElement(internal) orelse return setDetachedValue(internal, verified);
+
+    // Step 5: "Change attribute to verifiedValue" - in its element's list,
     // which queues the record and runs the attribute change steps.
-    try dom.element_attributes.change(element, internal.namespace_uri, internal.local_name, new_value);
+    try dom.element_attributes.change(current, internal.namespace_uri, internal.local_name, verified);
+}
+
+/// A detached attribute's value is its own.
+fn setDetachedValue(internal: *InternalState, value: []const u8) !void {
+    const copy = try internal.allocator.dupe(u8, value);
+    if (internal.value.len > 0) internal.allocator.free(internal.value);
+    internal.value = copy;
 }
 
 // =============================================================================

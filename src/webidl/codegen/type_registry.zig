@@ -70,6 +70,9 @@ pub const TypeInfo = struct {
     /// For typedefs: the underlying type definition
     underlying_type: ?types.IDLType = null,
 
+    /// For typedefs: it aliases a sequence, FrozenArray or ObservableArray (ir.zig sets it).
+    aliases_array: bool = false,
+
     /// For dictionaries: the parent dictionary name (if any)
     dict_inheritance: ?[]const u8 = null,
 

@@ -32,7 +32,6 @@ const DOMTokenListImpl = @import("DOMTokenList.zig");
 
 // Import html_core for IFrameIntegration (interface-free module)
 const html_core = @import("html_core");
-const InternalStateAccessor = webidl.utils.InternalStateAccessor;
 const IFrameIntegration = html_core.IFrameIntegration;
 const Origin = html_core.Origin;
 const SandboxFlags = html_core.SandboxFlags;
@@ -143,11 +142,13 @@ pub const InternalState = struct {
     }
 };
 
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
+/// `instance`'s iframe state, or null when it is no HTMLIFrameElement. A
+/// checked cast: the DOM's steps reach this with any element whose name is
+/// "iframe" - createElementNS(other, "iframe") is a plain Element - and an
+/// unchecked read of its state as an iframe's was a wild pointer.
 pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start,
@@ -2273,10 +2274,13 @@ fn fireHashChange(data: ?*anyopaque) void {
 
 /// HTML "navigate to a javascript: URL" (§7.4.2.3.2), as its task.
 ///
-/// Steps 3-5 (the initiator's origin, CSP) are not modelled. The new
-/// document's origin is the container's, not the initiator's - the same
-/// when, as in every case this engine reaches, the page navigates its own
-/// frame.
+/// Step 3 (the initiator's origin) is not modelled. Steps 4-5 are, for
+/// require-trusted-types-for's pre-navigation check (Trusted Types 4.2.1.1)
+/// over the record's initiator policy container: its default policy may
+/// rewrite the URL, and an enforced policy may block it. CSP 4.2.4's other
+/// checks (the javascript: inline check) are not run. The new document's
+/// origin is the container's, not the initiator's - the same when, as in
+/// every case this engine reaches, the page navigates its own frame.
 fn runJavascriptNavigation(context: ?*anyopaque) void {
     const id = idOf(context);
     const kv = navigations.fetchRemove(id) orelse return;
@@ -2286,6 +2290,28 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     if (!isOngoing(integration, id)) return;
     // Step 2: "Set the ongoing navigation for targetNavigable to null."
     integration.ongoing_navigation = .none;
+
+    // Steps 4-5: the request - url, the initiator policy container - and
+    // "should navigation request of type be blocked by Content Security
+    // Policy?". Its client is the source document's global, the record's
+    // reporter's; one that is gone has no default policy, so a javascript:
+    // URL under enforced Trusted Types is then Blocked.
+    if (record.initiator_policy_container) |*container| {
+        const client: ?*runtime.Instance = if (record.csp_reporter) |reporter| blk: {
+            if (runtime.SlabAllocator.generationOf(reporter.global) != reporter.generation) break :blk null;
+            if (!reporter.global.ctx.hasEngine()) break :blk null;
+            break :blk reporter.global;
+        } else null;
+        const check = dom_module.trusted_types.javascriptUrlPreNavigationCheck(record.allocator, &container.csp_list, client, record.url, &isParsableUrl) catch return endLoadDelay(integration);
+        switch (check) {
+            .allowed => {},
+            .rewritten => |url| {
+                record.allocator.free(record.url);
+                record.url = url;
+            },
+            .blocked => return endLoadDelay(integration),
+        }
+    }
 
     integration.busy += 1;
     defer finishBusy(integration);
@@ -2357,6 +2383,13 @@ fn javascriptNavigationInRealm(integration: *IFrameIntegration, record: *Navigat
     // realm: a new document may need a new one.
     record.javascript_result = integration.allocator.dupe(u8, html) catch return endLoadDelay(integration);
     record.javascript_url = integration.allocator.dupe(u8, url) catch return endLoadDelay(integration);
+}
+
+/// Whether the URL parser parses `url` (the pre-navigation check's step 6).
+fn isParsableUrl(allocator: std.mem.Allocator, url: []const u8) bool {
+    var parsed = basic_parser.parse(allocator, url, null) catch return false;
+    parsed.deinit();
+    return true;
 }
 
 /// HTML "evaluate a javascript: URL" steps 1-10: the script is the URL after
@@ -3562,8 +3595,7 @@ pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// HTML "reflect": set the src content attribute - whose change steps
 /// (`iframeAttributeChangeSteps`) process the iframe attributes.
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    const ElementImpl = @import("Element.zig");
-    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("src"), runtime.DOMString.initInterned(value));
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("src"), .{ .domstring = runtime.DOMString.initInterned(value) });
 }
 
 /// Getter for srcdoc
@@ -3579,9 +3611,23 @@ pub fn get_srcdoc(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Setter for srcdoc
 /// HTML "reflect": set the srcdoc content attribute - whose change steps
 /// (`iframeAttributeChangeSteps`) process the iframe attributes.
-pub fn set_srcdoc(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    const ElementImpl = @import("Element.zig");
-    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("srcdoc"), value);
+pub fn set_srcdoc(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
+    const allocator = instance.ctx.allocator;
+    // 1. "Let compliantString be the result of invoking the get trusted type
+    // compliant string algorithm with TrustedHTML, this's relevant global
+    // object, the given value, "HTMLIFrameElement srcdoc", and "script"."
+    const compliant = try dom_module.trusted_types.compliantStringFor(allocator, .html, instance, value, "HTMLIFrameElement srcdoc");
+    defer allocator.free(compliant);
+    // 2. "Set an attribute value given this, srcdoc's local name, and
+    // compliantString" - DOM's, which runs no Trusted Types check again.
+    const attributes = dom_module.element_attributes;
+    var index: usize = 0;
+    while (attributes.at(instance, index)) |attribute| : (index += 1) {
+        if (attribute.namespace == null and std.mem.eql(u8, attribute.local_name, "srcdoc")) {
+            return attributes.change(instance, null, "srcdoc", compliant);
+        }
+    }
+    try attributes.append(instance, .{ .namespace = null, .prefix = null, .local_name = "srcdoc", .value = compliant });
 }
 
 /// dom.attribute_change_steps for iframe elements (HTML §4.8.5):

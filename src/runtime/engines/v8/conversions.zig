@@ -1496,11 +1496,25 @@ pub fn fromV8Value(
                     // WebIDL §3.2.24 step 4: a platform object goes to the
                     // arm whose interface it implements.
                     return arm;
-                } else {
+                } else if (comptime string_idx != null and dict_idx == null and function_idx == null and
+                    sequence_idx == null and object_idx == null)
+                {
                     // Not a platform object, or one no arm names - a URL
                     // given for (Request or USVString), a Blob for (Node or
-                    // DOMString) - so it converts as any other object.
-                    // If we have a string variant, try to convert the object to string via toString()
+                    // DOMString), {toString() {...}} for (TrustedHTML or
+                    // DOMString). WebIDL 3.2.25: step 5.1 took no arm; steps
+                    // 6-9 (buffer sources) were tried above; step 10 needs a
+                    // callback function arm and step 11 a sequence,
+                    // dictionary, record, callback interface or `object`
+                    // arm, which this union has none of. So step 15: "If
+                    // types includes a string type, then return the result
+                    // of converting V to that type" - ToString, whose
+                    // exception propagates (ExceptionPending).
+                    const str_idx = string_idx.?;
+                    return @unionInit(T, fields[str_idx].name, try fromV8Value(fields[str_idx].type, allocator, isolate, context, value));
+                } else {
+                    // A union with one of step 11's arms as well: as before
+                    // (a toString attempt, then the dictionary arm below).
                     if (string_idx) |str_idx| {
                         // Call toString() on the object to get a string representation
                         if (v8.v8_Value_ToString(value, context)) |str_value| {

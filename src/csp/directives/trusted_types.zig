@@ -1,355 +1,168 @@
-//! Trusted Types CSP Directives
+//! The `trusted-types` directive (Trusted Types 4.2.2) and "should Trusted
+//! Type policy creation be blocked by Content Security Policy?" (4.2.5).
 //!
-//! W3C Trusted Types Spec: https://w3c.github.io/trusted-types/dist/spec/ § 4
+//!     directive-name  = "trusted-types"
+//!     directive-value = serialized-tt-configuration
+//!     serialized-tt-configuration = ( tt-expression *( required-ascii-whitespace tt-expression ) )
+//!     tt-expression   = tt-policy-name / tt-keyword / tt-wildcard
+//!     tt-wildcard     = "*"
+//!     tt-policy-name  = 1*( ALPHA / DIGIT / "-" / "#" / "=" / "_" / "/" / "@" / "." / "%")
+//!     tt-keyword      = "'allow-duplicates'" / "'none'"
 //!
-//! This module implements:
-//! - trusted-types directive: Controls which policy names can be created
-//! - Policy name matching and 'allow-duplicates' handling
+//! The directive's value is kept as the parser split it (each token's raw
+//! value); a token that is no tt-expression - `*X`, `a!b` - is ignored, as an
+//! invalid expression is. Keywords match ASCII case-insensitively (RFC 5234
+//! terminals); policy names exactly.
+//!
+//! Spec: https://w3c.github.io/trusted-types/dist/spec/#should-block-create-policy
 
 const std = @import("std");
 const types = @import("../types.zig");
+const violation_events = @import("../violation_events.zig");
 
-// ============================================================================
-// Constants
-// ============================================================================
+pub const directive_name = "trusted-types";
 
-/// Trusted Types directive value keywords
-pub const TT_KEYWORD_NONE = "'none'";
-pub const TT_KEYWORD_ALLOW_DUPLICATES = "'allow-duplicates'";
-pub const TT_WILDCARD = "*";
+pub const Result = enum { allowed, blocked };
 
-// ============================================================================
-// Policy Creation Blocking
-// ============================================================================
-
-/// Result of policy creation blocking check
-pub const BlockingResult = enum {
-    Allowed,
-    Blocked,
+/// A tt-expression, or null for a token that is none.
+pub const Expression = union(enum) {
+    policy_name: []const u8,
+    wildcard,
+    none,
+    allow_duplicates,
 };
 
-/// Check if a Trusted Type policy creation should be blocked by CSP.
-/// Spec: Trusted Types spec § 4.3.1
-///
-/// Algorithm (Should Trusted Type policy creation be blocked by CSP?):
-/// 1. Let dominated be null
-/// 2. For each policy in global's CSP list:
-///    a. If policy disposition is not input disposition, continue
-///    b. If policy does not contain 'trusted-types' directive, continue
-///    c. Let dominated' be result of 'Does TT directive value allow name?'
-///    d. If dominated' is false, set dominated to false
-///    e. If dominated is null, set dominated to dominated'
-/// 3. If dominated is false, return 'Blocked'
-/// 4. Return 'Allowed'
-///
-/// Arguments:
-/// - csp_list: The document's CSP list
-/// - policy_name: Name of the policy being created
-/// - disposition: Which disposition to check (enforce or report)
-pub fn shouldTrustedTypePolicyCreationBeBlocked(
+/// The tt-expression `token` is, if any.
+pub fn parseExpression(token: []const u8) ?Expression {
+    if (std.mem.eql(u8, token, "*")) return .wildcard;
+    if (std.ascii.eqlIgnoreCase(token, "'none'")) return .none;
+    if (std.ascii.eqlIgnoreCase(token, "'allow-duplicates'")) return .allow_duplicates;
+    if (isPolicyName(token)) return .{ .policy_name = token };
+    return null;
+}
+
+/// Whether `token` is a tt-policy-name.
+pub fn isPolicyName(token: []const u8) bool {
+    if (token.len == 0) return false;
+    for (token) |c| {
+        const ok = std.ascii.isAlphanumeric(c) or switch (c) {
+            '-', '#', '=', '_', '/', '@', '.', '%' => true,
+            else => false,
+        };
+        if (!ok) return false;
+    }
+    return true;
+}
+
+/// What a `trusted-types` directive's value says, its invalid tokens
+/// ignored.
+const Configuration = struct {
+    names: bool = false,
+    wildcard: bool = false,
+    none: bool = false,
+    allow_duplicates: bool = false,
+
+    fn of(directive: *const types.Directive) Configuration {
+        var config: Configuration = .{};
+        for (directive.value.expressions.items) |expression| {
+            switch (parseExpression(expression.raw_value) orelse continue) {
+                .policy_name => config.names = true,
+                .wildcard => config.wildcard = true,
+                .none => config.none = true,
+                .allow_duplicates => config.allow_duplicates = true,
+            }
+        }
+        return config;
+    }
+
+    /// 4.2.5 step 2.4: "directive's value only contains a tt-keyword which
+    /// is a match for a value 'none'".
+    fn onlyNone(self: Configuration) bool {
+        return self.none and !self.names and !self.wildcard and !self.allow_duplicates;
+    }
+};
+
+/// Whether `directive`'s value contains the tt-policy-name `name`.
+fn containsPolicyName(directive: *const types.Directive, name: []const u8) bool {
+    for (directive.value.expressions.items) |expression| {
+        const parsed = parseExpression(expression.raw_value) orelse continue;
+        if (parsed == .policy_name and std.mem.eql(u8, parsed.policy_name, name)) return true;
+    }
+    return false;
+}
+
+/// 4.2.5 "Should Trusted Type policy creation be blocked by Content Security
+/// Policy?", given the global's CSP list, the policy name and the factory's
+/// created policy names. Each violation goes to `reporter` (CSP 5.5); a null
+/// reporter reports nothing.
+pub fn shouldPolicyCreationBeBlocked(
     csp_list: *const types.CSPList,
     policy_name: []const u8,
-    disposition: types.PolicyDisposition,
-) BlockingResult {
-    var dominated: ?bool = null;
-
+    created_policy_names: []const []const u8,
+    reporter: ?violation_events.Reporter,
+) Result {
+    // 1. Let result be "Allowed".
+    var result: Result = .allowed;
+    // 2. For each policy in global's CSP list:
     for (csp_list.policies.items) |*policy| {
-        // Step 2a: Check disposition
-        if (policy.disposition != disposition) continue;
-
-        // Step 2b: Check for trusted-types directive
-        const tt_directive = policy.getDirective("trusted-types") orelse continue;
-
-        // Step 2c: Check if directive allows this policy name
-        const allows = doesTrustedTypesDirectiveAllowName(
-            &tt_directive.value,
-            policy_name,
-        );
-
-        // Step 2d-2e: Update dominated flag
-        if (!allows) {
-            dominated = false;
-        } else if (dominated == null) {
-            dominated = allows;
-        }
-    }
-
-    // Step 3-4: Return result
-    if (dominated == false) {
-        return .Blocked;
-    }
-
-    return .Allowed;
-}
-
-/// Check if a trusted-types directive value allows a policy name.
-/// Spec: Trusted Types spec § 4.3.1.1
-///
-/// Arguments:
-/// - source_list: The directive's source list (value)
-/// - policy_name: Name of the policy to check
-pub fn doesTrustedTypesDirectiveAllowName(
-    source_list: *const types.SourceList,
-    policy_name: []const u8,
-) bool {
-    // Empty directive value means nothing is allowed
-    if (source_list.isEmpty()) {
-        return false;
-    }
-
-    for (source_list.expressions.items) |expr| {
-        // 'none' keyword - nothing allowed
-        if (expr.type == .keyword_none) {
-            return false;
-        }
-
-        // Wildcard (*) - everything allowed
-        if (expr.type == .wildcard) {
-            return true;
-        }
-        if (std.mem.eql(u8, expr.raw_value, TT_WILDCARD)) {
-            return true;
-        }
-
-        // Skip 'allow-duplicates' keyword (it's a modifier, not a policy name)
-        if (expr.type == .keyword_allow_duplicates) {
-            continue;
-        }
-        if (std.ascii.eqlIgnoreCase(expr.raw_value, TT_KEYWORD_ALLOW_DUPLICATES)) {
-            continue;
-        }
-
-        // Check if policy name matches this expression
-        // Policy names are case-sensitive per spec
-        if (std.mem.eql(u8, expr.raw_value, policy_name)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-// ============================================================================
-// Duplicate Policy Names
-// ============================================================================
-
-/// Check if duplicate policy names are allowed by any policy in the CSP list.
-/// Spec: Trusted Types spec § 4.3.1
-///
-/// If any policy's trusted-types directive contains 'allow-duplicates',
-/// duplicate policy names are allowed.
-pub fn areDuplicatePolicyNamesAllowed(
-    csp_list: *const types.CSPList,
-) bool {
-    for (csp_list.policies.items) |*policy| {
-        const tt_directive = policy.getDirective("trusted-types") orelse continue;
-
-        for (tt_directive.value.expressions.items) |expr| {
-            if (expr.type == .keyword_allow_duplicates) {
-                return true;
-            }
-            if (std.ascii.eqlIgnoreCase(expr.raw_value, TT_KEYWORD_ALLOW_DUPLICATES)) {
-                return true;
+        // 2.1. Let createViolation be false.
+        var create_violation = false;
+        // 2.2-2.3. The policy's trusted-types directive, if it has one.
+        const directive = policy.getDirective(directive_name) orelse continue;
+        const config = Configuration.of(directive);
+        // 2.4. "If directive's value only contains a tt-keyword which is a
+        // match for a value 'none', set createViolation to true."
+        if (config.onlyNone()) create_violation = true;
+        // 2.5. "If createdPolicyNames contains policyName and directive's
+        // value does not contain a tt-keyword which is a match for a value
+        // 'allow-duplicates', set createViolation to true."
+        for (created_policy_names) |created| {
+            if (std.mem.eql(u8, created, policy_name) and !config.allow_duplicates) {
+                create_violation = true;
+                break;
             }
         }
-    }
-
-    return false;
-}
-
-// ============================================================================
-// Trusted Types Policy Check
-// ============================================================================
-
-/// Check if Trusted Types policies are controlled by CSP.
-/// Returns true if any policy in the CSP list has a trusted-types directive.
-pub fn hasTrustedTypesDirective(csp_list: *const types.CSPList) bool {
-    for (csp_list.policies.items) |*policy| {
-        if (policy.containsDirective("trusted-types")) {
-            return true;
+        // 2.6. "If directive's value does not contain a tt-policy-name, which
+        // value is policyName, and directive's value does not contain a
+        // tt-wildcard, set createViolation to true."
+        if (!config.wildcard and !containsPolicyName(directive, policy_name)) create_violation = true;
+        // 2.7. "If createViolation is false, skip to the next policy."
+        if (!create_violation) continue;
+        // 2.8-2.11. The violation, its resource "trusted-types-policy" and
+        // its sample the first 40 characters of policyName, reported.
+        if (reporter) |r| {
+            r.reportViolation(&.{
+                .policy = policy,
+                .effective_directive = directive_name,
+                .resource = .trusted_types_policy,
+                .sample = firstCharacters(policy_name, 40),
+            });
         }
+        // 2.12. "If policy's disposition is "enforce", then set result to
+        // "Blocked"."
+        if (policy.disposition == .enforce) result = .blocked;
     }
-    return false;
-}
-
-/// Get the list of allowed policy names from CSP.
-/// Returns null if no trusted-types directive is present (meaning all names allowed).
-/// Returns empty list if 'none' is specified.
-pub fn getAllowedPolicyNames(
-    allocator: std.mem.Allocator,
-    csp_list: *const types.CSPList,
-) !?std.ArrayList([]const u8) {
-    var has_tt_directive = false;
-    var result = std.ArrayList([]const u8).init(allocator);
-    errdefer result.deinit();
-
-    for (csp_list.policies.items) |*policy| {
-        const tt_directive = policy.getDirective("trusted-types") orelse continue;
-        has_tt_directive = true;
-
-        for (tt_directive.value.expressions.items) |expr| {
-            // 'none' means no policies allowed
-            if (expr.type == .keyword_none) {
-                result.clearRetainingCapacity();
-                return result;
-            }
-
-            // Wildcard means all policies allowed - return null to indicate this
-            if (expr.type == .wildcard or std.mem.eql(u8, expr.raw_value, "*")) {
-                result.deinit();
-                return null;
-            }
-
-            // Skip keywords
-            if (expr.type == .keyword_allow_duplicates) continue;
-            if (std.ascii.eqlIgnoreCase(expr.raw_value, TT_KEYWORD_ALLOW_DUPLICATES)) continue;
-
-            // Add policy name to list (avoid duplicates)
-            var found = false;
-            for (result.items) |existing| {
-                if (std.mem.eql(u8, existing, expr.raw_value)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                try result.append(expr.raw_value);
-            }
-        }
-    }
-
-    if (!has_tt_directive) {
-        result.deinit();
-        return null; // No restriction
-    }
-
+    // 3. Return result.
     return result;
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
-test "shouldTrustedTypePolicyCreationBeBlocked - no CSP" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    // No CSP policies - should allow
-    const result = shouldTrustedTypePolicyCreationBeBlocked(&csp_list, "my-policy", .enforce);
-    try std.testing.expectEqual(BlockingResult.Allowed, result);
-}
-
-test "shouldTrustedTypePolicyCreationBeBlocked - allowed by name" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    var policy = types.Policy.init(allocator, .enforce, .header);
-    var tt_directive = try types.Directive.create(allocator, "trusted-types");
-    try tt_directive.value.append(types.SourceExpression.createBorrowed(.policy_name, "my-policy"));
-    try tt_directive.value.append(types.SourceExpression.createBorrowed(.policy_name, "other-policy"));
-    try policy.directive_set.append(tt_directive);
-    try csp_list.append(policy);
-
-    // my-policy is allowed
-    try std.testing.expectEqual(
-        BlockingResult.Allowed,
-        shouldTrustedTypePolicyCreationBeBlocked(&csp_list, "my-policy", .enforce),
-    );
-
-    // unknown-policy is blocked
-    try std.testing.expectEqual(
-        BlockingResult.Blocked,
-        shouldTrustedTypePolicyCreationBeBlocked(&csp_list, "unknown-policy", .enforce),
-    );
-}
-
-test "shouldTrustedTypePolicyCreationBeBlocked - wildcard allows all" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    var policy = types.Policy.init(allocator, .enforce, .header);
-    var tt_directive = try types.Directive.create(allocator, "trusted-types");
-    try tt_directive.value.append(types.SourceExpression.createBorrowed(.wildcard, "*"));
-    try policy.directive_set.append(tt_directive);
-    try csp_list.append(policy);
-
-    // Any policy name should be allowed
-    try std.testing.expectEqual(
-        BlockingResult.Allowed,
-        shouldTrustedTypePolicyCreationBeBlocked(&csp_list, "any-policy", .enforce),
-    );
-}
-
-test "shouldTrustedTypePolicyCreationBeBlocked - none blocks all" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    var policy = types.Policy.init(allocator, .enforce, .header);
-    var tt_directive = try types.Directive.create(allocator, "trusted-types");
-    try tt_directive.value.append(types.SourceExpression.createBorrowed(.keyword_none, "'none'"));
-    try policy.directive_set.append(tt_directive);
-    try csp_list.append(policy);
-
-    // All policy names should be blocked
-    try std.testing.expectEqual(
-        BlockingResult.Blocked,
-        shouldTrustedTypePolicyCreationBeBlocked(&csp_list, "any-policy", .enforce),
-    );
-}
-
-test "areDuplicatePolicyNamesAllowed" {
-    const allocator = std.testing.allocator;
-
-    // Without 'allow-duplicates'
-    {
-        var csp_list = types.CSPList.init(allocator);
-        defer csp_list.deinit();
-
-        var policy = types.Policy.init(allocator, .enforce, .header);
-        var tt_directive = try types.Directive.create(allocator, "trusted-types");
-        try tt_directive.value.append(types.SourceExpression.createBorrowed(.policy_name, "my-policy"));
-        try policy.directive_set.append(tt_directive);
-        try csp_list.append(policy);
-
-        try std.testing.expect(!areDuplicatePolicyNamesAllowed(&csp_list));
+/// "The substring of `text` containing its first `count` characters" - code
+/// points of the UTF-8 text, never a split sequence. Borrowed from `text`.
+pub fn firstCharacters(text: []const u8, count: usize) []const u8 {
+    var it = std.unicode.Utf8View.initUnchecked(text).iterator();
+    var n: usize = 0;
+    while (n < count) : (n += 1) {
+        _ = it.nextCodepointSlice() orelse break;
     }
-
-    // With 'allow-duplicates'
-    {
-        var csp_list = types.CSPList.init(allocator);
-        defer csp_list.deinit();
-
-        var policy = types.Policy.init(allocator, .enforce, .header);
-        var tt_directive = try types.Directive.create(allocator, "trusted-types");
-        try tt_directive.value.append(types.SourceExpression.createBorrowed(.policy_name, "my-policy"));
-        try tt_directive.value.append(types.SourceExpression.createBorrowed(.keyword_allow_duplicates, "'allow-duplicates'"));
-        try policy.directive_set.append(tt_directive);
-        try csp_list.append(policy);
-
-        try std.testing.expect(areDuplicatePolicyNamesAllowed(&csp_list));
-    }
+    return text[0..it.i];
 }
 
-test "doesTrustedTypesDirectiveAllowName - case sensitive" {
-    const allocator = std.testing.allocator;
-
-    var source_list = types.SourceList.init(allocator);
-    defer source_list.deinit();
-
-    try source_list.append(types.SourceExpression.createBorrowed(.policy_name, "MyPolicy"));
-
-    // Exact match works
-    try std.testing.expect(doesTrustedTypesDirectiveAllowName(&source_list, "MyPolicy"));
-
-    // Different case doesn't match (policy names are case-sensitive)
-    try std.testing.expect(!doesTrustedTypesDirectiveAllowName(&source_list, "mypolicy"));
-    try std.testing.expect(!doesTrustedTypesDirectiveAllowName(&source_list, "MYPOLICY"));
+test "tt-expressions: the wildcard is exactly *, keywords any case, names from the grammar's characters" {
+    try std.testing.expect(parseExpression("*").? == .wildcard);
+    try std.testing.expect(parseExpression("*X") == null);
+    try std.testing.expect(parseExpression("'NONE'").? == .none);
+    try std.testing.expect(parseExpression("'Allow-Duplicates'").? == .allow_duplicates);
+    try std.testing.expectEqualStrings("my-policy.v2", parseExpression("my-policy.v2").?.policy_name);
+    try std.testing.expect(parseExpression("'other'") == null);
+    try std.testing.expect(parseExpression("a,b") == null);
 }

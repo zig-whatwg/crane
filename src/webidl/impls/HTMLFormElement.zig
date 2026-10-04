@@ -270,12 +270,12 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 
 /// Setter for autocomplete
 pub fn set_autocomplete(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("autocomplete"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("autocomplete"), .{ .domstring = value });
 }
 
 /// Setter for enctype
 pub fn set_enctype(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("enctype"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("enctype"), .{ .domstring = value });
 }
 
 /// Setter for encoding
@@ -286,7 +286,7 @@ pub fn set_encoding(instance: *runtime.Instance, value: runtime.DOMString) anyer
 
 /// Setter for method
 pub fn set_method(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("method"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("method"), .{ .domstring = value });
 }
 
 /// Operation: requestSubmit

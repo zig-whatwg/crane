@@ -422,15 +422,24 @@ fn pump(token: *PollToken, instance: *runtime.Instance) bool {
     //    step per turn so that script keeps running while it is in flight.
     if (!internal.connect_attempted and !connection.closed) {
         internal.connect_attempted = true;
-        const origin = clientOrigin(instance);
-        defer if (origin) |o| instance.ctx.allocator.free(o);
-        connection.startConnect(.{
-            .protocols = internal.requested_protocols,
-            .origin = origin,
-            .cookie_jar = clientCookieJar(instance),
-        }) catch |err| {
-            log.debug("handshake to {s} failed to start: {s}", .{ internal.url_string, @errorName(err) });
-        };
+        // "Establish a WebSocket connection" fetches its request, and main
+        // fetch step 7 asks "should request be blocked by Content Security
+        // Policy?" (CSP 4.1.2): blocked is a network error, and "if response
+        // is a network error, then fail the WebSocket connection" - the close
+        // task below fires `error` and `close`.
+        if (blockedByContentSecurityPolicy(instance, internal.url_string)) {
+            connection.fail();
+        } else {
+            const origin = clientOrigin(instance);
+            defer if (origin) |o| instance.ctx.allocator.free(o);
+            connection.startConnect(.{
+                .protocols = internal.requested_protocols,
+                .origin = origin,
+                .cookie_jar = clientCookieJar(instance),
+            }) catch |err| {
+                log.debug("handshake to {s} failed to start: {s}", .{ internal.url_string, @errorName(err) });
+            };
+        }
     }
     if (connection.state == .CONNECTING and !connection.closed) {
         const established = connection.pollConnect() catch |err| blk: {
@@ -555,6 +564,27 @@ fn clientOrigin(instance: *runtime.Instance) ?[]const u8 {
     const origin = @import("mixins").WindowOrWorkerGlobalScope.get_origin(global_instance) catch return null;
     // "null" is an opaque origin, and a header saying so is still the one to send.
     return origin;
+}
+
+/// Main fetch step 7 for the handshake's request (pump step 1): would CSP
+/// block it? The request is the one "establish a WebSocket connection" makes
+/// - its URL `url` with the scheme "http" for "ws" and "https" for "wss",
+/// destination "" (so connect-src governs it), its client this's relevant
+/// settings object, whose policy container's CSP list is checked and whose
+/// global each violation is reported to (CSP 5.5).
+fn blockedByContentSecurityPolicy(instance: *runtime.Instance, url: []const u8) bool {
+    const global_instance = relevantGlobal(instance) orelse return false;
+    const dom = @import("dom");
+    const settings = dom.global_settings.of(global_instance) orelse return false;
+    const container_of = settings.policy_container orelse return false;
+    const container = container_of(global_instance) orelse return false;
+    // "Let requestURL be a copy of url, with its scheme set to "http", if
+    // url's scheme is "ws"; otherwise to "https"."
+    const colon = std.mem.indexOfScalar(u8, url, ':') orelse return false;
+    const scheme: []const u8 = if (std.mem.eql(u8, url[0..colon], "ws")) "http" else "https";
+    var buffer: [2048]u8 = undefined;
+    const request_url = std.fmt.bufPrint(&buffer, "{s}{s}", .{ scheme, url[colon..] }) catch url;
+    return @import("fetch").algorithms.csp_check.isBlockedFor(container, request_url, .empty, dom.csp_violations.reporterFor(global_instance));
 }
 
 /// The user agent's cookie jar, as this's relevant settings object reaches

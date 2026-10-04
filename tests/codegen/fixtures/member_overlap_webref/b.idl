@@ -1,0 +1,4 @@
+// Declares Thing.name again; a second webref file: the writers keep the first.
+partial interface Thing {
+  attribute USVString name;
+};

@@ -20,13 +20,13 @@ const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
 const USVString = @import("typedefs").USVString;
-const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
@@ -38,6 +38,7 @@ const Range = @import("interfaces").Range;
 const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
+const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
 const DOMString = @import("typedefs").DOMString;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
@@ -55,6 +56,7 @@ const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOp
 const EditContext = @import("interfaces").EditContext;
 const DOMRect = @import("interfaces").DOMRect;
 const ElementInternals = @import("interfaces").ElementInternals;
+const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
 const ViewTransition = @import("interfaces").ViewTransition;
 const SpatialNavigationSearchOptions = @import("dictionaries").SpatialNavigationSearchOptions;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
@@ -64,6 +66,7 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const SpatialNavigationDirection = @import("enums").SpatialNavigationDirection;
 const StylePropertyMap = @import("interfaces").StylePropertyMap;
 const ShadowRoot = @import("interfaces").ShadowRoot;
+const TrustedScript = @import("interfaces").TrustedScript;
 const Attr = @import("interfaces").Attr;
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
@@ -109,6 +112,8 @@ pub const HTMLScriptElement = struct {
             .{ "charset", "get_charset", "set_charset" },
             .{ "event", "get_event", "set_event" },
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
+            .{ "innerText", "get_innerText", "set_innerText" },
+            .{ "textContent", "get_textContent", "set_textContent" },
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
         };
 
@@ -243,6 +248,8 @@ pub const HTMLScriptElement = struct {
             .{ "charset", "get_charset", "set_charset" },
             .{ "event", "get_event", "set_event" },
             .{ "htmlFor", "get_htmlFor", "set_htmlFor" },
+            .{ "innerText", "get_innerText", "set_innerText" },
+            .{ "textContent", "get_textContent", "set_textContent" },
             .{ "attributionSrc", "get_attributionSrc", "set_attributionSrc" },
         };
 
@@ -257,7 +264,10 @@ pub const HTMLScriptElement = struct {
         Meta.MixinTypes,
         struct {
             type: typedefs.DOMString = undefined,
-            src: runtime.USVString = undefined,
+            src: union(enum) {
+                TrustedScriptURL: TrustedScriptURL,
+                USVString: runtime.USVString,
+            } = undefined,
             noModule: bool = undefined,
             async: bool = undefined,
             @"defer": bool = undefined,
@@ -266,10 +276,21 @@ pub const HTMLScriptElement = struct {
             referrerPolicy: typedefs.DOMString = undefined,
             integrity: typedefs.DOMString = undefined,
             fetchPriority: typedefs.DOMString = undefined,
-            text: typedefs.DOMString = undefined,
+            text: union(enum) {
+                TrustedScript: TrustedScript,
+                DOMString: runtime.DOMString,
+            } = undefined,
             charset: typedefs.DOMString = undefined,
             event: typedefs.DOMString = undefined,
             htmlFor: typedefs.DOMString = undefined,
+            innerText: union(enum) {
+                TrustedScript: TrustedScript,
+                DOMString: runtime.DOMString,
+            } = undefined,
+            textContent: ?union(enum) {
+                TrustedScript: TrustedScript,
+                DOMString: runtime.DOMString,
+            } = null,
             attributionSrc: runtime.USVString = undefined,
             cached_blocking: ?*runtime.Instance = null,
             _internal: ?*HTMLScriptElementImpl.InternalState = null,
@@ -286,11 +307,13 @@ pub const HTMLScriptElement = struct {
         .get_event = &get_event,
         .get_fetchPriority = &get_fetchPriority,
         .get_htmlFor = &get_htmlFor,
+        .get_innerText = &get_innerText,
         .get_integrity = &get_integrity,
         .get_noModule = &get_noModule,
         .get_referrerPolicy = &get_referrerPolicy,
         .get_src = &get_src,
         .get_text = &get_text,
+        .get_textContent = &get_textContent,
         .get_type = &get_type,
 
         .set_async = &set_async,
@@ -302,11 +325,13 @@ pub const HTMLScriptElement = struct {
         .set_event = &set_event,
         .set_fetchPriority = &set_fetchPriority,
         .set_htmlFor = &set_htmlFor,
+        .set_innerText = &set_innerText,
         .set_integrity = &set_integrity,
         .set_noModule = &set_noModule,
         .set_referrerPolicy = &set_referrerPolicy,
         .set_src = &set_src,
         .set_text = &set_text,
+        .set_textContent = &set_textContent,
         .set_type = &set_type,
 
         .deinit = &deinit,
@@ -369,20 +394,18 @@ pub const HTMLScriptElement = struct {
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectURL]
+    /// Extended attributes: [CEReactions]
     pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
-        if (comptime @hasDecl(HTMLScriptElementImpl, "get_src")) return try HTMLScriptElementImpl.get_src(instance);
-        return try reflection.get(runtime.USVString, instance, .{ .name = "src", .url = true });
+        return try HTMLScriptElementImpl.get_src(instance);
     }
 
-    /// Extended attributes: [CEReactions], [ReflectURL]
-    pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
+    /// Extended attributes: [CEReactions]
+    pub fn set_src(instance: *runtime.Instance, value: typedefs.TrustedScriptURLOrUSVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
-        if (comptime @hasDecl(HTMLScriptElementImpl, "set_src")) return try HTMLScriptElementImpl.set_src(instance, value);
-        try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
+        try HTMLScriptElementImpl.set_src(instance, value);
     }
 
     /// Extended attributes: [CEReactions], [Reflect]
@@ -518,7 +541,7 @@ pub const HTMLScriptElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_text(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_text(instance: *runtime.Instance, value: typedefs.TrustedScriptOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -574,6 +597,34 @@ pub const HTMLScriptElement = struct {
         try reflection.set(DOMString, instance, .{ .name = "for" }, value);
     }
 
+    /// Extended attributes: [CEReactions]
+    pub fn get_innerText(instance: *runtime.Instance) anyerror!DOMString {
+        return try HTMLScriptElementImpl.get_innerText(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn set_innerText(instance: *runtime.Instance, value: typedefs.TrustedScriptOrDOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        try HTMLScriptElementImpl.set_innerText(instance, value);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn get_textContent(instance: *runtime.Instance) anyerror!?DOMString {
+        return try HTMLScriptElementImpl.get_textContent(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn set_textContent(instance: *runtime.Instance, value: ?typedefs.TrustedScriptOrDOMString) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        runtime.CEReactions.begin();
+        defer runtime.CEReactions.end();
+
+        try HTMLScriptElementImpl.set_textContent(instance, value);
+    }
+
     /// Extended attributes: [CEReactions], [SecureContext]
     pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVString {
         return try HTMLScriptElementImpl.get_attributionSrc(instance);
@@ -591,4 +642,10 @@ pub const HTMLScriptElement = struct {
     pub fn call_static_supports(instance: *runtime.Instance, @"type": DOMString) anyerror!bool {
         return try HTMLScriptElementImpl.call_static_supports(instance, @"type");
     }
+
+    /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
+    /// (bit i = argument i; an attribute setter's value is bit 0).
+    pub const legacy_null_to_empty = .{
+        .{ "set_innerText", 0b1 },
+    };
 };

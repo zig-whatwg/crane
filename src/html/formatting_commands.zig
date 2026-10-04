@@ -156,9 +156,9 @@ pub fn executeFontName(
     Element.call_setAttribute(
         span.?,
         runtime.DOMString.initInterned("style"),
-        runtime.DOMString.initFromSlice(allocator, style) catch {
+        .{ .domstring = runtime.DOMString.initFromSlice(allocator, style) catch {
             return .{ .success = false, .error_message = "Failed to create style string" };
-        },
+        } },
     ) catch {
         return .{ .success = false, .error_message = "Failed to set style attribute" };
     };
@@ -250,9 +250,9 @@ pub fn executeFontSize(
     Element.call_setAttribute(
         span.?,
         runtime.DOMString.initInterned("style"),
-        runtime.DOMString.initFromSlice(allocator, style) catch {
+        .{ .domstring = runtime.DOMString.initFromSlice(allocator, style) catch {
             return .{ .success = false, .error_message = "Failed to create style string" };
-        },
+        } },
     ) catch {
         return .{ .success = false, .error_message = "Failed to set style attribute" };
     };
@@ -332,9 +332,9 @@ pub fn executeForeColor(
     Element.call_setAttribute(
         span.?,
         runtime.DOMString.initInterned("style"),
-        runtime.DOMString.initFromSlice(allocator, style) catch {
+        .{ .domstring = runtime.DOMString.initFromSlice(allocator, style) catch {
             return .{ .success = false, .error_message = "Failed to create style string" };
-        },
+        } },
     ) catch {
         return .{ .success = false, .error_message = "Failed to set style attribute" };
     };
@@ -414,9 +414,9 @@ pub fn executeBackColor(
     Element.call_setAttribute(
         span.?,
         runtime.DOMString.initInterned("style"),
-        runtime.DOMString.initFromSlice(allocator, style) catch {
+        .{ .domstring = runtime.DOMString.initFromSlice(allocator, style) catch {
             return .{ .success = false, .error_message = "Failed to create style string" };
-        },
+        } },
     ) catch {
         return .{ .success = false, .error_message = "Failed to set style attribute" };
     };
@@ -515,9 +515,9 @@ pub fn executeJustify(
     Element.call_setAttribute(
         block_element.?,
         runtime.DOMString.initInterned("style"),
-        runtime.DOMString.initFromSlice(std.heap.page_allocator, new_style) catch {
+        .{ .domstring = runtime.DOMString.initFromSlice(std.heap.page_allocator, new_style) catch {
             return .{ .success = false, .error_message = "Failed to create style string" };
-        },
+        } },
     ) catch {
         return .{ .success = false, .error_message = "Failed to set style attribute" };
     };

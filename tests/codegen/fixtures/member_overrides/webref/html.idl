@@ -1,0 +1,22 @@
+// The definition a supplementary file restates (tests/codegen/trusted_type_unions_test.zig).
+[Exposed=Window]
+interface TrustedScript {};
+[Exposed=Window]
+interface TrustedScriptURL {};
+
+[Exposed=Window]
+interface HTMLScriptElement {
+  [CEReactions, ReflectURL] attribute USVString src;
+  [CEReactions] attribute boolean async;
+  [CEReactions] attribute DOMString text;
+};
+
+[Exposed=Window]
+interface TrustedHTML {};
+
+[Exposed=Window]
+interface Document {
+  boolean hasFocus();
+  [CEReactions] boolean execCommand(DOMString commandId, optional boolean showUI = false, optional DOMString value = "");
+  boolean queryCommandEnabled(DOMString commandId);
+};

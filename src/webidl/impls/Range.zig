@@ -1361,9 +1361,15 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime
 /// DOM Parsing - Range.createContextualFragment(string)
 /// Parses the given string as HTML and returns a DocumentFragment
 /// Note: Requires HTML parser integration
-pub fn call_createContextualFragment(instance: *runtime.Instance, string: runtime.DOMString) anyerror!*runtime.Instance {
+pub fn call_createContextualFragment(instance: *runtime.Instance, string: typedefs.TrustedHTMLOrDOMString) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
-    _ = string;
+    // Step 1: "Let compliantString be the result of invoking the get trusted
+    // type compliant string algorithm with TrustedHTML, this's relevant
+    // global object, string, "Range createContextualFragment", and
+    // "script"."
+    const allocator = instance.ctx.allocator;
+    const compliant = try dom.trusted_types.compliantStringFor(allocator, .html, instance, string, "Range createContextualFragment");
+    defer allocator.free(compliant);
 
     // NOTE: Full implementation requires HTML parser
     // For now, return an empty DocumentFragment (use interface per Golden Rule #13)

@@ -20,6 +20,7 @@ const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const ShadowRootMode = @import("enums").ShadowRootMode;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const StyleSheetList = @import("interfaces").StyleSheetList;
 const EventHandler = @import("typedefs").EventHandler;
@@ -273,7 +274,7 @@ pub const ShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_innerHTML(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
@@ -335,7 +336,7 @@ pub const ShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: DOMString) anyerror!void {
+    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

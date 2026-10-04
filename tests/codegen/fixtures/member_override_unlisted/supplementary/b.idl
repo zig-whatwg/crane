@@ -1,0 +1,4 @@
+// Declares Thing.name again; member_overrides.zig does not list it.
+partial interface Thing {
+  attribute USVString name;
+};

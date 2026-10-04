@@ -275,7 +275,12 @@ fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
 ///
 /// This is called when the interface is constructed from JavaScript:
 /// new Worker(scriptURL, options)
-pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(dictionaries.WorkerOptions)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(dictionaries.WorkerOptions)) !*runtime.Instance {
+    // Step 1: "Let compliantScriptURL be the result of invoking the get
+    // trusted type compliant string algorithm with TrustedScriptURL, this's
+    // relevant global object, scriptURL, "Worker constructor", and "script"."
+    const compliant_script_url = try @import("dom").trusted_types.compliantStringForRealm(ctx.allocator, .script_url, ctx, scriptURL, "Worker constructor");
+    defer ctx.allocator.free(compliant_script_url);
 
     // NOTE: We rely on the persistent HandleScope from BrowserContext.
     // Creating a local HandleScope here and disposing it at the end of the constructor
@@ -325,7 +330,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, opti
     // origin, so `support/x.js` from /workers/y.html fetched /support/x.js.
     const base_url = apiBaseURL(instance);
     defer if (base_url) |b| ctx.allocator.free(b);
-    const url_copy = try resolveScriptURL(ctx.allocator, scriptURL.asSlice(), base_url);
+    const url_copy = try resolveScriptURL(ctx.allocator, compliant_script_url, base_url);
     errdefer ctx.allocator.free(url_copy);
     // Its origin, for the blob-URL store's same-origin check.
     const requesting_origin = try serializedOriginOf(ctx.allocator, base_url);

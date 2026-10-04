@@ -860,19 +860,35 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
 }
 
 /// HTML "navigate to a javascript: URL" for the top-level page, queued by
-/// "navigate" step 20: what it needs when it runs - the URL, and the
-/// initiator origin snapshot (the source document's origin, serialized).
+/// "navigate" step 20: what it needs when it runs - the URL, the initiator
+/// origin snapshot (the source document's origin, serialized), the
+/// initiator policy container (a clone of the source document's, taken now:
+/// step 4's request carries it), and the source window - the request's
+/// client, whose default policy the pre-navigation check runs.
 const JavascriptNavigation = struct {
     allocator: Allocator,
     window: *runtime.Instance,
     generation: u64,
     url: []u8,
     initiator_origin: ?[]u8,
+    initiator_policy_container: ?dom.policy_containers.PolicyContainer = null,
+    source_window: ?*runtime.Instance = null,
+    source_generation: u64 = 0,
 
     fn destroy(self: *JavascriptNavigation) void {
         self.allocator.free(self.url);
         if (self.initiator_origin) |o| self.allocator.free(o);
+        if (self.initiator_policy_container) |*container| container.deinit();
         self.allocator.destroy(self);
+    }
+
+    /// The source window, while it is still the one recorded and its realm
+    /// runs.
+    fn liveSourceWindow(self: *const JavascriptNavigation) ?*runtime.Instance {
+        const source = self.source_window orelse return null;
+        if (runtime.SlabAllocator.generationOf(source) != self.source_generation) return null;
+        if (!source.ctx.hasEngine()) return null;
+        return source;
     }
 
     fn run(context: ?*anyopaque) void {
@@ -908,20 +924,34 @@ fn queueJavascriptNavigation(window: *runtime.Instance, url: []const u8, source:
         defer w.ctx.allocator.free(serialized);
         break :blk try allocator.dupe(u8, serialized);
     } else null;
+    // Navigate step 4's source snapshot params' source policy container: a
+    // clone of the source document's (the page's own with no source), which
+    // "navigate to a javascript: URL" step 4's request carries.
+    const container_document: ?*runtime.Instance = source orelse (interfaces.Window.get_document(window) catch null);
+    var initiator_container: ?dom.policy_containers.PolicyContainer = null;
+    if (container_document) |doc| {
+        if (dom.policy_containers.of(doc)) |container| initiator_container = try container.clone(allocator);
+    }
+    errdefer if (initiator_container) |*container| container.deinit();
     task.* = .{
         .allocator = allocator,
         .window = window,
         .generation = runtime.SlabAllocator.generationOf(window),
         .url = owned_url,
         .initiator_origin = initiator,
+        .initiator_policy_container = initiator_container,
+        .source_window = source_window,
+        .source_generation = if (source_window) |w| runtime.SlabAllocator.generationOf(w) else 0,
     };
     const loop = window.ctx.getOptionalEventLoop() orelse return JavascriptNavigation.run(task);
     loop.queueTask(.{ .callback = JavascriptNavigation.run, .context = task, .drop = JavascriptNavigation.drop });
 }
 
 /// "Navigate to a javascript: URL", in the page's realm. Not modelled,
-/// stated: step 2 (the page's navigable keeps no ongoing navigation), step 5
-/// (the CSP navigation check), and steps 8-17 - a String result would be the
+/// stated: step 2 (the page's navigable keeps no ongoing navigation); of step
+/// 5's CSP check, every directive but require-trusted-types-for (its
+/// pre-navigation check, Trusted Types 4.2.1.1) - CSP 4.2.4's javascript:
+/// inline check is not run; and steps 8-17 - a String result would be the
 /// page's new document, which this engine cannot make for the top-level
 /// page: the result is dropped.
 fn navigateToJavascriptUrl(task: *JavascriptNavigation) void {
@@ -932,10 +962,38 @@ fn navigateToJavascriptUrl(task: *JavascriptNavigation) void {
     const target = interfaces.Window.get_origin(window) catch return;
     defer window.ctx.allocator.free(target);
     if (std.mem.eql(u8, initiator, "null") or !std.mem.eql(u8, initiator, target)) return;
+    // Steps 4-5: "Let request be a new request whose URL is url and whose
+    // policy container is initiatorPolicyContainer. If the result of should
+    // navigation request of type be blocked by Content Security Policy?
+    // given request and cspNavigationType is "Blocked", then return." The
+    // request's client is the source window: a source window that is gone
+    // has no default policy, so a javascript: URL under enforced Trusted
+    // Types is then Blocked.
+    var url: []const u8 = task.url;
+    var rewritten: ?[]u8 = null;
+    defer if (rewritten) |u| task.allocator.free(u);
+    if (task.initiator_policy_container) |*container| {
+        const check = dom.trusted_types.javascriptUrlPreNavigationCheck(task.allocator, &container.csp_list, task.liveSourceWindow(), task.url, &isValidUrl) catch return;
+        switch (check) {
+            .allowed => {},
+            .rewritten => |u| {
+                rewritten = u;
+                url = u;
+            },
+            .blocked => return,
+        }
+    }
     // Step 6: "Let newDocument be the result of evaluating a javascript: URL".
-    const result = evaluateJavascriptUrl(window, task.url, task.allocator) orelse return;
+    const result = evaluateJavascriptUrl(window, url, task.allocator) orelse return;
     task.allocator.free(result);
     log.debug("a javascript: URL's String result would replace the top-level page; it cannot be", .{});
+}
+
+/// Whether the URL parser parses `url` (the pre-navigation check's step 6).
+fn isValidUrl(allocator: Allocator, url: []const u8) bool {
+    var parsed = basic_parser.parse(allocator, url, null) catch return false;
+    parsed.deinit();
+    return true;
 }
 
 /// HTML "evaluate a javascript: URL" in `window`'s realm: the script's

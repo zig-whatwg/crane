@@ -1,43 +1,66 @@
-//! Implementation for TrustedTypePolicyFactory interface
+//! Implementation for the TrustedTypePolicyFactory interface (Trusted Types
+//! 2.3.1): `trustedTypes` on a Window or a WorkerGlobalScope.
 //!
-//! W3C Trusted Types Spec: https://w3c.github.io/trusted-types/dist/spec/
+//! A factory has a default policy (initially null) and an ordered set of
+//! created policy names (initially empty). createPolicy runs 3.1 "create a
+//! Trusted Type policy" - the CSP check of 4.2.5 against the factory's
+//! relevant global's CSP list first. The global keeps its factory as a
+//! traced child (global_settings `trusted_types`); the factory keeps its
+//! default policy and its empty values the same way.
 //!
-//! TrustedTypePolicyFactory creates TrustedTypePolicy instances and provides
-//! type checking utilities. Exposed as `window.trustedTypes` or `self.trustedTypes`.
+//! Spec: https://w3c.github.io/trusted-types/dist/spec/#trusted-type-policy-factory
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
 const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const trusted_types = @import("trusted_types");
+const csp = @import("csp");
+const dom = @import("dom");
+const same_object = @import("same_object.zig");
 const TrustedTypePolicyFactory = interfaces.TrustedTypePolicyFactory;
+
+const Kind = dom.trusted_types.Kind;
 
 pub const State = TrustedTypePolicyFactory.State;
 
-pub const ImplError = error{
-    NotImplemented,
-    TypeError,
-    OutOfMemory,
-};
+/// A child the factory hands out and keeps: the default policy, emptyHTML,
+/// emptyScript.
+const Kept = struct {
+    value: ?*runtime.Instance = null,
+    edge: same_object.Traced,
 
-/// Internal state for TrustedTypePolicyFactory implementation
-/// Stores the underlying trusted_types.TrustedTypePolicyFactory
-pub const InternalState = struct {
-    /// The underlying TrustedTypePolicyFactory from the trusted_types module
-    inner: ?*trusted_types.TrustedTypePolicyFactory = null,
+    fn hold(self: *Kept, owner: *runtime.Instance, child: *runtime.Instance) void {
+        self.value = child;
+        self.edge.hold(owner, child);
+    }
 
-    pub fn deinit(self: *InternalState) void {
-        if (self.inner) |factory| {
-            factory.deinit();
-        }
+    fn release(self: *Kept, owner: *runtime.Instance) void {
+        self.edge.release(owner);
+        self.value = null;
     }
 };
 
-/// Initialize instance (creates the instance)
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    /// "Created policy names", an ordered set; each name owned.
+    created_policy_names: std.ArrayListUnmanaged([]u8) = .empty,
+    /// "Default policy", initially null.
+    default_policy: Kept = .{ .edge = .{ .slot = .{ .name = "defaultPolicy" } } },
+    empty_html: Kept = .{ .edge = .{ .slot = .{ .name = "emptyHTML" } } },
+    empty_script: Kept = .{ .edge = .{ .slot = .{ .name = "emptyScript" } } },
+
+    fn deinit(self: *InternalState, factory: *runtime.Instance) void {
+        self.default_policy.release(factory);
+        self.empty_html.release(factory);
+        self.empty_script.release(factory);
+        for (self.created_policy_names.items) |name| self.allocator.free(name);
+        self.created_policy_names.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+};
+
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -45,151 +68,168 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-
-    // Create the underlying factory
-    const factory = try trusted_types.TrustedTypePolicyFactory.init(allocator);
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.inner = factory;
-    }
-
+    errdefer runtime.Instance.deinit(instance);
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(StateType).own._internal = internal;
     return instance;
 }
 
-/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up the underlying factory
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        internal.deinit(instance);
+        state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Getter for emptyHTML
-/// Per spec: "readonly attribute TrustedHTML emptyHTML"
+pub fn installHooks() void {
+    dom.trusted_types.installFactory(.{ .default_policy = &defaultPolicy });
+}
+
+fn internalOf(instance: *runtime.Instance) ?*InternalState {
+    if (instance.vtable != &TrustedTypePolicyFactory.vtable) return null;
+    return instance.getState(State).own._internal;
+}
+
+fn defaultPolicy(factory: *runtime.Instance) ?*runtime.Instance {
+    const internal = internalOf(factory) orelse return null;
+    return internal.default_policy.value;
+}
+
+/// emptyHTML / emptyScript: a value of `kind` whose data is the empty
+/// string, made once and kept.
+fn emptyValue(instance: *runtime.Instance, kind: Kind) anyerror!*runtime.Instance {
+    const internal = internalOf(instance) orelse return error.TypeError;
+    const kept = switch (kind) {
+        .html => &internal.empty_html,
+        .script => &internal.empty_script,
+        .script_url => unreachable,
+    };
+    if (kept.value) |value| return value;
+    const value = try dom.trusted_types.createValue(instance.ctx, kind, "");
+    kept.hold(instance, value);
+    return value;
+}
+
+/// "is a TrustedHTML object with its data value set to an empty string."
 pub fn get_emptyHTML(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    // TODO: Return a TrustedHTML instance wrapping the empty HTML
-    // This requires access to the TrustedHTML interface's vtable
-    return error.NotImplemented;
+    return emptyValue(instance, .html);
 }
 
-/// Getter for emptyScript
-/// Per spec: "readonly attribute TrustedScript emptyScript"
+/// "is a TrustedScript object with its data value set to an empty string."
 pub fn get_emptyScript(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    // TODO: Return a TrustedScript instance wrapping the empty script
-    return error.NotImplemented;
+    return emptyValue(instance, .script);
 }
 
-/// Getter for defaultPolicy
-/// Per spec: "readonly attribute TrustedTypePolicy? defaultPolicy"
+/// "Returns the value of default policy."
 pub fn get_defaultPolicy(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return null;
-    const factory = internal.inner orelse return null;
-
-    // Check if default policy exists
-    _ = factory.getDefaultPolicy() orelse return null;
-
-    // TODO: Return a TrustedTypePolicy instance wrapping the default policy
-    // This requires access to the TrustedTypePolicy interface's vtable
-    return error.NotImplemented;
+    const internal = internalOf(instance) orelse return error.TypeError;
+    return internal.default_policy.value;
 }
 
-/// Operation: createPolicy
-/// Per spec: "TrustedTypePolicy createPolicy(DOMString policyName, optional TrustedTypePolicyOptions)"
+/// createPolicy(policyName, policyOptions): 3.1 "Create a Trusted Type
+/// Policy" with this, policyName, policyOptions and this's relevant global
+/// object.
 pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMString, policyOptions: webidl.Opt(dictionaries.TrustedTypePolicyOptions)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.NotImplemented;
-    const factory = internal.inner orelse return error.NotImplemented;
-
-    // Convert WebIDL TrustedTypePolicyOptions to trusted_types options
-    // TODO: Handle callback conversion from JS to Zig
-    _ = policyOptions;
-    const options = trusted_types.TrustedTypePolicyOptions{};
-
-    _ = factory.createPolicy(policyName.asSlice(), options) catch |err| switch (err) {
-        trusted_types.FactoryError.TypeError => return error.TypeError,
-        trusted_types.FactoryError.OutOfMemory => return error.OutOfMemory,
+    // The options' callbacks, which the binding made for this call and
+    // nothing else releases: taken here, released when the policy has its
+    // own traced copies (or creation failed).
+    var options: dom.trusted_types.PolicyOptions = .{};
+    if (policyOptions.wasPassed()) {
+        const given = policyOptions.getValue();
+        if (given.createHTML) |f| options.html = engine.takeCallbackFunction(@ptrCast(f));
+        if (given.createScript) |f| options.script = engine.takeCallbackFunction(@ptrCast(f));
+        if (given.createScriptURL) |f| options.script_url = engine.takeCallbackFunction(@ptrCast(f));
+    }
+    defer for ([_]Kind{ .html, .script, .script_url }) |kind| {
+        if (options.get(kind)) |callback| callback.release();
     };
 
-    // TODO: Wrap the policy in a runtime.Instance
-    return error.NotImplemented;
+    const internal = internalOf(instance) orelse return error.TypeError;
+    const name = policyName.asSlice();
+    const global = dom.trusted_types.relevantGlobalOf(instance);
+
+    // 1-2. "Let allowedByCSP be the result of executing should Trusted Type
+    // policy creation be blocked by content security policy? with global,
+    // policyName and factory's created policy names. If allowedByCSP is
+    // "Blocked", throw a TypeError."
+    if (global) |g| {
+        if (dom.trusted_types.cspListOf(g)) |list| {
+            const blocked = csp.directives.trusted_types.shouldPolicyCreationBeBlocked(
+                list,
+                name,
+                internal.created_policy_names.items,
+                dom.csp_violations.reporterFor(g),
+            );
+            if (blocked == .blocked) return error.TypeError;
+        }
+    }
+    // 3. "If policyName is default and the factory's default policy value is
+    // not null, throw a TypeError."
+    const is_default = std.mem.eql(u8, name, "default");
+    if (is_default and internal.default_policy.value != null) return error.TypeError;
+
+    // 4-6. A new policy with policyName and the options.
+    const policy = try dom.trusted_types.createPolicy(instance.ctx, name, options);
+    // 7. "If the policyName is default, set the factory's default policy
+    // value to policy."
+    if (is_default) internal.default_policy.hold(instance, policy);
+    // 8. "Append policyName to factory's created policy names" - a set:
+    // a name already there is not appended again.
+    if (!containsName(internal, name)) {
+        const copy = try internal.allocator.dupe(u8, name);
+        errdefer internal.allocator.free(copy);
+        try internal.created_policy_names.append(internal.allocator, copy);
+    }
+    // 9. "Return policy."
+    return policy;
 }
 
-/// Operation: isHTML
-/// Per spec: "boolean isHTML(any value)"
+fn containsName(internal: *const InternalState, name: []const u8) bool {
+    for (internal.created_policy_names.items) |created| {
+        if (std.mem.eql(u8, created, name)) return true;
+    }
+    return false;
+}
+
+/// isHTML/isScript/isScriptURL: "Returns true if value is an instance of
+/// TrustedHTML and has an associated data value set, false otherwise" - a
+/// platform object, not an object whose prototype is one.
+fn isTrusted(instance: *runtime.Instance, value: runtime.JSValue, kind: Kind) bool {
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const object = engine.convertToPlatformObject(realm, value) orelse return false;
+    return dom.trusted_types.dataOf(object, kind) != null;
+}
+
 pub fn call_isHTML(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
-    _ = instance;
-    // Check if value is a TrustedHTML instance
-    // In JS integration, this would check the internal slot
-    // For now, basic type check
-    _ = value;
-    return false;
+    return isTrusted(instance, value, .html);
 }
 
-/// Operation: isScript
-/// Per spec: "boolean isScript(any value)"
 pub fn call_isScript(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
-    _ = instance;
-    _ = value;
-    return false;
+    return isTrusted(instance, value, .script);
 }
 
-/// Operation: isScriptURL
-/// Per spec: "boolean isScriptURL(any value)"
 pub fn call_isScriptURL(instance: *runtime.Instance, value: runtime.JSValue) anyerror!bool {
-    _ = instance;
-    _ = value;
-    return false;
+    return isTrusted(instance, value, .script_url);
 }
 
-/// Operation: getPropertyType
-/// Per spec: "DOMString? getPropertyType(DOMString tagName, DOMString property, optional DOMString? elementNs)"
+/// An optional `DOMString? = ""` argument: "" when not passed.
+fn optionalNamespace(argument: webidl.Opt(?runtime.DOMString)) ?[]const u8 {
+    if (!argument.wasPassed()) return "";
+    const value = argument.getValue() orelse return null;
+    return value.asSlice();
+}
+
+/// getPropertyType(tagName, property, elementNs) (2.3.1).
 pub fn call_getPropertyType(instance: *runtime.Instance, tagName: runtime.DOMString, property: runtime.DOMString, elementNs: webidl.Opt(?runtime.DOMString)) anyerror!?runtime.DOMString {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return null;
-    const factory = internal.inner orelse return null;
-
-    // Extract namespace from optional
-    const ns: ?[]const u8 = if (elementNs.wasPassed()) blk: {
-        const opt_ns = elementNs.getValue();
-        break :blk if (opt_ns) |s| s.asSlice() else null;
-    } else null;
-
-    if (factory.getPropertyType(tagName.asSlice(), property.asSlice(), ns)) |result| {
-        return runtime.DOMString.initInterned(result);
-    }
-    return null;
+    const kind = try dom.trusted_types.getPropertyType(instance.ctx.allocator, tagName.asSlice(), property.asSlice(), optionalNamespace(elementNs)) orelse return null;
+    return runtime.DOMString.initInterned(kind.interfaceName());
 }
 
-/// Operation: getAttributeType
-/// Per spec: "DOMString? getAttributeType(DOMString tagName, DOMString attribute, optional DOMString? elementNs, optional DOMString? attrNs)"
+/// getAttributeType(tagName, attribute, elementNs, attrNs) (2.3.1).
 pub fn call_getAttributeType(instance: *runtime.Instance, tagName: runtime.DOMString, attribute: runtime.DOMString, elementNs: webidl.Opt(?runtime.DOMString), attrNs: webidl.Opt(?runtime.DOMString)) anyerror!?runtime.DOMString {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return null;
-    const factory = internal.inner orelse return null;
-
-    const elem_ns: ?[]const u8 = if (elementNs.wasPassed()) blk: {
-        const opt_ns = elementNs.getValue();
-        break :blk if (opt_ns) |s| s.asSlice() else null;
-    } else null;
-    const attr_ns: ?[]const u8 = if (attrNs.wasPassed()) blk: {
-        const opt_ns = attrNs.getValue();
-        break :blk if (opt_ns) |s| s.asSlice() else null;
-    } else null;
-
-    if (factory.getAttributeType(tagName.asSlice(), attribute.asSlice(), elem_ns, attr_ns)) |result| {
-        return runtime.DOMString.initInterned(result);
-    }
-    return null;
-}
-
-/// Get the underlying factory directly
-pub fn getFactory(instance: *runtime.Instance) ?*trusted_types.TrustedTypePolicyFactory {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return null;
-    return internal.inner;
+    const kind = try dom.trusted_types.getAttributeType(instance.ctx.allocator, tagName.asSlice(), attribute.asSlice(), optionalNamespace(elementNs), optionalNamespace(attrNs)) orelse return null;
+    return runtime.DOMString.initInterned(kind.interfaceName());
 }

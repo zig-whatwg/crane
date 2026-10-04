@@ -91,16 +91,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 ///
 /// Spec: HTML Standard § 10.2.6.4
 /// https://html.spec.whatwg.org/multipage/workers.html#dom-sharedworker
-pub fn call_constructor(ctx: runtime.Context, scriptURL: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
+pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(runtime.JSValue)) !*runtime.Instance {
     const allocator = ctx.allocator;
+    // 1. "Let compliantScriptURL be the result of invoking the get trusted
+    // type compliant string algorithm with TrustedScriptURL, this's relevant
+    // global object, scriptURL, "SharedWorker constructor", and "script"."
+    const compliant_script_url = try @import("dom").trusted_types.compliantStringForRealm(allocator, .script_url, ctx, scriptURL, "SharedWorker constructor");
+    defer allocator.free(compliant_script_url);
+
     const instance = try init(allocator, State, &SharedWorker.vtable, ctx);
     errdefer deinit(instance);
-
-    // 1. compliantScriptURL: Trusted Types' "get trusted type compliant
-    // string" - a TrustedScriptURL, or the string itself when no policy is
-    // enforced. Crane enforces none on workers (the Worker constructor does
-    // the same), so it is scriptURL.
-    const compliant_script_url = scriptURL.asSlice();
 
     // 2. If options is a DOMString, it is a WorkerOptions whose name is
     // options; otherwise it is the dictionary.

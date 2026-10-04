@@ -45,6 +45,9 @@ pub const Settings = struct {
     time_origin: ?*const fn (global: *runtime.Instance) ?i64 = null,
     /// The global's Crypto, retained as a traced child of this global.
     crypto: ?*const fn (global: *runtime.Instance) anyerror!*runtime.Instance = null,
+    /// The global's trusted type policy factory (Trusted Types 4.1), retained
+    /// as a traced child of this global.
+    trusted_types: ?*const fn (global: *runtime.Instance) anyerror!*runtime.Instance = null,
     /// The user agent's cookie jar, as the global's settings object reaches
     /// it - null where there is none (a global no Browser made).
     cookie_jar: ?*const fn (global: *runtime.Instance) ?*cookiestore.CookieJar = null,

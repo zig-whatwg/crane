@@ -124,7 +124,7 @@ pub const ReportingObserver = struct {
         return try ReportingObserverImpl.call_disconnect(instance);
     }
 
-    pub fn call_takeRecords(instance: *runtime.Instance) anyerror!ReportList {
+    pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try ReportingObserverImpl.call_takeRecords(instance);
     }
 };
