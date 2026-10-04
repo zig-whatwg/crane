@@ -49,7 +49,7 @@ test "a typedef'd sequence return is a runtime.JSValue, like a direct sequence r
     try testing.expect(contains(out, "pub fn call_direct(instance: *runtime.Instance) anyerror!runtime.JSValue"));
     try testing.expect(contains(out, "pub fn call_getEntries(instance: *runtime.Instance) anyerror!runtime.JSValue"));
     try testing.expect(contains(out, "pub fn call_maybeEntries(instance: *runtime.Instance) anyerror!?runtime.JSValue"));
-    try testing.expect(!contains(out, "typedefs.PerformanceEntryList"));
+    try testing.expect(!contains(out, "anyerror!PerformanceEntryList"));
     // A typedef of a non-sequence keeps its typedef.
-    try testing.expect(contains(out, "typedefs.DOMHighResTimeStamp"));
+    try testing.expect(contains(out, "pub fn call_now(instance: *runtime.Instance) anyerror!DOMHighResTimeStamp"));
 }

@@ -484,6 +484,11 @@ pub const IR = struct {
             .typedef => {
                 try self.typedefs.put(key, occurrences[base.?].definition.typedef);
                 try self.type_registry.register(key, .typedef);
+                // An operation returning a typedef'd sequence returns a JSValue, as a direct
+                // sequence does (writer.zig). Only this flag: underlying_type also feeds the
+                // overload tables, which resolving typedefs would change.
+                const aliased = occurrences[base.?].definition.typedef.idlType.type;
+                if (self.type_registry.types.getPtr(key)) |info| info.aliases_array = std.mem.eql(u8, aliased, "sequence") or std.mem.eql(u8, aliased, "FrozenArray") or std.mem.eql(u8, aliased, "ObservableArray");
             },
             .enum_type => {
                 try self.enums.put(key, occurrences[base.?].definition.enum_type);

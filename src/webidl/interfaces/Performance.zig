@@ -268,7 +268,7 @@ pub const Performance = struct {
         return try PerformanceImpl.call_mark(instance, markName, markOptions);
     }
 
-    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!PerformanceEntryList {
+    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!runtime.JSValue {
         return try PerformanceImpl.call_getEntriesByName(instance, name, @"type");
     }
 
@@ -289,7 +289,7 @@ pub const Performance = struct {
         return try PerformanceImpl.call_now(instance);
     }
 
-    pub fn call_getEntries(instance: *runtime.Instance) anyerror!PerformanceEntryList {
+    pub fn call_getEntries(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceImpl.call_getEntries(instance);
     }
 
@@ -297,7 +297,7 @@ pub const Performance = struct {
         return try PerformanceImpl.call_clearMarks(instance, markName);
     }
 
-    pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": DOMString) anyerror!PerformanceEntryList {
+    pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": DOMString) anyerror!runtime.JSValue {
         return try PerformanceImpl.call_getEntriesByType(instance, @"type");
     }
 

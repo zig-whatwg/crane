@@ -87,7 +87,7 @@ pub fn call_disconnect(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Operation: takeRecords
-pub fn call_takeRecords(instance: *runtime.Instance) anyerror!typedefs.PerformanceEntryList {
+pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }

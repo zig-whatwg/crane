@@ -135,7 +135,7 @@ pub const PerformanceObserver = struct {
         return try PerformanceObserverImpl.call_disconnect(instance);
     }
 
-    pub fn call_takeRecords(instance: *runtime.Instance) anyerror!PerformanceEntryList {
+    pub fn call_takeRecords(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceObserverImpl.call_takeRecords(instance);
     }
 };
