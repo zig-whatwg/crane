@@ -45,6 +45,9 @@ pub const TimingReport = struct {
     body_info: fetch_timing.ResponseBodyInfo,
     /// responseStatus: 0 for a cross-origin-redirected navigation.
     response_status: u16,
+    /// The response's timing allow passed flag: when unset the timing info
+    /// is opaque, and Resource Timing exposes no transfer size.
+    timing_allow_passed: bool = true,
 };
 
 /// Where a request's timing goes when its response is over (Fetch "report

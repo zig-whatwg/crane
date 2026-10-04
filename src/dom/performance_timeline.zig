@@ -1022,6 +1022,9 @@ pub const ResourceTiming = struct {
     cache_mode: CacheMode,
     response_status: u16,
     render_blocking: bool,
+    /// Whether the response passed the timing allow check: without it,
+    /// transferSize is 0 (Resource Timing 3.5.1).
+    timing_allow_passed: bool = true,
     /// The entry's startTime and end time.
     start_time: f64,
     end_time: f64,
@@ -1094,6 +1097,7 @@ pub const ResourceTiming = struct {
             .cache_mode = cache_mode,
             .response_status = report.response_status,
             .render_blocking = timing.render_blocking,
+            .timing_allow_passed = report.timing_allow_passed,
             // 3. startTime: the start time; end time: the end time.
             .start_time = convert.call(timing.start_time),
             .end_time = convert.call(timing.end_time),

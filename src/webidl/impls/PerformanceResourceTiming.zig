@@ -199,6 +199,9 @@ pub fn get_responseEnd(instance: *runtime.Instance) anyerror!typedefs.DOMHighRes
 /// bytes, which could reveal cookies).
 pub fn get_transferSize(instance: *runtime.Instance) anyerror!u64 {
     const timing = try timingOf(instance);
+    // Resource Timing 3.5.1: transferSize is protected by the timing allow
+    // check - a resource that failed it (a network error too) reports 0.
+    if (!timing.timing_allow_passed) return 0;
     return switch (timing.cache_mode) {
         .local => 0,
         .validated => 300,
