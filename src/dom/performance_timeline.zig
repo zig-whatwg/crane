@@ -42,6 +42,9 @@ const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const clock = @import("clock");
+const fetch = @import("fetch");
+const interfaces = @import("interfaces");
+const fire_event = @import("fire_event.zig");
 
 const Instance = runtime.Instance;
 
@@ -76,12 +79,13 @@ pub const EntryType = enum {
         return null;
     }
 
-    /// The registry's maxBufferSize: null for infinite. Resource timing's
-    /// buffer is its own ("resource timing buffer size", 250 initially).
+    /// The registry's maxBufferSize: null for infinite. The resource
+    /// buffer's limit is Resource Timing's own "resource timing buffer size
+    /// limit" (`Timeline.resource`), which its "add a
+    /// PerformanceResourceTiming entry" enforces.
     pub fn maxBufferSize(self: EntryType) ?usize {
         return switch (self) {
-            .mark, .measure, .navigation => null,
-            .resource => 250,
+            .mark, .measure, .navigation, .resource => null,
         };
     }
 
@@ -97,8 +101,8 @@ pub const EntryType = enum {
     /// The navigation and resource types join when their entries are made.
     pub fn isSupported(self: EntryType) bool {
         return switch (self) {
-            .mark, .measure => true,
-            .navigation, .resource => false,
+            .mark, .measure, .resource => true,
+            .navigation => false,
         };
     }
 };
@@ -275,6 +279,8 @@ pub const Timeline = struct {
     /// (Performance Timeline 2: each Document has a most recent navigation;
     /// a global and its associated Document are one here).
     most_recent_navigation_id: u64 = 0,
+    /// Resource Timing 3.4's per-global state.
+    resource: ResourceBuffer = .{},
 
     pub fn init(allocator: std.mem.Allocator, owner: *Instance) Timeline {
         var buffers: std.EnumArray(EntryType, Buffer) = undefined;
@@ -302,6 +308,7 @@ pub const Timeline = struct {
     pub fn deinit(self: *Timeline) void {
         var it = self.buffers.iterator();
         while (it.next()) |kv| kv.value.entries.deinit(self.allocator);
+        self.resource.secondary_buffer.deinit(self.allocator);
         // An observer still listed must not reach back into this timeline
         // through a link its own teardown checks: the owner's generation
         // moves on when the slab frees it, right after this.
@@ -352,9 +359,12 @@ pub fn queueEntry(timeline: *Timeline, entry: *Instance) !void {
         try observer.buffer.append(observer.allocator, entry);
         holdEntry(observer.instance, entry);
     }
-    // 9-12. The buffer, unless it is full.
+    // 9-12. The buffer, unless it is full. A resource entry is added by
+    // Resource Timing's own "add a PerformanceResourceTiming entry" (mark
+    // resource timing step 4), which keeps the secondary buffer and fires
+    // resourcetimingbufferfull - adding it here too would add it twice.
     const buffer = timeline.buffers.getPtr(entry_type);
-    if (!isBufferFull(buffer) and shouldAddEntry(entry_type, null)) {
+    if (entry_type != .resource and !isBufferFull(buffer) and shouldAddEntry(entry_type, null)) {
         try buffer.entries.append(timeline.allocator, entry);
         holdEntry(timeline.owner, entry);
     }
@@ -789,6 +799,406 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
 }
 
 // ============================================================================
+// Resource Timing (W3C Resource Timing 3.4, 4)
+// ============================================================================
+
+/// Resource Timing 3.4's state of a global ("Each ECMAScript global
+/// environment has"): the buffer's size limit and current size, the buffer
+/// full event pending flag and the secondary buffer.
+pub const ResourceBuffer = struct {
+    size_limit: usize = 250,
+    current_size: usize = 0,
+    full_event_pending: bool = false,
+    /// The resource timing secondary buffer; each entry kept by an edge from
+    /// the timeline's owner while it is here.
+    secondary_buffer: std.ArrayListUnmanaged(*Instance) = .empty,
+};
+
+/// "can add resource timing entry".
+fn canAddResourceTimingEntry(timeline: *const Timeline) bool {
+    return timeline.resource.current_size < timeline.resource.size_limit;
+}
+
+/// "add a PerformanceResourceTiming entry" `entry` into `timeline`'s
+/// performance entry buffer.
+pub fn addResourceTimingEntry(timeline: *Timeline, entry: *Instance) !void {
+    const state = &timeline.resource;
+    // 1. Room, and no buffer full event pending: into the buffer.
+    if (canAddResourceTimingEntry(timeline) and !state.full_event_pending) {
+        try timeline.buffers.getPtr(.resource).entries.append(timeline.allocator, entry);
+        holdEntry(timeline.owner, entry);
+        state.current_size += 1;
+        return;
+    }
+    // 2. Otherwise the buffer full event is pending, its task queued once.
+    if (!state.full_event_pending) {
+        state.full_event_pending = true;
+        queueBufferFullTask(timeline);
+    }
+    // 3-4. Into the secondary buffer.
+    try state.secondary_buffer.append(timeline.allocator, entry);
+    holdEntry(timeline.owner, entry);
+}
+
+/// clearResourceTimings(): every PerformanceResourceTiming out of the
+/// buffer, and its current size 0.
+pub fn clearResourceTimings(timeline: *Timeline) void {
+    clearEntries(timeline, .resource, null);
+    timeline.resource.current_size = 0;
+}
+
+/// setResourceTimingBufferSize(maxSize): the size limit; entries already
+/// buffered stay.
+pub fn setResourceTimingBufferSize(timeline: *Timeline, max_size: u32) void {
+    timeline.resource.size_limit = max_size;
+}
+
+/// "copy secondary buffer".
+fn copySecondaryBuffer(timeline: *Timeline) void {
+    const state = &timeline.resource;
+    const buffer = timeline.buffers.getPtr(.resource);
+    // 1. While the secondary buffer has entries and there is room, the
+    // oldest moves to the end of the buffer (its edge from the owner stays).
+    while (state.secondary_buffer.items.len > 0 and canAddResourceTimingEntry(timeline)) {
+        const entry = state.secondary_buffer.orderedRemove(0);
+        buffer.entries.append(timeline.allocator, entry) catch {
+            releaseEntry(timeline.owner, entry);
+            continue;
+        };
+        state.current_size += 1;
+    }
+}
+
+/// "fire a buffer full event", in `timeline`'s realm.
+fn fireBufferFullEvent(timeline: *Timeline) void {
+    const state = &timeline.resource;
+    // 1. While the secondary buffer has entries:
+    while (state.secondary_buffer.items.len > 0) {
+        // 1.1.
+        const before = state.secondary_buffer.items.len;
+        // 1.2. No room: resourcetimingbufferfull at the Performance object.
+        if (!canAddResourceTimingEntry(timeline)) fireSimpleEvent(timeline.owner, "resourcetimingbufferfull");
+        // A listener may have ended the realm.
+        if (!timeline.owner.ctx.hasEngine()) return;
+        // 1.3-1.4.
+        copySecondaryBuffer(timeline);
+        const after = state.secondary_buffer.items.len;
+        // 1.5. No room was made: the rest are dropped - counted as the
+        // resource buffer's dropped entries (Performance Timeline's dropped
+        // entries count, which observers requiring it hear).
+        if (before <= after) {
+            for (state.secondary_buffer.items) |entry| releaseEntry(timeline.owner, entry);
+            timeline.buffers.getPtr(.resource).dropped_entries_count += state.secondary_buffer.items.len;
+            state.secondary_buffer.clearRetainingCapacity();
+            break;
+        }
+    }
+    // 2.
+    state.full_event_pending = false;
+}
+
+/// Fire an event named `event_type` at `target` (DOM "fire an event").
+fn fireSimpleEvent(target: *Instance, comptime event_type: []const u8) void {
+    const event = interfaces.Event.call_constructor(target.ctx, runtime.DOMString.initInterned(event_type), .{ .was_passed = false, .value = .{} }) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = fire_event.dispatchTrusted(target, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
+
+/// Queue a task on the performance timeline task source to fire a buffer
+/// full event - a global task of the timeline's realm, as the observer task.
+fn queueBufferFullTask(timeline: *Timeline) void {
+    queueGlobalTask(timeline.owner, BufferFullTask.run, BufferFullTask.drop) catch {
+        // Nowhere to queue it: the entries stay in the secondary buffer, and
+        // the pending flag clears so that the next entry tries again.
+        timeline.resource.full_event_pending = false;
+    };
+}
+
+const BufferFullTask = struct {
+    fn run(context: ?*anyopaque) void {
+        const task: *GlobalTask = @ptrCast(@alignCast(context.?));
+        const performance = task.target;
+        task.destroy();
+        if (!performance.isLive()) return;
+        const timeline = timelineOfPerformance(performance.instance) orelse return;
+        engine.runTaskInRealm(performance.instance.ctx, steps, timeline) catch {
+            timeline.resource.full_event_pending = false;
+        };
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const task: *GlobalTask = @ptrCast(@alignCast(context.?));
+        const performance = task.target;
+        task.destroy();
+        if (!performance.isLive()) return;
+        const timeline = timelineOfPerformance(performance.instance) orelse return;
+        timeline.resource.full_event_pending = false;
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        fireBufferFullEvent(@ptrCast(@alignCast(data.?)));
+    }
+};
+
+/// A global task's context: its target (a Performance, a global), by a link
+/// that says whether it is still there when the task runs.
+const GlobalTask = struct {
+    allocator: std.mem.Allocator,
+    target: Link,
+    /// What the task carries (a resource timing to mark), or null.
+    resource_timing: ?*ResourceTiming = null,
+
+    fn destroy(self: *GlobalTask) void {
+        if (self.resource_timing) |timing| {
+            timing.deinit();
+            self.allocator.destroy(timing);
+        }
+        self.allocator.destroy(self);
+    }
+};
+
+/// Queue a global task for `target` (a Performance or a global) on its
+/// realm's event loop - naming the realm's Window, so that it is dropped
+/// once the Window's document is not fully active - or, in a worker realm,
+/// as a timer. The task owns `resource_timing` from here, also on error.
+fn queueGlobalTask(target: *Instance, run: *const fn (?*anyopaque) void, drop: *const fn (?*anyopaque) void) !void {
+    return queueGlobalTaskWith(target, run, drop, null);
+}
+
+fn queueGlobalTaskWith(target: *Instance, run: *const fn (?*anyopaque) void, drop: *const fn (?*anyopaque) void, resource_timing: ?*ResourceTiming) !void {
+    const ctx = target.ctx;
+    const allocator = ctx.allocator;
+    const task = allocator.create(GlobalTask) catch |err| {
+        if (resource_timing) |timing| {
+            timing.deinit();
+            allocator.destroy(timing);
+        }
+        return err;
+    };
+    task.* = .{ .allocator = allocator, .target = Link.to(target), .resource_timing = resource_timing };
+    if (ctx.getOptionalEventLoop()) |loop| {
+        const global = globalOf(ctx);
+        loop.queueTask(.{
+            .callback = run,
+            .context = task,
+            .drop = drop,
+            .document = if (global) |g| @ptrCast(g) else null,
+            .document_generation = if (global) |g| runtime.SlabAllocator.generationOf(g) else 0,
+        });
+        return;
+    }
+    if (ctx.getOptionalTimer()) |timer| {
+        if (timer.setTimeout(0, run, task) != 0) return;
+    }
+    task.destroy();
+    return error.NotSupported;
+}
+
+/// How a PerformanceResourceTiming's cache mode reads.
+pub const CacheMode = enum { none, local, validated };
+
+/// What Resource Timing's "setup the resource timing entry" sets on an
+/// entry, its fetch timing info's times already converted to the entry's
+/// global's relative time ("convert fetch timestamp": 0 stays 0) - the
+/// getters return them as they are. Strings OWNED (`allocator`).
+pub const ResourceTiming = struct {
+    allocator: std.mem.Allocator,
+    /// The requested URL, which is also the entry's name.
+    url: []u8,
+    /// The initiator type ("fetch", "script", ...); static.
+    initiator_type: []const u8,
+    /// The delivery type: "" or "cache"; static.
+    delivery_type: []const u8,
+    cache_mode: CacheMode,
+    response_status: u16,
+    render_blocking: bool,
+    /// The entry's startTime and end time.
+    start_time: f64,
+    end_time: f64,
+    worker_start: f64,
+    redirect_start: f64,
+    redirect_end: f64,
+    fetch_start: f64,
+    domain_lookup_start: f64,
+    domain_lookup_end: f64,
+    connect_start: f64,
+    connect_end: f64,
+    secure_connection_start: f64,
+    request_start: f64,
+    final_response_headers_start: f64,
+    first_interim_response_start: f64,
+    response_end: f64,
+    next_hop_protocol: []u8,
+    encoded_body_size: u64,
+    decoded_body_size: u64,
+    content_type: []u8,
+    content_encoding: []u8,
+
+    pub fn deinit(self: *ResourceTiming) void {
+        self.allocator.free(self.url);
+        self.allocator.free(self.next_hop_protocol);
+        self.allocator.free(self.content_type);
+        self.allocator.free(self.content_encoding);
+    }
+
+    /// A copy with strings of its own (`allocator`).
+    pub fn clone(self: *const ResourceTiming, allocator: std.mem.Allocator) !ResourceTiming {
+        var copy = self.*;
+        copy.allocator = allocator;
+        copy.url = try allocator.dupe(u8, self.url);
+        errdefer allocator.free(copy.url);
+        copy.next_hop_protocol = try allocator.dupe(u8, self.next_hop_protocol);
+        errdefer allocator.free(copy.next_hop_protocol);
+        copy.content_type = try allocator.dupe(u8, self.content_type);
+        errdefer allocator.free(copy.content_type);
+        copy.content_encoding = try allocator.dupe(u8, self.content_encoding);
+        return copy;
+    }
+
+    /// "setup the resource timing entry" steps 3-11 for what fetch
+    /// reported, with `convert` turning a fetch timestamp into the global's
+    /// relative time.
+    pub fn fromReport(allocator: std.mem.Allocator, report: *const fetch.internal.TimingReport, convert: anytype) !ResourceTiming {
+        const timing = report.timing_info;
+        const connection = timing.final_connection_timing_info orelse fetch.internal.ConnectionTimingInfo{};
+        // 1. cacheMode is "", "local" or "validated".
+        const cache_mode: CacheMode = if (std.mem.eql(u8, report.cache_state, "local"))
+            .local
+        else if (std.mem.eql(u8, report.cache_state, "validated"))
+            .validated
+        else
+            .none;
+        const url = try allocator.dupe(u8, report.url);
+        errdefer allocator.free(url);
+        const protocol = try allocator.dupe(u8, connection.alpn_negotiated_protocol);
+        errdefer allocator.free(protocol);
+        const content_type = try allocator.dupe(u8, report.body_info.content_type);
+        errdefer allocator.free(content_type);
+        const content_encoding = try allocator.dupe(u8, report.body_info.content_encoding);
+        return .{
+            .allocator = allocator,
+            .url = url,
+            .initiator_type = initiatorTypeName(report.initiator_type),
+            // 10. A cache mode and no delivery type: "cache".
+            .delivery_type = if (cache_mode != .none) "cache" else "",
+            .cache_mode = cache_mode,
+            .response_status = report.response_status,
+            .render_blocking = timing.render_blocking,
+            // 3. startTime: the start time; end time: the end time.
+            .start_time = convert.call(timing.start_time),
+            .end_time = convert.call(timing.end_time),
+            .worker_start = convert.call(timing.final_service_worker_start_time),
+            .redirect_start = convert.call(timing.redirect_start_time),
+            .redirect_end = convert.call(timing.redirect_end_time),
+            .fetch_start = convert.call(timing.post_redirect_start_time),
+            .domain_lookup_start = convert.call(connection.domain_lookup_start_time),
+            .domain_lookup_end = convert.call(connection.domain_lookup_end_time),
+            .connect_start = convert.call(connection.connection_start_time),
+            .connect_end = convert.call(connection.connection_end_time),
+            .secure_connection_start = convert.call(connection.secure_connection_start_time),
+            .request_start = convert.call(timing.final_network_request_start_time),
+            .final_response_headers_start = convert.call(timing.final_network_response_start_time),
+            .first_interim_response_start = convert.call(timing.first_interim_network_response_start_time),
+            .response_end = convert.call(timing.end_time),
+            .next_hop_protocol = protocol,
+            .encoded_body_size = report.body_info.encoded_size,
+            .decoded_body_size = report.body_info.decoded_size,
+            .content_type = content_type,
+            .content_encoding = content_encoding,
+        };
+    }
+};
+
+/// A Fetch initiator type as Resource Timing names it.
+pub fn initiatorTypeName(initiator_type: fetch.internal.InitiatorType) []const u8 {
+    return switch (initiator_type) {
+        .early_hints => "early-hints",
+        inline else => |t| @tagName(t),
+    };
+}
+
+/// Resource Timing "convert fetch timestamp" for `realm`'s global: zero
+/// stays zero; any other time is its relative high resolution coarse time.
+const FetchTimestampConverter = struct {
+    realm: runtime.Context,
+
+    fn call(self: FetchTimestampConverter, ts: f64) f64 {
+        if (ts == 0) return 0;
+        const impl = hooks.performances orelse return 0;
+        return impl.relative_coarse_time(self.realm, ts) orelse 0;
+    }
+};
+
+/// What PerformanceResourceTiming supplies.
+pub const ResourceTimings = struct {
+    /// "mark resource timing" step 1-2: a new PerformanceResourceTiming in
+    /// `realm` set up with `timing` (copied). The caller's until the engine
+    /// wraps it (Instance.releaseIfUnwrapped).
+    create: *const fn (realm: runtime.Context, timing: *const ResourceTiming) anyerror!*Instance,
+};
+
+/// The timing reporter of requests whose client is `global`'s settings
+/// object (fetch's TimingReporter): what fetch reports is marked as a
+/// resource timing of `global`, in a global task.
+pub fn timingReporterFor(global: *Instance) fetch.internal.TimingReporter {
+    return .{ .context = global, .report = &reportResourceTiming };
+}
+
+/// Fetch "report timing" for the request's client's `global` (the
+/// reporter's context): what Resource Timing's "mark resource timing" needs,
+/// its times made relative to `global`'s time origin now, marked in a task.
+fn reportResourceTiming(context: *anyopaque, report: *const fetch.internal.TimingReport) void {
+    const global: *Instance = @ptrCast(@alignCast(context));
+    if (!global.ctx.hasEngine()) return;
+    const allocator = global.ctx.allocator;
+    const timing = allocator.create(ResourceTiming) catch return;
+    timing.* = ResourceTiming.fromReport(allocator, report, FetchTimestampConverter{ .realm = global.ctx }) catch {
+        allocator.destroy(timing);
+        return;
+    };
+    queueGlobalTaskWith(global, MarkResourceTimingTask.run, MarkResourceTimingTask.drop, timing) catch {};
+}
+
+const MarkResourceTimingTask = struct {
+    fn run(context: ?*anyopaque) void {
+        const task: *GlobalTask = @ptrCast(@alignCast(context.?));
+        defer task.destroy();
+        if (!task.target.isLive()) return;
+        const global = task.target.instance;
+        if (!global.ctx.hasEngine()) return;
+        engine.runTaskInRealm(global.ctx, steps, task) catch {};
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const task: *GlobalTask = @ptrCast(@alignCast(context.?));
+        task.destroy();
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const task: *GlobalTask = @ptrCast(@alignCast(data.?));
+        const timing = task.resource_timing orelse return;
+        markResourceTiming(task.target.instance.ctx, timing) catch {};
+    }
+};
+
+/// Resource Timing 4 "mark resource timing" for `realm`'s global, given
+/// what "setup the resource timing entry" sets.
+pub fn markResourceTiming(realm: runtime.Context, timing: *const ResourceTiming) !void {
+    const timeline = timelineOf(realm) orelse return;
+    const impl = hooks.resource_timings orelse return error.NotSupported;
+    // 1-2. A new PerformanceResourceTiming in global's realm, set up.
+    const entry = try impl.create(realm, timing);
+    const generation = runtime.SlabAllocator.generationOf(entry);
+    // An entry no buffer and no observer kept is the caller's to free.
+    defer entry.releaseIfUnwrapped(generation);
+    // 3. Queue it.
+    try queueEntry(timeline, entry);
+    // 4. Add it to global's performance entry buffer.
+    try addResourceTimingEntry(timeline, entry);
+}
+
+// ============================================================================
 // Hooks
 // ============================================================================
 
@@ -802,6 +1212,11 @@ pub const Performances = struct {
     /// The current relative timestamp of `realm`'s global (its Performance's
     /// now()); null for a global with no Performance.
     now: *const fn (realm: runtime.Context) ?f64,
+    /// HR-Time "relative high resolution coarse time" of `unsafe_ms` (a
+    /// moment of the unsafe shared current time, in ms) for `realm`'s
+    /// global: coarsened, then made relative to its time origin. Null for
+    /// a global with no Performance.
+    relative_coarse_time: *const fn (realm: runtime.Context, unsafe_ms: f64) ?f64,
 };
 
 /// What PerformanceObserverEntryList supplies.
@@ -826,6 +1241,7 @@ pub const ExceptionReporter = *const fn (global: *Instance, info: *const engine.
 
 /// What the timeline's owners installed: each owner's own field.
 const Hooks = struct {
+    resource_timings: ?ResourceTimings = null,
     entries: ?Entries = null,
     performances: ?Performances = null,
     entry_lists: ?EntryLists = null,
@@ -835,6 +1251,13 @@ const Hooks = struct {
 
 // process-wide: function pointers the timeline's owners (Performance, PerformanceEntry, PerformanceObserver, PerformanceObserverEntryList, PerformanceMeasure) install once at process start (crane.Process), the same for every instance
 var hooks: Hooks = .{};
+
+/// Called by PerformanceResourceTiming's installHooks, once, at process
+/// start.
+pub fn installResourceTimings(impl: ResourceTimings) void {
+    process_start.assertInstalling();
+    hooks.resource_timings = impl;
+}
 
 /// Called by PerformanceEntry's installHooks, once, at process start.
 pub fn installEntries(impl: Entries) void {

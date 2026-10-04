@@ -499,6 +499,12 @@ pub fn mainFetchFinish(
         }
     }
 
+    // Step 19 (of the current numbering): "If request's timing allow failed
+    // flag is unset, then set internalResponse's timing allow passed flag."
+    // A network error has no internal response to set it on, and its timing
+    // is reported opaque.
+    if (!isNetworkError(response) and !request.timing_allow_failed) response.timing_allow_passed = true;
+
     // Step 16: Record end timing
     params.timing_info.end_time = getCurrentTimeMs();
 
@@ -652,10 +658,10 @@ fn isNetworkError(response: *InternalResponse) bool {
     return response.response_type == .@"error" or response.status == 0;
 }
 
-/// Get current time in milliseconds (DOMHighResTimeStamp format).
+/// HR-Time's "unsafe shared current time" in milliseconds - the clock of a
+/// fetch timing info (http_fetch.getCurrentTimeMs).
 fn getCurrentTimeMs() f64 {
-    // clock.wallSeconds() returns seconds, convert to milliseconds
-    return @as(f64, @floatFromInt(clock.wallSeconds())) * 1000.0;
+    return @import("http_fetch.zig").getCurrentTimeMs();
 }
 
 // =============================================================================
@@ -1111,4 +1117,35 @@ test "main fetch step 19: a script with an image type, or a nosniff one without 
     const kept = mainFetchFinish(params, false, csv);
     defer kept.deinit();
     try std.testing.expect(kept == csv);
+}
+
+test "main fetch: a response's timing allow passed flag is set unless its request's timing allow failed flag is" {
+    const allocator = std.testing.allocator;
+    const FetchController = @import("../internal/fetch_controller.zig").FetchController;
+    const FetchTimingInfo = @import("../internal/fetch_timing.zig").FetchTimingInfo;
+    for ([_]bool{ false, true }) |failed| {
+        const request = try InternalRequest.init(allocator, "http://a.test/x");
+        defer request.deinit();
+        request.timing_allow_failed = failed;
+        const controller = try FetchController.init(allocator);
+        defer controller.deinit();
+        var timing = FetchTimingInfo.init(allocator);
+        defer timing.deinit();
+        const params = try FetchParams.init(allocator, request, controller, &timing);
+        defer params.deinit();
+        const response = try InternalResponse.init(allocator);
+        defer response.deinit();
+        response.status = 200;
+        _ = mainFetchFinish(params, false, response);
+        try std.testing.expectEqual(!failed, response.timing_allow_passed);
+    }
+}
+
+test "the fetch timing clock is the monotonic one, in milliseconds with sub-millisecond precision" {
+    const a = getCurrentTimeMs();
+    const b = getCurrentTimeMs();
+    try std.testing.expect(b >= a);
+    // Not whole seconds (the wall clock's seconds, times 1000, was).
+    const ns: f64 = @floatFromInt(clock.monotonicNanos());
+    try std.testing.expect(@abs(getCurrentTimeMs() - ns / std.time.ns_per_ms) < 1000);
 }

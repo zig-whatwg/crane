@@ -112,6 +112,13 @@ pub fn httpFetchFinish(
         }
     }
 
+    // Step 4.5: If the TAO check for request and response returns failure,
+    // then set request's timing allow failed flag - every response of a
+    // redirect chain is checked, and one failure fails the rest.
+    if (!isNetworkError(final_response) and !taoCheckPasses(request, final_response)) {
+        request.timing_allow_failed = true;
+    }
+
     // Step 5: If response's status is a redirect status, handle based on redirect mode
     // Per WHATWG Fetch spec: check redirect status AFTER getting response
     if (!isNetworkError(final_response) and internal_response.isRedirectStatus(final_response.status)) {
@@ -138,6 +145,39 @@ pub fn httpFetchFinish(
     }
 
     return .{ .response = final_response };
+}
+
+/// Fetch 4.11 "TAO check" for `request` and `response`.
+///
+/// Spec: https://fetch.spec.whatwg.org/#concept-tao-check
+fn taoCheckPasses(request: *const InternalRequest, response: *const InternalResponse) bool {
+    // 1. request's origin is not "client" here (main fetch resolved it; a
+    //    request that never had one serializes as "null").
+    // 2. If request's timing allow failed flag is set, then return failure.
+    if (request.timing_allow_failed) return false;
+    // 3-5. `Timing-Allow-Origin`, gotten, decoded and split: `*`, or the
+    //    serialization of the request's origin, is success.
+    const origin: []const u8 = switch (request.origin) {
+        .origin => |o| o,
+        .client => "null",
+    };
+    if (response.header_list.getFirstValue("Timing-Allow-Origin") != null) {
+        for (response.header_list.entries.items) |header| {
+            if (!std.ascii.eqlIgnoreCase(header.name, "Timing-Allow-Origin")) continue;
+            var values = std.mem.splitScalar(u8, header.value, ',');
+            while (values.next()) |raw| {
+                const value = std.mem.trim(u8, raw, " \t");
+                if (std.mem.eql(u8, value, "*")) return true;
+                if (std.mem.eql(u8, value, origin)) return true;
+            }
+        }
+    }
+    // 6. A navigation of a nested navigable to another origin than its
+    //    request's: failure.
+    if (request.mode == .navigate and !sameHttpOrigin(request.currentUrl(), origin)) return false;
+    // 7. If request's response tainting is "basic", then return success.
+    // 8. Return failure.
+    return request.response_tainting == .basic;
 }
 
 /// HTTP-redirect fetch, up to its recursive main fetch: steps 1-19.
@@ -709,14 +749,63 @@ pub fn httpNetworkFetchFinish(
             return HttpFetchError.OutOfMemory;
         };
         response.body = body;
+        // The response body info's encoded and decoded sizes: the network
+        // hands the body over decoded, so both are its length. (A streamed
+        // body's are not known here.)
+        response.body_info.encoded_size = body_bytes.len;
+        response.body_info.decoded_size = body_bytes.len;
     }
 
-    // Step 4: Record timing information
+    // Step 4: Record timing information - the network's own measurements,
+    // each in milliseconds from when it took the request (`start_time`):
+    // "record connection timing info" for the connection it used (a reused
+    // one took no time to obtain), the final network-request start time
+    // (the request was ready to go) and the final network-response start
+    // time (its first byte).
     const end_time = getCurrentTimeMs();
+    params.timing_info.final_connection_timing_info = connectionTimingInfo(request, network_response, start_time);
+    params.timing_info.final_network_request_start_time = start_time + @as(f64, @floatFromInt(network_response.pretransfer_time_ms));
     params.timing_info.final_network_response_start_time = start_time + @as(f64, @floatFromInt(network_response.time_to_first_byte_ms));
     params.timing_info.end_time = end_time;
 
     return response;
+}
+
+/// Fetch "record connection timing info" for the connection that answered
+/// `network_response`, from the network's measurements (ms after
+/// `start_time`). A reused connection was not obtained for this request:
+/// every time is `start_time` ("clamp and coarsen connection timing info"
+/// step 1 gives the same).
+fn connectionTimingInfo(request: *const InternalRequest, network_response: *const NetworkResponse, start_time: f64) @import("../internal/fetch_timing.zig").ConnectionTimingInfo {
+    const alpn: []const u8 = switch (network_response.http_version) {
+        .http_1_0 => "http/1.0",
+        .http_1_1 => "http/1.1",
+        .http_2 => "h2",
+        .http_3 => "h3",
+    };
+    if (network_response.connection_reused) {
+        var reused = @import("../internal/fetch_timing.zig").ConnectionTimingInfo.forReusedConnection(start_time);
+        reused.alpn_negotiated_protocol = alpn;
+        return reused;
+    }
+    const ms = struct {
+        fn after(start: f64, offset: u64) f64 {
+            return start + @as(f64, @floatFromInt(offset));
+        }
+    }.after;
+    const lookup_end = ms(start_time, network_response.dns_lookup_time_ms);
+    const tcp_end = @max(lookup_end, ms(start_time, network_response.connect_time_ms));
+    const secure = std.mem.startsWith(u8, request.currentUrl(), "https:");
+    // connectEnd includes the TLS handshake, which starts when TCP is up.
+    const connect_end = if (secure) @max(tcp_end, ms(start_time, network_response.app_connect_time_ms)) else tcp_end;
+    return .{
+        .domain_lookup_start_time = start_time,
+        .domain_lookup_end_time = lookup_end,
+        .connection_start_time = lookup_end,
+        .connection_end_time = connect_end,
+        .secure_connection_start_time = if (secure) tcp_end else 0,
+        .alpn_negotiated_protocol = alpn,
+    };
 }
 
 /// Build a NetworkRequest from an InternalRequest, with `added` after its own
@@ -819,8 +908,13 @@ fn isNetworkError(response: *InternalResponse) bool {
 }
 
 /// Get current time in milliseconds (DOMHighResTimeStamp format).
+/// HR-Time's "unsafe shared current time", in milliseconds: the monotonic
+/// clock every global's time origin is a moment of, so a fetch timing info's
+/// times convert to any global's relative time (Resource Timing "convert
+/// fetch timestamp", which coarsens them). It was the wall clock's whole
+/// seconds times 1000 - a second's resolution, and on a clock NTP can step.
 pub fn getCurrentTimeMs() f64 {
-    return @as(f64, @floatFromInt(clock.wallSeconds())) * 1000.0;
+    return @as(f64, @floatFromInt(clock.monotonicNanos())) / std.time.ns_per_ms;
 }
 
 // =============================================================================
@@ -1650,4 +1744,84 @@ test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Leng
     try std.testing.expectEqual(2, added.items.len);
     try std.testing.expectEqualStrings("Pragma", added.items[0].name);
     try std.testing.expectEqualStrings("Cache-Control", added.items[1].name);
+}
+
+test "HTTP fetch step 4.5: the TAO check - basic tainting, `*`, the request's origin - else the timing allow failed flag" {
+    const allocator = std.testing.allocator;
+    const Case = struct { tainting: internal_request.ResponseTainting, tao: ?[]const u8, failed: bool };
+    for ([_]Case{
+        .{ .tainting = .basic, .tao = null, .failed = false },
+        .{ .tainting = .cors, .tao = null, .failed = true },
+        .{ .tainting = .cors, .tao = "*", .failed = false },
+        .{ .tainting = .cors, .tao = "http://other.test, http://a.test", .failed = false },
+        .{ .tainting = .@"opaque", .tao = "http://other.test", .failed = true },
+    }) |case| {
+        const request = try InternalRequest.init(allocator, "http://b.test/x");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        request.response_tainting = case.tainting;
+        const controller = try @import("../internal/fetch_controller.zig").FetchController.init(allocator);
+        defer controller.deinit();
+        var timing = @import("../internal/fetch_timing.zig").FetchTimingInfo.init(allocator);
+        defer timing.deinit();
+        const params = try FetchParams.init(allocator, request, controller, &timing);
+        defer params.deinit();
+        const response = try InternalResponse.init(allocator);
+        response.status = 200;
+        try response.header_list.append("Access-Control-Allow-Origin", "*");
+        if (case.tao) |values| try response.header_list.append("Timing-Allow-Origin", values);
+        const next = try httpFetchFinish(allocator, params, .{}, response);
+        next.response.deinit();
+        try std.testing.expectEqual(case.failed, request.timing_allow_failed);
+    }
+}
+
+test "the TAO check fails once the request's timing allow failed flag is set (an earlier response in the redirect chain)" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.timing_allow_failed = true;
+    const response = try InternalResponse.init(allocator);
+    defer response.deinit();
+    try response.header_list.append("Timing-Allow-Origin", "*");
+    try std.testing.expect(!taoCheckPasses(request, response));
+}
+
+test "HTTP-network fetch: the connection timing info and the request and response start times come from the network's own" {
+    const allocator = std.testing.allocator;
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    const controller = try @import("../internal/fetch_controller.zig").FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = @import("../internal/fetch_timing.zig").FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+
+    var answer = preflightAnswer(200, &.{});
+    answer.dns_lookup_time_ms = 2;
+    answer.connect_time_ms = 5;
+    answer.pretransfer_time_ms = 6;
+    answer.time_to_first_byte_ms = 10;
+    const fresh = try httpNetworkFetchFinish(allocator, params, &answer, 100, null);
+    fresh.deinit();
+    const connection = timing.final_connection_timing_info.?;
+    try std.testing.expectEqual(@as(f64, 100), connection.domain_lookup_start_time);
+    try std.testing.expectEqual(@as(f64, 102), connection.domain_lookup_end_time);
+    try std.testing.expectEqual(@as(f64, 102), connection.connection_start_time);
+    try std.testing.expectEqual(@as(f64, 105), connection.connection_end_time);
+    try std.testing.expectEqual(@as(f64, 0), connection.secure_connection_start_time);
+    try std.testing.expectEqualStrings("http/1.1", connection.alpn_negotiated_protocol);
+    try std.testing.expectEqual(@as(f64, 106), timing.final_network_request_start_time);
+    try std.testing.expectEqual(@as(f64, 110), timing.final_network_response_start_time);
+
+    // A reused connection took no time to obtain: every connection time is
+    // the request's start.
+    answer.connection_reused = true;
+    const reused = try httpNetworkFetchFinish(allocator, params, &answer, 200, null);
+    reused.deinit();
+    const again = timing.final_connection_timing_info.?;
+    try std.testing.expectEqual(@as(f64, 200), again.domain_lookup_end_time);
+    try std.testing.expectEqual(@as(f64, 200), again.connection_end_time);
 }

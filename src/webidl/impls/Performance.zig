@@ -44,6 +44,7 @@ pub fn installHooks() void {
         .of_realm = &timelineOfRealm,
         .of_performance = &timelineOfPerformance,
         .now = &nowOfRealm,
+        .relative_coarse_time = &relativeCoarseTimeOfRealm,
     });
 }
 
@@ -148,6 +149,18 @@ fn nowOfRealm(realm: runtime.Context) ?f64 {
     const performance = performanceOfRealm(realm) orelse return null;
     const internal = getInternal(performance) orelse return null;
     return internal.time_origin.currentRelativeTimestampMs();
+}
+
+/// HR-Time "relative high resolution coarse time" of `unsafe_ms` - a moment
+/// of the unsafe shared current time (the monotonic clock), in ms - for
+/// `realm`'s global: the moment coarsened, minus the time origin.
+fn relativeCoarseTimeOfRealm(realm: runtime.Context, unsafe_ms: f64) ?f64 {
+    const performance = performanceOfRealm(realm) orelse return null;
+    const internal = getInternal(performance) orelse return null;
+    const origin = internal.time_origin;
+    const moment: hr_time.Nanoseconds = @intFromFloat(unsafe_ms * std.time.ns_per_ms);
+    const coarse = hr_time.coarsenTime(moment, origin.cross_origin_isolated);
+    return hr_time.toMilliseconds(coarse - origin.origin_moment);
 }
 
 // ============================================================================
@@ -493,17 +506,16 @@ pub fn call_measure(instance: *runtime.Instance, measureName: runtime.DOMString,
 // Resource Timing
 // ============================================================================
 
-/// Operation: clearResourceTimings
+/// Operation: clearResourceTimings (Resource Timing 3.4): every
+/// PerformanceResourceTiming out of the buffer, its current size 0.
 pub fn call_clearResourceTimings(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    performance_timeline.clearResourceTimings(try timeline(instance));
 }
 
-/// Operation: setResourceTimingBufferSize
+/// Operation: setResourceTimingBufferSize (Resource Timing 3.4): the
+/// buffer's size limit; entries already in it stay.
 pub fn call_setResourceTimingBufferSize(instance: *runtime.Instance, maxSize: u32) anyerror!void {
-    _ = instance;
-    _ = maxSize;
-    return error.NotImplemented;
+    performance_timeline.setResourceTimingBufferSize(try timeline(instance), maxSize);
 }
 
 /// Operation: measureUserAgentSpecificMemory

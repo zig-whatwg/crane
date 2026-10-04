@@ -71,6 +71,8 @@ pub const InternalRequest = request.InternalRequest;
 pub const CookieJar = request.CookieJar;
 pub const CspViolationReporter = request.CspViolationReporter;
 pub const CspViolation = request.CspViolation;
+pub const TimingReporter = request.TimingReporter;
+pub const TimingReport = request.TimingReport;
 
 pub const policy_container = @import("policy_container.zig");
 pub const PolicyContainer = policy_container.PolicyContainer;

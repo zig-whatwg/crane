@@ -98,6 +98,9 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     if (settings.policy_container) |container_of| client.request.policy_container = container_of(global);
     // CSP 2.4.2: the global its requests' violations are reported to.
     client.request.csp_violation_reporter = @import("csp_violations.zig").reporterFor(global);
+    // Fetch "report timing": the global its requests' resource timing is
+    // marked for (Resource Timing 4).
+    client.request.timing_reporter = @import("performance_timeline.zig").timingReporterFor(global);
     return client;
 }
 
