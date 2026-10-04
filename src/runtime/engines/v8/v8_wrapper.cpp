@@ -2206,30 +2206,46 @@ void v8_Isolate_QueueMicrotask(Isolate* isolate, ZigMicrotaskCallback callback, 
 /// whether the promise rejected.
 typedef void (*ZigReactionCallback)(void* data, Global<Value>* value, bool rejected);
 
-struct ZigReaction {
-    ZigReactionCallback callback;
-    void* data;
-};
+// A reaction's holder: the [[data]] both reaction functions share, a JS array
+// the collector frees with them. Slot 0 is the host's record (an External),
+// slot 1 the callback; disarming the reaction clears slot 0. Nothing on the C++
+// heap outlives the call that made it, so nothing here can dangle: a reaction
+// function run after its reaction ended - another realm's promise settling it
+// after this realm's end - finds slot 0 cleared and does nothing.
+static constexpr uint32_t kReactionData = 0;
+static constexpr uint32_t kReactionCallback = 1;
 
 static void zigReactionTrampoline(const FunctionCallbackInfo<Value>& info, bool rejected) {
     Isolate* isolate = info.GetIsolate();
     HandleScope scope(isolate);
-    auto* reaction = static_cast<ZigReaction*>(info.Data().As<External>()->Value());
+    Local<Context> ctx = isolate->GetCurrentContext();
+    if (!info.Data()->IsArray()) return;
+    Local<Array> holder = info.Data().As<Array>();
+    Local<Value> data_slot;
+    Local<Value> callback_slot;
+    if (!holder->Get(ctx, kReactionData).ToLocal(&data_slot) || !data_slot->IsExternal()) return;
+    if (!holder->Get(ctx, kReactionCallback).ToLocal(&callback_slot) || !callback_slot->IsExternal()) return;
+    void* data = data_slot.As<External>()->Value();
+    auto callback = reinterpret_cast<ZigReactionCallback>(callback_slot.As<External>()->Value());
+    // A promise settles once and `then` registered exactly one reaction, so the
+    // other function sharing this holder never runs; disarm it anyway before
+    // calling out, so nothing can reach the record the callback frees.
+    if (holder->Set(ctx, kReactionData, Undefined(isolate)).IsNothing()) return;
     Local<Value> arg = info.Length() > 0 ? info[0] : Undefined(isolate).As<Value>();
     Global<Value>* value = trackHandle(new Global<Value>(isolate, arg));
-    ZigReactionCallback callback = reaction->callback;
-    void* data = reaction->data;
-    // A promise settles once and `then` registered exactly one reaction, so the
-    // other trampoline sharing this record never runs: free it before calling
-    // out, so a callback that never returns normally cannot leak it.
-    delete reaction;
     callback(data, value, rejected);
 }
 
 /// WebIDL "react to" a promise: promise.then(onFulfilled, onRejected), where
 /// both call `callback(data, value, rejected)`. Exactly one of them runs,
-/// exactly once. Returns false - and `callback` never runs - when the
-/// reaction could not be attached (`promise` is not a promise).
+/// exactly once - unless the reaction is disarmed first (its holder's
+/// `kReactionData` cleared, `v8_Array_ClearElement`). Returns false - and `callback` never runs -
+/// when the reaction could not be attached (`promise` is not a promise).
+///
+/// `*holder_out` receives the reaction's holder (see `kReactionData`) as a
+/// new Global the caller owns - the handle to disarm it by. Strong as made:
+/// the caller weakens it (a strong one would keep the realm alive) or
+/// disposes it.
 ///
 /// The promise `then` derives is marked handled: nothing observes it, and a
 /// throw escaping `callback` must not surface as an unhandled rejection.
@@ -2239,9 +2255,11 @@ bool v8_Promise_React(
     Global<Context>* context,
     Global<Value>* promise,
     ZigReactionCallback callback,
-    void* data
+    void* data,
+    Global<Value>** holder_out
 ) {
-    if (!context || !promise || promise->IsEmpty() || !callback) return false;
+    if (holder_out) *holder_out = nullptr;
+    if (!context || !promise || promise->IsEmpty() || !callback || !holder_out) return false;
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Context> ctx = context->Get(isolate);
@@ -2250,28 +2268,52 @@ bool v8_Promise_React(
     Local<Value> value = promise->Get(isolate);
     if (!value->IsPromise()) return false;
 
-    auto* reaction = new ZigReaction{callback, data};
-    Local<External> external = External::New(isolate, reaction);
+    Local<Value> slots[] = {
+        External::New(isolate, data),
+        External::New(isolate, reinterpret_cast<void*>(callback)),
+    };
+    Local<Array> holder = Array::New(isolate, slots, 2);
 
     Local<Function> on_fulfilled;
     Local<Function> on_rejected;
     if (!Function::New(ctx, [](const FunctionCallbackInfo<Value>& info) {
             zigReactionTrampoline(info, false);
-        }, external, 1).ToLocal(&on_fulfilled) ||
+        }, holder, 1).ToLocal(&on_fulfilled) ||
         !Function::New(ctx, [](const FunctionCallbackInfo<Value>& info) {
             zigReactionTrampoline(info, true);
-        }, external, 1).ToLocal(&on_rejected)) {
-        delete reaction;
+        }, holder, 1).ToLocal(&on_rejected)) {
         return false;
     }
 
     Local<Promise> derived;
     if (!value.As<Promise>()->Then(ctx, on_fulfilled, on_rejected).ToLocal(&derived)) {
-        delete reaction;
         return false;
     }
     derived->MarkAsHandled();
+    *holder_out = trackHandle(new Global<Value>(isolate, holder));
     return true;
+}
+
+/// Set `array[index]` to undefined, in the array's own creation context -
+/// how a reaction (`kReactionData`) or an asynchronous iterator's state is
+/// disarmed when its realm ends. `array` BORROWED; an empty handle (the
+/// collector took the array) or a value that is no array is left alone. The
+/// element is an own data element, so no setter - no script - runs.
+void v8_Array_ClearElement(Global<Value>* array, uint32_t index) {
+    if (!array || array->IsEmpty()) return;
+    // No isolate entered (the manager's own end, after its agents): nothing
+    // can run script to reach the array either.
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Local<Value> value = array->Get(isolate);
+    if (!value->IsArray()) return;
+    Local<Object> object = value.As<Object>();
+    // The array's own context: alive for as long as the array is.
+    Local<Context> ctx;
+    if (!object->GetCreationContext(isolate).ToLocal(&ctx)) return;
+    Context::Scope context_scope(ctx);
+    if (object->Set(ctx, index, Undefined(isolate)).IsNothing()) return;
 }
 
 /// Compile an ES module with TryCatch error handling

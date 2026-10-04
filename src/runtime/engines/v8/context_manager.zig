@@ -1050,6 +1050,10 @@ pub fn removeContextByKey(key: usize, v8_ctx: ?*v8.Context) void {
         // destroyed below (they go with the slab) and their `ctx` points into
         // this entry. See ManagerState.retired.
         defer retireEntry(state, entry);
+        // First, while every object of the realm is alive: the promise
+        // reactions that have not run and the asynchronous iterators still
+        // alive end, and their host data with them (realm_finalizers.zig).
+        if (@import("realm_finalizers.zig").listOf(&entry.runtime_ctx)) |finalizers| finalizers.drain();
         // The callbacks this context's script registered hold handles into it
         // - one listener is enough to keep the whole page alive - and nothing
         // else releases them, since its EventTargets are never torn down.

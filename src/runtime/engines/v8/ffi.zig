@@ -1378,14 +1378,29 @@ pub extern fn v8_Isolate_QueueMicrotask(isolate: *Isolate, callback: ZigMicrotas
 pub const ZigReactionCallback = *const fn (data: ?*anyopaque, value: ?*Value, rejected: bool) callconv(.c) void;
 
 /// WebIDL "react to" `promise`: `callback(data, value, rejected)` runs exactly
-/// once, when the promise settles. False (and no call, ever) if `promise` is
-/// not a promise. The derived promise is marked handled.
+/// once, when the promise settles - unless the reaction was disarmed first
+/// (`v8_Array_ClearElement(holder, reaction_data_slot)`). False (and no call,
+/// ever) if `promise` is not a promise. The derived promise is marked
+/// handled. `holder_out` receives the reaction's holder - the array both
+/// reaction functions share as their [[data]], `data` in slot
+/// `reaction_data_slot` - as a new STRONG Global the caller owns (weaken or
+/// dispose it: strong, it keeps the realm alive).
 pub extern fn v8_Promise_React(
     context: *Context,
     promise: *Value,
     callback: ZigReactionCallback,
     data: ?*anyopaque,
+    holder_out: *?*Value,
 ) bool;
+
+/// The slot of a reaction's holder that carries its `data` (v8_wrapper.cpp
+/// `kReactionData`).
+pub const reaction_data_slot: u32 = 0;
+
+/// `array[index] = undefined` in the array's own creation context: how a
+/// reaction's holder or an asynchronous iterator's state is disarmed. `array`
+/// BORROWED; an empty handle or a non-array is left alone. Runs no script.
+pub extern fn v8_Array_ClearElement(array: *Value, index: u32) void;
 
 /// Get the [[BoundTargetFunction]] of a bound function.
 /// Used for implementing GetFunctionRealm algorithm per ECMA-262 §7.3.22.
