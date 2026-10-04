@@ -59,6 +59,16 @@ const WindowHost = struct {
 
 /// A Window realm, made as a navigation makes one.
 fn windowRealm() !runtime.Context {
+    return windowRealmIn(null);
+}
+
+/// A Window realm whose navigable's parent's realm is `parent` - an iframe's:
+/// it shares its parent's engine-level access, as a same-origin frame does.
+fn frameRealm(parent: runtime.Context) !runtime.Context {
+    return windowRealmIn(parent);
+}
+
+fn windowRealmIn(parent: ?runtime.Context) !runtime.Context {
     const isolate = try agent();
     return protocol.createWindowRealm(&.{
         .agent = @ptrCast(isolate),
@@ -67,6 +77,7 @@ fn windowRealm() !runtime.Context {
         .timer = null,
         .origin = "https://example.test",
         .global_this = .new_window_proxy,
+        .parent = parent,
         .create_global_object = WindowHost.createGlobalObject,
         .host = null,
     });
@@ -202,7 +213,7 @@ test "a reaction of an ended realm on another realm's promise does nothing when 
     var capability = try protocol.createPromise(page);
     defer protocol.releasePromiseCapability(&capability);
 
-    const frame = try windowRealm();
+    const frame = try frameRealm(page);
     var reaction: Reaction = .{};
     try protocol.reactToPromise(frame, capability.promise, &Reaction.all, &reaction);
     protocol.destroyWindowRealm(frame, .global_detached);
@@ -220,7 +231,7 @@ test "reactToPromise on a realm that has ended fails, and the data stays the cal
     defer protocol.destroyWindowRealm(page, .global_detached);
     var capability = try protocol.createPromise(page);
     defer protocol.releasePromiseCapability(&capability);
-    const frame = try windowRealm();
+    const frame = try frameRealm(page);
     protocol.destroyWindowRealm(frame, .global_detached);
     var reaction: Reaction = .{};
     try std.testing.expect(std.meta.isError(protocol.reactToPromise(frame, capability.promise, &Reaction.all, &reaction)));
@@ -326,7 +337,7 @@ test "an asynchronous iterator alive at its realm's end is finalized once, outsi
 test "an asynchronous iterator of an ended realm never calls its steps again" {
     const page = try windowRealm();
     defer protocol.destroyWindowRealm(page, .global_detached);
-    const frame = try windowRealm();
+    const frame = try frameRealm(page);
     var iterated: Iterated = .{ .realm = frame };
     {
         const iterator = try protocol.createAsyncIterator(frame, &Iterated.steps, &iterated);
