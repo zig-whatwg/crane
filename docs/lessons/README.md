@@ -185,6 +185,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Only confirmed cancellation returns payload ownership](architecture-only-confirmed-cancellation-returns-payload-ownership.md) - Free queued callback data only after the queue confirms removal; otherwise the callback still owns it.
 - [An opening task retains its upgrade transaction](architecture-an-opening-task-retains-its-upgrade-transaction.md) - Script-visible association lifetime and algorithm lifetime differ; root through the last native use.
 - [IndexedDB schema handles keep definition identity](architecture-indexeddb-schema-handles-keep-definition-identity.md) - Restore original handles on abort while preserving independent names on finished handles.
+- [An interface object's [[Prototype]] is the binding's to set, where every realm makes it](architecture-an-interface-object-s-prototype-is-the-binding-s-to-set.md) - A V8 template gives you the prototype chain, not the interface-object chain; set the interface object's [[Prototype]] in the one function every realm-creation path calls, and test it in a page, a frame and a worker.
+- [A conversion that fails part-way has already converted the rest](architecture-a-conversion-that-fails-part-way-converted-the-rest.md) - Every place that converts a list of values one by one needs an errdefer for the ones already converted, and every place that builds arguments needs the matching free.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -314,6 +316,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A javascript: URL test navigates from its own frame, and ends in void](testing-a-javascript-url-test-navigates-from-its-own-frame.md) - Make the realm that navigates the one whose policy you test, and never let javascript: URL code return a string by accident.
 - [A listener's microtasks can run before dispatch returns](testing-a-listeners-microtasks-can-run-before-dispatch-returns.md) - Distinguish callback cleanup from the enclosing algorithm's post-dispatch steps.
 - [Allocator walks propagate injected errors](testing-allocator-walks-propagate-injected-errors.md) - Let injected OutOfMemory reach the walker before asserting the ordinary semantic error.
+- [A poisoned Array.prototype poisons testharness.js too](testing-a-poisoned-prototype-poisons-testharness-too.md) - Scope a prototype poison to the one call it tests; the harness shares the realm and trips over it.
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
@@ -367,3 +370,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [A zig cache in /tmp is pruned by macOS, and zig still trusts it](workflow-a-zig-cache-in-tmp-is-pruned-by-macos-and-zig-still-trusts-it.md) - A failure that reproduces on an older commit is not proof the code is old - check that the two runs did not share a damaged input. A cache in /tmp on macOS is a cache with an expiry date nobody checks.
 - [A shared build machine shares, it never queues agents behind each other](workflow-a-shared-build-machine-shares-it-never-queues-agents.md) - Share the machine, never queue agents behind each other, and measure EVERY class of run under the new sharing: a utility-QoS clamp quietly turned heavy WPT files into TIMEOUTs.
 - [Validate the worklist before acquiring runner tokens](workflow-validate-the-worklist-before-acquiring-runner-tokens.md) - Validate the selected and discovered file counts before treating a run as a measurement.
+- [The V8 Crane links is not the V8 source checkout beside it](workflow-the-linked-v8-is-not-the-v8-source-checkout.md) - Read V8's design from the checkout, but its behaviour from the version you link: jsengines/v8/include/v8-version.h and the monolith, not jsengines/v8/v8/.
