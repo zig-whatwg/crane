@@ -11138,6 +11138,30 @@ struct ArrayBufferTransferData {
     size_t size;
 };
 
+// ---- lane: serializable ----
+/// The host's half of structured serialization for platform objects (HTML
+/// 2.7.1 serializable objects): V8 sees a platform object as a host object
+/// (an API wrapper) and asks the delegate to write or read it.
+///
+/// `write` serializes the platform object behind `object` (its wrapper,
+/// BORROWED for the call) into `serializer` with the v8_ValueSerializer_*
+/// primitives - its own fields with Write{Uint32,Uint64,Double,RawBytes}, and
+/// its sub-serializations with WriteValue on the SAME serializer - and
+/// returns true; or leaves an exception pending and returns false.
+///
+/// `read` reads one back from `deserializer` with the v8_ValueDeserializer_*
+/// primitives (sub-deserializations with ReadValue) and returns its wrapper
+/// as a Global the caller disposes; or nullptr with an exception pending.
+///
+/// `data` is handed back to both: the host's state for this one
+/// serialization (its realm, forStorage).
+struct HostObjectSteps {
+    bool (*write)(void* data, Global<Value>* object, ValueSerializer* serializer);
+    Global<Value>* (*read)(void* data, ValueDeserializer* deserializer);
+    void* data;
+};
+// ---- end lane: serializable ----
+
 } // extern "C"
 
 /// HTML StructuredSerializeInternal throws a "DataCloneError" DOMException for
@@ -11153,7 +11177,14 @@ struct ArrayBufferTransferData {
 /// outside a cross-origin-isolated agent cluster.
 class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
  public:
-    explicit DataCloneErrorDelegate(Isolate* isolate) : isolate_(isolate) {}
+    explicit DataCloneErrorDelegate(Isolate* isolate, const HostObjectSteps* host = nullptr)
+        : isolate_(isolate), host_(host) {}
+
+    /// The serializer this delegate serves: WriteHostObject hands it to the
+    /// host's steps, which write into it. Set right after the serializer is
+    /// made (it takes the delegate in its constructor), as Blink's
+    /// V8ScriptValueSerializer keeps its serializer_.
+    void SetSerializer(ValueSerializer* serializer) { serializer_ = serializer; }
 
     void ThrowDataCloneError(Local<String> message) override {
         Local<Context> context = isolate_->GetCurrentContext();
@@ -11177,9 +11208,27 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
         isolate_->ThrowException(Exception::Error(message));
     }
 
+    /// HTML StructuredSerializeInternal steps 19-20 and 26.3: a platform
+    /// object whose primary interface is [Serializable] runs its
+    /// serialization steps (the host's `write`); any other throws a
+    /// "DataCloneError" DOMException. V8 has already written its host-object
+    /// tag and assigned the object its id in the serializer's memory
+    /// (value-serializer.cc, WriteJSReceiver then WriteHostObject), so a
+    /// sub-serialization the steps write through WriteValue on this same
+    /// serializer shares `memory` with the whole graph: identity and cycles
+    /// hold across it.
     Maybe<bool> WriteHostObject(Isolate* isolate, Local<Object> object) override {
-        (void)object;
-        ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A platform object could not be cloned."));
+        if (host_ == nullptr || host_->write == nullptr || serializer_ == nullptr) {
+            ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A platform object could not be cloned."));
+            return Nothing<bool>();
+        }
+        Global<Value> borrowed(isolate, object);
+        bool written = host_->write(host_->data, &borrowed, serializer_);
+        borrowed.Reset();
+        if (written) return Just(true);
+        if (!isolate->HasPendingException()) {
+            ThrowDataCloneError(String::NewFromUtf8Literal(isolate, "A platform object could not be cloned."));
+        }
         return Nothing<bool>();
     }
 
@@ -11191,6 +11240,64 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
 
  private:
     Isolate* isolate_;
+    const HostObjectSteps* host_;
+    ValueSerializer* serializer_ = nullptr;
+};
+
+/// Throw HTML's "DataCloneError" DOMException in the current context, with
+/// `message` - what the host's steps throw when a platform object cannot be
+/// (de)serialized. The same exception DataCloneErrorDelegate throws.
+static void throwDataCloneErrorIn(Isolate* isolate, Local<String> message) {
+    DataCloneErrorDelegate thrower(isolate);
+    thrower.ThrowDataCloneError(message);
+}
+
+/// The deserializing half of HostObjectSteps: V8's ValueDeserializer asks
+/// for a host object where the serializer wrote one.
+///
+/// HTML StructuredDeserialize steps 22-24: the host's `read` makes "a new
+/// instance of the interface identified by" the record's [[Type]] in the
+/// target realm and runs its deserialization steps, reading its
+/// sub-deserializations with ReadValue on this same deserializer, so they
+/// share `memory` with the whole graph.
+///
+/// Known gap: V8 takes the host object's id before calling this
+/// (value-serializer.cc ReadHostObject: `next_id_++`) but registers the
+/// object under it only after this returns (AddObjectWithID), whereas the
+/// spec sets memory[serialized] before the deserialization steps (step 23
+/// before 24). So a sub-value that refers back to its own platform object
+/// cannot be resolved here. No [Serializable] interface's steps write one
+/// today: their sub-values are made by the user agent (a quad's points, an
+/// ImageData's data).
+class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate {
+ public:
+    explicit HostObjectDeserializerDelegate(const HostObjectSteps* host) : host_(host) {}
+    void SetDeserializer(ValueDeserializer* deserializer) { deserializer_ = deserializer; }
+
+    MaybeLocal<Object> ReadHostObject(Isolate* isolate) override {
+        if (host_ == nullptr || host_->read == nullptr || deserializer_ == nullptr) {
+            throwDataCloneErrorIn(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
+            return MaybeLocal<Object>();
+        }
+        Global<Value>* made = host_->read(host_->data, deserializer_);
+        if (made == nullptr) {
+            if (!isolate->HasPendingException()) {
+                throwDataCloneErrorIn(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
+            }
+            return MaybeLocal<Object>();
+        }
+        Local<Value> value = made->Get(isolate);
+        v8_Global_Dispose(made);
+        if (value.IsEmpty() || !value->IsObject()) {
+            throwDataCloneErrorIn(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
+            return MaybeLocal<Object>();
+        }
+        return value.As<Object>();
+    }
+
+ private:
+    const HostObjectSteps* host_;
+    ValueDeserializer* deserializer_ = nullptr;
 };
 
 /// Serialize a V8 value with ArrayBuffer transfer, returning raw bytes.
@@ -11218,7 +11325,7 @@ static uint8_t* serializeWithTransfer(
     size_t* out_size,
     ArrayBufferTransferData* out_arraybuffer_data,
     int* error_code,
-    ValueSerializer::Delegate* delegate
+    DataCloneErrorDelegate* delegate
 ) {
     if (error_code) *error_code = 0;
     if (out_size) *out_size = 0;
@@ -11303,6 +11410,7 @@ static uint8_t* serializeWithTransfer(
 
     // Step 2: Serialize the value using V8's ValueSerializer
     ValueSerializer serializer(isolate, delegate);
+    if (delegate) delegate->SetSerializer(&serializer);
     serializer.WriteHeader();
 
     // Register ArrayBuffers for transfer (tells V8 to use transfer IDs)
@@ -11372,15 +11480,20 @@ uint8_t* v8_Value_SerializeWithTransfer_CrossIsolate(
 /// the exception pending and report error_code 3; the caller must return to
 /// V8 without throwing another. Codes 0-2 are as for the CrossIsolate
 /// function, and code 1 (a bad transfer list) has thrown nothing yet.
+///
+/// `host` (nullable) is how a platform object is serialized: its interface's
+/// serialization steps, through the host's `write` (HostObjectSteps). With
+/// none, every platform object throws DataCloneError.
 uint8_t* v8_Value_StructuredSerializeWithTransfer(
     Global<Value>* value,
     Global<Value>** transfer_list,
     size_t transfer_count,
     size_t* out_size,
     ArrayBufferTransferData* out_arraybuffer_data,
-    int* error_code
+    int* error_code,
+    const HostObjectSteps* host
 ) {
-    DataCloneErrorDelegate delegate(Isolate::GetCurrent());
+    DataCloneErrorDelegate delegate(Isolate::GetCurrent(), host);
     return serializeWithTransfer(value, transfer_list, transfer_count, out_size,
                                  out_arraybuffer_data, error_code, &delegate);
 }
@@ -11394,13 +11507,17 @@ uint8_t* v8_Value_StructuredSerializeWithTransfer(
 /// @param arraybuffer_data - Array of ArrayBuffer data to recreate
 /// @param arraybuffer_count - Number of ArrayBuffers to recreate
 /// @param error_code - OUTPUT: 0=success, 1=DataCloneError, 2=other error
+/// @param host - nullable: how a platform object is deserialized (its
+///               interface's deserialization steps, through the host's
+///               `read`); with none, a serialized platform object fails
 /// @return Global<Value>* to the deserialized value in current isolate
 Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
     const uint8_t* serialized_data,
     size_t serialized_size,
     const ArrayBufferTransferData* arraybuffer_data,
     size_t arraybuffer_count,
-    int* error_code
+    int* error_code,
+    const HostObjectSteps* host
 ) {
     if (error_code) *error_code = 0;
 
@@ -11425,7 +11542,9 @@ Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
     }
 
     // Create ValueDeserializer
-    ValueDeserializer deserializer(isolate, serialized_data, serialized_size);
+    HostObjectDeserializerDelegate delegate(host);
+    ValueDeserializer deserializer(isolate, serialized_data, serialized_size, &delegate);
+    delegate.SetDeserializer(&deserializer);
 
     // Create new ArrayBuffers in this isolate from the transferred data
     std::vector<Local<ArrayBuffer>> transferred_buffers;
@@ -11459,6 +11578,89 @@ Global<Value>* v8_Value_DeserializeWithTransfer_CrossIsolate(
     Local<Value> deserialized = result.ToLocalChecked();
     return trackHandle(new Global<Value>(isolate, deserialized));
 }
+
+// ---- lane: serializable ----
+// The primitives a host's HostObjectSteps write and read a platform object's
+// record with, for use only inside its `write` / `read` (V8: "For use during
+// an override of Delegate::WriteHostObject" / "ReadHostObject"). Integers
+// are V8's varints, doubles their bits, raw bytes as they are.
+
+void v8_ValueSerializer_WriteUint32(ValueSerializer* serializer, uint32_t value) {
+    serializer->WriteUint32(value);
+}
+
+void v8_ValueSerializer_WriteUint64(ValueSerializer* serializer, uint64_t value) {
+    serializer->WriteUint64(value);
+}
+
+void v8_ValueSerializer_WriteDouble(ValueSerializer* serializer, double value) {
+    serializer->WriteDouble(value);
+}
+
+void v8_ValueSerializer_WriteRawBytes(ValueSerializer* serializer, const void* source, size_t length) {
+    if (length > 0) serializer->WriteRawBytes(source, length);
+}
+
+/// HTML "sub-serialization" of `value` (BORROWED): StructuredSerializeInternal
+/// on the same serializer, so with the same memory. False with the exception
+/// pending (a value that cannot be cloned, a getter that threw).
+bool v8_ValueSerializer_WriteValue(ValueSerializer* serializer, Global<Value>* value) {
+    if (!serializer || !value || value->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return false;
+    Maybe<bool> written = serializer->WriteValue(context, value->Get(isolate));
+    return written.IsJust() && written.FromJust();
+}
+
+bool v8_ValueDeserializer_ReadUint32(ValueDeserializer* deserializer, uint32_t* value) {
+    return deserializer->ReadUint32(value);
+}
+
+bool v8_ValueDeserializer_ReadUint64(ValueDeserializer* deserializer, uint64_t* value) {
+    return deserializer->ReadUint64(value);
+}
+
+bool v8_ValueDeserializer_ReadDouble(ValueDeserializer* deserializer, double* value) {
+    return deserializer->ReadDouble(value);
+}
+
+/// `length` raw bytes, BORROWED from the serialized data until the
+/// deserialization ends.
+bool v8_ValueDeserializer_ReadRawBytes(ValueDeserializer* deserializer, size_t length, const void** data) {
+    if (length == 0) {
+        *data = nullptr;
+        return true;
+    }
+    return deserializer->ReadRawBytes(length, data);
+}
+
+/// HTML "sub-deserialization": the next value, made in the current context
+/// with the same memory. OWNED; nullptr with the exception pending.
+Global<Value>* v8_ValueDeserializer_ReadValue(ValueDeserializer* deserializer) {
+    if (!deserializer) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> context = isolate->GetCurrentContext();
+    if (context.IsEmpty()) return nullptr;
+    Local<Value> value;
+    if (!deserializer->ReadValue(context).ToLocal(&value)) return nullptr;
+    return trackHandle(new Global<Value>(isolate, value));
+}
+
+/// Throw a "DataCloneError" DOMException with `message` in the current
+/// context, as the serializer's delegate does.
+void v8_ThrowDataCloneError(const char* message, size_t length) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<String> text;
+    if (!String::NewFromUtf8(isolate, message, NewStringType::kNormal, static_cast<int>(length)).ToLocal(&text)) {
+        text = String::NewFromUtf8Literal(isolate, "A value could not be cloned.");
+    }
+    throwDataCloneErrorIn(isolate, text);
+}
+// ---- end lane: serializable ----
 
 /// Free serialized buffer from v8_Value_SerializeWithTransfer_CrossIsolate
 void v8_Free_SerializedBuffer(uint8_t* buffer) {

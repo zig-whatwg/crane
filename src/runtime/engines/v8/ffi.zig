@@ -901,6 +901,10 @@ pub extern fn v8_Value_SerializeWithTransfer_CrossIsolate(
 /// bad transfer list) has thrown nothing. Free the result with
 /// `v8_Free_SerializedBuffer`; `v8_Value_DeserializeWithTransfer_CrossIsolate`
 /// reads it.
+///
+/// `host` (nullable): how a platform object is serialized - its interface's
+/// serialization steps (HostObjectSteps.write). With none, every platform
+/// object throws DataCloneError.
 pub extern fn v8_Value_StructuredSerializeWithTransfer(
     value: *Value,
     transfer_list: [*]*Value,
@@ -908,6 +912,7 @@ pub extern fn v8_Value_StructuredSerializeWithTransfer(
     out_size: *usize,
     out_arraybuffer_data: [*]ArrayBufferTransferData,
     error_code: *c_int,
+    host: ?*const HostObjectSteps,
 ) ?[*]u8;
 
 /// Deserialize V8 structured clone data with ArrayBuffer transfer.
@@ -918,6 +923,9 @@ pub extern fn v8_Value_StructuredSerializeWithTransfer(
 ///   arraybuffer_data: Array of ArrayBuffer data to recreate
 ///   arraybuffer_count: Number of ArrayBuffers to recreate
 ///   error_code: OUTPUT - 0=success, 1=DataCloneError, 2=other error
+///   host: nullable - how a platform object is deserialized (its interface's
+///         deserialization steps, HostObjectSteps.read); with none, a
+///         serialized platform object fails
 /// Returns: Global<Value>* to the deserialized value in current isolate
 pub extern fn v8_Value_DeserializeWithTransfer_CrossIsolate(
     serialized_data: [*]const u8,
@@ -925,6 +933,7 @@ pub extern fn v8_Value_DeserializeWithTransfer_CrossIsolate(
     arraybuffer_data: [*]const ArrayBufferTransferData,
     arraybuffer_count: usize,
     error_code: *c_int,
+    host: ?*const HostObjectSteps,
 ) ?*Value;
 
 /// Free serialized buffer from v8_Value_SerializeWithTransfer_CrossIsolate
@@ -932,6 +941,44 @@ pub extern fn v8_Free_SerializedBuffer(buffer: [*]u8) void;
 
 /// Free ArrayBuffer transfer data (the copied data from source isolate)
 pub extern fn v8_Free_ArrayBufferTransferData(data: [*]ArrayBufferTransferData, count: usize) void;
+
+// ---- lane: serializable ----
+/// V8's ValueSerializer and ValueDeserializer, as a HostObjectSteps callback
+/// sees them: only to write or read the platform object it was given.
+pub const ValueSerializer = opaque {};
+pub const ValueDeserializer = opaque {};
+
+/// The host's half of structured serialization for platform objects (HTML
+/// 2.7.1): V8's serializer delegate calls `write` for each platform object
+/// (its wrapper, BORROWED), its deserializer delegate calls `read` where one
+/// was written. `write` returns false, and `read` null, with an exception
+/// pending. `read` returns the new object's wrapper as a Global the caller
+/// disposes. `data` is handed back to both.
+pub const HostObjectSteps = extern struct {
+    write: *const fn (data: ?*anyopaque, object: *Value, serializer: *ValueSerializer) callconv(.c) bool,
+    read: *const fn (data: ?*anyopaque, deserializer: *ValueDeserializer) callconv(.c) ?*Value,
+    data: ?*anyopaque,
+};
+
+// The primitives HostObjectSteps write and read a record with - only inside
+// `write` / `read`. WriteValue / ReadValue are HTML's sub-serialization and
+// sub-deserialization: the same serializer, the same memory. ReadValue's
+// result is OWNED; ReadRawBytes' bytes are BORROWED until the
+// deserialization ends. A false or null result leaves an exception pending
+// (WriteValue, ReadValue) or means the record ended early (the reads).
+pub extern fn v8_ValueSerializer_WriteUint32(serializer: *ValueSerializer, value: u32) void;
+pub extern fn v8_ValueSerializer_WriteUint64(serializer: *ValueSerializer, value: u64) void;
+pub extern fn v8_ValueSerializer_WriteDouble(serializer: *ValueSerializer, value: f64) void;
+pub extern fn v8_ValueSerializer_WriteRawBytes(serializer: *ValueSerializer, source: ?*const anyopaque, length: usize) void;
+pub extern fn v8_ValueSerializer_WriteValue(serializer: *ValueSerializer, value: *Value) bool;
+pub extern fn v8_ValueDeserializer_ReadUint32(deserializer: *ValueDeserializer, value: *u32) bool;
+pub extern fn v8_ValueDeserializer_ReadUint64(deserializer: *ValueDeserializer, value: *u64) bool;
+pub extern fn v8_ValueDeserializer_ReadDouble(deserializer: *ValueDeserializer, value: *f64) bool;
+pub extern fn v8_ValueDeserializer_ReadRawBytes(deserializer: *ValueDeserializer, length: usize, data: *?*const anyopaque) bool;
+pub extern fn v8_ValueDeserializer_ReadValue(deserializer: *ValueDeserializer) ?*Value;
+/// Throw a "DataCloneError" DOMException with `message` in the current context.
+pub extern fn v8_ThrowDataCloneError(message: [*]const u8, length: usize) void;
+// ---- end lane: serializable ----
 
 // Local-handle versions (take raw internal pointer from Local<Value>)
 pub extern fn v8_Value_IsObject_Local(value_ptr: *anyopaque) bool;
