@@ -14,9 +14,8 @@
 //! NotSupportedError; one given a Float16Array cannot be reached, because the
 //! binding cannot recognise one. Nothing is faked.
 //!
-//! Not modelled, stated: ImageData is [Serializable], and no platform object
-//! is serializable yet - that is a protocol operation, queued by the
-//! integrator.
+//! ImageData is [Serializable] (HTML 2.7.1): its serialization steps below
+//! sub-serialize its data.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -239,4 +238,70 @@ pub fn get_pixelFormat(instance: *runtime.Instance) anyerror!enums.ImageDataPixe
 pub fn get_colorSpace(instance: *runtime.Instance) anyerror!enums.PredefinedColorSpace {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return internal.color_space;
+}
+
+// ============================================================================
+// Serializable objects (HTML 2.7.1; HTML 4.12.5.1.16: ImageData is
+// [Serializable])
+// ============================================================================
+
+/// HTML, ImageData's serialization steps, given `value` and `serialized`:
+///
+/// 1. Set serialized.[[Data]] to the sub-serialization of the value of
+///    value's data attribute.
+/// 2. Set serialized.[[Width]] to the value of value's width attribute.
+/// 3. Set serialized.[[Height]] to the value of value's height attribute.
+/// 4. Set serialized.[[ColorSpace]] to the value of value's colorSpace
+///    attribute.
+/// 5. Set serialized.[[PixelFormat]] to the value of value's pixelFormat
+///    attribute.
+///
+/// The data array is this ImageData's own (it keeps it), so it outlives
+/// the steps, as a sub-serialization must.
+pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
+    const internal = getInternal(value) orelse return error.DataCloneError;
+    const data = internal.data orelse return error.DataCloneError;
+    // Step 1.
+    try serialized.subSerialize(data.borrow());
+    // Steps 2-5.
+    try serialized.writeUint32(internal.width);
+    try serialized.writeUint32(internal.height);
+    try serialized.writeString(@tagName(internal.color_space));
+    try serialized.writeString(@tagName(internal.pixel_format));
+}
+
+/// HTML, ImageData's deserialization steps, given `serialized`, `value` and
+/// `targetRealm`:
+///
+/// 1. Initialize value's data attribute to the sub-deserialization of
+///    serialized.[[Data]].
+/// 2. Initialize value's width attribute to serialized.[[Width]].
+/// 3. Initialize value's height attribute to serialized.[[Height]].
+/// 4. Initialize value's colorSpace attribute to serialized.[[ColorSpace]].
+/// 5. Initialize value's pixelFormat attribute to
+///    serialized.[[PixelFormat]].
+pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
+    const internal = getInternal(value) orelse return error.DataCloneError;
+    const data = try serialized.subDeserialize();
+    const width = try serialized.readUint32();
+    const height = try serialized.readUint32();
+    const color_space = std.meta.stringToEnum(enums.PredefinedColorSpace, try serialized.readString()) orelse return error.DataCloneError;
+    const pixel_format = std.meta.stringToEnum(enums.ImageDataPixelFormat, try serialized.readString()) orelse return error.DataCloneError;
+    // The data must be the array its pixel format names, as the record was
+    // written; anything else did not come from these steps.
+    const kind: ArrayKind = switch (pixel_format) {
+        ._rgba_unorm8_ => .uint8_clamped,
+        ._rgba_float16_ => .float16,
+    };
+    const description = engine.describeArrayBufferView(target_realm, data) orelse return error.DataCloneError;
+    if (kind != .uint8_clamped or description.view_type != .uint8_clamped_array) return error.DataCloneError;
+    // Step 1: the sub-deserialized array itself, kept (the record only
+    // lends it).
+    internal.data = try engine.retainValue(target_realm, data);
+    internal.data_kind = kind;
+    // Steps 2-5.
+    internal.width = width;
+    internal.height = height;
+    internal.color_space = color_space;
+    internal.pixel_format = pixel_format;
 }

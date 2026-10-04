@@ -1,9 +1,16 @@
 //! Implementation for DOMRect interface
 //!
 //! CSSOM View Module - DOMRect
-//! Spec: https://drafts.csswg.org/geometry-1/#domrect
+//! Spec: https://drafts.fxtf.org/geometry/#domrect
 //!
 //! Extends DOMRectReadOnly with mutable x, y, width, height properties.
+//!
+//! The rectangle's variables are DOMRectReadOnly's (Geometry 3): this impl
+//! reads them through DOMRectReadOnly's getters and sets them through
+//! dom.geometry_storage, which DOMRectReadOnly installs - so top, right,
+//! bottom and left, DOMRectReadOnly's members, always see what a DOMRect's
+//! setters wrote. DOMRect's own State slots for x, y, width and height
+//! (codegen gives each `inherit attribute` one) are not used.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -13,8 +20,9 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const geometry = @import("css").geometry;
+const geometry_storage = @import("dom").geometry_storage;
 const DOMRect = interfaces.DOMRect;
-const DOMRectReadOnlyImpl = @import("DOMRectReadOnly.zig");
 
 pub const State = DOMRect.State;
 
@@ -23,44 +31,26 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Internal state - not currently used, dimensions stored in State.own
-pub const InternalState = DOMRectReadOnlyImpl.InternalState;
+/// Implementation-specific data: none - the rectangle is DOMRectReadOnly's.
+pub const InternalState = struct {};
 
-/// Get state from instance
-fn getState(instance: *runtime.Instance) *State {
-    return instance.getState(State);
-}
-
-/// Initialize instance (creates the instance)
+/// Initialize instance: a DOMRectReadOnly's state first, through its
+/// interface (the rectangle (0, 0, 0, 0)).
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    return instance;
+    return interfaces.DOMRectReadOnly.initWithState(allocator, StateType, vtable, ctx);
 }
 
-/// Initialize with dimensions
-pub fn initWithDimensions(
-    allocator: std.mem.Allocator,
-    ctx: runtime.Context,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-) !*runtime.Instance {
-    const instance = try init(allocator, State, &DOMRect.vtable, ctx);
-    errdefer deinit(instance);
-
-    // Set state values
-    const state = getState(instance);
-    state.own.x = x;
-    state.own.y = y;
-    state.own.width = width;
-    state.own.height = height;
-
+/// A new DOMRect of `ctx` with the given variables.
+fn initWithDimensions(ctx: runtime.Context, rect: geometry.Rect) !*runtime.Instance {
+    const instance = try init(ctx.allocator, State, &DOMRect.vtable, ctx);
+    const generation = runtime.SlabAllocator.generationOf(instance);
+    errdefer instance.releaseIfUnwrapped(generation);
+    try geometry_storage.setRect(instance, rect);
     return instance;
 }
 
@@ -69,86 +59,103 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Constructor implementation
-/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-domrect
+/// The rectangle's variables, through DOMRectReadOnly's getters.
+fn rectOf(instance: *runtime.Instance) !geometry.Rect {
+    return .{
+        .x = try interfaces.DOMRectReadOnly.get_x(instance),
+        .y = try interfaces.DOMRectReadOnly.get_y(instance),
+        .width = try interfaces.DOMRectReadOnly.get_width(instance),
+        .height = try interfaces.DOMRectReadOnly.get_height(instance),
+    };
+}
+
+/// Geometry 3, the DOMRect(x, y, width, height) constructor:
+/// 1. Let rect be a new DOMRect object.
+/// 2. Set rect's variables x coordinate to x, y coordinate to y, width
+///    dimension to width and height dimension to height.
+/// 3. Return rect.
 pub fn call_constructor(ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
-    const x_val = if (x.was_passed) x.value else 0;
-    const y_val = if (y.was_passed) y.value else 0;
-    const width_val = if (width.was_passed) width.value else 0;
-    const height_val = if (height.was_passed) height.value else 0;
-    return initWithDimensions(ctx.allocator, ctx, x_val, y_val, width_val, height_val);
+    return initWithDimensions(ctx, .{
+        .x = if (x.was_passed) x.value else 0,
+        .y = if (y.was_passed) y.value else 0,
+        .width = if (width.was_passed) width.value else 0,
+        .height = if (height.was_passed) height.value else 0,
+    });
 }
 
-/// Getter for x
-/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-x
+/// Getter for x: the x coordinate.
 pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
-    const state = getState(instance);
-    return state.own.x;
+    return interfaces.DOMRectReadOnly.get_x(instance);
 }
 
-/// Setter for x
-pub fn set_x(instance: *runtime.Instance, value: f64) ImplError!void {
-    const state = getState(instance);
-    state.own.x = value;
+/// Setter for x: sets the x coordinate.
+pub fn set_x(instance: *runtime.Instance, value: f64) anyerror!void {
+    var rect = try rectOf(instance);
+    rect.x = value;
+    try geometry_storage.setRect(instance, rect);
 }
 
-/// Getter for y
-/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-y
+/// Getter for y: the y coordinate.
 pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
-    const state = getState(instance);
-    return state.own.y;
+    return interfaces.DOMRectReadOnly.get_y(instance);
 }
 
-/// Setter for y
-pub fn set_y(instance: *runtime.Instance, value: f64) ImplError!void {
-    const state = getState(instance);
-    state.own.y = value;
+/// Setter for y: sets the y coordinate.
+pub fn set_y(instance: *runtime.Instance, value: f64) anyerror!void {
+    var rect = try rectOf(instance);
+    rect.y = value;
+    try geometry_storage.setRect(instance, rect);
 }
 
-/// Getter for width
-/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-width
+/// Getter for width: the width dimension.
 pub fn get_width(instance: *runtime.Instance) anyerror!f64 {
-    const state = getState(instance);
-    return state.own.width;
+    return interfaces.DOMRectReadOnly.get_width(instance);
 }
 
-/// Setter for width
-pub fn set_width(instance: *runtime.Instance, value: f64) ImplError!void {
-    const state = getState(instance);
-    state.own.width = value;
+/// Setter for width: sets the width dimension.
+pub fn set_width(instance: *runtime.Instance, value: f64) anyerror!void {
+    var rect = try rectOf(instance);
+    rect.width = value;
+    try geometry_storage.setRect(instance, rect);
 }
 
-/// Getter for height
-/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-height
+/// Getter for height: the height dimension.
 pub fn get_height(instance: *runtime.Instance) anyerror!f64 {
-    const state = getState(instance);
-    return state.own.height;
+    return interfaces.DOMRectReadOnly.get_height(instance);
 }
 
-/// Setter for height
-pub fn set_height(instance: *runtime.Instance, value: f64) ImplError!void {
-    const state = getState(instance);
-    state.own.height = value;
+/// Setter for height: sets the height dimension.
+pub fn set_height(instance: *runtime.Instance, value: f64) anyerror!void {
+    var rect = try rectOf(instance);
+    rect.height = value;
+    try geometry_storage.setRect(instance, rect);
 }
 
 /// Operation: fromRect (static)
-/// Spec: https://drafts.csswg.org/geometry-1/#dom-domrect-fromrect
+/// Spec: https://drafts.fxtf.org/geometry/#dom-domrect-fromrect
 /// Creates a new DOMRect from a DOMRectInit dictionary
 pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dictionaries.DOMRectInit)) anyerror!*runtime.Instance {
-    const ctx = instance.ctx;
+    const dict: dictionaries.DOMRectInit = if (other.was_passed) other.value else .{};
+    return initWithDimensions(instance.ctx, .{
+        .x = dict.x orelse 0,
+        .y = dict.y orelse 0,
+        .width = dict.width orelse 0,
+        .height = dict.height orelse 0,
+    });
+}
 
-    // Extract values from dictionary with defaults
-    var x: f64 = 0;
-    var y: f64 = 0;
-    var width: f64 = 0;
-    var height: f64 = 0;
+// ============================================================================
+// Serializable objects (HTML 2.7.1; Geometry 7: DOMRect is [Serializable])
+// ============================================================================
 
-    if (other.was_passed) {
-        x = other.value.x orelse 0;
-        y = other.value.y orelse 0;
-        width = other.value.width orelse 0;
-        height = other.value.height orelse 0;
-    }
+/// Geometry 7, the serialization steps for DOMRectReadOnly and DOMRect: one
+/// algorithm for both, DOMRectReadOnly's, run here for a DOMRect (its own
+/// primary interface, HTML 2.7.1).
+pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
+    try interfaces.DOMRectReadOnly.serializationSteps(value, serialized);
+}
 
-    return initWithDimensions(std.heap.page_allocator, ctx, x, y, width, height) catch return error.OutOfMemory;
+/// Geometry 7, the deserialization steps for DOMRectReadOnly and DOMRect.
+pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
+    try interfaces.DOMRectReadOnly.deserializationSteps(serialized, value, target_realm);
 }

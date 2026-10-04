@@ -2,6 +2,13 @@
 //!
 //! Per the Geometry Interfaces Module Level 1:
 //! https://drafts.fxtf.org/geometry/#domrectreadonly
+//!
+//! A rectangle's x coordinate, y coordinate, width dimension and height
+//! dimension are this interface's internal member variables, kept in its
+//! State; top, right, bottom and left are computed from them on every get
+//! (Geometry 3). DOMRect (which inherits them) reads them through this
+//! interface's getters and sets them through dom.geometry_storage, the step
+//! installed here.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -11,6 +18,8 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
+const geometry = @import("css").geometry;
+const geometry_storage = @import("dom").geometry_storage;
 const DOMRectReadOnly = interfaces.DOMRectReadOnly;
 
 pub const State = DOMRectReadOnly.State;
@@ -22,7 +31,14 @@ pub const ImplError = error{
 /// Internal state for implementation-specific data
 pub const InternalState = struct {};
 
-/// Initialize instance (creates the instance)
+/// The hooks this type owns (src/dom), installed once, at process start.
+pub fn installHooks() void {
+    geometry_storage.installRect(&setRect);
+}
+
+/// Initialize instance (creates the instance): the rectangle (0, 0, 0, 0)
+/// until its maker sets one. DOMRect's state is made here too, through this
+/// interface's initWithState.
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -30,6 +46,7 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    setRect(instance, .{});
     return instance;
 }
 
@@ -38,84 +55,77 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Constructor implementation
-/// Creates a new DOMRectReadOnly with the given coordinates and dimensions
-pub fn call_constructor(ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
-    const instance = try init(ctx.allocator, State, &DOMRectReadOnly.vtable, ctx);
-    errdefer deinit(instance);
-
-    // Get the actual values or defaults (0 per spec)
-    const x_val = if (x.was_passed) x.value else 0.0;
-    const y_val = if (y.was_passed) y.value else 0.0;
-    const width_val = if (width.was_passed) width.value else 0.0;
-    const height_val = if (height.was_passed) height.value else 0.0;
-
-    // Store in state (FlattenedState has .own for own fields)
+/// dom.geometry_storage: set the rectangle's variables.
+fn setRect(instance: *runtime.Instance, rect: geometry.Rect) void {
     const state = instance.getState(State);
-    state.own.x = x_val;
-    state.own.y = y_val;
-    state.own.width = width_val;
-    state.own.height = height_val;
+    state.own.x = rect.x;
+    state.own.y = rect.y;
+    state.own.width = rect.width;
+    state.own.height = rect.height;
+}
 
-    // Compute derived properties per spec
-    // top = min(y, y + height)
-    state.own.top = @min(y_val, y_val + height_val);
-    // right = max(x, x + width)
-    state.own.right = @max(x_val, x_val + width_val);
-    // bottom = max(y, y + height)
-    state.own.bottom = @max(y_val, y_val + height_val);
-    // left = min(x, x + width)
-    state.own.left = @min(x_val, x_val + width_val);
+fn rectOf(instance: *runtime.Instance) geometry.Rect {
+    const state = instance.getState(State);
+    return .{ .x = state.own.x, .y = state.own.y, .width = state.own.width, .height = state.own.height };
+}
 
+/// Geometry 3, the DOMRectReadOnly(x, y, width, height) constructor:
+/// 1. Let rect be a new DOMRectReadOnly object.
+/// 2. Set rect's variables x coordinate to x, y coordinate to y, width
+///    dimension to width and height dimension to height.
+/// 3. Return rect.
+pub fn call_constructor(ctx: runtime.Context, x: webidl.Opt(f64), y: webidl.Opt(f64), width: webidl.Opt(f64), height: webidl.Opt(f64)) !*runtime.Instance {
+    // 1.
+    const instance = try init(ctx.allocator, State, &DOMRectReadOnly.vtable, ctx);
+    // 2. (Every argument defaults to 0.)
+    setRect(instance, .{
+        .x = if (x.was_passed) x.value else 0,
+        .y = if (y.was_passed) y.value else 0,
+        .width = if (width.was_passed) width.value else 0,
+        .height = if (height.was_passed) height.value else 0,
+    });
+    // 3.
     return instance;
 }
 
-/// Getter for x
+/// Getter for x: the x coordinate.
 pub fn get_x(instance: *runtime.Instance) anyerror!f64 {
-    const state = instance.getState(State);
-    return state.own.x;
+    return instance.getState(State).own.x;
 }
 
-/// Getter for y
+/// Getter for y: the y coordinate.
 pub fn get_y(instance: *runtime.Instance) anyerror!f64 {
-    const state = instance.getState(State);
-    return state.own.y;
+    return instance.getState(State).own.y;
 }
 
-/// Getter for width
+/// Getter for width: the width dimension.
 pub fn get_width(instance: *runtime.Instance) anyerror!f64 {
-    const state = instance.getState(State);
-    return state.own.width;
+    return instance.getState(State).own.width;
 }
 
-/// Getter for height
+/// Getter for height: the height dimension.
 pub fn get_height(instance: *runtime.Instance) anyerror!f64 {
-    const state = instance.getState(State);
-    return state.own.height;
+    return instance.getState(State).own.height;
 }
 
-/// Getter for top
+/// Getter for top: min(y coordinate, y coordinate + height dimension).
 pub fn get_top(instance: *runtime.Instance) anyerror!f64 {
-    const state = instance.getState(State);
-    return state.own.top;
+    return rectOf(instance).top();
 }
 
-/// Getter for right
+/// Getter for right: max(x coordinate, x coordinate + width dimension).
 pub fn get_right(instance: *runtime.Instance) anyerror!f64 {
-    const state = instance.getState(State);
-    return state.own.right;
+    return rectOf(instance).right();
 }
 
-/// Getter for bottom
+/// Getter for bottom: max(y coordinate, y coordinate + height dimension).
 pub fn get_bottom(instance: *runtime.Instance) anyerror!f64 {
-    const state = instance.getState(State);
-    return state.own.bottom;
+    return rectOf(instance).bottom();
 }
 
-/// Getter for left
+/// Getter for left: min(x coordinate, x coordinate + width dimension).
 pub fn get_left(instance: *runtime.Instance) anyerror!f64 {
-    const state = instance.getState(State);
-    return state.own.left;
+    return rectOf(instance).left();
 }
 
 /// Operation: fromRect
@@ -157,16 +167,50 @@ pub fn call_static_fromRect(instance: *runtime.Instance, other: webidl.Opt(dicti
 /// The conversion layer will convert this struct to a JavaScript object using the
 /// correct realm context for proper cross-realm support.
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.DOMRectReadOnly.DOMRectReadOnlyToJSON {
-    const state = instance.getState(State);
-
+    const rect = rectOf(instance);
     return .{
-        .x = state.own.x,
-        .y = state.own.y,
-        .width = state.own.width,
-        .height = state.own.height,
-        .top = state.own.top,
-        .right = state.own.right,
-        .bottom = state.own.bottom,
-        .left = state.own.left,
+        .x = rect.x,
+        .y = rect.y,
+        .width = rect.width,
+        .height = rect.height,
+        .top = rect.top(),
+        .right = rect.right(),
+        .bottom = rect.bottom(),
+        .left = rect.left(),
     };
+}
+
+// ============================================================================
+// Serializable objects (HTML 2.7.1; Geometry 7: DOMRectReadOnly is
+// [Serializable])
+// ============================================================================
+
+/// Geometry 7, the serialization steps for DOMRectReadOnly and DOMRect,
+/// given `value` and `serialized`:
+/// 1. Set serialized.[[X]] to value's x coordinate.
+/// 2. Set serialized.[[Y]] to value's y coordinate.
+/// 3. Set serialized.[[Width]] to value's width dimension.
+/// 4. Set serialized.[[Height]] to value's height dimension.
+pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
+    const rect = rectOf(value);
+    try serialized.writeDouble(rect.x);
+    try serialized.writeDouble(rect.y);
+    try serialized.writeDouble(rect.width);
+    try serialized.writeDouble(rect.height);
+}
+
+/// Geometry 7, the deserialization steps for DOMRectReadOnly and DOMRect,
+/// given `serialized` and `value`:
+/// 1. Set value's x coordinate to serialized.[[X]].
+/// 2. Set value's y coordinate to serialized.[[Y]].
+/// 3. Set value's width dimension to serialized.[[Width]].
+/// 4. Set value's height dimension to serialized.[[Height]].
+pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
+    _ = target_realm;
+    var rect: geometry.Rect = undefined;
+    rect.x = try serialized.readDouble();
+    rect.y = try serialized.readDouble();
+    rect.width = try serialized.readDouble();
+    rect.height = try serialized.readDouble();
+    setRect(value, rect);
 }

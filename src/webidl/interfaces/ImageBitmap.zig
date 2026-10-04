@@ -112,6 +112,43 @@ pub const ImageBitmap = struct {
         }
     }
 
+    // HTML 2.7.1 serializable objects: ImageBitmap is [Serializable].
+
+    /// ImageBitmap's serialization steps, given `value` and `serialized`: its impl's.
+    pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) anyerror!void {
+        return @import("impls").ImageBitmap.serializationSteps(value, serialized);
+    }
+
+    /// ImageBitmap's deserialization steps, given `serialized`, `value` and
+    /// `target_realm`: its impl's.
+    pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) anyerror!void {
+        return @import("impls").ImageBitmap.deserializationSteps(serialized, value, target_realm);
+    }
+
+    /// HTML StructuredDeserialize steps 22.3 and 24.4: a new instance of
+    /// ImageBitmap, created in `target_realm`, set up by its deserialization steps.
+    /// Unwrapped: the engine wraps it in `target_realm`.
+    fn deserializeNew(serialized: *runtime.DeserializationRecord, target_realm: runtime.Context) anyerror!*runtime.Instance {
+        const value = try init(target_realm.allocator, target_realm);
+        const generation = runtime.SlabAllocator.generationOf(value);
+        errdefer value.releaseIfUnwrapped(generation);
+        try deserializationSteps(serialized, value, target_realm);
+        return value;
+    }
+
+    /// ImageBitmap's serialization and deserialization steps, as an engine finds
+    /// them by interface identifier; null while its impl defines none.
+    pub const serializable_steps: ?runtime.SerializableSteps = if (has_serializable_steps) .{
+        .serialize = &serializationSteps,
+        .deserialize = &deserializeNew,
+    } else null;
+
+    const has_serializable_steps = blk: {
+        const impls = @import("impls");
+        if (!@hasDecl(impls, "ImageBitmap")) break :blk false;
+        break :blk @hasDecl(impls.ImageBitmap, "serializationSteps") and @hasDecl(impls.ImageBitmap, "deserializationSteps");
+    };
+
     pub fn get_width(instance: *runtime.Instance) anyerror!u32 {
         return try ImageBitmapImpl.get_width(instance);
     }

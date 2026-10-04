@@ -96,6 +96,10 @@ pub const supports = @import("supports.zig");
 /// CSSOM serializing idioms: serialize an identifier (CSS.escape()).
 pub const serialize = @import("serialize.zig");
 
+// Geometry Interfaces 1: the abstract point, rectangle and matrix algorithms the
+// DOMPoint, DOMRect and DOMMatrix interfaces share.
+pub const geometry = @import("geometry.zig");
+
 // ============================================================================
 // Tests
 // ============================================================================

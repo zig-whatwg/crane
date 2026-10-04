@@ -5,7 +5,8 @@
 //! One serializer: the same V8 ValueSerializer path as the table's
 //! structuredSerializeForStorage / structuredDeserialize
 //! (`v8_Value_StructuredSerializeWithTransfer`, whose delegate throws the
-//! spec's "DataCloneError" DOMException), here with a transfer list. The
+//! spec's "DataCloneError" DOMException and runs a [Serializable] platform
+//! object's steps - serializable_objects.zig), here with a transfer list. The
 //! transferred ArrayBuffers' contents leave the engine as bytes the caller
 //! owns; the transferred platform objects leave as the Instances they are,
 //! for the caller to run their transfer steps (a MessagePort's) - which
@@ -20,6 +21,7 @@ const ffi = @import("ffi.zig");
 const engine = @import("engine.zig");
 const conversions = @import("conversions.zig");
 const value_operations = @import("value_operations.zig");
+const serializable_objects = @import("serializable_objects.zig");
 
 /// A Global of our own for `value` - always one the caller disposes.
 fn ownGlobal(isolate: *ffi.Isolate, context: *ffi.Context, value: runtime.JSValue) EngineError!*ffi.Value {
@@ -92,6 +94,10 @@ pub fn structuredSerializeWithTransfer(
     defer allocator.free(buffer_data);
     var size: usize = 0;
     var code: c_int = 0;
+    // StructuredSerializeInternal(value, false, memory): a [Serializable]
+    // platform object runs its interface's serialization steps, forStorage
+    // false (serializable_objects.zig).
+    var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = allocator };
     const bytes = ffi.v8_Value_StructuredSerializeWithTransfer(
         subject,
         buffers.items.ptr,
@@ -99,6 +105,7 @@ pub fn structuredSerializeWithTransfer(
         &size,
         buffer_data.ptr,
         &code,
+        host.hostObjectSteps(),
     ) orelse return switch (code) {
         1 => EngineError.DataCloneError,
         3 => EngineError.ExceptionPending,
@@ -150,7 +157,10 @@ pub fn structuredDeserializeWithTransfer(
         data[i] = .{ .data = if (contents.len > 0) @ptrCast(@constCast(contents.ptr)) else null, .size = contents.len };
     }
     var code: c_int = 0;
-    const value = ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(serialized.ptr, serialized.len, data.ptr, data.len, &code) orelse
+    // StructuredDeserialize(serialized, targetRealm = `realm`, memory): a
+    // platform object is made there by its interface's deserialization steps.
+    var host: serializable_objects.Host = .{ .realm = realm, .for_storage = false, .allocator = std.heap.c_allocator };
+    const value = ffi.v8_Value_DeserializeWithTransfer_CrossIsolate(serialized.ptr, serialized.len, data.ptr, data.len, &code, host.hostObjectSteps()) orelse
         return EngineError.DataCloneError;
     return .{ .handle = .{ .ptr = @ptrCast(value) } };
 }

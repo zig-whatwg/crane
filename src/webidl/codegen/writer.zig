@@ -2343,6 +2343,49 @@ pub fn writeInstallHooks(writer: anytype, impl_name: []const u8, indent: []const
     try writer.print("{s}}}\n\n", .{indent});
 }
 
+/// HTML 2.7.1 serializable objects, for an interface the IDL marks
+/// [Serializable]: its serialization and deserialization steps, reached
+/// through its generated file - the one place allowed to name the impl - and
+/// published as `serializable_steps`, which an engine adapter finds by the
+/// interface's identifier (engine-protocol.md 4.11). Null while the impl
+/// defines no steps; the impl is looked up, not named, so an interface with
+/// no impl yet, or no steps, still compiles. `deserializeNew` is
+/// StructuredDeserialize steps 22.3 and 24.4: a new instance created in the
+/// target realm, then its deserialization steps.
+pub fn writeSerializableSteps(writer: anytype, impl_name: []const u8, indent: []const u8) !void {
+    try writer.print("{s}// HTML 2.7.1 serializable objects: {s} is [Serializable].\n\n", .{ indent, impl_name });
+    try writer.print("{s}/// {s}'s serialization steps, given `value` and `serialized`: its impl's.\n", .{ indent, impl_name });
+    try writer.print("{s}pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) anyerror!void {{\n", .{indent});
+    try writer.print("{s}    return @import(\"impls\").{s}.serializationSteps(value, serialized);\n", .{ indent, impl_name });
+    try writer.print("{s}}}\n\n", .{indent});
+    try writer.print("{s}/// {s}'s deserialization steps, given `serialized`, `value` and\n", .{ indent, impl_name });
+    try writer.print("{s}/// `target_realm`: its impl's.\n", .{indent});
+    try writer.print("{s}pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) anyerror!void {{\n", .{indent});
+    try writer.print("{s}    return @import(\"impls\").{s}.deserializationSteps(serialized, value, target_realm);\n", .{ indent, impl_name });
+    try writer.print("{s}}}\n\n", .{indent});
+    try writer.print("{s}/// HTML StructuredDeserialize steps 22.3 and 24.4: a new instance of\n", .{indent});
+    try writer.print("{s}/// {s}, created in `target_realm`, set up by its deserialization steps.\n", .{ indent, impl_name });
+    try writer.print("{s}/// Unwrapped: the engine wraps it in `target_realm`.\n", .{indent});
+    try writer.print("{s}fn deserializeNew(serialized: *runtime.DeserializationRecord, target_realm: runtime.Context) anyerror!*runtime.Instance {{\n", .{indent});
+    try writer.print("{s}    const value = try init(target_realm.allocator, target_realm);\n", .{indent});
+    try writer.print("{s}    const generation = runtime.SlabAllocator.generationOf(value);\n", .{indent});
+    try writer.print("{s}    errdefer value.releaseIfUnwrapped(generation);\n", .{indent});
+    try writer.print("{s}    try deserializationSteps(serialized, value, target_realm);\n", .{indent});
+    try writer.print("{s}    return value;\n", .{indent});
+    try writer.print("{s}}}\n\n", .{indent});
+    try writer.print("{s}/// {s}'s serialization and deserialization steps, as an engine finds\n", .{ indent, impl_name });
+    try writer.print("{s}/// them by interface identifier; null while its impl defines none.\n", .{indent});
+    try writer.print("{s}pub const serializable_steps: ?runtime.SerializableSteps = if (has_serializable_steps) .{{\n", .{indent});
+    try writer.print("{s}    .serialize = &serializationSteps,\n", .{indent});
+    try writer.print("{s}    .deserialize = &deserializeNew,\n", .{indent});
+    try writer.print("{s}}} else null;\n\n", .{indent});
+    try writer.print("{s}const has_serializable_steps = blk: {{\n", .{indent});
+    try writer.print("{s}    const impls = @import(\"impls\");\n", .{indent});
+    try writer.print("{s}    if (!@hasDecl(impls, \"{s}\")) break :blk false;\n", .{ indent, impl_name });
+    try writer.print("{s}    break :blk @hasDecl(impls.{s}, \"serializationSteps\") and @hasDecl(impls.{s}, \"deserializationSteps\");\n", .{ indent, impl_name, impl_name });
+    try writer.print("{s}}};\n\n", .{indent});
+}
+
 /// A root file's `process_hooks.install()`: every member's installHooks,
 /// through a comptime loop over the root's declarations. A struct, not a
 /// function, so code that walks the root's declarations as types (the
@@ -4956,6 +4999,20 @@ test "every interface exposes its impl's installHooks, a no-op when the impl dec
     // Looked up, so an interface with no impl yet still compiles.
     try testing.expect(std.mem.indexOf(u8, output, "if (comptime @hasDecl(impls, \"Node\")) {") != null);
     try testing.expect(std.mem.indexOf(u8, output, "if (comptime @hasDecl(impls.Node, \"installHooks\")) impls.Node.installHooks();") != null);
+}
+
+test "a [Serializable] interface publishes its impl's steps, looked up so a missing one is null" {
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeSerializableSteps(&buffer.writer, "DOMPoint", "    ");
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "    pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) anyerror!void {\n") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "return @import(\"impls\").DOMPoint.deserializationSteps(serialized, value, target_realm);") != null);
+    // StructuredDeserialize 22.3 then 24.4: a new instance in the target realm, then the steps.
+    try testing.expect(std.mem.indexOf(u8, output, "const value = try init(target_realm.allocator, target_realm);") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub const serializable_steps: ?runtime.SerializableSteps = if (has_serializable_steps) .{") != null);
+    // Looked up, never named outright: no impl, or no steps, is null.
+    try testing.expect(std.mem.indexOf(u8, output, "if (!@hasDecl(impls, \"DOMPoint\")) break :blk false;") != null);
 }
 
 test "a root's installHooks calls every member's, once, through a comptime loop" {

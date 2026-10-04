@@ -185,6 +185,13 @@ pub const StringRecordEntry = @import("engine_types.zig").StringRecordEntry;
 // ---- end lane: engine-boundary ----
 pub const ForEachCallback = @import("engine_types.zig").ForEachCallback;
 
+// HTML 2.7.1 serializable objects: the engine-neutral records a [Serializable]
+// interface's serialization and deserialization steps fill and read.
+pub const serialization_record = @import("serialization_record.zig");
+pub const SerializationRecord = serialization_record.SerializationRecord;
+pub const DeserializationRecord = serialization_record.DeserializationRecord;
+pub const SerializableSteps = serialization_record.SerializableSteps;
+
 // Engine Context abstraction - type-safe wrapper for engine_ctx pointers
 // Replaces direct use of engine_ctx: *anyopaque with structured type
 pub const engine_context = @import("engine_context.zig");

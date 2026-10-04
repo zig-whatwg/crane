@@ -271,6 +271,9 @@ pub const observable_array = @import("observable_array.zig");
 pub const webidl_conversions = @import("webidl_conversions.zig");
 pub const webidl_conversions_numeric = @import("webidl_conversions_numeric.zig");
 pub const structured_serialization = @import("structured_serialization.zig");
+/// HTML 2.7.1 serializable objects: the [Serializable] interfaces' steps behind
+/// the serializer delegates.
+pub const serializable_objects = @import("serializable_objects.zig");
 
 /// Bfcache (Back-Forward Cache) Frozen Context Manager
 pub const frozen_context_manager = @import("frozen_context_manager.zig");

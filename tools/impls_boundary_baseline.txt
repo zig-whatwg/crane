@@ -136,8 +136,6 @@ src/webidl/impls/CustomEvent.zig Event.call_initEvent 1
 src/webidl/impls/CustomEvent.zig Event.getDispatchFlag 1
 src/webidl/impls/DOMImplementation.zig DocumentType.createDocumentType 2
 src/webidl/impls/DOMParser.zig HTMLParser.parseHTML 1
-src/webidl/impls/DOMQuad.zig DOMRect.initWithDimensions 1
-src/webidl/impls/DOMRect.zig DOMRectReadOnly.InternalState 1
 src/webidl/impls/DOMStringMap.zig Element.call_getAttribute 3
 src/webidl/impls/DOMStringMap.zig Element.call_removeAttribute 3
 src/webidl/impls/DOMStringMap.zig Element.getInternalState 3
