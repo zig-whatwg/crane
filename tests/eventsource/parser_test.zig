@@ -1,5 +1,8 @@
 //! HTML 9.2.5–9.2.6, independent of an engine or network connection.
 const std = @import("std");
+test {
+    _ = @import("retry_test.zig");
+}
 const infra = @import("infra");
 const eventsource = @import("eventsource");
 const Parser = eventsource.Parser;

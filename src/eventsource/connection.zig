@@ -5,6 +5,21 @@ pub const Connection = struct {
     /// HTML 9.2.2 readyState constants.
     pub const State = enum(u16) { connecting = 0, open = 1, closed = 2 };
     state: State = .connecting,
+    pending_tasks: usize = 0,
+
+    /// HTML 9.2.9: a queued task's share lasts through its script's return.
+    pub fn beginTask(self: *Connection) void {
+        self.pending_tasks += 1;
+    }
+    /// Return a task's share only after its run/drop has finished.
+    pub fn endTask(self: *Connection) void {
+        @import("std").debug.assert(self.pending_tasks != 0);
+        self.pending_tasks -= 1;
+    }
+    /// Active sources and queued/running tasks require pending activity.
+    pub fn needsHold(self: *const Connection) bool {
+        return self.state != .closed or self.pending_tasks != 0;
+    }
 
     /// "Announce the connection": CLOSED suppresses an already queued open.
     pub fn announce(self: *Connection) bool {

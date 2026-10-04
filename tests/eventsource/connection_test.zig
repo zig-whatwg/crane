@@ -2,6 +2,19 @@
 const std = @import("std");
 const Connection = @import("eventsource").Connection;
 
+test "pending activity survives close until every queued or running task ends" {
+    var connection: Connection = .{};
+    try std.testing.expect(connection.needsHold());
+    connection.beginTask();
+    connection.beginTask();
+    connection.close();
+    try std.testing.expect(connection.needsHold());
+    connection.endTask();
+    try std.testing.expect(connection.needsHold());
+    connection.endTask();
+    try std.testing.expect(!connection.needsHold());
+}
+
 test "connection starts CONNECTING and an announcement opens it" {
     var connection: Connection = .{};
     try std.testing.expectEqual(Connection.State.connecting, connection.state);
