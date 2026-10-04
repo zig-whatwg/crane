@@ -1047,6 +1047,213 @@ fn throwMemberError(isolate: *v8.Isolate, member_context: *v8.Context, err: anye
     conv.throwWebIDLErrorFromContext(isolate, member_context, @errorName(err));
 }
 
+// ============================================================================
+// Argument cleanup: what a converted argument, dictionary member or
+// sequence element holds once its call is over
+// ============================================================================
+
+/// Check if a type is a webidl.Opt wrapper (has wasPassed method and value field)
+pub fn isOptionalWrapper(comptime T: type) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    // Check for the wasPassed method and value field that webidl.Optional has
+    return @hasDecl(T, "wasPassed") and @hasField(T, "value") and @hasField(T, "was_passed");
+}
+
+/// Get the inner value type from an Optional wrapper
+pub fn getOptionalValueType(comptime T: type) ?type {
+    if (@typeInfo(T) != .@"struct") return null;
+    if (!@hasField(T, "value")) return null;
+    const fields = std.meta.fields(T);
+    inline for (fields) |field| {
+        if (comptime std.mem.eql(u8, field.name, "value")) {
+            return field.type;
+        }
+    }
+    return null;
+}
+
+/// Check if a converted argument type needs to be freed after use.
+/// String types ([]const u8 and DOMString) need cleanup as they're allocated by fromV8String.
+/// JSValue types may contain owned strings that need cleanup.
+/// CallbackWrapper types are the call's: released once it returns.
+/// Struct types (dictionaries) may contain string fields that need cleanup.
+pub fn needsArgCleanup(comptime T: type) bool {
+    @setEvalBranchQuota(10000);
+    // Non-owning views alias memory this engine did not allocate. This
+    // must come first: the union arm that holds the view IS a
+    // `[]const u8`, so every rule below would claim it. See
+    // `argConversionIsNonOwning`.
+    if (argConversionIsNonOwning(T)) return false;
+    // BodyInit: freed by arm, as its conversion allocated it - before
+    // the union rule below, which would take its copied BufferSource
+    // arm for a reference (`freeBodyInitArg`).
+    if (T == copied_arg_types.BodyInit) return true;
+    // A buffer source holds the handle it refers to, and an
+    // ArrayBuffer the struct made for it (`freeBufferSourceArg`).
+    if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return true;
+    // Raw string slice - allocated by fromV8Value
+    if (T == []const u8) return true;
+    // DOMString - allocated by fromV8String
+    if (T == runtime.DOMString) return true;
+    // JSValue may contain owned strings
+    if (T == runtime.JSValue) return true;
+    // CallbackWrapper - the call's; a method that keeps the callback
+    // (addEventListener) takes its own CallbackInterface first.
+    if (T == *runtime.CallbackWrapper) return true;
+    // Generic slice types (sequences) - allocated by fromV8Sequence
+    // This handles []const JSValue, []const DOMString, etc.
+    if (@typeInfo(T) == .pointer) {
+        const ptr_info = @typeInfo(T).pointer;
+        if (ptr_info.size == .slice) {
+            // All slices from fromV8Sequence are allocated and need cleanup
+            return true;
+        }
+    }
+    // Zig optional variants
+    if (@typeInfo(T) == .optional) {
+        const Child = @typeInfo(T).optional.child;
+        if (Child == []const u8) return true;
+        if (Child == runtime.DOMString) return true;
+        if (Child == runtime.JSValue) return true;
+        if (Child == *runtime.CallbackWrapper) return true;
+        // Recurse for nested optionals or other wrapper types
+        if (needsArgCleanup(Child)) return true;
+    }
+    // webidl.Opt wrapper types - check if inner type needs cleanup
+    if (isOptionalWrapper(T)) {
+        if (getOptionalValueType(T)) |vt| {
+            return needsArgCleanup(vt);
+        }
+    }
+    // Struct types (dictionaries) - check if any field needs cleanup
+    if (@typeInfo(T) == .@"struct") {
+        inline for (std.meta.fields(T)) |field| {
+            if (needsArgCleanup(field.type)) return true;
+        }
+    }
+    // Union types (WebIDL union types) - check if any variant needs cleanup
+    if (@typeInfo(T) == .@"union") {
+        inline for (std.meta.fields(T)) |field| {
+            if (needsArgCleanup(field.type)) return true;
+        }
+    }
+    return false;
+}
+
+/// Static empty slice used by fromV8Value for empty strings - must not be freed
+const static_empty_u8: []const u8 = &[_]u8{};
+
+/// Free a converted argument if it was allocated.
+/// Empty strings return a static slice that must NOT be freed.
+pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
+    if (comptime !needsArgCleanup(T)) return;
+    if (T == copied_arg_types.BodyInit) return freeBodyInitArg(allocator, arg);
+    if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return freeBufferSourceArg(T, allocator, arg);
+
+    if (T == []const u8) {
+        // Only free if it's not the static empty slice and has content
+        if (arg.len > 0 and arg.ptr != static_empty_u8.ptr) {
+            allocator.free(arg);
+        }
+    } else if (@typeInfo(T) == .pointer and @typeInfo(T).pointer.size == .slice) {
+        // Generic slice types (sequences) - allocated by fromV8Sequence
+        // First free each element if needed, then free the slice itself
+        const ElemType = @typeInfo(T).pointer.child;
+        if (comptime needsArgCleanup(ElemType)) {
+            for (arg) |elem| {
+                freeConvertedArg(ElemType, allocator, elem);
+            }
+        }
+        // Free the slice itself (cast away const for freeing)
+        if (arg.len > 0) {
+            const mutable_ptr: [*]ElemType = @constCast(arg.ptr);
+            allocator.free(mutable_ptr[0..arg.len]);
+        }
+    } else if (T == runtime.DOMString) {
+        // DOMString is a tagged union - only free if owned
+        switch (arg) {
+            .owned => |s| if (s.len > 0) allocator.free(s),
+            .empty, .interned => {}, // Static, don't free
+        }
+    } else if (T == runtime.JSValue) {
+        // JSValue may contain an owned string that needs cleanup
+        switch (arg) {
+            .string => |str| {
+                if (str.owned and str.data.len > 0) {
+                    allocator.free(str.data);
+                }
+            },
+            else => {}, // Other variants don't need cleanup here
+        }
+    } else if (T == *runtime.CallbackWrapper) {
+        // A callback interface argument is the call's, like every
+        // argument: the impl borrowed it, and one that keeps the
+        // callback (addEventListener) took a CallbackInterface of its
+        // own. Its wrapper goes now.
+        conv.releaseCallbackWrapper(arg);
+    } else if (@typeInfo(T) == .optional) {
+        // Handle all optional types by recursively freeing the inner value
+        if (arg) |val| {
+            const Child = @typeInfo(T).optional.child;
+            freeConvertedArg(Child, allocator, val);
+        }
+    } else if (comptime isOptionalWrapper(T)) {
+        // webidl.Opt wrapper - free inner value if it was passed
+        if (arg.was_passed) {
+            if (comptime getOptionalValueType(T)) |vt| {
+                freeConvertedArg(vt, allocator, arg.value);
+            }
+        }
+    } else if (@typeInfo(T) == .@"struct") {
+        // Struct types (dictionaries) - free any fields that need
+        // cleanup, and release each `any`-family member's handle (an
+        // `any` or `object` member, a union typed JSValue, an
+        // `object` union arm): the Get handle the dictionary loop
+        // kept as the member's `.handle`, BORROWED for the call as
+        // an `any` argument's is (releaseAnyArgument). An impl that
+        // keeps a member takes a hold of its own; every keeper was
+        // read for that (2026-10-02, 108 dictionaries with a JSValue
+        // member): the events take holds, Navigation retains or
+        // serializes, PopStateEvent now holds its state. Kept, an
+        // object `detail` held its realm for the process's life
+        // (realms3: a removed frame kept alive by a dropped
+        // CustomEvent). A sequence<any> element inside a dictionary
+        // keeps the conservative answer (kept): its keepers are not
+        // read yet.
+        inline for (std.meta.fields(T)) |field| {
+            if (comptime needsArgCleanup(field.type)) {
+                freeConvertedArg(field.type, allocator, @field(arg, field.name));
+            }
+            releaseAnyArgument(field.type, @field(arg, field.name));
+        }
+    } else if (@typeInfo(T) == .@"union") {
+        // Union types (WebIDL union types) - free the active variant if it needs cleanup
+        const union_info = @typeInfo(T).@"union";
+        if (union_info.tag_type) |_| {
+            // Tagged union - we can switch on it
+            switch (arg) {
+                inline else => |val| {
+                    // Zig 0.16 removed std.meta.TagPayloadByName; inside an
+                    // `inline else` prong the capture already has the payload type.
+                    const FieldType = @TypeOf(val);
+                    if (comptime needsArgCleanup(FieldType)) {
+                        freeConvertedArg(FieldType, allocator, val);
+                    }
+                },
+            }
+        }
+        // Untagged unions cannot be safely freed (we don't know which variant is active)
+    }
+}
+
+/// An operation's or constructor's argument, once the call is over:
+/// what its conversion allocated (`freeConvertedArg`) and, for an
+/// `any`, the handle it still refers to (`releaseAnyArgument`).
+pub fn freeArgument(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
+    freeConvertedArg(T, allocator, arg);
+    releaseAnyArgument(T, arg);
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -3588,97 +3795,6 @@ pub fn V8Interface(comptime Interface: type) type {
             return true;
         }
 
-        /// Check if a type is a webidl.Opt wrapper (has wasPassed method and value field)
-        fn isOptionalWrapper(comptime T: type) bool {
-            if (@typeInfo(T) != .@"struct") return false;
-            // Check for the wasPassed method and value field that webidl.Optional has
-            return @hasDecl(T, "wasPassed") and @hasField(T, "value") and @hasField(T, "was_passed");
-        }
-
-        /// Get the inner value type from an Optional wrapper
-        fn getOptionalValueType(comptime T: type) ?type {
-            if (@typeInfo(T) != .@"struct") return null;
-            if (!@hasField(T, "value")) return null;
-            const fields = std.meta.fields(T);
-            inline for (fields) |field| {
-                if (comptime std.mem.eql(u8, field.name, "value")) {
-                    return field.type;
-                }
-            }
-            return null;
-        }
-
-        /// Check if a converted argument type needs to be freed after use.
-        /// String types ([]const u8 and DOMString) need cleanup as they're allocated by fromV8String.
-        /// JSValue types may contain owned strings that need cleanup.
-        /// CallbackWrapper types are the call's: released once it returns.
-        /// Struct types (dictionaries) may contain string fields that need cleanup.
-        fn needsArgCleanup(comptime T: type) bool {
-            @setEvalBranchQuota(10000);
-            // Non-owning views alias memory this engine did not allocate. This
-            // must come first: the union arm that holds the view IS a
-            // `[]const u8`, so every rule below would claim it. See
-            // `argConversionIsNonOwning`.
-            if (argConversionIsNonOwning(T)) return false;
-            // BodyInit: freed by arm, as its conversion allocated it - before
-            // the union rule below, which would take its copied BufferSource
-            // arm for a reference (`freeBodyInitArg`).
-            if (T == copied_arg_types.BodyInit) return true;
-            // A buffer source holds the handle it refers to, and an
-            // ArrayBuffer the struct made for it (`freeBufferSourceArg`).
-            if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return true;
-            // Raw string slice - allocated by fromV8Value
-            if (T == []const u8) return true;
-            // DOMString - allocated by fromV8String
-            if (T == runtime.DOMString) return true;
-            // JSValue may contain owned strings
-            if (T == runtime.JSValue) return true;
-            // CallbackWrapper - the call's; a method that keeps the callback
-            // (addEventListener) takes its own CallbackInterface first.
-            if (T == *runtime.CallbackWrapper) return true;
-            // Generic slice types (sequences) - allocated by fromV8Sequence
-            // This handles []const JSValue, []const DOMString, etc.
-            if (@typeInfo(T) == .pointer) {
-                const ptr_info = @typeInfo(T).pointer;
-                if (ptr_info.size == .slice) {
-                    // All slices from fromV8Sequence are allocated and need cleanup
-                    return true;
-                }
-            }
-            // Zig optional variants
-            if (@typeInfo(T) == .optional) {
-                const Child = @typeInfo(T).optional.child;
-                if (Child == []const u8) return true;
-                if (Child == runtime.DOMString) return true;
-                if (Child == runtime.JSValue) return true;
-                if (Child == *runtime.CallbackWrapper) return true;
-                // Recurse for nested optionals or other wrapper types
-                if (needsArgCleanup(Child)) return true;
-            }
-            // webidl.Opt wrapper types - check if inner type needs cleanup
-            if (isOptionalWrapper(T)) {
-                if (getOptionalValueType(T)) |vt| {
-                    return needsArgCleanup(vt);
-                }
-            }
-            // Struct types (dictionaries) - check if any field needs cleanup
-            if (@typeInfo(T) == .@"struct") {
-                inline for (std.meta.fields(T)) |field| {
-                    if (needsArgCleanup(field.type)) return true;
-                }
-            }
-            // Union types (WebIDL union types) - check if any variant needs cleanup
-            if (@typeInfo(T) == .@"union") {
-                inline for (std.meta.fields(T)) |field| {
-                    if (needsArgCleanup(field.type)) return true;
-                }
-            }
-            return false;
-        }
-
-        /// Static empty slice used by fromV8Value for empty strings - must not be freed
-        const static_empty_u8: []const u8 = &[_]u8{};
-
         /// Convert one argument, then - for a restricted `double` or `float`
         /// (`restricted_floats`) - apply that conversion's last step: NaN and
         /// the infinities are a TypeError. The check is part of this
@@ -3699,117 +3815,6 @@ pub fn V8Interface(comptime Interface: type) type {
                 };
             }
             return value;
-        }
-
-        /// Free a converted argument if it was allocated.
-        /// Empty strings return a static slice that must NOT be freed.
-        fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
-            if (comptime !needsArgCleanup(T)) return;
-            if (T == copied_arg_types.BodyInit) return freeBodyInitArg(allocator, arg);
-            if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return freeBufferSourceArg(T, allocator, arg);
-
-            if (T == []const u8) {
-                // Only free if it's not the static empty slice and has content
-                if (arg.len > 0 and arg.ptr != static_empty_u8.ptr) {
-                    allocator.free(arg);
-                }
-            } else if (@typeInfo(T) == .pointer and @typeInfo(T).pointer.size == .slice) {
-                // Generic slice types (sequences) - allocated by fromV8Sequence
-                // First free each element if needed, then free the slice itself
-                const ElemType = @typeInfo(T).pointer.child;
-                if (comptime needsArgCleanup(ElemType)) {
-                    for (arg) |elem| {
-                        freeConvertedArg(ElemType, allocator, elem);
-                    }
-                }
-                // Free the slice itself (cast away const for freeing)
-                if (arg.len > 0) {
-                    const mutable_ptr: [*]ElemType = @constCast(arg.ptr);
-                    allocator.free(mutable_ptr[0..arg.len]);
-                }
-            } else if (T == runtime.DOMString) {
-                // DOMString is a tagged union - only free if owned
-                switch (arg) {
-                    .owned => |s| if (s.len > 0) allocator.free(s),
-                    .empty, .interned => {}, // Static, don't free
-                }
-            } else if (T == runtime.JSValue) {
-                // JSValue may contain an owned string that needs cleanup
-                switch (arg) {
-                    .string => |str| {
-                        if (str.owned and str.data.len > 0) {
-                            allocator.free(str.data);
-                        }
-                    },
-                    else => {}, // Other variants don't need cleanup here
-                }
-            } else if (T == *runtime.CallbackWrapper) {
-                // A callback interface argument is the call's, like every
-                // argument: the impl borrowed it, and one that keeps the
-                // callback (addEventListener) took a CallbackInterface of its
-                // own. Its wrapper goes now.
-                conv.releaseCallbackWrapper(arg);
-            } else if (@typeInfo(T) == .optional) {
-                // Handle all optional types by recursively freeing the inner value
-                if (arg) |val| {
-                    const Child = @typeInfo(T).optional.child;
-                    freeConvertedArg(Child, allocator, val);
-                }
-            } else if (comptime isOptionalWrapper(T)) {
-                // webidl.Opt wrapper - free inner value if it was passed
-                if (arg.was_passed) {
-                    if (comptime getOptionalValueType(T)) |vt| {
-                        freeConvertedArg(vt, allocator, arg.value);
-                    }
-                }
-            } else if (@typeInfo(T) == .@"struct") {
-                // Struct types (dictionaries) - free any fields that need
-                // cleanup, and release each `any`-family member's handle (an
-                // `any` or `object` member, a union typed JSValue, an
-                // `object` union arm): the Get handle the dictionary loop
-                // kept as the member's `.handle`, BORROWED for the call as
-                // an `any` argument's is (releaseAnyArgument). An impl that
-                // keeps a member takes a hold of its own; every keeper was
-                // read for that (2026-10-02, 108 dictionaries with a JSValue
-                // member): the events take holds, Navigation retains or
-                // serializes, PopStateEvent now holds its state. Kept, an
-                // object `detail` held its realm for the process's life
-                // (realms3: a removed frame kept alive by a dropped
-                // CustomEvent). A sequence<any> element inside a dictionary
-                // keeps the conservative answer (kept): its keepers are not
-                // read yet.
-                inline for (std.meta.fields(T)) |field| {
-                    if (comptime needsArgCleanup(field.type)) {
-                        freeConvertedArg(field.type, allocator, @field(arg, field.name));
-                    }
-                    releaseAnyArgument(field.type, @field(arg, field.name));
-                }
-            } else if (@typeInfo(T) == .@"union") {
-                // Union types (WebIDL union types) - free the active variant if it needs cleanup
-                const union_info = @typeInfo(T).@"union";
-                if (union_info.tag_type) |_| {
-                    // Tagged union - we can switch on it
-                    switch (arg) {
-                        inline else => |val| {
-                            // Zig 0.16 removed std.meta.TagPayloadByName; inside an
-                            // `inline else` prong the capture already has the payload type.
-                            const FieldType = @TypeOf(val);
-                            if (comptime needsArgCleanup(FieldType)) {
-                                freeConvertedArg(FieldType, allocator, val);
-                            }
-                        },
-                    }
-                }
-                // Untagged unions cannot be safely freed (we don't know which variant is active)
-            }
-        }
-
-        /// An operation's or constructor's argument, once the call is over:
-        /// what its conversion allocated (`freeConvertedArg`) and, for an
-        /// `any`, the handle it still refers to (`releaseAnyArgument`).
-        fn freeArgument(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
-            freeConvertedArg(T, allocator, arg);
-            releaseAnyArgument(T, arg);
         }
 
         /// Convert multiple JS arguments into a slice for variadic parameters
