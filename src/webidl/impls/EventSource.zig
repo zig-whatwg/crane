@@ -2,7 +2,7 @@
 //! https://html.spec.whatwg.org/multipage/server-sent-events.html
 //!
 //! Headers and incremental BodyPipe bytes are processed by remote-event
-//! tasks. Each message task owns its strings through run/drop, including
+//! tasks. Each message task holds its event through run/drop, including
 //! when a listener closes the source or destroys its document.
 //!
 //! Stated deviation (9.2.9): listener-conditioned retention is not modelled.
@@ -245,16 +245,27 @@ pub const InternalState = struct {
 
     fn feed(self: *InternalState, bytes: []const u8) !void {
         var messages = infra.List(eventsource.Message).init(self.allocator);
-        defer messages.deinit();
-        var taken: usize = 0;
-        defer for (messages.toSliceMut()[taken..]) |*message| message.deinit(self.allocator);
+        defer {
+            for (messages.toSliceMut()) |*message| message.deinit(self.allocator);
+            messages.deinit();
+        }
         try self.parser.feed(bytes, &messages);
+        const instance = self.instance orelse return;
         for (messages.toSlice()) |message| {
-            // This response's origin, even if a later fetch redirects.
-            const origin = try self.allocator.dupe(u8, self.origin);
-            errdefer self.allocator.free(origin);
-            try self.queue(.{ .message = .{ .message = message, .origin = origin } });
-            taken += 1;
+            // 9.2.6 dispatch steps 4–6 precede step 8's task: the event's
+            // creation time and this response's origin are captured now.
+            // MessageEvent takes its own copies of the parser's strings.
+            const event = try interfaces.MessageEvent.call_constructor(instance.ctx, runtime.DOMString.initInterned(message.event_type), webidl.Opt(dictionaries.MessageEventInit).passed(.{
+                .base = .{},
+                .data = .{ .string = .{ .data = message.data, .owned = false } },
+                .origin = self.origin,
+                .lastEventId = runtime.DOMString.initInterned(message.last_event_id),
+            }));
+            const generation = runtime.SlabAllocator.generationOf(event);
+            defer event.releaseIfUnwrapped(generation);
+            const hold = try engine.retainValue(instance.ctx, .{ .instance = event });
+            errdefer hold.release();
+            try self.queue(.{ .message = .{ .event = event, .hold = hold } });
         }
     }
     fn retryReady(context: *anyopaque) void {
@@ -273,7 +284,7 @@ const Task = struct {
         reestablish,
         reconnect,
         fail,
-        message: struct { message: eventsource.Message, origin: []const u8 },
+        message: struct { event: *runtime.Instance, hold: engine.Owned },
     };
     fn run(context: ?*anyopaque) void {
         const self: *Task = @ptrCast(@alignCast(context.?));
@@ -293,16 +304,9 @@ const Task = struct {
             .read => source.read() catch source.queueFailure(),
             .open => if (source.connection.announce()) fire(instance, "open"),
             .message => |payload| {
-                // 9.2.6 dispatch steps 4–8: independent, owned payloads.
-                const event = interfaces.MessageEvent.call_constructor(instance.ctx, runtime.DOMString.initInterned(payload.message.event_type), webidl.Opt(dictionaries.MessageEventInit).passed(.{
-                    .base = .{},
-                    .data = .{ .string = .{ .data = payload.message.data, .owned = false } },
-                    .origin = payload.origin,
-                    .lastEventId = runtime.DOMString.initInterned(payload.message.last_event_id),
-                })) catch return;
-                const generation = runtime.SlabAllocator.generationOf(event);
-                defer event.releaseIfUnwrapped(generation);
-                _ = dom.fire_event.dispatchTrusted(instance, event) catch {};
+                // 9.2.6 step 8 dispatches the already-created event. Its
+                // hold lasts until finish(), after script and microtasks.
+                _ = dom.fire_event.dispatchTrusted(instance, payload.event) catch {};
             },
             .reestablish => {
                 // 9.2.3 steps 1.1–1.3: CONNECTING before firing error.
@@ -336,10 +340,7 @@ const Task = struct {
     fn finish(self: *Task) void {
         const source = self.source;
         switch (self.kind) {
-            .message => |*payload| {
-                payload.message.deinit(source.allocator);
-                source.allocator.free(payload.origin);
-            },
+            .message => |payload| payload.hold.release(),
             else => {},
         }
         source.allocator.destroy(self);
