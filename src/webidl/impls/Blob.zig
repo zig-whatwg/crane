@@ -106,8 +106,8 @@ fn setBytes(instance: *runtime.Instance, bytes: []const u8, mime_type: []const u
 /// Deviation: the record also carries the Blob's type, which File API's
 /// steps leave out. Without it a clone's `type` would be "", where every
 /// engine keeps it (Blink's WriteDOMObject writes it) and WPT's
-/// structured-clone battery asserts it (compare_Blob). No File API issue
-/// covers it yet.
+/// structured-clone battery asserts it (compare_Blob). Filed upstream as
+/// w3c/FileAPI#226.
 pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
     const internal = getInternal(value);
     try serialized.writeString(if (internal) |i| i.blob_data.getType() else "");

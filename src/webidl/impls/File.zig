@@ -156,7 +156,9 @@ fn setFileState(instance: *runtime.Instance, allocator: std.mem.Allocator, name:
 ///
 /// File's primary interface is File, so these steps stand alone (HTML
 /// 2.7.1); steps 1-2 are Blob's own, reached through Blob's interface - they
-/// read the File's Blob part, and also keep its type (see Blob's steps).
+/// read the File's Blob part, and also keep its type, which File API's steps
+/// leave out (a stated deviation, filed upstream as w3c/FileAPI#226; see
+/// Blob's steps).
 pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
     // Steps 1-2.
     try interfaces.Blob.serializationSteps(value, serialized);
