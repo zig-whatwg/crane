@@ -1,0 +1,12 @@
+# Architecture: Trying overloads until one converts is not overload resolution
+
+**Date**: 2026-10-04
+**Lesson**: An overloaded constructor tried its variants in order until one converted. That picks the wrong overload whenever a value converts to a type it does not have, runs a throwing conversion twice, and leaves the first throw pending while the second variant is tried.
+
+**Why**: WebIDL 3.6 picks the overload from the argument COUNT and, where several remain, the TYPE of the value at the distinguishing argument index - inspected, not converted. Conversion is lossy and permissive: ToNumber of a Uint8ClampedArray is NaN (so 0 for `unsigned long`), any object converts to a dictionary, ToString takes anything. "It converted" says nothing about which overload the caller meant. And a conversion that throws is part of the call's result, not a reason to try another overload.
+
+**What Happened**: `new ImageData(new Uint8ClampedArray(16), 2)` became `ImageData(0, 2)` (or failed: its ImageDataArray arm was a JSValue no union step matched), `new URLPattern({get pathname() {throw e}}, base)` ran the getter twice and threw a "no matching overload" over the pending `e`, XRRay(transform) converted an XRRigidTransform into its DOMPointInit, and OfflineAudioContext(contextOptions) - one dictionary argument, which is a Zig struct - was taken for a struct of three arguments. Operations already ran the real algorithm (`webidl.overload_resolution.select`); constructors did not, because codegen wrote no table for them.
+
+**Fix**: Codegen writes `constructor_overloads` beside `ConstructorArgs` (one entry per variant, the same `Overload` table operations have, so its `args.len` also says how many arguments a variant holds). `overload_resolver.resolveConstructorOverload` runs `select`, then converts the chosen variant once; when step 12 throws it first converts the arguments before the distinguishing index (step 11), whose own exception wins. The overload tables resolve typedefs (CanvasImageSource, GLenum, ImageDataArray had been `.other`), and the union conversion takes a typed array into the arm named for its type. tests/v8/constructor_overload_resolution_test.zig, crane/bd2-constructor-overload-resolution.html.
+
+**Takeaway**: **Select the overload from the arguments' types first, then convert once; a conversion's throw is the call's exception, never a reason to try another overload.**
