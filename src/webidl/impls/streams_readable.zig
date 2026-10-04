@@ -1928,7 +1928,7 @@ pub fn pipeTo(
             return result;
         }
         // 14.3 Add abortAlgorithm to signal.
-        if (abort_algorithms.add(sig, .{ .ctx = state.retain(), .run = pipeAbortAlgorithmErased })) |_| {
+        if (abort_algorithms.add(sig, .{ .ctx = state.retain(), .run = pipeAbortAlgorithmErased, .drop = pipeAbortDropped })) |_| {
             state.abort_registered = true;
         } else |_| {
             state.refs -= 1;
@@ -2027,6 +2027,15 @@ fn onPipeDestErrored(state: *PipeState, e: Value) void {
 fn onPipeSourceClosed(state: *PipeState, _: Value) void {
     defer state.release();
     pipeSourceClosed(state);
+}
+
+/// The signal went away unaborted - its realm ended - and discarded the
+/// algorithm unrun: the reference it held is ours to end, and there is
+/// nothing left to remove it from.
+fn pipeAbortDropped(ctx: *anyopaque) void {
+    const state: *PipeState = @ptrCast(@alignCast(ctx));
+    state.abort_registered = false;
+    state.release();
 }
 
 fn pipeAbortAlgorithmErased(ctx: *anyopaque) void {
