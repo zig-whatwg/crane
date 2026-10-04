@@ -138,10 +138,9 @@ src/webidl/impls/DOMImplementation.zig DocumentType.createDocumentType 2
 src/webidl/impls/DOMParser.zig HTMLParser.parseHTML 1
 src/webidl/impls/DOMQuad.zig DOMRect.initWithDimensions 1
 src/webidl/impls/DOMRect.zig DOMRectReadOnly.InternalState 1
-src/webidl/impls/DOMStringMap.zig Element.call_getAttribute 4
-src/webidl/impls/DOMStringMap.zig Element.call_removeAttribute 4
-src/webidl/impls/DOMStringMap.zig Element.call_setAttribute 4
-src/webidl/impls/DOMStringMap.zig Element.getInternalState 4
+src/webidl/impls/DOMStringMap.zig Element.call_getAttribute 3
+src/webidl/impls/DOMStringMap.zig Element.call_removeAttribute 3
+src/webidl/impls/DOMStringMap.zig Element.getInternalState 3
 src/webidl/impls/DedicatedWorkerGlobalScope.zig EventTarget.eventHandler 3
 src/webidl/impls/DedicatedWorkerGlobalScope.zig EventTarget.setEventHandler 3
 src/webidl/impls/DedicatedWorkerGlobalScope.zig WorkerGlobalScope.deinit 2
@@ -245,12 +244,10 @@ src/webidl/impls/GlobalEventHandlers.zig EventTarget.eventHandler 1
 src/webidl/impls/GlobalEventHandlers.zig EventTarget.setEventHandler 1
 src/webidl/impls/HTMLAnchorElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLAnchorElement.zig Element.call_removeAttribute 1
-src/webidl/impls/HTMLAnchorElement.zig Element.call_setAttribute 2
 src/webidl/impls/HTMLAnchorElement.zig Element.getInternal 7
 src/webidl/impls/HTMLAnchorElement.zig HTMLElement.init 1
 src/webidl/impls/HTMLAreaElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLAreaElement.zig Element.call_removeAttribute 1
-src/webidl/impls/HTMLAreaElement.zig Element.call_setAttribute 2
 src/webidl/impls/HTMLAreaElement.zig Element.getInternal 7
 src/webidl/impls/HTMLAreaElement.zig HTMLElement.init 1
 src/webidl/impls/HTMLAudioElement.zig HTMLElement.deinit 2
@@ -323,7 +320,6 @@ src/webidl/impls/HTMLHeadingElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLHeadingElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLHtmlElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLHtmlElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLHyperlinkElementUtils.zig Element.call_setAttribute 2
 src/webidl/impls/HTMLHyperlinkElementUtils.zig Element.getInternal 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.get_value 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setElement 1
@@ -333,9 +329,8 @@ src/webidl/impls/HTMLIFrameElement.zig Document.call_createElement 9
 src/webidl/impls/HTMLIFrameElement.zig Document.get_defaultView 3
 src/webidl/impls/HTMLIFrameElement.zig Document.setDefaultView 6
 src/webidl/impls/HTMLIFrameElement.zig Document.setDocumentElement 3
-src/webidl/impls/HTMLIFrameElement.zig Element.call_getAttribute 88
-src/webidl/impls/HTMLIFrameElement.zig Element.call_hasAttribute 22
-src/webidl/impls/HTMLIFrameElement.zig Element.call_setAttribute 22
+src/webidl/impls/HTMLIFrameElement.zig Element.call_getAttribute 72
+src/webidl/impls/HTMLIFrameElement.zig Element.call_hasAttribute 18
 src/webidl/impls/HTMLIFrameElement.zig EventTarget.dispatchTrusted 2
 src/webidl/impls/HTMLIFrameElement.zig HTMLElement.deinit 4
 src/webidl/impls/HTMLIFrameElement.zig HTMLElement.init 2

@@ -20,13 +20,13 @@ const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const NamedNodeMap = @import("interfaces").NamedNodeMap;
 const USVString = @import("typedefs").USVString;
-const TrustedType = @import("typedefs").TrustedType;
 const Element = @import("interfaces").Element;
 const CheckVisibilityOptions = @import("dictionaries").CheckVisibilityOptions;
 const ScrollIntoViewOptions = @import("dictionaries").ScrollIntoViewOptions;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
@@ -39,6 +39,7 @@ const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const PermissionsPolicy = @import("interfaces").PermissionsPolicy;
+const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
 const DOMString = @import("typedefs").DOMString;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 const Document = @import("interfaces").Document;
@@ -427,7 +428,7 @@ pub const HTMLIFrameElement = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn set_srcdoc(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_srcdoc(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

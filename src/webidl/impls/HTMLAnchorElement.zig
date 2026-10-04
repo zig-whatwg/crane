@@ -242,7 +242,7 @@ pub fn set_ping(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 /// Sets the rel attribute.
 pub fn set_rel(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     // Use Element's setAttribute through the interface
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("rel"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("rel"), .{ .domstring = value });
 }
 
 /// Setter for hreflang: sets the hreflang content attribute.
@@ -340,13 +340,13 @@ fn reflectHas(instance: *runtime.Instance, comptime name: []const u8) !bool {
 
 /// Set content attribute `name` to `value`.
 fn reflectSet(instance: *runtime.Instance, comptime name: []const u8, value: runtime.DOMString) !void {
-    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned(name), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(name), .{ .domstring = value });
 }
 
 /// A boolean attribute's setter: add the content attribute, or remove it.
 fn reflectSetBool(instance: *runtime.Instance, comptime name: []const u8, value: bool) !void {
     if (value) {
-        try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned(name), runtime.DOMString.initInterned(""));
+        try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(name), .{ .domstring = runtime.DOMString.initInterned("") });
     } else {
         try ElementImpl.call_removeAttribute(instance, runtime.DOMString.initInterned(name));
     }

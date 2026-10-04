@@ -11,6 +11,7 @@
 const std = @import("std");
 const types = @import("types.zig");
 const ir_mod = @import("ir.zig");
+const argument_unions = @import("argument_unions.zig");
 
 /// Configuration for signature generation
 pub const SignatureConfig = struct {
@@ -239,6 +240,13 @@ pub fn writeType(writer: anytype, idl_type: types.IDLType, config: SignatureConf
             return;
         }
         if (isTrustedTypeOrStringUnion(union_types)) {
+            // An attribute getter's type: the string member's.
+            for (union_types) |ut| {
+                if (std.mem.eql(u8, ut.type, "USVString")) {
+                    try writer.writeAll("runtime.USVString");
+                    return;
+                }
+            }
             try writer.writeAll("runtime.DOMString");
             return;
         }
@@ -372,6 +380,17 @@ pub fn writeSetterSignature(
     // Handle nullable for value type
     if (idl_type.nullable) {
         try writer.writeAll("?");
+    }
+    // A Trusted Types sink's setter takes its named union
+    // (argument_unions.zig).
+    if (idl_type.unionTypes) |members| {
+        if (argument_unions.hasTrustedTypeMember(members)) {
+            const union_name = try argument_unions.unionName(std.heap.page_allocator, members);
+            defer std.heap.page_allocator.free(union_name);
+            try writer.print("typedefs.{s}", .{union_name});
+            try writer.print(") {s}!void", .{config.error_type});
+            return;
+        }
     }
     try writeType(writer, idl_type, config);
 

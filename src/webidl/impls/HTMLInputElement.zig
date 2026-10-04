@@ -156,7 +156,7 @@ fn hasAttribute(instance: *runtime.Instance, comptime name: []const u8) bool {
 }
 
 fn setAttributeValue(instance: *runtime.Instance, comptime name: []const u8, value: []const u8) !void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(name), runtime.DOMString.initInterned(value));
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned(name), .{ .domstring = runtime.DOMString.initInterned(value) });
 }
 
 // ============================================================================
@@ -689,7 +689,7 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
             }
         },
         // "default" and "default/on": set the value content attribute.
-        .default, .default_on => try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("value"), value),
+        .default, .default_on => try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("value"), .{ .domstring = value }),
         // "filename": the empty string empties the list of selected files;
         // anything else throws.
         .filename => if (value.asSlice().len != 0) return error.InvalidStateError,
@@ -1499,12 +1499,12 @@ pub fn get_formMethod(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 /// Setter for formEnctype
 pub fn set_formEnctype(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("formenctype"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("formenctype"), .{ .domstring = value });
 }
 
 /// Setter for formMethod
 pub fn set_formMethod(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("formmethod"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("formmethod"), .{ .domstring = value });
 }
 
 /// Getter for height: the rendered height of an image being rendered, else
@@ -1548,7 +1548,7 @@ pub fn set_type(instance: *runtime.Instance, value: runtime.DOMString) anyerror!
     // `el.type = "NONSENSE"` leaves type="NONSENSE" in the markup while
     // `el.type` reads back "text". The type change steps run from the
     // attribute change.
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("type"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("type"), .{ .domstring = value });
 }
 
 /// Getter for valueAsDate

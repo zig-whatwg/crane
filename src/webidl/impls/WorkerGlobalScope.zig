@@ -71,6 +71,13 @@ pub const InternalState = struct {
         value: *runtime.Instance,
         edge: same_object.Traced = .{ .slot = .{ .name = "crypto" } },
     } = null,
+    /// Trusted Types 4.1: this worker's trusted type policy factory, kept by a
+    /// collector-traced edge.
+    trusted_types: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: same_object.Traced = .{ .slot = .{ .name = "trustedTypes" } },
+    } = null,
 
     /// Reference to the worker's event loop (for timer APIs)
     /// This is set when the worker is fully initialized with an event loop.
@@ -104,6 +111,7 @@ pub const InternalState = struct {
 
     pub fn deinit(self: *InternalState) void {
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
+        if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
         // The WorkerLocation and WorkerNavigator objects are the wrapper
         // cache's: they are freed with it, not here. Only the pins are ours.
         self.location_pin.release();
@@ -168,6 +176,7 @@ pub fn installHooks() void {
         .is_secure_context = &settingsIsSecureContext,
         .cross_origin_isolated = &settingsCrossOriginIsolated,
         .crypto = &settingsCrypto,
+        .trusted_types = &settingsTrustedTypes,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
     });
@@ -224,6 +233,17 @@ fn settingsCrypto(instance: *runtime.Instance) anyerror!*runtime.Instance {
     internal.crypto = .{ .owner = instance, .value = crypto };
     internal.crypto.?.edge.hold(instance, crypto);
     return crypto;
+}
+
+/// Trusted Types 4.1: each worker global gets its own trusted type policy
+/// factory.
+fn settingsTrustedTypes(instance: *runtime.Instance) anyerror!*runtime.Instance {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    if (internal.trusted_types) |factory| return factory.value;
+    const factory = try interfaces.TrustedTypePolicyFactory.init(internal.allocator, instance.ctx);
+    internal.trusted_types = .{ .owner = instance, .value = factory };
+    internal.trusted_types.?.edge.hold(instance, factory);
+    return factory;
 }
 
 /// Initialize with worker URL and type
@@ -493,10 +513,26 @@ pub fn set_onunhandledrejection(instance: *runtime.Instance, value: typedefs.Eve
 /// 6. For each urlRecord: fetch a classic worker-imported script (which
 ///    throws its "NetworkError"), and run it with rethrow errors true: what
 ///    it throws aborts these steps and reaches the calling script.
-pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOMString) anyerror!void {
+pub fn call_importScripts(instance: *runtime.Instance, urls: []const typedefs.TrustedScriptURLOrUSVString) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.NotImplemented;
     const worker_host = @import("html").worker_host;
+
+    // importScripts(...urls) steps 1-2: "Let urlStrings be « »"; for each url,
+    // append get trusted type compliant string with TrustedScriptURL, this's
+    // relevant global object, url, "WorkerGlobalScope importScripts" and
+    // "script".
+    const url_allocator = instance.ctx.allocator;
+    var url_strings: std.ArrayListUnmanaged([]u8) = .empty;
+    defer {
+        for (url_strings.items) |u| url_allocator.free(u);
+        url_strings.deinit(url_allocator);
+    }
+    for (urls) |url| {
+        const compliant = try @import("dom").trusted_types.compliantStringFor(url_allocator, .script_url, instance, url, "WorkerGlobalScope importScripts");
+        errdefer url_allocator.free(compliant);
+        try url_strings.append(url_allocator, compliant);
+    }
 
     // Step 1.
     if (internal.worker_type == .module) return error.TypeError;
@@ -514,12 +550,12 @@ pub fn call_importScripts(instance: *runtime.Instance, urls: []const runtime.DOM
         records.deinit(allocator);
     }
     try records.ensureTotalCapacity(allocator, urls.len);
-    for (urls) |url| {
+    for (url_strings.items) |url| {
         const base_arg = if (base_url.len > 0)
             webidl.Opt(runtime.USVString).passed(base_url)
         else
             webidl.Opt(runtime.USVString).notPassed();
-        const parsed = (try interfaces.URL.call_static_parse(instance, url.asSlice(), base_arg)) orelse
+        const parsed = (try interfaces.URL.call_static_parse(instance, url, base_arg)) orelse
             return error.SyntaxError;
         defer runtime.Instance.deinit(parsed);
         records.appendAssumeCapacity(try interfaces.URL.get_href(parsed));

@@ -39,13 +39,9 @@ pub const upgrade_insecure = @import("upgrade_insecure.zig");
 pub const report_to = @import("report_to.zig");
 
 // Re-export Trusted Types functions
-pub const shouldTrustedTypePolicyCreationBeBlocked = trusted_types.shouldTrustedTypePolicyCreationBeBlocked;
-pub const doesTrustedTypesDirectiveAllowName = trusted_types.doesTrustedTypesDirectiveAllowName;
-pub const areDuplicatePolicyNamesAllowed = trusted_types.areDuplicatePolicyNamesAllowed;
-
+pub const shouldPolicyCreationBeBlocked = trusted_types.shouldPolicyCreationBeBlocked;
 pub const doesSinkTypeRequireTrustedTypes = require_trusted_types.doesSinkTypeRequireTrustedTypes;
-pub const isScriptSinkEnforcementRequired = require_trusted_types.isScriptSinkEnforcementRequired;
-pub const isTrustedTypesEnforcementActive = require_trusted_types.isTrustedTypesEnforcementActive;
+pub const shouldSinkTypeMismatchViolationBeBlocked = require_trusted_types.shouldSinkTypeMismatchViolationBeBlocked;
 
 // Re-export frame-ancestors functions
 pub const isAncestorAllowed = frame_ancestors.isAncestorAllowed;
@@ -88,12 +84,6 @@ pub const getReportingMechanism = report_to.getReportingMechanism;
 pub const ReportingMechanism = report_to.ReportingMechanism;
 pub const ReportConfig = report_to.ReportConfig;
 pub const getReportConfig = report_to.getReportConfig;
-
-// Constants
-pub const TT_KEYWORD_NONE = trusted_types.TT_KEYWORD_NONE;
-pub const TT_KEYWORD_ALLOW_DUPLICATES = trusted_types.TT_KEYWORD_ALLOW_DUPLICATES;
-pub const TT_WILDCARD = trusted_types.TT_WILDCARD;
-pub const SINK_GROUP_SCRIPT = require_trusted_types.SINK_GROUP_SCRIPT;
 
 test {
     @import("std").testing.refAllDecls(@This());

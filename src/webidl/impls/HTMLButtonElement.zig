@@ -210,12 +210,12 @@ pub fn get_formMethod(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 /// Setter for formEnctype
 pub fn set_formEnctype(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("formenctype"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("formenctype"), .{ .domstring = value });
 }
 
 /// Setter for formMethod
 pub fn set_formMethod(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("formmethod"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("formmethod"), .{ .domstring = value });
 }
 
 /// Getter for willValidate: a candidate for constraint validation - a submit

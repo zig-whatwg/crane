@@ -171,7 +171,6 @@ pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) !runtim
 /// Per HTML spec §2.4.2.4: Sets the data-* attribute with the given camelCase name.
 pub fn call_setter(instance: *runtime.Instance, name: runtime.DOMString, value: runtime.DOMString) !void {
     const internal = getInternalState(instance) orelse return error.InvalidState;
-    const ElementImpl = @import("Element.zig");
 
     // Convert camelCase name to hyphenated attribute name
     const allocator = internal.allocator;
@@ -180,7 +179,7 @@ pub fn call_setter(instance: *runtime.Instance, name: runtime.DOMString, value: 
 
     // Set the attribute on the element
     const attr_dom_str = runtime.DOMString.initInterned(attr_name);
-    try ElementImpl.call_setAttribute(internal.element, attr_dom_str, value);
+    try interfaces.Element.call_setAttribute(internal.element, attr_dom_str, .{ .domstring = value });
 }
 
 /// Named property deleter - WebIDL deleter void (DOMString name)

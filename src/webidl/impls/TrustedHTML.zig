@@ -1,42 +1,26 @@
-//! Implementation for TrustedHTML interface
+//! Implementation for the TrustedHTML interface (Trusted Types 2.2.1).
 //!
-//! W3C Trusted Types Spec: https://w3c.github.io/trusted-types/dist/spec/
+//! "TrustedHTML objects have an associated string data. The value is set
+//! when the object is created, and will never change during its lifetime."
+//! Only a policy makes one (3.2 "create a trusted type", through
+//! dom.trusted_types), and the factory's emptyHTML; there is no constructor.
 //!
-//! TrustedHTML represents a string that is safe to use in HTML contexts.
-//! It is created through TrustedTypePolicy.createHTML() and verified via
-//! TrustedTypePolicyFactory.isHTML().
+//! Spec: https://w3c.github.io/trusted-types/dist/spec/#trustedhtml
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const trusted_types = @import("trusted_types");
+const dom = @import("dom");
 const TrustedHTML = interfaces.TrustedHTML;
 
 pub const State = TrustedHTML.State;
 
-pub const ImplError = error{
-    NotImplemented,
-    OutOfMemory,
-};
-
-/// Internal state for TrustedHTML implementation
-/// Stores the underlying trusted_types.TrustedHTML value
 pub const InternalState = struct {
-    /// The underlying TrustedHTML value from the trusted_types module
-    inner: ?trusted_types.TrustedHTML = null,
-
-    pub fn deinit(self: *InternalState) void {
-        if (self.inner) |*inner| {
-            inner.deinit();
-        }
-    }
+    allocator: std.mem.Allocator,
+    /// The associated data, owned.
+    data: []u8,
 };
 
-/// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
@@ -44,70 +28,52 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // InternalState is zero-initialized by default
+    errdefer runtime.Instance.deinit(instance);
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator, .data = &.{} };
+    instance.getState(StateType).own._internal = internal;
     return instance;
 }
 
-/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Clean up the underlying TrustedHTML if present
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        internal.allocator.free(internal.data);
+        internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
-/// Internal: stringifier implementation
-///
-/// Returns the string representation of the TrustedHTML value.
-/// NOT a WebIDL operation - stringifiers are handled differently.
-/// Per spec: "The stringifier must return the value of the object's [[Data]] internal slot."
-pub fn stringify(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return runtime.DOMString.initEmpty();
-    if (internal.inner) |inner| {
-        return runtime.DOMString.initInterned(inner.toString());
-    }
-    return runtime.DOMString.initEmpty();
+pub fn installHooks() void {
+    dom.trusted_types.installValue(.html, .{ .create = &create, .data_of = &dataOf });
 }
 
-/// Operation: toJSON
-/// Per spec: "The toJSON() method steps are to return the value of the object's [[Data]] internal slot."
+/// A new TrustedHTML in `realm` whose data is a copy of `data`.
+fn create(realm: runtime.Context, data: []const u8) anyerror!*runtime.Instance {
+    const instance = try TrustedHTML.init(realm.allocator, realm);
+    errdefer TrustedHTML.deinit(instance);
+    const internal = instance.getState(State).own._internal.?;
+    internal.data = try internal.allocator.dupe(u8, data);
+    return instance;
+}
+
+/// `instance`'s data when it is a TrustedHTML.
+fn dataOf(instance: *runtime.Instance) ?[]const u8 {
+    if (instance.vtable != &TrustedHTML.vtable) return null;
+    const internal = instance.getState(State).own._internal orelse return null;
+    return internal.data;
+}
+
+/// "The toJSON() method steps ... are to return the associated data value."
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return runtime.DOMString.initEmpty();
-    if (internal.inner) |inner| {
-        return runtime.DOMString.initInterned(inner.toJSON());
-    }
-    return runtime.DOMString.initEmpty();
+    const data = dataOf(instance) orelse return error.TypeError;
+    return runtime.DOMString.initDupe(instance.ctx.allocator, data);
 }
 
-/// Get the underlying data value directly
-pub fn getData(instance: *runtime.Instance) ?[]const u8 {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return null;
-    if (internal.inner) |inner| {
-        return inner.data;
-    }
-    return null;
-}
-
-/// Check if this instance contains a valid TrustedHTML value
-pub fn isValid(instance: *runtime.Instance) bool {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return false;
-    return internal.inner != null;
-}
-
-/// Stringifier - serialize method for toString
+/// The stringification behavior: the associated data, as a copy (the
+/// binding frees the string toString() returns).
 pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {
-    // "The stringification behavior is to return the value of this's [[Data]]
-    // internal slot" - as a copy: the binding frees the string toString()
-    // returns. It returned the literal "[object]", which the binding's free
-    // faulted on.
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return "";
-    const inner = internal.inner orelse return "";
-    return instance.ctx.allocator.dupe(u8, inner.toString());
+    const data = dataOf(instance) orelse return error.TypeError;
+    return instance.ctx.allocator.dupe(u8, data);
 }

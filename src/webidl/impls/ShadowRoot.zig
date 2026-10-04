@@ -325,10 +325,15 @@ pub fn get_innerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// InnerHTML.innerHTML setter
-pub fn set_innerHTML(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    // TODO: Implement HTML parsing and fragment replacement
-    _ = instance;
-    _ = value;
+pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
+    // Step 1: "Let compliantString be the result of invoking the get trusted
+    // type compliant string algorithm with TrustedHTML, this's relevant
+    // global object, the given value, "ShadowRoot innerHTML", and "script"."
+    const allocator = instance.ctx.allocator;
+    const compliant = try @import("dom").trusted_types.compliantStringFor(allocator, .html, instance, value, "ShadowRoot innerHTML");
+    defer allocator.free(compliant);
+    // TODO: steps 2-3 - the fragment parsing algorithm with this's host as
+    // the context, then replace all within this.
     return error.NotImplemented;
 }
 
@@ -423,10 +428,14 @@ pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionarie
 }
 
 /// setHTMLUnsafe(html) - Parse and replace shadow tree contents
-pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: runtime.DOMString) anyerror!void {
-    // TODO: Implement unsafe HTML parsing
-    _ = instance;
-    _ = html;
+pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString) anyerror!void {
+    // Step 1: "Let compliantHTML be the result of invoking the get trusted
+    // type compliant string algorithm with TrustedHTML, this's relevant
+    // global object, html, "ShadowRoot setHTMLUnsafe", and "script"."
+    const allocator = instance.ctx.allocator;
+    const compliant = try @import("dom").trusted_types.compliantStringFor(allocator, .html, instance, html, "ShadowRoot setHTMLUnsafe");
+    defer allocator.free(compliant);
+    // TODO: step 2 - set and filter HTML with declarative shadow roots.
     return error.NotImplemented;
 }
 

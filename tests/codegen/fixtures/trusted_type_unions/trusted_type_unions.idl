@@ -1,0 +1,22 @@
+// Trusted Types sinks (tests/codegen/trusted_type_unions_test.zig).
+
+[Exposed=Window]
+interface TrustedHTML {};
+[Exposed=Window]
+interface TrustedScript {};
+[Exposed=Window]
+interface TrustedScriptURL {};
+
+typedef (TrustedHTML or TrustedScript or TrustedScriptURL) TrustedType;
+
+[Exposed=Window]
+interface Sink {
+  constructor((TrustedScriptURL or USVString) scriptURL);
+  [CEReactions] attribute (TrustedHTML or [LegacyNullToEmptyString] DOMString) innerHTML;
+  attribute (DOMString or TrustedScriptURL) baseVal;
+  [CEReactions] attribute (TrustedScript or DOMString)? textContent;
+  [CEReactions] undefined setAttribute(DOMString qualifiedName, (TrustedType or DOMString) value);
+  [CEReactions] undefined write((TrustedHTML or DOMString)... text);
+  undefined insertAdjacentHTML(DOMString position, (TrustedHTML or DOMString) string);
+  static Sink parse((TrustedHTML or DOMString) html);
+};

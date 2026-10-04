@@ -112,7 +112,7 @@ pub const SVGAnimatedString = struct {
         return try SVGAnimatedStringImpl.get_baseVal(instance);
     }
 
-    pub fn set_baseVal(instance: *runtime.Instance, value: DOMString) anyerror!void {
+    pub fn set_baseVal(instance: *runtime.Instance, value: typedefs.DOMStringOrTrustedScriptURL) anyerror!void {
         try SVGAnimatedStringImpl.set_baseVal(instance, value);
     }
 

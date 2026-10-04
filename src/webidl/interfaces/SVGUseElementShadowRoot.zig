@@ -29,6 +29,7 @@ const Element = @import("interfaces").Element;
 const Animation = @import("interfaces").Animation;
 const ShadowRootMode = @import("enums").ShadowRootMode;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const StyleSheetList = @import("interfaces").StyleSheetList;
