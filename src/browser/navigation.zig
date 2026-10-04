@@ -51,9 +51,13 @@ pub const NavigationResult = struct {
     pub const NavigationTiming = struct {
         /// fetchTiming (its times are the unsafe shared current time, ms).
         timing_info: @import("fetch").internal.FetchTimingInfo,
-        /// How many redirects the fetch followed.
+        /// How many redirects the fetch followed - 0 when any of them was to
+        /// another origin (HTML "create navigation params by fetching": a
+        /// response with cross-origin redirects counts none).
         redirect_count: u16,
         response_status: u16,
+        /// The response body info's content encoding (static).
+        content_encoding: []const u8 = "",
     };
 
     pub fn deinit(self: *NavigationResult) void {
@@ -389,8 +393,9 @@ fn fetchHttpUrl(
         .policy_container = policy_container,
         .timing = .{
             .timing_info = result.timing_info,
-            .redirect_count = @intCast(@min(response.url_list.items.len -| 1, std.math.maxInt(u16))),
+            .redirect_count = if (response.redirect_taint != .same_origin) 0 else @intCast(@min(response.url_list.items.len -| 1, std.math.maxInt(u16))),
             .response_status = response.status,
+            .content_encoding = response.body_info.content_encoding,
         },
     };
 }

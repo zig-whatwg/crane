@@ -1095,7 +1095,7 @@ pub const Context = struct {
                 .url = self.url,
                 .initiator_type = .other,
                 .cache_state = "",
-                .body_info = .{ .encoded_size = result.body.len, .decoded_size = result.body.len },
+                .body_info = .{ .encoded_size = result.body.len, .decoded_size = result.body.len, .content_encoding = timing.content_encoding },
                 .response_status = timing.response_status,
             };
             if (self.realm) |realm| dom_mod.performance_timeline.createNavigationTimingEntry(realm, .{

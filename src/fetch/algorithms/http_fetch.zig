@@ -754,6 +754,9 @@ pub fn httpNetworkFetchFinish(
         // body's are not known here.)
         response.body_info.encoded_size = body_bytes.len;
         response.body_info.decoded_size = body_bytes.len;
+        // HTTP-network fetch's body steps 1.2-1.7: the body info's content
+        // encoding, the filtered coding of `Content-Encoding`.
+        response.body_info.content_encoding = filteredContentCoding(&response.header_list);
     }
 
     // Step 4: Record timing information - the network's own measurements,
@@ -769,6 +772,31 @@ pub fn httpNetworkFetchFinish(
     params.timing_info.end_time = end_time;
 
     return response;
+}
+
+/// HTTP-network fetch's "filteredCoding" (its body steps 1.2-1.6) for a
+/// response's `headers`: "" without `Content-Encoding`, "multiple" for more
+/// than one coding, the coding lowercased when it is empty or one this user
+/// agent decodes (the network layer's), else "@unknown". Static.
+fn filteredContentCoding(headers: *const @import("../internal/header_list.zig").HeaderList) []const u8 {
+    var codings: usize = 0;
+    var first: []const u8 = "";
+    for (headers.entries.items) |header| {
+        if (!std.ascii.eqlIgnoreCase(header.name, "Content-Encoding")) continue;
+        var values = std.mem.splitScalar(u8, header.value, ',');
+        while (values.next()) |raw| {
+            if (codings == 0) first = std.mem.trim(u8, raw, " \t");
+            codings += 1;
+        }
+    }
+    if (codings == 0) return "";
+    if (codings > 1) return "multiple";
+    if (first.len == 0) return "";
+    const supported = [_][]const u8{ "gzip", "deflate", "br", "zstd", "identity" };
+    for (supported) |coding| {
+        if (std.ascii.eqlIgnoreCase(first, coding)) return coding;
+    }
+    return "@unknown";
 }
 
 /// Fetch "record connection timing info" for the connection that answered

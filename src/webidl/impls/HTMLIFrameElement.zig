@@ -1500,8 +1500,11 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
         if (result) |*r| {
             response.timing = .{
                 .timing_info = r.timing_info,
-                .redirect_count = @intCast(@min(r.response.url_list.items.len -| 1, std.math.maxInt(u16))),
+                // A cross-origin redirect makes the count 0 (HTML "create
+                // navigation params by fetching").
+                .redirect_count = if (response.has_cross_origin_redirects) 0 else @intCast(@min(r.response.url_list.items.len -| 1, std.math.maxInt(u16))),
                 .response_status = r.response.status,
+                .content_encoding = r.response.body_info.content_encoding,
             };
             r.timing_info = fetch_mod.internal.FetchTimingInfo.init(r.timing_info.allocator);
         }
@@ -1565,8 +1568,14 @@ fn runCommit(context: ?*anyopaque) void {
     var swap = pageSwapOf(integration, record, response);
     defer if (swap) |*step| step.deinit();
 
-    // Step 5.3: "Unload a document and its descendants", in its realm.
+    // Step 5.3: "Unload a document and its descendants", in its realm. HTML
+    // "unload a document" steps 11 and 13 time its unload event for the new
+    // document (the unload timing info): the unsafe shared current time
+    // around it, made relative to the new document's time origin when its
+    // navigation timing entry is created.
+    const unload_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
     if (!unloadActiveDocument(integration, if (swap) |*step| step else null)) return endLoadDelay(integration);
+    const unload_end = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
     if (integration.state == .discarded or integration.browsing_context == null) return;
 
     // "Create and initialize a Document object" steps 5-7: the realm the new
@@ -1574,6 +1583,16 @@ fn runCommit(context: ?*anyopaque) void {
     // WindowProxy - decided with no realm entered.
     const new_origin = integration.responseOrigin(record.url, response);
     const old_origin: ?Origin = if (integration.window_proxy) |proxy| proxy.document_origin else null;
+    // Navigation Timing: the unload times are the new document's only when
+    // the previous document was same origin with it.
+    if (response.timing) |*timing| {
+        if (old_origin) |old| {
+            if (new_origin.isSameOrigin(old)) {
+                timing.unload_event_start = unload_start;
+                timing.unload_event_end = unload_end;
+            }
+        }
+    }
     integration.realmForDocument(new_origin) catch |err| {
         log.warn("[navigation] no realm for {s}: {s}", .{ record.url, @errorName(err) });
         return endLoadDelay(integration);
@@ -1855,11 +1874,14 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
                 .body_info = .{
                     .encoded_size = if (response.body) |b| b.len else 0,
                     .decoded_size = if (response.body) |b| b.len else 0,
+                    .content_encoding = timing.content_encoding,
                 },
                 .response_status = timing.response_status,
             };
             dom_module.performance_timeline.createNavigationTimingEntry(realm, .{
                 .report = &report,
+                .unload_event_start = timing.unload_event_start,
+                .unload_event_end = timing.unload_event_end,
                 .redirect_count = timing.redirect_count,
                 // A traversal to the entry it leaves is a reload (as the
                 // navigation API's activation reads it), any other is

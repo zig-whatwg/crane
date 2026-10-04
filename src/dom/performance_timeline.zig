@@ -1307,6 +1307,11 @@ pub const NavigationRecord = struct {
     report: *const fetch.internal.TimingReport,
     redirect_count: u16,
     navigation_type: NavigationType,
+    /// The previous document's unload event start and end times, unsafe
+    /// shared current time in ms (HTML "unload a document" steps 11/13); 0
+    /// when there was none, or it was not same origin.
+    unload_event_start: f64 = 0,
+    unload_event_end: f64 = 0,
 };
 
 /// Navigation Timing 5 "create the navigation timing entry" for the
@@ -1316,6 +1321,14 @@ pub const NavigationRecord = struct {
 pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRecord) !void {
     const timeline = timelineOf(realm) orelse return;
     const impl = hooks.navigation_timings orelse return error.NotSupported;
+    // HTML "create and initialize a Document object": the load timing
+    // info's navigation start time is the response's timing info's start
+    // time, and it is the settings object's time origin - so it is set
+    // first, and every time below is relative to it. (The Window, made
+    // earlier or later than the fetch, recorded its creation as a stand-in.)
+    if (record.report.timing_info.start_time != 0) {
+        if (hooks.performances) |performances_impl| performances_impl.set_navigation_start(realm, record.report.timing_info.start_time);
+    }
     // A new document: a new load timing info, made with readiness
     // "loading"; only the current document's entry is in the timeline.
     timeline.load_timing = .{ .dom_loading = now(realm) orelse 0 };
@@ -1327,17 +1340,14 @@ pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRec
         }
         timeline.navigation_entry = null;
     }
-    // HTML "create and initialize a Document object": the load timing
-    // info's navigation start time is the response's timing info's start
-    // time, and it is the settings object's time origin - so the entry's
-    // times are converted relative to it. (The Window, made earlier or later
-    // than the fetch, recorded its creation as a stand-in.)
-    if (record.report.timing_info.start_time != 0) {
-        if (hooks.performances) |performances_impl| performances_impl.set_navigation_start(realm, record.report.timing_info.start_time);
-    }
+    // 5. The previous document unload timing, relative to the new time
+    // origin.
+    const convert = FetchTimestampConverter{ .realm = realm };
+    timeline.load_timing.unload_event_start = convert.call(record.unload_event_start);
+    timeline.load_timing.unload_event_end = convert.call(record.unload_event_end);
     // 3. Setup the resource timing entry given "navigation", the document's
     // URL, fetchTiming, cacheMode and bodyInfo.
-    var timing = try ResourceTiming.fromReport(timeline.allocator, record.report, FetchTimestampConverter{ .realm = realm });
+    var timing = try ResourceTiming.fromReport(timeline.allocator, record.report, convert);
     defer timing.deinit();
     timing.initiator_type = "navigation";
     // Navigation Timing 3.2: no redirects (or a cross-origin one, which
