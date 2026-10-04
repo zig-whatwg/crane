@@ -209,15 +209,23 @@ pub fn v8CreateDOMException(realm: runtime.Context, name: []const u8, message: [
 }
 
 pub fn v8StructuredSerializeForStorage(realm: runtime.Context, value: runtime.JSValue, allocator: std.mem.Allocator) EngineError![]u8 {
-    const object: *ffi.Value = switch (value) {
-        .handle => |h| @ptrCast(@alignCast(h.ptr)),
-        // Primitives and strings are the caller's to keep; a platform object
-        // arrives wrapped, as a handle, when it is [Serializable].
-        else => return EngineError.DataCloneError,
-    };
+    // A bare platform object: none is [Serializable] yet (the delegate's
+    // WriteHostObject throws for every host object), so DataCloneError.
+    if (value == .instance) return EngineError.DataCloneError;
     const entered = try enterRealm(realm);
     defer entered.leaveAgent();
     defer entered.leaveScope();
+    // HTML StructuredSerializeInternal step 4: a primitive is serialized as
+    // it is, forStorage too. The binding hands an `any` primitive over as an
+    // inline tag, not a handle; it is made a value in the realm for the
+    // serializer and released after.
+    const made: ?*ffi.Value = switch (value) {
+        .handle => null,
+        else => v8_conversions.toV8Value(runtime.JSValue, entered.isolate, entered.scope.context, value) catch
+            return EngineError.OperationFailed,
+    };
+    defer if (made) |v| ffi.v8_Value_Dispose(v);
+    const object: *ffi.Value = made orelse @ptrCast(@alignCast(value.handle.ptr));
     var no_transfer: [1]*ffi.Value = undefined;
     var no_buffers: [1]ffi.ArrayBufferTransferData = undefined;
     var size: usize = 0;

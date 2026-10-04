@@ -4343,16 +4343,27 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
 /// alive exactly as long as `holder` - the edge Blink draws by TRACING a
 /// [SameObject] child from its owner (Node::Trace visits node_lists_).
 /// Setting it again replaces the edge.
+///
+/// Both handles are read into Locals before anything here allocates: either
+/// may be a wrapper the wrapper cache holds only weakly - the [SameObject]
+/// child `recordSameObjectEdge` wrapped a moment ago, which nothing reaches
+/// until this edge exists - and a collection started by the key's string or
+/// its Private would take it and empty the handle under us - the window
+/// template_registry's cache-hit prototype reset had (docs/lessons/
+/// architecture-a-weakly-held-wrapper-dies-at-the-next-allocation.md).
 void v8_Object_SetPrivateRef(Global<Object>* holder, const char* key, int key_len, Global<Value>* value) {
     if (!holder || !value) return;
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
+    Local<Object> object = holder->Get(isolate);
+    Local<Value> target = value->Get(isolate);
+    if (object.IsEmpty() || target.IsEmpty()) return;
     Local<Context> context = isolate->GetCurrentContext();
     if (context.IsEmpty()) return;
     Local<String> name;
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
     Local<Private> priv = Private::ForApi(isolate, name);
-    (void)holder->Get(isolate)->SetPrivate(context, priv, value->Get(isolate));
+    (void)object->SetPrivate(context, priv, target);
 }
 
 void v8_Object_Dispose(Global<Object>* obj) {
@@ -12666,6 +12677,8 @@ void v8_Object_RetainInPrivateArray(Global<Value>* holder, const char* key, int 
     if (!isolate) return;
     HandleScope handle_scope(isolate);
     Local<Value> held = holder->Get(isolate);
+    // Read before anything below allocates (see v8_Object_SetPrivateRef).
+    Local<Value> retained = value->Get(isolate);
     if (!held->IsObject()) return;
     Local<Object> object = held.As<Object>();
     Local<Context> ctx;
@@ -12685,7 +12698,7 @@ void v8_Object_RetainInPrivateArray(Global<Value>* holder, const char* key, int 
         list = Array::New(isolate);
         if (object->SetPrivate(ctx, priv, list).IsNothing()) return;
     }
-    (void)list->Set(ctx, list->Length(), value->Get(isolate));
+    (void)list->Set(ctx, list->Length(), retained);
 }
 
 /// Set `holder`'s private property `key` to `value`, or delete it when
@@ -12699,6 +12712,11 @@ void v8_Object_PrivateRefUpdate(Global<Value>* holder, const char* key, int key_
     if (!isolate) return;
     HandleScope handle_scope(isolate);
     Local<Value> held = holder->Get(isolate);
+    // Read before anything below allocates (see v8_Object_SetPrivateRef):
+    // read after, a value a collection took in between read empty, and the
+    // edge was deleted instead of set.
+    Local<Value> target;
+    if (value && !value->IsEmpty()) target = value->Get(isolate);
     if (!held->IsObject()) return;
     Local<Object> object = held.As<Object>();
     Local<Context> ctx;
@@ -12710,8 +12728,8 @@ void v8_Object_PrivateRefUpdate(Global<Value>* holder, const char* key, int key_
     Local<String> name;
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
     Local<Private> priv = Private::ForApi(isolate, name);
-    if (value && !value->IsEmpty()) {
-        (void)object->SetPrivate(ctx, priv, value->Get(isolate));
+    if (!target.IsEmpty()) {
+        (void)object->SetPrivate(ctx, priv, target);
     } else {
         (void)object->DeletePrivate(ctx, priv);
     }
@@ -12730,6 +12748,8 @@ void v8_Object_PrivateSetUpdate(Global<Value>* holder, const char* key, int key_
     if (!isolate) return;
     HandleScope handle_scope(isolate);
     Local<Value> held = holder->Get(isolate);
+    // Read before anything below allocates (see v8_Object_SetPrivateRef).
+    Local<Value> element = member->Get(isolate);
     if (!held->IsObject()) return;
     Local<Object> object = held.As<Object>();
     Local<Context> ctx;
@@ -12751,9 +12771,9 @@ void v8_Object_PrivateSetUpdate(Global<Value>* holder, const char* key, int key_
         if (object->SetPrivate(ctx, priv, set).IsNothing()) return;
     }
     if (add) {
-        (void)set->Add(ctx, member->Get(isolate));
+        (void)set->Add(ctx, element);
     } else {
-        (void)set->Delete(ctx, member->Get(isolate));
+        (void)set->Delete(ctx, element);
     }
 }
 
