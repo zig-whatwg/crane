@@ -475,7 +475,7 @@ fn transformToUndefined(realm: Realm, allocator: std.mem.Allocator, promise: Val
     const result = try js.clone(deferred.promise);
     const ctx = try allocator.create(DeferredHolder);
     ctx.* = .{ .deferred = deferred, .allocator = allocator, .realm = realm };
-    realm.react(promise, DeferredHolder, ctx, DeferredHolder.fulfillUndefined, DeferredHolder.rejectWith) catch {
+    realm.react(promise, DeferredHolder, ctx, DeferredHolder.fulfillUndefined, DeferredHolder.rejectWith, DeferredHolder.finish) catch {
         deferred.resolveUndefined(realm);
         ctx.finish();
     };
@@ -849,7 +849,7 @@ fn defaultCallPullIfNeeded(realm: Realm, controller_instance: *runtime.Instance)
     } catch return;
     defer js.dispose(pull_promise);
     // Steps 7-8
-    realm.react(pull_promise, runtime.Instance, controller_instance, onDefaultPullFulfilled, onDefaultPullRejected) catch {};
+    realm.react(pull_promise, runtime.Instance, controller_instance, onDefaultPullFulfilled, onDefaultPullRejected, null) catch {};
 }
 
 fn onDefaultPullFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -1049,7 +1049,7 @@ pub fn setUpDefaultController(realm: Realm, stream_instance: *runtime.Instance, 
     const start_promise = try realm.promiseResolvedWith(start_value);
     defer js.dispose(start_promise);
     // Steps 11-12
-    try realm.react(start_promise, runtime.Instance, controller_instance, onDefaultStartFulfilled, onDefaultStartRejected);
+    try realm.react(start_promise, runtime.Instance, controller_instance, onDefaultStartFulfilled, onDefaultStartRejected, null);
 }
 
 fn onDefaultStartFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -1110,7 +1110,7 @@ pub fn setUpByteController(realm: Realm, stream_instance: *runtime.Instance, con
     const start_promise = try realm.promiseResolvedWith(start_value);
     defer js.dispose(start_promise);
     // Steps 16-17
-    try realm.react(start_promise, runtime.Instance, controller_instance, onByteStartFulfilled, onByteStartRejected);
+    try realm.react(start_promise, runtime.Instance, controller_instance, onByteStartFulfilled, onByteStartRejected, null);
 }
 
 fn onByteStartFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -1147,7 +1147,7 @@ fn byteCallPullIfNeeded(realm: Realm, controller_instance: *runtime.Instance) vo
     } catch return;
     defer js.dispose(pull_promise);
     // Steps 7-8
-    realm.react(pull_promise, runtime.Instance, controller_instance, onBytePullFulfilled, onBytePullRejected) catch {};
+    realm.react(pull_promise, runtime.Instance, controller_instance, onBytePullFulfilled, onBytePullRejected, null) catch {};
 }
 
 fn onBytePullFulfilled(controller_instance: *runtime.Instance, _: Value) void {
@@ -1940,7 +1940,7 @@ pub fn pipeTo(
     if (source_slots.state == .errored) {
         pipeSourceErrored(state, source_slots.stored_error.?);
     } else if (readerSlots(reader).closed_promise) |closed| {
-        realm.react(closed.promise, PipeState, state.retain(), pipeIgnore, onPipeSourceErrored) catch {
+        realm.react(closed.promise, PipeState, state.retain(), pipeIgnore, onPipeSourceErrored, pipeDropped) catch {
             state.refs -= 1;
         };
     }
@@ -1949,7 +1949,7 @@ pub fn pipeTo(
     if (dest_slots.state == .errored) {
         pipeDestErrored(state, dest_slots.stored_error.?);
     } else if (sw.writerOf(writer).?.closed_promise) |closed| {
-        realm.react(closed.promise, PipeState, state.retain(), pipeIgnore, onPipeDestErrored) catch {
+        realm.react(closed.promise, PipeState, state.retain(), pipeIgnore, onPipeDestErrored, pipeDropped) catch {
             state.refs -= 1;
         };
     }
@@ -1957,7 +1957,7 @@ pub fn pipeTo(
     if (source_slots.state == .closed) {
         pipeSourceClosed(state);
     } else if (readerSlots(reader).closed_promise) |closed| {
-        realm.react(closed.promise, PipeState, state.retain(), onPipeSourceClosed, pipeIgnore) catch {
+        realm.react(closed.promise, PipeState, state.retain(), onPipeSourceClosed, pipeIgnore, pipeDropped) catch {
             state.refs -= 1;
         };
     }
@@ -1978,6 +1978,12 @@ pub fn pipeTo(
 }
 
 fn pipeIgnore(state: *PipeState, _: Value) void {
+    state.release();
+}
+
+/// A pipe reaction that ended without a step (its realm ended first, or
+/// its promise was collected unsettled): the reference it held goes.
+fn pipeDropped(state: *PipeState) void {
     state.release();
 }
 
@@ -2058,7 +2064,7 @@ fn pipeStep(state: *PipeState) void {
     const realm = Realm.of(state.source) catch return;
     const writer = sw.writerOf(state.writer) orelse return;
     const ready = writer.ready_promise orelse return;
-    realm.react(ready.promise, PipeState, state.retain(), pipeReadyFulfilled, pipeIgnore) catch {
+    realm.react(ready.promise, PipeState, state.retain(), pipeReadyFulfilled, pipeIgnore, pipeDropped) catch {
         state.refs -= 1;
     };
 }
@@ -2144,7 +2150,7 @@ fn pipeAfterWrites(state: *PipeState) void {
     if (dest.state == .writable and !sw.closeQueuedOrInFlight(dest)) {
         if (state.current_write) |w| {
             state.waited_write_count = state.write_count;
-            realm.react(w, PipeState, state.retain(), pipeWriteSettled, pipeWriteSettled) catch {
+            realm.react(w, PipeState, state.retain(), pipeWriteSettled, pipeWriteSettled, pipeDropped) catch {
                 state.refs -= 1;
                 pipeDoTheRest(state);
             };
@@ -2188,7 +2194,7 @@ fn pipeDoTheRest(state: *PipeState) void {
     };
     defer js.dispose(promise);
     // Steps 5-6: finalize with the original error, or the action's error.
-    realm.react(promise, PipeState, state.retain(), pipeActionFulfilled, pipeActionRejected) catch {
+    realm.react(promise, PipeState, state.retain(), pipeActionFulfilled, pipeActionRejected, pipeDropped) catch {
         state.refs -= 1;
         pipeFinalize(state, err);
     };
@@ -2217,7 +2223,7 @@ fn waitForAll(realm: Realm, allocator: std.mem.Allocator, promises: []const ?Val
         const p = maybe orelse continue;
         defer js.dispose(p);
         all.remaining += 1;
-        realm.react(p, WaitAll, all, WaitAll.fulfilled, WaitAll.rejected) catch {
+        realm.react(p, WaitAll, all, WaitAll.fulfilled, WaitAll.rejected, WaitAll.done) catch {
             all.remaining -= 1;
         };
     }
@@ -2400,7 +2406,7 @@ fn defaultTee(realm: Realm, stream_instance: *runtime.Instance) ![2]*runtime.Ins
     state.branch2 = try createReadableStream(realm, stream_instance.ctx, try teeSource(allocator, state, true, false), 1, .one);
     // Step 19: upon rejection of reader.[[closedPromise]], error both branches.
     if (readerSlots(reader).closed_promise) |closed| {
-        realm.react(closed.promise, DefaultTee, state.retain(), defaultTeeClosedFulfilled, defaultTeeClosedRejected) catch |err| {
+        realm.react(closed.promise, DefaultTee, state.retain(), defaultTeeClosedFulfilled, defaultTeeClosedRejected, defaultTeeDropped) catch |err| {
             state.release();
             return err;
         };
@@ -2418,6 +2424,11 @@ fn teeSource(allocator: std.mem.Allocator, state: anytype, second: bool, byte: b
 }
 
 fn defaultTeeClosedFulfilled(state: *DefaultTee, _: Value) void {
+    state.release();
+}
+
+/// The closed reaction ended without a step: its reference goes.
+fn defaultTeeDropped(state: *DefaultTee) void {
     state.release();
 }
 
@@ -2603,13 +2614,19 @@ fn byteTeeForwardReaderError(realm: Realm, state: *ByteTee, this_reader: *runtim
     const closed = readerSlots(this_reader).closed_promise orelse return;
     const ctx = state.allocator.create(ForwardError) catch return;
     ctx.* = .{ .state = state.retain(), .this_reader = this_reader };
-    realm.react(closed.promise, ForwardError, ctx, forwardErrorFulfilled, forwardErrorRejected) catch {
+    realm.react(closed.promise, ForwardError, ctx, forwardErrorFulfilled, forwardErrorRejected, forwardErrorDropped) catch {
         state.allocator.destroy(ctx);
         state.release();
     };
 }
 
 fn forwardErrorFulfilled(ctx: *ForwardError, _: Value) void {
+    forwardErrorDropped(ctx);
+}
+
+/// The reaction's record and its reference on the tee go - after a
+/// fulfillment, or when the reaction ended without a step.
+fn forwardErrorDropped(ctx: *ForwardError) void {
     const state = ctx.state;
     state.allocator.destroy(ctx);
     state.release();
