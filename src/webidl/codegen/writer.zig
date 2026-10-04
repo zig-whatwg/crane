@@ -2786,6 +2786,15 @@ fn writeOperationDelegate(
         if (std.mem.eql(u8, return_type, "anyopaque")) {
             return_type = "runtime.JSValue";
         }
+        // A typedef of a sequence (or a FrozenArray/ObservableArray) returns what the direct
+        // type returns: a runtime.JSValue the impl makes. The typedef's own Zig type is a slice
+        // the binding's return conversion has no case for (`typedef sequence<PerformanceEntry>
+        // PerformanceEntryList` reached script as undefined, 2026-10-04).
+        if (return_type_kind != null and return_type_kind.? == .typedef) {
+            if (type_registry) |reg| if (reg.resolve(op.idlType.type)) |info| {
+                if (info.aliases_array) return_type = "runtime.JSValue";
+            };
+        }
     }
 
     // Check if return type is nullable (WebIDL T? type)
