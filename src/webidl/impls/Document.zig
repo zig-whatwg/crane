@@ -2684,16 +2684,31 @@ pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USV
 /// This implementation performs actual DOM manipulation for formatting commands.
 /// The editing module (html_core) provides command parsing and validation,
 /// but DOM manipulation happens here since impls has access to interfaces.
-pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(runtime.DOMString)) anyerror!bool {
+pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(typedefs.TrustedHTMLOrDOMString)) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
 
     // Get command name (case-insensitive per spec)
     const command_name = commandId.asSlice();
     _ = showUI; // Ignored by modern browsers
 
-    // Get optional value for commands that need it
-    const value_slice: ?[]const u8 = if (value.wasPassed())
-        value.value.asSlice()
+    // The editing spec declares value as (TrustedHTML or DOMString), default
+    // "" (https://w3c.github.io/editing/docs/execCommand/#execcommand()). Its
+    // steps name no Trusted Types check; the engines run one for the
+    // insertHTML command only, once the command is known (Gecko,
+    // dom/base/Document.cpp ConvertToInternalCommand: sink "Document
+    // execCommand", the 'script' sink group): value becomes the result of
+    // the get trusted type compliant string algorithm with TrustedHTML,
+    // this's relevant global object, value, "Document execCommand" and
+    // "script" - the IDL default "" included, a string. Every other command
+    // takes the string, or the TrustedHTML's data.
+    var compliant: ?[]u8 = null;
+    defer if (compliant) |text| internal.allocator.free(text);
+    const value_slice: ?[]const u8 = if (std.ascii.eqlIgnoreCase(command_name, "insertHTML")) checked: {
+        const given: typedefs.TrustedHTMLOrDOMString = if (value.wasPassed()) value.value else .{ .domstring = runtime.DOMString.initInterned("") };
+        compliant = try @import("dom").trusted_types.compliantStringFor(internal.allocator, .html, instance, given, "Document execCommand");
+        break :checked compliant.?;
+    } else if (value.wasPassed())
+        @import("dom").trusted_types.inputFrom(value.value).stringified()
     else
         null;
 
