@@ -2,6 +2,7 @@
 const std = @import("std");
 test {
     _ = @import("retry_test.zig");
+    _ = @import("fetch_test.zig");
 }
 const infra = @import("infra");
 const eventsource = @import("eventsource");

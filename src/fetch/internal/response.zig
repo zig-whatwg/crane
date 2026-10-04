@@ -58,6 +58,11 @@ pub const InternalResponse = struct {
     /// Response type
     response_type: ResponseType = .default,
 
+    /// Fetch has no such concept: this is the user agent's "knows that to
+    /// be futile" input for HTML 9.2.2 step 15.2. Only a known transport
+    /// failure permits EventSource to retry; every other path defaults safe.
+    network_error_cause: enum { unspecified, transport } = .unspecified,
+
     /// Aborted flag
     aborted: bool = false,
 

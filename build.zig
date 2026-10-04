@@ -2289,9 +2289,11 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("tests/eventsource/parser_test.zig"),
         .target = b.graph.host,
         .optimize = optimize,
+        .link_libc = true,
     });
     eventsource_test_mod.addImport("eventsource", eventsource_mod);
     eventsource_test_mod.addImport("infra", infra_mod);
+    eventsource_test_mod.addImport("fetch", fetch_mod);
     const eventsource_tests = b.addTest(.{ .root_module = eventsource_test_mod });
     const run_eventsource_tests = b.addRunArtifact(eventsource_tests);
     const eventsource_test_step = b.step("test-eventsource", "Run server-sent event parser and connection tests");

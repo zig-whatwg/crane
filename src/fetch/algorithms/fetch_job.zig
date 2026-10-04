@@ -189,7 +189,7 @@ pub const FetchJob = struct {
 
         var network_response = result catch |err| switch (err) {
             NetworkError.OutOfMemory => return FetchError.OutOfMemory,
-            else => return self.httpFetchFailed(http_fetch.HttpFetchError.NetworkError),
+            else => return self.transportFailed(),
         };
         defer network_response.deinit();
         if (self.network_request_is_preflight) return self.corsPreflightAnswered(&network_response);
@@ -310,6 +310,15 @@ pub const FetchJob = struct {
                 return self.mainFetch();
             },
         }
+    }
+
+    /// Preserve the known transport failure for HTML 9.2.2 step 15.2's
+    /// retry decision. Policy, scheme and CORS errors keep the default;
+    /// a failed preflight is not a retryable event-stream connection either.
+    fn transportFailed(self: *FetchJob) FetchError!Step {
+        const response = try networkError(self.allocator);
+        if (!self.network_request_is_preflight) response.network_error_cause = .transport;
+        return self.mainFetchFetched(response);
     }
 
     /// Main fetch, when the HTTP fetch it ran failed: a network error is its
