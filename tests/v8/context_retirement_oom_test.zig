@@ -16,6 +16,21 @@ const v8 = @import("v8");
 const ffi = v8.ffi;
 
 test "a realm retired while its manager's allocator fails stays readable, hasEngine() false" {
+    // On a thread of its own: the context manager is per thread, and this test
+    // needs a manager whose allocator fails on demand, while the test binary's
+    // own thread already has the one its other files started
+    // (`context_manager.init(page_allocator) catch {}`, kept for the process).
+    var result: anyerror!void = {};
+    const thread = try std.Thread.spawn(.{}, struct {
+        fn run(out: *anyerror!void) void {
+            out.* = retireUnderFailingAllocator();
+        }
+    }.run, .{&result});
+    thread.join();
+    return result;
+}
+
+fn retireUnderFailingAllocator() !void {
     const i = ffi.v8_Isolate_New() orelse return error.IsolateCreationFailed;
     ffi.v8_Isolate_Enter(i);
     defer ffi.v8_Isolate_Exit(i);
