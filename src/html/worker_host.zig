@@ -2453,6 +2453,7 @@ const PendingModuleEvaluation = struct {
     const steps: engine.PromiseReactionSteps = .{
         .fulfilled = settled,
         .rejected = rejected,
+        .dropped = dropped,
     };
 
     fn liveHost(self: *const PendingModuleEvaluation) ?*WorkerHost {
@@ -2463,6 +2464,11 @@ const PendingModuleEvaluation = struct {
     }
 
     fn settled(data: ?*anyopaque, _: runtime.JSValue) void {
+        dropped(data);
+    }
+
+    /// Fulfilled, or ended without a step (the realm ended first): freed.
+    fn dropped(data: ?*anyopaque) void {
         const self: *PendingModuleEvaluation = @ptrCast(@alignCast(data orelse return));
         std.heap.c_allocator.destroy(self);
     }

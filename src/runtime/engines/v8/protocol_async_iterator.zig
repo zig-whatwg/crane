@@ -18,13 +18,17 @@
 //! return's "is this a default asynchronous iterator object" check): the
 //! engine's garbage collector frees them with the iterator, and a pending
 //! reaction keeps them alive as long as it needs them. `finalize`, when the
-//! host gives one, runs when the object is collected.
+//! host gives one, runs when the object is collected or when its realm ends,
+//! whichever is first (`Record`); after the realm's end the state array's
+//! steps and data are cleared, so next() and return() reject with a
+//! TypeError and never reach the host's freed data.
 
 const std = @import("std");
 const engine = @import("engine");
 
 const ffi = @import("ffi.zig");
 const support = @import("protocol_support.zig");
+const realm_finalizers = @import("realm_finalizers.zig");
 
 const Context = engine.Context;
 const JSValue = engine.JSValue;
@@ -79,28 +83,62 @@ fn slotPointer(at: anytype, state: *ffi.Value, slot: Slot) Error!?*anyopaque {
     return ffi.v8_External_Value(@ptrCast(external));
 }
 
+/// Whether the realm's end cleared the state's steps.
+fn disarmed(at: anytype, state: *ffi.Value) Error!bool {
+    const steps = try slotGet(at, state, .steps);
+    defer ffi.v8_Global_Dispose(steps);
+    return ffi.v8_Value_IsUndefined(steps);
+}
+
 fn stepsOf(at: anytype, state: *ffi.Value) Error!*const engine.AsyncIteratorSteps {
     const pointer = (try slotPointer(at, state, .steps)) orelse return error.OperationFailed;
     return @ptrCast(@alignCast(pointer));
 }
 
-/// What `finalize` needs once the object is collected.
-const Finalizer = struct {
+/// An iterator's record: what its end needs - the collector took it, or its
+/// realm ended first, whichever comes first.
+const Record = struct {
     steps: *const engine.AsyncIteratorSteps,
     data: ?*anyopaque,
-    /// The weak Global the collection resets; disposed here.
-    handle: *ffi.Value,
+    /// The iterator's state array, WEAK: empty once collected. It lives
+    /// exactly as long as the object - each reaches the other (the state's
+    /// `object` slot; the object's prototype's next and return closures) -
+    /// and it is what the realm's end disarms.
+    state: *ffi.Value,
+    /// On its realm's list until it ends.
+    node: realm_finalizers.Node = .{ .drop = droppedByRealm },
 
     const allocator = std.heap.c_allocator;
+
+    /// Leave the realm's list, dispose the handle (cancelling a second pass
+    /// still to come) and free the record; what the host's finalize needs.
+    fn end(self: *Record) struct { steps: *const engine.AsyncIteratorSteps, data: ?*anyopaque } {
+        const steps = self.steps;
+        const data = self.data;
+        self.node.unlink();
+        ffi.v8_Global_Dispose(self.state);
+        allocator.destroy(self);
+        return .{ .steps = steps, .data = data };
+    }
 
     /// V8's second pass, after the collection (v8_Global_SetWeakFinalizer):
     /// `finalize` may touch the engine.
     fn collected(raw: ?*anyopaque, _: usize) callconv(.c) void {
-        const self: *Finalizer = @ptrCast(@alignCast(raw.?));
-        defer allocator.destroy(self);
-        // The wrapper reset the handle before calling; its Global is ours.
-        ffi.v8_Global_Dispose(self.handle);
-        self.steps.finalize.?(self.data);
+        const self: *Record = @ptrCast(@alignCast(raw.?));
+        const host = self.end();
+        if (host.steps.finalize) |finalize| finalize(host.data);
+    }
+
+    /// The realm ended first (realm_finalizers.List.drain; already
+    /// unlinked): clear the state's steps and data, so a call script still
+    /// makes - from another realm that holds the iterator - never reaches
+    /// them, and finalize.
+    fn droppedByRealm(node: *realm_finalizers.Node) void {
+        const self: *Record = @fieldParentPtr("node", node);
+        ffi.v8_Array_ClearElement(self.state, @intFromEnum(Slot.steps));
+        ffi.v8_Array_ClearElement(self.state, @intFromEnum(Slot.data));
+        const host = self.end();
+        if (host.steps.finalize) |finalize| finalize(host.data);
     }
 };
 
@@ -147,15 +185,24 @@ pub fn createAsyncIterator(realm: Context, steps: *const engine.AsyncIteratorSte
     // one, taking one argument `value`.
     if (steps.@"return" != null) try defineMethod(entered, prototype, "return", returnMethod, state, 1);
 
-    if (steps.finalize != null) {
-        const handle = ffi.v8_Global_Clone(object) orelse return error.OperationFailed;
-        const finalizer = Finalizer.allocator.create(Finalizer) catch {
-            ffi.v8_Global_Dispose(handle);
-            return error.OutOfMemory;
-        };
-        finalizer.* = .{ .steps = steps, .data = data, .handle = handle };
-        ffi.v8_Global_SetWeakFinalizer(handle, finalizer, null, Finalizer.collected);
-    }
+    // Its end: collected, or its realm's end, whichever is first. A realm
+    // whose end is under way makes none. With neither data to finalize nor a
+    // realm end to disarm it at (a host's hand-made context), it needs no
+    // record.
+    const list = realm_finalizers.listOf(realm);
+    if (list) |l| if (l.ended) return error.OperationFailed;
+    if (steps.finalize == null and list == null) return support.owned(object);
+    const handle = ffi.v8_Global_Clone(state) orelse return error.OperationFailed;
+    const record = Record.allocator.create(Record) catch {
+        ffi.v8_Global_Dispose(handle);
+        return error.OutOfMemory;
+    };
+    record.* = .{ .steps = steps, .data = data, .state = handle };
+    if (list) |l| l.add(&record.node) catch {
+        _ = record.end();
+        return error.OperationFailed;
+    };
+    ffi.v8_Global_SetWeakFinalizer(handle, record, null, Record.collected);
     return support.owned(object);
 }
 
@@ -444,6 +491,9 @@ fn returnFulfilled(info: *const ffi.FunctionCallbackInfo) callconv(.c) void {
 /// promise resolves one, and what the host threw or failed with rejects one.
 /// OWNED.
 fn hostPromise(here: Here, state: *ffi.Value, which: enum { next, @"return" }, value: ?*ffi.Value) Error!*ffi.Value {
+    // The iterator's realm has ended (`Record.droppedByRealm`): its steps and
+    // data are gone.
+    if (try disarmed(here, state)) return support.promiseRejectedWithTypeError(here, "The asynchronous iterator's realm has ended");
     const steps = try stepsOf(here, state);
     const data = try slotPointer(here, state, .data);
     var body: struct {

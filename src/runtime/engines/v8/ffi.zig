@@ -1378,14 +1378,29 @@ pub extern fn v8_Isolate_QueueMicrotask(isolate: *Isolate, callback: ZigMicrotas
 pub const ZigReactionCallback = *const fn (data: ?*anyopaque, value: ?*Value, rejected: bool) callconv(.c) void;
 
 /// WebIDL "react to" `promise`: `callback(data, value, rejected)` runs exactly
-/// once, when the promise settles. False (and no call, ever) if `promise` is
-/// not a promise. The derived promise is marked handled.
+/// once, when the promise settles - unless the reaction was disarmed first
+/// (`v8_Array_ClearElement(holder, reaction_data_slot)`). False (and no call,
+/// ever) if `promise` is not a promise. The derived promise is marked
+/// handled. `holder_out` receives the reaction's holder - the array both
+/// reaction functions share as their [[data]], `data` in slot
+/// `reaction_data_slot` - as a new STRONG Global the caller owns (weaken or
+/// dispose it: strong, it keeps the realm alive).
 pub extern fn v8_Promise_React(
     context: *Context,
     promise: *Value,
     callback: ZigReactionCallback,
     data: ?*anyopaque,
+    holder_out: *?*Value,
 ) bool;
+
+/// The slot of a reaction's holder that carries its `data` (v8_wrapper.cpp
+/// `kReactionData`).
+pub const reaction_data_slot: u32 = 0;
+
+/// `array[index] = undefined` in the array's own creation context: how a
+/// reaction's holder or an asynchronous iterator's state is disarmed. `array`
+/// BORROWED; an empty handle or a non-array is left alone. Runs no script.
+pub extern fn v8_Array_ClearElement(array: *Value, index: u32) void;
 
 /// Get the [[BoundTargetFunction]] of a bound function.
 /// Used for implementing GetFunctionRealm algorithm per ECMA-262 §7.3.22.
@@ -1505,24 +1520,6 @@ pub extern fn v8_FreeString(str: ?[*:0]u8) void;
 /// 1 (type returned), -1 (the request names an attribute other than "type",
 /// which the host must reject) or -2 (index out of range).
 pub extern fn v8_Module_GetModuleRequestType(module: *Module, index: c_int, status: *c_int) ?[*:0]u8;
-
-/// Compile an event handler content attribute's value into its function
-/// (HTML "getting the current value of the event handler" step 3.9). `scopes`
-/// are Global<Object>* scope objects, OUTERMOST first ([document, form owner,
-/// element] for an element's handler; none for a Window's). Returns the
-/// function (a Global<Value>* the caller owns) or null with `out_error.*` set
-/// (free with v8_FreeErrorInfo; its `exception` is the SyntaxError).
-pub extern fn v8_CompileEventHandler(
-    context: *Context,
-    name: [*]const u8,
-    name_len: c_int,
-    body: [*]const u8,
-    body_len: c_int,
-    window_onerror: bool,
-    scopes: [*]const ?*Object,
-    scope_count: c_int,
-    out_error: *?*V8ErrorInfo,
-) ?*Value;
 
 /// Create a JSON module script's record: parse `source` as JSON and wrap the
 /// value in a synthetic module whose only export is "default".
@@ -3289,7 +3286,12 @@ pub extern fn v8_Context_NewWithGlobalTemplateAndProxy(isolate: *Isolate, global
 /// Whether JavaScript frames are on the isolate's stack.
 pub extern fn v8_Isolate_HasJavaScriptOnStack(isolate: *Isolate) bool;
 
-/// v8_CompileEventHandler with the parameter names given. The function is
+/// Compile an event handler content attribute's value into its function
+/// (HTML "getting the current value of the event handler" step 3.9), with
+/// the parameter names given. `scopes` are scope objects, OUTERMOST first
+/// ([document, form owner, element] for an element's handler; none for a
+/// Window's), at most 8; each may be a weak cache handle (read before
+/// anything allocates; an empty one fails the compile). The function is
 /// OWNED (a Global<Value>*); on a SyntaxError null, with `out_error` set
 /// (v8_FreeErrorInfo).
 pub extern fn v8_CompileEventHandlerWithParameters(

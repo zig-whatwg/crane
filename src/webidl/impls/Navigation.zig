@@ -1645,8 +1645,15 @@ const Wait = struct {
 
     const Outcome = enum { fulfilled, rejected };
 
-    const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .rejected = rejected };
-    const deliver_steps: engine.PromiseReactionSteps = .{ .fulfilled = delivered, .rejected = delivered };
+    const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .rejected = rejected, .dropped = droppedWait };
+    const deliver_steps: engine.PromiseReactionSteps = .{ .fulfilled = delivered, .rejected = delivered, .dropped = droppedWait };
+
+    /// A reaction that ended without a step - its realm ended first: only
+    /// the reference it held goes; nothing is delivered.
+    fn droppedWait(data: ?*anyopaque) void {
+        const self: *Wait = @ptrCast(@alignCast(data.?));
+        self.release();
+    }
 
     fn fulfilled(data: ?*anyopaque, _: runtime.JSValue) void {
         const self: *Wait = @ptrCast(@alignCast(data.?));
