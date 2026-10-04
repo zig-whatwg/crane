@@ -657,19 +657,24 @@ pub fn installHooks() void {
 /// traversable or navigable's container document is fully active". A
 /// document that was unloaded (not salvageable: Crane keeps no bfcache) or
 /// destroyed is no navigable's active document; nor is one whose window is
-/// no navigable's active window any more, or no longer shows it. Removing a
-/// frame discards its navigable and every one inside it (BrowsingContext
-/// .discard closes them all), so the container documents need no walk. A
-/// document with no window (createHTMLDocument, DOMParser) is not fully
-/// active.
+/// no navigable's active window any more, or whose navigable shows another.
+/// Removing a frame discards its navigable and every one inside it
+/// (BrowsingContext.discard closes them all), so the container documents
+/// need no walk. A document with no window (createHTMLDocument, DOMParser) is
+/// not fully active.
+///
+/// The navigable's own record, not `Window.document`: the event loop asks
+/// with no script running, and the getter's cross-origin check would answer
+/// for whichever realm happens to be current - a message to a cross-origin
+/// or sandboxed frame was dropped that way.
 fn isFullyActive(document: *runtime.Instance) bool {
     const internal = getInternal(document) orelse return false;
     if (internal.destroyed or !internal.salvageable) return false;
     const window = internal.default_view orelse return false;
     const navigable = html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
     if (navigable.is_closed) return false;
-    const shown = interfaces.Window.get_document(window) catch return false;
-    return shown == document;
+    const active = navigable.active_document orelse return true;
+    return active == @as(*anyopaque, @ptrCast(document));
 }
 
 /// Initialize instance (creates the instance)
