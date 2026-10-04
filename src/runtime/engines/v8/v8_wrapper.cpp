@@ -9,6 +9,7 @@
 // - Namespace bindings (callbacks convert Local→Global→Local)
 
 #include <atomic>
+#include <mutex>
 #include <v8.h>
 #include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
@@ -60,14 +61,31 @@ static void releaseWeakArmRaw(void* handle);
 // listener, an event handler), tagged with the realm whose API stored them,
 // so that the realm's detach can make them weak (v8_Object_WeakenTaggedHandles)
 // rather than leave a strong root into it. A dispose drops the tag.
+//
+// Every thread's isolates tag here (docs/instances.md: a Browser's thread and
+// each worker's), so the map is reached only under realmTagLock(); a dispose
+// on a thread with nothing tagged skips the lock (`realmTagCount`).
 static std::unordered_map<const void*, uintptr_t>& realmTaggedHandles() {
     static std::unordered_map<const void*, uintptr_t> map;
     return map;
 }
+static std::mutex& realmTagLock() {
+    // process-wide: guards realmTaggedHandles(), which every isolate of the process shares; held for one insert, erase or scan, never across a call into V8.
+    static std::mutex lock;
+    return lock;
+}
+/// How many handles are tagged, read without the lock so the dispose of an
+/// untagged handle - nearly every dispose - costs no lock.
+static std::atomic<size_t>& realmTagCount() {
+    // process-wide: the size of realmTaggedHandles(), kept beside it so a dispose can skip realmTagLock() when nothing is tagged.
+    static std::atomic<size_t> count{0};
+    return count;
+}
 static void untagRealmHandle(const void* handle) {
+    if (realmTagCount().load(std::memory_order_acquire) == 0) return;
+    std::lock_guard<std::mutex> guard(realmTagLock());
     auto& tagged = realmTaggedHandles();
-    if (tagged.empty()) return;
-    tagged.erase(handle);
+    if (tagged.erase(handle) > 0) realmTagCount().fetch_sub(1, std::memory_order_release);
 }
 // ---- end lane: realms ----
 
@@ -280,10 +298,16 @@ struct WeakCallbackData {
 // node reaches NEAR_DEATH, because `IsWeak()` is false from that moment and
 // `ClearWeak()` can no longer reach the parameter.
 //
-// Unsynchronised, like `g_isolate_allocators`: a V8 Context is
-// single-threaded, and the one module in the tree that spawns threads
-// (`src/storage/indexeddb/worker_threads.zig`) never reaches V8. If that ever
-// changes, this needs the same mutex `CallbackManager` carries.
+// Both maps are the process's: each Browser thread and each worker thread
+// (docs/instances.md) arms, releases and collects its own isolates' handles
+// here, so every access holds `weakDataLock()`. A record and its handle belong
+// to one isolate, used by one thread; the lock only keeps the containers whole.
+static std::mutex& weakDataLock() {
+    // process-wide: guards armedWeakData() and detachedWeakData(), which every isolate of the process shares; held for a find, an insert or an erase, never across a call into Zig or script.
+    static std::mutex lock;
+    return lock;
+}
+
 static std::unordered_map<const void*, WeakCallbackData*>& armedWeakData() {
     static std::unordered_map<const void*, WeakCallbackData*> map;
     return map;
@@ -403,9 +427,11 @@ static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handl
             pending.erase(pit);
             // Queued in V8 still: freed by its second pass, or with its
             // isolate if that never comes (v8_Isolate_Dispose).
+            std::lock_guard<std::mutex> guard(weakDataLock());
             detachedWeakData().insert(waiting);
         }
     }
+    std::lock_guard<std::mutex> guard(weakDataLock());
     auto& armed = armedWeakData();
     if (armed.empty()) return;
     auto it = armed.find(static_cast<const void*>(global));
@@ -458,6 +484,7 @@ static void releaseWeakArmRaw(void* handle) {
 static void armWeakData(void* handle, WeakCallbackData* data) {
     releaseWeakArm(reinterpret_cast<Global<Value>*>(handle));
     g_live_weak_callback_data.fetch_add(1, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> guard(weakDataLock());
     armedWeakData()[handle] = data;
 }
 
@@ -489,7 +516,10 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
     // V8's own obligation is already discharged - the dispose reset the node -
     // so there is nothing to Reset here either.
     if (!data->handle) {
-        detachedWeakData().erase(data);
+        {
+            std::lock_guard<std::mutex> guard(weakDataLock());
+            detachedWeakData().erase(data);
+        }
         freeWeakData(data);
         return;
     }
@@ -499,7 +529,10 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
     //
     // Erase BEFORE calling into Zig: the Zig finalizer routinely disposes this
     // very handle, and it must not find a stale arm to release.
-    armedWeakData().erase(static_cast<const void*>(data->handle));
+    {
+        std::lock_guard<std::mutex> guard(weakDataLock());
+        armedWeakData().erase(static_cast<const void*>(data->handle));
+    }
     data->handle->Reset();
 
     // A `handle_survives` detach (v8_Global_ClearWeak on an already-queued
@@ -507,7 +540,10 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
     // Reset above can happen. It nulls `callback` and `finalize`, so nothing
     // below runs and this erase is the only cleanup it needs. Erasing a key
     // that was never inserted is a no-op, so the armed path pays nothing.
-    detachedWeakData().erase(data);
+    {
+        std::lock_guard<std::mutex> guard(weakDataLock());
+        detachedWeakData().erase(data);
+    }
 
     // A finalizer waits for the second pass from here - registered before the
     // first-pass callback runs, so that one disposing the handle cancels it
@@ -538,7 +574,10 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
 
     // No finalizer, or one the callback cancelled (its record went to the
     // detached set): nothing more runs for it.
-    detachedWeakData().erase(data);
+    {
+        std::lock_guard<std::mutex> guard(weakDataLock());
+        detachedWeakData().erase(data);
+    }
     freeWeakData(data);
 }
 
@@ -555,7 +594,10 @@ static void WeakCallbackSecondPass(const WeakCallbackInfo<WeakCallbackData>& inf
         auto it = pending.find(static_cast<const void*>(data->handle));
         if (it != pending.end() && it->second == data) pending.erase(it);
     }
-    detachedWeakData().erase(data);
+    {
+        std::lock_guard<std::mutex> guard(weakDataLock());
+        detachedWeakData().erase(data);
+    }
     if (data->finalize) data->finalize(data->user_data, 0);
     freeWeakData(data);
 }
@@ -2613,8 +2655,17 @@ void v8_Platform_Dispose() {
 // Isolate Management
 // ============================================================================
 
-// Map to track ArrayBuffer::Allocators per isolate for cleanup
-static std::unordered_map<Isolate*, ArrayBuffer::Allocator*> g_isolate_allocators;
+// Map to track ArrayBuffer::Allocators per isolate for cleanup. Isolates are
+// made and disposed on every Browser and worker thread (docs/instances.md):
+// `lock` guards `map`, for one insert or one find-and-erase.
+struct IsolateAllocators {
+    std::mutex lock;
+    std::unordered_map<Isolate*, ArrayBuffer::Allocator*> map;
+};
+static IsolateAllocators g_isolate_allocators;
+
+// Defined with the async iterator template cache, below.
+void v8_ClearAsyncIteratorTemplateCacheFor(Isolate* isolate);
 
 Isolate* v8_Isolate_New() {
     if (!v8_initialized) {
@@ -2628,7 +2679,8 @@ Isolate* v8_Isolate_New() {
     
     // Track the allocator for cleanup when isolate is disposed
     if (isolate) {
-        g_isolate_allocators[isolate] = allocator;
+        std::lock_guard<std::mutex> guard(g_isolate_allocators.lock);
+        g_isolate_allocators.map[isolate] = allocator;
     } else {
         // Isolate creation failed, clean up the allocator
         delete allocator;
@@ -2641,10 +2693,13 @@ void v8_Isolate_Dispose(Isolate* isolate) {
     if (isolate) {
         // Get the allocator before disposing the isolate
         ArrayBuffer::Allocator* allocator = nullptr;
-        auto it = g_isolate_allocators.find(isolate);
-        if (it != g_isolate_allocators.end()) {
-            allocator = it->second;
-            g_isolate_allocators.erase(it);
+        {
+            std::lock_guard<std::mutex> guard(g_isolate_allocators.lock);
+            auto it = g_isolate_allocators.map.find(isolate);
+            if (it != g_isolate_allocators.map.end()) {
+                allocator = it->second;
+                g_isolate_allocators.map.erase(it);
+            }
         }
         
         // Records that a dispose detached from their Global while V8 still had
@@ -2653,15 +2708,23 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // Only its own: a worker isolate can be disposed from inside the page
         // isolate's first-pass weak callbacks, while the page's detached
         // records are still queued in that same pass.
-        for (auto it = detachedWeakData().begin(); it != detachedWeakData().end();) {
-            WeakCallbackData* data = *it;
-            if (data->isolate == isolate) {
-                it = detachedWeakData().erase(it);
-                freeWeakData(data);
-            } else {
-                ++it;
+        {
+            std::lock_guard<std::mutex> guard(weakDataLock());
+            for (auto it = detachedWeakData().begin(); it != detachedWeakData().end();) {
+                WeakCallbackData* data = *it;
+                if (data->isolate == isolate) {
+                    it = detachedWeakData().erase(it);
+                    freeWeakData(data);
+                } else {
+                    ++it;
+                }
             }
         }
+
+        // Its async iterator template, if script made one: an entry left for
+        // a disposed isolate would be found by the next isolate made at the
+        // same address.
+        v8_ClearAsyncIteratorTemplateCacheFor(isolate);
 
         // DefaultPlatform keeps a foreground task runner per isolate, holding
         // what V8 posted for it; without this a later isolate at the same
@@ -4611,11 +4674,40 @@ static ModuleResolveCallbackData* g_module_resolve_callback = nullptr;
 /// A JSON module's parsed value, held from creation until V8 runs its
 /// evaluation steps (see v8_Module_CreateJsonModule).
 struct SyntheticJsonExport {
+    /// The isolate the handles are of: an entry is read and reset only on
+    /// its isolate's thread, and only that isolate's entries are compared.
+    Isolate* isolate;
     Global<Module> module;
     Global<Value> value;
 };
 
-static std::vector<SyntheticJsonExport*>* g_synthetic_json_exports = nullptr;
+/// Every isolate's JSON (and default-export) modules waiting for evaluation.
+/// Isolates live on every Browser and worker thread (docs/instances.md):
+/// `lock` guards `entries`, for one push or one find-and-erase; the handles
+/// are touched after the lock, on the entry's own thread.
+struct SyntheticJsonExports {
+    std::mutex lock;
+    std::vector<SyntheticJsonExport*> entries;
+
+    /// Take out `isolate`'s entry whose module is `module`, if any.
+    SyntheticJsonExport* take(Isolate* isolate, Local<Module> module) {
+        std::lock_guard<std::mutex> guard(lock);
+        for (size_t i = 0; i < entries.size(); i++) {
+            if (entries[i]->isolate != isolate) continue;
+            if (!(entries[i]->module == module)) continue;
+            SyntheticJsonExport* found = entries[i];
+            entries.erase(entries.begin() + i);
+            return found;
+        }
+        return nullptr;
+    }
+
+    void add(SyntheticJsonExport* entry) {
+        std::lock_guard<std::mutex> guard(lock);
+        entries.push_back(entry);
+    }
+};
+static SyntheticJsonExports g_synthetic_json_exports;
 
 /// Report an unresolvable module specifier as a JavaScript exception.
 ///
@@ -4930,20 +5022,15 @@ void v8_Module_Dispose(Global<Module>* module) {
     if (module) {
         // A JSON module disposed before it was ever evaluated still holds its
         // parsed value in the synthetic-export table; drop it with the module.
-        if (g_synthetic_json_exports && !g_synthetic_json_exports->empty() && !module->IsEmpty()) {
+        if (!module->IsEmpty()) {
             Isolate* isolate = Isolate::GetCurrent();
             if (isolate) {
                 HandleScope handle_scope(isolate);
                 Local<Module> local = module->Get(isolate);
-                auto& entries = *g_synthetic_json_exports;
-                for (size_t i = 0; i < entries.size(); i++) {
-                    if (entries[i]->module == local) {
-                        entries[i]->module.Reset();
-                        entries[i]->value.Reset();
-                        delete entries[i];
-                        entries.erase(entries.begin() + i);
-                        break;
-                    }
+                if (SyntheticJsonExport* entry = g_synthetic_json_exports.take(isolate, local)) {
+                    entry->module.Reset();
+                    entry->value.Reset();
+                    delete entry;
                 }
             }
         }
@@ -5043,19 +5130,12 @@ static MaybeLocal<Value> JsonModuleEvaluationSteps(Local<Context> context, Local
 
     Local<Value> value;
     bool found = false;
-    if (g_synthetic_json_exports) {
-        auto& entries = *g_synthetic_json_exports;
-        for (size_t i = 0; i < entries.size(); i++) {
-            if (entries[i]->module == module) {
-                value = entries[i]->value.Get(isolate);
-                entries[i]->module.Reset();
-                entries[i]->value.Reset();
-                delete entries[i];
-                entries.erase(entries.begin() + i);
-                found = true;
-                break;
-            }
-        }
+    if (SyntheticJsonExport* entry = g_synthetic_json_exports.take(isolate, module)) {
+        value = entry->value.Get(isolate);
+        entry->module.Reset();
+        entry->value.Reset();
+        delete entry;
+        found = true;
     }
 
     // Returning empty promises V8 an exception is pending (the contract of
@@ -5131,11 +5211,11 @@ Global<Module>* v8_Module_CreateJsonModule(
         JsonModuleEvaluationSteps
     );
 
-    if (!g_synthetic_json_exports) g_synthetic_json_exports = new std::vector<SyntheticJsonExport*>();
     SyntheticJsonExport* entry = new SyntheticJsonExport();
+    entry->isolate = isolate;
     entry->module.Reset(isolate, module);
     entry->value.Reset(isolate, parsed);
-    g_synthetic_json_exports->push_back(entry);
+    g_synthetic_json_exports.add(entry);
 
     return trackHandle(new Global<Module>(isolate, module));
 }
@@ -5175,11 +5255,11 @@ Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
         JsonModuleEvaluationSteps
     );
 
-    if (!g_synthetic_json_exports) g_synthetic_json_exports = new std::vector<SyntheticJsonExport*>();
     SyntheticJsonExport* entry = new SyntheticJsonExport();
+    entry->isolate = isolate;
     entry->module.Reset(isolate, module);
     entry->value.Reset(isolate, default_export);
-    g_synthetic_json_exports->push_back(entry);
+    g_synthetic_json_exports.add(entry);
 
     return trackHandle(new Global<Module>(isolate, module));
 }
@@ -8912,26 +8992,44 @@ static void AsyncIteratorSelfCallback(const FunctionCallbackInfo<Value>& info) {
 ///   const result = await iterator.next(); // { value: ..., done: false }
 ///   await iterator.return(); // Cleanup
 
-// Cached async iterator template - ensures all iterators share the same constructor
-// This cache is isolate-specific and MUST be cleared before disposing an isolate.
-static Global<FunctionTemplate>* g_async_iterator_template = nullptr;
-static Isolate* g_async_iterator_isolate = nullptr;
+// Cached async iterator templates - all iterators of one isolate share one
+// constructor - one per isolate. It used to be ONE slot for the process,
+// reset whenever another isolate asked: a worker's `for await` then reset the
+// page's template (and after the worker's isolate was disposed, the page reset
+// a dead handle - docs/lessons/architecture-before-disposing-an-isolate-find-
+// everything-the.md). With workers on threads of their own (docs/instances.md)
+// that reset would come from another thread. Each isolate's entry is made, read
+// and reset only on its own thread; `lock` keeps the map whole.
+struct AsyncIteratorTemplates {
+    std::mutex lock;
+    std::unordered_map<Isolate*, Global<FunctionTemplate>*> map;
+};
+static AsyncIteratorTemplates g_async_iterator_template;
 
-/// Clear the async iterator template cache
-/// MUST be called before disposing an isolate to prevent use-after-free crashes.
+/// Clear every isolate's async iterator template. Only at the process's end,
+/// on the thread that owns every remaining isolate.
 void v8_ClearAsyncIteratorTemplateCache() {
-    if (g_async_iterator_template != nullptr) {
-        g_async_iterator_template->Reset();
-        delete g_async_iterator_template;
-        g_async_iterator_template = nullptr;
+    std::lock_guard<std::mutex> guard(g_async_iterator_template.lock);
+    for (auto& kv : g_async_iterator_template.map) {
+        kv.second->Reset();
+        delete kv.second;
     }
-    g_async_iterator_isolate = nullptr;
+    g_async_iterator_template.map.clear();
 }
 
-/// Clear the cache only if it holds |isolate|'s template: a worker's teardown
-/// must not reset the page's.
+/// Clear |isolate|'s template, on its own thread, before it is disposed: a
+/// worker's teardown must not reset the page's.
 void v8_ClearAsyncIteratorTemplateCacheFor(Isolate* isolate) {
-    if (g_async_iterator_isolate == isolate) v8_ClearAsyncIteratorTemplateCache();
+    Global<FunctionTemplate>* doomed = nullptr;
+    {
+        std::lock_guard<std::mutex> guard(g_async_iterator_template.lock);
+        auto it = g_async_iterator_template.map.find(isolate);
+        if (it == g_async_iterator_template.map.end()) return;
+        doomed = it->second;
+        g_async_iterator_template.map.erase(it);
+    }
+    doomed->Reset();
+    delete doomed;
 }
 
 /// Clear the module resolve callback
@@ -8944,14 +9042,15 @@ void v8_ClearModuleResolveCallback() {
     }
     // Parsed JSON values of modules that were never evaluated. Their Globals
     // belong to the isolate being torn down and must be reset before it goes.
-    if (g_synthetic_json_exports != nullptr) {
-        for (SyntheticJsonExport* entry : *g_synthetic_json_exports) {
+    // (Full teardown only: every isolate left is the calling thread's.)
+    {
+        std::lock_guard<std::mutex> guard(g_synthetic_json_exports.lock);
+        for (SyntheticJsonExport* entry : g_synthetic_json_exports.entries) {
             entry->module.Reset();
             entry->value.Reset();
             delete entry;
         }
-        delete g_synthetic_json_exports;
-        g_synthetic_json_exports = nullptr;
+        g_synthetic_json_exports.entries.clear();
     }
 }
 
@@ -8965,23 +9064,23 @@ void v8_ClearDynamicImportCallback() {
     }
 }
 
-/// Get or create the cached async iterator template
+/// Get or create |isolate|'s async iterator template (the current thread's).
 static Local<FunctionTemplate> getAsyncIteratorTemplate(Isolate* isolate) {
-    // Check if we have a cached template from a DIFFERENT isolate (stale cache)
-    if (g_async_iterator_template != nullptr && g_async_iterator_isolate != isolate) {
-        // Clear the stale cache - the old isolate was disposed
-        v8_ClearAsyncIteratorTemplateCache();
+    {
+        std::lock_guard<std::mutex> guard(g_async_iterator_template.lock);
+        auto it = g_async_iterator_template.map.find(isolate);
+        if (it != g_async_iterator_template.map.end()) return it->second->Get(isolate);
     }
-    
-    if (g_async_iterator_template == nullptr) {
-        // Create the template once and cache it
-        Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate);
-        tpl->SetClassName(String::NewFromUtf8Literal(isolate, "ReadableStreamAsyncIterator"));
-        tpl->InstanceTemplate()->SetInternalFieldCount(1);
-        g_async_iterator_template = new Global<FunctionTemplate>(isolate, tpl);
-        g_async_iterator_isolate = isolate;
-    }
-    return g_async_iterator_template->Get(isolate);
+    // Made outside the lock: FunctionTemplate::New allocates on the V8 heap,
+    // which can collect, and a collection runs weak callbacks that take other
+    // locks. Only this thread makes |isolate|'s entry, so none appears meanwhile.
+    Local<FunctionTemplate> tpl = FunctionTemplate::New(isolate);
+    tpl->SetClassName(String::NewFromUtf8Literal(isolate, "ReadableStreamAsyncIterator"));
+    tpl->InstanceTemplate()->SetInternalFieldCount(1);
+    Global<FunctionTemplate>* cached = new Global<FunctionTemplate>(isolate, tpl);
+    std::lock_guard<std::mutex> guard(g_async_iterator_template.lock);
+    g_async_iterator_template.map[isolate] = cached;
+    return tpl;
 }
 
 Global<Object>* v8_AsyncIterator_New(
@@ -13010,7 +13109,9 @@ void v8_Context_SetWeak(Global<Context>* context, void* user_data, ZigWeakCallba
 /// whose API stored it). A dispose untags it.
 void v8_Global_TagRealm(Global<Value>* global, uintptr_t realm_key) {
     if (!global || !realm_key) return;
-    realmTaggedHandles()[static_cast<const void*>(global)] = realm_key;
+    std::lock_guard<std::mutex> guard(realmTagLock());
+    auto inserted = realmTaggedHandles().insert_or_assign(static_cast<const void*>(global), realm_key);
+    if (inserted.second) realmTagCount().fetch_add(1, std::memory_order_release);
 }
 
 static void taggedHandleCollected(void*, size_t) {}
@@ -13022,13 +13123,19 @@ static void taggedHandleCollected(void*, size_t) {}
 /// collected. Returns how many it weakened.
 int v8_Object_WeakenTaggedHandles(Global<Value>* holder, uintptr_t realm_key, const char* key, int key_len) {
     if (!holder || holder->IsEmpty() || !realm_key) return 0;
-    auto& tagged = realmTaggedHandles();
     std::vector<const void*> handles;
-    for (const auto& kv : tagged) {
-        if (kv.second == realm_key) handles.push_back(kv.first);
+    {
+        // Taken out under the lock; made weak after it - SetWeak takes the
+        // weak-arm lock, and nothing here may hold one lock into another.
+        std::lock_guard<std::mutex> guard(realmTagLock());
+        auto& tagged = realmTaggedHandles();
+        for (const auto& kv : tagged) {
+            if (kv.second == realm_key) handles.push_back(kv.first);
+        }
+        for (const void* h : handles) tagged.erase(h);
+        realmTagCount().fetch_sub(handles.size(), std::memory_order_release);
     }
     for (const void* h : handles) {
-        tagged.erase(h);
         Global<Value>* global = const_cast<Global<Value>*>(static_cast<const Global<Value>*>(h));
         if (global->IsEmpty()) continue;
         v8_Object_RetainInPrivateArray(holder, key, key_len, global);

@@ -51,6 +51,10 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     // Node wrappers' strength follows their tree (dom.mutation's insertion and
     // removing steps), installed once while the process starts.
     @import("wrapper_cache.zig").installTreeHooks();
+    // The teardown handlers of the adapter's per-isolate modules, once, while
+    // the process starts: agents are made on every Browser and worker thread
+    // (docs/instances.md), and the handler table is read-only after this.
+    isolate_lifecycle.registerBuiltinHandlers() catch |err| log.warn("the isolate teardown handlers were not registered: {}", .{err});
     engine_snapshot = null;
     if (options.snapshot) |stamped| engine_snapshot = try usableSnapshot(stamped);
 }
@@ -110,6 +114,9 @@ const AgentRecord = struct {
     /// the host's took the thread's context manager and templates down under
     /// the page.
     host_agent: bool,
+    /// The agent's ShadowRealms (shadow_realm.zig): made with the agent,
+    /// freed by its end. Null when ShadowRealm support was not installed.
+    shadow_realms: ?*shadow_realm.ShadowRealmCallbackData = null,
 };
 
 var agents_lock: std.Io.Mutex = .init;
@@ -189,18 +196,25 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     }
 
     // What every agent's isolate has before a realm is made in it: the
-    // teardown handlers of the adapter's per-isolate modules, the isolate's
-    // allocator (the templates it caches), and ShadowRealm support
-    // (HostCreateShadowRealmContextCallback). destroyAgent undoes them.
+    // isolate's allocator (the templates it caches), and ShadowRealm support
+    // (HostCreateShadowRealmContextCallback, and the agent's own record of
+    // its ShadowRealms). destroyAgent undoes them. The teardown handlers of
+    // the adapter's per-isolate modules are the process's (initializeEngine);
+    // a host that never started the engine gets them here, on its one thread.
     {
         const entered = EnteredIsolate.of(@ptrCast(isolate));
         defer entered.leave();
-        isolate_lifecycle.registerBuiltinHandlers() catch |err| log.warn("the isolate's teardown handlers were not registered: {}", .{err});
+        if (!isolate_lifecycle.builtinHandlersRegistered()) {
+            isolate_lifecycle.registerBuiltinHandlers() catch |err| log.warn("the isolate's teardown handlers were not registered: {}", .{err});
+        }
         isolate_allocator.initIsolateAllocator(isolate, options.allocator, false) catch |err| {
             // One restored from a snapshot may have it already.
             if (err != error.AllocatorAlreadyInitialized) log.warn("the isolate's allocator was not made: {}", .{err});
         };
-        shadow_realm.initializeShadowRealmSupport(isolate, options.allocator) catch |err| log.warn("ShadowRealm support was not installed: {}", .{err});
+        record.shadow_realms = shadow_realm.initializeShadowRealmSupport(isolate, options.allocator) catch |err| blk: {
+            log.warn("ShadowRealm support was not installed: {}", .{err});
+            break :blk null;
+        };
     }
     return @ptrCast(isolate);
 }
@@ -223,12 +237,15 @@ pub fn endAgent(agent: *Agent) void {
     const record = recordOf(isolate);
     const allocator = if (record) |r| r.allocator else std.heap.c_allocator;
     const host_agent = if (record) |r| r.host_agent else false;
+    const shadow_realms = if (record) |r| r.shadow_realms else null;
     forgetAgent(agent);
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
+    // This agent's ShadowRealms, whichever kind of agent it is: they were
+    // every agent's once, cleared by whichever host agent ended first.
+    if (shadow_realms) |data| shadow_realm.deinitializeShadowRealmSupport(data);
     if (host_agent) {
         isolate_lifecycle.cleanupAll(isolate, allocator);
-        shadow_realm.deinitializeShadowRealmSupport();
     } else {
         // cleanupAll's isolate-scoped handlers, without the thread's.
         isolate_templates.cleanupTemplateStorage(isolate, allocator);

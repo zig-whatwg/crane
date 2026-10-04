@@ -258,6 +258,18 @@ fn cleanupContextManager(_: ?*v8.Isolate, _: std.mem.Allocator) void {
     context_manager.deinit();
 }
 
+/// Whether `registerBuiltinHandlers` has run. Read by every createAgent; the
+/// table is written once, while the engine starts (protocol_agents
+/// initializeEngine), before any Browser or worker thread exists.
+pub fn builtinHandlersRegistered() bool {
+    for (handlers[0..handler_count]) |handler| {
+        if (handler) |h| {
+            if (std.mem.eql(u8, h.name, "context_manager")) return true;
+        }
+    }
+    return false;
+}
+
 /// Register all built-in cleanup handlers
 ///
 /// Call this once during engine initialization.
