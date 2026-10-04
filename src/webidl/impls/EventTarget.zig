@@ -213,7 +213,11 @@ pub fn installHooks() void {
     // A lazily made entry's realm end releases it (`lazyInternal`).
     dom_module.unloading_cleanup.install(&releaseRealmEntries);
     // No event can be fired before a target exists.
-    @import("dom").fire_event.install(.{ .dispatch_trusted = dispatchTrusted });
+    @import("dom").fire_event.install(.{
+        .dispatch_trusted = dispatchTrusted,
+        .dispatch_trusted_with_throws = dispatchTrustedWithThrows,
+    });
+    dom_module.event_handlers.install(.{ .get = getHandlerAddress, .set = setHandlerAddress });
 }
 
 /// Initialize instance (creates the instance)
@@ -779,6 +783,23 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
     try activateEventHandler(target, event_type);
 }
 
+fn getHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
+    return (eventHandlerValue(target, event_type) orelse return null).address;
+}
+
+fn setHandlerAddress(target: *runtime.Instance, event_type: []const u8, address: ?usize) anyerror!void {
+    const Handler = typedefs.EventHandler;
+    const Callable = @typeInfo(Handler).optional.child;
+    comptime std.debug.assert(@sizeOf(Callable) == @sizeOf(usize));
+    var handler: Handler = null;
+    if (address) |value| {
+        var function: Callable = undefined;
+        @memcpy(std.mem.asBytes(&function), std.mem.asBytes(&value));
+        handler = function;
+    }
+    try setEventHandler(Handler, target, event_type, handler);
+}
+
 /// An event handler's value in the map: the callback function the binding
 /// converted the setter's argument to (OWNED by the map), and the address the
 /// binding handed over, which the getter returns as it was given. A running
@@ -960,7 +981,7 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
 /// Operation: dispatchEvent
 /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
 pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance) anyerror!bool {
-    return dispatchEventWithTrust(instance, event, false);
+    return dispatchEventWithTrust(instance, event, false, null);
 }
 
 /// DOM 2.10 "fire an event", for an event the user agent has already created
@@ -968,12 +989,16 @@ pub fn call_dispatchEvent(instance: *runtime.Instance, event: *runtime.Instance)
 /// is the only thing that makes an event untrusted. Subtypes call this
 /// directly; code outside the hierarchy goes through `dom.fire_event`.
 pub fn dispatchTrusted(target: *runtime.Instance, event: *runtime.Instance) !bool {
-    return dispatchEventWithTrust(target, event, true);
+    return dispatchEventWithTrust(target, event, true, null);
+}
+
+fn dispatchTrustedWithThrows(target: *runtime.Instance, event: *runtime.Instance, did_throw: *bool) anyerror!bool {
+    return dispatchEventWithTrust(target, event, true, did_throw);
 }
 
 /// dispatchEvent()'s steps with isTrusted given: false for script (DOM 2.8
 /// step 2), true when the user agent fires the event.
-fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance, trusted: bool) anyerror!bool {
+fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance, trusted: bool, did_throw: ?*bool) anyerror!bool {
     const EventImpl = @import("Event.zig");
 
     // Step 1: If event's dispatch flag is set, or if its initialized flag is not
@@ -991,7 +1016,7 @@ fn dispatchEventWithTrust(instance: *runtime.Instance, event: *runtime.Instance,
     EventImpl.setIsTrusted(event, trusted);
 
     // Step 3: Return the result of dispatching event to this
-    return dispatch(instance, event);
+    return dispatchWithThrowFlag(instance, event, did_throw);
 }
 
 // ============================================================================
@@ -1056,7 +1081,9 @@ fn getTheParent(target: *runtime.Instance, event_type: []const u8) ?*runtime.Ins
     // node_type is EventTarget's duck-typing discriminator: 0 for a plain
     // EventTarget (and for Window, which therefore ends the path).
     const node_type = getNodeType(target);
-    if (node_type == 0) return null;
+    // IndexedDB: ordinary request -> transaction; open request -> null;
+    // transaction -> connection; connection -> null (ED 2.7 and 2.8).
+    if (node_type == 0) return dom_module.indexeddb.getTheParent(target);
 
     if (node_type == interfaces.Node.get_DOCUMENT_NODE()) {
         if (std.mem.eql(u8, event_type, "load")) return null;
@@ -1135,6 +1162,10 @@ fn publishEventPath(event: *runtime.Instance, structs: []const PathStruct, alloc
 ///
 /// Returns false if the event's canceled flag is set, true otherwise.
 pub fn dispatch(target: *runtime.Instance, event: *runtime.Instance) !bool {
+    return dispatchWithThrowFlag(target, event, null);
+}
+
+fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, did_throw: ?*bool) !bool {
     const EventImpl = @import("Event.zig");
     const allocator = target.ctx.allocator;
 
@@ -1183,7 +1214,7 @@ pub fn dispatch(target: *runtime.Instance, event: *runtime.Instance) !bool {
             interfaces.Event.get_AT_TARGET()
         else
             interfaces.Event.get_CAPTURING_PHASE());
-        invoke(structs, i, event, .capturing);
+        invoke(structs, i, event, .capturing, did_throw);
     }
 
     // Step 14: for each struct of event's path, in order, invoke with "bubbling".
@@ -1199,7 +1230,7 @@ pub fn dispatch(target: *runtime.Instance, event: *runtime.Instance) !bool {
             // Step 14.2.2
             EventImpl.setEventPhase(event, interfaces.Event.get_BUBBLING_PHASE());
         }
-        invoke(structs, index, event, .bubbling);
+        invoke(structs, index, event, .bubbling, did_throw);
     }
 
     // Steps 7, 8, 9 and 10
@@ -1271,7 +1302,7 @@ fn finishDispatch(event: *runtime.Instance) void {
 
 /// DOM §2.9 - invoke
 /// https://dom.spec.whatwg.org/#concept-event-listener-invoke
-fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, phase: ListenerPhase) void {
+fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, phase: ListenerPhase, did_throw: ?*bool) void {
     const EventImpl = @import("Event.zig");
     const s = structs[index];
 
@@ -1305,7 +1336,7 @@ fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, p
     // list, and `activateEventHandler` puts one there, so a handler runs in
     // registration order among the addEventListener listeners - and, being
     // non-capturing, only in the bubbling pass.
-    const found = innerInvoke(event, s.invocation_target, phase);
+    const found = innerInvoke(event, s.invocation_target, phase, did_throw);
 
     // Step 9: "If found is false and event's isTrusted attribute is true:"
     if (found or !(interfaces.Event.get_isTrusted(event) catch false)) return;
@@ -1319,7 +1350,7 @@ fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, p
     // invocationTargetInShadowTree, and legacyOutputDidListenersThrowFlag if
     // given." found was false, so no listener ran and the list is still the
     // one step 6 cloned; innerInvoke's own snapshot is that clone.
-    _ = innerInvoke(event, s.invocation_target, phase);
+    _ = innerInvoke(event, s.invocation_target, phase, did_throw);
     // Step 9.4: "Set event's type attribute value to originalEventType."
     _ = dom_module.event_dispatch.swapType(event, original_event_type);
 }
@@ -1329,7 +1360,7 @@ fn invoke(structs: []const PathStruct, index: usize, event: *runtime.Instance, p
 ///
 /// Returns `found`: whether any listener matched the event's type, regardless of
 /// phase. Only step 9 of "invoke" consumes it.
-fn innerInvoke(event: *runtime.Instance, current_target: *runtime.Instance, phase: ListenerPhase) bool {
+fn innerInvoke(event: *runtime.Instance, current_target: *runtime.Instance, phase: ListenerPhase, did_throw: ?*bool) bool {
     const EventImpl = @import("Event.zig");
 
     const internal = getInternalFromRegistry(current_target) orelse return false;
@@ -1388,9 +1419,9 @@ fn innerInvoke(event: *runtime.Instance, current_target: *runtime.Instance, phas
         // Step 2.11 - an exception is reported, never propagated. An event
         // handler's listener runs the event handler processing algorithm.
         if (candidate.listener_id != 0) {
-            if (expired orelse callback) |value| callListener(value, event, current_target);
+            if (expired orelse callback) |value| callListener(value, event, current_target, did_throw);
         } else {
-            invokeIdlEventHandler(current_target, event);
+            invokeIdlEventHandler(current_target, event, did_throw);
         }
 
         // Step 2.12
@@ -1445,7 +1476,7 @@ fn detachListener(internal: *InternalState, candidate: Invocation) ?engine.Callb
 /// `callback` is BORROWED: the record's, or the detached once listener's. The
 /// call holds a value of its own, since the callback can remove its listener
 /// and so release the record's.
-fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, current_target: *runtime.Instance) void {
+fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, current_target: *runtime.Instance, did_throw: ?*bool) void {
     const realm = current_target.ctx;
     const object = engine.retainValue(realm, callback.object.value) catch |err| {
         log.debug("listener not called: {}", .{err});
@@ -1469,21 +1500,26 @@ fn callListener(callback: engine.CallbackInterface, event: *runtime.Instance, cu
     // (EventTarget-this-of-listener.html). "If this throws an exception
     // exception: report exception for listener's callback's corresponding
     // JavaScript object's associated realm's global object."
+    var reporter = DispatchReporter{ .realm = realm, .did_throw = did_throw };
     const completion = engine.callUserObjectOperation(realm, &held, "handleEvent", .{ .value = .{ .instance = current_target } }, &.{.{ .instance = event }}, .{
-        .report = .{ .report = reportException, .host = realm },
+        .report = .{ .report = DispatchReporter.report, .host = &reporter },
     }) catch |err| {
         log.debug("listener call failed: {}", .{err});
         return;
     };
     switch (completion) {
-        inline else => |value| value.release(),
+        .throw => |thrown| {
+            if (did_throw) |flag| flag.* = true;
+            thrown.release();
+        },
+        .normal => |value| value.release(),
     }
 }
 
 /// The event handler processing algorithm (HTML §8.1.8.1) for `instance`'s
 /// event handler for `event`'s type - the callback of the event handler's
 /// listener, run by inner invoke.
-fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) void {
+fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance, did_throw: ?*bool) void {
     const realm = instance.ctx;
     const event_type_str = interfaces.Event.get_type(event) catch return;
 
@@ -1534,8 +1570,9 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     // dispatch logic, which will then report it" - for the global of the
     // callback's associated realm (DOM inner invoke step 2.11): reported
     // here, and the completion is then normal undefined, which step 5 ignores.
+    var reporter = DispatchReporter{ .realm = realm, .did_throw = did_throw };
     const completion = engine.invokeCallbackFunction(realm, &callback, .{ .value = .{ .instance = instance } }, args, .{
-        .report = .{ .report = reportException, .host = realm },
+        .report = .{ .report = DispatchReporter.report, .host = &reporter },
     }) catch |err| {
         log.debug("event handler not invoked: {}", .{err});
         return;
@@ -1543,6 +1580,7 @@ fn invokeIdlEventHandler(instance: *runtime.Instance, event: *runtime.Instance) 
     const return_value = switch (completion) {
         .normal => |normal| normal,
         .throw => |thrown| {
+            if (did_throw) |flag| flag.* = true;
             thrown.release();
             return;
         },
@@ -1613,6 +1651,21 @@ fn windowOfRealm(realm: runtime.Context) ?*runtime.Instance {
     if (global.stateAs(interfaces.Window.State) == null) return null;
     return global;
 }
+
+/// The report behavior turns an abrupt completion into normal undefined.
+/// Observe it where the engine reports, retaining the exact throw-site info.
+const DispatchReporter = struct {
+    realm: runtime.Context,
+    did_throw: ?*bool,
+
+    fn report(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+        const self: *DispatchReporter = @ptrCast(@alignCast(host.?));
+        // DOM inner invoke 2.13.1: report for the callback's associated realm.
+        reportException(self.realm, info);
+        // DOM inner invoke 2.13.2: set the legacy output flag, if given.
+        if (self.did_throw) |flag| flag.* = true;
+    }
+};
 
 /// DOM inner invoke step 2.11 / the event handler processing algorithm's
 /// rethrow: HTML "report an exception" for the global of the realm the engine

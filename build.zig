@@ -1077,6 +1077,7 @@ pub fn build(b: *std.Build) void {
     });
     storage_mod.addImport("clock", clock_mod);
     storage_mod.addImport("host", host_mod);
+    storage_mod.addImport("infra", infra_mod);
 
     // Configure platform-specific storage backend linking (Phase 9)
     // - iOS: System SQLite (Phase 9.1)
@@ -1318,6 +1319,8 @@ pub fn build(b: *std.Build) void {
     webcrypto_mod.addImport("dom", dom_mod);
     dom_mod.addImport("webidl", webidl_mod);
     dom_mod.addImport("runtime", runtime_mod);
+    dom_mod.addImport("storage", storage_mod);
+    dom_mod.addImport("engine", engine_mod);
     dom_mod.addImport("interfaces", interfaces_mod);
     dom_mod.addImport("impls", impls_mod); // For document_internals to access Document.InternalState
     // CSP violation events (csp_violations.zig): a queued task run in the
@@ -4385,6 +4388,14 @@ pub fn build(b: *std.Build) void {
     lint_global_state_check.has_side_effects = true;
     lint_global_state_check.setCwd(b.path("."));
     test_step.dependOn(&lint_global_state_check.step);
+    const unicode_identifier_module = b.createModule(.{
+        .root_source_file = b.path("tools/unicode/generate_identifier_tables.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const unicode_identifier_tests = b.addTest(.{ .root_module = unicode_identifier_module });
+    test_step.dependOn(&b.addRunArtifact(unicode_identifier_tests).step);
+
     const lint_global_state_tests = b.addTest(.{ .root_module = lint_global_state_module });
     test_step.dependOn(&b.addRunArtifact(lint_global_state_tests).step);
 

@@ -282,6 +282,8 @@ pub const queryCommandState = editing.queryCommandState;
 pub const queryCommandSupported = editing.queryCommandSupported;
 pub const queryCommandValue = editing.queryCommandValue;
 
+pub const agent_host = @import("agent_host.zig");
+
 test {
     std.testing.refAllDecls(@This());
 }

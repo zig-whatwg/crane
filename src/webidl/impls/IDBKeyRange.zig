@@ -10,6 +10,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const runtime = @import("runtime");
+const dom = @import("dom");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -89,7 +90,7 @@ pub fn get_lower(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = state.own._internal orelse return error.InvalidState;
 
     if (internal.range.lower) |lower| {
-        return convertKeyToJSValue(lower);
+        return (try dom.indexeddb_keys.toValue(instance.ctx, lower)).take();
     }
 
     // Return undefined for no lower bound
@@ -104,7 +105,7 @@ pub fn get_upper(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = state.own._internal orelse return error.InvalidState;
 
     if (internal.range.upper) |upper| {
-        return convertKeyToJSValue(upper);
+        return (try dom.indexeddb_keys.toValue(instance.ctx, upper)).take();
     }
 
     // Return undefined for no upper bound
@@ -139,12 +140,15 @@ pub fn call_static_only(instance: *runtime.Instance, value: runtime.JSValue) any
     const allocator = instance.ctx.allocator;
 
     // Convert JS value to IDBKey
-    const key = convertFromJSValue(value) catch return error.DataError;
+    var key = try dom.indexeddb_keys.require(instance.ctx, value, instance.ctx.allocator);
+    defer key.deinit();
 
     // Create new range instance
     const new_instance = IDBKeyRangeInterface.init(allocator, instance.ctx) catch {
         return error.OutOfMemory;
     };
+
+    errdefer runtime.Instance.deinit(new_instance);
 
     // Set the range to only(key) - with keys of its own (`keptRange`).
     const new_state = new_instance.getState(State);
@@ -165,7 +169,8 @@ pub fn call_includes(instance: *runtime.Instance, key: runtime.JSValue) anyerror
     const internal = state.own._internal orelse return error.InvalidState;
 
     // Convert JS value to IDBKey
-    const idb_key = convertFromJSValue(key) catch return error.DataError;
+    var idb_key = try dom.indexeddb_keys.require(instance.ctx, key, instance.ctx.allocator);
+    defer idb_key.deinit();
 
     return internal.range.includes(idb_key);
 }
@@ -179,21 +184,29 @@ pub fn call_static_bound(instance: *runtime.Instance, lower: runtime.JSValue, up
     // Static method - use context directly, not instance state
     const allocator = instance.ctx.allocator;
 
-    // Convert JS values to IDBKey
-    const lower_key = convertFromJSValue(lower) catch return error.DataError;
-    const upper_key = convertFromJSValue(upper) catch return error.DataError;
+    // ED 4.7 bound() steps 1-2: convert lower, rethrow, or reject an invalid key.
+    var lower_key = try dom.indexeddb_keys.require(instance.ctx, lower, instance.ctx.allocator);
+    defer lower_key.deinit();
+    // Steps 3-4: convert upper, rethrow, or reject an invalid key.
+    var upper_key = try dom.indexeddb_keys.require(instance.ctx, upper, instance.ctx.allocator);
+    defer upper_key.deinit();
 
     // Create the range - unwrap Opt bools (default false)
     const lower_open = if (lowerOpen.wasPassed()) lowerOpen.value else false;
     const upper_open = if (upperOpen.wasPassed()) upperOpen.value else false;
+    // Step 5: reject lower > upper. Between steps 5 and 6 the backend also
+    // rejects equal/open bounds: the documented Blink/Gecko/WebKit deviation
+    // beside BackendKeyRange.bound's check in storage/indexeddb/key_range.zig.
     const range = BackendKeyRange.bound(lower_key, upper_key, lower_open, upper_open) catch {
         return error.DataError;
     };
 
-    // Create new range instance
+    // Step 6: create and return the key range with its bounds and open flags.
     const new_instance = IDBKeyRangeInterface.init(allocator, instance.ctx) catch {
         return error.OutOfMemory;
     };
+
+    errdefer runtime.Instance.deinit(new_instance);
 
     // Set the range - with keys of its own (`keptRange`).
     const new_state = new_instance.getState(State);
@@ -214,12 +227,15 @@ pub fn call_static_upperBound(instance: *runtime.Instance, upper: runtime.JSValu
     const allocator = instance.ctx.allocator;
 
     // Convert JS value to IDBKey
-    const upper_key = convertFromJSValue(upper) catch return error.DataError;
+    var upper_key = try dom.indexeddb_keys.require(instance.ctx, upper, instance.ctx.allocator);
+    defer upper_key.deinit();
 
     // Create new range instance
     const new_instance = IDBKeyRangeInterface.init(allocator, instance.ctx) catch {
         return error.OutOfMemory;
     };
+
+    errdefer runtime.Instance.deinit(new_instance);
 
     // Set the range - unwrap Opt (default false)
     const open_val = if (open.wasPassed()) open.value else false;
@@ -241,12 +257,15 @@ pub fn call_static_lowerBound(instance: *runtime.Instance, lower: runtime.JSValu
     const allocator = instance.ctx.allocator;
 
     // Convert JS value to IDBKey
-    const lower_key = convertFromJSValue(lower) catch return error.DataError;
+    var lower_key = try dom.indexeddb_keys.require(instance.ctx, lower, instance.ctx.allocator);
+    defer lower_key.deinit();
 
     // Create new range instance
     const new_instance = IDBKeyRangeInterface.init(allocator, instance.ctx) catch {
         return error.OutOfMemory;
     };
+
+    errdefer runtime.Instance.deinit(new_instance);
 
     // Set the range - unwrap Opt (default false)
     const open_val = if (open.wasPassed()) open.value else false;
@@ -277,70 +296,10 @@ fn keptRange(allocator: std.mem.Allocator, range: BackendKeyRange) !BackendKeyRa
     return kept;
 }
 
-/// Convert IDBKey to JSValue
-///
-/// This handles the conversion from backend IDBKey type to JSValue.
-fn convertKeyToJSValue(key: BackendKey) runtime.JSValue {
-    switch (key.key_type) {
-        .number => {
-            // Convert number key to JSValue number
-            return runtime.JSValue.fromNumber(key.value.number);
-        },
-        .date => {
-            // Convert date key to number (milliseconds since epoch)
-            const ms_as_f64: f64 = @floatFromInt(key.value.date);
-            return runtime.JSValue.fromNumber(ms_as_f64);
-        },
-        .string => {
-            // Convert string key to JSValue string
-            const str = key.value.string;
-            return runtime.JSValue.fromStringRef(str);
-        },
-        .binary => {
-            // Binary data - would need ArrayBuffer support
-            // For now, return undefined
-            return runtime.JSValue.jsUndefined;
-        },
-        .array => {
-            // Array of keys - would need Array support with recursive conversion
-            // For now, return undefined
-            return runtime.JSValue.jsUndefined;
-        },
-    }
+pub fn installHooks() void {
+    dom.indexeddb.installKeyRanges(.{ .copy = copyRange });
 }
-
-/// Convert JSValue to IDBKey
-///
-/// This handles the conversion from JSValue to the backend IDBKey type.
-///
-/// Per IndexedDB spec, valid key types are:
-/// - number (not NaN)
-/// - Date (converted to its time value)
-/// - string
-/// - binary (ArrayBuffer, etc.)
-/// - array (of valid keys)
-fn convertFromJSValue(jsvalue: runtime.JSValue) !BackendKey {
-    switch (jsvalue) {
-        .number => |num| {
-            // Check for NaN - NaN is not a valid key
-            if (num != num) { // NaN check: NaN != NaN
-                return error.DataError;
-            }
-            return BackendKey.number(num);
-        },
-        .string => |str| {
-            // Borrows the argument's bytes: a key kept past the call is
-            // copied first (`keptRange`).
-            return BackendKey.string(str.data);
-        },
-        // An object: a Date, a buffer source or an Array key. Reading one (a
-        // Date's time value, a buffer's bytes, an Array's elements) needs
-        // Engine operations that do not exist yet, so it is an invalid key -
-        // as it was when this read V8 values: the binding hands numbers and
-        // strings over as `.number` and `.string`, never as handles.
-        .handle => return error.DataError,
-        .undefined, .null => return error.DataError,
-        .boolean => return error.DataError,
-        .instance => return error.DataError,
-    }
+fn copyRange(instance: *runtime.Instance, allocator: std.mem.Allocator) !BackendKeyRange {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    return keptRange(allocator, internal.range);
 }

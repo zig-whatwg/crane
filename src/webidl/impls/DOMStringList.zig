@@ -147,9 +147,8 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMS
 
     // Check bounds
     if (index >= internal.strings.items.len) {
-        // Return null (empty string represents null for this case)
-        // Per spec, item() returns null for out-of-bounds access
-        return runtime.DOMString.initEmpty();
+        // HTML 2.6.5 item() step 1: return null when index is not less than length.
+        return null;
     }
 
     // Return the string at the index
@@ -198,4 +197,12 @@ pub fn getString(instance: *runtime.Instance, index: usize) ?[]const u8 {
 pub fn getStrings(instance: *runtime.Instance) ?[]const []const u8 {
     const internal = getInternal(instance) orelse return null;
     return internal.strings.items;
+}
+
+pub fn installHooks() void {
+    @import("dom").string_lists.install(.{ .create = struct {
+        fn create(ctx: runtime.Context, strings: []const []const u8) !*runtime.Instance {
+            return createFromSlice(ctx.allocator, ctx, strings);
+        }
+    }.create });
 }
