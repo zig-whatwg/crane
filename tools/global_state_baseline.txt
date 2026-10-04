@@ -222,9 +222,6 @@ src/runtime/engines/v8/external_references.zig runtime_refs 1 G P-const decl:ab5
 src/runtime/engines/v8/interface.zig V8Interface.iterator_template_cache 1 G I/engine decl:a44990951971294c
 src/runtime/engines/v8/interface.zig V8Interface.iterator_template_cache_generation 1 G I/engine decl:1dfcee87d8da8735
 src/runtime/engines/v8/interface.zig V8Interface.iterator_template_cache_isolate 1 G I/engine decl:481c2b765f747506
-src/runtime/engines/v8/interface.zig V8Interface.template_cache 1 G I/engine decl:a44990951971294c
-src/runtime/engines/v8/interface.zig V8Interface.template_cache_generation 1 G I/engine decl:1dfcee87d8da8735
-src/runtime/engines/v8/interface.zig V8Interface.template_cache_isolate 1 G I/engine decl:481c2b765f747506
 src/runtime/engines/v8/intl_binding.zig collator_registry 1 G I/engine decl:6a659aab695410b7
 src/runtime/engines/v8/intl_binding.zig display_names_registry 1 G I/engine decl:dc5ced51a48c23bf
 src/runtime/engines/v8/intl_binding.zig dtf_registry 1 G I/engine decl:46942d68afb4bd6a
