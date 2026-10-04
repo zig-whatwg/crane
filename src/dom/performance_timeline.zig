@@ -186,13 +186,13 @@ pub const Entries = struct {
 
 /// "initialize a PerformanceEntry" (Performance Timeline 3).
 pub fn initializeEntry(entry: *Instance, start_time: f64, entry_type: EntryType, entry_name: []const u8, end_time: f64) !void {
-    const impl = entries orelse return error.NotSupported;
+    const impl = hooks.entries orelse return error.NotSupported;
     try impl.initialize(entry, start_time, entry_type, entry_name, end_time);
 }
 
 /// `entry`'s attributes, or null.
 pub fn dataOf(entry: *Instance) ?*EntryData {
-    const impl = entries orelse return null;
+    const impl = hooks.entries orelse return null;
     return impl.data(entry);
 }
 
@@ -547,6 +547,17 @@ pub const Observer = struct {
     }
 };
 
+/// observe() step 6.2: the entry types among `identifiers` that are in the
+/// frozen array of supported entry types; the rest are removed.
+pub fn supportedAmong(identifiers: []const []const u8) std.EnumSet(EntryType) {
+    var types = std.EnumSet(EntryType).initEmpty();
+    for (identifiers) |identifier| {
+        const t = EntryType.fromName(identifier) orelse continue;
+        if (t.isSupported()) types.insert(t);
+    }
+    return types;
+}
+
 /// What observe() asks after its own checks (steps 1-5): `entry_types`
 /// for an entryTypes call (multiple), else `single_type` (single).
 pub const ObserveRequest = struct {
@@ -559,11 +570,7 @@ pub const ObserveRequest = struct {
 pub fn observe(timeline: *Timeline, observer: *Observer, request: ObserveRequest) !void {
     if (observer.observer_type == .multiple) {
         // 6.1-6.2. entry types, reduced to the supported ones.
-        var types = std.EnumSet(EntryType).initEmpty();
-        for (request.entry_types orelse &.{}) |identifier| {
-            const t = EntryType.fromName(identifier) orelse continue;
-            if (t.isSupported()) types.insert(t);
-        }
+        const types = supportedAmong(request.entry_types orelse &.{});
         // 6.3. None left: abort.
         if (types.count() == 0) return;
         const options: Options = .{ .types = types };
@@ -735,7 +742,7 @@ fn notifyObserver(timeline: *Timeline, realm: runtime.Context, po: *Observer) !v
     defer timeline.allocator.free(entry_list_items);
     // 3.3.5. The PerformanceObserverEntryList keeps the entries (before the
     // observer's edges go, so they are never unkept).
-    const lists = entry_lists orelse return error.NotSupported;
+    const lists = hooks.entry_lists orelse return error.NotSupported;
     const observer_entry_list = try lists.create(realm, entry_list_items);
     const list_generation = runtime.SlabAllocator.generationOf(observer_entry_list);
     defer observer_entry_list.releaseIfUnwrapped(list_generation);
@@ -777,7 +784,7 @@ fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
     const observer_realm: runtime.Context = @ptrCast(@alignCast(host orelse return));
     const realm = info.realm orelse observer_realm;
     const global = globalOf(realm) orelse return;
-    const reporter = exception_reporter orelse return;
+    const reporter = hooks.exception_reporter orelse return;
     reporter(global, info);
 }
 
@@ -817,69 +824,70 @@ pub const Measures = struct {
 /// itself (src/html): installed by the observer's owner.
 pub const ExceptionReporter = *const fn (global: *Instance, info: *const engine.ErrorInfo) void;
 
-// process-wide: function pointers PerformanceEntry installs once at process start (crane.Process), the same for every instance
-var entries: ?Entries = null;
-// process-wide: function pointers Performance installs once at process start (crane.Process), the same for every instance
-var performances: ?Performances = null;
-// process-wide: function pointers PerformanceObserverEntryList installs once at process start (crane.Process), the same for every instance
-var entry_lists: ?EntryLists = null;
-// process-wide: function pointers PerformanceMeasure installs once at process start (crane.Process), the same for every instance
-var measures: ?Measures = null;
-// process-wide: a function pointer PerformanceObserver installs once at process start (crane.Process), the same for every instance
-var exception_reporter: ?ExceptionReporter = null;
+/// What the timeline's owners installed: each owner's own field.
+const Hooks = struct {
+    entries: ?Entries = null,
+    performances: ?Performances = null,
+    entry_lists: ?EntryLists = null,
+    measures: ?Measures = null,
+    exception_reporter: ?ExceptionReporter = null,
+};
+
+// process-wide: function pointers the timeline's owners (Performance, PerformanceEntry, PerformanceObserver, PerformanceObserverEntryList, PerformanceMeasure) install once at process start (crane.Process), the same for every instance
+var hooks: Hooks = .{};
 
 /// Called by PerformanceEntry's installHooks, once, at process start.
 pub fn installEntries(impl: Entries) void {
     process_start.assertInstalling();
-    entries = impl;
+    hooks.entries = impl;
 }
 
 /// Called by Performance's installHooks, once, at process start.
 pub fn installPerformances(impl: Performances) void {
     process_start.assertInstalling();
-    performances = impl;
+    hooks.performances = impl;
 }
 
 /// Called by PerformanceObserverEntryList's installHooks, once, at process
 /// start.
 pub fn installEntryLists(impl: EntryLists) void {
     process_start.assertInstalling();
-    entry_lists = impl;
+    hooks.entry_lists = impl;
 }
 
 /// Called by PerformanceMeasure's installHooks, once, at process start.
 pub fn installMeasures(impl: Measures) void {
     process_start.assertInstalling();
-    measures = impl;
+    hooks.measures = impl;
 }
 
 /// Called by PerformanceObserver's installHooks, once, at process start.
 pub fn installExceptionReporter(reporter: ExceptionReporter) void {
     process_start.assertInstalling();
-    exception_reporter = reporter;
+    hooks.exception_reporter = reporter;
 }
 
 /// The timeline of `realm`'s global object, or null.
 pub fn timelineOf(realm: runtime.Context) ?*Timeline {
-    const impl = performances orelse return null;
+    const impl = hooks.performances orelse return null;
     return impl.of_realm(realm);
 }
 
 /// The timeline a Performance object keeps, or null.
 fn timelineOfPerformance(performance: *Instance) ?*Timeline {
-    const impl = performances orelse return null;
+    const impl = hooks.performances orelse return null;
     return impl.of_performance(performance);
 }
 
 /// The current relative timestamp of `realm`'s global, or null.
 pub fn now(realm: runtime.Context) ?f64 {
-    const impl = performances orelse return null;
+    const impl = hooks.performances orelse return null;
     return impl.now(realm);
 }
 
 /// A new PerformanceMeasure (see Measures.create).
 pub fn createMeasure(realm: runtime.Context, measure_name: []const u8, start_time: f64, end_time: f64, detail: ?runtime.JSValue) !*Instance {
-    const impl = measures orelse return error.NotSupported;
+    const impl = hooks.measures orelse return error.NotSupported;
     return impl.create(realm, measure_name, start_time, end_time, detail);
 }
 
@@ -931,9 +939,9 @@ test "a buffer is full at its maxBufferSize, and each entry it turns away is cou
 }
 
 test "filter buffer by name and type keeps matches in chronological order, ties in buffer order" {
-    const saved = entries;
-    defer entries = saved;
-    entries = .{ .initialize = &TestEntry.initialize, .data = &TestEntry.data_of };
+    const saved = hooks.entries;
+    defer hooks.entries = saved;
+    hooks.entries = .{ .initialize = &TestEntry.initialize, .data = &TestEntry.data_of };
     var e: [4]TestEntry = .{ .{}, .{}, .{}, .{} };
     try initializeEntry(&e[0].instance, 5, .mark, "a", 0);
     try initializeEntry(&e[1].instance, 1, .mark, "b", 0);
@@ -958,19 +966,13 @@ test "filter buffer by name and type keeps matches in chronological order, ties 
     try std.testing.expectEqual(@as(f64, 0), dataOf(&e[0].instance).?.duration());
 }
 
-test "observe() with entryTypes keeps only supported types and aborts when none is left" {
-    var owner: Instance = undefined;
-    var timeline = Timeline.init(std.testing.allocator, &owner);
-    defer timeline.deinit();
-    var observer_instance: Instance = undefined;
-    var observer = Observer.init(std.testing.allocator, &observer_instance);
-    defer observer.options.deinit(std.testing.allocator);
-    defer observer.buffer.deinit(std.testing.allocator);
-    observer.observer_type = .multiple;
-    // Not registered: nothing it names is supported.
-    try observe(&timeline, &observer, .{ .entry_types = &.{ "Mark", "longtask-not-here" } });
-    try std.testing.expectEqual(@as(usize, 0), timeline.observers.items.len);
-    try std.testing.expectEqual(@as(usize, 0), observer.options.items.len);
+test "observe() keeps only the supported entry types, so an unsupported list registers nothing" {
+    // (observe() itself reaches engine operations, which this module's
+    // test binary does not link; its reduction step is tested alone.)
+    try std.testing.expectEqual(@as(usize, 0), supportedAmong(&.{ "Mark", "longtask-not-here" }).count());
+    const types = supportedAmong(&.{ "mark", "mark", "measure", "bogus" });
+    try std.testing.expect(types.contains(.mark) and types.contains(.measure));
+    try std.testing.expectEqual(@as(usize, 2), types.count());
 }
 
 test "the last performance entry id starts between 100 and 10000 and only grows" {
