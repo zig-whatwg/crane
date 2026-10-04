@@ -16,7 +16,6 @@ const webidl = @import("webidl");
 const DOMQuad = interfaces.DOMQuad;
 const DOMPoint = interfaces.DOMPoint;
 const DOMRect = interfaces.DOMRect;
-const DOMRectImpl = @import("DOMRect.zig");
 
 pub const State = DOMQuad.State;
 
@@ -145,16 +144,15 @@ pub fn get_p4(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return state.own.p4;
 }
 
-/// Helper to get x coordinate from a DOMPoint instance
+/// A point's x coordinate, through DOMPointReadOnly's getter (the
+/// coordinates are DOMPointReadOnly's).
 fn getPointX(point: *runtime.Instance) f64 {
-    const point_state = point.getState(DOMPoint.State);
-    return point_state.own.x;
+    return interfaces.DOMPointReadOnly.get_x(point) catch std.math.nan(f64);
 }
 
-/// Helper to get y coordinate from a DOMPoint instance
+/// A point's y coordinate, through DOMPointReadOnly's getter.
 fn getPointY(point: *runtime.Instance) f64 {
-    const point_state = point.getState(DOMPoint.State);
-    return point_state.own.y;
+    return interfaces.DOMPointReadOnly.get_y(point) catch std.math.nan(f64);
 }
 
 /// Operation: getBounds
@@ -182,8 +180,14 @@ pub fn call_getBounds(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const width = max_x - min_x;
     const height = max_y - min_y;
 
-    // Create and return a new DOMRect
-    return DOMRectImpl.initWithDimensions(std.heap.page_allocator, instance.ctx, min_x, min_y, width, height);
+    // Create and return a new DOMRect, through its interface's constructor.
+    return DOMRect.call_constructor(
+        instance.ctx,
+        webidl.Opt(f64).passed(min_x),
+        webidl.Opt(f64).passed(min_y),
+        webidl.Opt(f64).passed(width),
+        webidl.Opt(f64).passed(height),
+    );
 }
 
 /// Operation: fromRect (static)
@@ -234,6 +238,54 @@ pub fn call_static_fromQuad(instance: *runtime.Instance, other: webidl.Opt(dicti
     }
 
     return initWithPoints(std.heap.page_allocator, ctx, p1_init, p2_init, p3_init, p4_init);
+}
+
+// ============================================================================
+// Serializable objects (HTML 2.7.1; Geometry 7: DOMQuad is [Serializable])
+// ============================================================================
+
+/// Geometry 7, DOMQuad's serialization steps, given `value` and
+/// `serialized`: 1-4. Set serialized.[[P1]] .. [[P4]] to the
+/// sub-serialization of value's point 1 .. point 4.
+///
+/// Deviation: each point is written as its four variables (x, y, z, w) in
+/// the quad's own record - Blink's form - not as a sub-serialization. A
+/// DOMQuad holds its points as raw Instances with no traced edge, so a
+/// sub-deserialized point's wrapper, owned by the target realm's collector,
+/// could be freed under the quad. The difference shows only in identity: a
+/// point referenced again elsewhere in the same message deserializes as a
+/// second object. Sub-serializing them waits for DOMQuad to trace its
+/// points.
+pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
+    const state = getState(value);
+    for ([_]*runtime.Instance{ state.own.p1, state.own.p2, state.own.p3, state.own.p4 }) |point| {
+        try serialized.writeDouble(try interfaces.DOMPointReadOnly.get_x(point));
+        try serialized.writeDouble(try interfaces.DOMPointReadOnly.get_y(point));
+        try serialized.writeDouble(try interfaces.DOMPointReadOnly.get_z(point));
+        try serialized.writeDouble(try interfaces.DOMPointReadOnly.get_w(point));
+    }
+}
+
+/// Geometry 7, DOMQuad's deserialization steps, given `serialized` and
+/// `value`: 1-4. Set value's point 1 .. point 4 to the sub-deserialization
+/// of serialized.[[P1]] .. [[P4]] - here, new DOMPoints with the variables
+/// written above (see the deviation there), made as the constructor makes
+/// them.
+pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
+    var points: [4]dictionaries.DOMPointInit = undefined;
+    for (&points) |*point| {
+        point.* = .{
+            .x = try serialized.readDouble(),
+            .y = try serialized.readDouble(),
+            .z = try serialized.readDouble(),
+            .w = try serialized.readDouble(),
+        };
+    }
+    const state = getState(value);
+    state.own.p1 = try createDOMPoint(target_realm, points[0]);
+    state.own.p2 = try createDOMPoint(target_realm, points[1]);
+    state.own.p3 = try createDOMPoint(target_realm, points[2]);
+    state.own.p4 = try createDOMPoint(target_realm, points[3]);
 }
 
 /// toJSON operation
