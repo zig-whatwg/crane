@@ -32,6 +32,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const module_script = @import("module_script.zig");
+const ScriptText = @import("dom").script_elements.ScriptText;
 
 /// A script element's type.
 /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#concept-script-type
@@ -148,6 +149,10 @@ pub const State = struct {
     /// pointing into freed memory by the time the script ran.
     script_url: ?[]const u8,
 
+    /// Trusted Types 4.1.2.1: the script text, set by the parser at the end
+    /// tag and by the Trusted Types-aware setters; owned.
+    script_text: ScriptText = .{},
+
     pub fn init(allocator: std.mem.Allocator) State {
         return .{
             .allocator = allocator,
@@ -163,12 +168,14 @@ pub const State = struct {
             .steps_to_run_when_ready = null,
             .cached_source_text = null,
             .script_url = null,
+            .script_text = .{},
         };
     }
 
     pub fn deinit(self: *State) void {
         if (self.cached_source_text) |text| self.allocator.free(text);
         if (self.script_url) |url| self.allocator.free(url);
+        self.script_text.deinit();
         self.cached_source_text = null;
         self.script_url = null;
     }

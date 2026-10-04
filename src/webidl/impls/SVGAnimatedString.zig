@@ -52,7 +52,9 @@ pub fn get_animVal(instance: *runtime.Instance) anyerror!runtime.DOMString {
 }
 
 /// Setter for baseVal
-pub fn set_baseVal(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
+pub fn set_baseVal(instance: *runtime.Instance, value: typedefs.DOMStringOrTrustedScriptURL) anyerror!void {
+    // TODO: the reflecting setter (and, for an SVG script's href, Trusted
+    // Types' "SVGScriptElement href" check) - not implemented.
     _ = instance;
     _ = value;
     return error.NotImplemented;

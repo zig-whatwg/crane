@@ -106,8 +106,9 @@ test "the last argument, and a union the binding cannot take faithfully, stay JS
     defer testing.allocator.free(typedefs_root);
     try expectNotIn(typedefs_root, "typedefs/root.zig", "WithUnion");
     try expectNotIn(typedefs_root, "typedefs/root.zig", "OrSequence");
-    // A Trusted Types union is written as a DOMString already.
-    try expectNotIn(typedefs_root, "typedefs/root.zig", "TrustedHTMLOrDOMString");
+    // A Trusted Types union is named too, in every position
+    // (trusted_type_unions_test.zig).
+    try expectIn(typedefs_root, "typedefs/root.zig", "pub const TrustedHTMLOrDOMString = ");
 }
 
 test "unionName joins the member names in upper camel case" {

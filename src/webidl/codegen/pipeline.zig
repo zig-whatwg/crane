@@ -76,6 +76,10 @@ pub const SourceFile = struct {
     dir: []const u8,
     /// Its name in that directory; also its source key in the IR.
     name: []const u8,
+    /// Found in a source after the first: Crane's own IDL beside webref's
+    /// (specs/supplementary), which may not restate a member silently
+    /// (ir.zig mergeInterfacePartial, member_overrides.zig).
+    supplementary: bool = false,
 
     fn lessThan(_: void, a: SourceFile, b: SourceFile) bool {
         return std.mem.lessThan(u8, a.name, b.name);
@@ -92,7 +96,7 @@ fn collectSourceFiles(allocator: std.mem.Allocator, sources: []const []const u8)
     errdefer freeSourceFiles(allocator, files.items);
     errdefer files.deinit(allocator);
 
-    for (sources) |source_dir| {
+    for (sources, 0..) |source_dir, source_index| {
         var dir = try host.cwd().openDir(io, source_dir, .{ .iterate = true });
         defer dir.close(io);
         var iter = dir.iterate();
@@ -101,7 +105,7 @@ fn collectSourceFiles(allocator: std.mem.Allocator, sources: []const []const u8)
             if (!std.mem.endsWith(u8, entry.name, ".idl")) continue;
             const name = try allocator.dupe(u8, entry.name);
             errdefer allocator.free(name);
-            try files.append(allocator, .{ .dir = source_dir, .name = name });
+            try files.append(allocator, .{ .dir = source_dir, .name = name, .supplementary = source_index > 0 });
         }
     }
 
@@ -188,6 +192,7 @@ pub fn processFiles(
         try parsed_files.append(allocator, parsed_idl);
 
         const idl_file = parsed_idl.value;
+        if (source_file.supplementary) try ir.markSupplementary(source_file.name);
 
         // Add to IR
         for (idl_file.interfaces) |iface| {
@@ -235,7 +240,9 @@ pub fn processFiles(
 
     // Stage 1.6: a union argument the binding must convert in argument order
     // becomes a named union typedef (argument_unions.zig) - after the
-    // includes, so an includer's mixin operations are named too.
+    // includes, so an includer's mixin operations are named too. A union with
+    // a Trusted Type member is named first, in every position.
+    try argument_unions.nameTrustedTypeUnions(&ir);
     try argument_unions.nameArgumentUnions(&ir);
 
     // Stage 2: Report merging statistics

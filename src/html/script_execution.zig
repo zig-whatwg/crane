@@ -208,12 +208,14 @@ pub fn prepareScriptElement(
         }
     }
 
-    // Step 5: Let source text be el's child text content
-    const source_text = getChildTextContent(allocator, script_element) catch |err| {
+    // Step 5 (Trusted Types 4.1.2.7): "Execute the Prepare the script text
+    // algorithm on el. If that algorithm threw an error, then return."
+    // Step 6: "Let source text be el's script text value."
+    const source_text = prepareTheScriptText(allocator, script_element, "HTMLScriptElement text") catch |err| {
         if (err == error.OutOfMemory) return ScriptExecutionError.OutOfMemory;
         return false; // Abort on other errors
-    };
-    defer if (source_text.len > 0) allocator.free(source_text);
+    } orelse return false;
+    defer allocator.free(source_text);
 
     // Step 6: If el has no src attribute, and source text is empty, then return
     if (!hasSrcAttribute(script_element) and source_text.len == 0) {
@@ -1305,10 +1307,12 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
 
     const href = getAttributeNS(element, null, "href") orelse getAttributeNS(element, xlink_namespace, "href");
 
-    // Step 5: child text content. Step 6: no href and no source - return
-    // before "already started", so text added later runs it.
-    const source = getChildTextContent(allocator, element) catch return;
-    defer if (source.len > 0) allocator.free(source);
+    // Step 5 (Trusted Types 4.1.2.7, as the spec asks of SVG scripts too):
+    // prepare the script text; the source is the script text. Step 6: no
+    // href and no source - return before "already started", so text added
+    // later runs it.
+    const source = (prepareTheScriptText(allocator, element, "SVGScriptElement text") catch return) orelse return;
+    defer allocator.free(source);
     if (href == null and source.len == 0) return;
 
     // Step 7.
@@ -2311,47 +2315,88 @@ fn errorEventSteps(data: ?*anyopaque) void {
     fireErrorEvent(task.allocator, task.element);
 }
 
-/// The element's child text content.
+/// Trusted Types 3.6 "Prepare the script text", then "prepare the script
+/// element" step 6's source text: `script`'s script text, OWNED by
+/// `allocator`. Null when the algorithm threw (the default policy threw, or
+/// the sink type mismatch was blocked): "If that algorithm threw an error,
+/// then return" - the error goes no further than prepare.
 ///
-/// Spec: https://dom.spec.whatwg.org/#concept-child-text-content
-/// "The child text content of a node node is the concatenation of the data of
-///  all the Text node children of node, in tree order."
-///
-/// CHILDREN, not descendants: "prepare the script element" step 5 reads it,
-/// and a script element can have element children - an SVG script the parser
-/// nests inside another (execution-timing/138-143), or anything script
-/// appends. Their text is not the script's source; walking into them fed the
-/// outer script the inner one's text and turned it into a SyntaxError.
-/// A CDATASection is a Text node, so its data counts.
-fn getChildTextContent(allocator: std.mem.Allocator, element: *runtime.Instance) ![]const u8 {
-    var result = infra.List(u8).init(allocator);
-    errdefer result.deinit();
-
-    var child = interfaces.Node.get_firstChild(element) catch null;
-    while (child) |c| : (child = interfaces.Node.get_nextSibling(c) catch null) {
-        if (isTextNode(c)) try appendCharacterData(c, &result);
+/// The child text content it compares is the CHILDREN's, not the
+/// descendants' (dom.script_elements.childTextContent): a script element can
+/// have element children - an SVG script the parser nests inside another
+/// (execution-timing/138-143), or anything script appends - and their text is
+/// not the script's source; walking into them fed the outer script the inner
+/// one's text and turned it into a SyntaxError. A CDATASection is a Text
+/// node, so its data counts.
+fn prepareTheScriptText(allocator: std.mem.Allocator, script: *runtime.Instance, sink: []const u8) !?[]u8 {
+    const child_text = try dom.script_elements.childTextContent(allocator, script);
+    defer allocator.free(child_text);
+    // An element with no slot (not reached through the hook) keeps the
+    // pre-Trusted-Types behaviour: its child text content is its source.
+    const slot = dom.script_elements.scriptTextOf(script) orelse return try allocator.dupe(u8, child_text);
+    // 1. The sink: "HTMLScriptElement text" or "SVGScriptElement text".
+    // 2. "If script's script text value is not equal to its child text
+    // content, set script's script text to the result of executing get
+    // Trusted Type compliant string" with TrustedScript (the spec's
+    // TrustedScriptURL is a typo: the default policy is asked for a
+    // createScript value, and Blink and Gecko ask for TrustedScript), the
+    // script's Document's relevant global object, the child text content,
+    // the sink and 'script'.
+    if (!std.mem.eql(u8, slot.get(), child_text)) {
+        const document = getNodeDocument(script) orelse return null;
+        const global = dom.trusted_types.relevantGlobalOf(document) orelse return null;
+        // Where the sink requires no Trusted Type, get Trusted Type compliant
+        // string returns its input (3.4 steps 2-3): no script runs for it.
+        if (!dom.trusted_types.doesSinkTypeRequireTrustedTypes(global, dom.trusted_types.script_sink_group, true)) {
+            try slot.set(script.ctx.allocator, child_text);
+            return try allocator.dupe(u8, child_text);
+        }
+        var compliant: CompliantText = .{ .allocator = allocator, .global = global, .input = child_text, .sink = sink };
+        // "If the algorithm threw an error, rethrow the error" - to prepare,
+        // which returns: an exception the default policy threw is caught here
+        // and goes no further.
+        if (script.ctx.hasEngine()) {
+            const thrown = engine.completionOf(script.ctx, CompliantText.run, &compliant) catch return null;
+            if (thrown) |exception| {
+                exception.release();
+                return null;
+            }
+        } else {
+            CompliantText.run(&compliant) catch return null;
+        }
+        const value = compliant.result orelse return null;
+        defer allocator.free(value);
+        try slot.set(script.ctx.allocator, value);
     }
+    // "prepare the script element" step 6: the script text.
+    return try allocator.dupe(u8, slot.get());
+}
 
-    if (result.size() == 0) {
-        result.deinit();
-        return "";
+/// "Get Trusted Type compliant string" for "prepare the script text", as
+/// steps engine.completionOf runs.
+const CompliantText = struct {
+    allocator: std.mem.Allocator,
+    global: *runtime.Instance,
+    input: []const u8,
+    sink: []const u8,
+    result: ?[]u8 = null,
+
+    fn run(data: ?*anyopaque) engine.Error!void {
+        const self: *CompliantText = @ptrCast(@alignCast(data.?));
+        self.result = dom.trusted_types.getCompliantString(
+            self.allocator,
+            .script,
+            self.global,
+            .{ .string = self.input },
+            self.sink,
+            dom.trusted_types.script_sink_group,
+        ) catch |err| return switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.ExceptionPending => error.ExceptionPending,
+            else => error.TypeError,
+        };
     }
-
-    return try result.toOwnedSlice();
-}
-
-/// Text or CDATASection: the nodes whose data is child text content.
-fn isTextNode(node: *runtime.Instance) bool {
-    const node_type = interfaces.Node.get_nodeType(node) catch return false;
-    return node_type == interfaces.Node.get_TEXT_NODE() or
-        node_type == interfaces.Node.get_CDATA_SECTION_NODE();
-}
-
-fn appendCharacterData(node: *runtime.Instance, result: *infra.List(u8)) !void {
-    var data = CharacterData.get_data(node) catch return;
-    defer data.deinit(result.allocator);
-    try result.appendSlice(data.asSlice());
-}
+};
 
 // =============================================================================
 // External Script Loading

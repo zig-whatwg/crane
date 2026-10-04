@@ -110,6 +110,7 @@ src/dom/token_lists.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/top_level_navigation.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/traversal.zig node_iterator 1 G H decl:d977cb3dc433f236
 src/dom/traversal.zig tree_walker 1 G H decl:d5e806e980531fcb
+src/dom/trusted_types.zig table 1 G P-res decl:f6c637cc7c367f73
 src/dom/unloading_cleanup.zig count 1 G H decl:3796f88280404836
 src/dom/unloading_cleanup.zig steps 1 G H decl:9a723bce6bdf47dc
 src/dom/unloading_cleanup.zig test_last 1 G X decl:c66b73dbbb5ec79b

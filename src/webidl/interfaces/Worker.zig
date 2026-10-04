@@ -15,12 +15,11 @@ const AbstractWorker = @import("mixins").AbstractWorker;
 const MessageEventTarget = @import("mixins").MessageEventTarget;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
+const TrustedScriptURLOrUSVString = @import("typedefs").TrustedScriptURLOrUSVString;
 const StructuredSerializeOptions = @import("dictionaries").StructuredSerializeOptions;
-const USVString = @import("typedefs").USVString;
 const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
 const WorkerOptions = @import("dictionaries").WorkerOptions;
-const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
+const Event = @import("interfaces").Event;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
 const EventHandler = @import("typedefs").EventHandler;
@@ -149,7 +148,7 @@ pub const Worker = struct {
     /// WebIDL constructor
     /// Note: Uses ctx.allocator internally for all allocations to ensure
     /// consistency with deinit which uses instance.ctx.allocator
-    pub fn call_constructor(ctx: runtime.Context, scriptURL: DOMString, options: webidl.Opt(WorkerOptions)) !*runtime.Instance {
+    pub fn call_constructor(ctx: runtime.Context, scriptURL: TrustedScriptURLOrUSVString, options: webidl.Opt(WorkerOptions)) !*runtime.Instance {
         // Directly return result from impl.call_constructor
         return try WorkerImpl.call_constructor(ctx, scriptURL, options);
     }

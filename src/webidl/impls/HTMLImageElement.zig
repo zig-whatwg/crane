@@ -344,7 +344,7 @@ fn resolveAgainstBaseUrl(element: *runtime.Instance, url: []const u8) ?[]const u
 /// "update the image data".
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     const dom_value = runtime.DOMString.initInterned(value);
-    try Element.call_setAttribute(instance, runtime.DOMString.initInterned("src"), dom_value);
+    try Element.call_setAttribute(instance, runtime.DOMString.initInterned("src"), .{ .domstring = dom_value });
 }
 
 /// Start loading `url_str` for `instance`, superseding any load in flight.

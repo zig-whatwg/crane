@@ -41,20 +41,20 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 /// Operation: getEntries
-pub fn call_getEntries(instance: *runtime.Instance) anyerror!typedefs.PerformanceEntryList {
+pub fn call_getEntries(instance: *runtime.Instance) anyerror!runtime.JSValue {
     _ = instance;
     return error.NotImplemented;
 }
 
 /// Operation: getEntriesByType
-pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!typedefs.PerformanceEntryList {
+pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": runtime.DOMString) anyerror!runtime.JSValue {
     _ = instance;
     _ = @"type";
     return error.NotImplemented;
 }
 
 /// Operation: getEntriesByName
-pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": webidl.Opt(runtime.DOMString)) anyerror!typedefs.PerformanceEntryList {
+pub fn call_getEntriesByName(instance: *runtime.Instance, name: runtime.DOMString, @"type": webidl.Opt(runtime.DOMString)) anyerror!runtime.JSValue {
     _ = instance;
     _ = name;
     _ = @"type";

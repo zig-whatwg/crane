@@ -14,7 +14,7 @@ const AbstractRange = @import("interfaces").AbstractRange;
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const DOMString = @import("typedefs").DOMString;
 const DOMRect = @import("interfaces").DOMRect;
-const TrustedHTML = @import("interfaces").TrustedHTML;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const Node = @import("interfaces").Node;
 const DOMRectList = @import("interfaces").DOMRectList;
 
@@ -277,7 +277,7 @@ pub const Range = struct {
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
-    pub fn call_createContextualFragment(instance: *runtime.Instance, string: DOMString) anyerror!*runtime.Instance {
+    pub fn call_createContextualFragment(instance: *runtime.Instance, string: TrustedHTMLOrDOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();

@@ -2174,6 +2174,7 @@ pub fn build(b: *std.Build) void {
     // Add html_core and csp to dom for document_internals
     dom_mod.addImport("html_core", html_core_mod);
     dom_mod.addImport("csp", csp_mod);
+    dom_mod.addImport("trusted_types", trusted_types_mod);
     // A settings object is a request's client: global_settings.requestClient
     // hands fetch what "populate request from client" reads.
     dom_mod.addImport("fetch", fetch_mod);

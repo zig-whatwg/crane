@@ -25,6 +25,7 @@ const XPathExpression = @import("interfaces").XPathExpression;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const XPathResult = @import("interfaces").XPathResult;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const Location = @import("interfaces").Location;
 const EventListener = @import("interfaces").EventListener;
 const StyleSheetList = @import("interfaces").StyleSheetList;
@@ -67,7 +68,6 @@ const HTMLElement = @import("interfaces").HTMLElement;
 const WindowProxy = @import("typedefs").WindowProxy;
 const StorageAccessTypes = @import("dictionaries").StorageAccessTypes;
 const Attr = @import("interfaces").Attr;
-const TrustedHTML = @import("interfaces").TrustedHTML;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const NodeList = @import("interfaces").NodeList;
 const Observable = @import("interfaces").Observable;
@@ -150,6 +150,7 @@ pub const XMLDocument = struct {
             "elementFromPoint",
             "elementsFromPoint",
             "caretPositionFromPoint",
+            "execCommand",
             "measureElement",
             "measureText",
             "exitFullscreen",
@@ -161,7 +162,6 @@ pub const XMLDocument = struct {
             "write",
             "writeln",
             "hasFocus",
-            "execCommand",
             "queryCommandEnabled",
             "queryCommandIndeterm",
             "queryCommandState",

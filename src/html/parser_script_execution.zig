@@ -131,6 +131,11 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
 
     const script_element = ctx.getDomElement(script_tree_node) orelse return;
 
+    // Trusted Types 4.1.2.6: "Set script's script text value to its child
+    // text content" - before preparing it, for an HTML script and (as the
+    // spec asks of implementations) an SVG one.
+    dom.script_elements.setScriptTextToChildTextContent(ctx.allocator, script_element) catch {};
+
     if (isSvgScript(script_tree_node)) {
         script_execution.processSvgScriptElement(ctx.allocator, script_element);
         return;

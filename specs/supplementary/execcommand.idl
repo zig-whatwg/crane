@@ -1,0 +1,15 @@
+// execCommand as the editing spec declares it:
+// https://w3c.github.io/editing/docs/execCommand/#execcommand()
+//
+//   partial interface Document {
+//     [CEReactions] boolean execCommand(DOMString commandId, optional boolean showUI = false,
+//                                       optional (TrustedHTML or DOMString) value = "");
+//   };
+//
+// webref's html.idl keeps `optional DOMString value = ""`, so a TrustedHTML
+// would reach the insertHTML command stringified and Trusted Types could not
+// tell it from a string. src/webidl/codegen/member_overrides.zig names this
+// file as the declaration that replaces html.idl's.
+partial interface Document {
+  [CEReactions] boolean execCommand(DOMString commandId, optional boolean showUI = false, optional (TrustedHTML or DOMString) value = "");
+};

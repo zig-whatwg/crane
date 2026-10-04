@@ -1,0 +1,5 @@
+// The file member_overrides.zig names for an operation: its execCommand
+// replaces html.idl's.
+partial interface Document {
+  [CEReactions] boolean execCommand(DOMString commandId, optional boolean showUI = false, optional (TrustedHTML or DOMString) value = "");
+};

@@ -1,0 +1,4 @@
+// Restates Thing.run, unlisted: codegen stops.
+partial interface Thing {
+  undefined run(long what);
+};

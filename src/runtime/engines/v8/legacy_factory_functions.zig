@@ -157,9 +157,9 @@ fn construct(comptime kind: Kind, isolate: *v8.Isolate, context: *v8.Context, in
             const audio = try createElement(document, "audio");
             errdefer audio.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(audio));
             // Step 3: set an attribute value using "preload" and "auto".
-            try interfaces.Element.call_setAttribute(audio, runtime.DOMString.initInterned("preload"), runtime.DOMString.initInterned("auto"));
+            try interfaces.Element.call_setAttribute(audio, runtime.DOMString.initInterned("preload"), .{ .domstring = runtime.DOMString.initInterned("auto") });
             // Step 4: if src is given, set an attribute value using "src".
-            if (src) |s| try interfaces.Element.call_setAttribute(audio, runtime.DOMString.initInterned("src"), s);
+            if (src) |s| try interfaces.Element.call_setAttribute(audio, runtime.DOMString.initInterned("src"), .{ .domstring = s });
             return audio;
         },
         .option => {
@@ -184,10 +184,10 @@ fn construct(comptime kind: Kind, isolate: *v8.Isolate, context: *v8.Context, in
                 }
             }
             // Step 4: if value is given, set an attribute value using "value".
-            if (value) |v| try interfaces.Element.call_setAttribute(option, runtime.DOMString.initInterned("value"), v);
+            if (value) |v| try interfaces.Element.call_setAttribute(option, runtime.DOMString.initInterned("value"), .{ .domstring = v });
             // Step 5: if defaultSelected is true, set an attribute value using
             // "selected" and the empty string.
-            if (default_selected) try interfaces.Element.call_setAttribute(option, runtime.DOMString.initInterned("selected"), runtime.DOMString.initEmpty());
+            if (default_selected) try interfaces.Element.call_setAttribute(option, runtime.DOMString.initInterned("selected"), .{ .domstring = runtime.DOMString.initEmpty() });
             // Step 6: set selectedness to `selected` - "even if defaultSelected
             // is true". A clean option's selectedness follows the `selected`
             // attribute, which step 5 has just made equal to defaultSelected,
@@ -213,7 +213,7 @@ fn setNumberAttribute(allocator: std.mem.Allocator, element: *runtime.Instance, 
     const digits = std.fmt.bufPrint(&buffer, "{d}", .{number}) catch unreachable;
     var value = try runtime.DOMString.initDupe(allocator, digits);
     defer value.deinit(allocator);
-    try interfaces.Element.call_setAttribute(element, runtime.DOMString.initInterned(name), value);
+    try interfaces.Element.call_setAttribute(element, runtime.DOMString.initInterned(name), .{ .domstring = value });
 }
 
 fn optionalUnsignedLong(context: *v8.Context, value: ?*v8.Value) !?u32 {

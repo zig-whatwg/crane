@@ -107,15 +107,15 @@ pub const PerformanceObserverEntryList = struct {
         }
     }
 
-    pub fn call_getEntries(instance: *runtime.Instance) anyerror!PerformanceEntryList {
+    pub fn call_getEntries(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try PerformanceObserverEntryListImpl.call_getEntries(instance);
     }
 
-    pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": DOMString) anyerror!PerformanceEntryList {
+    pub fn call_getEntriesByType(instance: *runtime.Instance, @"type": DOMString) anyerror!runtime.JSValue {
         return try PerformanceObserverEntryListImpl.call_getEntriesByType(instance, @"type");
     }
 
-    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!PerformanceEntryList {
+    pub fn call_getEntriesByName(instance: *runtime.Instance, name: DOMString, @"type": webidl.Opt(DOMString)) anyerror!runtime.JSValue {
         return try PerformanceObserverEntryListImpl.call_getEntriesByName(instance, name, @"type");
     }
 };

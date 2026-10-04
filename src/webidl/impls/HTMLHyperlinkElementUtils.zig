@@ -103,7 +103,7 @@ fn updateComponent(
     // "Update href": set the href content attribute to the serialized url.
     const serialized = try interfaces.URL.get_href(url);
     defer url.ctx.allocator.free(serialized);
-    try ElementImpl.call_setAttribute(element, runtime.DOMString.initInterned("href"), runtime.DOMString.initInterned(serialized));
+    try interfaces.Element.call_setAttribute(element, runtime.DOMString.initInterned("href"), .{ .domstring = runtime.DOMString.initInterned(serialized) });
 }
 
 // =============================================================================
@@ -179,7 +179,7 @@ pub fn get_hash(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// Setter for href: "set this's href content attribute's value to the given
 /// value."
 pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("href"), runtime.DOMString.initInterned(value));
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("href"), .{ .domstring = runtime.DOMString.initInterned(value) });
 }
 
 /// Setter for protocol: basic URL parse the value followed by ":" with the

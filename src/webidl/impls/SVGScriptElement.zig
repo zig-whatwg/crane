@@ -77,6 +77,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     if (instance.stateAs(State)) |state| {
         if (state.own._internal) |internal| {
+            internal.flags.script_text.deinit();
             internal.allocator.destroy(internal);
             state.own._internal = null;
         }
