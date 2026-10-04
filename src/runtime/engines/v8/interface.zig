@@ -1256,6 +1256,24 @@ pub fn freeArgument(comptime T: type, allocator: std.mem.Allocator, arg: T) void
     releaseAnyArgument(T, arg);
 }
 
+/// The private key marking a function as an interface object
+/// `materializeInterfaceObject` has set up in its realm.
+const materialized_interface_object_key = "crane:interface-object";
+
+/// Whether `constructor` is an interface object already set up: marked by
+/// `markMaterializedInterfaceObject`. Needs an entered context.
+fn isMaterializedInterfaceObject(constructor: *v8.Function) bool {
+    const marker = v8.v8_Object_GetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len) orelse return false;
+    v8.v8_Value_Dispose(marker);
+    return true;
+}
+
+/// Mark `constructor` as set up - a private property, invisible to script,
+/// whose value is the function itself (an edge to itself, nothing kept).
+fn markMaterializedInterfaceObject(constructor: *v8.Function) void {
+    v8.v8_Object_SetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len, @ptrCast(constructor));
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -1650,6 +1668,35 @@ pub fn V8Interface(comptime Interface: type) type {
             };
             const constructor = v8.v8_FunctionTemplate_GetFunction(template, context) orelse return null;
 
+            // Set up once per realm. V8 instantiates a template once per
+            // context, so a second call - an inheriting interface
+            // materializing this one as its parent, then this one's own
+            // global property or lazy getter - is handed the object already
+            // made, and finds it marked.
+            if (isMaterializedInterfaceObject(constructor)) return constructor;
+            markMaterializedInterfaceObject(constructor);
+
+            // WebIDL 3.7.1, create an interface object, steps 2-4: "If I
+            // inherits from another interface, let constructorProto be the
+            // interface object of that inherited interface in realm;
+            // otherwise %Function.prototype%" - and F's [[Prototype]] is
+            // constructorProto. V8's Inherit() links only the prototype
+            // objects (api-natives.cc InstantiateFunction), so the interface
+            // object is linked here, as Blink's V8PerContextData::
+            // ConstructorForTypeSlowCase builds the parent's interface object
+            // first and creates the child's over it. Every path that makes
+            // an interface object comes through here - a snapshot-restored
+            // page's registerGlobalFast, a frame's lazy getter, a worker's
+            // installForScope - and setupConstructorInheritance ran on none
+            // of them: Object.getPrototypeOf(IDBRequest) was
+            // %Function.prototype%, for 616 interfaces of a window.
+            if (comptime InheritedInterface) |Parent| {
+                if (V8Interface(Parent).materializeInterfaceObject(isolate, context, Parent.Meta.name)) |parent_object| {
+                    defer v8.v8_Function_Dispose(parent_object);
+                    _ = v8.v8_Object_SetPrototypeV2(@ptrCast(constructor), context, @ptrCast(parent_object));
+                }
+            }
+
             // NOTE: V8 LIMITATION - Constructor Property Enumeration Order
             //
             // Per WebIDL spec, interface constructors should not have legacy "arguments"
@@ -1742,6 +1789,25 @@ pub fn V8Interface(comptime Interface: type) type {
 
             return constructor;
         }
+
+        /// The interface this one inherits from - the parent whose template
+        /// createTemplate Inherit()s - or null.
+        const InheritedInterface: ?type = blk: {
+            if (@hasDecl(Meta, "ParentInterface")) {
+                const Parent = Meta.ParentInterface;
+                if (@typeInfo(Parent) == .@"struct" and @hasDecl(Parent, "Meta")) break :blk Parent;
+                break :blk null;
+            }
+            if (@typeInfo(@TypeOf(Meta.BaseType)) == .optional) {
+                if (Meta.BaseType) |Base| {
+                    const base_info = @typeInfo(Base);
+                    if (base_info == .pointer and @typeInfo(base_info.pointer.child) == .@"struct" and @hasDecl(base_info.pointer.child, "Meta")) {
+                        break :blk base_info.pointer.child;
+                    }
+                }
+            }
+            break :blk null;
+        };
 
         /// Constants on `target`, the interface object: writable=false,
         /// enumerable=true, configurable=false (WebIDL §3.7.2).
