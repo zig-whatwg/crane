@@ -90,6 +90,28 @@ pub const Task = struct {
     /// Without it, whatever a task carries leaks whenever the page ends before
     /// the loop's next turn - a message posted in the last task, say.
     drop: ?*const fn (context: ?*anyopaque) void = null,
+
+    /// HTML 8.1.7.1: the task's document, or null. A Document - this module
+    /// cannot name runtime.Instance - BORROWED: the task does not keep it.
+    /// "A task is runnable if its document is either null or fully active":
+    /// a window event loop drops a task whose document is not, running its
+    /// `drop` instead (src/browser/event_loop.zig), so a task that sets one
+    /// MUST have a `drop` that frees its context. A worker's tasks have no
+    /// document and are always runnable.
+    ///
+    /// A global task on a Window may name the Window instead: its associated
+    /// Document when the task runs is then the task's document. Stated
+    /// deviation: HTML's "queue a global task" fixes the document when the
+    /// task is queued, so a window reused for a new document (the initial
+    /// about:blank replaced) would drop it; browsers keep such tasks with
+    /// the window (Blink posts them to the frame's task runner), and
+    /// webmessaging/without-ports/018.html expects the message delivered.
+    document: ?*anyopaque = null,
+
+    /// `document`'s slab generation when the task was queued
+    /// (runtime.SlabAllocator.generationOf): the document may be freed, and
+    /// its slot reused, while the task waits.
+    document_generation: u64 = 0,
 };
 
 /// Event Loop Interface

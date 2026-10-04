@@ -34,6 +34,7 @@ src/dom/crypto_keys.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/cssom.zig rule_lists 1 TL I/engine decl:aee1b21ecd071830
 src/dom/cssom.zig rule_objects 1 TL I/engine decl:2ff910def65b901b
 src/dom/cssom.zig sheets 1 TL I/engine decl:d5da0433784f149e
+src/dom/document_activity.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/document_browsing_context.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/document_fetches.zig cancelers 1 G H decl:b261b480b9e2e550
 src/dom/document_lifecycle.zig implementation 1 G H decl:9c737e7125e9c3d4
@@ -57,6 +58,8 @@ src/dom/form_submission.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/global_settings.zig installed 1 G H decl:94cef2ba5a7c385b
 src/dom/global_settings.zig test_owned 1 G X decl:e044c0ca53b0050b
 src/dom/history_traversal.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/idle_periods.zig deadlines 1 G P-res decl:f4400852080f8212
+src/dom/idle_periods.zig loop 1 G P-res decl:1bb591d6c33253d3
 src/dom/instance_bridge.zig guard 1 G I/engine decl:a60e95beda8aa36b
 src/dom/instance_bridge.zig initialized 1 G I/engine decl:4b877655cb3bb361
 src/dom/instance_bridge.zig instance_to_nodebase 1 G I/engine decl:80a0adf330dcd794

@@ -44,9 +44,9 @@ const StubUIBackend = html_core.window.StubUIBackend;
 const AnimationFrameScheduler = html_core.window.AnimationFrameScheduler;
 const StubFrameTimingBackend = html_core.window.StubFrameTimingBackend;
 
-// Event loop types for requestIdleCallback
-const event_loop = html_core.event_loop;
-const IdleCallbackManager = event_loop.IdleCallbackManager;
+// requestIdleCallback's idle periods: the event loop's and IdleDeadline's
+// halves (src/dom/idle_periods.zig).
+const idle_periods = @import("dom").idle_periods;
 
 // Web Storage types for localStorage/sessionStorage
 const web_storage = html_core.web_storage;
@@ -170,9 +170,9 @@ pub const InternalState = struct {
     screen: ?*runtime.Instance = null,
     visual_viewport: ?*runtime.Instance = null,
 
-    /// Idle callback manager for requestIdleCallback/cancelIdleCallback
-    /// Spec: https://w3c.github.io/requestidlecallback/
-    idle_callback_manager: ?*IdleCallbackManager = null,
+    /// requestIdleCallback's lists and identifier.
+    /// Spec: https://w3c.github.io/requestidlecallback/#window_extensions
+    idle: IdleCallbacks = .{},
 
     /// Storage instances (lazily created)
     /// HTML Standard § 12.2.2 (sessionStorage), § 12.2.3 (localStorage)
@@ -282,11 +282,12 @@ pub const InternalState = struct {
             scheduler.deinit();
         }
 
-        // Clean up idle callback manager if created
-        if (self.idle_callback_manager) |manager| {
-            manager.deinit();
-            self.allocator.destroy(manager);
-        }
+        // The idle callbacks normally ended with the window's document
+        // (endIdleCallbacks, an unloading document cleanup step, which also
+        // cancels their timeouts while the event loop lives). Whatever is
+        // left is released here; a timeout's record cannot be: its timer is
+        // on a loop that may already be gone.
+        self.idle.releaseCallbacks(self.allocator);
 
         // Clean up storage backends
         if (self.local_storage_backend) |storage_backend| {
@@ -418,6 +419,9 @@ fn inheritsCreatorOrigin(url: []const u8) bool {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
+    // "Destroy a document" and "unload a document" end the window's idle
+    // callbacks and their timeouts (an unloading document cleanup step).
+    @import("dom").unloading_cleanup.install(&endIdleCallbacks);
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
     // A frame's host binds the Window to the global its realm made here.
@@ -1903,14 +1907,24 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     };
 
     // Step 8: queue a global task on the posted message task source given
-    // targetWindow.
+    // targetWindow - a task whose document is targetWindow's associated
+    // Document ("queue a global task"): if that document is not fully active
+    // when the task would run - its frame removed - the message is never
+    // delivered. The task names the window, so the document asked about is
+    // the one the window shows then (runtime.EventLoopTask.document).
     const loop = instance.ctx.getOptionalEventLoop() orelse {
         // No loop to queue on (a context built for tests): the message is
         // still owed, so deliver it now rather than lose it.
         runPostedMessage(posted);
         return;
     };
-    loop.queueTask(.{ .callback = &runPostedMessage, .context = posted, .drop = &dropPostedMessage });
+    loop.queueTask(.{
+        .callback = &runPostedMessage,
+        .context = posted,
+        .drop = &dropPostedMessage,
+        .document = instance,
+        .document_generation = runtime.SlabAllocator.generationOf(instance),
+    });
 }
 
 /// Operation: postMessage(message, options)
@@ -2331,58 +2345,352 @@ pub fn call_focus(instance: *runtime.Instance) anyerror!void {
 
 /// Operation: requestIdleCallback
 /// Spec: https://w3c.github.io/requestidlecallback/#the-requestidlecallback-method
-/// Queues a callback to be executed during browser idle periods.
 pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks.IdleRequestCallback, options: webidl.Opt(dictionaries.IdleRequestOptions)) anyerror!u32 {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    // The binding hands the callback over: take it before anything can fail.
+    const function = engine.takeCallbackFunction(@ptrCast(callback));
+    // 1. "Let window be this Window object."
+    const internal = getInternal(instance) orelse {
+        function.release();
+        return error.InvalidStateError;
+    };
+    const idle = &internal.idle;
+    // 2-3. "Increment the window's idle callback identifier by one." "Let
+    // handle be the current value of window's idle callback identifier."
+    idle.identifier +%= 1;
+    const handle = idle.identifier;
 
-    // Check if window is closed
-    if (internal.closed) {
-        return 0; // Return 0 for closed window
+    // A window whose document is gone has no idle periods (its tasks are
+    // not runnable) and no timers: the callback can never run, so it is let
+    // go now rather than kept for the window's life.
+    if (idle.ended) {
+        function.release();
+        return handle;
     }
 
-    // Lazily create the idle callback manager
-    if (internal.idle_callback_manager == null) {
-        const manager = try internal.allocator.create(IdleCallbackManager);
-        manager.* = IdleCallbackManager.init(internal.allocator);
-        internal.idle_callback_manager = manager;
-    }
+    // 4. "Push callback to the end of window's list of idle request
+    // callbacks, associated with handle."
+    idle.requests.append(internal.allocator, .{ .handle = handle, .callback = function }) catch |err| {
+        function.release();
+        return err;
+    };
+    idle.askForIdlePeriod(instance.ctx);
 
-    const manager = internal.idle_callback_manager.?;
-
-    // Get timeout from options (if specified)
-    const timeout_ms: ?i64 = if (options.wasPassed()) blk: {
-        const opts = options.getValue();
-        if (opts.timeout) |timeout| {
-            break :blk @intCast(timeout);
+    // 5-6. "Return handle and then continue running this algorithm
+    // asynchronously": "If the timeout property is present in options and
+    // has a positive value", wait for it (a timer), then queue "invoke idle
+    // callback timeout" (IdleTimeout.fired). Without a timer - a context
+    // built for tests - there is no timeout.
+    const timeout_ms: u32 = if (options.was_passed) (options.value.timeout orelse 0) else 0;
+    if (timeout_ms > 0) {
+        if (instance.ctx.getOptionalTimer()) |timer| {
+            const entry = &idle.requests.items[idle.requests.items.len - 1];
+            entry.timeout = IdleTimeout.arm(internal.allocator, instance.ctx, timer, handle, timeout_ms);
         }
-        break :blk null;
-    } else null;
-
-    // Get current time (use std.time for now)
-    const current_time = clock.monotonicMillis();
-
-    // Register the idle callback
-    // Note: The callback is stored but invocation requires event loop integration.
-    // In a full implementation, the event loop would invoke pending idle callbacks
-    // during idle periods (when no tasks are runnable).
-    // For now, we store the callback and return a valid handle.
-    const handle = try manager.requestIdleCallback(
-        // We need a wrapper that adapts the JS callback to our internal signature
-        // For now, use a placeholder that would be replaced by proper V8 integration
-        struct {
-            fn wrapper(ctx: ?*anyopaque, deadline: *event_loop.IdleDeadline) void {
-                _ = ctx;
-                _ = deadline;
-                // In full implementation: invoke the JS callback with the
-                // deadline (engine.invokeCallbackFunction).
-            }
-        }.wrapper,
-        @ptrCast(@constCast(&callback)), // Store callback reference
-        timeout_ms,
-        current_time,
-    );
-
+    }
     return handle;
+}
+
+/// One idle callback in a window's lists.
+const IdleCallbackEntry = struct {
+    /// The handle requestIdleCallback returned.
+    handle: u32,
+    /// OWNED: released once it has run, been cancelled, or its window's
+    /// document has gone.
+    callback: engine.CallbackFunction,
+    /// Its timeout, while the timer is armed or its task queued.
+    timeout: ?*IdleTimeout = null,
+
+    /// Let the callback go and cancel its timeout. The entry is out of its
+    /// list already.
+    fn end(self: IdleCallbackEntry) void {
+        if (self.timeout) |timeout| timeout.cancel();
+        self.callback.release();
+    }
+};
+
+/// A Window's requestIdleCallback state ("Window interface extensions").
+const IdleCallbacks = struct {
+    /// "A list of idle request callbacks", in posting order.
+    requests: std.ArrayListUnmanaged(IdleCallbackEntry) = .empty,
+    /// "A list of runnable idle callbacks", in posting order.
+    runnable: std.ArrayListUnmanaged(IdleCallbackEntry) = .empty,
+    /// "An idle callback identifier, which is a number which MUST initially
+    /// be zero."
+    identifier: u32 = 0,
+    /// The window has asked its event loop for an idle period that has not
+    /// started yet.
+    period_requested: bool = false,
+    /// The window's document was unloaded or destroyed: its tasks are not
+    /// runnable again (Crane keeps no bfcache), so nothing more is kept.
+    ended: bool = false,
+
+    /// Ask the event loop for an idle period, once until it starts.
+    fn askForIdlePeriod(self: *IdleCallbacks, realm: runtime.Context) void {
+        if (self.period_requested or self.ended) return;
+        self.period_requested = true;
+        idle_periods.requestIdlePeriod(realm, &startIdlePeriod);
+    }
+
+    /// The entry with `handle` in either list, removed from it.
+    fn remove(self: *IdleCallbacks, handle: u32) ?IdleCallbackEntry {
+        for (self.requests.items, 0..) |entry, i| {
+            if (entry.handle == handle) return self.requests.orderedRemove(i);
+        }
+        for (self.runnable.items, 0..) |entry, i| {
+            if (entry.handle == handle) return self.runnable.orderedRemove(i);
+        }
+        return null;
+    }
+
+    /// Every callback in both lists let go, their timeouts cancelled.
+    fn end(self: *IdleCallbacks, allocator: Allocator) void {
+        // Taken first: a callback's release runs no script, but nothing here
+        // may iterate a list it could be changing.
+        var requests = self.requests;
+        var runnable = self.runnable;
+        self.requests = .empty;
+        self.runnable = .empty;
+        for (requests.items) |entry| entry.end();
+        for (runnable.items) |entry| entry.end();
+        requests.deinit(allocator);
+        runnable.deinit(allocator);
+    }
+
+    /// The Window's own end: callbacks released, the lists freed. A timeout
+    /// left here is not cancelled (see InternalState.deinit).
+    fn releaseCallbacks(self: *IdleCallbacks, allocator: Allocator) void {
+        for (self.requests.items) |entry| entry.callback.release();
+        for (self.runnable.items) |entry| entry.callback.release();
+        self.requests.deinit(allocator);
+        self.runnable.deinit(allocator);
+        self.requests = .empty;
+        self.runnable = .empty;
+    }
+};
+
+/// The window of `realm`, and its idle callback state, while the realm can
+/// still run script.
+fn idleCallbacksOf(realm: runtime.Context) ?struct { window: *runtime.Instance, internal: *InternalState } {
+    if (!realm.hasEngine()) return null;
+    const window = windowOfRealm(realm) orelse return null;
+    const internal = getInternal(window) orelse return null;
+    return .{ .window = window, .internal = internal };
+}
+
+/// "Start an idle period" (steps 2-6), as the window's event loop runs it
+/// for each window that asked (dom.idle_periods).
+fn startIdlePeriod(realm: runtime.Context, period: idle_periods.Period) void {
+    const found = idleCallbacksOf(realm) orelse return;
+    const internal = found.internal;
+    const idle = &internal.idle;
+    idle.period_requested = false;
+    if (idle.ended) return;
+    // Step 1, "Optionally, if the user agent determines the idle period
+    // should be delayed, return": the event loop decided that already.
+    // Steps 2-5: "Append all entries from pending_list into run_list
+    // preserving order", then "Clear pending_list".
+    idle.runnable.appendSlice(internal.allocator, idle.requests.items) catch {
+        // Kept where they are, for the next idle period.
+        idle.askForIdlePeriod(realm);
+        return;
+    };
+    idle.requests.clearRetainingCapacity();
+    // Step 6: "Queue a task on the queue associated with the idle-task task
+    // source, which performs the steps defined in the invoke idle callbacks
+    // algorithm with window and getDeadline as parameters."
+    if (idle.runnable.items.len > 0) InvokeIdleCallbacks.queue(internal.allocator, realm, period);
+}
+
+/// The task "invoke idle callbacks algorithm" runs in, on the idle-task task
+/// source: the window's realm and its idle period (getDeadline).
+const InvokeIdleCallbacks = struct {
+    allocator: Allocator,
+    realm: runtime.Context,
+    period: idle_periods.Period,
+
+    fn queue(allocator: Allocator, realm: runtime.Context, period: idle_periods.Period) void {
+        const task = allocator.create(InvokeIdleCallbacks) catch {
+            if (idleCallbacksOf(realm)) |found| found.internal.idle.askForIdlePeriod(realm);
+            return;
+        };
+        task.* = .{ .allocator = allocator, .realm = realm, .period = period };
+        task.queueSelf();
+    }
+
+    fn queueSelf(self: *InvokeIdleCallbacks) void {
+        const loop = self.realm.getOptionalEventLoop() orelse {
+            // No loop (a context built for tests): no idle periods either.
+            self.allocator.destroy(self);
+            return;
+        };
+        loop.queueTask(.{ .callback = &run, .context = self, .drop = &drop });
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *InvokeIdleCallbacks = @ptrCast(@alignCast(context orelse return));
+        self.allocator.destroy(self);
+    }
+
+    /// Spec: https://w3c.github.io/requestidlecallback/#invoke-idle-callbacks-algorithm
+    fn run(context: ?*anyopaque) void {
+        const self: *InvokeIdleCallbacks = @ptrCast(@alignCast(context orelse return));
+        const realm = self.realm;
+        const found = idleCallbacksOf(realm) orelse return drop(self);
+        const idle = &found.internal.idle;
+        if (idle.ended) return drop(self);
+
+        // Step 1, "If the user-agent believes it should end the idle period
+        // early due to newly scheduled high-priority work, return": the
+        // deadline below already ends it at the next timer.
+        // 2. "Let now be the current time."
+        const now: i64 = @intCast(clock.monotonicNanos());
+        // 3. "If now is less than the result of calling getDeadline and the
+        // window's list of runnable idle callbacks is not empty:"
+        if (now < idle_periods.deadline(realm, self.period) and idle.runnable.items.len > 0) {
+            // 3.1. "Pop the top callback from window's list of runnable idle
+            // callbacks." Run in an idle period, its timeout no longer races.
+            const entry = idle.runnable.orderedRemove(0);
+            if (entry.timeout) |timeout| timeout.cancel();
+            // 3.2-3.3. "Let deadlineArg be a new IdleDeadline whose get
+            // deadline time algorithm is getDeadline." "Invoke callback with
+            // « deadlineArg » and "report"."
+            invokeIdleCallback(realm, entry.callback, .{ .period = self.period });
+            entry.callback.release();
+            // 3.4. "If window's list of runnable idle callbacks is not
+            // empty, queue a task which performs the steps in the invoke
+            // idle callbacks algorithm with getDeadline and window as
+            // parameters and return from this algorithm." The callback may
+            // have ended the window (a frame removing itself).
+            const after = idleCallbacksOf(realm) orelse return drop(self);
+            if (!after.internal.idle.ended and after.internal.idle.runnable.items.len > 0) return self.queueSelf();
+            return drop(self);
+        }
+        // The idle period is over with runnable callbacks left: they run in
+        // the next one.
+        if (idle.runnable.items.len > 0) idle.askForIdlePeriod(realm);
+        drop(self);
+    }
+};
+
+/// A callback's timeout: "Wait for timeout milliseconds", then "Queue a task
+/// on the queue associated with the idle-task task source, which performs
+/// the invoke idle callback timeout algorithm, passing handle and window".
+///
+/// Owned by its timer while armed; by the task once the timer has fired; and
+/// freed by whichever ends it - `cancel` when the timer is cleared before it
+/// fires, else the task, which finds its callback gone or runs it.
+const IdleTimeout = struct {
+    allocator: Allocator,
+    realm: runtime.Context,
+    handle: u32,
+    timer: runtime.TimerInterface,
+    /// The armed timer; 0 once it has fired.
+    id: runtime.TimerId = 0,
+
+    fn arm(allocator: Allocator, realm: runtime.Context, timer: runtime.TimerInterface, handle: u32, timeout_ms: u32) ?*IdleTimeout {
+        const self = allocator.create(IdleTimeout) catch return null;
+        self.* = .{ .allocator = allocator, .realm = realm, .handle = handle, .timer = timer };
+        self.id = timer.setTimeout(timeout_ms, &fired, self);
+        if (self.id == 0) {
+            allocator.destroy(self);
+            return null;
+        }
+        return self;
+    }
+
+    /// Its callback ran in an idle period, was cancelled, or its window
+    /// ended: "the idle and timeout callbacks are raced and cancel each
+    /// other". A timer that has already fired leaves this to its task.
+    fn cancel(self: *IdleTimeout) void {
+        if (self.id != 0 and self.timer.clearTimeout(self.id)) self.allocator.destroy(self);
+    }
+
+    /// The timer fired (the event loop's timers, no realm entered): queue
+    /// the task.
+    fn fired(data: ?*anyopaque) void {
+        const self: *IdleTimeout = @ptrCast(@alignCast(data orelse return));
+        self.id = 0;
+        if (!self.realm.hasEngine()) return self.allocator.destroy(self);
+        const loop = self.realm.getOptionalEventLoop() orelse return self.allocator.destroy(self);
+        loop.queueTask(.{ .callback = &run, .context = self, .drop = &drop });
+    }
+
+    fn drop(context: ?*anyopaque) void {
+        const self: *IdleTimeout = @ptrCast(@alignCast(context orelse return));
+        self.allocator.destroy(self);
+    }
+
+    /// Spec: https://w3c.github.io/requestidlecallback/#invoke-idle-callback-timeout-algorithm
+    fn run(context: ?*anyopaque) void {
+        const self: *IdleTimeout = @ptrCast(@alignCast(context orelse return));
+        defer self.allocator.destroy(self);
+        const found = idleCallbacksOf(self.realm) orelse return;
+        // 1. "Let callback be the result of finding the entry in window's
+        // list of idle request callbacks or the list of runnable idle
+        // callbacks that is associated with the value given by the handle".
+        // 2.1. "Remove callback from both lists."
+        const entry = found.internal.idle.remove(self.handle) orelse return;
+        // 2.2-2.3. "Let now be the current time." "Let deadlineArg be a new
+        // IdleDeadline. Set the get deadline time algorithm associated with
+        // deadlineArg to an algorithm returning now and set the timeout
+        // associated with deadlineArg to true."
+        const now: i64 = @intCast(clock.monotonicNanos());
+        // 2.4. "Invoke callback with « deadlineArg » and "report"."
+        invokeIdleCallback(self.realm, entry.callback, .{ .timed_out = now });
+        entry.callback.release();
+    }
+};
+
+/// WebIDL "invoke" an IdleRequestCallback with a new IdleDeadline in
+/// `realm`, reporting what it throws. `callback` stays the caller's.
+fn invokeIdleCallback(realm: runtime.Context, callback: engine.CallbackFunction, deadline: idle_periods.Deadline) void {
+    const deadline_arg = idle_periods.createDeadline(realm, deadline) catch |err| {
+        log.debug("an idle callback was not invoked: {}", .{err});
+        return;
+    };
+    // Wrapped, the IdleDeadline is its wrapper's; never wrapped, it is still
+    // ours to free.
+    const generation = runtime.SlabAllocator.generationOf(deadline_arg);
+    defer runtime.Instance.releaseIfUnwrapped(deadline_arg, generation);
+    const completion = engine.invokeCallbackFunction(realm, &callback, .undefined, &.{.{ .instance = deadline_arg }}, .{
+        .report = .{ .report = reportIdleCallbackException, .host = realm },
+    }) catch |err| {
+        log.debug("an idle callback was not invoked: {}", .{err});
+        return;
+    };
+    switch (completion) {
+        inline else => |value| value.release(),
+    }
+}
+
+/// HTML "report an exception" for the global of the realm the engine names -
+/// the callback's associated realm - or else the idle callback's window's
+/// (`host`).
+fn reportIdleCallbackException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+    const window_realm: runtime.Context = @ptrCast(@alignCast(host orelse return));
+    const realm = info.realm orelse window_realm;
+    const record = realm.getRealm() orelse return;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
+}
+
+/// Window's unloading document cleanup step (dom.unloading_cleanup): the
+/// document of `environment`'s window was unloaded or destroyed, so its
+/// idle callbacks never run - their tasks are not runnable, and Crane keeps
+/// no bfcache to make them so again. They are let go and their timeouts
+/// cancelled now, while the event loop that holds the timers lives.
+fn endIdleCallbacks(environment: runtime.Context) void {
+    const found = idleCallbacksOf(environment) orelse return;
+    const idle = &found.internal.idle;
+    idle.ended = true;
+    idle.end(found.internal.allocator);
 }
 
 /// Operation: close
@@ -2977,20 +3285,14 @@ pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: callbac
 
 /// Operation: cancelIdleCallback
 /// Spec: https://w3c.github.io/requestidlecallback/#the-cancelidlecallback-method
-/// Cancels a previously scheduled idle callback.
 pub fn call_cancelIdleCallback(instance: *runtime.Instance, handle: u32) anyerror!void {
+    // 1. "Let window be this Window object."
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Check if window is closed
-    if (internal.closed) {
-        return; // No-op for closed window
-    }
-
-    // If no idle callback manager exists, nothing to cancel
-    if (internal.idle_callback_manager) |manager| {
-        manager.cancelIdleCallback(handle);
-    }
-    // If manager doesn't exist, the callback was never registered - no-op
+    // 2-3. "Find the entry in either the window's list of idle request
+    // callbacks or list of runnable idle callbacks that is associated with
+    // the value handle." "If there is such an entry, remove it from both".
+    const entry = internal.idle.remove(handle) orelse return;
+    entry.end();
 }
 
 /// Operation: captureEvents

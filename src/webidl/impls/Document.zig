@@ -648,6 +648,50 @@ pub fn installHooks() void {
     });
     // html's script processing model reaches a document's script state.
     installScriptHooks();
+    // The event loop runs a task only while its document is fully active.
+    @import("dom").document_activity.install(.{ .fully_active = &isFullyActive });
+}
+
+/// dom.document_activity: whether a task's document is fully active - "the
+/// active document of a navigable navigable, and either navigable is a
+/// top-level traversable or navigable's container document is fully
+/// active". A document that was unloaded (not salvageable: Crane keeps no
+/// bfcache) or destroyed is no navigable's active document; nor is one whose
+/// window is no navigable's active window any more, or whose navigable shows
+/// another. Removing a frame discards its navigable and every one inside it
+/// (BrowsingContext.discard closes them all), so the container documents
+/// need no walk. A document with no window (createHTMLDocument, DOMParser)
+/// is not fully active.
+///
+/// A global task on a Window names the Window: its associated Document when
+/// the task runs is the one asked about (see runtime.EventLoopTask.document).
+///
+/// The navigable's own record, not `Window.document`: the event loop asks
+/// with no script running, and the getter's cross-origin check would answer
+/// for whichever realm happens to be current - a message to a cross-origin
+/// or sandboxed frame was dropped that way (the lesson "A frame's load event
+/// has exactly one owner": engine code must not use script's getters).
+fn isFullyActive(object: *runtime.Instance) bool {
+    if (object.stateAs(interfaces.Window.State) != null) {
+        const navigable = html_core.window.BrowsingContext.ofWindow(@ptrCast(object)) orelse return false;
+        if (navigable.is_closed) return false;
+        const active = navigable.active_document orelse return true;
+        return isActiveDocumentFullyActive(@ptrCast(@alignCast(active)));
+    }
+    const internal = getInternal(object) orelse return false;
+    if (internal.destroyed or !internal.salvageable) return false;
+    const window = internal.default_view orelse return false;
+    const navigable = html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    if (navigable.is_closed) return false;
+    const active = navigable.active_document orelse return true;
+    return active == @as(*anyopaque, @ptrCast(object));
+}
+
+/// A navigable's active document, as its own state says: neither unloaded nor
+/// destroyed.
+fn isActiveDocumentFullyActive(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    return !internal.destroyed and internal.salvageable;
 }
 
 /// Initialize instance (creates the instance)

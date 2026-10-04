@@ -292,6 +292,7 @@ const window_operations = runtime.WindowOperations{
 /// lives on (HTMLIFrameElement asks, through dom.window_documents).
 pub fn installHooks() void {
     @import("dom").window_documents.install(.{ .destroyed = clearWindowState });
+    @import("dom").idle_periods.installLoop(@import("event_loop.zig").EventLoop.idle_period_hooks);
 }
 
 /// A frame's document is being destroyed, and with it its window's map of
