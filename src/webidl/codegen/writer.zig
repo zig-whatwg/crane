@@ -4958,6 +4958,20 @@ test "every interface exposes its impl's installHooks, a no-op when the impl dec
     try testing.expect(std.mem.indexOf(u8, output, "if (comptime @hasDecl(impls.Node, \"installHooks\")) impls.Node.installHooks();") != null);
 }
 
+test "a [Serializable] interface publishes its impl's steps, looked up so a missing one is null" {
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeSerializableSteps(&buffer.writer, "DOMPoint", "    ");
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "    pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) anyerror!void {\n") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "return @import(\"impls\").DOMPoint.deserializationSteps(serialized, value, target_realm);") != null);
+    // StructuredDeserialize 22.3 then 24.4: a new instance in the target realm, then the steps.
+    try testing.expect(std.mem.indexOf(u8, output, "const value = try init(target_realm.allocator, target_realm);") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub const serializable_steps: ?runtime.SerializableSteps = if (has_serializable_steps) .{") != null);
+    // Looked up, never named outright: no impl, or no steps, is null.
+    try testing.expect(std.mem.indexOf(u8, output, "if (!@hasDecl(impls, \"DOMPoint\")) break :blk false;") != null);
+}
+
 test "a root's installHooks calls every member's, once, through a comptime loop" {
     var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
     defer buffer.deinit();
