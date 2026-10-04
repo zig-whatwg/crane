@@ -55,6 +55,9 @@ src/dom/form_controls.zig controls 1 G H decl:8cb894e10caeb9c7
 src/dom/form_controls.zig count 1 G H decl:3796f88280404836
 src/dom/form_controls.zig test_resets 1 G X decl:3796f88280404836
 src/dom/form_submission.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/geometry_storage.zig set_matrix 1 G P-res decl:27d81c4803be69bf
+src/dom/geometry_storage.zig set_point 1 G P-res decl:00a45f695f8d7800
+src/dom/geometry_storage.zig set_rect 1 G P-res decl:fa9748b3bb06b2c1
 src/dom/global_settings.zig installed 1 G H decl:94cef2ba5a7c385b
 src/dom/global_settings.zig test_owned 1 G X decl:e044c0ca53b0050b
 src/dom/history_traversal.zig implementation 1 G H decl:9c737e7125e9c3d4
