@@ -3506,8 +3506,7 @@ pub fn get_src(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// HTML "reflect": set the src content attribute - whose change steps
 /// (`iframeAttributeChangeSteps`) process the iframe attributes.
 pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
-    const ElementImpl = @import("Element.zig");
-    try ElementImpl.call_setAttribute(instance, runtime.DOMString.initInterned("src"), runtime.DOMString.initInterned(value));
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("src"), .{ .domstring = runtime.DOMString.initInterned(value) });
 }
 
 /// Getter for srcdoc

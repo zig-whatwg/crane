@@ -431,7 +431,7 @@ pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// value sets it.
 pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     if (value) |v| {
-        try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("crossorigin"), v);
+        try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("crossorigin"), .{ .domstring = v });
     } else {
         try interfaces.Element.call_removeAttribute(instance, runtime.DOMString.initInterned("crossorigin"));
     }
@@ -439,17 +439,17 @@ pub fn set_crossOrigin(instance: *runtime.Instance, value: ?runtime.DOMString) a
 
 /// Setter for as: sets the content attribute.
 pub fn set_as(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("as"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("as"), .{ .domstring = value });
 }
 
 /// Setter for referrerPolicy: sets the content attribute.
 pub fn set_referrerPolicy(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("referrerpolicy"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("referrerpolicy"), .{ .domstring = value });
 }
 
 /// Setter for fetchPriority: sets the content attribute.
 pub fn set_fetchPriority(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("fetchpriority"), value);
+    try interfaces.Element.call_setAttribute(instance, runtime.DOMString.initInterned("fetchpriority"), .{ .domstring = value });
 }
 
 /// Fetch's potential destinations: "fetch" and the destinations.

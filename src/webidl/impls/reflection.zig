@@ -110,7 +110,7 @@ fn getContentAttribute(instance: *runtime.Instance, comptime name: []const u8) !
 /// "Set the content attribute" with `value`: set an attribute value given
 /// the element, `name` and `value`. The DOM copies `value`.
 fn setContentAttribute(instance: *runtime.Instance, comptime name: []const u8, value: []const u8) !void {
-    try interfaces.Element.call_setAttributeNS(instance, null, DOMString.initInterned(name), DOMString.initInterned(value));
+    try interfaces.Element.call_setAttributeNS(instance, null, DOMString.initInterned(name), .{ .domstring = DOMString.initInterned(value) });
 }
 
 /// "Delete the content attribute".

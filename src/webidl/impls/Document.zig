@@ -2787,7 +2787,7 @@ fn applyCreateLink(document: *runtime.Instance, _: *InternalState, url: []const 
 
     // Step 5: Set href attribute
     // Use Element interface to set attribute
-    interfaces.Element.call_setAttribute(anchor, runtime.DOMString.initInterned("href"), runtime.DOMString.initInterned(url)) catch return false;
+    interfaces.Element.call_setAttribute(anchor, runtime.DOMString.initInterned("href"), .{ .domstring = runtime.DOMString.initInterned(url) }) catch return false;
 
     // Step 6: Surround selection with anchor
     RangeImpl.call_surroundContents(range, anchor) catch return false;

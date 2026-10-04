@@ -588,9 +588,9 @@ pub fn executeInsertImage(
     Element.call_setAttribute(
         img.?,
         runtime.DOMString.initInterned("src"),
-        runtime.DOMString.initFromSlice(allocator, src) catch {
+        .{ .domstring = runtime.DOMString.initFromSlice(allocator, src) catch {
             return .{ .success = false, .error_message = "Failed to create src string" };
-        },
+        } },
     ) catch {
         return .{ .success = false, .error_message = "Failed to set src attribute" };
     };
