@@ -10,3 +10,13 @@ interface HTMLScriptElement {
   [CEReactions] attribute boolean async;
   [CEReactions] attribute DOMString text;
 };
+
+[Exposed=Window]
+interface TrustedHTML {};
+
+[Exposed=Window]
+interface Document {
+  boolean hasFocus();
+  [CEReactions] boolean execCommand(DOMString commandId, optional boolean showUI = false, optional DOMString value = "");
+  boolean queryCommandEnabled(DOMString commandId);
+};

@@ -1,0 +1,6 @@
+// An operation a supplementary file restates without a member_overrides.zig
+// entry (tests/codegen/trusted_type_unions_test.zig).
+[Exposed=Window]
+interface Thing {
+  undefined run(DOMString what);
+};

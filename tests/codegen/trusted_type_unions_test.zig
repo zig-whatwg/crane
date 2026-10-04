@@ -139,6 +139,34 @@ test "a member member_overrides.zig lists is replaced by the supplementary decla
     try testing.expect(src_at < async_at and async_at < text_at);
 }
 
+test "an operation member_overrides.zig lists is replaced by the supplementary declaration, not overloaded" {
+    var out = try Generated.initSources(&.{ "tests/codegen/fixtures/member_overrides/webref", "tests/codegen/fixtures/member_overrides/supplementary" });
+    defer out.deinit();
+    const text = try out.read("interfaces/Document.zig");
+    defer testing.allocator.free(text);
+    try expectIn(text, "interfaces/Document.zig", "value: webidl.Opt(TrustedHTMLOrDOMString)) anyerror!bool");
+    try expectNotIn(text, "interfaces/Document.zig", "value: webidl.Opt(DOMString)");
+    // One operation, no overload set.
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, text, "pub fn call_execCommand("));
+    try expectNotIn(text, "interfaces/Document.zig", "call_execCommand__");
+    // The other operations stay as they were.
+    try expectIn(text, "interfaces/Document.zig", "pub fn call_hasFocus(");
+    try expectIn(text, "interfaces/Document.zig", "pub fn call_queryCommandEnabled(");
+}
+
+test "a supplementary operation restating one member_overrides.zig does not list stops codegen" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(root);
+    var cfg = codegen.config.CodegenConfig{ .allocator = testing.allocator, .dest_root = root };
+    defer cfg.deinit();
+    try testing.expectError(error.DuplicateMember, codegen.processSources(testing.allocator, &.{
+        "tests/codegen/fixtures/member_override_unlisted_operation/webref",
+        "tests/codegen/fixtures/member_override_unlisted_operation/supplementary",
+    }, &cfg));
+}
+
 test "a supplementary file restating a member member_overrides.zig does not list stops codegen" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();

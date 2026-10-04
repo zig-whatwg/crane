@@ -1,9 +1,10 @@
 //! Which members a supplementary IDL file replaces.
 //!
 //! An interface's partial definitions merge their members into it (ir.zig,
-//! "Merging"); an attribute declared twice for one interface is an error -
-//! codegen stops and names both - except where this table says a file
-//! replaces it. Each entry names the interface, the member, the file whose
+//! "Merging"); an attribute or a named operation a supplementary file
+//! declares again for one interface is an error - codegen stops and names
+//! both - except where this table says a file replaces it (an operation is
+//! then replaced, not given an overload). Each entry names the interface, the member, the file whose
 //! declaration wins, and why. The replaced declaration keeps its position
 //! among the members; the replacing one's type and extended attributes take
 //! its place.
@@ -27,9 +28,15 @@ const trusted_types_script = "Trusted Types 4.1.2 (https://w3c.github.io/trusted
     "(TrustedScriptURL or USVString); webref's trusted-types.idl omits that partial interface because it " ++
     "conflicts with html.idl's declarations, so specs/supplementary/trusted-types-script.idl restates it";
 
+const editing_exec_command = "The editing spec (https://w3c.github.io/editing/docs/execCommand/#execcommand()) declares " ++
+    "execCommand's value as (TrustedHTML or DOMString), so a TrustedHTML reaches Trusted Types' check for the " ++
+    "insertHTML command as itself; webref's html.idl keeps optional DOMString, so " ++
+    "specs/supplementary/execcommand.idl restates the editing spec's declaration";
+
 pub const table = [_]Override{
     .{ .interface = "HTMLScriptElement", .member = "src", .file = "trusted-types-script.idl", .reason = trusted_types_script },
     .{ .interface = "HTMLScriptElement", .member = "text", .file = "trusted-types-script.idl", .reason = trusted_types_script },
+    .{ .interface = "Document", .member = "execCommand", .file = "execcommand.idl", .reason = editing_exec_command },
 };
 
 /// The override for `interface`'s `member`, in `entries`.
@@ -50,4 +57,5 @@ test "the table names each replaced member once, with its file and reason" {
     }
     try std.testing.expectEqualStrings("trusted-types-script.idl", find(&table, "HTMLScriptElement", "text").?.file);
     try std.testing.expect(find(&table, "HTMLScriptElement", "async") == null);
+    try std.testing.expectEqualStrings("execcommand.idl", find(&table, "Document", "execCommand").?.file);
 }
