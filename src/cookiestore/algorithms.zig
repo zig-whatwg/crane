@@ -108,15 +108,21 @@ pub fn queryCookies(
     // Normalize name if provided
     const normalized_name = if (name) |n| normalizeCookieNameOrValue(n) else null;
 
-    // Retrieve cookies from jar (non-HTTP API, so HttpOnly filtered out)
-    var cookies = try jar.retrieve(.{
-        .host = url_host,
-        .path = url_path,
-        .is_http = false, // CookieStore API is non-HTTP
-        .is_secure = true, // Assume secure context (required by spec)
-        .same_site = .strict_or_less,
-        .name = normalized_name,
-    });
+    // Retrieve cookies from jar (non-HTTP API, so HttpOnly filtered out) -
+    // copies, owned once the jar is released (a worker's fetch can store on
+    // another thread meanwhile).
+    var cookies = blk: {
+        jar.lock();
+        defer jar.unlock();
+        break :blk try jar.retrieve(.{
+            .host = url_host,
+            .path = url_path,
+            .is_http = false, // CookieStore API is non-HTTP
+            .is_secure = true, // Assume secure context (required by spec)
+            .same_site = .strict_or_less,
+            .name = normalized_name,
+        });
+    };
     defer {
         for (cookies.items) |*c| c.deinit();
         cookies.deinit(allocator);
@@ -271,6 +277,13 @@ pub fn setCookieObserved(
         }
     }
 
+    // The check below and the store after it, under one hold of the jar: a
+    // worker's fetch can store on another thread between them otherwise.
+    // Released before the change is recorded for the observer.
+    var jar_held = true;
+    jar.lock();
+    defer if (jar_held) jar.unlock();
+
     // Whether this displaces an existing cookie has to be read before the
     // store, because storing an expired cookie removes the old one. A
     // host-only cookie's host is the URL's, which the store gives it.
@@ -291,6 +304,8 @@ pub fn setCookieObserved(
         .host = host,
         .http_only_allowed = false,
     });
+    jar_held = false;
+    jar.unlock();
     // Step 25: success, whatever the storage model made of it - an ignored
     // or unchanged cookie is no change to observe.
     if (result != .stored) return;
@@ -306,7 +321,7 @@ pub fn setCookieObserved(
 }
 
 /// Whether the jar already holds a cookie of the same identity
-/// (name, domain, path, partition key).
+/// (name, domain, path, partition key). Call with the jar locked.
 fn jarHolds(jar: *const CookieJar, cookie: Cookie) bool {
     for (jar.cookies.items) |existing| {
         if (existing.hasSameIdentity(cookie)) return true;

@@ -64,7 +64,14 @@ pub const RetrieveOptions = struct {
 
 /// Cookie Jar - manages a collection of cookies
 ///
-/// Single-threaded: the owner decides who may reach it.
+/// One jar serves every thread of a Browser - its window agent's and each
+/// worker's (docs/instances.md): a worker's fetch stores and retrieves cookies
+/// on the worker's thread. Whoever reaches it while another thread can - the
+/// entry points in http_integration.zig and algorithms.zig - holds `lock()`
+/// across its whole check-and-store or retrieve, and every read of `cookies`
+/// outside this file is under it. The methods themselves do not lock (they
+/// are what the lock holder calls); a single-threaded caller (a unit test)
+/// may call them unlocked.
 pub const CookieJar = struct {
     /// All cookies stored by a composite key
     cookies: std.ArrayListUnmanaged(Cookie),
@@ -74,6 +81,25 @@ pub const CookieJar = struct {
 
     /// Told of every change (see `ChangeHook`); null for none.
     on_change: ?ChangeHook = null,
+
+    /// Protects `cookies`, `pending` and `held` (and so every method here)
+    /// for whoever holds it through `lock`/`unlock`; never held across a
+    /// change hook - those wait in `pending` until `unlock`.
+    mutex: std.Io.Mutex = .init,
+
+    /// Whether the jar is locked: a change raised meanwhile waits in
+    /// `pending` for `unlock`, so a hook that reaches the jar again cannot
+    /// deadlock on it.
+    held: bool = false,
+
+    /// Changes raised while locked: each cookie OWNED (a clone), handed to
+    /// the hook by `unlock` after releasing the lock.
+    pending: std.ArrayListUnmanaged(PendingChange) = .empty,
+
+    const PendingChange = struct {
+        change_type: ChangeType,
+        cookie: Cookie,
+    };
 
     const Self = @This();
 
@@ -85,9 +111,34 @@ pub const CookieJar = struct {
         };
     }
 
-    fn notify(self: *const Self, change_type: ChangeType, cookie: *const Cookie) void {
+    /// Take the jar for a check-and-store or a retrieve that other threads
+    /// must not interleave with. Not re-entrant.
+    pub fn lock(self: *Self) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        self.held = true;
+    }
+
+    /// Release the jar, then tell the change hook what changed while it was
+    /// held - outside the lock, each cookie borrowed for its call.
+    pub fn unlock(self: *Self) void {
+        var pending = self.pending;
+        self.pending = .empty;
+        self.held = false;
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+        defer pending.deinit(self.allocator);
+        for (pending.items) |*change| {
+            defer change.cookie.deinit();
+            if (self.on_change) |hook| hook.callback(hook.context, change.change_type, &change.cookie);
+        }
+    }
+
+    fn notify(self: *Self, change_type: ChangeType, cookie: *const Cookie) void {
         const hook = self.on_change orelse return;
-        hook.callback(hook.context, change_type, cookie);
+        if (!self.held) return hook.callback(hook.context, change_type, cookie);
+        // Locked: the hook hears it at `unlock`, about a copy - the cookie
+        // may be gone from the store by then. Out of memory, it hears nothing.
+        var copy = cookie.clone(self.allocator) catch return;
+        self.pending.append(self.allocator, .{ .change_type = change_type, .cookie = copy }) catch copy.deinit();
     }
 
     /// Free all resources
@@ -96,6 +147,8 @@ pub const CookieJar = struct {
             cookie.deinit();
         }
         self.cookies.deinit(self.allocator);
+        for (self.pending.items) |*change| change.cookie.deinit();
+        self.pending.deinit(self.allocator);
     }
 
     /// Store a cookie, replacing any existing cookie with the same identity

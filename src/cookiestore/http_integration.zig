@@ -215,7 +215,9 @@ pub const StoreResult = enum {
 };
 
 /// Layered cookies "Store a Cookie": `parsed`'s cookie into `jar`, as
-/// `options` says it arrived.
+/// `options` says it arrived. Reads the jar's cookies, then stores: call with
+/// the jar locked (`jar.lock()`) - parseAndStoreCookie and the Cookie Store's
+/// setCookieObserved do - wherever another thread can reach it.
 pub fn storeCookie(allocator: std.mem.Allocator, jar: *CookieJar, parsed: *ParsedCookie, options: StoreOptions) !StoreResult {
     const cookie = &parsed.cookie;
     // 3. A host that failed to parse stores nothing.
@@ -323,7 +325,10 @@ pub fn parseAndStoreCookie(allocator: std.mem.Allocator, jar: *CookieJar, input:
     // 1-2. Parse it; failure stores nothing.
     var parsed = (try parseCookie(allocator, input, request_path)) orelse return .ignored;
     defer parsed.deinit();
-    // 3. Store it.
+    // 3. Store it - its checks and the store under one hold of the jar: a
+    // worker's fetch stores on the worker's thread.
+    jar.lock();
+    defer jar.unlock();
     return storeCookie(allocator, jar, &parsed, options);
 }
 
@@ -351,7 +356,12 @@ pub fn generateCookieHeader(
     jar: *CookieJar,
     options: RetrieveOptions,
 ) ![]u8 {
-    var cookies = try jar.retrieve(options);
+    // The cookies come back as copies: owned once the jar is released.
+    var cookies = blk: {
+        jar.lock();
+        defer jar.unlock();
+        break :blk try jar.retrieve(options);
+    };
     defer {
         for (cookies.items) |*c| c.deinit();
         cookies.deinit(allocator);
