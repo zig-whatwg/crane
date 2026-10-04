@@ -4290,24 +4290,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
-            // Handle Instance pointer (return the V8 wrapper object)
+            // A platform object is its wrapper in its relevant realm
+            // (`conv.instanceToV8`), whichever realm the operation's function
+            // belongs to: wrapped in `v8_context` - the CALLEE's realm - an
+            // object a method borrowed from another realm returned got a
+            // second wrapper there, with that realm's prototype
+            // (tests/v8/cross_realm_wrapper_test.zig). The wrapper is the
+            // wrapper cache's; only the undefined of an object that cannot be
+            // wrapped is this call's.
             if (ReturnType == *runtime.Instance) {
-                // For methods returning Instance, we need to wrap it in a V8 object
-                // with the correct prototype chain (e.g., Element for createElement)
-                //
-                // We use the interface name from the calling method's interface,
-                // but for factory methods like createElement we need to determine
-                // the actual type. For now, we use a heuristic in template_registry.
-                const iface_name = template_registry.getInstanceInterfaceName(result);
-                const v8_obj = template_registry.wrapInstanceAsV8Object(
-                    result,
-                    iface_name,
-                    isolate,
-                    v8_context,
-                ) catch {
-                    return v8.v8_Undefined(isolate);
-                };
-                return @ptrCast(v8_obj);
+                const wrapper = conv.instanceToV8(isolate, result);
+                owned.* = v8.v8_Value_IsUndefined(wrapper);
+                return wrapper;
             }
 
             // Handle primitive types
@@ -4366,18 +4360,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     },
                     // A Global<Value>*, set as the result as it is.
                     .handle => |h| @ptrCast(h.ptr),
+                    // Its wrapper in its relevant realm, as above.
                     .instance => |i| blk: {
-                        const inst: *runtime.Instance = @ptrCast(@alignCast(i));
-                        const iface_name = template_registry.getInstanceInterfaceName(inst);
-                        const v8_obj = template_registry.wrapInstanceAsV8Object(
-                            inst,
-                            iface_name,
-                            isolate,
-                            v8_context,
-                        ) catch {
-                            break :blk v8.v8_Undefined(isolate);
-                        };
-                        break :blk @ptrCast(v8_obj);
+                        const wrapper = conv.instanceToV8(isolate, @ptrCast(@alignCast(i)));
+                        owned.* = v8.v8_Value_IsUndefined(wrapper);
+                        break :blk wrapper;
                     },
                 };
             }
@@ -5167,19 +5154,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     };
                     // Check if it's an Instance pointer
                     if (ChildType == *runtime.Instance) {
-                        // Wrap Instance in V8
-                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
-                        const wrapped = template_registry.wrapInstanceAsV8Object(
-                            unwrapped_result,
-                            iface_name,
-                            isolate,
-                            v8_context,
-                        ) catch {
-                            conv.throwError(isolate, "Failed to wrap result");
-                            return .kNo;
-                        };
-                        std.log.debug("[indexedPropertyGetter] Returning {s} Instance={*} wrapper={*}", .{ iface_name, unwrapped_result, wrapped });
-                        info.setReturnValue(@ptrCast(wrapped));
+                        // Its wrapper in its relevant realm (`conv.instanceToV8`),
+                        // the wrapper cache's.
+                        const wrapped = conv.instanceToV8(isolate, unwrapped_result);
+                        info.setReturnValue(wrapped);
+                        if (v8.v8_Value_IsUndefined(wrapped)) v8.v8_Value_Dispose(wrapped);
                     } else {
                         // Other type (like DOMString, CSSOMString) - convert to V8 string
                         const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
@@ -5406,15 +5385,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
                     if (ChildType == *runtime.Instance) {
-                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
-                        const wrapped = template_registry.wrapInstanceAsV8Object(
-                            unwrapped_result,
-                            iface_name,
-                            isolate,
-                            v8_context,
-                        ) catch return .kNo;
-                        v8_value = @ptrCast(wrapped);
-                        value_owned = false;
+                        // Its wrapper in its relevant realm, the wrapper cache's.
+                        v8_value = conv.instanceToV8(isolate, unwrapped_result);
+                        value_owned = v8.v8_Value_IsUndefined(v8_value.?);
                     } else {
                         v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch return .kNo;
                         value_owned = comptime getterValueIsOwned(ChildType);
@@ -5889,14 +5862,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
                     if (ChildType == *runtime.Instance) {
-                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
-                        const wrapped = template_registry.wrapInstanceAsV8Object(
-                            unwrapped_result,
-                            iface_name,
-                            isolate,
-                            v8_context,
-                        ) catch return .kYes;
-                        info.setReturnValue(@ptrCast(wrapped));
+                        // Its wrapper in its relevant realm, the wrapper cache's.
+                        const wrapped = conv.instanceToV8(isolate, unwrapped_result);
+                        info.setReturnValue(wrapped);
+                        if (v8.v8_Value_IsUndefined(wrapped)) v8.v8_Value_Dispose(wrapped);
                         return .kYes;
                     } else {
                         // Special case for DOMString - convert to string directly.
@@ -6650,14 +6619,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
                     if (ChildType == *runtime.Instance) {
-                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
-                        const wrapped = template_registry.wrapInstanceAsV8Object(
-                            unwrapped_result,
-                            iface_name,
-                            isolate,
-                            v8_context,
-                        ) catch return .kNo;
-                        v8_value = @ptrCast(wrapped);
+                        // Its wrapper in its relevant realm, the wrapper cache's.
+                        v8_value = conv.instanceToV8(isolate, unwrapped_result);
+                        value_owned = v8.v8_Value_IsUndefined(v8_value.?);
                     } else {
                         v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
                             return .kNo;
