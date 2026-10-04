@@ -55,7 +55,20 @@ pub const NavigationFetchResult = struct {
     /// Response headers (optional, for COOP/COEP)
     headers: ?HeaderMap,
 
+    /// What Navigation Timing's "create the navigation timing entry" takes
+    /// from the navigation's fetch: its timing info, redirect count and
+    /// response status. Owned; null for a response from no network.
+    timing: ?Timing = null,
+
     pub const HeaderMap = std.StringHashMap([]const u8);
+
+    pub const Timing = struct {
+        /// fetchTiming (its times are the unsafe shared current time, ms).
+        timing_info: fetch.internal.FetchTimingInfo,
+        /// How many redirects the fetch followed.
+        redirect_count: u16,
+        response_status: u16,
+    };
 
     pub fn init(allocator: Allocator) NavigationFetchResult {
         return .{
@@ -91,6 +104,8 @@ pub const NavigationFetchResult = struct {
             }
             h.deinit();
         }
+        if (self.timing) |*timing| timing.timing_info.deinit();
+        self.timing = null;
     }
 
     fn isStaticString(s: []const u8) bool {

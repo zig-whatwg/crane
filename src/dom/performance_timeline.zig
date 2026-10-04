@@ -96,29 +96,44 @@ pub const EntryType = enum {
         };
     }
 
-    /// Whether this engine produces entries of this type: what the frozen
-    /// array of supported entry types lists, and what observe() accepts.
-    /// The navigation and resource types join when their entries are made.
-    pub fn isSupported(self: EntryType) bool {
+    /// Whether this engine produces entries of this type for a global of
+    /// this kind: what the frozen array of supported entry types lists, and
+    /// what observe() accepts. "navigation" is a Window's alone (Navigation
+    /// Timing 3.1: supportedEntryTypes "for Window contexts").
+    pub fn isSupported(self: EntryType, kind: GlobalKind) bool {
         return switch (self) {
             .mark, .measure, .resource => true,
-            .navigation => false,
+            .navigation => kind == .window,
         };
     }
 };
 
-/// The supported entry types in alphabetical order: the strings the frozen
-/// array of supported entry types holds.
-pub fn supportedEntryTypes() []const EntryType {
-    const all = comptime blk: {
-        var list: []const EntryType = &.{};
-        for (@typeInfo(EntryType).@"enum".fields) |field| {
-            const t: EntryType = @enumFromInt(field.value);
-            if (t.isSupported()) list = list ++ &[_]EntryType{t};
+/// Which kind of global a supported-types question is asked for.
+pub const GlobalKind = enum {
+    window,
+    worker,
+
+    pub fn of(realm: runtime.Context) GlobalKind {
+        return if (realm.isWindow()) .window else .worker;
+    }
+};
+
+/// The entry types supported for a global of `kind`, in alphabetical order:
+/// the strings its frozen array of supported entry types holds.
+pub fn supportedEntryTypes(kind: GlobalKind) []const EntryType {
+    const lists = comptime blk: {
+        var result: [2][]const EntryType = undefined;
+        for ([_]GlobalKind{ .window, .worker }, 0..) |k, i| {
+            var list: []const EntryType = &.{};
+            for (@typeInfo(EntryType).@"enum".fields) |field| {
+                const t: EntryType = @enumFromInt(field.value);
+                if (t.isSupported(k)) list = list ++ &[_]EntryType{t};
+            }
+            result[i] = list;
         }
-        break :blk list;
+        break :blk result;
     };
-    return all;
+    return lists[@intFromEnum(kind)];
 }
 
 /// "should add entry" (registry): true for every type this engine has - the
@@ -281,6 +296,13 @@ pub const Timeline = struct {
     most_recent_navigation_id: u64 = 0,
     /// Resource Timing 3.4's per-global state.
     resource: ResourceBuffer = .{},
+    /// The associated Document's load timing info and previous document
+    /// unload timing (HTML 3.1.5), as relative times; reset for each new
+    /// document (`createNavigationTimingEntry`).
+    load_timing: LoadTimingInfo = .{},
+    /// The associated Document's navigation timing entry, while it has one
+    /// (kept by the navigation buffer's edge).
+    navigation_entry: ?*Instance = null,
 
     pub fn init(allocator: std.mem.Allocator, owner: *Instance) Timeline {
         var buffers: std.EnumArray(EntryType, Buffer) = undefined;
@@ -363,8 +385,11 @@ pub fn queueEntry(timeline: *Timeline, entry: *Instance) !void {
     // Resource Timing's own "add a PerformanceResourceTiming entry" (mark
     // resource timing step 4), which keeps the secondary buffer and fires
     // resourcetimingbufferfull - adding it here too would add it twice.
+    // A navigation entry was added when it was made ("create the navigation
+    // timing entry" step 12); queueing it does not add it again.
     const buffer = timeline.buffers.getPtr(entry_type);
-    if (entry_type != .resource and !isBufferFull(buffer) and shouldAddEntry(entry_type, null)) {
+    const already_buffered = entry_type == .navigation and std.mem.indexOfScalar(*Instance, buffer.entries.items, entry) != null;
+    if (entry_type != .resource and !already_buffered and !isBufferFull(buffer) and shouldAddEntry(entry_type, null)) {
         try buffer.entries.append(timeline.allocator, entry);
         holdEntry(timeline.owner, entry);
     }
@@ -558,12 +583,13 @@ pub const Observer = struct {
 };
 
 /// observe() step 6.2: the entry types among `identifiers` that are in the
-/// frozen array of supported entry types; the rest are removed.
-pub fn supportedAmong(identifiers: []const []const u8) std.EnumSet(EntryType) {
+/// frozen array of supported entry types of a global of `kind`; the rest
+/// are removed.
+pub fn supportedAmong(identifiers: []const []const u8, kind: GlobalKind) std.EnumSet(EntryType) {
     var types = std.EnumSet(EntryType).initEmpty();
     for (identifiers) |identifier| {
         const t = EntryType.fromName(identifier) orelse continue;
-        if (t.isSupported()) types.insert(t);
+        if (t.isSupported(kind)) types.insert(t);
     }
     return types;
 }
@@ -580,7 +606,7 @@ pub const ObserveRequest = struct {
 pub fn observe(timeline: *Timeline, observer: *Observer, request: ObserveRequest) !void {
     if (observer.observer_type == .multiple) {
         // 6.1-6.2. entry types, reduced to the supported ones.
-        const types = supportedAmong(request.entry_types orelse &.{});
+        const types = supportedAmong(request.entry_types orelse &.{}, GlobalKind.of(timeline.owner.ctx));
         // 6.3. None left: abort.
         if (types.count() == 0) return;
         const options: Options = .{ .types = types };
@@ -597,7 +623,7 @@ pub fn observe(timeline: *Timeline, observer: *Observer, request: ObserveRequest
     const identifier = request.single_type orelse return;
     // 7.2. An unsupported type: abort.
     const t = EntryType.fromName(identifier) orelse return;
-    if (!t.isSupported()) return;
+    if (!t.isSupported(GlobalKind.of(timeline.owner.ctx))) return;
     var single_types = std.EnumSet(EntryType).initEmpty();
     single_types.insert(t);
     const options: Options = .{ .types = single_types, .single = t, .buffered = request.buffered };
@@ -946,14 +972,7 @@ const BufferFullTask = struct {
 const GlobalTask = struct {
     allocator: std.mem.Allocator,
     target: Link,
-    /// What the task carries (a resource timing to mark), or null.
-    resource_timing: ?*ResourceTiming = null,
-
     fn destroy(self: *GlobalTask) void {
-        if (self.resource_timing) |timing| {
-            timing.deinit();
-            self.allocator.destroy(timing);
-        }
         self.allocator.destroy(self);
     }
 };
@@ -961,22 +980,12 @@ const GlobalTask = struct {
 /// Queue a global task for `target` (a Performance or a global) on its
 /// realm's event loop - naming the realm's Window, so that it is dropped
 /// once the Window's document is not fully active - or, in a worker realm,
-/// as a timer. The task owns `resource_timing` from here, also on error.
+/// as a timer.
 fn queueGlobalTask(target: *Instance, run: *const fn (?*anyopaque) void, drop: *const fn (?*anyopaque) void) !void {
-    return queueGlobalTaskWith(target, run, drop, null);
-}
-
-fn queueGlobalTaskWith(target: *Instance, run: *const fn (?*anyopaque) void, drop: *const fn (?*anyopaque) void, resource_timing: ?*ResourceTiming) !void {
     const ctx = target.ctx;
     const allocator = ctx.allocator;
-    const task = allocator.create(GlobalTask) catch |err| {
-        if (resource_timing) |timing| {
-            timing.deinit();
-            allocator.destroy(timing);
-        }
-        return err;
-    };
-    task.* = .{ .allocator = allocator, .target = Link.to(target), .resource_timing = resource_timing };
+    const task = try allocator.create(GlobalTask);
+    task.* = .{ .allocator = allocator, .target = Link.to(target) };
     if (ctx.getOptionalEventLoop()) |loop| {
         const global = globalOf(ctx);
         loop.queueTask(.{
@@ -1136,6 +1145,12 @@ pub const ResourceTimings = struct {
     /// `realm` set up with `timing` (copied). The caller's until the engine
     /// wraps it (Instance.releaseIfUnwrapped).
     create: *const fn (realm: runtime.Context, timing: *const ResourceTiming) anyerror!*Instance,
+    /// "setup the resource timing entry" steps 4-11 for `entry`, an
+    /// instance of a PerformanceResourceTiming type made elsewhere (a
+    /// PerformanceNavigationTiming): `timing` copied into its
+    /// PerformanceResourceTiming part. Step 3 (initialize the
+    /// PerformanceEntry) is the caller's.
+    setup: *const fn (entry: *Instance, timing: *const ResourceTiming) anyerror!void,
 };
 
 /// The timing reporter of requests whose client is `global`'s settings
@@ -1145,42 +1160,54 @@ pub fn timingReporterFor(global: *Instance) fetch.internal.TimingReporter {
     return .{ .context = global, .report = &reportResourceTiming };
 }
 
-/// Fetch "report timing" for the request's client's `global` (the
-/// reporter's context): what Resource Timing's "mark resource timing" needs,
-/// its times made relative to `global`'s time origin now, marked in a task.
-fn reportResourceTiming(context: *anyopaque, report: *const fetch.internal.TimingReport) void {
-    const global: *Instance = @ptrCast(@alignCast(context));
-    if (!global.ctx.hasEngine()) return;
-    const allocator = global.ctx.allocator;
-    const timing = allocator.create(ResourceTiming) catch return;
-    timing.* = ResourceTiming.fromReport(allocator, report, FetchTimestampConverter{ .realm = global.ctx }) catch {
-        allocator.destroy(timing);
-        return;
-    };
-    queueGlobalTaskWith(global, MarkResourceTimingTask.run, MarkResourceTimingTask.drop, timing) catch {};
-}
+/// A timing reporter for a global that can end before the reporter's last
+/// use: it reports only while `global` is still the instance it was made for
+/// and its realm still runs. A frame's navigation request holds one for its
+/// container document's global (HTML "create navigation params by fetching"
+/// step 3), whose document can go while the fetch is in flight - as
+/// csp_violations.GuardedReporter does for the request's CSP violations. The
+/// holder keeps it at a fixed address while a request holds its `reporter()`.
+pub const GuardedTimingReporter = struct {
+    global: Link,
 
-const MarkResourceTimingTask = struct {
-    fn run(context: ?*anyopaque) void {
-        const task: *GlobalTask = @ptrCast(@alignCast(context.?));
-        defer task.destroy();
-        if (!task.target.isLive()) return;
-        const global = task.target.instance;
-        if (!global.ctx.hasEngine()) return;
-        engine.runTaskInRealm(global.ctx, steps, task) catch {};
+    pub fn forGlobal(global: *Instance) GuardedTimingReporter {
+        return .{ .global = Link.to(global) };
     }
 
-    fn drop(context: ?*anyopaque) void {
-        const task: *GlobalTask = @ptrCast(@alignCast(context.?));
-        task.destroy();
+    pub fn reporter(self: *GuardedTimingReporter) fetch.internal.TimingReporter {
+        return .{ .context = self, .report = &reportWhileAlive };
     }
 
-    fn steps(data: ?*anyopaque) void {
-        const task: *GlobalTask = @ptrCast(@alignCast(data.?));
-        const timing = task.resource_timing orelse return;
-        markResourceTiming(task.target.instance.ctx, timing) catch {};
+    fn reportWhileAlive(context: *anyopaque, report: *const fetch.internal.TimingReport) void {
+        const self: *GuardedTimingReporter = @ptrCast(@alignCast(context));
+        if (!self.global.isLive()) return;
+        reportResourceTimingFor(self.global.instance, report);
     }
 };
+
+/// Fetch "report timing" for the request's client's `global` (the
+/// reporter's context).
+fn reportResourceTiming(context: *anyopaque, report: *const fetch.internal.TimingReport) void {
+    reportResourceTimingFor(@ptrCast(@alignCast(context)), report);
+}
+
+/// Resource Timing's "mark resource timing" for `global`, with what fetch
+/// reported - its times made relative to `global`'s time origin. Run in the
+/// fetch's own turn, as Fetch runs the report timing steps in its end-of-body
+/// steps: the entry is in the timeline before the task that tells the
+/// resource's requester it is done (a script's load event, an XHR's
+/// loadend), which buffer-full-*.html and the "await load; getEntries()"
+/// idiom read. A separate task ran after that event and reordered entries
+/// against clearResourceTimings(). Fetch reports only on the thread of the
+/// event loop whose global it reports to, a fetch whose client went is
+/// terminated first (async_fetch's `alive`), and a realm that has ended
+/// takes nothing.
+fn reportResourceTimingFor(global: *Instance, report: *const fetch.internal.TimingReport) void {
+    if (!global.ctx.hasEngine()) return;
+    var timing = ResourceTiming.fromReport(global.ctx.allocator, report, FetchTimestampConverter{ .realm = global.ctx }) catch return;
+    defer timing.deinit();
+    markResourceTiming(global.ctx, &timing) catch {};
+}
 
 /// Resource Timing 4 "mark resource timing" for `realm`'s global, given
 /// what "setup the resource timing entry" sets.
@@ -1196,6 +1223,175 @@ pub fn markResourceTiming(realm: runtime.Context, timing: *const ResourceTiming)
     try queueEntry(timeline, entry);
     // 4. Add it to global's performance entry buffer.
     try addResourceTimingEntry(timeline, entry);
+}
+
+// ============================================================================
+// Navigation Timing (W3C Navigation Timing 2, 5)
+// ============================================================================
+
+/// A navigation's type (NavigationTimingType).
+pub const NavigationType = enum { navigate, reload, back_forward };
+
+/// HTML's document load timing info and document unload timing info (3.1.5)
+/// for the associated Document, each time relative to the global's time
+/// origin; 0 while unset. `dom_loading` is when the document was made with
+/// readiness "loading" (Navigation Timing 1's domLoading).
+pub const LoadTimingInfo = struct {
+    dom_loading: f64 = 0,
+    dom_interactive: f64 = 0,
+    dom_content_loaded_event_start: f64 = 0,
+    dom_content_loaded_event_end: f64 = 0,
+    dom_complete: f64 = 0,
+    load_event_start: f64 = 0,
+    load_event_end: f64 = 0,
+    unload_event_start: f64 = 0,
+    unload_event_end: f64 = 0,
+};
+
+/// A moment HTML records in a document's load timing info.
+pub const LoadTimingMoment = enum {
+    dom_interactive,
+    dom_content_loaded_event_start,
+    dom_content_loaded_event_end,
+    dom_complete,
+    load_event_start,
+    load_event_end,
+};
+
+/// Record `moment` - the current high resolution time of `realm`'s global -
+/// in the load timing info of its associated Document. The caller says the
+/// document is the one its window shows. "Update the current document
+/// readiness" step 3 sets DOM interactive and DOM complete only once.
+pub fn recordLoadTiming(realm: runtime.Context, moment: LoadTimingMoment) void {
+    const timeline = timelineOf(realm) orelse return;
+    const now_ms = now(realm) orelse return;
+    const info = &timeline.load_timing;
+    switch (moment) {
+        .dom_interactive => if (info.dom_interactive == 0) {
+            info.dom_interactive = now_ms;
+        },
+        .dom_complete => if (info.dom_complete == 0) {
+            info.dom_complete = now_ms;
+        },
+        .dom_content_loaded_event_start => info.dom_content_loaded_event_start = now_ms,
+        .dom_content_loaded_event_end => info.dom_content_loaded_event_end = now_ms,
+        .load_event_start => info.load_event_start = now_ms,
+        .load_event_end => {
+            info.load_event_end = now_ms;
+            // Navigation Timing 3.1: the entry's duration is loadEventEnd -
+            // startTime, which an end time of loadEventEnd gives.
+            if (timeline.navigation_entry) |entry| {
+                if (dataOf(entry)) |data| data.end_time = now_ms;
+            }
+        },
+    }
+}
+
+/// The load timing info of `realm`'s global's associated Document.
+pub fn loadTimingOf(realm: runtime.Context) ?*const LoadTimingInfo {
+    const timeline = timelineOf(realm) orelse return null;
+    return &timeline.load_timing;
+}
+
+/// The navigation timing entry of `realm`'s global's associated Document,
+/// if it has one.
+pub fn navigationEntryOf(realm: runtime.Context) ?*Instance {
+    const timeline = timelineOf(realm) orelse return null;
+    return timeline.navigation_entry;
+}
+
+/// What a navigation hands "create the navigation timing entry": its fetch's
+/// timing (as fetch reports it, initiator type aside), redirect count and
+/// type.
+pub const NavigationRecord = struct {
+    report: *const fetch.internal.TimingReport,
+    redirect_count: u16,
+    navigation_type: NavigationType,
+};
+
+/// Navigation Timing 5 "create the navigation timing entry" for the
+/// Document `realm`'s global has just been given (HTML "create and
+/// initialize a Document object"), which also starts the document's load
+/// timing info afresh.
+pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRecord) !void {
+    const timeline = timelineOf(realm) orelse return;
+    const impl = hooks.navigation_timings orelse return error.NotSupported;
+    // A new document: a new load timing info, made with readiness
+    // "loading"; only the current document's entry is in the timeline.
+    timeline.load_timing = .{ .dom_loading = now(realm) orelse 0 };
+    if (timeline.navigation_entry) |previous| {
+        const buffer = timeline.buffers.getPtr(.navigation);
+        if (std.mem.indexOfScalar(*Instance, buffer.entries.items, previous)) |i| {
+            _ = buffer.entries.orderedRemove(i);
+            releaseEntry(timeline.owner, previous);
+        }
+        timeline.navigation_entry = null;
+    }
+    // HTML "create and initialize a Document object": the load timing
+    // info's navigation start time is the response's timing info's start
+    // time, and it is the settings object's time origin - so the entry's
+    // times are converted relative to it. (The Window, made earlier or later
+    // than the fetch, recorded its creation as a stand-in.)
+    if (record.report.timing_info.start_time != 0) {
+        if (hooks.performances) |performances_impl| performances_impl.set_navigation_start(realm, record.report.timing_info.start_time);
+    }
+    // 3. Setup the resource timing entry given "navigation", the document's
+    // URL, fetchTiming, cacheMode and bodyInfo.
+    var timing = try ResourceTiming.fromReport(timeline.allocator, record.report, FetchTimestampConverter{ .realm = realm });
+    defer timing.deinit();
+    timing.initiator_type = "navigation";
+    // Navigation Timing 3.2: no redirects (or a cross-origin one, which
+    // counts none), no redirect times.
+    if (record.redirect_count == 0) {
+        timing.redirect_start = 0;
+        timing.redirect_end = 0;
+    }
+    // 3.1: startTime is 0, and the end time follows loadEventEnd.
+    timing.start_time = 0;
+    timing.end_time = 0;
+    // 1-2, 4-11. A new PerformanceNavigationTiming in global's realm.
+    const entry = try impl.create(realm, &timing, record.redirect_count, record.navigation_type);
+    const generation = runtime.SlabAllocator.generationOf(entry);
+    errdefer entry.releaseIfUnwrapped(generation);
+    // 12. Add it to global's performance entry buffer.
+    try timeline.buffers.getPtr(.navigation).entries.append(timeline.allocator, entry);
+    holdEntry(timeline.owner, entry);
+    // 9. The document's navigation timing entry.
+    timeline.navigation_entry = entry;
+}
+
+/// Navigation Timing 5 "queue the navigation timing entry" for `realm`'s
+/// global's associated Document (HTML "the end" step 9.13): Performance
+/// Timeline 5.2 "queue a navigation PerformanceEntry".
+pub fn queueNavigationTimingEntry(realm: runtime.Context) void {
+    const timeline = timelineOf(realm) orelse return;
+    const entry = timeline.navigation_entry orelse return;
+    const data = dataOf(entry) orelse return;
+    // Queued once.
+    if (data.id != 0) return;
+    // 1-4. A new id, which is also its navigationId.
+    data.id = timeline.generateId();
+    // 5. The document's most recent navigation.
+    timeline.most_recent_navigation_id = data.id;
+    // 6. Queue it (which sets navigationId from the most recent navigation).
+    queueEntry(timeline, entry) catch {};
+}
+
+/// What PerformanceNavigationTiming supplies.
+pub const NavigationTimings = struct {
+    /// "create the navigation timing entry" steps 2-8: a new
+    /// PerformanceNavigationTiming in `realm`, initialized (startTime 0,
+    /// "navigation", `timing.url`), its resource timing set up from `timing`,
+    /// with its redirect count and navigation type. The caller's until the
+    /// engine wraps it.
+    create: *const fn (realm: runtime.Context, timing: *const ResourceTiming, redirect_count: u16, navigation_type: NavigationType) anyerror!*Instance,
+};
+
+/// "setup the resource timing entry" for an entry of a
+/// PerformanceResourceTiming type made elsewhere (see ResourceTimings.setup).
+pub fn setupResourceTiming(entry: *Instance, timing: *const ResourceTiming) !void {
+    const impl = hooks.resource_timings orelse return error.NotSupported;
+    try impl.setup(entry, timing);
 }
 
 // ============================================================================
@@ -1217,6 +1413,15 @@ pub const Performances = struct {
     /// global: coarsened, then made relative to its time origin. Null for
     /// a global with no Performance.
     relative_coarse_time: *const fn (realm: runtime.Context, unsafe_ms: f64) ?f64,
+    /// HR-Time "get time origin timestamp" for `realm`'s global (its
+    /// Performance's timeOrigin, ms since the Unix epoch).
+    time_origin_timestamp: *const fn (realm: runtime.Context) ?f64,
+    /// The time origin of `realm`'s global becomes `unsafe_ms` (a moment of
+    /// the unsafe shared current time, coarsened): HTML gives a document a
+    /// navigation made the navigation's start time as its time origin (its
+    /// load timing info's navigation start time). Before any of the
+    /// document's script runs.
+    set_navigation_start: *const fn (realm: runtime.Context, unsafe_ms: f64) void,
 };
 
 /// What PerformanceObserverEntryList supplies.
@@ -1241,6 +1446,7 @@ pub const ExceptionReporter = *const fn (global: *Instance, info: *const engine.
 
 /// What the timeline's owners installed: each owner's own field.
 const Hooks = struct {
+    navigation_timings: ?NavigationTimings = null,
     resource_timings: ?ResourceTimings = null,
     entries: ?Entries = null,
     performances: ?Performances = null,
@@ -1251,6 +1457,13 @@ const Hooks = struct {
 
 // process-wide: function pointers the timeline's owners (Performance, PerformanceEntry, PerformanceObserver, PerformanceObserverEntryList, PerformanceMeasure) install once at process start (crane.Process), the same for every instance
 var hooks: Hooks = .{};
+
+/// Called by PerformanceNavigationTiming's installHooks, once, at process
+/// start.
+pub fn installNavigationTimings(impl: NavigationTimings) void {
+    process_start.assertInstalling();
+    hooks.navigation_timings = impl;
+}
 
 /// Called by PerformanceResourceTiming's installHooks, once, at process
 /// start.
@@ -1302,6 +1515,13 @@ fn timelineOfPerformance(performance: *Instance) ?*Timeline {
     return impl.of_performance(performance);
 }
 
+/// The time origin timestamp of `realm`'s global (ms since the Unix epoch),
+/// or null.
+pub fn timeOriginTimestamp(realm: runtime.Context) ?f64 {
+    const impl = hooks.performances orelse return null;
+    return impl.time_origin_timestamp(realm);
+}
+
 /// The current relative timestamp of `realm`'s global, or null.
 pub fn now(realm: runtime.Context) ?f64 {
     const impl = hooks.performances orelse return null;
@@ -1340,7 +1560,7 @@ test "entry type identifiers are exact, and the supported ones are listed alphab
     try std.testing.expectEqual(EntryType.mark, EntryType.fromName("mark").?);
     try std.testing.expect(EntryType.fromName("Mark") == null);
     try std.testing.expect(EntryType.fromName("marks") == null);
-    const supported = supportedEntryTypes();
+    const supported = supportedEntryTypes(.window);
     try std.testing.expect(supported.len > 0);
     var i: usize = 1;
     while (i < supported.len) : (i += 1) {
@@ -1392,8 +1612,8 @@ test "filter buffer by name and type keeps matches in chronological order, ties 
 test "observe() keeps only the supported entry types, so an unsupported list registers nothing" {
     // (observe() itself reaches engine operations, which this module's
     // test binary does not link; its reduction step is tested alone.)
-    try std.testing.expectEqual(@as(usize, 0), supportedAmong(&.{ "Mark", "longtask-not-here" }).count());
-    const types = supportedAmong(&.{ "mark", "mark", "measure", "bogus" });
+    try std.testing.expectEqual(@as(usize, 0), supportedAmong(&.{ "Mark", "longtask-not-here" }, .window).count());
+    const types = supportedAmong(&.{ "mark", "mark", "measure", "bogus" }, .window);
     try std.testing.expect(types.contains(.mark) and types.contains(.measure));
     try std.testing.expectEqual(@as(usize, 2), types.count());
 }
@@ -1406,4 +1626,13 @@ test "the last performance entry id starts between 100 and 10000 and only grows"
     const first = timeline.generateId();
     const second = timeline.generateId();
     try std.testing.expect(second > first);
+}
+
+test "navigation entries are a Window's alone; the other supported types are every global's" {
+    const window_types = supportedEntryTypes(.window);
+    const worker_types = supportedEntryTypes(.worker);
+    try std.testing.expect(std.mem.indexOfScalar(EntryType, window_types, .navigation) != null);
+    try std.testing.expect(std.mem.indexOfScalar(EntryType, worker_types, .navigation) == null);
+    try std.testing.expect(std.mem.indexOfScalar(EntryType, worker_types, .resource) != null);
+    try std.testing.expectEqual(@as(usize, 0), supportedAmong(&.{"navigation"}, .worker).count());
 }

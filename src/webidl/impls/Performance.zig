@@ -45,6 +45,8 @@ pub fn installHooks() void {
         .of_performance = &timelineOfPerformance,
         .now = &nowOfRealm,
         .relative_coarse_time = &relativeCoarseTimeOfRealm,
+        .time_origin_timestamp = &timeOriginTimestampOfRealm,
+        .set_navigation_start = &setNavigationStartOfRealm,
     });
 }
 
@@ -151,6 +153,21 @@ fn nowOfRealm(realm: runtime.Context) ?f64 {
     return internal.time_origin.currentRelativeTimestampMs();
 }
 
+/// The time origin of `realm`'s global becomes the navigation's start time,
+/// coarsened (HTML: the document's load timing info's navigation start time).
+fn setNavigationStartOfRealm(realm: runtime.Context, unsafe_ms: f64) void {
+    const performance = performanceOfRealm(realm) orelse return;
+    const internal = getInternal(performance) orelse return;
+    const moment: hr_time.Nanoseconds = @intFromFloat(unsafe_ms * std.time.ns_per_ms);
+    internal.time_origin.origin_moment = hr_time.coarsenTime(moment, internal.time_origin.cross_origin_isolated);
+}
+
+fn timeOriginTimestampOfRealm(realm: runtime.Context) ?f64 {
+    const performance = performanceOfRealm(realm) orelse return null;
+    const internal = getInternal(performance) orelse return null;
+    return internal.time_origin.getTimeOriginTimestampMs();
+}
+
 /// HR-Time "relative high resolution coarse time" of `unsafe_ms` - a moment
 /// of the unsafe shared current time (the monotonic clock), in ms - for
 /// `realm`'s global: the moment coarsened, minus the time origin.
@@ -184,13 +201,23 @@ pub fn call_now(instance: *runtime.Instance) anyerror!typedefs.DOMHighResTimeSta
     return internal.time_origin.currentRelativeTimestampMs();
 }
 
-/// Operation: toJSON
-/// TODO(perftimeline): [Default] toJSON needs `timing` and `navigation`
-/// (Navigation Timing's PerformanceTiming and PerformanceNavigation) and
-/// `eventCounts` to exist first.
+/// Operation: toJSON - WebIDL's default toJSON steps. Of Performance's
+/// attributes, timeOrigin, timing and navigation are JSON types (the last two
+/// by their own toJSON, which JSON.stringify then calls); eventCounts and the
+/// event handler are not, and are left out of a full implementation - the
+/// generated record has fields for them, filled with an EventCounts of this
+/// realm and null.
 pub fn call_toJSON(instance: *runtime.Instance) anyerror!interfaces.Performance.PerformanceToJSON {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return .{
+        .timeOrigin = internal.time_origin.getTimeOriginTimestampMs(),
+        .eventCounts = try interfaces.EventCounts.init(internal.allocator, instance.ctx),
+        .interactionCount = 0,
+        // The [SameObject] objects the attributes hand out.
+        .timing = try interfaces.Performance.get_timing(instance),
+        .navigation = try interfaces.Performance.get_navigation(instance),
+        .onresourcetimingbufferfull = null,
+    };
 }
 
 /// Getter for eventCounts
@@ -205,16 +232,18 @@ pub fn get_interactionCount(instance: *runtime.Instance) anyerror!u64 {
     return error.NotImplemented;
 }
 
-/// Getter for timing
+/// Getter for timing (Navigation Timing 8.3): a PerformanceTiming of this
+/// realm - [SameObject], which the generated getter caches and keeps.
 pub fn get_timing(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return interfaces.PerformanceTiming.init(internal.allocator, instance.ctx);
 }
 
-/// Getter for navigation
+/// Getter for navigation (Navigation Timing 8.3): a PerformanceNavigation
+/// of this realm - [SameObject], cached and kept by the generated getter.
 pub fn get_navigation(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidStateError;
+    return interfaces.PerformanceNavigation.init(internal.allocator, instance.ctx);
 }
 
 /// Getter for onresourcetimingbufferfull

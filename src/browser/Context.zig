@@ -1085,6 +1085,26 @@ pub const Context = struct {
         var result = try navigation.fetchUrl(self.allocator, self.url, .{ .cookie_jar = self.cookie_jar });
         defer result.deinit();
 
+        // HTML "create and initialize a Document object": Navigation
+        // Timing's "create the navigation timing entry" for the new document,
+        // from the navigation's fetch - before its parser, and any of its
+        // script, runs.
+        if (result.timing) |*timing| {
+            const report: fetch.internal.TimingReport = .{
+                .timing_info = &timing.timing_info,
+                .url = self.url,
+                .initiator_type = .other,
+                .cache_state = "",
+                .body_info = .{ .encoded_size = result.body.len, .decoded_size = result.body.len },
+                .response_status = timing.response_status,
+            };
+            if (self.realm) |realm| dom_mod.performance_timeline.createNavigationTimingEntry(realm, .{
+                .report = &report,
+                .redirect_count = timing.redirect_count,
+                .navigation_type = .navigate,
+            }) catch |err| log.debug("the navigation timing entry was not made: {}", .{err});
+        }
+
         // Step 2: HTML "load a document" - the response's type decides which
         // document it makes, as a navigable container's navigation does
         // (html_core.navigation.document_type).

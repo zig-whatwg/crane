@@ -103,7 +103,7 @@ pub fn get_static_supportedEntryTypes(instance: *runtime.Instance) anyerror!runt
     if (global) |g| {
         if (engine.tracedValue(g, supported_entry_types_slot)) |kept| return kept.take();
     }
-    const types = performance_timeline.supportedEntryTypes();
+    const types = performance_timeline.supportedEntryTypes(performance_timeline.GlobalKind.of(realm));
     var values: [@typeInfo(performance_timeline.EntryType).@"enum".fields.len]runtime.JSValue = undefined;
     for (types, 0..) |t, i| values[i] = .{ .string = .{ .data = t.name(), .owned = false } };
     const array = try engine.createFrozenArray(realm, values[0..types.len]);

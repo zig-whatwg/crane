@@ -33,7 +33,7 @@ pub const InternalState = struct {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
-    performance_timeline.installResourceTimings(.{ .create = &createEntry });
+    performance_timeline.installResourceTimings(.{ .create = &createEntry, .setup = &setupEntry });
 }
 
 /// Initialize instance (creates the instance)
@@ -72,6 +72,27 @@ fn createEntry(realm: runtime.Context, timing: *const performance_timeline.Resou
     internal.* = .{ .allocator = allocator, .timing = try timing.clone(allocator) };
     instance.getState(State).own._internal = internal;
     return instance;
+}
+
+/// "setup the resource timing entry" steps 4-11 for `entry`, whose
+/// PerformanceEntry its own type initialized (a PerformanceNavigationTiming):
+/// `timing` copied into its PerformanceResourceTiming part.
+fn setupEntry(entry: *runtime.Instance, timing: *const performance_timeline.ResourceTiming) anyerror!void {
+    const state = entry.stateAs(State) orelse return error.InvalidStateError;
+    const allocator = entry.ctx.allocator;
+    const copy = try timing.clone(allocator);
+    if (state.own._internal) |existing| {
+        existing.timing.deinit();
+        existing.timing = copy;
+        return;
+    }
+    const internal = allocator.create(InternalState) catch |err| {
+        var unused = copy;
+        unused.deinit();
+        return err;
+    };
+    internal.* = .{ .allocator = allocator, .timing = copy };
+    state.own._internal = internal;
 }
 
 fn timingOf(instance: *runtime.Instance) !*const performance_timeline.ResourceTiming {
