@@ -72,6 +72,7 @@ const Process = @import("process.zig").Process;
 const window_agent_hooks: engine.HostHooks = blk: {
     const html = @import("html");
     var hooks = html.rejected_promises.hooks;
+    hooks.afterMicrotaskCheckpoint = html.microtask_checkpoint.afterMicrotaskCheckpoint;
     hooks.loadImportedModule = html.script_execution.module_hooks.loadImportedModule;
     hooks.importMetaUrl = html.script_execution.module_hooks.importMetaUrl;
     hooks.importMetaResolve = html.script_execution.module_hooks.importMetaResolve;
@@ -101,6 +102,7 @@ pub const Browser = struct {
     /// The page's agent (engine.createAgent) - lives for the entire browser
     /// lifetime.
     agent: ?*engine.Agent,
+    agent_host: *@import("html").agent_host.AgentHost,
     /// Current browsing context (V8 context + DOM)
     current_context: ?*Context,
     /// Persistent storage subsystem
@@ -164,20 +166,28 @@ pub const Browser = struct {
         // Atomics.wait() throws a TypeError rather than freezing the page's
         // one thread, as Blink's main thread does; a dedicated worker's agent
         // keeps it - and the host's hooks (window_agent_hooks).
+        const agent_host = try allocator.create(@import("html").agent_host.AgentHost);
+        agent_host.* = @import("html").agent_host.AgentHost.init(allocator);
+        errdefer {
+            agent_host.deinit();
+            allocator.destroy(agent_host);
+        }
         const agent = engine.createAgent(.{
             .can_block = false,
             .from_snapshot = from_snapshot,
             .hooks = &window_agent_hooks,
+            .host = agent_host,
             .allocator = allocator,
         }) catch return error.V8InitFailed;
 
-        return initBrowserWithAgent(allocator, agent, from_snapshot, config);
+        return initBrowserWithAgent(allocator, agent, agent_host, from_snapshot, config);
     }
 
     /// Complete browser initialization with its agent.
     fn initBrowserWithAgent(
         allocator: std.mem.Allocator,
         agent: *engine.Agent,
+        agent_host: *@import("html").agent_host.AgentHost,
         used_snapshot: bool,
         config: BrowserConfig,
     ) !*Browser {
@@ -199,6 +209,7 @@ pub const Browser = struct {
         browser.* = Browser{
             .allocator = allocator,
             .agent = agent,
+            .agent_host = agent_host,
             .current_context = null,
             .storage = storage,
             .config = config,
@@ -268,6 +279,8 @@ pub const Browser = struct {
             // the engine's per-isolate and per-thread state torn down in
             // order, its garbage collected, its isolate disposed.
             engine.destroyAgent(agent);
+            self.agent_host.deinit();
+            self.allocator.destroy(self.agent_host);
 
             // Every Window is gone now, so the browsing contexts their
             // containers retired while a Window might still read them

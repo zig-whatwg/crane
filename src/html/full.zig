@@ -175,6 +175,9 @@ pub const script_element = @import("script_element.zig");
 /// event and `onerror` through here.
 pub const report_exception = @import("report_exception.zig");
 
+pub const agent_host = core.agent_host;
+pub const microtask_checkpoint = @import("microtask_checkpoint.zig");
+
 /// Unhandled promise rejections: HostPromiseRejectionTracker and the
 /// unhandledrejection / rejectionhandled events.
 pub const rejected_promises = @import("rejected_promises.zig");

@@ -102,6 +102,43 @@ pub const RestrictionTarget = struct {
         }
     }
 
+    // HTML 2.7.1 serializable objects: RestrictionTarget is [Serializable].
+
+    /// RestrictionTarget's serialization steps, given `value` and `serialized`: its impl's.
+    pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) anyerror!void {
+        return @import("impls").RestrictionTarget.serializationSteps(value, serialized);
+    }
+
+    /// RestrictionTarget's deserialization steps, given `serialized`, `value` and
+    /// `target_realm`: its impl's.
+    pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) anyerror!void {
+        return @import("impls").RestrictionTarget.deserializationSteps(serialized, value, target_realm);
+    }
+
+    /// HTML StructuredDeserialize steps 22.3 and 24.4: a new instance of
+    /// RestrictionTarget, created in `target_realm`, set up by its deserialization steps.
+    /// Unwrapped: the engine wraps it in `target_realm`.
+    fn deserializeNew(serialized: *runtime.DeserializationRecord, target_realm: runtime.Context) anyerror!*runtime.Instance {
+        const value = try init(target_realm.allocator, target_realm);
+        const generation = runtime.SlabAllocator.generationOf(value);
+        errdefer value.releaseIfUnwrapped(generation);
+        try deserializationSteps(serialized, value, target_realm);
+        return value;
+    }
+
+    /// RestrictionTarget's serialization and deserialization steps, as an engine finds
+    /// them by interface identifier; null while its impl defines none.
+    pub const serializable_steps: ?runtime.SerializableSteps = if (has_serializable_steps) .{
+        .serialize = &serializationSteps,
+        .deserialize = &deserializeNew,
+    } else null;
+
+    const has_serializable_steps = blk: {
+        const impls = @import("impls");
+        if (!@hasDecl(impls, "RestrictionTarget")) break :blk false;
+        break :blk @hasDecl(impls.RestrictionTarget, "serializationSteps") and @hasDecl(impls.RestrictionTarget, "deserializationSteps");
+    };
+
     /// Extended attributes: [Exposed=Window], [SecureContext]
     pub fn call_static_fromElement(instance: *runtime.Instance, element: *runtime.Instance) anyerror!runtime.JSValue {
         return try RestrictionTargetImpl.call_static_fromElement(instance, element);

@@ -185,7 +185,7 @@ pub const IDBKey = struct {
     }
 
     /// Clone a key
-    pub fn clone(self: Self, allocator: std.mem.Allocator) !Self {
+    pub fn clone(self: Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!Self {
         return switch (self.key_type) {
             .number => Self{
                 .key_type = .number,
@@ -199,20 +199,7 @@ pub const IDBKey = struct {
             },
             .string => try stringOwned(allocator, self.value.string),
             .binary => try binaryOwned(allocator, self.value.binary),
-            .array => {
-                const arr = try allocator.alloc(IDBKey, self.value.array.len);
-                errdefer allocator.free(arr);
-
-                for (self.value.array, 0..) |k, i| {
-                    arr[i] = try k.clone(allocator);
-                }
-
-                return Self{
-                    .key_type = .array,
-                    .value = .{ .array = arr },
-                    .allocator = allocator,
-                };
-            },
+            .array => try arrayOwned(allocator, self.value.array),
         };
     }
 };
@@ -295,14 +282,35 @@ fn compareDates(va: i64, vb: i64) i16 {
 
 /// Compare strings by code unit
 /// https://infra.spec.whatwg.org/#code-unit-less-than
-fn compareStrings(va: []const u8, vb: []const u8) i16 {
-    const order = std.mem.order(u8, va, vb);
-    return switch (order) {
-        .lt => -1,
-        .gt => 1,
-        .eq => 0,
-    };
+pub fn compareStrings(va: []const u8, vb: []const u8) i16 {
+    // Infra code unit less than steps 1-3: compare UTF-16 units, including
+    // lone surrogates preserved in the engine's WTF-8 strings.
+    var a = CodeUnits{ .points = std.unicode.Wtf8View.initUnchecked(va).iterator() };
+    var b = CodeUnits{ .points = std.unicode.Wtf8View.initUnchecked(vb).iterator() };
+    while (a.next()) |left| {
+        const right = b.next() orelse return 1;
+        if (left < right) return -1;
+        if (left > right) return 1;
+    }
+    return if (b.next() == null) 0 else -1;
 }
+
+const CodeUnits = struct {
+    points: std.unicode.Wtf8Iterator,
+    trailing: ?u16 = null,
+
+    fn next(self: *CodeUnits) ?u16 {
+        if (self.trailing) |unit| {
+            self.trailing = null;
+            return unit;
+        }
+        const point = self.points.nextCodepoint() orelse return null;
+        if (point <= 0xffff) return @intCast(point);
+        const offset = point - 0x10000;
+        self.trailing = @intCast(0xdc00 + (offset & 0x3ff));
+        return @intCast(0xd800 + (offset >> 10));
+    }
+};
 
 /// Compare binary by byte
 /// https://infra.spec.whatwg.org/#byte-less-than
@@ -523,4 +531,10 @@ test "IDBKey - compound key comparison" {
     try std.testing.expectEqual(@as(i16, -1), compare(key3, key2)); // Adams < Smith
     try std.testing.expectEqual(@as(i16, -1), compare(key2, key1)); // Jane < John (Smith == Smith)
     try std.testing.expectEqual(@as(i16, -1), compare(key3, key1)); // Adams < Smith
+}
+
+test "IDBKey - strings compare by UTF-16 code units" {
+    // U+10000 starts with D800, which is below the BMP code unit E000.
+    try std.testing.expectEqual(@as(i16, -1), compare(IDBKey.string("\u{10000}"), IDBKey.string("\u{e000}")));
+    try std.testing.expectEqual(@as(i16, 1), compare(IDBKey.string("\u{ffff}"), IDBKey.string("\u{1f600}")));
 }

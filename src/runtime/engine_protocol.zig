@@ -392,6 +392,13 @@ pub const StringConversion = runtime.StringConversion;
 pub const StringRecordEntry = runtime.StringRecordEntry;
 pub const DictionaryMember = runtime.DictionaryMember;
 pub const SerializedWithTransfer = runtime.SerializedWithTransfer;
+/// HTML 2.7.1 serializable objects: the engine-neutral records a
+/// [Serializable] interface's serialization steps fill and its
+/// deserialization steps read, and the pair of steps a generated interface
+/// publishes as `serializable_steps` (src/runtime/serialization_record.zig).
+pub const SerializationRecord = runtime.SerializationRecord;
+pub const DeserializationRecord = runtime.DeserializationRecord;
+pub const SerializableSteps = runtime.SerializableSteps;
 pub const TransferableState = runtime.TransferableState;
 pub const TransferableCheck = runtime.TransferableCheck;
 pub const WindowOperations = runtime.WindowOperations;
@@ -1373,26 +1380,44 @@ pub inline fn getViewedArrayBuffer(realm: Context, view: JSValue) Error!Owned {
 // ============================================================================
 // 4.11 Structured serialization (HTML 2.7)
 // ============================================================================
+//
+// Platform objects (StructuredSerializeInternal steps 19-20 and 26.3,
+// StructuredDeserialize steps 22-24): one whose PRIMARY interface is
+// [Serializable] and has steps - its generated interface's
+// `serializable_steps`, found by the interface's identifier - is written as
+// that identifier, the record its serialization steps fill
+// (SerializationRecord: forStorage true only through
+// structuredSerializeForStorage) and its sub-serializations, serialized with
+// the same memory as the rest of the value; it is read back as a new
+// instance of that interface in the target realm, set up by its
+// deserialization steps. Any other platform object throws a
+// "DataCloneError" DOMException. The serialized form holds everything
+// inline - no pointer into any realm, agent or thread - so a worker's
+// message and an IndexedDB record can be read anywhere.
 
 /// StructuredSerializeForStorage of any value: an inline primitive is
-/// serialized as it is (HTML StructuredSerializeInternal step 4); a platform
-/// object that is not [Serializable] throws DataCloneError. OWNED bytes
-/// (`allocator`).
+/// serialized as it is (HTML StructuredSerializeInternal step 4), and so is
+/// a bare platform object (its wrapper); a platform object that is not
+/// [Serializable] throws DataCloneError. OWNED bytes (`allocator`).
 pub inline fn structuredSerializeForStorage(realm: Context, value: JSValue, allocator: std.mem.Allocator) Error![]u8 {
     return impl.structuredSerializeForStorage(realm, value, allocator);
 }
 
-/// StructuredDeserialize of what StructuredSerializeForStorage made. OWNED.
+/// StructuredDeserialize of what StructuredSerializeForStorage made, into
+/// `realm` (targetRealm): its platform objects are made there. OWNED.
 pub inline fn structuredDeserialize(realm: Context, bytes: []const u8) Error!Owned {
     return impl.structuredDeserialize(realm, bytes);
 }
 
-/// StructuredSerializeWithTransfer. OWNED (`allocator`).
+/// StructuredSerializeWithTransfer: StructuredSerializeInternal with
+/// forStorage false, so a [Serializable] platform object's steps see
+/// forStorage false. OWNED (`allocator`).
 pub inline fn structuredSerializeWithTransfer(realm: Context, value: JSValue, transfer_list: []const JSValue, check: TransferableCheck, check_data: ?*anyopaque, allocator: std.mem.Allocator) Error!SerializedWithTransfer {
     return impl.structuredSerializeWithTransfer(realm, value, transfer_list, check, check_data, allocator);
 }
 
-/// StructuredDeserializeWithTransfer. OWNED.
+/// StructuredDeserializeWithTransfer into `realm` (targetRealm): its
+/// platform objects are made there. OWNED.
 pub inline fn structuredDeserializeWithTransfer(realm: Context, serialized: []const u8, array_buffers: []const []const u8) Error!Owned {
     return impl.structuredDeserializeWithTransfer(realm, serialized, array_buffers);
 }

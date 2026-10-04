@@ -133,10 +133,38 @@ pub const IDBRequest = struct {
         };
     }
 
+    /// Reserve the request and transaction-list storage before an operation
+    /// mutates records. The caller owns this request until completion.
+    pub fn prepare(allocator: std.mem.Allocator, transaction: *IDBTransaction, source: RequestSourceType) IDBError!*Self {
+        const request = try allocator.create(Self);
+        errdefer allocator.destroy(request);
+        try transaction.requests.ensureUnusedCapacity(transaction.allocator, 1);
+        request.* = init(allocator);
+        request.transaction = transaction;
+        request.source_type = source;
+        return request;
+    }
+
+    /// IDB 5.6 step 4 precedes notification. No allocation follows publication.
+    pub fn completePrepared(self: *Self, result: RequestResult) void {
+        self.transaction.?.requests.appendAssumeCapacity(self);
+        self.setResult(result);
+    }
+
     /// Clean up resources
     pub fn deinit(self: *Self) void {
-        // Result cleanup is handled by specific result types
-        _ = self;
+        // ED 5.6.5.6.1: the native request is consumed before its binding
+        // dispatches a result. Never leave freed requests in the borrowed list.
+        if (self.transaction) |transaction| {
+            for (transaction.requests.items, 0..) |request, index| {
+                if (request == self) {
+                    _ = transaction.requests.orderedRemove(index);
+                    break;
+                }
+            }
+            self.transaction = null;
+        }
+        // Result bytes/keys are borrowed from their native store or cursor.
     }
 
     /// Get the result

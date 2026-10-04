@@ -74,7 +74,6 @@ src/runtime/engines/v8/context_manager.zig Window.get_document 7
 src/runtime/engines/v8/context_manager.zig Window.hasNamedProperty 7
 src/runtime/engines/v8/context_manager.zig Window.setBoundV8Global 9
 src/runtime/engines/v8/conversions.zig Window.getBoundV8Global 1
-src/runtime/engines/v8/template_registry.zig Document.getBoundV8Wrapper 1
 src/runtime/engines/v8/template_registry.zig Window.getBoundV8Global 1
 src/runtime/engines/v8/window_properties.zig Window.getNamedProperty 2
 src/runtime/engines/v8/window_properties.zig Window.hasNamedProperty 1
@@ -136,8 +135,6 @@ src/webidl/impls/CustomEvent.zig Event.call_initEvent 1
 src/webidl/impls/CustomEvent.zig Event.getDispatchFlag 1
 src/webidl/impls/DOMImplementation.zig DocumentType.createDocumentType 2
 src/webidl/impls/DOMParser.zig HTMLParser.parseHTML 1
-src/webidl/impls/DOMQuad.zig DOMRect.initWithDimensions 1
-src/webidl/impls/DOMRect.zig DOMRectReadOnly.InternalState 1
 src/webidl/impls/DOMStringMap.zig Element.call_getAttribute 3
 src/webidl/impls/DOMStringMap.zig Element.call_removeAttribute 3
 src/webidl/impls/DOMStringMap.zig Element.getInternalState 3

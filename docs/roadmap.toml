@@ -360,7 +360,9 @@ why = """postMessage, workers, storage and history state all use it, and it \
 carries only bytes plus transferred ArrayBuffers."""
 done_when = """A side-data channel carries WebAssembly modules, SharedArrayBuffers \
 and transferable platform objects."""
-progress = []
+progress = [
+  "0c414f3cad - [Serializable] platform objects: codegen routes to each interface's serialization steps, an engine-neutral record on V8's delegate, Blob/File/DOMException/geometry/ImageData/CryptoKey (serializable lane)",
+]
 
   [[infra.items]]
   name = "DataCloneError from the serializer delegate"
@@ -375,7 +377,11 @@ progress = []
   status = "todo"
 
   [[infra.items]]
-  name = "Transferable and serializable platform objects (MessagePort, Blob, File)"
+  name = "Serializable platform objects (Blob, File, DOMException, geometry, ImageData, CryptoKey) through structured serialization"
+  status = "done"
+
+  [[infra.items]]
+  name = "Transferable platform objects inside a message (MessagePort in the value), resizable and length-tracking ArrayBuffer transfer"
   status = "todo"
 
 [[infra]]
@@ -387,6 +393,7 @@ progress = [
   "5dbae790e - V8's platform tasks pumped each turn",
   "9ec30ea8f - the worker global is a DedicatedWorkerGlobalScope; a terminated worker removes its context and disposes its isolate; an idle worker pumps V8's tasks (workers lane)",
   "0b991e733 (merged a9241f56a) - SharedWorker, nested workers with their own timers, worker promise rejection tracking, WorkerLocation from the URL record, MessageEvent source; a timer-map leak fixed (networking lane)",
+  "47bd25cb11 - requestIdleCallback on the loop that runs (src/browser/event_loop.zig idle periods); a task whose document is not fully active is dropped (Task.document, dom.document_activity) (eventloop lane)",
 ]
 
   [[infra.items]]
@@ -408,6 +415,14 @@ progress = [
   [[infra.items]]
   name = "A terminated worker removes its context and disposes its isolate"
   status = "done"
+
+  [[infra.items]]
+  name = "Idle periods run requestIdleCallback callbacks; a not-fully-active document's tasks do not run"
+  status = "done"
+
+  [[infra.items]]
+  name = "Worker realms get a host task queue that drops queued tasks at shutdown (no timer-fallback leak window)"
+  status = "todo"
 
   [[infra.items]]
   name = "A real rendering opportunity instead of a requestAnimationFrame timer"

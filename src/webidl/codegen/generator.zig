@@ -1433,6 +1433,14 @@ fn generateImplFile(
     try w.flush();
 }
 
+/// Whether `ext_attrs` has [Serializable] (HTML 2.7.1).
+fn hasSerializable(ext_attrs: []const types.ExtendedAttribute) bool {
+    for (ext_attrs) |attr| {
+        if (std.mem.eql(u8, attr.name, "Serializable")) return true;
+    }
+    return false;
+}
+
 /// Generate Zig code for a single WebIDL interface
 ///
 /// Creates a .zig file in the output directory with the generated code.
@@ -1834,6 +1842,12 @@ fn generateInterfaceFile(
 
     // Generate lifecycle functions
     try writer.writeLifecycleFunctions(w, impl_name);
+
+    // HTML 2.7.1: a [Serializable] interface publishes its impl's steps.
+    if (hasSerializable(interface.extAttrs)) {
+        const impl_decl = if (std.mem.endsWith(u8, impl_name, "Impl")) impl_name[0 .. impl_name.len - 4] else impl_name;
+        try writer.writeSerializableSteps(w, impl_decl, "    ");
+    }
 
     // Generate constructors (WebIDL interfaces can have multiple constructors)
     if (own_constructors.items.len > 0) {

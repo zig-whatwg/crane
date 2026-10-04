@@ -11,6 +11,8 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+const engine = @import("engine");
+const dom = @import("dom");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
@@ -44,6 +46,10 @@ pub const InternalState = struct {
 
     /// Backend database
     database: *BackendDatabase,
+    upgrade_transaction: ?*runtime.Instance = null,
+    factory: ?*runtime.Instance = null,
+    factory_generation: u64 = 0,
+    live_transactions: std.ArrayList(*runtime.Instance) = .empty,
 
     /// Event handlers (EventHandler = ?*const fn, so null = no handler)
     onabort: typedefs.EventHandler,
@@ -52,8 +58,8 @@ pub const InternalState = struct {
     onversionchange: typedefs.EventHandler,
 
     pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        self.database.deinit();
-        allocator.destroy(self.database);
+        self.live_transactions.deinit(allocator);
+        self.database.releaseHeapOwnership();
         allocator.destroy(self);
     }
 };
@@ -65,30 +71,18 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+    const instance = try interfaces.EventTarget.initWithState(allocator, StateType, vtable, ctx);
     errdefer runtime.Instance.deinit(instance);
 
     const state = instance.getState(StateType);
 
-    // Create internal state
-    state.own._internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(state.own._internal.?);
-
-    const internal = state.own._internal.?;
-    internal.allocator = allocator;
-
-    // Create backend database with default name/version
-    // In practice, this would be set by IDBFactory.open()
-    internal.database = try allocator.create(BackendDatabase);
-    errdefer allocator.destroy(internal.database);
-
-    internal.database.* = BackendDatabase.init(allocator, "unnamed", 1);
-
-    // Initialize event handlers to null
-    internal.onabort = null;
-    internal.onclose = null;
-    internal.onerror = null;
-    internal.onversionchange = null;
+    state.own._internal = null;
+    const internal = try allocator.create(InternalState);
+    errdefer allocator.destroy(internal);
+    const database = try allocator.create(BackendDatabase);
+    database.* = BackendDatabase.init(allocator, "unnamed", 1);
+    internal.* = .{ .allocator = allocator, .database = database, .onabort = null, .onclose = null, .onerror = null, .onversionchange = null };
+    state.own._internal = internal;
 
     return instance;
 }
@@ -97,10 +91,16 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
+        if (internal.factory) |factory| {
+            if (runtime.SlabAllocator.generationOf(factory) == internal.factory_generation)
+                dom.indexeddb.unregisterConnection(factory, instance);
+        }
+        engine.forgetTracedChild(instance, .{ .name = "idb.factory" });
+        engine.forgetTracedChild(instance, .{ .name = "idb.upgrade" });
         internal.deinit(internal.allocator);
         state.own._internal = null;
     }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+    interfaces.EventTarget.deinit(instance);
 }
 
 /// Getter for name
@@ -129,70 +129,50 @@ pub fn get_objectStoreNames(instance: *runtime.Instance) anyerror!*runtime.Insta
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    // Get object store names from backend
-    // TODO: Create DOMStringList instance with names
-    // For now, just verify the database is accessible
-    _ = internal.database.objectStoreNames() catch {
-        return error.OutOfMemory;
-    };
-
-    return error.InvalidState; // Placeholder until DOMStringList is wired up
+    // Create a sorted name list steps 1-2: fresh, copied snapshot every call.
+    const names = try internal.database.objectStoreNames();
+    defer internal.allocator.free(names);
+    return dom.string_lists.create(instance.ctx, names);
 }
 
 /// Getter for onabort
 pub fn get_onabort(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    return internal.onabort;
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "abort");
 }
 
 /// Getter for onclose
 pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    return internal.onclose;
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "close");
 }
 
 /// Getter for onerror
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    return internal.onerror;
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "error");
 }
 
 /// Getter for onversionchange
 pub fn get_onversionchange(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    return internal.onversionchange;
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "versionchange");
 }
 
 /// Setter for onabort
 pub fn set_onabort(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    internal.onabort = value;
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "abort", value);
 }
 
 /// Setter for onclose
 pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    internal.onclose = value;
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "close", value);
 }
 
 /// Setter for onerror
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    internal.onerror = value;
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "error", value);
 }
 
 /// Setter for onversionchange
 pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    internal.onversionchange = value;
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "versionchange", value);
 }
 
 /// Operation: transaction
@@ -201,46 +181,58 @@ pub fn set_onversionchange(instance: *runtime.Instance, value: typedefs.EventHan
 ///
 /// Spec: https://w3c.github.io/IndexedDB/#dom-idbdatabase-transaction
 pub fn call_transaction(instance: *runtime.Instance, storeNames: runtime.JSValue, mode: webidl.Opt(enums.IDBTransactionMode), options: webidl.Opt(dictionaries.IDBTransactionOptions)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // Check if database is closed
-    if (internal.database.closed) {
-        return error.InvalidState;
+    const allocator = instance.ctx.allocator;
+    // WebIDL union conversion precedes the method algorithm.
+    var converted: ?[][]u8 = null;
+    if (engine.typeOf(instance.ctx, storeNames) == .object) converted = try engine.convertToSequenceOfDOMStrings(instance.ctx, storeNames, allocator);
+    if (converted == null) {
+        const name = try engine.convertToDOMString(instance.ctx, storeNames, allocator);
+        errdefer allocator.free(name);
+        const names = try allocator.alloc([]u8, 1);
+        names[0] = name;
+        converted = names;
     }
-
-    // Convert mode enum - unwrap Opt, default to readonly
-    const mode_value = if (mode.wasPassed()) mode.value else ._readonly_;
-    const backend_mode = switch (mode_value) {
-        ._readonly_ => BackendTransactionMode.readonly,
-        ._readwrite_ => BackendTransactionMode.readwrite,
-        ._versionchange_ => return error.InvalidAccessError, // Can't manually create versionchange
-    };
-
-    // Create transaction on backend
-    // TODO: Convert storeNames from JS array to Zig slice
-    _ = storeNames;
-    _ = options;
-
-    const txn = internal.database.transaction(&.{}, backend_mode, .{}) catch |err| {
-        return switch (err) {
-            error.NotFoundError => error.NotFound,
-            error.InvalidStateError => error.InvalidState,
-            error.InvalidAccessError => error.InvalidAccessError,
-            else => error.InvalidState,
+    defer {
+        for (converted.?) |name| allocator.free(name);
+        allocator.free(converted.?);
+    }
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    // Steps 1-2: live upgrade and close-pending checks.
+    if (internal.database.version_change_transaction != null or internal.database.closed) return error.InvalidStateError;
+    var scope: std.ArrayList([]const u8) = .empty;
+    defer scope.deinit(allocator);
+    // Step 3: set of unique converted names, retaining the converted allocation.
+    for (converted.?) |name| {
+        var duplicate = false;
+        for (scope.items) |existing| if (std.mem.eql(u8, existing, name)) {
+            duplicate = true;
+            break;
         };
+        if (!duplicate) try scope.append(allocator, name);
+    }
+    // Steps 4-6: missing name, empty scope, then invalid versionchange mode.
+    for (scope.items) |name| if (!internal.database.schema().contains(name)) return error.NotFoundError;
+    if (scope.items.len == 0) return error.InvalidAccessError;
+    const backend_mode: BackendTransactionMode = switch (if (mode.wasPassed()) mode.value else ._readonly_) {
+        ._readonly_ => .readonly,
+        ._readwrite_ => .readwrite,
+        ._versionchange_ => return error.TypeError,
     };
-
-    // Create WebIDL IDBTransaction wrapper
-    const txn_instance = interfaces.IDBTransaction.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
+    const durability: storage.indexeddb.IDBTransactionDurability = switch (if (options.wasPassed()) options.value.durability orelse ._default_ else ._default_) {
+        ._default_ => .default,
+        ._strict_ => .strict,
+        ._relaxed_ => .relaxed,
     };
-
-    // Store backend transaction reference
-    _ = txn;
-    // TODO: Connect backend transaction to wrapper
-
-    return txn_instance;
+    // Steps 7-9: backend owns its scope snapshot; the owner hook transfers it.
+    const transaction = try internal.database.transaction(scope.items, backend_mode, .{ .durability = durability });
+    errdefer {
+        transaction.deinit();
+        allocator.destroy(transaction);
+    }
+    const wrapper = try interfaces.IDBTransaction.init(allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(wrapper);
+    try dom.indexeddb.attachTransaction(wrapper, transaction, instance);
+    return wrapper;
 }
 
 /// Operation: createObjectStore
@@ -251,45 +243,32 @@ pub fn call_transaction(instance: *runtime.Instance, storeNames: runtime.JSValue
 ///
 /// Note: Can only be called during a versionchange transaction.
 pub fn call_createObjectStore(instance: *runtime.Instance, name: runtime.DOMString, options: webidl.Opt(dictionaries.IDBObjectStoreParameters)) anyerror!*runtime.Instance {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-
-    // Check if we're in a versionchange transaction
-    if (internal.database.version_change_transaction == null) {
-        return error.InvalidState;
-    }
-
-    // Convert DOMString to slice
-    const name_slice = name.asSlice();
-
-    // Convert options - keyPath is anyopaque, need to handle it differently
-    // TODO: Proper keyPath conversion from JS value - unwrap Opt
+    // Convert the dictionary's nullable string/sequence union before running
+    // the method. Native 4.4 steps 1-8 then apply validation in spec order.
+    const converted = if (options.wasPassed()) options.value else dictionaries.IDBObjectStoreParameters{};
+    const key_path = converted.keyPath orelse runtime.JSValue.jsNull;
+    var path: ?dom.indexeddb_keys.Path = if (key_path.isNullOrUndefined()) null else try dom.indexeddb_keys.keyPath(instance.ctx, key_path, instance.ctx.allocator);
+    defer if (path) |*owned| owned.deinit();
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     const backend_options = storage.indexeddb.database.IDBObjectStoreParameters{
-        .key_path = null, // TODO: Convert options.keyPath from anyopaque
-        .auto_increment = if (options.wasPassed()) options.value.autoIncrement orelse false else false,
+        .key_path = if (path) |owned| if (owned.value == .single) owned.value.single else null else null,
+        .compound_key_path = if (path) |owned| if (owned.value == .array) owned.value.array else null else null,
+        .auto_increment = converted.autoIncrement orelse false,
     };
-
-    // Create object store on backend
-    const store = internal.database.createObjectStore(name_slice, backend_options) catch |err| {
+    const store = internal.database.createObjectStore(name.asSlice(), backend_options) catch |err| {
         return switch (err) {
-            error.ConstraintError => error.ConstraintError,
-            error.InvalidStateError => error.InvalidState,
-            error.InvalidAccessError => error.InvalidAccessError,
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            else => error.InvalidState,
+            error.InvalidKeyPathError => error.SyntaxError,
+            else => err,
         };
     };
 
-    // Create WebIDL IDBObjectStore wrapper
-    const store_instance = interfaces.IDBObjectStore.init(internal.allocator, instance.ctx) catch {
-        return error.OutOfMemory;
-    };
-
-    // Store backend object store reference
-    _ = store;
-    // TODO: Connect backend store to wrapper
-
-    return store_instance;
+    // createObjectStore returns the same handle as transaction.objectStore.
+    // The native creation handle is temporary; the transaction owns its cache.
+    defer {
+        store.deinit();
+        internal.database.allocator.destroy(store);
+    }
+    return interfaces.IDBTransaction.call_objectStore(internal.upgrade_transaction.?, name);
 }
 
 /// Operation: close
@@ -301,7 +280,8 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
-    internal.database.close();
+    internal.database.closed = true;
+    closeIfReady(instance);
 }
 
 /// Operation: deleteObjectStore
@@ -312,23 +292,89 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 ///
 /// Note: Can only be called during a versionchange transaction.
 pub fn call_deleteObjectStore(instance: *runtime.Instance, name: runtime.DOMString) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    try internal.database.deleteObjectStore(name.asSlice());
+}
 
-    // Check if we're in a versionchange transaction
-    if (internal.database.version_change_transaction == null) {
-        return error.InvalidState;
-    }
+pub fn installHooks() void {
+    dom.indexeddb.installDatabases(.{ .close_if_ready = closeIfReady, .is_closing = isClosing, .set_factory = setFactory, .attach = attachDatabase, .begin_upgrade = beginUpgrade, .end_upgrade = endUpgrade, .register_transaction = registerTransaction, .remove_transaction = removeTransaction, .wake_transactions = wakeTransactions, .transaction_finished = transactionFinished });
+}
 
-    // Convert DOMString to slice
-    const name_slice = name.asSlice();
-
-    internal.database.deleteObjectStore(name_slice) catch |err| {
-        return switch (err) {
-            error.NotFoundError => error.NotFound,
-            error.InvalidStateError => error.InvalidState,
-            error.TransactionInactiveError => error.TransactionInactiveError,
-            else => error.InvalidState,
-        };
+fn registerTransaction(instance: *runtime.Instance, transaction: *runtime.Instance) !void {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    try internal.live_transactions.append(internal.allocator, transaction);
+}
+fn removeTransaction(instance: *runtime.Instance, transaction: *runtime.Instance) void {
+    const internal = instance.getState(State).own._internal orelse return;
+    for (internal.live_transactions.items, 0..) |entry, index| if (entry == transaction) {
+        _ = internal.live_transactions.orderedRemove(index);
+        break;
     };
+}
+fn wakeTransactions(instance: *runtime.Instance) void {
+    const internal = instance.getState(State).own._internal orelse return;
+    for (internal.live_transactions.items) |transaction| dom.indexeddb.wakeTransaction(transaction);
+}
+fn transactionFinished(instance: *runtime.Instance) void {
+    const internal = instance.getState(State).own._internal orelse return;
+    if (internal.factory) |factory| {
+        if (runtime.SlabAllocator.generationOf(factory) == internal.factory_generation) {
+            dom.indexeddb.wakeFactoryTransactions(factory);
+            return;
+        }
+    }
+    wakeTransactions(instance);
+}
+fn attachDatabase(instance: *runtime.Instance, database: *BackendDatabase) !void {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    // Backend names borrow their caller's string. The connection owns its copy.
+    const name = try database.allocator.dupe(u8, database.name);
+    internal.database.releaseHeapOwnership();
+    if (database.owned_name) |old| database.allocator.free(old);
+    database.owned_name = name;
+    database.name = name;
+    internal.database = database;
+}
+fn beginUpgrade(instance: *runtime.Instance) !*runtime.Instance {
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const transaction = try internal.allocator.create(storage.indexeddb.IDBTransaction);
+    errdefer internal.allocator.destroy(transaction);
+    transaction.* = storage.indexeddb.IDBTransaction.init(internal.allocator, internal.database, &.{}, .versionchange);
+    errdefer transaction.deinit();
+    const wrapper = try interfaces.IDBTransaction.init(internal.allocator, instance.ctx);
+    errdefer runtime.Instance.deinit(wrapper);
+    try dom.indexeddb.attachTransaction(wrapper, transaction, instance);
+    internal.database.version_change_transaction = transaction;
+    internal.upgrade_transaction = wrapper;
+    engine.traceChild(instance, wrapper, .{ .name = "idb.upgrade" });
+    return wrapper;
+}
+fn endUpgrade(instance: *runtime.Instance) void {
+    const internal = instance.getState(State).own._internal orelse return;
+    internal.database.version_change_transaction = null;
+    internal.upgrade_transaction = null;
+    engine.forgetTracedChild(instance, .{ .name = "idb.upgrade" });
+}
+
+fn setFactory(instance: *runtime.Instance, factory: *runtime.Instance) void {
+    const internal = instance.getState(State).own._internal orelse return;
+    internal.factory = factory;
+    internal.factory_generation = runtime.SlabAllocator.generationOf(factory);
+    engine.traceChild(instance, factory, .{ .name = "idb.factory" });
+}
+
+fn isClosing(instance: *runtime.Instance) bool {
+    return (instance.getState(State).own._internal orelse return true).database.closed;
+}
+fn closeIfReady(instance: *runtime.Instance) void {
+    const internal = instance.getState(State).own._internal orelse return;
+    if (!internal.database.closed) return;
+    if (internal.database.version_change_transaction) |transaction| {
+        if (transaction.state != .finished) return;
+    }
+    for (internal.database.transactions.items) |transaction| if (transaction.state != .finished) return;
+    if (internal.factory) |factory| {
+        if (runtime.SlabAllocator.generationOf(factory) == internal.factory_generation)
+            dom.indexeddb.unregisterConnection(factory, instance);
+    }
 }

@@ -1,84 +1,31 @@
-//! Implementation for IDBCursorWithValue interface
-//!
-//! Extends IDBCursor with a `value` property that exposes the current record's value.
-
+//! IndexedDB value cursor: parent owns cursor state and native storage.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const storage = @import("storage");
-const IDBCursorWithValueInterface = interfaces.IDBCursorWithValue;
-
-// Backend types
-const BackendCursorWithValue = storage.indexeddb.IDBCursorWithValue;
-
-pub const State = IDBCursorWithValueInterface.State;
-
-pub const ImplError = error{
-    NotImplemented,
-    InvalidState,
-    OutOfMemory,
-};
-
-/// Internal state wrapping storage.indexeddb.IDBCursorWithValue
-pub const InternalState = struct {
-    allocator: std.mem.Allocator,
-    cursor_with_value: ?*BackendCursorWithValue,
-    request_instance: ?*runtime.Instance,
-
-    pub fn deinit(self: *InternalState, allocator: std.mem.Allocator) void {
-        allocator.destroy(self);
-    }
-};
-
-/// Initialize instance
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    const state = instance.getState(StateType);
-
-    state.own._internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(state.own._internal.?);
-
-    const internal = state.own._internal.?;
-    internal.allocator = allocator;
-    internal.cursor_with_value = null;
-    internal.request_instance = null;
-
-    return instance;
+const dom = @import("dom");
+const engine = @import("engine");
+pub const State = interfaces.IDBCursorWithValue.State;
+pub const ImplError = error{InvalidStateError};
+pub const InternalState = struct {};
+pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
+    return interfaces.IDBCursor.initWithState(allocator, StateType, vtable, ctx);
 }
-
-/// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        internal.deinit(internal.allocator);
-        state.own._internal = null;
-    }
-    // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
+    engine.forgetTracedChild(instance, .{ .name = "idb.cursor.value" });
+    interfaces.IDBCursor.deinit(instance);
 }
-
-/// Getter for value - returns the current record's value
 pub fn get_value(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return error.InvalidState;
-    const cursor_with_value = internal.cursor_with_value orelse return error.InvalidState;
-
-    // The record's value is IndexedDB's serialized bytes
-    // (storage/indexeddb/serialization.zig), not an engine handle: handing
-    // their address to the binding as one read the bytes as a Global.
-    // TODO: StructuredDeserialize them with IndexedDB's deserializer into
-    // this's value, once per iteration.
-    if (cursor_with_value.getValue()) |_| return error.NotImplemented;
-
-    return runtime.JSValue.jsUndefined;
+    return readValue(instance);
+}
+// 4.9 value getter: keep identity until the cursor loads another record. The
+// traced edge permits a value that refers back to the cursor to be collected.
+fn readValue(instance: *runtime.Instance) !runtime.JSValue {
+    const realm = dom.indexeddb.cursorValueRealm(instance);
+    if (!instance.ctx.hasEngine() or !realm.hasEngine()) return error.InvalidStateError;
+    if (engine.tracedValue(instance, .{ .name = "idb.cursor.value" })) |value| return value.take();
+    const cursor = dom.indexeddb.cursorState(instance) orelse return error.InvalidStateError;
+    const bytes = cursor.value orelse return .jsUndefined;
+    const value = try engine.structuredDeserialize(realm, bytes);
+    engine.traceValue(instance, value.value, .{ .name = "idb.cursor.value" });
+    return value.take();
 }

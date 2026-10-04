@@ -137,3 +137,120 @@ pub fn get_usages(instance: *runtime.Instance) anyerror!runtime.JSValue {
     }
     return (try engine.createSequenceOfValues(instance.ctx, values[0..count])).take();
 }
+
+// ============================================================================
+// Serializable objects (HTML 2.7.1; WebCrypto 13.5: CryptoKey is
+// [Serializable])
+// ============================================================================
+
+/// WebCrypto 13.5, CryptoKey's serialization steps, given `value` and
+/// `serialized`:
+///
+/// 1. Set serialized.[[Type]] to value.[[type]].
+/// 2. Set serialized.[[Extractable]] to value.[[extractable]].
+/// 3. Set serialized.[[Algorithm]] to the sub-serialization of
+///    value.[[algorithm]].
+/// 4. Set serialized.[[Usages]] to the sub-serialization of value.[[usages]].
+/// 5. Set serialized.[[Handle]] to value.[[handle]].
+///
+/// Deviation (steps 3-4): this key keeps no [[algorithm]] or [[usages]]
+/// object to sub-serialize - its getters make them from its native slots
+/// each time (the cache is Codex's WebCrypto Q8) - so the record carries
+/// those slots, from which the copy's getters make the same objects. Step 5
+/// is the key material, copied: the handle of this agent's key cannot cross
+/// to another (a worker, an IndexedDB record). Every enum is written by
+/// name, so a stored key reads back after the enums are reordered.
+pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
+    const slots = keySlots(value) orelse return error.DataCloneError;
+    // Steps 1-2.
+    try serialized.writeString(@tagName(slots.kind));
+    try serialized.writeBool(slots.extractable);
+    // Step 3: [[algorithm]], as its slots.
+    const algorithm = slots.algorithm;
+    try serialized.writeString(@tagName(algorithm.id));
+    try writeOptionalName(serialized, if (algorithm.hash) |hash| @tagName(hash) else null);
+    try writeOptionalUint32(serialized, algorithm.length);
+    try writeOptionalUint32(serialized, algorithm.modulus_length);
+    try serialized.writeBool(algorithm.public_exponent != null);
+    try serialized.writeBytes(algorithm.public_exponent orelse "");
+    try writeOptionalName(serialized, if (algorithm.named_curve) |curve| @tagName(curve) else null);
+    // Step 4: [[usages]], in recognized-usage order.
+    try serialized.writeUint32(@intCast(slots.usages.count()));
+    var usages = slots.usages.iterator();
+    while (usages.next()) |usage| try serialized.writeString(@tagName(usage));
+    // Step 5.
+    try serialized.writeBytes(slots.material);
+}
+
+/// WebCrypto 13.5, CryptoKey's deserialization steps, given `serialized` and
+/// `value`: initialize [[type]], [[extractable]], [[algorithm]], [[usages]]
+/// and [[handle]] from serialized's (see the serialization steps for the
+/// form [[algorithm]] and [[usages]] take). A record naming anything this
+/// build does not know is a DataCloneError: the key is never made as
+/// something else.
+pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
+    // HTML StructuredDeserialize step 22.2: "If the interface identified by
+    // interfaceName is not exposed in targetRealm, then throw a
+    // DataCloneError." CryptoKey is [SecureContext], so it is not exposed in
+    // a realm whose settings object is not a secure context - which only its
+    // global's settings can say (dom.global_settings), so the check is here.
+    if (!isSecureContext(target_realm)) return error.DataCloneError;
+    // Steps 1-2.
+    const kind = try readName(serialized, keys.Kind);
+    const extractable = try serialized.readBool();
+    // Step 3.
+    var algorithm: keys.Algorithm = .{ .id = try readName(serialized, @import("webcrypto").registry.Id) };
+    if (try readOptionalString(serialized)) |hash| algorithm.hash = std.meta.stringToEnum(@import("webcrypto").hash.Hash, hash) orelse return error.DataCloneError;
+    algorithm.length = try readOptionalUint32(serialized);
+    algorithm.modulus_length = try readOptionalUint32(serialized);
+    const has_exponent = try serialized.readBool();
+    const exponent = try serialized.readBytes();
+    if (has_exponent) algorithm.public_exponent = exponent;
+    if (try readOptionalString(serialized)) |curve| algorithm.named_curve = std.meta.stringToEnum(keys.Curve, curve) orelse return error.DataCloneError;
+    // Step 4.
+    var usages = keys.Usages.initEmpty();
+    const usage_count = try serialized.readUint32();
+    for (0..usage_count) |_| usages.insert(try readName(serialized, keys.Usage));
+    // Step 5: the material, copied into slots this key owns (Slots.init
+    // copies it and the exponent).
+    const material = try serialized.readBytes();
+    const internal = value.getState(State).own._internal orelse return error.DataCloneError;
+    internal.slots = try keys.Slots.init(internal.allocator, kind, extractable, algorithm, usages, material);
+}
+
+/// Whether `realm`'s settings object is a secure context, as its global
+/// answers (a realm with no global, or one no kind of global owns, is not
+/// one).
+fn isSecureContext(realm: runtime.Context) bool {
+    const record = realm.getRealm() orelse return false;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return false));
+    const settings = @import("dom").global_settings.of(global) orelse return false;
+    return settings.is_secure_context(global);
+}
+
+fn writeOptionalName(serialized: *runtime.SerializationRecord, name: ?[]const u8) !void {
+    try serialized.writeBool(name != null);
+    try serialized.writeString(name orelse "");
+}
+
+fn readOptionalString(serialized: *runtime.DeserializationRecord) !?[]const u8 {
+    const present = try serialized.readBool();
+    const text = try serialized.readString();
+    return if (present) text else null;
+}
+
+fn writeOptionalUint32(serialized: *runtime.SerializationRecord, number: ?u32) !void {
+    try serialized.writeBool(number != null);
+    try serialized.writeUint32(number orelse 0);
+}
+
+fn readOptionalUint32(serialized: *runtime.DeserializationRecord) !?u32 {
+    const present = try serialized.readBool();
+    const number = try serialized.readUint32();
+    return if (present) number else null;
+}
+
+/// An enum written by its tag name; an unknown name is a DataCloneError.
+fn readName(serialized: *runtime.DeserializationRecord, comptime E: type) !E {
+    return std.meta.stringToEnum(E, try serialized.readString()) orelse error.DataCloneError;
+}
