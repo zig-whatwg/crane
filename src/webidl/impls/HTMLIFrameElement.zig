@@ -2064,6 +2064,11 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
 /// `page_swap` names, fired at `document` after its descendants have
 /// unloaded and before it does (step 6.1). False when that event's
 /// listeners took the navigable or `document` away before it unloaded.
+///
+/// `document` is going: a navigation replaces it, or its traversable
+/// closes. Unloaded, each document here is destroyed too ("unload" step 20:
+/// none is salvageable without a bfcache), and then so are the navigables
+/// of `document`'s iframes (`destroyChildNavigables`).
 fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
     var documents = collectInclusiveDescendantDocuments(document, integration.allocator);
     defer documents.deinit(integration.allocator);
@@ -2087,7 +2092,53 @@ fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration
         }
     }
     if (integration.browsing_context) |bc| destroyWindowDocuments(bc);
+    destroyChildNavigables(integration);
     return true;
+}
+
+/// The navigables of the iframes in a document that is going - unloaded and
+/// destroyed by `unloadDocumentAndDescendantsSwapping` - are destroyed after
+/// it, before a new document takes its place. HTML's navigable tree hangs off
+/// active documents: a navigable's child navigables are the content
+/// navigables of the navigable containers in its active document
+/// ("document-tree child navigables"), so once the document is unloaded and
+/// destroyed they are nobody's children. Each goes as a removed iframe's
+/// does - "destroy a child navigable" step 3, its container's content
+/// navigable is null - through the integration that owns it: its browsing
+/// context leaves `integration`'s children, closes and lets go of its own
+/// (BrowsingContext.discard), and its iframe's contentWindow reads null. The
+/// order is Blink's FrameLoader::DetachDocument: the unload event, then
+/// LocalFrame::DetachChildren (each child frame's Frame::Detach, which
+/// unlinks it from its parent - Frame::RemoveChild), then the old document's
+/// shutdown, and only then CommitDocumentLoader for the new one.
+///
+/// They stayed on the list until the replaced document's iframe elements
+/// were collected, which freed their browsing contexts there: "definitely
+/// close" walked a freed one (BrowsingContext.collectDescendants, SIGSEGV at
+/// 0xaaaa...), and History's traversal made a joint session history on a
+/// freed and reused one - a leak, and a write into another object's memory.
+///
+/// Their session history entries stay: they are the replaced document's
+/// nested histories, and the traversable's steps still count them. Their
+/// realms end as they did, with their integrations.
+fn destroyChildNavigables(integration: *IFrameIntegration) void {
+    var i: usize = if (integration.browsing_context) |bc| bc.children.items.len else 0;
+    while (i > 0) {
+        i -= 1;
+        // Read again each time: a child's navigation API hears its
+        // navigation abort below, and script can take the navigable, or
+        // more of its children, away meanwhile.
+        const bc = integration.browsing_context orelse return;
+        if (i >= bc.children.items.len) continue;
+        const child = bc.children.items[i];
+        if (integrationOfBrowsingContext(child)) |owner| {
+            owner.onRemovedFromDocument();
+        } else {
+            // A context whose integration made no realm for it: no navigable
+            // to destroy, but not `bc`'s child either.
+            child.removeFromParent();
+        }
+    }
 }
 
 const DocumentEntry = struct {
