@@ -280,9 +280,8 @@ pub fn convertToIntAs(comptime T: type, comptime conversion: IntegerConversion, 
 /// An argument, attribute value or dictionary member of integer type `T` - or
 /// a nullable form of one, or an optional argument (`webidl.Opt`) of either -
 /// converted with `conversion`'s branch of ConvertToInt. A nullable's null and
-/// undefined are null; an optional argument's undefined is "not passed" (and,
-/// as `fromV8Value`'s optional path has it, so is null). Any other type
-/// converts as `fromV8Value` does.
+/// undefined are null; an optional argument's undefined is "not passed", and
+/// its null converts (0). Any other type converts as `fromV8Value` does.
 pub fn fromV8ValueInteger(
     comptime T: type,
     comptime conversion: IntegerConversion,
@@ -302,7 +301,9 @@ pub fn fromV8ValueInteger(
         return try fromV8ValueInteger(info.optional.child, conversion, allocator, isolate, context, value);
     }
     if (info == .@"struct" and @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) {
-        if (v8.v8_Value_IsNullOrUndefined(value)) return T.notPassed();
+        // Only undefined is a missing optional argument; null converts
+        // (ToNumber(null) is 0), as in fromV8Value's optional path.
+        if (v8.v8_Value_IsUndefined(value)) return T.notPassed();
         return T.passed(try fromV8ValueInteger(@FieldType(T, "value"), conversion, allocator, isolate, context, value));
     }
     return fromV8Value(T, allocator, isolate, context, value);
@@ -1785,37 +1786,17 @@ pub fn fromV8Value(
             @compileError("webidl.Opt type missing 'value' field");
         };
 
-        // Per WebIDL spec, for optional parameters:
-        // - undefined means "not passed" (use default value)
-        // - null is a valid value for string types (stringified to "null")
-        // https://webidl.spec.whatwg.org/#idl-optional
-        const is_string_type = comptime blk: {
-            if (InnerType == runtime.DOMString or
-                InnerType == runtime.USVString or
-                InnerType == runtime.ByteString)
-            {
-                break :blk true;
-            }
-            // Check for []const u8 slice type
-            const inner_info = @typeInfo(InnerType);
-            if (inner_info == .pointer and inner_info.pointer.size == .slice and
-                inner_info.pointer.child == u8)
-            {
-                break :blk true;
-            }
-            break :blk false;
-        };
-
+        // WebIDL 3.7.x, overload resolution step 4 / "converting arguments":
+        // an optional argument whose value is undefined is not passed (its
+        // default applies); EVERY other value, null included, is converted
+        // to the argument's type. So null is null for a nullable type, 0 for
+        // a number (ToNumber), false for a boolean, "null" for a string, the
+        // defaults for a dictionary (3.2.18 steps 1-3), and a TypeError for
+        // an interface, callback or sequence type. Null used to read as not
+        // passed for every non-string type (idbfactory_open's null version).
         if (v8.v8_Value_IsUndefined(value)) {
             return T.notPassed();
         }
-
-        // For non-string types, null also means "not passed"
-        if (!is_string_type and v8.v8_Value_IsNull(value)) {
-            return T.notPassed();
-        }
-
-        // Convert the inner value (for strings, null will be stringified to "null")
         const inner_value = try fromV8Value(InnerType, allocator, isolate, context, value);
         return T.passed(inner_value);
     }
@@ -1830,11 +1811,18 @@ pub fn fromV8Value(
             return error.TypeError;
         }
 
-        // Regular dictionary struct - convert from V8 object
-        if (!v8.v8_Value_IsObject(value)) {
+        // WebIDL 3.2.18 steps 1-3: "If jsDict is not undefined, null or an
+        // Object, throw a TypeError"; undefined and null are a dictionary
+        // whose every member reads as undefined - its defaults, as `{}`
+        // gives them. (Null for an optional dictionary argument now reaches
+        // here instead of reading as not passed; a union's dictionary arm
+        // takes null and undefined the same way, 3.2.25 step 4.)
+        const object: ?*v8.Object = if (v8.v8_Value_IsObject(value))
+            @as(*v8.Object, @ptrCast(value))
+        else if (v8.v8_Value_IsNullOrUndefined(value))
+            null
+        else
             return ConversionError.TypeError;
-        }
-        const object = @as(*v8.Object, @ptrCast(value));
 
         var result: T = undefined;
         const members = comptime dictionaryMemberOrder(T);
@@ -1879,8 +1867,12 @@ pub fn fromV8Value(
             );
             defer if (field_name_str) |n| v8.v8_String_Dispose(n);
 
-            // Get property value from object
-            const field_v8_opt = v8.v8_Object_Get(object, context, @ptrCast(field_name_str));
+            // Get property value from object - or, for an undefined or null
+            // dictionary, undefined (a Global of our own, as Get's is).
+            const field_v8_opt = if (object) |o|
+                v8.v8_Object_Get(o, context, @ptrCast(field_name_str))
+            else
+                v8.v8_Undefined(isolate);
 
             if (field_v8_opt) |field_v8| {
                 // Get made this handle for the member, and it is released when
