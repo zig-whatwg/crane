@@ -94,6 +94,7 @@ pub const policy_containers = @import("policy_containers.zig");
 pub const csp_violations = @import("csp_violations.zig");
 pub const fetch_objects = @import("fetch_objects.zig");
 pub const blob_bytes = @import("blob_bytes.zig");
+pub const geometry_storage = @import("geometry_storage.zig");
 pub const names = @import("names.zig");
 pub const element_attributes = @import("element_attributes.zig");
 pub const observer_registrations = @import("observer_registrations.zig");
