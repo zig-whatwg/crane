@@ -8239,6 +8239,15 @@ pub fn V8Interface(comptime Interface: type) type {
                     },
                     else => {}, // Other variants don't need cleanup
                 }
+            } else if (type_info == .@"union" and type_info.@"union".tag_type != null) {
+                // A union-typed attribute ((TrustedHTML or DOMString)
+                // innerHTML, the Trusted Types setters): free the arm the
+                // conversion took, as freeConvertedArg does for an
+                // operation's union argument. An interface arm is a borrowed
+                // *Instance - nothing to free.
+                switch (value) {
+                    inline else => |payload| freeConvertedValue(@TypeOf(payload), allocator, payload),
+                }
             }
             // Other types (primitives, etc.) don't need cleanup
         }
