@@ -8210,24 +8210,17 @@ pub fn V8Interface(comptime Interface: type) type {
         fn convertV8ToZig(comptime T: type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, v8_value: *v8.Value) !T {
             // Handle primitive types
             if (T == runtime.DOMString) {
-                // Check if it's a string
-                if (!v8.v8_Value_IsString(v8_value)) {
-                    // Coerce to string; ToString's result is owned.
-                    const str = v8.v8_Value_ToString(v8_value, context) orelse return error.TypeError;
-                    defer v8.v8_String_Dispose(str);
-                    return try conv.fromV8String(allocator, isolate, context, str);
-                }
-                const str: *v8.String = @ptrCast(v8_value);
-                return try conv.fromV8String(allocator, isolate, context, str);
+                // WebIDL 3.2.10: "Let x be ? ToString(V)" - what a toString
+                // throws propagates as it is (ExceptionPending, rethrown),
+                // and a Symbol is a TypeError: conv.fromV8Value's DOMString
+                // conversion, as an operation argument's. A ToString done
+                // here turned every throw into a TypeError of its own.
+                return try conv.fromV8Value(runtime.DOMString, allocator, isolate, context, v8_value);
             } else if (T == runtime.USVString or T == []const u8) {
                 // DOMString conversion, then every lone surrogate becomes
                 // U+FFFD (WebIDL 3.2.11); the bytes are the fresh copy
                 // fromV8String allocated, so they are rewritten in place.
-                const dom_str = if (!v8.v8_Value_IsString(v8_value)) blk: {
-                    const str = v8.v8_Value_ToString(v8_value, context) orelse return error.TypeError;
-                    defer v8.v8_String_Dispose(str);
-                    break :blk try conv.fromV8String(allocator, isolate, context, str);
-                } else try conv.fromV8String(allocator, isolate, context, @ptrCast(v8_value));
+                const dom_str = try conv.fromV8Value(runtime.DOMString, allocator, isolate, context, v8_value);
                 const bytes = dom_str.asSlice();
                 if (bytes.len > 0) conv.replaceLoneSurrogates(@constCast(bytes));
                 return bytes;
