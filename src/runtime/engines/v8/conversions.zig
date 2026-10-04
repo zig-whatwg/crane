@@ -2394,6 +2394,13 @@ pub fn toV8Value(
         };
     }
 
+    // A DOMString is a tagged union (empty, interned, owned) with a meaning
+    // of its own: a string. Before the generic union branch below, which
+    // converts the active field - and the empty variant's field is `void`,
+    // which made an empty DOMString reach script as undefined
+    // (DOMStringList[0] while item(0) was "").
+    if (T == runtime.DOMString) return @ptrCast(toV8String(isolate, value));
+
     // Handle webidl.Opt types (WebIDL optional parameters)
     // These are structs with was_passed and value fields, used for optional parameters
     // that need to distinguish between "not passed" and "passed with value"
@@ -2637,7 +2644,7 @@ pub fn toV8Value(
     if (T == u64) return @ptrCast(toV8UnsignedLongLong(isolate, value));
     if (T == runtime.Double) return @ptrCast(toV8Double(isolate, value));
     if (T == runtime.Float) return @ptrCast(toV8Float(isolate, value));
-    if (T == runtime.DOMString) return @ptrCast(toV8String(isolate, value));
+    // runtime.DOMString: at the top, before the generic union branch.
     // SAFETY: runtime.Any is *anyopaque which might not be a valid V8 Value pointer
     // Return undefined instead of blindly casting to prevent crashes
     if (T == runtime.Any) return toV8Undefined(isolate);
