@@ -11252,6 +11252,20 @@ static void throwDataCloneErrorIn(Isolate* isolate, Local<String> message) {
     thrower.ThrowDataCloneError(message);
 }
 
+/// A deserialization failure, thrown WITHOUT running script. V8 deserializes
+/// inside a DisallowJavascriptExecutionScope (value-serializer.cc,
+/// ValueDeserializer::ReadObject), and constructing the DOMException through
+/// its JavaScript constructor (as DataCloneErrorDelegate does when
+/// serializing) runs the binding's constructor callback, which runs script -
+/// a V8 fatal error ("Invoke in DisallowJavascriptExecutionScope"). Every
+/// caller of a deserialization catches the exception (TryCatch) and reports
+/// the failure itself - a "messageerror" event, or a DataCloneError the
+/// binding throws once V8 has returned - so an Error made by V8's factory,
+/// which runs no script, is all that is needed here.
+static void throwDeserializationError(Isolate* isolate, Local<String> message) {
+    isolate->ThrowException(Exception::Error(message));
+}
+
 /// The deserializing half of HostObjectSteps: V8's ValueDeserializer asks
 /// for a host object where the serializer wrote one.
 ///
@@ -11276,20 +11290,20 @@ class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate 
 
     MaybeLocal<Object> ReadHostObject(Isolate* isolate) override {
         if (host_ == nullptr || host_->read == nullptr || deserializer_ == nullptr) {
-            throwDataCloneErrorIn(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
+            throwDeserializationError(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
             return MaybeLocal<Object>();
         }
         Global<Value>* made = host_->read(host_->data, deserializer_);
         if (made == nullptr) {
             if (!isolate->HasPendingException()) {
-                throwDataCloneErrorIn(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
+                throwDeserializationError(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
             }
             return MaybeLocal<Object>();
         }
         Local<Value> value = made->Get(isolate);
         v8_Global_Dispose(made);
         if (value.IsEmpty() || !value->IsObject()) {
-            throwDataCloneErrorIn(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
+            throwDeserializationError(isolate, String::NewFromUtf8Literal(isolate, "A platform object could not be deserialized."));
             return MaybeLocal<Object>();
         }
         return value.As<Object>();
@@ -11650,7 +11664,9 @@ Global<Value>* v8_ValueDeserializer_ReadValue(ValueDeserializer* deserializer) {
 }
 
 /// Throw a "DataCloneError" DOMException with `message` in the current
-/// context, as the serializer's delegate does.
+/// context, as the serializer's delegate does. For a SERIALIZATION only: it
+/// runs the DOMException constructor, which a deserialization forbids (use
+/// v8_ThrowDeserializationError there).
 void v8_ThrowDataCloneError(const char* message, size_t length) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -11659,6 +11675,18 @@ void v8_ThrowDataCloneError(const char* message, size_t length) {
         text = String::NewFromUtf8Literal(isolate, "A value could not be cloned.");
     }
     throwDataCloneErrorIn(isolate, text);
+}
+
+/// Abort a DESERIALIZATION with `message`, running no script (see
+/// throwDeserializationError): its caller reports the failure.
+void v8_ThrowDeserializationError(const char* message, size_t length) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<String> text;
+    if (!String::NewFromUtf8(isolate, message, NewStringType::kNormal, static_cast<int>(length)).ToLocal(&text)) {
+        text = String::NewFromUtf8Literal(isolate, "A value could not be deserialized.");
+    }
+    throwDeserializationError(isolate, text);
 }
 // ---- end lane: serializable ----
 

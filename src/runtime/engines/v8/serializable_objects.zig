@@ -98,20 +98,33 @@ pub const Host = struct {
     }
 };
 
-/// Throw a "DataCloneError" DOMException with a message naming `what`;
-/// false/null for the delegate's "exception pending".
+/// Throw a "DataCloneError" DOMException, its message formatted from
+/// `format` and `args` - while SERIALIZING (it runs the DOMException
+/// constructor).
 fn throwDataCloneError(comptime format: []const u8, args: anytype) void {
     var buffer: [256]u8 = undefined;
     const message = std.fmt.bufPrint(&buffer, format, args) catch "A value could not be cloned.";
     ffi.v8_ThrowDataCloneError(message.ptr, message.len);
 }
 
+/// Abort a DESERIALIZATION: V8 forbids script there, so the exception is an
+/// Error V8 makes without any; the deserialization's caller reports a
+/// DataCloneError (or a messageerror) once V8 returns.
+fn throwDeserializationError(comptime format: []const u8, args: anytype) void {
+    var buffer: [256]u8 = undefined;
+    const message = std.fmt.bufPrint(&buffer, format, args) catch "A value could not be deserialized.";
+    ffi.v8_ThrowDeserializationError(message.ptr, message.len);
+}
+
 /// A step's failure, thrown: an exception a step left pending stays; any
-/// other is a DataCloneError naming the interface.
+/// other names the interface.
 fn throwStepFailure(err: anyerror, comptime verb: []const u8, identifier: []const u8) void {
     switch (err) {
         error.ExceptionPending => {},
-        else => throwDataCloneError("{s} object could not be " ++ verb ++ " ({s}).", .{ identifier, @errorName(err) }),
+        else => if (comptime std.mem.eql(u8, verb, "deserialized"))
+            throwDeserializationError("DataCloneError: {s} object could not be deserialized ({s}).", .{ identifier, @errorName(err) })
+        else
+            throwDataCloneError("{s} object could not be cloned ({s}).", .{ identifier, @errorName(err) }),
     }
 }
 
@@ -195,35 +208,35 @@ fn readRaw(deserializer: *ffi.ValueDeserializer, length: u64) ?[]const u8 {
 /// from step 22 on (V8 does steps 1-2 and 23 - memory).
 fn read(data: ?*anyopaque, deserializer: *ffi.ValueDeserializer) callconv(.c) ?*ffi.Value {
     const host: *Host = @ptrCast(@alignCast(data orelse return null));
-    const malformed = "A platform object's serialized record is malformed.";
+    const malformed = "DataCloneError: a platform object's serialized record is malformed.";
     if ((readUint32(deserializer) orelse 0) != record_format) {
-        throwDataCloneError(malformed, .{});
+        throwDeserializationError(malformed, .{});
         return null;
     }
     // Step 22.1: interfaceName = serialized.[[Type]].
     const name_length = readUint32(deserializer) orelse {
-        throwDataCloneError(malformed, .{});
+        throwDeserializationError(malformed, .{});
         return null;
     };
     const interface_name = readRaw(deserializer, name_length) orelse {
-        throwDataCloneError(malformed, .{});
+        throwDeserializationError(malformed, .{});
         return null;
     };
     // Step 22.2, for an interface this build cannot make.
     const steps = stepsFor(interface_name) orelse {
-        throwDataCloneError("{s} object could not be deserialized.", .{interface_name});
+        throwDeserializationError("DataCloneError: {s} object could not be deserialized.", .{interface_name});
         return null;
     };
     const fields_length = readUint64(deserializer) orelse {
-        throwDataCloneError(malformed, .{});
+        throwDeserializationError(malformed, .{});
         return null;
     };
     const fields = readRaw(deserializer, fields_length) orelse {
-        throwDataCloneError(malformed, .{});
+        throwDeserializationError(malformed, .{});
         return null;
     };
     const count = readUint32(deserializer) orelse {
-        throwDataCloneError(malformed, .{});
+        throwDeserializationError(malformed, .{});
         return null;
     };
 
@@ -231,7 +244,7 @@ fn read(data: ?*anyopaque, deserializer: *ffi.ValueDeserializer) callconv(.c) ?*
     // targetRealm, memory) on this same deserializer. OWNED here, BORROWED by
     // the steps.
     const sub_values = host.allocator.alloc(runtime.JSValue, count) catch {
-        throwDataCloneError("{s} object could not be deserialized (out of memory).", .{interface_name});
+        throwDeserializationError("DataCloneError: {s} object could not be deserialized (out of memory).", .{interface_name});
         return null;
     };
     defer host.allocator.free(sub_values);
@@ -263,7 +276,7 @@ fn read(data: ?*anyopaque, deserializer: *ffi.ValueDeserializer) callconv(.c) ?*
     defer ffi.v8_Context_Dispose(context);
     const wrapper = value_operations.ownHandle(isolate, context, .{ .instance = instance }) catch {
         instance.releaseIfUnwrapped(generation);
-        throwDataCloneError("{s} object could not be deserialized.", .{interface_name});
+        throwDeserializationError("DataCloneError: {s} object could not be deserialized.", .{interface_name});
         return null;
     };
     if (!ffi.v8_Value_IsObject(wrapper)) {
@@ -271,7 +284,7 @@ fn read(data: ?*anyopaque, deserializer: *ffi.ValueDeserializer) callconv(.c) ?*
         // make an instance of - it is not exposed there.
         ffi.v8_Global_Dispose(wrapper);
         instance.releaseIfUnwrapped(generation);
-        throwDataCloneError("{s} is not exposed in the target realm.", .{interface_name});
+        throwDeserializationError("DataCloneError: {s} is not exposed in the target realm.", .{interface_name});
         return null;
     }
     log.debug("deserialized a {s}", .{interface_name});

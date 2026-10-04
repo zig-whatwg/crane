@@ -976,8 +976,13 @@ pub extern fn v8_ValueDeserializer_ReadUint64(deserializer: *ValueDeserializer, 
 pub extern fn v8_ValueDeserializer_ReadDouble(deserializer: *ValueDeserializer, value: *f64) bool;
 pub extern fn v8_ValueDeserializer_ReadRawBytes(deserializer: *ValueDeserializer, length: usize, data: *?*const anyopaque) bool;
 pub extern fn v8_ValueDeserializer_ReadValue(deserializer: *ValueDeserializer) ?*Value;
-/// Throw a "DataCloneError" DOMException with `message` in the current context.
+/// Throw a "DataCloneError" DOMException with `message` in the current
+/// context. Serialization only: it runs the DOMException constructor.
 pub extern fn v8_ThrowDataCloneError(message: [*]const u8, length: usize) void;
+/// Abort a deserialization with `message`, running no script (V8
+/// deserializes inside a DisallowJavascriptExecutionScope); the caller of the
+/// deserialization reports the failure.
+pub extern fn v8_ThrowDeserializationError(message: [*]const u8, length: usize) void;
 // ---- end lane: serializable ----
 
 // Local-handle versions (take raw internal pointer from Local<Value>)
