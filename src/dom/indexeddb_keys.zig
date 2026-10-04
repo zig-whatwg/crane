@@ -47,15 +47,28 @@ fn convertSeen(realm: runtime.Context, input: runtime.JSValue, seen: *Seen) engi
         const bytes = try engine.convertToDOMString(realm, input, seen.allocator);
         return .{ .key = .{ .key_type = .string, .value = .{ .string = bytes }, .allocator = seen.allocator } };
     }
-    // Step 3, buffer source: reject a detached ArrayBuffer before copying.
-    // For a view, step 1 applies to its viewed ArrayBuffer.
-    if (engine.describeArrayBufferView(realm, input)) |_| {
-        const buffer = try engine.getViewedArrayBuffer(realm, input);
-        defer buffer.release();
-        if (engine.isDetachedBuffer(realm, buffer.value)) return .invalid_value;
-    } else if (engine.isDetachedBuffer(realm, input)) return .invalid_value;
+    // Step 3, buffer source, steps 1-3. A view description includes the
+    // viewed buffer's detached state, including views over shared buffers.
+    if (engine.describeArrayBufferView(realm, input)) |view| {
+        if (view.detached) return .invalid_value;
+        const bytes = (try copyBufferSourceBytes(realm, input, seen.allocator)).?;
+        return binaryKey(bytes, seen.allocator);
+    }
+    // With views excluded, BufferSource conversion identifies an ordinary
+    // ArrayBuffer. IsDetachedBuffer requires that type; applying it to an
+    // arbitrary object incorrectly rejects arrays before their own branch.
+    // Copying a detached buffer yields an empty allocation, which we release.
+    if (try engine.getCopyOfBufferSourceBytes(realm, input, seen.allocator)) |bytes| {
+        if (engine.isDetachedBuffer(realm, input)) {
+            seen.allocator.free(bytes);
+            return .invalid_value;
+        }
+        return binaryKey(bytes, seen.allocator);
+    }
+    // The remaining buffer-source type is SharedArrayBuffer, which cannot
+    // be detached. Other objects return null without invoking script.
     if (try copyBufferSourceBytes(realm, input, seen.allocator)) |bytes| {
-        return .{ .key = .{ .key_type = .binary, .value = .{ .binary = bytes }, .allocator = seen.allocator } };
+        return binaryKey(bytes, seen.allocator);
     }
     if (!isArrayExoticObject(realm, input)) return .invalid_type;
     // Array steps 1-6.
@@ -83,6 +96,9 @@ fn convertSeen(realm: runtime.Context, input: runtime.JSValue, seen: *Seen) engi
         }
     }
     return .{ .key = .{ .key_type = .array, .value = .{ .array = try keys.toOwnedSlice(seen.allocator) }, .allocator = seen.allocator } };
+}
+fn binaryKey(bytes: []u8, allocator: std.mem.Allocator) Result {
+    return .{ .key = .{ .key_type = .binary, .value = .{ .binary = bytes }, .allocator = allocator } };
 }
 fn arrayLength(realm: runtime.Context, input: runtime.JSValue) engine.Error!u64 {
     const value = try engine.getProperty(realm, input, "length");
@@ -167,28 +183,19 @@ fn arrayValue(realm: runtime.Context, keys: []const Key) engine.Error!engine.Own
     return engine.createSequenceOfValues(realm, values);
 }
 
-// Q3 accepted interims until ADAPTER CONVERSIONS ON MAIN: each missing
-// protocol concept has exactly one helper. Date/Array tests remain red.
+// ED 7.3/7.4 use internal slots and own properties without invoking
+// user-replaceable Date/Array methods or iterator conversion.
 fn thisTimeValue(realm: runtime.Context, value: runtime.JSValue) ?f64 {
-    _ = realm;
-    _ = value;
-    return null;
+    return engine.thisTimeValue(realm, value);
 }
 fn isArrayExoticObject(realm: runtime.Context, value: runtime.JSValue) bool {
-    _ = realm;
-    _ = value;
-    return false;
+    return engine.isArrayExoticObject(realm, value);
 }
 fn hasOwnProperty(realm: runtime.Context, object: runtime.JSValue, property: []const u8) engine.Error!bool {
-    _ = realm;
-    _ = object;
-    _ = property;
-    return error.NotSupported;
+    return engine.hasOwnProperty(realm, object, property);
 }
 fn createDate(realm: runtime.Context, time: f64) engine.Error!engine.Owned {
-    _ = realm;
-    _ = time;
-    return error.NotSupported;
+    return engine.createDate(realm, time);
 }
 
 pub const Path = struct {
@@ -359,7 +366,9 @@ pub fn inject(realm: runtime.Context, value: runtime.JSValue, key: Key, path: []
 /// ED convert a value to a key range: range instances are copied through
 /// their owning hook; ordinary values become an owned single-key range.
 pub fn queryRange(realm: runtime.Context, value: runtime.JSValue, allow_unbounded: bool, allocator: std.mem.Allocator) !storage.indexeddb.IDBKeyRange {
-    if (value.isNullOrUndefined()) {
+    // ED 2.9 step 2 tests the ECMAScript type, including handle values.
+    const value_type = engine.typeOf(realm, value);
+    if (value_type == .null or value_type == .undefined) {
         if (!allow_unbounded) return error.DataError;
         return storage.indexeddb.IDBKeyRange.unbounded();
     }
@@ -372,10 +381,9 @@ pub fn queryRange(realm: runtime.Context, value: runtime.JSValue, allow_unbounde
     return .{ .lower = key, .upper = upper, .lower_open = false, .upper_open = false, .allocator = allocator };
 }
 
-// Interim non-[AllowShared] copy, pending the integrator's adapter merge signal.
-// Shared keys stay red until the AllowSharedBufferSource operation is available.
+// ED 7.4's buffer-source case includes shared backing stores.
 fn copyBufferSourceBytes(realm: runtime.Context, input: runtime.JSValue, allocator: std.mem.Allocator) engine.Error!?[]u8 {
-    return engine.getCopyOfBufferSourceBytes(realm, input, allocator);
+    return engine.getCopyOfAllowSharedBufferSourceBytes(realm, input, allocator);
 }
 
 pub fn cursorDirection(direction: anytype) storage.indexeddb.IDBCursorDirection {
@@ -393,10 +401,12 @@ pub fn multipleItems(realm: runtime.Context, kind: @import("indexeddb.zig").Oper
     var operation = @import("indexeddb.zig").Operation{ .allocator = allocator, .kind = kind, .limit = count, .target_realm = engine.currentRealm() orelse realm };
     errdefer operation.deinit();
     var range_form = false;
+    const input_type = engine.typeOf(realm, query_or_options);
+    const nullish = input_type == .null or input_type == .undefined;
     if (engine.convertToPlatformObject(realm, query_or_options)) |object| {
         range_form = object.stateAs(@import("interfaces").IDBKeyRange.State) != null;
     }
-    if (!range_form and !query_or_options.isNullOrUndefined()) {
+    if (!range_form and !nullish) {
         var converted = try convert(realm, query_or_options, allocator);
         range_form = converted != .invalid_type;
         if (converted == .key) converted.key.deinit();
@@ -405,14 +415,14 @@ pub fn multipleItems(realm: runtime.Context, kind: @import("indexeddb.zig").Oper
         operation.range = try queryRange(realm, query_or_options, true, allocator);
         return operation;
     }
-    // WebIDL dictionary members convert in lexical order: count, direction,
-    // query. Null and undefined mean an empty dictionary.
-    if (query_or_options.isNullOrUndefined()) return operation;
-    if (engine.typeOf(realm, query_or_options) != .object) return error.TypeError;
+    // ED 5.12 step 9 / WebIDL dictionary conversion: lexical member order
+    // is count, direction, query. Null and undefined mean an empty dictionary.
+    if (nullish) return operation;
+    if (input_type != .object) return error.TypeError;
     const count_value = try engine.getProperty(realm, query_or_options, "count");
     defer count_value.release();
     operation.limit = null;
-    if (!count_value.value.isUndefined()) {
+    if (engine.typeOf(realm, count_value.value) != .undefined) {
         const number = try engine.convertToUnrestrictedDouble(realm, count_value.value);
         const integer = @trunc(number);
         if (!std.math.isFinite(number) or integer < 0 or integer > 4294967295) return error.TypeError;
@@ -420,7 +430,7 @@ pub fn multipleItems(realm: runtime.Context, kind: @import("indexeddb.zig").Oper
     }
     const direction_value = try engine.getProperty(realm, query_or_options, "direction");
     defer direction_value.release();
-    if (!direction_value.value.isUndefined()) {
+    if (engine.typeOf(realm, direction_value.value) != .undefined) {
         const direction = try engine.convertToDOMString(realm, direction_value.value, allocator);
         defer allocator.free(direction);
         operation.direction = if (std.mem.eql(u8, direction, "next")) .next else if (std.mem.eql(u8, direction, "nextunique")) .nextunique else if (std.mem.eql(u8, direction, "prev")) .prev else if (std.mem.eql(u8, direction, "prevunique")) .prevunique else return error.TypeError;

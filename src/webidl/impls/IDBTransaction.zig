@@ -43,10 +43,14 @@ pub const InternalState = struct {
 
     /// Parent database instance
     database: ?*runtime.Instance,
+    database_realm: ?runtime.Context = null,
     cleanup_list: ?*dom.indexeddb.CleanupList = null,
     aborted: bool = false,
     finish_event_fired: bool = false,
     exception: ?*runtime.Instance = null,
+    exception_realm: ?runtime.Context = null,
+    upgrade_request: ?*runtime.Instance = null,
+    upgrade_request_realm: ?runtime.Context = null,
     store_wrappers: std.ArrayListUnmanaged(StoreWrapper) = .empty,
     task: ?*TransactionTask = null,
     database_generation: u64 = 0,
@@ -93,10 +97,14 @@ pub fn init(
     const internal = state.own._internal.?;
     internal.allocator = allocator;
     internal.database = null;
+    internal.database_realm = null;
     internal.cleanup_list = null;
     internal.aborted = false;
     internal.finish_event_fired = false;
     internal.exception = null;
+    internal.exception_realm = null;
+    internal.upgrade_request = null;
+    internal.upgrade_request_realm = null;
     internal.store_wrappers = .empty;
     internal.task = null;
     internal.database_generation = 0;
@@ -118,12 +126,13 @@ pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         if (internal.registered) if (internal.database) |database| {
-            if (runtime.SlabAllocator.generationOf(database) == internal.database_generation)
+            if (internal.database_realm.?.hasEngine() and runtime.SlabAllocator.generationOf(database) == internal.database_generation)
                 dom.indexeddb.removeDatabaseTransaction(database, instance);
         };
         if (internal.cleanup_list) |list| list.remove(instance);
         engine.forgetTracedChild(instance, .{ .name = "idb.error" });
         engine.forgetTracedChild(instance, .{ .name = "idb.database" });
+        engine.forgetTracedChild(instance, .{ .name = "idb.upgradeRequest" });
         for (internal.store_wrappers.items) |wrapper|
             engine.forgetTracedChild(instance, .{ .name = wrapper.slot });
         internal.deinit(internal.allocator);
@@ -193,6 +202,7 @@ pub fn get_db(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return error.InvalidState;
 
+    if (!(internal.database_realm orelse return error.InvalidState).hasEngine()) return error.InvalidState;
     return internal.database orelse error.InvalidState;
 }
 
@@ -200,7 +210,12 @@ pub fn get_db(instance: *runtime.Instance) anyerror!*runtime.Instance {
 ///
 /// Returns the error that caused the transaction to abort, if any.
 pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    return (instance.getState(State).own._internal orelse return error.InvalidStateError).exception;
+    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const realm = internal.exception_realm orelse return null;
+    // Deviation (integrator Q25/Q26, 2026-10-03): this typed getter cannot
+    // return a severed wrapper. Until CROSS-REALM INSTANCE LIFETIME lands,
+    // return null for an exception whose separately saved realm retired.
+    return if (realm.hasEngine()) internal.exception else null;
 }
 
 /// Getter for onabort
@@ -274,7 +289,7 @@ pub fn call_commit(instance: *runtime.Instance) anyerror!void {
     // IDL commit step 1: only active; outstanding requests finish asynchronously.
     if (txn.state != .active) return error.InvalidStateError;
     txn.state = .committing;
-    if (internal.task) |task| task.schedule();
+    if (internal.task) |task| task.schedule() catch task.failScheduling();
 }
 
 /// Operation: abort
@@ -292,42 +307,57 @@ pub fn call_abort(instance: *runtime.Instance) anyerror!void {
     internal.aborted = true;
     // Aborting with null leaves transaction.error null.
     txn.err = null;
-    if (internal.task) |task| task.schedule();
+    if (internal.task) |task| task.schedule() catch task.failScheduling();
 }
 
 pub fn installHooks() void {
-    dom.indexeddb.installTransactions(.{ .end_event = endEvent, .attach = attachTransaction, .finish = finishTransaction, .get_the_parent = getParent, .cleanup = cleanupTransaction, .enqueue = enqueueRequest, .enqueue_internal = enqueueInternal, .outcome = transactionOutcome, .wake = wakeTransaction });
+    dom.indexeddb.installTransactions(.{ .end_event = endEvent, .attach = attachTransaction, .associate_upgrade_request = associateUpgradeRequest, .finish = finishTransaction, .get_the_parent = getParent, .cleanup = cleanupTransaction, .enqueue = enqueueRequest, .enqueue_internal = enqueueInternal, .outcome = transactionOutcome, .wake = wakeTransaction });
+}
+fn associateUpgradeRequest(instance: *runtime.Instance, request: *runtime.Instance) void {
+    const internal = instance.getState(State).own._internal orelse return;
+    std.debug.assert(internal.upgrade_request == null);
+    internal.upgrade_request = request;
+    internal.upgrade_request_realm = request.ctx;
+    engine.traceChild(instance, request, .{ .name = "idb.upgradeRequest" });
 }
 fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
-    return (instance.getState(State).own._internal orelse return null).database;
+    const internal = instance.getState(State).own._internal orelse return null;
+    if (!(internal.database_realm orelse return null).hasEngine()) return null;
+    return internal.database;
 }
 fn cleanupTransaction(instance: *runtime.Instance) void {
     const internal = instance.getState(State).own._internal orelse return;
     // IndexedDB 2.7 cleanup step 2: active -> inactive, and clear cleanup loop.
     if (internal.transaction) |transaction| transaction.setInactive();
     internal.cleanup_list = null;
-    if (internal.task) |task| task.schedule();
+    if (internal.task) |task| task.schedule() catch task.failScheduling();
 }
 
 fn attachTransaction(instance: *runtime.Instance, transaction: *BackendTransaction, database: *runtime.Instance) !void {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     std.debug.assert(internal.transaction == null);
-    const cleanup_list = dom.indexeddb.agentCleanupList(instance.ctx);
+    // ED 4.4 transaction() step 8 registers creation cleanup. An upgrade
+    // has no cleanup event loop (2.7.1); its dispatch steps deactivate it
+    // after observing whether listeners threw, not at their checkpoint.
+    const cleanup_list = if (transaction.mode == .versionchange) null else dom.indexeddb.agentCleanupList(instance.ctx);
     if (cleanup_list) |list| try list.add(instance);
     errdefer if (cleanup_list) |list| list.remove(instance);
     try dom.indexeddb.registerDatabaseTransaction(database, instance);
     errdefer dom.indexeddb.removeDatabaseTransaction(database, instance);
     const task = try TransactionTask.create(instance, transaction);
+    errdefer task.destroy();
+    try task.schedule();
     internal.cleanup_list = cleanup_list;
     internal.transaction = transaction;
     internal.database = database;
+    internal.database_realm = database.ctx;
     internal.database_generation = runtime.SlabAllocator.generationOf(database);
     internal.registered = true;
     internal.task = task;
     engine.traceChild(instance, database, .{ .name = "idb.database" });
-    task.schedule();
 }
 fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
+    const realm = instance.ctx;
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
     const transaction = internal.transaction orelse return error.InvalidStateError;
     // Aborting an upgrade 5.8 and committing 5.4: dispatch after state is finished.
@@ -342,11 +372,35 @@ fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
     const event = try interfaces.Event.call_constructor(instance.ctx, runtime.DOMString.initInterned(if (aborted) "abort" else "complete"), @import("webidl").Opt(dictionaries.EventInit).passed(.{ .bubbles = aborted }));
     const root = try engine.retainValue(instance.ctx, .{ .instance = event });
     defer root.release();
+    // ED 5.4 step 2.5.2 has finished the upgrade, releasing 5.7 step 11's
+    // wait. Reserve the opening algorithm's final database task before a
+    // complete listener can queue requests in a new ordinary transaction.
+    // Its result still runs in a later task, after this dispatch/checkpoint.
+    if (transaction.mode == .versionchange) dom.indexeddb.databaseTransactionFinished(internal.database.?);
     var did_throw = false;
     const running_task = internal.task;
     _ = try dom.fire_event.dispatchTrustedWithThrows(instance, event, &did_throw);
     if (running_task) |task| if (task.cancelled) return !aborted;
-    if (!instance.ctx.hasEngine()) return !aborted;
+    if (!realm.hasEngine()) return !aborted;
+    if (internal.upgrade_request) |request| {
+        const request_realm = internal.upgrade_request_realm.?;
+        internal.upgrade_request = null;
+        internal.upgrade_request_realm = null;
+        defer engine.forgetTracedChild(instance, .{ .name = "idb.upgradeRequest" });
+        if (request_realm.hasEngine()) {
+            // ED 5.4 step 2.5.4 / 5.5 step 7.3: clear AFTER dispatch and
+            // its callback checkpoints, in this same task. WebKit's
+            // IDBTransaction::dispatchEvent finishes the open request here.
+            dom.indexeddb.setRequestTransaction(request, null);
+            if (aborted) {
+                // 5.5 step 7.3: withdraw the intermediate result and done
+                // state. ConnectionTask still holds the unprocessed open
+                // operation, whose later database task will report error.
+                try dom.indexeddb.completeRequest(request, .jsUndefined, null);
+                dom.indexeddb.setRequestPending(request);
+            }
+        }
+    }
     dom.indexeddb.closeConnectionIfReady(internal.database.?);
     return !aborted;
 }
@@ -359,12 +413,13 @@ fn endEvent(instance: *runtime.Instance, did_throw: bool) !bool {
         transaction.setInactive();
         if (did_throw) {
             internal.exception = try interfaces.DOMException.call_constructor(instance.ctx, @import("webidl").Opt(runtime.DOMString).passed(runtime.DOMString.initInterned("An upgrade listener threw")), @import("webidl").Opt(runtime.DOMString).passed(runtime.DOMString.initInterned("AbortError")));
+            internal.exception_realm = instance.ctx;
             engine.traceChild(instance, internal.exception.?, .{ .name = "idb.error" });
             internal.aborted = true;
             try transaction.abort();
         }
     }
-    if (internal.task) |task| task.schedule();
+    if (internal.task) |task| task.schedule() catch task.failScheduling();
     return internal.aborted;
 }
 
@@ -374,7 +429,7 @@ fn transactionOutcome(instance: *runtime.Instance) ?bool {
 }
 fn wakeTransaction(instance: *runtime.Instance) void {
     const internal = instance.getState(State).own._internal orelse return;
-    if (internal.task) |task| task.schedule();
+    if (internal.task) |task| task.schedule() catch task.failScheduling();
 }
 
 fn enqueueRequest(instance: *runtime.Instance, source: *runtime.Instance, operation: dom.indexeddb.Operation, reused: ?*runtime.Instance) !*runtime.Instance {
@@ -395,11 +450,13 @@ fn enqueueRequest(instance: *runtime.Instance, source: *runtime.Instance, operat
     errdefer root.release();
     const cursor_root = if (operation.cursor) |cursor| try engine.retainValue(instance.ctx, .{ .instance = cursor }) else null;
     errdefer if (cursor_root) |held| held.release();
+    // Reserve its task before transferring operation ownership. A queue
+    // failure propagates to the caller with every native argument still its own.
+    try task.schedule();
     dom.indexeddb.setRequestTransaction(request, instance);
     dom.indexeddb.setRequestSource(request, source);
     dom.indexeddb.setRequestPending(request);
-    task.pending.appendAssumeCapacity(.{ .source = source, .request = request, .request_realm = request.ctx, .root = root, .cursor_root = cursor_root, .operation = captured });
-    task.schedule();
+    task.pending.appendAssumeCapacity(.{ .source = source, .source_realm = source.ctx, .request = request, .request_realm = request.ctx, .cursor_realm = if (operation.cursor) |cursor| cursor.ctx else null, .root = root, .cursor_root = cursor_root, .operation = captured });
     return request;
 }
 
@@ -410,11 +467,12 @@ fn enqueueInternal(instance: *runtime.Instance, source: *runtime.Instance, opera
     const task = internal.task orelse return error.InvalidStateError;
     try task.pending.ensureUnusedCapacity(task.allocator, 1);
     const root = try engine.retainValue(instance.ctx, .{ .instance = source });
+    errdefer root.release();
+    try task.schedule();
     var captured = operation;
     // Index population has no script result; its clone uses the source realm.
     captured.target_realm = source.ctx;
-    task.pending.appendAssumeCapacity(.{ .source = source, .request = null, .root = root, .operation = captured });
-    task.schedule();
+    task.pending.appendAssumeCapacity(.{ .source = source, .source_realm = source.ctx, .request = null, .root = root, .operation = captured });
 }
 
 /// Pending activity roots last through the task's microtask checkpoint. They
@@ -422,21 +480,25 @@ fn enqueueInternal(instance: *runtime.Instance, source: *runtime.Instance, opera
 const TransactionTask = struct {
     allocator: std.mem.Allocator,
     instance: *runtime.Instance,
+    realm: runtime.Context,
     backend: *BackendTransaction,
     root: ?engine.Owned,
     pending: std.ArrayList(Work) = .empty,
     current: ?Work = null,
     queued: bool = false,
+    queued_task: dom.indexeddb.DatabaseTaskHandle = .{},
     running: bool = false,
     cancelled: bool = false,
     finished: bool = false,
 
     const Work = struct {
         source: *runtime.Instance,
+        source_realm: runtime.Context,
         request: ?*runtime.Instance,
         // Retirement may destroy the request wrapper even while its task is
         // rooted. Inspect the inert Context before dereferencing that wrapper.
         request_realm: ?runtime.Context = null,
+        cursor_realm: ?runtime.Context = null,
         root: engine.Owned,
         cursor_root: ?engine.Owned = null,
         operation: dom.indexeddb.Operation,
@@ -449,32 +511,31 @@ const TransactionTask = struct {
 
     fn create(instance: *runtime.Instance, backend: *BackendTransaction) !*TransactionTask {
         const allocator = instance.ctx.allocator;
-        if (instance.ctx.getOptionalEventLoop() == null) return error.NoEventLoop;
         const task = try allocator.create(TransactionTask);
         errdefer allocator.destroy(task);
         const root = try engine.retainValue(instance.ctx, .{ .instance = instance });
         backend.retain();
-        task.* = .{ .allocator = allocator, .instance = instance, .backend = backend, .root = root };
+        task.* = .{ .allocator = allocator, .instance = instance, .realm = instance.ctx, .backend = backend, .root = root };
         return task;
     }
-    fn schedule(self: *TransactionTask) void {
+    fn schedule(self: *TransactionTask) !void {
         if (self.queued or self.running or self.cancelled or self.finished) return;
         if (self.backend.state != .finished and !self.backend.canStart()) return;
-        const loop = self.instance.ctx.getOptionalEventLoop() orelse return;
+        if (!self.realm.hasEngine()) return;
+        self.queued_task = try dom.indexeddb.queueDatabaseTask(self.realm, .{ .callback = run, .context = self, .drop = drop });
         self.queued = true;
-        loop.queueTask(.{ .callback = run, .context = self, .drop = drop });
     }
     fn run(data: ?*anyopaque) void {
         const self: *TransactionTask = @ptrCast(@alignCast(data.?));
+        dom.indexeddb.databaseTaskStarted(&self.queued_task);
         self.queued = false;
         if (self.cancelled) return self.destroy();
-        if (!self.instance.ctx.hasEngine()) return self.cancel();
+        if (!self.realm.hasEngine()) return self.cancel();
         self.running = true;
-        var realm = self.instance.ctx;
-        if (self.pending.items.len != 0) if (self.pending.items[0].request_realm) |request_realm| {
-            if (request_realm.hasEngine()) realm = request_realm;
-        };
-        engine.runTaskInRealm(realm, steps, self) catch {};
+        // ED 5.6 step 5.6: the database task belongs to the transaction's
+        // queue. A borrowed method's realm supplies its request and result,
+        // not the task's document (integrator Q32; WebKit's task ownership).
+        engine.runTaskInRealm(self.realm, steps, self) catch {};
         // A listener or its microtasks may have retired the realm and cancelled
         // this task. Never inspect the wrapper after that cancellation.
         if (self.current) |work| {
@@ -484,7 +545,7 @@ const TransactionTask = struct {
         }
         self.running = false;
         if (self.cancelled) return self.destroy();
-        if (!self.instance.ctx.hasEngine()) return self.cancel();
+        if (!self.realm.hasEngine()) return self.cancel();
         if (self.finished) {
             if (self.instance.getState(State).own._internal) |internal| {
                 internal.task = null;
@@ -494,12 +555,31 @@ const TransactionTask = struct {
             }
             return self.destroy();
         }
-        if (self.pending.items.len != 0 or self.backend.state != .active) self.schedule();
+        if (self.pending.items.len != 0 or self.backend.state != .active) self.schedule() catch self.failScheduling();
+    }
+    fn failScheduling(self: *TransactionTask) void {
+        // Q28: queue failure aborts; it must not run the queued steps on the
+        // caller's stack or leave requests in the pending state indefinitely.
+        if (self.realm.hasEngine()) {
+            self.abortWithName("UnknownError") catch {};
+            if (self.instance.getState(State).own._internal) |internal| {
+                internal.aborted = true;
+                internal.finish_event_fired = true;
+            }
+            for (self.pending.items) |work| {
+                const request_realm = work.request_realm orelse continue;
+                if (!request_realm.hasEngine()) continue;
+                const request = work.request orelse continue;
+                const exception = makeException(request, "AbortError") catch null;
+                dom.indexeddb.completeRequest(request, .jsUndefined, exception) catch {};
+            }
+        }
+        self.cancel();
     }
     fn steps(data: ?*anyopaque) void {
         const self: *TransactionTask = @ptrCast(@alignCast(data.?));
         self.perform() catch |err| {
-            if (!self.cancelled and self.instance.ctx.hasEngine()) self.abortWithName(@errorName(err)) catch {};
+            if (!self.cancelled and self.realm.hasEngine()) self.abortWithName(@errorName(err)) catch {};
         };
     }
     fn perform(self: *TransactionTask) !void {
@@ -532,6 +612,11 @@ const TransactionTask = struct {
             // the engine cannot yet reconstruct a value in that dead realm.
             return;
         }
+        // Cursor writes own their native source and never inspect the
+        // cursor wrapper. Other sources share the transaction's live realm;
+        // iteration additionally keeps the reused cursor's realm separately.
+        if (work.operation.cursor_write == null and !work.source_realm.hasEngine()) return;
+        if (work.cursor_realm) |cursor_realm| if (!cursor_realm.hasEngine()) return;
         try self.backend.beginRequestExecution();
         const execution = if (work.request) |request| dom.indexeddb.executeRequest(work.source, request, &work.operation) else dom.indexeddb.executeInternal(work.source);
         self.backend.endRequestExecution();
@@ -557,7 +642,7 @@ const TransactionTask = struct {
         if (self.backend.state == .inactive) self.backend.state = .active;
         var did_throw = false;
         const uncancelled = try dom.fire_event.dispatchTrustedWithThrows(request, event, &did_throw);
-        if (self.cancelled or !self.instance.ctx.hasEngine()) return;
+        if (self.cancelled or !self.realm.hasEngine()) return;
         if (self.backend.state == .active) {
             self.backend.setInactive();
             if (!realm.hasEngine()) return;
@@ -567,6 +652,7 @@ const TransactionTask = struct {
                 const exception = try interfaces.IDBRequest.get_error(request);
                 const internal = self.instance.getState(State).own._internal.?;
                 internal.exception = exception;
+                internal.exception_realm = if (exception) |child| child.ctx else null;
                 if (exception) |child| engine.traceChild(self.instance, child, .{ .name = "idb.error" });
                 internal.aborted = true;
                 try self.backend.abortForError(error.AbortError);
@@ -578,25 +664,32 @@ const TransactionTask = struct {
         const internal = self.instance.getState(State).own._internal orelse return;
         if (self.backend.state == .finished) return;
         internal.exception = try makeException(self.instance, name);
+        internal.exception_realm = self.realm;
         engine.traceChild(self.instance, internal.exception.?, .{ .name = "idb.error" });
         internal.aborted = true;
         try self.backend.abortForError(error.AbortError);
     }
     fn drop(data: ?*anyopaque) void {
         const self: *TransactionTask = @ptrCast(@alignCast(data.?));
+        dom.indexeddb.databaseTaskStarted(&self.queued_task);
         self.queued = false;
         self.cancel();
     }
     fn cancel(self: *TransactionTask) void {
+        const was_running = self.running;
+        self.running = true;
+        if (self.queued and dom.indexeddb.cancelDatabaseTask(&self.queued_task)) self.queued = false;
         if (!self.cancelled) {
             self.cancelled = true;
-            if (self.instance.getState(State).own._internal) |internal| {
+            if (self.realm.hasEngine()) if (self.instance.getState(State).own._internal) |internal| {
                 if (internal.task == self) internal.task = null;
-            }
+            };
             if (self.backend.state != .finished) self.backend.abortForError(error.AbortError) catch {};
-            if (self.root) |root| root.release();
+            const root = self.root;
             self.root = null;
+            if (root) |held| held.release();
         }
+        self.running = was_running;
         if (!self.queued and !self.running) self.destroy();
     }
     fn destroy(self: *TransactionTask) void {

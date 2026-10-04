@@ -151,6 +151,34 @@ pub const IDBCursor = struct {
         self.clearSnapshot();
         if (self.range) |*range| range.deinit();
     }
+
+    /// Native arguments owned by an accepted update/delete, independently of
+    /// the cursor and its source index. Release after the queued write ends.
+    pub const WriteSource = struct {
+        store: *IDBObjectStore,
+        key: IDBKey,
+
+        pub fn deinit(self: *WriteSource) void {
+            const transaction = self.store.transaction;
+            self.key.deinit();
+            self.store.deinit();
+            transaction.deinit();
+        }
+    };
+
+    /// ED 4.9 update step 10 / delete step 7 capture the effective store and
+    /// effective key, not a cursor that must remain alive until execution.
+    pub fn captureWriteSource(self: *const Self, allocator: std.mem.Allocator) IDBError!WriteSource {
+        const key = try (self.primary_key orelse return error.InvalidStateError).clone(allocator);
+        const store = switch (self.source) {
+            .object_store => |store| store,
+            .index => |index| index.object_store,
+        };
+        store.retain();
+        store.transaction.retain();
+        return .{ .store = store, .key = key };
+    }
+
     fn copyRange(allocator: std.mem.Allocator, range: ?IDBKeyRange) IDBError!?IDBKeyRange {
         const borrowed = range orelse return null;
         var result = IDBKeyRange.unbounded();

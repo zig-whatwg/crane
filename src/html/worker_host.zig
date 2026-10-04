@@ -1344,59 +1344,14 @@ pub const WorkerHost = struct {
             \\})();
         );
 
-        // Polyfills for WindowOrWorkerGlobalScope attributes whose bound
-        // getters have nothing to return yet (NotImplemented): crypto,
-        // performance and indexedDB. They are defined as OWN data properties -
-        // assigning would reach the getter-only accessors on
-        // WorkerGlobalScope.prototype and, in sloppy mode, silently do nothing.
-        //
-        // Crypto API - Per Web Crypto spec: https://w3c.github.io/webcrypto/
-        // (not cryptographically secure - Math.random).
+        // Only performance still needs a bootstrap fallback: WorkerGlobalScope
+        // has no native performance getter. Its crypto and indexedDB accessors
+        // already supply native objects (WebIDL 3.7.6); never shadow them.
         try self.runSetupScript(
             \\(function() {
             \\  function define(name, value) {
             \\    Object.defineProperty(globalThis, name, { value: value, writable: true, enumerable: true, configurable: true });
             \\  }
-            \\  // SubtleCrypto placeholder for crypto.subtle
-            \\  var subtle = {
-            \\    encrypt: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    decrypt: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    sign: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    verify: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    digest: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    generateKey: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    deriveKey: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    deriveBits: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    importKey: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    exportKey: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    wrapKey: function() { return Promise.reject(new Error('Not implemented')); },
-            \\    unwrapKey: function() { return Promise.reject(new Error('Not implemented')); }
-            \\  };
-            \\  define('crypto', {
-            \\    subtle: subtle,
-            \\    getRandomValues: function(array) {
-            \\      if (!(array instanceof Int8Array || array instanceof Uint8Array ||
-            \\            array instanceof Int16Array || array instanceof Uint16Array ||
-            \\            array instanceof Int32Array || array instanceof Uint32Array ||
-            \\            array instanceof Uint8ClampedArray || array instanceof BigInt64Array ||
-            \\            array instanceof BigUint64Array)) {
-            \\        throw new TypeError('Argument must be an integer typed array');
-            \\      }
-            \\      for (var i = 0; i < array.length; i++) {
-            \\        array[i] = Math.floor(Math.random() * 256);
-            \\      }
-            \\      return array;
-            \\    },
-            \\    randomUUID: function() {
-            \\      // RFC 4122 version 4 UUID
-            \\      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            \\        var r = Math.random() * 16 | 0;
-            \\        var v = c === 'x' ? r : (r & 0x3 | 0x8);
-            \\        return v.toString(16);
-            \\      });
-            \\    }
-            \\  });
-            \\
             \\  // Performance API - https://w3c.github.io/hr-time/
             \\  var timeOrigin = Date.now();
             \\  define('performance', {
@@ -1404,25 +1359,6 @@ pub const WorkerHost = struct {
             \\    now: function() { return Date.now() - timeOrigin; },
             \\    toJSON: function() { return { timeOrigin: this.timeOrigin }; }
             \\  });
-            \\
-            \\  // IndexedDB - https://w3c.github.io/IndexedDB/ (a stub).
-            \\  function IDBFactory() {}
-            \\  IDBFactory.prototype.open = function(name, version) {
-            \\    return Promise.reject(new Error('IndexedDB not implemented'));
-            \\  };
-            \\  IDBFactory.prototype.deleteDatabase = function(name) {
-            \\    return Promise.reject(new Error('IndexedDB not implemented'));
-            \\  };
-            \\  IDBFactory.prototype.databases = function() {
-            \\    return Promise.resolve([]);
-            \\  };
-            \\  IDBFactory.prototype.cmp = function(a, b) {
-            \\    if (a < b) return -1;
-            \\    if (a > b) return 1;
-            \\    return 0;
-            \\  };
-            \\  globalThis.IDBFactory = IDBFactory;
-            \\  define('indexedDB', new IDBFactory());
             \\})();
         );
     }

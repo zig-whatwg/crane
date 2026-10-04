@@ -16,7 +16,7 @@ pub const InternalState = struct {
     serialized_result: ?[]u8 = null,
     exception: ?*runtime.Instance = null,
     transaction: ?*runtime.Instance = null,
-    source: ?*runtime.Instance = null,
+    transaction_realm: ?runtime.Context = null,
 };
 
 pub fn installHooks() void {
@@ -73,6 +73,7 @@ fn completeRequest(instance: *runtime.Instance, result: runtime.JSValue, excepti
 fn setTransaction(instance: *runtime.Instance, transaction: ?*runtime.Instance) void {
     const internal = instance.getState(State).own._internal orelse return;
     internal.transaction = transaction;
+    internal.transaction_realm = if (transaction) |child| child.ctx else null;
     engine.forgetTracedChild(instance, .{ .name = "idb.transaction" });
     if (transaction) |child| engine.traceChild(instance, child, .{ .name = "idb.transaction" });
 }
@@ -91,12 +92,14 @@ pub fn get_error(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     return internal.exception;
 }
 pub fn get_source(instance: *runtime.Instance) anyerror!?runtime.JSValue {
-    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
-    return if (internal.source) |source| .{ .instance = source } else null;
+    if (instance.getState(State).own._internal == null or !instance.ctx.hasEngine()) return error.InvalidStateError;
+    // ED 4.1: return the associated JS object even when retirement has
+    // severed its wrapper from its native Instance (protocol contract).
+    return if (engine.tracedValue(instance, .{ .name = "idb.source" })) |value| value.take() else null;
 }
 pub fn get_transaction(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
-    return internal.transaction;
+    return liveTransaction(internal);
 }
 pub fn get_readyState(instance: *runtime.Instance) anyerror!enums.IDBRequestReadyState {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
@@ -116,7 +119,15 @@ pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) an
 }
 
 fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
-    return (instance.getState(State).own._internal orelse return null).transaction;
+    return liveTransaction(instance.getState(State).own._internal orelse return null);
+}
+
+fn liveTransaction(internal: *const InternalState) ?*runtime.Instance {
+    const realm = internal.transaction_realm orelse return null;
+    // Deviation (integrator Q25, 2026-10-03): these typed Instance results
+    // cannot return the severed wrapper. Use null until reachable native
+    // Instances survive realm retirement; never inspect a freed pointer.
+    return if (realm.hasEngine()) internal.transaction else null;
 }
 
 /// 4.1 result getter: repeated reads return the same value, with a traced edge
@@ -136,10 +147,9 @@ fn setPending(instance: *runtime.Instance) void {
     (instance.getState(State).own._internal orelse return).done = false;
 }
 fn setSource(instance: *runtime.Instance, source: ?*runtime.Instance) void {
-    const internal = instance.getState(State).own._internal orelse return;
-    internal.source = source;
+    if (instance.getState(State).own._internal == null) return;
     engine.forgetTracedChild(instance, .{ .name = "idb.source" });
-    if (source) |child| engine.traceChild(instance, child, .{ .name = "idb.source" });
+    if (source) |child| engine.traceValue(instance, .{ .instance = child }, .{ .name = "idb.source" });
 }
 fn completeSerialized(instance: *runtime.Instance, bytes: []const u8) !void {
     const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;

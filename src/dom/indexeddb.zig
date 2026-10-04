@@ -77,6 +77,7 @@ pub fn attachRecordSnapshot(instance: *runtime.Instance, key: storage.indexeddb.
 }
 pub const TransactionSteps = struct {
     attach: *const fn (*runtime.Instance, *storage.indexeddb.IDBTransaction, *runtime.Instance) anyerror!void,
+    associate_upgrade_request: *const fn (*runtime.Instance, *runtime.Instance) void,
     end_event: *const fn (*runtime.Instance, bool) anyerror!bool,
     finish: *const fn (*runtime.Instance, bool) anyerror!bool,
     get_the_parent: *const fn (*runtime.Instance) ?*runtime.Instance,
@@ -88,8 +89,8 @@ pub const TransactionSteps = struct {
     wake: ?*const fn (*runtime.Instance) void = null,
 };
 
-/// Owned arguments accepted by ED 5.6. Native pointers remain borrowed from
-/// the request's traced source; byte strings and keys are copied at placement.
+/// Owned arguments accepted by ED 5.6. Cursor writes hold native ownership
+/// independently of their source wrapper; strings and keys are copied.
 pub const OperationKind = enum { put, add, get, get_key, count, delete, clear, all_values, all_keys, all_records, open_cursor, open_key_cursor, iterate_cursor, populate_index };
 pub const Operation = struct {
     allocator: std.mem.Allocator,
@@ -106,6 +107,7 @@ pub const Operation = struct {
     limit: ?u32 = null,
     direction: storage.indexeddb.IDBCursorDirection = .next,
     cursor: ?*runtime.Instance = null,
+    cursor_write: ?storage.indexeddb.IDBCursor.WriteSource = null,
     advance: ?u32 = null,
     /// The traced source retains these handles, including any subsequently
     /// deleted index. Waiting transactions refresh each handle when started.
@@ -117,6 +119,7 @@ pub const Operation = struct {
         self.range.deinit();
         if (self.bytes) |bytes| self.allocator.free(bytes);
         if (self.indexes) |handles| self.allocator.free(handles);
+        if (self.cursor_write) |*source| source.deinit();
     }
 };
 
@@ -163,6 +166,18 @@ pub fn wakeTransaction(transaction: *runtime.Instance) void {
     wake(transaction);
 }
 pub fn executeRequest(source: *runtime.Instance, request: *runtime.Instance, operation: *Operation) !void {
+    if (operation.cursor_write) |write| {
+        // ED 4.9 update 10 / delete 7: the accepted operation owns its store
+        // and key. The cursor's realm may have retired since placement.
+        const native = switch (operation.kind) {
+            .put => try executeStorageWrite(operation.target_realm orelse request.ctx, write.store, operation),
+            .delete => try write.store.delete(storage.indexeddb.IDBKeyRange.only(write.key)),
+            else => return error.InvalidStateError,
+        };
+        defer native.allocator.destroy(native);
+        defer native.deinit();
+        return completeNativeRequest(request, native);
+    }
     if (operation.cursor) |cursor| {
         const execute = (cursors orelse return error.NotSupported).execute orelse return error.NotSupported;
         return execute(cursor, request, operation);
@@ -220,13 +235,14 @@ pub fn storeKeyPath(store: *const storage.indexeddb.IDBObjectStore) ?storage.ind
 pub fn executeStorageWrite(realm: runtime.Context, store: *storage.indexeddb.IDBObjectStore, operation: *Operation) anyerror!*storage.indexeddb.IDBRequest {
     const clone = try engine.structuredDeserialize(realm, operation.bytes.?);
     defer clone.release();
-    const key = operation.key orelse blk: {
+    const supplied_key: ?storage.indexeddb.IDBKey = if (operation.cursor_write) |write| write.key else operation.key;
+    const key = supplied_key orelse blk: {
         const number = store.getCurrentKeyGeneratorValue();
         if (number > 9007199254740992) return error.ConstraintError;
         break :blk storage.indexeddb.IDBKey.number(@floatFromInt(number));
     };
     // Step 1.1.3: inject only into the clone, before extracting index keys.
-    if (operation.key == null) if (storeKeyPath(store)) |path| {
+    if (supplied_key == null) if (storeKeyPath(store)) |path| {
         if (path != .single) return error.DataError;
         try @import("indexeddb_keys.zig").inject(realm, clone.value, key, path.single);
     };
@@ -322,7 +338,11 @@ pub fn retrieve(source: *runtime.Instance, request: *runtime.Instance, native_so
     if (operation.kind == .open_cursor or operation.kind == .open_key_cursor) {
         if (!cursor.got_value) return completeRequest(request, .jsNull, null);
         cursor.key_only = operation.kind == .open_key_cursor;
-        const wrapper = if (cursor.key_only) try interfaces.IDBCursor.init(realm.allocator, realm) else try interfaces.IDBCursorWithValue.init(realm.allocator, realm);
+        // ED 4.5/4.6 openCursor step 6: the platform cursor belongs to its
+        // source. Step 7's captured realm deserializes the iteration's value,
+        // initialized separately by attachCursor (integrator Q33/Q36).
+        const cursor_realm = source.ctx;
+        const wrapper = if (cursor.key_only) try interfaces.IDBCursor.init(cursor_realm.allocator, cursor_realm) else try interfaces.IDBCursorWithValue.init(cursor_realm.allocator, cursor_realm);
         errdefer if (!engine.hasWrapper(wrapper)) runtime.Instance.deinit(wrapper);
         try attachCursor(wrapper, cursor, source, request);
         transferred = true;
@@ -442,7 +462,9 @@ pub fn cleanupTransaction(instance: *runtime.Instance) void {
 /// the transaction removes itself before destruction.
 pub const CleanupList = struct {
     allocator: std.mem.Allocator,
-    entries: std.ArrayList(*runtime.Instance) = .empty,
+    entries: std.ArrayList(Entry) = .empty,
+
+    const Entry = struct { instance: *runtime.Instance, realm: runtime.Context };
 
     pub fn init(allocator: std.mem.Allocator) CleanupList {
         return .{ .allocator = allocator };
@@ -451,12 +473,12 @@ pub const CleanupList = struct {
         self.entries.deinit(self.allocator);
     }
     pub fn add(self: *CleanupList, transaction: *runtime.Instance) !void {
-        for (self.entries.items) |entry| if (entry == transaction) return;
-        try self.entries.append(self.allocator, transaction);
+        for (self.entries.items) |entry| if (entry.instance == transaction) return;
+        try self.entries.append(self.allocator, .{ .instance = transaction, .realm = transaction.ctx });
     }
     pub fn remove(self: *CleanupList, transaction: *runtime.Instance) void {
         for (self.entries.items, 0..) |entry, index| {
-            if (entry == transaction) {
+            if (entry.instance == transaction) {
                 _ = self.entries.orderedRemove(index);
                 return;
             }
@@ -466,23 +488,29 @@ pub const CleanupList = struct {
         // Steps 1-2: consume each transaction before invoking its cleanup.
         // The owning hook can remove another entry without invalidating iteration.
         while (self.entries.items.len != 0) {
-            const transaction = self.entries.orderedRemove(0);
-            cleanupTransaction(transaction);
+            const entry = self.entries.orderedRemove(0);
+            // The owner normally unregisters at teardown. The saved Context
+            // also prevents inspecting an Instance after its realm retired.
+            if (entry.realm.hasEngine()) cleanupTransaction(entry.instance);
         }
     }
 };
 
 test "IndexedDB cleanup list owns storage but borrows unique transactions" {
+    var realm = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer realm.deinit();
     var list = CleanupList.init(std.testing.allocator);
     defer list.deinit();
     var first: runtime.Instance = undefined;
     var second: runtime.Instance = undefined;
+    first.ctx = &realm;
+    second.ctx = &realm;
     try list.add(&first);
     try list.add(&first);
     try list.add(&second);
     try std.testing.expectEqual(@as(usize, 2), list.entries.items.len);
     list.remove(&first);
-    try std.testing.expectEqual(&second, list.entries.items[0]);
+    try std.testing.expectEqual(&second, list.entries.items[0].instance);
     list.remove(&second);
     try std.testing.expectEqual(@as(usize, 0), list.entries.items.len);
 }
@@ -509,20 +537,203 @@ pub fn endUpgrade(instance: *runtime.Instance) void {
 pub fn attachTransaction(instance: *runtime.Instance, transaction: *storage.indexeddb.IDBTransaction, database: *runtime.Instance) !void {
     try (transactions orelse return error.NotSupported).attach(instance, transaction, database);
 }
+pub fn associateUpgradeRequest(transaction: *runtime.Instance, request: *runtime.Instance) void {
+    (transactions orelse return).associate_upgrade_request(transaction, request);
+}
 pub fn finishTransaction(instance: *runtime.Instance, abort: bool) !bool {
     return (transactions orelse return error.NotSupported).finish(instance, abort);
 }
 
-/// Q5's accepted interim: registration needs the not-yet-landed agent host
-/// protocol operation. No transaction registry belongs to a process or thread.
+/// ED 4.4 transaction() step 8 registers creation cleanup on the owning
+/// agent's host, shared by that agent's window or worker realms.
 pub fn agentCleanupList(realm: runtime.Context) ?*CleanupList {
-    _ = realm;
-    return null;
+    const agent = realm.agent orelse return null;
+    const host: *@import("html_core").agent_host.AgentHost = @ptrCast(@alignCast(engine.agentHost(agent) orelse return null));
+    return &host.indexeddb_cleanup;
+}
+
+/// ED 2.8 database-access tasks use the realm's host queue. Q28's worker
+/// fallback remains here until the host supplies that queue to worker realms.
+/// Ownership transfers only on success; a failure never invokes the task.
+pub fn queueDatabaseTask(realm: runtime.Context, task: runtime.EventLoopTask) !DatabaseTaskHandle {
+    if (realm.getOptionalEventLoop()) |loop| {
+        loop.queueTask(task);
+        return .{};
+    }
+    if (realm.getOptionalTimer()) |timer| {
+        const id = timer.setTimeout(0, task.callback, task.context);
+        if (id == 0) return error.OutOfMemory;
+        return .{ .registration = .{ .timer = timer, .id = id } };
+    }
+    return error.NoTaskQueue;
+}
+
+/// Callers hold this handle without inspecting its queue registration.
+/// EventLoop owns a task until callback/drop; the worker fallback also lets
+/// its source reclaim a cancelled payload before the native timer is torn down.
+pub const DatabaseTaskHandle = struct {
+    registration: ?TimerRegistration = null,
+
+    const TimerRegistration = struct {
+        // worker_host.zig teardownRealm cancels only its script timers, then
+        // destroyWorkerRealm frees the IDB owners while the timer lives. The
+        // worker's timer records go in WorkerHost.free, after realm teardown.
+        // A source may use this receipt only while that WorkerHost lives.
+        timer: runtime.TimerInterface,
+        id: runtime.TimerId,
+    };
+};
+
+/// True alone transfers payload ownership back to the source. On false,
+/// the already-starting callback (or EventLoop callback/drop) still owns it.
+pub fn cancelDatabaseTask(handle: *DatabaseTaskHandle) bool {
+    const registration = handle.registration orelse return false;
+    handle.* = .{};
+    return registration.timer.clearTimeout(registration.id);
+}
+
+/// Called at callback/drop entry, before invoking anything reentrant.
+pub fn databaseTaskStarted(handle: *DatabaseTaskHandle) void {
+    handle.* = .{};
+}
+
+test "IndexedDB queue absence does not run a task synchronously" {
+    var realm = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer realm.deinit();
+    var ran = false;
+    const Callback = struct {
+        fn run(data: ?*anyopaque) void {
+            const flag: *bool = @ptrCast(@alignCast(data.?));
+            flag.* = true;
+        }
+    };
+    try std.testing.expectError(error.NoTaskQueue, queueDatabaseTask(&realm, .{ .callback = Callback.run, .context = &ran }));
+    try std.testing.expect(!ran);
+}
+
+test "IndexedDB worker timer fallback transfers a task without running it" {
+    const Timer = struct {
+        task: ?runtime.EventLoopTask = null,
+        fail: bool = false,
+
+        fn set(data: *anyopaque, delay: u64, callback: runtime.TimerCallback, context: ?*anyopaque) runtime.TimerId {
+            const self: *@This() = @ptrCast(@alignCast(data));
+            std.debug.assert(delay == 0);
+            if (self.fail) return 0;
+            self.task = .{ .callback = callback, .context = context };
+            return 1;
+        }
+        fn clear(_: *anyopaque, _: runtime.TimerId) bool {
+            return false;
+        }
+        fn run(data: ?*anyopaque) void {
+            const flag: *bool = @ptrCast(@alignCast(data.?));
+            flag.* = true;
+        }
+    };
+    var timer = Timer{};
+    var realm = try runtime.ContextData.init(std.testing.allocator, .{ .timer = .{
+        .ctx = &timer,
+        .vtable = &.{ .setTimeout = Timer.set, .clearTimeout = Timer.clear },
+    } });
+    defer realm.deinit();
+    var ran = false;
+    _ = try queueDatabaseTask(&realm, .{ .callback = Timer.run, .context = &ran });
+    try std.testing.expect(!ran);
+    const queued = timer.task.?;
+    queued.callback(queued.context);
+    try std.testing.expect(ran);
+    timer.task = null;
+    timer.fail = true;
+    ran = false;
+    try std.testing.expectError(error.OutOfMemory, queueDatabaseTask(&realm, .{ .callback = Timer.run, .context = &ran }));
+    try std.testing.expect(timer.task == null);
+    try std.testing.expect(!ran);
 }
 
 pub fn setRequestPending(instance: *runtime.Instance) void {
     (requests orelse return).set_pending(instance);
 }
+
+test "IndexedDB cancellation uses the original timer and returns payload ownership once" {
+    const Timer = struct {
+        task: ?runtime.EventLoopTask = null,
+        cancellations: usize = 0,
+        fn set(data: *anyopaque, _: u64, callback: runtime.TimerCallback, context: ?*anyopaque) runtime.TimerId {
+            const self: *@This() = @ptrCast(@alignCast(data));
+            self.task = .{ .callback = callback, .context = context };
+            return 7;
+        }
+        fn clear(data: *anyopaque, id: runtime.TimerId) bool {
+            const self: *@This() = @ptrCast(@alignCast(data));
+            self.cancellations += 1;
+            if (id != 7 or self.task == null) return false;
+            self.task = null;
+            return true;
+        }
+        fn run(_: ?*anyopaque) void {
+            @panic("a cancelled IndexedDB task must not run");
+        }
+        fn interface(self: *@This()) runtime.TimerInterface {
+            return .{ .ctx = self, .vtable = &.{ .setTimeout = set, .clearTimeout = clear } };
+        }
+    };
+    var original = Timer{};
+    var other = Timer{};
+    var realm = try runtime.ContextData.init(std.testing.allocator, .{ .timer = original.interface() });
+    defer realm.deinit();
+    const payload = try std.testing.allocator.create(u64);
+    defer std.testing.allocator.destroy(payload);
+    var receipt = try queueDatabaseTask(&realm, .{ .callback = Timer.run, .context = payload });
+    realm.timer = other.interface();
+    try std.testing.expect(cancelDatabaseTask(&receipt));
+    try std.testing.expect(!cancelDatabaseTask(&receipt));
+    try std.testing.expectEqual(@as(usize, 1), original.cancellations);
+    try std.testing.expectEqual(@as(usize, 0), other.cancellations);
+    try std.testing.expect(original.task == null);
+}
+
+test "IndexedDB failed cancellation leaves the callback owning its payload" {
+    const Timer = struct {
+        task: ?runtime.EventLoopTask = null,
+        cancellations: usize = 0,
+        fn set(data: *anyopaque, _: u64, callback: runtime.TimerCallback, context: ?*anyopaque) runtime.TimerId {
+            const self: *@This() = @ptrCast(@alignCast(data));
+            self.task = .{ .callback = callback, .context = context };
+            return 9;
+        }
+        fn clear(data: *anyopaque, _: runtime.TimerId) bool {
+            const self: *@This() = @ptrCast(@alignCast(data));
+            self.cancellations += 1;
+            return false;
+        }
+        fn run(data: ?*anyopaque) void {
+            const payload: *u64 = @ptrCast(@alignCast(data.?));
+            std.debug.assert(payload.* == 42);
+            std.testing.allocator.destroy(payload);
+        }
+    };
+    var timer = Timer{};
+    var realm = try runtime.ContextData.init(std.testing.allocator, .{ .timer = .{
+        .ctx = &timer,
+        .vtable = &.{ .setTimeout = Timer.set, .clearTimeout = Timer.clear },
+    } });
+    defer realm.deinit();
+    const payload = try std.testing.allocator.create(u64);
+    var callback_ran = false;
+    defer if (!callback_ran) std.testing.allocator.destroy(payload);
+    payload.* = 42;
+    var receipt = try queueDatabaseTask(&realm, .{ .callback = Timer.run, .context = payload });
+    try std.testing.expect(!cancelDatabaseTask(&receipt));
+    const queued = timer.task.?;
+    timer.task = null;
+    databaseTaskStarted(&receipt);
+    queued.callback(queued.context);
+    callback_ran = true;
+    try std.testing.expect(!cancelDatabaseTask(&receipt));
+    try std.testing.expectEqual(@as(usize, 1), timer.cancellations);
+}
+
 pub fn setRequestSource(instance: *runtime.Instance, source: ?*runtime.Instance) void {
     (requests orelse return).set_source(instance, source);
 }

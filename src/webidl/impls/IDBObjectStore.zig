@@ -204,12 +204,19 @@ fn addOrPut(instance: *runtime.Instance, value: runtime.JSValue, key: webidl.Opt
     if (store.usesInlineKeys() and given) return error.DataError;
     if (!store.usesInlineKeys() and !store.auto_increment and !given) return error.DataError;
     if (given) operation.key = try dom.indexeddb_keys.require(instance.ctx, key.value, internal.allocator);
-    // Steps 9-11, clone algorithm 1-5: getters run while inactive.
-    store.transaction.state = .inactive;
-    operation.bytes = try engine.structuredSerializeForStorage(instance.ctx, value, internal.allocator);
-    const clone = try engine.structuredDeserialize(instance.ctx, operation.bytes.?);
+    // Steps 9-11 / 5.11 steps 2-5: getters run while inactive.
+    const clone = blk: {
+        store.transaction.state = .inactive;
+        // Deviation: ED 5.11 steps 3-5's ? skips restoration on failure
+        // (w3c/IndexedDB#490). WPT key-conversion-exceptions/keypath-exceptions
+        // and WebKit IDBObjectStore::putOrAdd restore before propagating it.
+        defer if (store.transaction.state == .inactive) {
+            store.transaction.state = .active;
+        };
+        operation.bytes = try engine.structuredSerializeForStorage(instance.ctx, value, internal.allocator);
+        break :blk try engine.structuredDeserialize(instance.ctx, operation.bytes.?);
+    };
     defer clone.release();
-    if (store.transaction.state == .inactive) store.transaction.state = .active;
     if (dom.indexeddb.storeKeyPath(store)) |path| {
         switch (try dom.indexeddb_keys.extract(instance.ctx, clone.value, path, false, internal.allocator)) {
             .key => |extracted| operation.key = extracted,

@@ -147,9 +147,8 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMS
 
     // Check bounds
     if (index >= internal.strings.items.len) {
-        // Return null (empty string represents null for this case)
-        // Per spec, item() returns null for out-of-bounds access
-        return runtime.DOMString.initEmpty();
+        // HTML 2.6.5 item() step 1: return null when index is not less than length.
+        return null;
     }
 
     // Return the string at the index
