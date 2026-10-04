@@ -340,6 +340,7 @@ pub const Document = struct {
             .{ "elementFromPoint", "call_elementFromPoint", 2 },
             .{ "elementsFromPoint", "call_elementsFromPoint", 2 },
             .{ "caretPositionFromPoint", "call_caretPositionFromPoint", 2 },
+            .{ "execCommand", "call_execCommand", 1 },
             .{ "measureElement", "call_measureElement", 1 },
             .{ "measureText", "call_measureText", 2 },
             .{ "exitFullscreen", "call_exitFullscreen", 0 },
@@ -349,7 +350,6 @@ pub const Document = struct {
             .{ "write", "call_write", 0 },
             .{ "writeln", "call_writeln", 0 },
             .{ "hasFocus", "call_hasFocus", 0 },
-            .{ "execCommand", "call_execCommand", 1 },
             .{ "queryCommandEnabled", "call_queryCommandEnabled", 1 },
             .{ "queryCommandIndeterm", "call_queryCommandIndeterm", 1 },
             .{ "queryCommandState", "call_queryCommandState", 1 },
@@ -414,6 +414,7 @@ pub const Document = struct {
             "elementFromPoint",
             "elementsFromPoint",
             "caretPositionFromPoint",
+            "execCommand",
             "measureElement",
             "measureText",
             "exitFullscreen",
@@ -424,7 +425,6 @@ pub const Document = struct {
             "write",
             "writeln",
             "hasFocus",
-            "execCommand",
             "queryCommandEnabled",
             "queryCommandIndeterm",
             "queryCommandState",
@@ -2293,17 +2293,17 @@ pub const Document = struct {
         return try DocumentImpl.call_hasStorageAccess(instance);
     }
 
-    pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: webidl.Opt(CaretPositionFromPointOptions)) anyerror!?*runtime.Instance {
-        return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options);
-    }
-
     /// Extended attributes: [CEReactions]
-    pub fn call_execCommand(instance: *runtime.Instance, commandId: DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(DOMString)) anyerror!bool {
+    pub fn call_execCommand(instance: *runtime.Instance, commandId: DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(TrustedHTMLOrDOMString)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         runtime.CEReactions.begin();
         defer runtime.CEReactions.end();
 
         return try DocumentImpl.call_execCommand(instance, commandId, showUI, value);
+    }
+
+    pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, options: webidl.Opt(CaretPositionFromPointOptions)) anyerror!?*runtime.Instance {
+        return try DocumentImpl.call_caretPositionFromPoint(instance, x, y, options);
     }
 
     /// Extended attributes: [NewObject]
@@ -2325,12 +2325,12 @@ pub const Document = struct {
         return try DocumentImpl.call_requestStorageAccess(instance, types);
     }
 
-    pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try DocumentImpl.call_exitFullscreen(instance);
-    }
-
     pub fn call_getElementsByTagNameNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
         return try DocumentImpl.call_getElementsByTagNameNS(instance, namespace, localName);
+    }
+
+    pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try DocumentImpl.call_exitFullscreen(instance);
     }
 
     pub fn call_getElementsByName(instance: *runtime.Instance, elementName: DOMString) anyerror!*runtime.Instance {
