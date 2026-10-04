@@ -482,6 +482,11 @@ fn warnIfSystemCurlLacksWebSockets(b: *std.Build) void {
 }
 
 /// Helper function to add all .zig test files from a directory
+///
+/// `CRANE_TEST_FILE=<substring>` in the environment adds only the files whose
+/// path contains it - `CRANE_TEST_FILE=worker_threads zig build test -Dspec=v8`
+/// builds and runs one test file instead of every tests/v8 file, each of which
+/// is a root compile of its own.
 fn addTestFilesFromDir(
     builder: *std.Build,
     step: *std.Build.Step,
@@ -492,6 +497,7 @@ fn addTestFilesFromDir(
 ) !void {
     const allocator = builder.allocator;
     const io = builder.graph.io;
+    const only = builder.graph.environ_map.get("CRANE_TEST_FILE");
     var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| {
         // Directory might not exist yet, skip silently
         if (err == error.FileNotFound) return;
@@ -505,6 +511,9 @@ fn addTestFilesFromDir(
     while (try walker.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
+        if (only) |substring| {
+            if (std.mem.indexOf(u8, entry.path, substring) == null) continue;
+        }
 
         const full_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dir_path, entry.path });
         defer allocator.free(full_path);
