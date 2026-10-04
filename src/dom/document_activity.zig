@@ -24,7 +24,8 @@ const runtime = @import("runtime");
 
 /// What Document supplies.
 pub const Implementation = struct {
-    /// Whether `document` - a live Document - is fully active.
+    /// Whether `document` - a live Document, or a live Window standing for
+    /// its associated Document now (a global task's) - is fully active.
     fully_active: *const fn (document: *runtime.Instance) bool,
 };
 

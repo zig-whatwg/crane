@@ -1908,21 +1908,22 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
 
     // Step 8: queue a global task on the posted message task source given
     // targetWindow - a task whose document is targetWindow's associated
-    // Document ("queue a global task"): if that document stops being fully
-    // active first - its frame removed - the message is never delivered.
+    // Document ("queue a global task"): if that document is not fully active
+    // when the task would run - its frame removed - the message is never
+    // delivered. The task names the window, so the document asked about is
+    // the one the window shows then (runtime.EventLoopTask.document).
     const loop = instance.ctx.getOptionalEventLoop() orelse {
         // No loop to queue on (a context built for tests): the message is
         // still owed, so deliver it now rather than lose it.
         runPostedMessage(posted);
         return;
     };
-    const document = getInternal(instance).?.document;
     loop.queueTask(.{
         .callback = &runPostedMessage,
         .context = posted,
         .drop = &dropPostedMessage,
-        .document = document,
-        .document_generation = if (document) |d| runtime.SlabAllocator.generationOf(d) else 0,
+        .document = instance,
+        .document_generation = runtime.SlabAllocator.generationOf(instance),
     });
 }
 

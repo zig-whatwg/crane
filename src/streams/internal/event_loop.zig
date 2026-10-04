@@ -98,6 +98,14 @@ pub const Task = struct {
     /// `drop` instead (src/browser/event_loop.zig), so a task that sets one
     /// MUST have a `drop` that frees its context. A worker's tasks have no
     /// document and are always runnable.
+    ///
+    /// A global task on a Window may name the Window instead: its associated
+    /// Document when the task runs is then the task's document. Stated
+    /// deviation: HTML's "queue a global task" fixes the document when the
+    /// task is queued, so a window reused for a new document (the initial
+    /// about:blank replaced) would drop it; browsers keep such tasks with
+    /// the window (Blink posts them to the frame's task runner), and
+    /// webmessaging/without-ports/018.html expects the message delivered.
     document: ?*anyopaque = null,
 
     /// `document`'s slab generation when the task was queued
