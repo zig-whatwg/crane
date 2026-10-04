@@ -2348,6 +2348,42 @@ pub fn toV8Record(
 /// Generic Zig type to V8 Value conversion
 ///
 /// Dispatches to the appropriate conversion function based on source type.
+/// Whether `T` is a dictionary as toV8Value converts one: a struct that is
+/// none of the special struct types (an interface, an optional argument, an
+/// ArrayBufferView) - its conversion is an object made for the call.
+fn isDictionaryValue(comptime T: type) bool {
+    @setEvalBranchQuota(100_000);
+    if (@typeInfo(T) != .@"struct") return false;
+    if (@hasDecl(T, "Meta")) return false;
+    if (@hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) return false;
+    if (T == typedefs.ArrayBufferView) return false;
+    if (T == JSValue or T == OptionalJSValue or T == runtime.OptionalJSValue) return false;
+    if (@hasDecl(T, "ResultType") and @hasField(T, "handle")) return false;
+    return true;
+}
+
+/// Whether toV8Value(T, ...) of a dictionary MEMBER of type `T` is a Global
+/// made for the call, released once the dictionary's object has it: what
+/// `interface.getterValueIsOwned` allows (numbers, booleans, strings,
+/// enums, their nullable forms), a nested dictionary (an object made here)
+/// and a sequence or record (an array or object made here). Anything else -
+/// a platform object's wrapper, an `any` - may be borrowed and is kept.
+fn dictionaryMemberValueIsOwned(comptime T: type) bool {
+    @setEvalBranchQuota(100_000);
+    if (interface_mod.getterValueIsOwned(T)) return true;
+    if (isDictionaryValue(T)) return true;
+    const info = @typeInfo(T);
+    if (info == .pointer and info.pointer.size == .slice) return true;
+    if (info == .optional) return dictionaryMemberValueIsOwned(info.optional.child);
+    return false;
+}
+
+/// Whether toV8Value's result for a `T` returned by an operation is the
+/// binding's to release: a dictionary's object is made for the call.
+pub fn dictionaryValueIsOwned(comptime T: type) bool {
+    return isDictionaryValue(T);
+}
+
 pub fn toV8Value(
     comptime T: type,
     isolate: *v8.Isolate,
@@ -2564,38 +2600,29 @@ pub fn toV8Value(
     // WebIDL dictionaries: optional fields that are null should NOT be set on the object
     // (accessing them returns undefined, not null)
     if (type_info == .@"struct") {
-        // CROSS-REALM SUPPORT: Use v8_Object_NewInContext to create object in the specified context.
-        // This ensures the object's prototype is context.Object.prototype, not current context's.
-        // Critical for WPT test: default-toJSON-cross-realm.html
+        // WebIDL 3.2.18, an IDL dictionary value to an ECMAScript value:
+        // "Let O be OrdinaryObjectCreate(%Object.prototype%)" - of `context`'s
+        // realm (default-toJSON-cross-realm.html) - and for each member
+        // present, "Perform ! CreateDataPropertyOrThrow(O, key, jsValue)":
+        // defined, never assigned, so no setter on Object.prototype runs. An
+        // absent (null) member is no property at all.
+        //
+        // The object is the caller's (`dictionaryValueIsOwned`); every key
+        // and every member value this makes is released once the object has
+        // it. Kept, a dictionary an operation returned leaked a Global per
+        // member (Navigation.navigate's result, URLPattern.exec's).
         const obj = v8.v8_Object_NewInContext(context) orelse return ConversionError.OutOfMemory;
+        errdefer v8.v8_Object_Dispose(obj);
         inline for (std.meta.fields(T)) |field| {
             const field_value = @field(value, field.name);
-            const field_type_info = @typeInfo(field.type);
-
-            // For optional fields, only set if non-null (null => property not set => undefined in JS)
-            const should_set = comptime if (field_type_info == .optional) blk: {
-                break :blk true; // Need runtime check
-            } else blk: {
-                break :blk true; // Non-optional, always set
-            };
-
-            if (should_set) {
-                // Runtime check for optional fields
-                const is_null_optional = if (field_type_info == .optional)
-                    field_value == null
-                else
-                    false;
-
-                if (!is_null_optional) {
-                    if (v8.v8_String_NewFromUtf8(
-                        isolate,
-                        field.name.ptr,
-                        @intCast(field.name.len),
-                    )) |field_name_str| {
-                        const field_v8 = try toV8Value(field.type, isolate, context, field_value);
-                        _ = v8.v8_Object_Set(obj, context, @ptrCast(field_name_str), field_v8);
-                    }
-                }
+            const present = if (comptime @typeInfo(field.type) == .optional) field_value != null else true;
+            if (present) {
+                const field_name_str = v8.v8_String_NewFromUtf8(isolate, field.name.ptr, @intCast(field.name.len)) orelse
+                    return ConversionError.OutOfMemory;
+                defer v8.v8_String_Dispose(field_name_str);
+                const field_v8 = try toV8Value(field.type, isolate, context, field_value);
+                defer if (comptime dictionaryMemberValueIsOwned(field.type)) v8.v8_Value_Dispose(field_v8);
+                _ = v8.v8_Object_CreateDataProperty(obj, context, field_name_str, field_v8);
             }
         }
         return @ptrCast(obj);

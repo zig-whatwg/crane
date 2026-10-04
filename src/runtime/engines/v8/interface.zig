@@ -4471,8 +4471,12 @@ pub fn V8Interface(comptime Interface: type) type {
                     // This is a Promise(T) type - extract the V8 Promise handle
                     return @ptrCast(result.handle);
                 }
-                // Handle dictionary structs (like URLPatternResult) using generic conversion
+                // A dictionary (URLPatternResult, NavigationResult): its object
+                // is made for this call (WebIDL 3.2.18), and released once
+                // set - kept, it leaked a Global per call.
+                owned.* = comptime conv.dictionaryValueIsOwned(ReturnType);
                 return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
+                    owned.* = true;
                     return v8.v8_Undefined(isolate);
                 };
             }
