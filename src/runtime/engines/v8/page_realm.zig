@@ -231,7 +231,14 @@ pub fn endWindowOperations(realm: runtime.Context) void {
     context_manager.clearChildWindowCleanupCallback();
 }
 
-/// Define each of `natives` on `global`, as functions of `context`'s realm.
+/// Define each of `natives` on `global`, as functions of `context`'s realm:
+/// each one a regular operation of the [Global] Window, as WebIDL 3.7.6
+/// makes it - "create an operation function" (its `length` the shortest
+/// overload's required argument count, its `name` the identifier, no
+/// constructor and so no `prototype`) - and its property defined
+/// { [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: true }.
+/// Defined, never assigned: a [[Set]] would run whatever the prototype chain
+/// has under the name. They read `name` "" and had a `prototype` before.
 fn defineNatives(isolate: *ffi.Isolate, context: *ffi.Context, global: *ffi.Object, natives: []const NativeOperation) EngineError!void {
     for (natives) |native| {
         // Every one of these returns a Global the caller owns; the function
@@ -239,11 +246,13 @@ fn defineNatives(isolate: *ffi.Isolate, context: *ffi.Context, global: *ffi.Obje
         const template = ffi.v8_FunctionTemplate_New(isolate, native.callback, null) orelse return EngineError.OperationFailed;
         defer ffi.v8_FunctionTemplate_Dispose(template);
         ffi.v8_FunctionTemplate_SetLength(template, native.length);
+        ffi.v8_FunctionTemplate_RemovePrototype(template);
         const function = ffi.v8_FunctionTemplate_GetFunction(template, context) orelse return EngineError.OperationFailed;
         defer ffi.v8_Function_Dispose(function);
         const key = ffi.v8_String_NewFromUtf8(isolate, native.name.ptr, @intCast(native.name.len)) orelse return EngineError.OperationFailed;
         defer ffi.v8_String_Dispose(key);
-        _ = ffi.v8_Object_Set(global, context, @ptrCast(key), @ptrCast(function));
+        ffi.v8_Function_SetName(function, key);
+        _ = ffi.v8_Object_DefineProperty(global, context, @ptrCast(key), @ptrCast(function), true, true, true);
     }
 }
 

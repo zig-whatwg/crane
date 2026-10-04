@@ -2048,8 +2048,12 @@ pub fn V8Interface(comptime Interface: type) type {
             inline for (methods) |method| {
                 const method_name: []const u8 = method[0];
                 const zig_name: []const u8 = method[1];
+                // WebIDL 3.7.6 (create an operation function): its `length`
+                // is the shortest overload's required argument count and its
+                // `name` the operation's identifier - as on the prototype,
+                // where createTemplate sets both. Left out here, every
+                // window operation read `length` 0 and `name` "".
                 const arity: c_int = if (method.len >= 3) method[2] else 0;
-                _ = arity; // Arity is set on the FunctionTemplate, not needed here
 
                 // Create the method callback using FunctionTemplate
                 const Callback = MethodCallback(zig_name);
@@ -2067,6 +2071,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 // page and every frame.
                 if (method_tmpl) |tmpl| {
                     defer v8.v8_FunctionTemplate_Dispose(tmpl);
+                    v8.v8_FunctionTemplate_SetLength(tmpl, arity);
+                    // Not a constructor: no `prototype` (as on the prototype).
+                    v8.v8_FunctionTemplate_RemovePrototype(tmpl);
                     // Get Function from template
                     const method_fn = v8.v8_FunctionTemplate_GetFunction(
                         tmpl,
@@ -2084,15 +2091,19 @@ pub fn V8Interface(comptime Interface: type) type {
 
                         if (name_str) |name_v8_str| {
                             defer v8.v8_String_Dispose(name_v8_str);
-                            // Set as own property on target object
-                            // v8_Object_Set creates a writable, enumerable, configurable property
-                            // Per WebIDL, methods should be writable and configurable, but NOT enumerable
-                            // For simplicity, we use Set which is close enough for most tests
-                            _ = v8.v8_Object_Set(
+                            v8.v8_Function_SetName(func, name_v8_str);
+                            // Defined, never assigned (a [[Set]] runs whatever
+                            // the prototype chain has under the name):
+                            // { writable, enumerable, configurable }, WebIDL
+                            // 3.7.6 for a regular operation.
+                            _ = v8.v8_Object_DefineProperty(
                                 target_object,
                                 context,
                                 @ptrCast(name_v8_str),
                                 @ptrCast(func),
+                                true,
+                                true,
+                                true,
                             );
                         }
                     }
