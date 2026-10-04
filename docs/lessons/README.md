@@ -187,6 +187,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [IndexedDB schema handles keep definition identity](architecture-indexeddb-schema-handles-keep-definition-identity.md) - Restore original handles on abort while preserving independent names on finished handles.
 - [An interface object's [[Prototype]] is the binding's to set, where every realm makes it](architecture-an-interface-object-s-prototype-is-the-binding-s-to-set.md) - A V8 template gives you the prototype chain, not the interface-object chain; set the interface object's [[Prototype]] in the one function every realm-creation path calls, and test it in a page, a frame and a worker.
 - [A conversion that fails part-way has already converted the rest](architecture-a-conversion-that-fails-part-way-converted-the-rest.md) - Every place that converts a list of values one by one needs an errdefer for the ones already converted, and every place that builds arguments needs the matching free.
+- [A navigable's children are its active document's - a list kept past the document that owned its entries is read freed](architecture-a-navigables-children-are-its-active-documents.md) - A pointer list that mirrors a spec structure must be emptied by the spec step that changes the structure, not left to its entries' owners to free; match leaked addresses against a trace before calling a leak "never freed".
+- [An object many native lists hold is held by an edge from each list's owner](architecture-an-entry-many-lists-hold-is-held-by-an-edge-from-each.md) - When several native lists hold one platform object, give each list's owner its own traced edge to it and move holders edge-first; never a root, never a shared count.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -255,6 +257,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A sink must see which union arm the binding took](codegen-a-sink-must-see-which-union-arm-the-binding-took.md) - When an algorithm branches on an argument's type, the binding must not flatten it - check the generated signature before writing the step.
 - [Restate a member another spec redefines, and list it](codegen-restate-a-redefined-member-and-list-it.md) - Compare the defining spec's IDL with webref's; restate it in specs/supplementary and list the replacement in member_overrides.zig - never merge a redefinition silently.
 - [An `inherit attribute` gets its own State slot - one variable, two copies](codegen-an-inherit-attribute-gets-its-own-state-slot.md) - A variable belongs to the interface that defines it; `inherit attribute` adds a setter, not a second variable - read it through the owner's getters and write it through the owner's hook, whatever slots codegen emitted.
+- [A typedef'd sequence return fell through to undefined](codegen-a-typedef-d-sequence-return-fell-through-to-undefined.md) - A typedef must map exactly as its target would; when a binding's fallback for an unknown return type is `undefined`, a type the mapper mis-resolves compiles and silently returns nothing - check the generated signature of every operation you implement against how the binding converts it.
 
 ### Testing
 - [Regression-check handle changes with timers, not DOM](testing-regression-check-handle-changes-with-timers-not.md) - Pick the regression suite that exercises the lifetime you changed, not the one that touches the same file.
@@ -317,6 +320,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A listener's microtasks can run before dispatch returns](testing-a-listeners-microtasks-can-run-before-dispatch-returns.md) - Distinguish callback cleanup from the enclosing algorithm's post-dispatch steps.
 - [Allocator walks propagate injected errors](testing-allocator-walks-propagate-injected-errors.md) - Let injected OutOfMemory reach the walker before asserting the ordinary semantic error.
 - [A poisoned Array.prototype poisons testharness.js too](testing-a-poisoned-prototype-poisons-testharness-too.md) - Scope a prototype poison to the one call it tests; the harness shares the realm and trips over it.
+- [A dom unit test that reaches an engine operation cannot link](testing-a-dom-unit-test-that-reaches-an-engine-operation-cannot-link.md) - Keep src/dom unit tests to logic that reaches no `engine.*` operation; split the pure step out and test it, and read "N undefined _v8_ symbols" in a dom test step as "a test reached the engine".
 
 ### Debugging
 - [A diagnostic below the consumer's log level does not exist](debugging-a-diagnostic-below-the-consumer-s-log-level-does.md) - Pick the level from the consumer's threshold, not the author's.
