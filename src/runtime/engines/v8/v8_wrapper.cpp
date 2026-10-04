@@ -4453,6 +4453,12 @@ Global<Value>* v8_Array_Get(Global<Context>* context, Global<Array>* arr, uint32
     return trackHandle(new Global<Value>(isolate, value));
 }
 
+/// Define element `index` of an Array the engine is building: ECMAScript
+/// CreateDataProperty(A, index, value), as WebIDL's sequence-to-ECMAScript
+/// conversion (3.2.28) and every list the adapter hands script ask - never a
+/// [[Set]], which on a hole walks the prototype chain and runs a setter
+/// script put on Array.prototype (IndexedDB/bindings-inject-keys-bypass).
+/// Every caller fills an array it made itself (lane binding, 2026-10-04).
 bool v8_Array_Set(Global<Array>* arr, Global<Context>* context, uint32_t index, Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -4461,7 +4467,7 @@ bool v8_Array_Set(Global<Array>* arr, Global<Context>* context, uint32_t index, 
     Local<Array> local_arr = arr->Get(isolate);
     Local<Value> local_value = value->Get(isolate);
 
-    Maybe<bool> result = local_arr->Set(local_context, index, local_value);
+    Maybe<bool> result = local_arr->CreateDataProperty(local_context, index, local_value);
     return result.FromMaybe(false);
 }
 

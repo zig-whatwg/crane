@@ -280,9 +280,8 @@ pub fn convertToIntAs(comptime T: type, comptime conversion: IntegerConversion, 
 /// An argument, attribute value or dictionary member of integer type `T` - or
 /// a nullable form of one, or an optional argument (`webidl.Opt`) of either -
 /// converted with `conversion`'s branch of ConvertToInt. A nullable's null and
-/// undefined are null; an optional argument's undefined is "not passed" (and,
-/// as `fromV8Value`'s optional path has it, so is null). Any other type
-/// converts as `fromV8Value` does.
+/// undefined are null; an optional argument's undefined is "not passed", and
+/// its null converts (0). Any other type converts as `fromV8Value` does.
 pub fn fromV8ValueInteger(
     comptime T: type,
     comptime conversion: IntegerConversion,
@@ -302,7 +301,9 @@ pub fn fromV8ValueInteger(
         return try fromV8ValueInteger(info.optional.child, conversion, allocator, isolate, context, value);
     }
     if (info == .@"struct" and @hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) {
-        if (v8.v8_Value_IsNullOrUndefined(value)) return T.notPassed();
+        // Only undefined is a missing optional argument; null converts
+        // (ToNumber(null) is 0), as in fromV8Value's optional path.
+        if (v8.v8_Value_IsUndefined(value)) return T.notPassed();
         return T.passed(try fromV8ValueInteger(@FieldType(T, "value"), conversion, allocator, isolate, context, value));
     }
     return fromV8Value(T, allocator, isolate, context, value);
@@ -1785,37 +1786,17 @@ pub fn fromV8Value(
             @compileError("webidl.Opt type missing 'value' field");
         };
 
-        // Per WebIDL spec, for optional parameters:
-        // - undefined means "not passed" (use default value)
-        // - null is a valid value for string types (stringified to "null")
-        // https://webidl.spec.whatwg.org/#idl-optional
-        const is_string_type = comptime blk: {
-            if (InnerType == runtime.DOMString or
-                InnerType == runtime.USVString or
-                InnerType == runtime.ByteString)
-            {
-                break :blk true;
-            }
-            // Check for []const u8 slice type
-            const inner_info = @typeInfo(InnerType);
-            if (inner_info == .pointer and inner_info.pointer.size == .slice and
-                inner_info.pointer.child == u8)
-            {
-                break :blk true;
-            }
-            break :blk false;
-        };
-
+        // WebIDL 3.7.x, overload resolution step 4 / "converting arguments":
+        // an optional argument whose value is undefined is not passed (its
+        // default applies); EVERY other value, null included, is converted
+        // to the argument's type. So null is null for a nullable type, 0 for
+        // a number (ToNumber), false for a boolean, "null" for a string, the
+        // defaults for a dictionary (3.2.18 steps 1-3), and a TypeError for
+        // an interface, callback or sequence type. Null used to read as not
+        // passed for every non-string type (idbfactory_open's null version).
         if (v8.v8_Value_IsUndefined(value)) {
             return T.notPassed();
         }
-
-        // For non-string types, null also means "not passed"
-        if (!is_string_type and v8.v8_Value_IsNull(value)) {
-            return T.notPassed();
-        }
-
-        // Convert the inner value (for strings, null will be stringified to "null")
         const inner_value = try fromV8Value(InnerType, allocator, isolate, context, value);
         return T.passed(inner_value);
     }
@@ -1830,14 +1811,35 @@ pub fn fromV8Value(
             return error.TypeError;
         }
 
-        // Regular dictionary struct - convert from V8 object
-        if (!v8.v8_Value_IsObject(value)) {
+        // WebIDL 3.2.18 steps 1-3: "If jsDict is not undefined, null or an
+        // Object, throw a TypeError"; undefined and null are a dictionary
+        // whose every member reads as undefined - its defaults, as `{}`
+        // gives them. (Null for an optional dictionary argument now reaches
+        // here instead of reading as not passed; a union's dictionary arm
+        // takes null and undefined the same way, 3.2.25 step 4.)
+        const object: ?*v8.Object = if (v8.v8_Value_IsObject(value))
+            @as(*v8.Object, @ptrCast(value))
+        else if (v8.v8_Value_IsNullOrUndefined(value))
+            null
+        else
             return ConversionError.TypeError;
-        }
-        const object = @as(*v8.Object, @ptrCast(value));
 
         var result: T = undefined;
-        inline for (comptime dictionaryMemberOrder(T)) |field| {
+        const members = comptime dictionaryMemberOrder(T);
+        // A member that fails to convert - its Get threw, its value is the
+        // wrong type, a restricted float is NaN - ends the conversion with
+        // the members before it converted: they are freed here, as
+        // `interface.freeConvertedArg` frees a whole dictionary (what each
+        // allocated, and an `any` member's handle). Kept, a RequestInit
+        // whose `duplex` was missing leaked its body's copy.
+        var converted: usize = 0;
+        errdefer inline for (members, 0..) |field, index| {
+            if (index < converted) {
+                interface_mod.freeConvertedArg(field.type, allocator, @field(result, field.name));
+                interface_mod.releaseAnyArgument(field.type, @field(result, field.name));
+            }
+        };
+        inline for (members) |field| {
             // Special handling for 'base' field in dictionary inheritance
             // In WebIDL, child dictionaries inherit parent fields directly on the object
             // e.g., { bubbles: true, oldVersion: 1 } not { base: { bubbles: true }, oldVersion: 1 }
@@ -1852,6 +1854,7 @@ pub fn fromV8Value(
                         context,
                         value, // Pass the same object, not a nested property
                     );
+                    converted += 1;
                     continue;
                 }
             }
@@ -1864,8 +1867,12 @@ pub fn fromV8Value(
             );
             defer if (field_name_str) |n| v8.v8_String_Dispose(n);
 
-            // Get property value from object
-            const field_v8_opt = v8.v8_Object_Get(object, context, @ptrCast(field_name_str));
+            // Get property value from object - or, for an undefined or null
+            // dictionary, undefined (a Global of our own, as Get's is).
+            const field_v8_opt = if (object) |o|
+                v8.v8_Object_Get(o, context, @ptrCast(field_name_str))
+            else
+                v8.v8_Undefined(isolate);
 
             if (field_v8_opt) |field_v8| {
                 // Get made this handle for the member, and it is released when
@@ -1917,6 +1924,7 @@ pub fn fromV8Value(
                         field_v8,
                     );
                 }
+                converted += 1;
                 // A restricted `double` or `float` member: NaN and the
                 // infinities are a TypeError, as part of this member's
                 // conversion - before the next member is read.
@@ -2340,6 +2348,42 @@ pub fn toV8Record(
 /// Generic Zig type to V8 Value conversion
 ///
 /// Dispatches to the appropriate conversion function based on source type.
+/// Whether `T` is a dictionary as toV8Value converts one: a struct that is
+/// none of the special struct types (an interface, an optional argument, an
+/// ArrayBufferView) - its conversion is an object made for the call.
+fn isDictionaryValue(comptime T: type) bool {
+    @setEvalBranchQuota(100_000);
+    if (@typeInfo(T) != .@"struct") return false;
+    if (@hasDecl(T, "Meta")) return false;
+    if (@hasDecl(T, "notPassed") and @hasDecl(T, "wasPassed")) return false;
+    if (T == typedefs.ArrayBufferView) return false;
+    if (T == JSValue or T == OptionalJSValue or T == runtime.OptionalJSValue) return false;
+    if (@hasDecl(T, "ResultType") and @hasField(T, "handle")) return false;
+    return true;
+}
+
+/// Whether toV8Value(T, ...) of a dictionary MEMBER of type `T` is a Global
+/// made for the call, released once the dictionary's object has it: what
+/// `interface.getterValueIsOwned` allows (numbers, booleans, strings,
+/// enums, their nullable forms), a nested dictionary (an object made here)
+/// and a sequence or record (an array or object made here). Anything else -
+/// a platform object's wrapper, an `any` - may be borrowed and is kept.
+fn dictionaryMemberValueIsOwned(comptime T: type) bool {
+    @setEvalBranchQuota(100_000);
+    if (interface_mod.getterValueIsOwned(T)) return true;
+    if (isDictionaryValue(T)) return true;
+    const info = @typeInfo(T);
+    if (info == .pointer and info.pointer.size == .slice) return true;
+    if (info == .optional) return dictionaryMemberValueIsOwned(info.optional.child);
+    return false;
+}
+
+/// Whether toV8Value's result for a `T` returned by an operation is the
+/// binding's to release: a dictionary's object is made for the call.
+pub fn dictionaryValueIsOwned(comptime T: type) bool {
+    return isDictionaryValue(T);
+}
+
 pub fn toV8Value(
     comptime T: type,
     isolate: *v8.Isolate,
@@ -2556,38 +2600,29 @@ pub fn toV8Value(
     // WebIDL dictionaries: optional fields that are null should NOT be set on the object
     // (accessing them returns undefined, not null)
     if (type_info == .@"struct") {
-        // CROSS-REALM SUPPORT: Use v8_Object_NewInContext to create object in the specified context.
-        // This ensures the object's prototype is context.Object.prototype, not current context's.
-        // Critical for WPT test: default-toJSON-cross-realm.html
+        // WebIDL 3.2.18, an IDL dictionary value to an ECMAScript value:
+        // "Let O be OrdinaryObjectCreate(%Object.prototype%)" - of `context`'s
+        // realm (default-toJSON-cross-realm.html) - and for each member
+        // present, "Perform ! CreateDataPropertyOrThrow(O, key, jsValue)":
+        // defined, never assigned, so no setter on Object.prototype runs. An
+        // absent (null) member is no property at all.
+        //
+        // The object is the caller's (`dictionaryValueIsOwned`); every key
+        // and every member value this makes is released once the object has
+        // it. Kept, a dictionary an operation returned leaked a Global per
+        // member (Navigation.navigate's result, URLPattern.exec's).
         const obj = v8.v8_Object_NewInContext(context) orelse return ConversionError.OutOfMemory;
+        errdefer v8.v8_Object_Dispose(obj);
         inline for (std.meta.fields(T)) |field| {
             const field_value = @field(value, field.name);
-            const field_type_info = @typeInfo(field.type);
-
-            // For optional fields, only set if non-null (null => property not set => undefined in JS)
-            const should_set = comptime if (field_type_info == .optional) blk: {
-                break :blk true; // Need runtime check
-            } else blk: {
-                break :blk true; // Non-optional, always set
-            };
-
-            if (should_set) {
-                // Runtime check for optional fields
-                const is_null_optional = if (field_type_info == .optional)
-                    field_value == null
-                else
-                    false;
-
-                if (!is_null_optional) {
-                    if (v8.v8_String_NewFromUtf8(
-                        isolate,
-                        field.name.ptr,
-                        @intCast(field.name.len),
-                    )) |field_name_str| {
-                        const field_v8 = try toV8Value(field.type, isolate, context, field_value);
-                        _ = v8.v8_Object_Set(obj, context, @ptrCast(field_name_str), field_v8);
-                    }
-                }
+            const present = if (comptime @typeInfo(field.type) == .optional) field_value != null else true;
+            if (present) {
+                const field_name_str = v8.v8_String_NewFromUtf8(isolate, field.name.ptr, @intCast(field.name.len)) orelse
+                    return ConversionError.OutOfMemory;
+                defer v8.v8_String_Dispose(field_name_str);
+                const field_v8 = try toV8Value(field.type, isolate, context, field_value);
+                defer if (comptime dictionaryMemberValueIsOwned(field.type)) v8.v8_Value_Dispose(field_v8);
+                _ = v8.v8_Object_CreateDataProperty(obj, context, field_name_str, field_v8);
             }
         }
         return @ptrCast(obj);
