@@ -84,6 +84,49 @@ pub const ConversionError = error{
 // Helper Functions
 // ============================================================================
 
+/// The IDL string of a generated enum's `value`: codegen's `idl_values`
+/// table, variant i's exact value at index i (generator.writeEnum). The
+/// variant NAME cannot be turned back into it - `_back_forward_` is
+/// "back_forward" and `_same_origin_` is "same-origin" - so an enum without
+/// the table (one written by hand) falls back to the old rule: the name
+/// without its wrapping underscores, the rest turned into hyphens.
+pub fn idlEnumValue(comptime T: type, value: T) []const u8 {
+    if (comptime @hasDecl(T, "idl_values")) {
+        comptime std.debug.assert(T.idl_values.len == std.meta.fields(T).len);
+        return T.idl_values[@intFromEnum(value)];
+    }
+    return switch (value) {
+        inline else => |tag| comptime blk: {
+            const name = @tagName(tag);
+            var start: usize = 0;
+            var end: usize = name.len;
+            if (name.len > 0 and name[0] == '_') start = 1;
+            if (end > start and name[end - 1] == '_') end -= 1;
+            var out: [end - start]u8 = undefined;
+            for (name[start..end], 0..) |c, i| out[i] = if (c == '_') '-' else c;
+            const final = out;
+            break :blk &final;
+        },
+    };
+}
+
+/// WebIDL 3.2.23 step 2: the variant of a generated enum whose value is
+/// exactly `string` - `idl_values` again, compared code unit for code unit -
+/// or null when it is none of them (the conversion's TypeError). An enum
+/// without the table matches as before (`enumNameMatches`).
+pub fn enumFromIdlValue(comptime T: type, string: []const u8) ?T {
+    if (comptime @hasDecl(T, "idl_values")) {
+        inline for (T.idl_values, 0..) |idl_value, i| {
+            if (std.mem.eql(u8, idl_value, string)) return @enumFromInt(std.meta.fields(T)[i].value);
+        }
+        return null;
+    }
+    inline for (std.meta.fields(T)) |field| {
+        if (enumNameMatches(field.name, string)) return @enumFromInt(field.value);
+    }
+    return null;
+}
+
 /// Check if a runtime enum name matches a comptime Zig enum field name.
 /// Handles the transformation from WebIDL format ("same-origin", "text/html") to Zig format ("_same_origin_", "_text_html_"):
 /// - Hyphens in the runtime name match underscores in the field name
@@ -505,6 +548,13 @@ pub fn fromV8Sequence(
     const length = v8.v8_Array_Length(array);
     const slice = try allocator.alloc(T, length);
     errdefer allocator.free(slice);
+    // An element that fails ends the conversion with the ones before it
+    // converted - their strings copied, a buffer source's reference kept -
+    // and they are freed here, before the slice (errdefers run last first).
+    // Kept, every sequence argument that failed part-way leaked them
+    // (docs/lessons/architecture-a-conversion-that-fails-part-way-converted-the-rest.md).
+    var converted: usize = 0;
+    errdefer for (slice[0..converted]) |element| interface_mod.freeConvertedArg(T, allocator, element);
 
     for (0..length) |i| {
         // Use v8_Object_Get with integer key instead of v8_Array_Get to properly
@@ -525,6 +575,7 @@ pub fn fromV8Sequence(
         };
         releaseElementHandle(T, element, v8_value);
         slice[i] = element;
+        converted += 1;
     }
 
     return slice;
@@ -1025,6 +1076,42 @@ fn isArmNameOf(comptime name: []const u8, comptime arm: []const u8) bool {
     }
 }
 
+/// The typed array types' names, as [[TypedArrayName]] holds them.
+const typed_array_names = [_][]const u8{
+    "Int8Array",      "Uint8Array",   "Uint8ClampedArray", "Int16Array",
+    "Uint16Array",    "Int32Array",   "Uint32Array",       "BigInt64Array",
+    "BigUint64Array", "Float16Array", "Float32Array",      "Float64Array",
+};
+
+/// The typed array type a union arm is named for, if any: codegen types a
+/// typed array member of a union as runtime.JSValue (the reference to the
+/// object, WebIDL 3.2.26) and names the arm after it -
+/// ImageDataArray's `uint8clamped_array`, Float32List's `float32array`.
+pub fn typedArrayArmName(comptime arm: []const u8) ?[]const u8 {
+    inline for (typed_array_names) |name| {
+        if (comptime isArmNameOf(name, arm)) return name;
+    }
+    return null;
+}
+
+/// V's [[TypedArrayName]], or null when V is no typed array.
+pub fn typedArrayNameOf(value: *v8.Value) ?[]const u8 {
+    if (!v8.v8_Value_IsTypedArray(value)) return null;
+    if (v8.v8_Value_IsInt8Array(value)) return "Int8Array";
+    if (v8.v8_Value_IsUint8Array(value)) return "Uint8Array";
+    if (v8.v8_Value_IsUint8ClampedArray(value)) return "Uint8ClampedArray";
+    if (v8.v8_Value_IsInt16Array(value)) return "Int16Array";
+    if (v8.v8_Value_IsUint16Array(value)) return "Uint16Array";
+    if (v8.v8_Value_IsInt32Array(value)) return "Int32Array";
+    if (v8.v8_Value_IsUint32Array(value)) return "Uint32Array";
+    if (v8.v8_Value_IsBigInt64Array(value)) return "BigInt64Array";
+    if (v8.v8_Value_IsBigUint64Array(value)) return "BigUint64Array";
+    if (v8.v8_Value_IsFloat32Array(value)) return "Float32Array";
+    if (v8.v8_Value_IsFloat64Array(value)) return "Float64Array";
+    // Float16Array: no predicate in the FFI yet.
+    return null;
+}
+
 /// Whether `instance` implements the interface arm `arm` names: its state
 /// ancestry holds that interface's State, so File implements Blob. An arm
 /// no interface is named for, or an instance whose vtable carries no
@@ -1076,6 +1163,24 @@ fn dictionaryMemberOrder(comptime T: type) [std.meta.fields(T).len]std.builtin.T
         }.lessThan);
         return fields;
     }
+}
+
+/// Whether union `T` has an arm for a typed array type (`typedArrayArmName`).
+fn hasTypedArrayArm(comptime T: type) bool {
+    comptime {
+        for (@typeInfo(T).@"union".fields) |field| {
+            if (field.type == runtime.JSValue and typedArrayArmName(field.name) != null) return true;
+        }
+        return false;
+    }
+}
+
+/// A required dictionary member, as codegen emits one: a field with no
+/// default value (generator.generateDictionary writes every other member as
+/// `?T = null`). `base` - the inherited dictionary - is converted from the
+/// same object and is no member.
+fn isRequiredMember(comptime field: std.builtin.Type.StructField) bool {
+    return field.default_value_ptr == null and !std.mem.eql(u8, field.name, "base");
 }
 
 /// Generic V8 Value to Zig type conversion
@@ -1431,6 +1536,26 @@ pub fn fromV8Value(
             }
         }
 
+        // WebIDL 3.2.25 step 9: "If V has a [[TypedArrayName]] internal
+        // slot, then: if types includes a typed array type whose name is the
+        // value of V's [[TypedArrayName]] internal slot, then return the
+        // result of converting V to that type" - the IDL value that is a
+        // reference to the object: the argument's own handle, as an `object`
+        // arm's (released by the binding once the call returns,
+        // `interface.releaseAnyArgument`). `new ImageData(new
+        // Uint8ClampedArray(16), 2)` was a TypeError: no arm took it.
+        if (comptime hasTypedArrayArm(T)) {
+            if (typedArrayNameOf(value)) |name| {
+                inline for (fields) |field| {
+                    if (comptime field.type == runtime.JSValue and typedArrayArmName(field.name) != null) {
+                        if (std.mem.eql(u8, name, comptime typedArrayArmName(field.name).?)) {
+                            return @unionInit(T, field.name, runtime.JSValue{ .handle = .{ .ptr = @ptrCast(value) } });
+                        }
+                    }
+                }
+            }
+        }
+
         // Runtime dispatch based on V8 value type
         // Check function FIRST since functions are also objects in JavaScript.
         // WebIDL §3.2.24 step 11: a callable goes to a callback function arm
@@ -1653,15 +1778,9 @@ pub fn fromV8Value(
             .owned => |s| s,
         };
 
-        // WebIDL enum values like "same-origin" are stored as _same_origin_ in Zig:
-        // - Hyphens become underscores
-        // - Leading/trailing underscores wrap reserved words
-        inline for (std.meta.fields(T)) |field| {
-            if (enumNameMatches(field.name, enum_name)) {
-                return @enumFromInt(field.value);
-            }
-        }
-        return ConversionError.TypeError;
+        // Step 2: "If S is not one of E's enumeration values, then throw a
+        // TypeError" - the values exactly as the IDL spells them.
+        return enumFromIdlValue(T, enum_name) orelse ConversionError.TypeError;
     }
 
     // Handle *runtime.Instance (interface instance pointers)
@@ -1880,6 +1999,17 @@ pub fn fromV8Value(
                 // binding applies to arguments. Kept, an object member (a
                 // Headers, a signal) pinned its page.
                 defer if (comptime interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
+                // Step 4.1.4.4: "Otherwise, if jsMemberValue is undefined and
+                // member is required, then throw a TypeError." Codegen emits a
+                // required member as the one kind of field with no default
+                // (every other member is `?T = null`). It converted undefined
+                // instead - 0, "undefined".
+                if (comptime isRequiredMember(field)) {
+                    if (v8.v8_Value_IsUndefined(field_v8)) {
+                        if (comptime !interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
+                        return ConversionError.TypeError;
+                    }
+                }
                 // WebIDL 3.2.18: a member is present unless it is undefined.
                 // An `any` member present as null is the value null
                 // (`any_members`); converted as an optional, it would read as
@@ -2266,33 +2396,14 @@ pub fn toV8Null(isolate: *v8.Isolate) *v8.Value {
     return v8.v8_Null(isolate) orelse unreachable; // Null always succeeds
 }
 
-/// Convert Zig enum to V8 String (for WebIDL enums)
-/// Strips leading/trailing underscores from enum field names (used for reserved words)
-/// Converts internal underscores to hyphens (WebIDL values like "same-origin" become _same_origin_ in Zig)
+/// Convert Zig enum to V8 String (for WebIDL enums): WebIDL 3.2.24, "the
+/// result of converting an IDL enumeration type value to an ECMAScript value
+/// is the String value that represents the same sequence of code units as
+/// the enumeration value" - `idlEnumValue`.
 pub fn enumToV8String(comptime T: type, isolate: *v8.Isolate, value: T) *v8.Value {
-    // Get the tag name at runtime
-    const tag_name = @tagName(value);
-
-    // Strip leading/trailing underscores
-    var name: []const u8 = tag_name;
-    if (name.len > 0 and name[0] == '_') name = name[1..];
-    if (name.len > 0 and name[name.len - 1] == '_') name = name[0 .. name.len - 1];
-
-    // Convert internal underscores to hyphens
-    // WebIDL enum values like "same-origin" are stored as _same_origin_ in Zig
-    var buffer: [256]u8 = undefined;
-    if (name.len <= buffer.len) {
-        for (name, 0..) |c, i| {
-            buffer[i] = if (c == '_') '-' else c;
-        }
-        if (v8.v8_String_NewFromUtf8(isolate, &buffer, @intCast(name.len))) |str| {
-            return @ptrCast(str);
-        }
-    } else {
-        // Fallback for very long names (shouldn't happen in practice)
-        if (v8.v8_String_NewFromUtf8(isolate, name.ptr, @intCast(name.len))) |str| {
-            return @ptrCast(str);
-        }
+    const string = idlEnumValue(T, value);
+    if (v8.v8_String_NewFromUtf8(isolate, string.ptr, @intCast(string.len))) |str| {
+        return @ptrCast(str);
     }
     return v8.v8_Undefined(isolate) orelse unreachable;
 }
@@ -2305,9 +2416,14 @@ pub fn toV8Sequence(
     slice: []const T,
 ) ConversionError!*v8.Array {
     const array = v8.v8_Array_New(isolate, @intCast(slice.len));
+    errdefer v8.v8_Array_Dispose(array);
 
     for (slice, 0..) |item, i| {
         const v8_value = try toV8Value(T, isolate, context, item);
+        // Released once the array has it, when it was made here (a string,
+        // a number, a nested dictionary or sequence - the rule a dictionary
+        // member's value follows); kept, a Global per element.
+        defer if (comptime dictionaryMemberValueIsOwned(T)) v8.v8_Value_Dispose(v8_value);
         _ = v8.v8_Array_Set(array, context, @intCast(i), v8_value);
     }
 
@@ -2522,16 +2638,24 @@ pub fn toV8Value(
             const has_value = @hasField(ElemType, "value");
             const field_count = std.meta.fields(ElemType).len;
             if (has_key and has_value and field_count == 2) {
-                // This is a record-like type - convert to object
-                // CROSS-REALM SUPPORT: Create object in specified context
+                // This is a record-like type - convert to object. WebIDL
+                // 3.2.20: "Let result be OrdinaryObjectCreate(%Object.prototype%)"
+                // (of `context`'s realm) and for each entry "Perform
+                // ! CreateDataPropertyOrThrow(result, jsKey, jsValue)" -
+                // defined, never assigned. Every key and value made here is
+                // released once the object has it, as the dictionary branch
+                // does: kept, they were two Globals per entry.
                 const obj = v8.v8_Object_NewInContext(context) orelse return ConversionError.OutOfMemory;
+                errdefer v8.v8_Object_Dispose(obj);
+                const KeyType = std.meta.fieldInfo(ElemType, .key).type;
+                const ValueType = std.meta.fieldInfo(ElemType, .value).type;
                 for (value) |entry| {
-                    // Get key as string
-                    const key_v8 = try toV8Value(@TypeOf(entry.key), isolate, context, entry.key);
+                    const key_v8 = try toV8Value(KeyType, isolate, context, entry.key);
+                    defer if (comptime dictionaryMemberValueIsOwned(KeyType)) v8.v8_Value_Dispose(key_v8);
                     // Get value - handle anyopaque as string pointer
+                    const is_string_pointer = comptime (ValueType == *const anyopaque or ValueType == *anyopaque);
                     const val_v8 = blk: {
-                        const ValueType = @TypeOf(entry.value);
-                        if (ValueType == *const anyopaque or ValueType == *anyopaque) {
+                        if (comptime is_string_pointer) {
                             // The value is a pointer to a string slice
                             const str_ptr: *const []const u8 = @ptrCast(@alignCast(entry.value));
                             break :blk newStringFromWtf8(isolate, str_ptr.*) orelse return ConversionError.StringError;
@@ -2539,7 +2663,8 @@ pub fn toV8Value(
                             break :blk try toV8Value(ValueType, isolate, context, entry.value);
                         }
                     };
-                    _ = v8.v8_Object_Set(obj, context, key_v8, val_v8);
+                    defer if (comptime is_string_pointer or dictionaryMemberValueIsOwned(ValueType)) v8.v8_Value_Dispose(val_v8);
+                    _ = v8.v8_Object_CreateDataProperty(obj, context, @ptrCast(key_v8), val_v8);
                 }
                 return @ptrCast(obj);
             }
@@ -2565,35 +2690,10 @@ pub fn toV8Value(
         return @ptrCast(toV8Boolean(isolate, value));
     }
 
-    // Handle enums (convert to string for WebIDL compatibility)
+    // Handle enums: WebIDL 3.2.24, the String of the enumeration value's
+    // code units (`idlEnumValue`).
     if (type_info == .@"enum") {
-        // Get the enum field name and convert to string
-        // WebIDL enums are represented as strings in JavaScript
-        // Use inline for to compare at comptime and get the name
-        inline for (std.meta.fields(T)) |field| {
-            if (@intFromEnum(value) == field.value) {
-                // Get the field name and strip leading/trailing underscores (used for reserved words)
-                const name = field.name;
-                var start: usize = 0;
-                var end: usize = name.len;
-                // Strip leading underscore if present (e.g., "_open_" -> "open_")
-                if (name.len > 0 and name[0] == '_') {
-                    start = 1;
-                }
-                // Strip trailing underscore if present (e.g., "open_" -> "open")
-                if (end > start and name[end - 1] == '_') {
-                    end = end - 1;
-                }
-                const str = v8.v8_String_NewFromUtf8(isolate, name.ptr + start, @intCast(end - start)) orelse {
-                    return toV8Undefined(isolate);
-                };
-                return @ptrCast(str);
-            }
-        }
-        // Fallback to integer for out-of-range values (shouldn't happen for valid enums)
-        const enum_int: usize = @intFromEnum(value);
-        const num = v8.v8_Number_New(isolate, @floatFromInt(enum_int));
-        return @ptrCast(num);
+        return enumToV8String(T, isolate, value);
     }
 
     // Handle structs (convert to V8 object with fields)
@@ -2613,10 +2713,25 @@ pub fn toV8Value(
         // member (Navigation.navigate's result, URLPattern.exec's).
         const obj = v8.v8_Object_NewInContext(context) orelse return ConversionError.OutOfMemory;
         errdefer v8.v8_Object_Dispose(obj);
+        // A [Default] toJSON result (codegen marks its struct
+        // `default_to_json`) is not a dictionary: WebIDL 3.7.4.1 sets
+        // map[id] to every JSON-typed attribute's value and creates a data
+        // property for each - so a nullable attribute that is null is a
+        // property whose value is null, where a dictionary's absent member
+        // is no property at all.
+        const keep_null = comptime @hasDecl(T, "default_to_json");
         inline for (std.meta.fields(T)) |field| {
             const field_value = @field(value, field.name);
             const present = if (comptime @typeInfo(field.type) == .optional) field_value != null else true;
-            if (present) {
+            if (keep_null and !present) {
+                const field_name_str = v8.v8_String_NewFromUtf8(isolate, field.name.ptr, @intCast(field.name.len)) orelse
+                    return ConversionError.OutOfMemory;
+                defer v8.v8_String_Dispose(field_name_str);
+                // Owned (v8_Null makes a Global), released once defined.
+                const null_v8 = toV8Null(isolate);
+                defer v8.v8_Value_Dispose(null_v8);
+                _ = v8.v8_Object_CreateDataProperty(obj, context, field_name_str, null_v8);
+            } else if (present) {
                 const field_name_str = v8.v8_String_NewFromUtf8(isolate, field.name.ptr, @intCast(field.name.len)) orelse
                     return ConversionError.OutOfMemory;
                 defer v8.v8_String_Dispose(field_name_str);

@@ -693,12 +693,21 @@ fn isOptWrapper(comptime T: type) bool {
     return @typeInfo(T) == .@"struct" and @hasField(T, "value") and @hasField(T, "was_passed");
 }
 
-/// The union arm `name` of `T` is WebIDL's `object`: codegen types `object`
-/// as runtime.JSValue and names the arm for it (`conv.fromV8Value`'s union
-/// path matches the same way). A JSValue arm under another name is not one -
-/// CryptoKeyID's and MLNumber's `bigint`.
+/// The union arm `name` of `T` is a reference to an object: WebIDL's
+/// `object`, or a typed array type (3.2.26, "a reference to the same
+/// object"). Codegen types both as runtime.JSValue and names the arm for the
+/// type - `object`, `uint8clamped_array` - and `conv.fromV8Value`'s union
+/// path gives each the argument's own handle. A JSValue arm under another
+/// name is not one - CryptoKeyID's and MLNumber's `bigint`.
+///
+/// The typed array arms joined when their conversion was written
+/// (2026-10-04); every impl taking such a union was read for keepers:
+/// ImageData takes its own hold of its data (engine.retainValue), and the
+/// rest - WebGL's Float32List/Int32List/Uint32List, OrientationSensor's
+/// RotationMatrixType - are stubs that keep nothing.
 fn isObjectArm(comptime T: type, comptime name: []const u8) bool {
-    return @FieldType(T, name) == runtime.JSValue and std.mem.eql(u8, name, "object");
+    if (@FieldType(T, name) != runtime.JSValue) return false;
+    return std.mem.eql(u8, name, "object") or conv.typedArrayArmName(name) != null;
 }
 
 /// Is `T` an `any` - `runtime.JSValue`, nullable, or a `webidl.Opt` of
@@ -3521,9 +3530,21 @@ pub fn V8Interface(comptime Interface: type) type {
             var args = OverloadArgs{ .info = info, .isolate = isolate };
             defer args.release();
 
-            const chosen = webidl.overload_resolution.select(set, @intCast(info.length()), &args) catch |err| {
+            const arg_count: usize = @intCast(@max(info.length(), 0));
+            const chosen = webidl.overload_resolution.select(set, arg_count, &args) catch |err| {
                 switch (err) {
-                    error.TypeError => conv.throwTypeError(isolate, "Failed to execute '" ++ comptime set[0].function["call_".len..] ++ "' on '" ++ interface_name ++ "': no overload matches these arguments"),
+                    error.TypeError => {
+                        args.release();
+                        // Step 12.20 throws only after step 11 has converted
+                        // the arguments before the distinguishing index; an
+                        // exception one of those throws is the one script sees.
+                        if (webidl.overload_resolution.distinguishingPrefix(set, arg_count)) |prefix| {
+                            convertOverloadPrefix(set, prefix, info, isolate) catch |conversion_err| {
+                                if (conversion_err == conv.ConversionError.ExceptionPending) return true;
+                            };
+                        }
+                        conv.throwTypeError(isolate, "Failed to execute '" ++ comptime set[0].function["call_".len..] ++ "' on '" ++ interface_name ++ "': no overload matches these arguments");
+                    },
                     // GetMethod threw; the exception is already pending.
                     error.JavaScriptException => {},
                 }
@@ -3538,6 +3559,36 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
             return false;
+        }
+
+        /// Step 11 alone, for a call step 12 is about to reject: convert,
+        /// and free again, the arguments before the distinguishing index as
+        /// overload `prefix.entry`'s parameters (every entry left in S agrees
+        /// on them), so that what those conversions run runs and what they
+        /// throw is thrown.
+        fn convertOverloadPrefix(
+            comptime set: []const webidl.overload_resolution.Overload,
+            prefix: webidl.overload_resolution.Prefix,
+            info: *const v8.FunctionCallbackInfo,
+            isolate: *v8.Isolate,
+        ) !void {
+            const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return;
+            defer v8.v8_Context_Dispose(context);
+            const isolate_alloc = @import("isolate_allocator.zig");
+            const allocator = isolate_alloc.getOrInitAllocator(isolate, std.heap.c_allocator) catch return;
+            inline for (set, 0..) |overload, k| {
+                if (k == prefix.entry) {
+                    // The generated delegate: (instance, arguments...).
+                    const params = @typeInfo(@TypeOf(@field(Interface, overload.function))).@"fn".params;
+                    inline for (params[1..], 0..) |param, i| {
+                        if (i < prefix.d) {
+                            const P = param.type.?;
+                            const value = try convertArgReleasing(P, allocator, isolate, context, info.get(@intCast(i)));
+                            freeArgument(P, allocator, value);
+                        }
+                    }
+                }
+            }
         }
 
         /// How many arguments the operation `zig_name` requires: its
@@ -4787,16 +4838,17 @@ pub fn V8Interface(comptime Interface: type) type {
                 // as an "interned" arm the cleanup never frees, and leaked the
                 // argument's handle with it.
                 if (comptime @hasDecl(Interface, "ConstructorArgs") and Param1Type == Interface.ConstructorArgs) {
-                    // Overloaded: the resolver picks the variant.
-                    // Use overload resolver to build the appropriate union variant
+                    // Overloaded: the overload resolution algorithm picks
+                    // the variant over codegen's `constructor_overloads`.
                     const args = try overload_resolver.resolveConstructorOverload(
                         Param1Type,
+                        Interface.constructor_overloads,
                         info,
                         allocator,
                         isolate,
                         v8_context,
                     );
-                    defer overload_resolver.freeConstructorOverload(Param1Type, allocator, args);
+                    defer overload_resolver.freeConstructorOverload(Param1Type, Interface.constructor_overloads, allocator, args);
                     return try Interface.call_constructor(ctx, args);
                 }
 
@@ -8566,20 +8618,7 @@ pub const OverloadArg = struct {
     }
     pub fn typedArrayName(self: OverloadArg) ?[]const u8 {
         const v = self.value orelse return null;
-        if (!v8.v8_Value_IsTypedArray(v)) return null;
-        if (v8.v8_Value_IsInt8Array(v)) return "Int8Array";
-        if (v8.v8_Value_IsInt16Array(v)) return "Int16Array";
-        if (v8.v8_Value_IsInt32Array(v)) return "Int32Array";
-        if (v8.v8_Value_IsUint8Array(v)) return "Uint8Array";
-        if (v8.v8_Value_IsUint8ClampedArray(v)) return "Uint8ClampedArray";
-        if (v8.v8_Value_IsUint16Array(v)) return "Uint16Array";
-        if (v8.v8_Value_IsUint32Array(v)) return "Uint32Array";
-        if (v8.v8_Value_IsBigInt64Array(v)) return "BigInt64Array";
-        if (v8.v8_Value_IsBigUint64Array(v)) return "BigUint64Array";
-        if (v8.v8_Value_IsFloat32Array(v)) return "Float32Array";
-        if (v8.v8_Value_IsFloat64Array(v)) return "Float64Array";
-        // Float16Array: no predicate in the FFI yet.
-        return null;
+        return conv.typedArrayNameOf(v);
     }
     /// A String object ([[StringData]]). Only step 12.9 (async sequences
     /// against a string type) asks; no FFI predicate exists, and no overload

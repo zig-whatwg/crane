@@ -1,88 +1,111 @@
-//! WebIDL Constructor Overload Resolution
+//! WebIDL constructor overload resolution.
 //!
-//! This module handles resolving overloaded constructors by matching JavaScript
-//! arguments to the appropriate ConstructorArgs union variant.
+//! Spec: https://webidl.spec.whatwg.org/#dfn-overload-resolution-algorithm
 //!
-//! WebIDL allows interfaces to have multiple constructor signatures (overloading).
-//! When JavaScript calls a constructor, we need to determine which overload variant
-//! matches the provided arguments and build the appropriate union.
+//! An interface with several constructors takes its generated
+//! `ConstructorArgs`, a union with a variant per constructor, and codegen
+//! describes the same constructors, in the same order, in
+//! `constructor_overloads` - the table an overloaded operation has
+//! (`overloads`). The overload resolution algorithm
+//! (`webidl.overload_resolution.select`) picks the constructor from the
+//! arguments' count and, where that is not enough, the type of the value at
+//! the distinguishing argument index; only then are the arguments converted,
+//! to that constructor's types (steps 11, 15 and 16), and a conversion that
+//! throws is the constructor call's exception.
 //!
-//! Key concept: WebIDL distinguishes between required and optional parameters.
-//! Optional parameters are represented as `webidl.Opt(T)` in the generated code.
-//! The overload resolver must count only REQUIRED parameters when checking if
-//! a variant can match the provided JavaScript arguments.
+//! This replaced trying each variant in turn until one converted: a
+//! conversion that threw in one variant was left pending while the next was
+//! tried (and its getters ran again), a value of the wrong type converted
+//! happily into the first variant that would take it (an XRRigidTransform
+//! into XRRay's DOMPointInit), and a constructor whose one argument is a
+//! dictionary (OfflineAudioContext(contextOptions)) was taken for a struct
+//! of arguments.
 
 const std = @import("std");
 const v8 = @import("ffi.zig");
 const interface_mod = @import("interface.zig");
 const webidl = @import("webidl");
 
-/// Resolve constructor overload by matching JavaScript arguments to union variant
+/// The overload table's types, re-exported for tests/v8 (whose target does
+/// not import `webidl`).
+pub const Overload = webidl.overload_resolution.Overload;
+pub const Kind = webidl.overload_resolution.Kind;
+
+/// The overload resolution algorithm over `overloads` - the constructors of
+/// `UnionType`, one entry per variant in its order - with the call's
+/// arguments, and the chosen variant built from them.
 ///
-/// This function inspects the ConstructorArgs union type at compile time,
-/// examines the JavaScript arguments at runtime, and builds the matching variant.
-///
-/// Algorithm:
-/// 1. Get all union variants at comptime
-/// 2. For each variant, check if it matches the JavaScript arguments
-/// 3. When a match is found, convert arguments and build the variant
-/// 4. Return the constructed union
-///
-/// Example:
-/// ```zig
-/// // Interface has: union(enum) { Variant1: Type1, Variant2: struct { a: T1, b: T2 } }
-/// const args = try resolveConstructorOverload(
-///     Interface.ConstructorArgs,
-///     info,
-///     allocator,
-///     isolate,
-///     context
-/// );
-/// return try Interface.call_constructor( ctx, args);
-/// ```
+/// Errors: `error.TypeError` where the algorithm throws one (no constructor
+/// takes this many arguments, or none takes the value at the distinguishing
+/// index); `error.ExceptionPending` where script threw - a GetMethod during
+/// selection, or a conversion; and whatever a conversion fails with.
 pub fn resolveConstructorOverload(
     comptime UnionType: type,
+    comptime overloads: []const Overload,
     info: *const v8.FunctionCallbackInfo,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
     context: *v8.Context,
 ) !UnionType {
-    const union_info = @typeInfo(UnionType).@"union";
-    const js_arg_count = info.length();
+    const fields = @typeInfo(UnionType).@"union".fields;
+    comptime std.debug.assert(fields.len == overloads.len);
 
-    // Try each variant in order (WebIDL spec says to try in declaration order)
-    inline for (union_info.fields) |field| {
-        // Calculate required and total argument counts for this variant
-        const counts = countVariantArgs(field.type);
-        const required_count = counts.required;
-        const total_count = counts.total;
+    // Steps 1-12: the entry of S the arguments select.
+    var args = interface_mod.OverloadArgs{ .info = info, .isolate = isolate };
+    defer args.release();
+    const arg_count: usize = @intCast(@max(info.length(), 0));
+    const chosen = webidl.overload_resolution.select(overloads, arg_count, &args) catch |err| switch (err) {
+        error.TypeError => {
+            args.release();
+            // Step 12.20 throws only after step 11 has converted the
+            // arguments before the distinguishing index - and an exception
+            // one of those conversions throws is the one script sees.
+            if (webidl.overload_resolution.distinguishingPrefix(overloads, arg_count)) |prefix| {
+                try convertPrefix(UnionType, overloads, prefix, info, allocator, isolate, context);
+            }
+            return error.TypeError;
+        },
+        // GetMethod (steps 12.9/12.10) threw: the exception is pending.
+        error.JavaScriptException => return error.ExceptionPending,
+    };
+    args.release();
 
-        // Check if this variant matches the JavaScript argument count
-        // WebIDL allows:
-        // - At least required_count arguments (required parameters)
-        // - At most total_count arguments (all parameters including optional)
-        if (js_arg_count >= required_count and js_arg_count <= total_count) {
-            // Try to build this variant
-            if (buildVariant(
-                UnionType,
-                field,
-                info,
-                allocator,
-                isolate,
-                context,
-            )) |variant_result| {
-                // Successfully built this variant
-                return variant_result;
-            } else |_| {
-                // If building fails, try next variant
-                // Common failures: type mismatch, conversion error
-                // (continue to next iteration)
+    // Steps 11, 13 and 15-16: convert the arguments to the chosen
+    // constructor's types. The entries left in S agree on every type before
+    // the distinguishing index, so converting them as the chosen one's is
+    // step 11.
+    inline for (fields, 0..) |field, k| {
+        if (k == chosen) return buildVariant(UnionType, field, overloads[k].args.len, info, allocator, isolate, context);
+    }
+    unreachable;
+}
+
+/// Step 11 alone: convert, and free again, the arguments before the
+/// distinguishing index as variant `prefix.entry`'s - for a call step 12 is
+/// about to reject, so that what those conversions run (a toString(), a
+/// dictionary's getters) runs, and what they throw is thrown.
+fn convertPrefix(
+    comptime UnionType: type,
+    comptime overloads: []const Overload,
+    prefix: webidl.overload_resolution.Prefix,
+    info: *const v8.FunctionCallbackInfo,
+    allocator: std.mem.Allocator,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) !void {
+    inline for (@typeInfo(UnionType).@"union".fields, 0..) |field, k| {
+        // A variant of one argument has no argument before index 0.
+        if (comptime overloads[k].args.len > 1) {
+            if (k == prefix.entry) {
+                inline for (@typeInfo(field.type).@"struct".fields, 0..) |arg_field, i| {
+                    if (i < prefix.d) {
+                        const value = try interface_mod.convertArgReleasing(arg_field.type, allocator, isolate, context, info.get(@intCast(i)));
+                        interface_mod.freeArgument(arg_field.type, allocator, value);
+                    }
+                }
             }
         }
     }
-
-    // No matching overload found
-    return error.NoMatchingOverload;
 }
 
 /// Free what `resolveConstructorOverload` built, once the constructor has
@@ -92,14 +115,16 @@ pub fn resolveConstructorOverload(
 /// kept. The impl borrowed them for the call; one that keeps a value takes
 /// its own copy or hold. Nothing freed them before: `new URLPattern(...)`
 /// leaked its input and base URL on every call.
-pub fn freeConstructorOverload(comptime UnionType: type, allocator: std.mem.Allocator, args: UnionType) void {
+pub fn freeConstructorOverload(comptime UnionType: type, comptime overloads: []const Overload, allocator: std.mem.Allocator, args: UnionType) void {
     switch (args) {
-        inline else => |payload| {
+        inline else => |payload, tag| {
             const VariantType = @TypeOf(payload);
             if (VariantType == void) return;
-            // The shapes buildVariant makes: a struct is one argument per
-            // field, anything else is the one argument.
-            if (@typeInfo(VariantType) == .@"struct") {
+            // The shapes buildVariant makes: one argument is the variant
+            // itself (a dictionary too, though it is a struct); more are a
+            // struct with a field per argument.
+            const arity = comptime overloads[@intFromEnum(tag)].args.len;
+            if (comptime arity > 1) {
                 inline for (@typeInfo(VariantType).@"struct".fields) |field| {
                     interface_mod.freeArgument(field.type, allocator, @field(payload, field.name));
                 }
@@ -110,77 +135,16 @@ pub fn freeConstructorOverload(comptime UnionType: type, allocator: std.mem.Allo
     }
 }
 
-/// Argument count result for a variant
-const ArgCounts = struct {
-    required: usize,
-    total: usize,
-};
-
-/// Check if a type is webidl.Opt(T) - used to identify optional parameters
-fn isOptionalType(comptime T: type) bool {
-    const type_info = @typeInfo(T);
-
-    // webidl.Opt(T) is a generic struct, check for its characteristic fields
-    if (type_info == .@"struct") {
-        const fields = type_info.@"struct".fields;
-        // webidl.Opt has exactly 2 fields: was_passed and value
-        if (fields.len == 2) {
-            var has_was_passed = false;
-            var has_value = false;
-            inline for (fields) |field| {
-                if (std.mem.eql(u8, field.name, "was_passed") and field.type == bool) {
-                    has_was_passed = true;
-                }
-                if (std.mem.eql(u8, field.name, "value")) {
-                    has_value = true;
-                }
-            }
-            return has_was_passed and has_value;
-        }
-    }
-    return false;
-}
-
-/// Count the number of required and total arguments for a variant type
-///
-/// Required parameters are those NOT wrapped in webidl.Opt(T).
-/// Total is the count of all parameters.
-fn countVariantArgs(comptime VariantType: type) ArgCounts {
-    // No-parameter variant (void)
-    if (VariantType == void) {
-        return .{ .required = 0, .total = 0 };
-    }
-
-    const type_info = @typeInfo(VariantType);
-
-    // Single-parameter variant (e.g., .CSSNumericValue: CSSNumericValue)
-    if (type_info != .@"struct") {
-        // Single non-optional parameter
-        const is_optional = isOptionalType(VariantType);
-        return .{
-            .required = if (is_optional) 0 else 1,
-            .total = 1,
-        };
-    }
-
-    // Multi-parameter variant (e.g., .Variant: struct { a: T1, b: T2 })
-    // Count required (non-Opt) and total fields
-    var required: usize = 0;
-    const total = type_info.@"struct".fields.len;
-
-    inline for (type_info.@"struct".fields) |field| {
-        if (!isOptionalType(field.type)) {
-            required += 1;
-        }
-    }
-
-    return .{ .required = required, .total = total };
-}
-
-/// Build a union variant from JavaScript arguments
+/// Build the union variant `field`, whose constructor declares `arity`
+/// arguments, from the call's arguments. An argument past the ones passed
+/// reads as undefined - "missing" for an optional one (a `webidl.Opt` not
+/// passed), which is all step 16 leaves: the algorithm chose an entry of
+/// exactly the length passed (capped at the longest), so every argument past
+/// it is optional.
 fn buildVariant(
     comptime UnionType: type,
     comptime field: std.builtin.Type.UnionField,
+    comptime arity: usize,
     info: *const v8.FunctionCallbackInfo,
     allocator: std.mem.Allocator,
     isolate: *v8.Isolate,
@@ -189,18 +153,18 @@ fn buildVariant(
     const VariantType = field.type;
 
     // Case 0: No-parameter variant (void)
-    if (VariantType == void) {
+    if (comptime arity == 0) {
         return @unionInit(UnionType, field.name, {});
     }
 
     const type_info = @typeInfo(VariantType);
 
-    // Case 1: Single-parameter variant
-    if (type_info != .@"struct") {
-        // Convert first JavaScript argument to variant type
-        // `info.get` makes a Global per call, and each variant tried asks
-        // again: released by the binding's argument rule
-        // (interface.convertArgReleasing), or every attempt leaked one.
+    // Case 1: one argument - the variant itself, whatever its type (a
+    // dictionary is a struct, but one argument).
+    if (comptime arity == 1) {
+        // `info.get` makes a Global per call: released by the binding's
+        // argument rule (interface.convertArgReleasing), or every call
+        // leaked one.
         const v8_arg = info.get(0);
         const arg_value = try interface_mod.convertArgReleasing(
             VariantType,
@@ -216,11 +180,10 @@ fn buildVariant(
 
     // Case 2: Multi-parameter variant (struct with multiple fields)
     var variant_struct: VariantType = undefined;
-    // An argument that fails to convert ends this variant with the arguments
+    // An argument that fails to convert ends the call with the arguments
     // before it converted - a string copied, an `any`'s handle kept - and
-    // they are freed here, before the next variant is tried: kept, every
-    // `new URLPattern(input, baseURL)` that failed its second variant
-    // leaked its input.
+    // they are freed here: kept, every `new URLPattern(input, baseURL)`
+    // whose base URL failed leaked its input.
     var converted: usize = 0;
     errdefer inline for (type_info.@"struct".fields, 0..) |struct_field, i| {
         if (i < converted) interface_mod.freeArgument(struct_field.type, allocator, @field(variant_struct, struct_field.name));

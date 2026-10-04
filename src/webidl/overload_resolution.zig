@@ -296,6 +296,33 @@ pub fn select(overloads: []const Overload, arg_count: usize, args: anytype) !usi
     return error.TypeError;
 }
 
+/// What step 11 converts before step 12 looks at the value at the
+/// distinguishing index: the arguments before `d`, as the types of `entry` -
+/// any entry left in S, since they all agree there. Null when steps 1-8 leave
+/// no such prefix: S empty (step 5 throws before any conversion) or a single
+/// entry (no step 12).
+///
+/// `select` leaves converting to the binding, which converts the chosen
+/// overload's arguments in order once it has chosen - the same values in the
+/// same order as steps 11 and 15. Where step 12 throws instead, the binding
+/// still owes step 11's conversions first, whose own exception wins.
+pub const Prefix = struct { entry: usize, d: usize };
+
+pub fn distinguishingPrefix(overloads: []const Overload, arg_count: usize) ?Prefix {
+    std.debug.assert(overloads.len > 0 and overloads.len <= max_overloads);
+    var maxarg: usize = 0;
+    for (overloads) |overload| maxarg = @max(maxarg, overload.args.len);
+    const argcount = @min(maxarg, arg_count);
+    var in_s = std.StaticBitSet(max_overloads).initEmpty();
+    for (overloads, 0..) |overload, k| {
+        if (hasEntryOfLength(overload, argcount)) in_s.set(k);
+    }
+    const first = in_s.findFirstSet() orelse return null;
+    if (in_s.count() == 1) return null;
+    const d = distinguishingIndex(overloads, in_s, argcount) orelse return null;
+    return .{ .entry = first, .d = d };
+}
+
 fn distinguishingIndex(
     overloads: []const Overload,
     in_s: std.StaticBitSet(max_overloads),
