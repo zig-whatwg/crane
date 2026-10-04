@@ -33,7 +33,9 @@ const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
 const runtime = @import("runtime");
-const overload_resolver = @import("overload_resolver.zig");
+/// Public for tests/v8, which builds and frees overloads with the testing
+/// allocator.
+pub const overload_resolver = @import("overload_resolver.zig");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const template_registry = @import("template_registry.zig");
 const window_properties = @import("window_properties.zig");
@@ -1047,6 +1049,231 @@ fn throwMemberError(isolate: *v8.Isolate, member_context: *v8.Context, err: anye
     conv.throwWebIDLErrorFromContext(isolate, member_context, @errorName(err));
 }
 
+// ============================================================================
+// Argument cleanup: what a converted argument, dictionary member or
+// sequence element holds once its call is over
+// ============================================================================
+
+/// Check if a type is a webidl.Opt wrapper (has wasPassed method and value field)
+pub fn isOptionalWrapper(comptime T: type) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    // Check for the wasPassed method and value field that webidl.Optional has
+    return @hasDecl(T, "wasPassed") and @hasField(T, "value") and @hasField(T, "was_passed");
+}
+
+/// Get the inner value type from an Optional wrapper
+pub fn getOptionalValueType(comptime T: type) ?type {
+    if (@typeInfo(T) != .@"struct") return null;
+    if (!@hasField(T, "value")) return null;
+    const fields = std.meta.fields(T);
+    inline for (fields) |field| {
+        if (comptime std.mem.eql(u8, field.name, "value")) {
+            return field.type;
+        }
+    }
+    return null;
+}
+
+/// Check if a converted argument type needs to be freed after use.
+/// String types ([]const u8 and DOMString) need cleanup as they're allocated by fromV8String.
+/// JSValue types may contain owned strings that need cleanup.
+/// CallbackWrapper types are the call's: released once it returns.
+/// Struct types (dictionaries) may contain string fields that need cleanup.
+pub fn needsArgCleanup(comptime T: type) bool {
+    @setEvalBranchQuota(10000);
+    // Non-owning views alias memory this engine did not allocate. This
+    // must come first: the union arm that holds the view IS a
+    // `[]const u8`, so every rule below would claim it. See
+    // `argConversionIsNonOwning`.
+    if (argConversionIsNonOwning(T)) return false;
+    // BodyInit: freed by arm, as its conversion allocated it - before
+    // the union rule below, which would take its copied BufferSource
+    // arm for a reference (`freeBodyInitArg`).
+    if (T == copied_arg_types.BodyInit) return true;
+    // A buffer source holds the handle it refers to, and an
+    // ArrayBuffer the struct made for it (`freeBufferSourceArg`).
+    if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return true;
+    // Raw string slice - allocated by fromV8Value
+    if (T == []const u8) return true;
+    // DOMString - allocated by fromV8String
+    if (T == runtime.DOMString) return true;
+    // JSValue may contain owned strings
+    if (T == runtime.JSValue) return true;
+    // CallbackWrapper - the call's; a method that keeps the callback
+    // (addEventListener) takes its own CallbackInterface first.
+    if (T == *runtime.CallbackWrapper) return true;
+    // Generic slice types (sequences) - allocated by fromV8Sequence
+    // This handles []const JSValue, []const DOMString, etc.
+    if (@typeInfo(T) == .pointer) {
+        const ptr_info = @typeInfo(T).pointer;
+        if (ptr_info.size == .slice) {
+            // All slices from fromV8Sequence are allocated and need cleanup
+            return true;
+        }
+    }
+    // Zig optional variants
+    if (@typeInfo(T) == .optional) {
+        const Child = @typeInfo(T).optional.child;
+        if (Child == []const u8) return true;
+        if (Child == runtime.DOMString) return true;
+        if (Child == runtime.JSValue) return true;
+        if (Child == *runtime.CallbackWrapper) return true;
+        // Recurse for nested optionals or other wrapper types
+        if (needsArgCleanup(Child)) return true;
+    }
+    // webidl.Opt wrapper types - check if inner type needs cleanup
+    if (isOptionalWrapper(T)) {
+        if (getOptionalValueType(T)) |vt| {
+            return needsArgCleanup(vt);
+        }
+    }
+    // Struct types (dictionaries) - check if any field needs cleanup
+    if (@typeInfo(T) == .@"struct") {
+        inline for (std.meta.fields(T)) |field| {
+            if (needsArgCleanup(field.type)) return true;
+        }
+    }
+    // Union types (WebIDL union types) - check if any variant needs cleanup
+    if (@typeInfo(T) == .@"union") {
+        inline for (std.meta.fields(T)) |field| {
+            if (needsArgCleanup(field.type)) return true;
+        }
+    }
+    return false;
+}
+
+/// Static empty slice used by fromV8Value for empty strings - must not be freed
+const static_empty_u8: []const u8 = &[_]u8{};
+
+/// Free a converted argument if it was allocated.
+/// Empty strings return a static slice that must NOT be freed.
+pub fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
+    if (comptime !needsArgCleanup(T)) return;
+    if (T == copied_arg_types.BodyInit) return freeBodyInitArg(allocator, arg);
+    if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return freeBufferSourceArg(T, allocator, arg);
+
+    if (T == []const u8) {
+        // Only free if it's not the static empty slice and has content
+        if (arg.len > 0 and arg.ptr != static_empty_u8.ptr) {
+            allocator.free(arg);
+        }
+    } else if (@typeInfo(T) == .pointer and @typeInfo(T).pointer.size == .slice) {
+        // Generic slice types (sequences) - allocated by fromV8Sequence
+        // First free each element if needed, then free the slice itself
+        const ElemType = @typeInfo(T).pointer.child;
+        if (comptime needsArgCleanup(ElemType)) {
+            for (arg) |elem| {
+                freeConvertedArg(ElemType, allocator, elem);
+            }
+        }
+        // Free the slice itself (cast away const for freeing)
+        if (arg.len > 0) {
+            const mutable_ptr: [*]ElemType = @constCast(arg.ptr);
+            allocator.free(mutable_ptr[0..arg.len]);
+        }
+    } else if (T == runtime.DOMString) {
+        // DOMString is a tagged union - only free if owned
+        switch (arg) {
+            .owned => |s| if (s.len > 0) allocator.free(s),
+            .empty, .interned => {}, // Static, don't free
+        }
+    } else if (T == runtime.JSValue) {
+        // JSValue may contain an owned string that needs cleanup
+        switch (arg) {
+            .string => |str| {
+                if (str.owned and str.data.len > 0) {
+                    allocator.free(str.data);
+                }
+            },
+            else => {}, // Other variants don't need cleanup here
+        }
+    } else if (T == *runtime.CallbackWrapper) {
+        // A callback interface argument is the call's, like every
+        // argument: the impl borrowed it, and one that keeps the
+        // callback (addEventListener) took a CallbackInterface of its
+        // own. Its wrapper goes now.
+        conv.releaseCallbackWrapper(arg);
+    } else if (@typeInfo(T) == .optional) {
+        // Handle all optional types by recursively freeing the inner value
+        if (arg) |val| {
+            const Child = @typeInfo(T).optional.child;
+            freeConvertedArg(Child, allocator, val);
+        }
+    } else if (comptime isOptionalWrapper(T)) {
+        // webidl.Opt wrapper - free inner value if it was passed
+        if (arg.was_passed) {
+            if (comptime getOptionalValueType(T)) |vt| {
+                freeConvertedArg(vt, allocator, arg.value);
+            }
+        }
+    } else if (@typeInfo(T) == .@"struct") {
+        // Struct types (dictionaries) - free any fields that need
+        // cleanup, and release each `any`-family member's handle (an
+        // `any` or `object` member, a union typed JSValue, an
+        // `object` union arm): the Get handle the dictionary loop
+        // kept as the member's `.handle`, BORROWED for the call as
+        // an `any` argument's is (releaseAnyArgument). An impl that
+        // keeps a member takes a hold of its own; every keeper was
+        // read for that (2026-10-02, 108 dictionaries with a JSValue
+        // member): the events take holds, Navigation retains or
+        // serializes, PopStateEvent now holds its state. Kept, an
+        // object `detail` held its realm for the process's life
+        // (realms3: a removed frame kept alive by a dropped
+        // CustomEvent). A sequence<any> element inside a dictionary
+        // keeps the conservative answer (kept): its keepers are not
+        // read yet.
+        inline for (std.meta.fields(T)) |field| {
+            if (comptime needsArgCleanup(field.type)) {
+                freeConvertedArg(field.type, allocator, @field(arg, field.name));
+            }
+            releaseAnyArgument(field.type, @field(arg, field.name));
+        }
+    } else if (@typeInfo(T) == .@"union") {
+        // Union types (WebIDL union types) - free the active variant if it needs cleanup
+        const union_info = @typeInfo(T).@"union";
+        if (union_info.tag_type) |_| {
+            // Tagged union - we can switch on it
+            switch (arg) {
+                inline else => |val| {
+                    // Zig 0.16 removed std.meta.TagPayloadByName; inside an
+                    // `inline else` prong the capture already has the payload type.
+                    const FieldType = @TypeOf(val);
+                    if (comptime needsArgCleanup(FieldType)) {
+                        freeConvertedArg(FieldType, allocator, val);
+                    }
+                },
+            }
+        }
+        // Untagged unions cannot be safely freed (we don't know which variant is active)
+    }
+}
+
+/// An operation's or constructor's argument, once the call is over:
+/// what its conversion allocated (`freeConvertedArg`) and, for an
+/// `any`, the handle it still refers to (`releaseAnyArgument`).
+pub fn freeArgument(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
+    freeConvertedArg(T, allocator, arg);
+    releaseAnyArgument(T, arg);
+}
+
+/// The private key marking a function as an interface object
+/// `materializeInterfaceObject` has set up in its realm.
+const materialized_interface_object_key = "crane:interface-object";
+
+/// Whether `constructor` is an interface object already set up: marked by
+/// `markMaterializedInterfaceObject`. Needs an entered context.
+fn isMaterializedInterfaceObject(constructor: *v8.Function) bool {
+    const marker = v8.v8_Object_GetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len) orelse return false;
+    v8.v8_Value_Dispose(marker);
+    return true;
+}
+
+/// Mark `constructor` as set up - a private property, invisible to script,
+/// whose value is the function itself (an edge to itself, nothing kept).
+fn markMaterializedInterfaceObject(constructor: *v8.Function) void {
+    v8.v8_Object_SetPrivateRef(@ptrCast(constructor), materialized_interface_object_key.ptr, materialized_interface_object_key.len, @ptrCast(constructor));
+}
+
 pub fn V8Interface(comptime Interface: type) type {
     // Validate interface type at compile time
     const iface_info = @typeInfo(Interface);
@@ -1441,6 +1668,35 @@ pub fn V8Interface(comptime Interface: type) type {
             };
             const constructor = v8.v8_FunctionTemplate_GetFunction(template, context) orelse return null;
 
+            // Set up once per realm. V8 instantiates a template once per
+            // context, so a second call - an inheriting interface
+            // materializing this one as its parent, then this one's own
+            // global property or lazy getter - is handed the object already
+            // made, and finds it marked.
+            if (isMaterializedInterfaceObject(constructor)) return constructor;
+            markMaterializedInterfaceObject(constructor);
+
+            // WebIDL 3.7.1, create an interface object, steps 2-4: "If I
+            // inherits from another interface, let constructorProto be the
+            // interface object of that inherited interface in realm;
+            // otherwise %Function.prototype%" - and F's [[Prototype]] is
+            // constructorProto. V8's Inherit() links only the prototype
+            // objects (api-natives.cc InstantiateFunction), so the interface
+            // object is linked here, as Blink's V8PerContextData::
+            // ConstructorForTypeSlowCase builds the parent's interface object
+            // first and creates the child's over it. Every path that makes
+            // an interface object comes through here - a snapshot-restored
+            // page's registerGlobalFast, a frame's lazy getter, a worker's
+            // installForScope - and setupConstructorInheritance ran on none
+            // of them: Object.getPrototypeOf(IDBRequest) was
+            // %Function.prototype%, for 616 interfaces of a window.
+            if (comptime InheritedInterface) |Parent| {
+                if (V8Interface(Parent).materializeInterfaceObject(isolate, context, Parent.Meta.name)) |parent_object| {
+                    defer v8.v8_Function_Dispose(parent_object);
+                    _ = v8.v8_Object_SetPrototypeV2(@ptrCast(constructor), context, @ptrCast(parent_object));
+                }
+            }
+
             // NOTE: V8 LIMITATION - Constructor Property Enumeration Order
             //
             // Per WebIDL spec, interface constructors should not have legacy "arguments"
@@ -1533,6 +1789,25 @@ pub fn V8Interface(comptime Interface: type) type {
 
             return constructor;
         }
+
+        /// The interface this one inherits from - the parent whose template
+        /// createTemplate Inherit()s - or null.
+        const InheritedInterface: ?type = blk: {
+            if (@hasDecl(Meta, "ParentInterface")) {
+                const Parent = Meta.ParentInterface;
+                if (@typeInfo(Parent) == .@"struct" and @hasDecl(Parent, "Meta")) break :blk Parent;
+                break :blk null;
+            }
+            if (@typeInfo(@TypeOf(Meta.BaseType)) == .optional) {
+                if (Meta.BaseType) |Base| {
+                    const base_info = @typeInfo(Base);
+                    if (base_info == .pointer and @typeInfo(base_info.pointer.child) == .@"struct" and @hasDecl(base_info.pointer.child, "Meta")) {
+                        break :blk base_info.pointer.child;
+                    }
+                }
+            }
+            break :blk null;
+        };
 
         /// Constants on `target`, the interface object: writable=false,
         /// enumerable=true, configurable=false (WebIDL §3.7.2).
@@ -1773,8 +2048,12 @@ pub fn V8Interface(comptime Interface: type) type {
             inline for (methods) |method| {
                 const method_name: []const u8 = method[0];
                 const zig_name: []const u8 = method[1];
+                // WebIDL 3.7.6 (create an operation function): its `length`
+                // is the shortest overload's required argument count and its
+                // `name` the operation's identifier - as on the prototype,
+                // where createTemplate sets both. Left out here, every
+                // window operation read `length` 0 and `name` "".
                 const arity: c_int = if (method.len >= 3) method[2] else 0;
-                _ = arity; // Arity is set on the FunctionTemplate, not needed here
 
                 // Create the method callback using FunctionTemplate
                 const Callback = MethodCallback(zig_name);
@@ -1792,6 +2071,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 // page and every frame.
                 if (method_tmpl) |tmpl| {
                     defer v8.v8_FunctionTemplate_Dispose(tmpl);
+                    v8.v8_FunctionTemplate_SetLength(tmpl, arity);
+                    // Not a constructor: no `prototype` (as on the prototype).
+                    v8.v8_FunctionTemplate_RemovePrototype(tmpl);
                     // Get Function from template
                     const method_fn = v8.v8_FunctionTemplate_GetFunction(
                         tmpl,
@@ -1809,15 +2091,19 @@ pub fn V8Interface(comptime Interface: type) type {
 
                         if (name_str) |name_v8_str| {
                             defer v8.v8_String_Dispose(name_v8_str);
-                            // Set as own property on target object
-                            // v8_Object_Set creates a writable, enumerable, configurable property
-                            // Per WebIDL, methods should be writable and configurable, but NOT enumerable
-                            // For simplicity, we use Set which is close enough for most tests
-                            _ = v8.v8_Object_Set(
+                            v8.v8_Function_SetName(func, name_v8_str);
+                            // Defined, never assigned (a [[Set]] runs whatever
+                            // the prototype chain has under the name):
+                            // { writable, enumerable, configurable }, WebIDL
+                            // 3.7.6 for a regular operation.
+                            _ = v8.v8_Object_DefineProperty(
                                 target_object,
                                 context,
                                 @ptrCast(name_v8_str),
                                 @ptrCast(func),
+                                true,
+                                true,
+                                true,
                             );
                         }
                     }
@@ -3588,97 +3874,6 @@ pub fn V8Interface(comptime Interface: type) type {
             return true;
         }
 
-        /// Check if a type is a webidl.Opt wrapper (has wasPassed method and value field)
-        fn isOptionalWrapper(comptime T: type) bool {
-            if (@typeInfo(T) != .@"struct") return false;
-            // Check for the wasPassed method and value field that webidl.Optional has
-            return @hasDecl(T, "wasPassed") and @hasField(T, "value") and @hasField(T, "was_passed");
-        }
-
-        /// Get the inner value type from an Optional wrapper
-        fn getOptionalValueType(comptime T: type) ?type {
-            if (@typeInfo(T) != .@"struct") return null;
-            if (!@hasField(T, "value")) return null;
-            const fields = std.meta.fields(T);
-            inline for (fields) |field| {
-                if (comptime std.mem.eql(u8, field.name, "value")) {
-                    return field.type;
-                }
-            }
-            return null;
-        }
-
-        /// Check if a converted argument type needs to be freed after use.
-        /// String types ([]const u8 and DOMString) need cleanup as they're allocated by fromV8String.
-        /// JSValue types may contain owned strings that need cleanup.
-        /// CallbackWrapper types are the call's: released once it returns.
-        /// Struct types (dictionaries) may contain string fields that need cleanup.
-        fn needsArgCleanup(comptime T: type) bool {
-            @setEvalBranchQuota(10000);
-            // Non-owning views alias memory this engine did not allocate. This
-            // must come first: the union arm that holds the view IS a
-            // `[]const u8`, so every rule below would claim it. See
-            // `argConversionIsNonOwning`.
-            if (argConversionIsNonOwning(T)) return false;
-            // BodyInit: freed by arm, as its conversion allocated it - before
-            // the union rule below, which would take its copied BufferSource
-            // arm for a reference (`freeBodyInitArg`).
-            if (T == copied_arg_types.BodyInit) return true;
-            // A buffer source holds the handle it refers to, and an
-            // ArrayBuffer the struct made for it (`freeBufferSourceArg`).
-            if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return true;
-            // Raw string slice - allocated by fromV8Value
-            if (T == []const u8) return true;
-            // DOMString - allocated by fromV8String
-            if (T == runtime.DOMString) return true;
-            // JSValue may contain owned strings
-            if (T == runtime.JSValue) return true;
-            // CallbackWrapper - the call's; a method that keeps the callback
-            // (addEventListener) takes its own CallbackInterface first.
-            if (T == *runtime.CallbackWrapper) return true;
-            // Generic slice types (sequences) - allocated by fromV8Sequence
-            // This handles []const JSValue, []const DOMString, etc.
-            if (@typeInfo(T) == .pointer) {
-                const ptr_info = @typeInfo(T).pointer;
-                if (ptr_info.size == .slice) {
-                    // All slices from fromV8Sequence are allocated and need cleanup
-                    return true;
-                }
-            }
-            // Zig optional variants
-            if (@typeInfo(T) == .optional) {
-                const Child = @typeInfo(T).optional.child;
-                if (Child == []const u8) return true;
-                if (Child == runtime.DOMString) return true;
-                if (Child == runtime.JSValue) return true;
-                if (Child == *runtime.CallbackWrapper) return true;
-                // Recurse for nested optionals or other wrapper types
-                if (needsArgCleanup(Child)) return true;
-            }
-            // webidl.Opt wrapper types - check if inner type needs cleanup
-            if (isOptionalWrapper(T)) {
-                if (getOptionalValueType(T)) |vt| {
-                    return needsArgCleanup(vt);
-                }
-            }
-            // Struct types (dictionaries) - check if any field needs cleanup
-            if (@typeInfo(T) == .@"struct") {
-                inline for (std.meta.fields(T)) |field| {
-                    if (needsArgCleanup(field.type)) return true;
-                }
-            }
-            // Union types (WebIDL union types) - check if any variant needs cleanup
-            if (@typeInfo(T) == .@"union") {
-                inline for (std.meta.fields(T)) |field| {
-                    if (needsArgCleanup(field.type)) return true;
-                }
-            }
-            return false;
-        }
-
-        /// Static empty slice used by fromV8Value for empty strings - must not be freed
-        const static_empty_u8: []const u8 = &[_]u8{};
-
         /// Convert one argument, then - for a restricted `double` or `float`
         /// (`restricted_floats`) - apply that conversion's last step: NaN and
         /// the infinities are a TypeError. The check is part of this
@@ -3699,117 +3894,6 @@ pub fn V8Interface(comptime Interface: type) type {
                 };
             }
             return value;
-        }
-
-        /// Free a converted argument if it was allocated.
-        /// Empty strings return a static slice that must NOT be freed.
-        fn freeConvertedArg(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
-            if (comptime !needsArgCleanup(T)) return;
-            if (T == copied_arg_types.BodyInit) return freeBodyInitArg(allocator, arg);
-            if (T == webidl.BufferSource or T == webidl.ArrayBufferView) return freeBufferSourceArg(T, allocator, arg);
-
-            if (T == []const u8) {
-                // Only free if it's not the static empty slice and has content
-                if (arg.len > 0 and arg.ptr != static_empty_u8.ptr) {
-                    allocator.free(arg);
-                }
-            } else if (@typeInfo(T) == .pointer and @typeInfo(T).pointer.size == .slice) {
-                // Generic slice types (sequences) - allocated by fromV8Sequence
-                // First free each element if needed, then free the slice itself
-                const ElemType = @typeInfo(T).pointer.child;
-                if (comptime needsArgCleanup(ElemType)) {
-                    for (arg) |elem| {
-                        freeConvertedArg(ElemType, allocator, elem);
-                    }
-                }
-                // Free the slice itself (cast away const for freeing)
-                if (arg.len > 0) {
-                    const mutable_ptr: [*]ElemType = @constCast(arg.ptr);
-                    allocator.free(mutable_ptr[0..arg.len]);
-                }
-            } else if (T == runtime.DOMString) {
-                // DOMString is a tagged union - only free if owned
-                switch (arg) {
-                    .owned => |s| if (s.len > 0) allocator.free(s),
-                    .empty, .interned => {}, // Static, don't free
-                }
-            } else if (T == runtime.JSValue) {
-                // JSValue may contain an owned string that needs cleanup
-                switch (arg) {
-                    .string => |str| {
-                        if (str.owned and str.data.len > 0) {
-                            allocator.free(str.data);
-                        }
-                    },
-                    else => {}, // Other variants don't need cleanup here
-                }
-            } else if (T == *runtime.CallbackWrapper) {
-                // A callback interface argument is the call's, like every
-                // argument: the impl borrowed it, and one that keeps the
-                // callback (addEventListener) took a CallbackInterface of its
-                // own. Its wrapper goes now.
-                conv.releaseCallbackWrapper(arg);
-            } else if (@typeInfo(T) == .optional) {
-                // Handle all optional types by recursively freeing the inner value
-                if (arg) |val| {
-                    const Child = @typeInfo(T).optional.child;
-                    freeConvertedArg(Child, allocator, val);
-                }
-            } else if (comptime isOptionalWrapper(T)) {
-                // webidl.Opt wrapper - free inner value if it was passed
-                if (arg.was_passed) {
-                    if (comptime getOptionalValueType(T)) |vt| {
-                        freeConvertedArg(vt, allocator, arg.value);
-                    }
-                }
-            } else if (@typeInfo(T) == .@"struct") {
-                // Struct types (dictionaries) - free any fields that need
-                // cleanup, and release each `any`-family member's handle (an
-                // `any` or `object` member, a union typed JSValue, an
-                // `object` union arm): the Get handle the dictionary loop
-                // kept as the member's `.handle`, BORROWED for the call as
-                // an `any` argument's is (releaseAnyArgument). An impl that
-                // keeps a member takes a hold of its own; every keeper was
-                // read for that (2026-10-02, 108 dictionaries with a JSValue
-                // member): the events take holds, Navigation retains or
-                // serializes, PopStateEvent now holds its state. Kept, an
-                // object `detail` held its realm for the process's life
-                // (realms3: a removed frame kept alive by a dropped
-                // CustomEvent). A sequence<any> element inside a dictionary
-                // keeps the conservative answer (kept): its keepers are not
-                // read yet.
-                inline for (std.meta.fields(T)) |field| {
-                    if (comptime needsArgCleanup(field.type)) {
-                        freeConvertedArg(field.type, allocator, @field(arg, field.name));
-                    }
-                    releaseAnyArgument(field.type, @field(arg, field.name));
-                }
-            } else if (@typeInfo(T) == .@"union") {
-                // Union types (WebIDL union types) - free the active variant if it needs cleanup
-                const union_info = @typeInfo(T).@"union";
-                if (union_info.tag_type) |_| {
-                    // Tagged union - we can switch on it
-                    switch (arg) {
-                        inline else => |val| {
-                            // Zig 0.16 removed std.meta.TagPayloadByName; inside an
-                            // `inline else` prong the capture already has the payload type.
-                            const FieldType = @TypeOf(val);
-                            if (comptime needsArgCleanup(FieldType)) {
-                                freeConvertedArg(FieldType, allocator, val);
-                            }
-                        },
-                    }
-                }
-                // Untagged unions cannot be safely freed (we don't know which variant is active)
-            }
-        }
-
-        /// An operation's or constructor's argument, once the call is over:
-        /// what its conversion allocated (`freeConvertedArg`) and, for an
-        /// `any`, the handle it still refers to (`releaseAnyArgument`).
-        fn freeArgument(comptime T: type, allocator: std.mem.Allocator, arg: T) void {
-            freeConvertedArg(T, allocator, arg);
-            releaseAnyArgument(T, arg);
         }
 
         /// Convert multiple JS arguments into a slice for variadic parameters
@@ -4283,24 +4367,18 @@ pub fn V8Interface(comptime Interface: type) type {
                 }
             }
 
-            // Handle Instance pointer (return the V8 wrapper object)
+            // A platform object is its wrapper in its relevant realm
+            // (`conv.instanceToV8`), whichever realm the operation's function
+            // belongs to: wrapped in `v8_context` - the CALLEE's realm - an
+            // object a method borrowed from another realm returned got a
+            // second wrapper there, with that realm's prototype
+            // (tests/v8/cross_realm_wrapper_test.zig). The wrapper is the
+            // wrapper cache's; only the undefined of an object that cannot be
+            // wrapped is this call's.
             if (ReturnType == *runtime.Instance) {
-                // For methods returning Instance, we need to wrap it in a V8 object
-                // with the correct prototype chain (e.g., Element for createElement)
-                //
-                // We use the interface name from the calling method's interface,
-                // but for factory methods like createElement we need to determine
-                // the actual type. For now, we use a heuristic in template_registry.
-                const iface_name = template_registry.getInstanceInterfaceName(result);
-                const v8_obj = template_registry.wrapInstanceAsV8Object(
-                    result,
-                    iface_name,
-                    isolate,
-                    v8_context,
-                ) catch {
-                    return v8.v8_Undefined(isolate);
-                };
-                return @ptrCast(v8_obj);
+                const wrapper = conv.instanceToV8(isolate, result);
+                owned.* = v8.v8_Value_IsUndefined(wrapper);
+                return wrapper;
             }
 
             // Handle primitive types
@@ -4359,18 +4437,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     },
                     // A Global<Value>*, set as the result as it is.
                     .handle => |h| @ptrCast(h.ptr),
+                    // Its wrapper in its relevant realm, as above.
                     .instance => |i| blk: {
-                        const inst: *runtime.Instance = @ptrCast(@alignCast(i));
-                        const iface_name = template_registry.getInstanceInterfaceName(inst);
-                        const v8_obj = template_registry.wrapInstanceAsV8Object(
-                            inst,
-                            iface_name,
-                            isolate,
-                            v8_context,
-                        ) catch {
-                            break :blk v8.v8_Undefined(isolate);
-                        };
-                        break :blk @ptrCast(v8_obj);
+                        const wrapper = conv.instanceToV8(isolate, @ptrCast(@alignCast(i)));
+                        owned.* = v8.v8_Value_IsUndefined(wrapper);
+                        break :blk wrapper;
                     },
                 };
             }
@@ -4400,8 +4471,12 @@ pub fn V8Interface(comptime Interface: type) type {
                     // This is a Promise(T) type - extract the V8 Promise handle
                     return @ptrCast(result.handle);
                 }
-                // Handle dictionary structs (like URLPatternResult) using generic conversion
+                // A dictionary (URLPatternResult, NavigationResult): its object
+                // is made for this call (WebIDL 3.2.18), and released once
+                // set - kept, it leaked a Global per call.
+                owned.* = comptime conv.dictionaryValueIsOwned(ReturnType);
                 return conv.toV8Value(ReturnType, isolate, v8_context, result) catch {
+                    owned.* = true;
                     return v8.v8_Undefined(isolate);
                 };
             }
@@ -4721,6 +4796,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         isolate,
                         v8_context,
                     );
+                    defer overload_resolver.freeConstructorOverload(Param1Type, allocator, args);
                     return try Interface.call_constructor(ctx, args);
                 }
 
@@ -5159,19 +5235,11 @@ pub fn V8Interface(comptime Interface: type) type {
                     };
                     // Check if it's an Instance pointer
                     if (ChildType == *runtime.Instance) {
-                        // Wrap Instance in V8
-                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
-                        const wrapped = template_registry.wrapInstanceAsV8Object(
-                            unwrapped_result,
-                            iface_name,
-                            isolate,
-                            v8_context,
-                        ) catch {
-                            conv.throwError(isolate, "Failed to wrap result");
-                            return .kNo;
-                        };
-                        std.log.debug("[indexedPropertyGetter] Returning {s} Instance={*} wrapper={*}", .{ iface_name, unwrapped_result, wrapped });
-                        info.setReturnValue(@ptrCast(wrapped));
+                        // Its wrapper in its relevant realm (`conv.instanceToV8`),
+                        // the wrapper cache's.
+                        const wrapped = conv.instanceToV8(isolate, unwrapped_result);
+                        info.setReturnValue(wrapped);
+                        if (v8.v8_Value_IsUndefined(wrapped)) v8.v8_Value_Dispose(wrapped);
                     } else {
                         // Other type (like DOMString, CSSOMString) - convert to V8 string
                         const v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
@@ -5398,15 +5466,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
                     if (ChildType == *runtime.Instance) {
-                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
-                        const wrapped = template_registry.wrapInstanceAsV8Object(
-                            unwrapped_result,
-                            iface_name,
-                            isolate,
-                            v8_context,
-                        ) catch return .kNo;
-                        v8_value = @ptrCast(wrapped);
-                        value_owned = false;
+                        // Its wrapper in its relevant realm, the wrapper cache's.
+                        v8_value = conv.instanceToV8(isolate, unwrapped_result);
+                        value_owned = v8.v8_Value_IsUndefined(v8_value.?);
                     } else {
                         v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch return .kNo;
                         value_owned = comptime getterValueIsOwned(ChildType);
@@ -5881,14 +5943,10 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
                     if (ChildType == *runtime.Instance) {
-                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
-                        const wrapped = template_registry.wrapInstanceAsV8Object(
-                            unwrapped_result,
-                            iface_name,
-                            isolate,
-                            v8_context,
-                        ) catch return .kYes;
-                        info.setReturnValue(@ptrCast(wrapped));
+                        // Its wrapper in its relevant realm, the wrapper cache's.
+                        const wrapped = conv.instanceToV8(isolate, unwrapped_result);
+                        info.setReturnValue(wrapped);
+                        if (v8.v8_Value_IsUndefined(wrapped)) v8.v8_Value_Dispose(wrapped);
                         return .kYes;
                     } else {
                         // Special case for DOMString - convert to string directly.
@@ -6642,14 +6700,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (result) |unwrapped_result| {
                     const ChildType = type_info.optional.child;
                     if (ChildType == *runtime.Instance) {
-                        const iface_name = template_registry.getInstanceInterfaceName(unwrapped_result);
-                        const wrapped = template_registry.wrapInstanceAsV8Object(
-                            unwrapped_result,
-                            iface_name,
-                            isolate,
-                            v8_context,
-                        ) catch return .kNo;
-                        v8_value = @ptrCast(wrapped);
+                        // Its wrapper in its relevant realm, the wrapper cache's.
+                        v8_value = conv.instanceToV8(isolate, unwrapped_result);
+                        value_owned = v8.v8_Value_IsUndefined(v8_value.?);
                     } else {
                         v8_value = conv.toV8Value(ChildType, isolate, v8_context, unwrapped_result) catch {
                             return .kNo;
@@ -8161,24 +8214,17 @@ pub fn V8Interface(comptime Interface: type) type {
         fn convertV8ToZig(comptime T: type, allocator: std.mem.Allocator, isolate: *v8.Isolate, context: *v8.Context, v8_value: *v8.Value) !T {
             // Handle primitive types
             if (T == runtime.DOMString) {
-                // Check if it's a string
-                if (!v8.v8_Value_IsString(v8_value)) {
-                    // Coerce to string; ToString's result is owned.
-                    const str = v8.v8_Value_ToString(v8_value, context) orelse return error.TypeError;
-                    defer v8.v8_String_Dispose(str);
-                    return try conv.fromV8String(allocator, isolate, context, str);
-                }
-                const str: *v8.String = @ptrCast(v8_value);
-                return try conv.fromV8String(allocator, isolate, context, str);
+                // WebIDL 3.2.10: "Let x be ? ToString(V)" - what a toString
+                // throws propagates as it is (ExceptionPending, rethrown),
+                // and a Symbol is a TypeError: conv.fromV8Value's DOMString
+                // conversion, as an operation argument's. A ToString done
+                // here turned every throw into a TypeError of its own.
+                return try conv.fromV8Value(runtime.DOMString, allocator, isolate, context, v8_value);
             } else if (T == runtime.USVString or T == []const u8) {
                 // DOMString conversion, then every lone surrogate becomes
                 // U+FFFD (WebIDL 3.2.11); the bytes are the fresh copy
                 // fromV8String allocated, so they are rewritten in place.
-                const dom_str = if (!v8.v8_Value_IsString(v8_value)) blk: {
-                    const str = v8.v8_Value_ToString(v8_value, context) orelse return error.TypeError;
-                    defer v8.v8_String_Dispose(str);
-                    break :blk try conv.fromV8String(allocator, isolate, context, str);
-                } else try conv.fromV8String(allocator, isolate, context, @ptrCast(v8_value));
+                const dom_str = try conv.fromV8Value(runtime.DOMString, allocator, isolate, context, v8_value);
                 const bytes = dom_str.asSlice();
                 if (bytes.len > 0) conv.replaceLoneSurrogates(@constCast(bytes));
                 return bytes;

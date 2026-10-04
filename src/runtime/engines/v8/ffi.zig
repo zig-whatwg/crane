@@ -1137,6 +1137,8 @@ pub extern fn v8_CreateDataPropertyDescriptor(
 pub extern fn v8_Array_New(isolate: *Isolate, length: c_int) *Array;
 pub extern fn v8_Array_Length(arr: *Array) u32;
 pub extern fn v8_Array_Get(context: *Context, arr: *Array, index: u32) ?*Value;
+/// CreateDataProperty(arr, index, value) - defines the element, never a [[Set]]
+/// (no Array.prototype setter runs): for arrays the engine builds.
 pub extern fn v8_Array_Set(arr: *Array, context: *Context, index: u32, value: *Value) bool;
 /// Object.freeze(object). False if it could not be frozen.
 pub extern fn v8_Object_Freeze(object: *Object, context: *Context) bool;
