@@ -1837,7 +1837,21 @@ pub fn fromV8Value(
         const object = @as(*v8.Object, @ptrCast(value));
 
         var result: T = undefined;
-        inline for (comptime dictionaryMemberOrder(T)) |field| {
+        const members = comptime dictionaryMemberOrder(T);
+        // A member that fails to convert - its Get threw, its value is the
+        // wrong type, a restricted float is NaN - ends the conversion with
+        // the members before it converted: they are freed here, as
+        // `interface.freeConvertedArg` frees a whole dictionary (what each
+        // allocated, and an `any` member's handle). Kept, a RequestInit
+        // whose `duplex` was missing leaked its body's copy.
+        var converted: usize = 0;
+        errdefer inline for (members, 0..) |field, index| {
+            if (index < converted) {
+                interface_mod.freeConvertedArg(field.type, allocator, @field(result, field.name));
+                interface_mod.releaseAnyArgument(field.type, @field(result, field.name));
+            }
+        };
+        inline for (members) |field| {
             // Special handling for 'base' field in dictionary inheritance
             // In WebIDL, child dictionaries inherit parent fields directly on the object
             // e.g., { bubbles: true, oldVersion: 1 } not { base: { bubbles: true }, oldVersion: 1 }
@@ -1852,6 +1866,7 @@ pub fn fromV8Value(
                         context,
                         value, // Pass the same object, not a nested property
                     );
+                    converted += 1;
                     continue;
                 }
             }
@@ -1917,6 +1932,7 @@ pub fn fromV8Value(
                         field_v8,
                     );
                 }
+                converted += 1;
                 // A restricted `double` or `float` member: NaN and the
                 // infinities are a TypeError, as part of this member's
                 // conversion - before the next member is read.

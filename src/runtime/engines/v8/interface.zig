@@ -33,7 +33,9 @@ const debug = @import("debug.zig");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
 const runtime = @import("runtime");
-const overload_resolver = @import("overload_resolver.zig");
+/// Public for tests/v8, which builds and frees overloads with the testing
+/// allocator.
+pub const overload_resolver = @import("overload_resolver.zig");
 const wrapper_type_info = @import("wrapper_type_info.zig");
 const template_registry = @import("template_registry.zig");
 const window_properties = @import("window_properties.zig");
@@ -4726,6 +4728,7 @@ pub fn V8Interface(comptime Interface: type) type {
                         isolate,
                         v8_context,
                     );
+                    defer overload_resolver.freeConstructorOverload(Param1Type, allocator, args);
                     return try Interface.call_constructor(ctx, args);
                 }
 
