@@ -85,6 +85,49 @@ fn setBytes(instance: *runtime.Instance, bytes: []const u8, mime_type: []const u
     try setBlobData(instance, allocator, blob_data);
 }
 
+// ============================================================================
+// Serializable objects (HTML 2.7.1; File API: Blob is [Serializable])
+// ============================================================================
+
+/// File API, Blob's serialization steps, given `value` and `serialized`:
+///
+/// 1. Set serialized.[[SnapshotState]] to value's snapshot state.
+/// 2. Set serialized.[[ByteSequence]] to value's underlying byte sequence.
+///
+/// Crane's Blobs hold their bytes in memory and none is backed by a file
+/// whose snapshot state could change, so there is no snapshot state to keep.
+/// The byte sequence is COPIED into the record, never shared: this realm's
+/// BlobData has a plain ref count and lives in this agent's allocator, while
+/// a worker's message is read on the worker's thread and an IndexedDB record
+/// outlives the agent (Blink shares a thread-safe BlobDataHandle for messages
+/// and keeps a separate blob array for IndexedDB; copying is the simple form
+/// of both).
+///
+/// Deviation: the record also carries the Blob's type, which File API's
+/// steps leave out. Without it a clone's `type` would be "", where every
+/// engine keeps it (Blink's WriteDOMObject writes it) and WPT's
+/// structured-clone battery asserts it (compare_Blob). No File API issue
+/// covers it yet.
+pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
+    const internal = getInternal(value);
+    try serialized.writeString(if (internal) |i| i.blob_data.getType() else "");
+    try serialized.writeBytes(if (internal) |i| i.blob_data.bytes else "");
+}
+
+/// File API, Blob's deserialization steps, given `serialized` and `value`:
+///
+/// 1. Set value's snapshot state to serialized.[[SnapshotState]].
+/// 2. Set value's underlying byte sequence to serialized.[[ByteSequence]].
+///
+/// (and its type, which the serialization steps above add). The bytes are
+/// copied into a BlobData of `value`'s realm.
+pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
+    _ = target_realm;
+    const mime_type = try serialized.readString();
+    const bytes = try serialized.readBytes();
+    try setBytes(value, bytes, mime_type);
+}
+
 /// Deinitialize instance - clean up owned resources only
 /// NOTE: Do NOT call runtime.Instance.deinit() here!
 /// The GC integration layer (gc_integration.onObjectFreed) handles:

@@ -142,6 +142,46 @@ fn setFileState(instance: *runtime.Instance, allocator: std.mem.Allocator, name:
     instance.getState(State).own._internal = internal;
 }
 
+// ============================================================================
+// Serializable objects (HTML 2.7.1; File API: File is [Serializable])
+// ============================================================================
+
+/// File API, File's serialization steps, given `value` and `serialized`:
+///
+/// 1. Set serialized.[[SnapshotState]] to value's snapshot state.
+/// 2. Set serialized.[[ByteSequence]] to value's underlying byte sequence.
+/// 3. Set serialized.[[Name]] to the value of value's name attribute.
+/// 4. Set serialized.[[LastModified]] to the value of value's lastModified
+///    attribute.
+///
+/// File's primary interface is File, so these steps stand alone (HTML
+/// 2.7.1); steps 1-2 are Blob's own, reached through Blob's interface - they
+/// read the File's Blob part, and also keep its type (see Blob's steps).
+pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
+    // Steps 1-2.
+    try interfaces.Blob.serializationSteps(value, serialized);
+    // Steps 3-4.
+    const internal = getInternal(value);
+    try serialized.writeString(if (internal) |i| i.name else "");
+    try serialized.writeInt64(if (internal) |i| i.last_modified else 0);
+}
+
+/// File API, File's deserialization steps, given `serialized` and `value`:
+///
+/// 1. Set value's snapshot state to serialized.[[SnapshotState]].
+/// 2. Set value's underlying byte sequence to serialized.[[ByteSequence]].
+/// 3. Initialize the value of value's name attribute to serialized.[[Name]].
+/// 4. Initialize the value of value's lastModified attribute to
+///    serialized.[[LastModified]].
+pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
+    // Steps 1-2: the File's Blob part.
+    try interfaces.Blob.deserializationSteps(serialized, value, target_realm);
+    // Steps 3-4.
+    const name = try serialized.readString();
+    const last_modified = try serialized.readInt64();
+    try setFileState(value, value.ctx.allocator, name, last_modified);
+}
+
 /// Get internal state from instance
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);

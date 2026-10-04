@@ -63,6 +63,52 @@ pub fn call_constructor(ctx: runtime.Context, message: webidl.Opt(runtime.DOMStr
     return instance;
 }
 
+// ============================================================================
+// Serializable objects (HTML 2.7.1; WebIDL 2.8.3: QuotaExceededError is
+// [Serializable])
+// ============================================================================
+
+/// WebIDL 2.8.3, QuotaExceededError's serialization steps, given `value` and
+/// `serialized`:
+///
+/// 1. Run the DOMException serialization steps given value and serialized.
+/// 2. Set serialized.[[Quota]] to value's quota.
+/// 3. Set serialized.[[Requested]] to value's requested.
+pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
+    // Step 1: DOMException's own steps, through its interface.
+    try interfaces.DOMException.serializationSteps(value, serialized);
+    const state = value.getState(State);
+    // Steps 2-3: each a number or null.
+    try writeOptionalNumber(serialized, state.own.quota);
+    try writeOptionalNumber(serialized, state.own.requested);
+}
+
+/// WebIDL 2.8.3, QuotaExceededError's deserialization steps, given
+/// `serialized` and `value`:
+///
+/// 1. Run the DOMException deserialization steps given serialized and value.
+/// 2. Set value's quota to serialized.[[Quota]].
+/// 3. Set value's requested to serialized.[[Requested]].
+pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
+    // Step 1.
+    try interfaces.DOMException.deserializationSteps(serialized, value, target_realm);
+    const state = value.getState(State);
+    // Steps 2-3.
+    state.own.quota = try readOptionalNumber(serialized);
+    state.own.requested = try readOptionalNumber(serialized);
+}
+
+fn writeOptionalNumber(serialized: *runtime.SerializationRecord, number: ?f64) !void {
+    try serialized.writeBool(number != null);
+    try serialized.writeDouble(number orelse 0);
+}
+
+fn readOptionalNumber(serialized: *runtime.DeserializationRecord) !?f64 {
+    const present = try serialized.readBool();
+    const number = try serialized.readDouble();
+    return if (present) number else null;
+}
+
 /// Getter for quota
 pub fn get_quota(instance: *runtime.Instance) anyerror!?f64 {
     return instance.getState(State).own.quota;

@@ -124,6 +124,49 @@ fn initializeException(instance: *runtime.Instance, name_str: []const u8, msg_st
     state.own._internal = internal;
 }
 
+// ============================================================================
+// Serializable objects (HTML 2.7.1; WebIDL 4.4: DOMException is [Serializable])
+// ============================================================================
+
+/// WebIDL 4.4, DOMException's serialization steps, given `value` and
+/// `serialized`:
+///
+/// 1. Set serialized.[[Name]] to value's name.
+/// 2. Set serialized.[[Message]] to value's message.
+/// 3. Set serialized.[[Stack]] to an implementation-defined string derived
+///    from value.[[Stack]].
+/// 4. (Optional accompanying data, such as line and column: none kept.)
+///
+/// Crane keeps no [[Stack]] on a DOMException yet, so step 3 writes the
+/// empty string - Blink writes a null string for the same reason, keeping
+/// the slot so the record's layout need not change when one is kept.
+pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
+    const internal = value.getState(State).own._internal;
+    // Step 1: a DOMException made without its constructor's steps has the
+    // default name, as `name` answers it.
+    try serialized.writeString(if (internal) |i| i.name else "Error");
+    // Step 2.
+    try serialized.writeString(if (internal) |i| i.message else "");
+    // Step 3.
+    try serialized.writeString("");
+}
+
+/// WebIDL 4.4, DOMException's deserialization steps, given `value` and
+/// `serialized`:
+///
+/// 1. Set value's name to serialized.[[Name]].
+/// 2. Set value's message to serialized.[[Message]].
+/// 3. Set value.[[Stack]] to serialized.[[Stack]] (none kept: see above).
+/// 4. (No other data is attached.)
+pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
+    _ = target_realm;
+    const name = try serialized.readString();
+    const message = try serialized.readString();
+    _ = try serialized.readString();
+    // Steps 1-2 (and the legacy code, which name determines).
+    try initializeException(value, name, message);
+}
+
 /// Getter for name
 /// Returns the error name (e.g., "NotSupportedError", "InvalidStateError")
 /// Note: Returns owned DOMString - interface layer will free after V8 conversion.
