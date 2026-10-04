@@ -61,7 +61,6 @@ pub const interface_skip_list = .{
     "MediaMetadata", // ChapterInformation array issues
     "Notification", // Missing unsignedlong type
     "PerformanceLongAnimationFrameTiming", // PerformanceScriptTiming array issues
-    "PerformanceObserver", // Missing cached field
     "PressureObserver", // Missing cached field
     "PublicKeyCredential", // ArrayBuffer type issues
     "PushManager", // Missing cached field

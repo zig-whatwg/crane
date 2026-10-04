@@ -90,6 +90,9 @@ pub const navigation_history_entries = @import("navigation_history_entries.zig")
 pub const history_traversal = @import("history_traversal.zig");
 pub const auxiliary_navigables = @import("auxiliary_navigables.zig");
 pub const global_settings = @import("global_settings.zig");
+/// The Performance Timeline: each global's entry buffers and registered
+/// performance observers, kept by its Performance object.
+pub const performance_timeline = @import("performance_timeline.zig");
 pub const policy_containers = @import("policy_containers.zig");
 /// CSP 5.5 report a violation: the securitypolicyviolation event at the
 /// global's side.

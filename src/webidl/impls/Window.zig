@@ -147,7 +147,24 @@ pub const InternalState = struct {
     /// The navigation API ([SameObject]), made on first use and kept alive
     /// for the Window's life the same way.
     navigation: ?*runtime.Instance = null,
+    /// The global's Performance: the one the host's page set up made
+    /// (`setPerformance`, kept by the realm's `__internal`), or else one
+    /// this Window made on first use (`own_performance`).
     performance: ?*runtime.Instance = null,
+    /// A Performance this Window made itself (`settingsPerformance`: a
+    /// frame's, a navigated window's), traced from the global object for
+    /// its whole lifetime, as LocalDOMWindow::Trace visits performance_.
+    own_performance: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "performance" } },
+    } = null,
+    /// The time origin of this window's environment settings object, a
+    /// monotonic moment (ns, unsafe: Performance coarsens it). HTML: the
+    /// associated Document's load timing info's navigation start time;
+    /// recorded when the Window is made, which stands in for it until the
+    /// navigation's timing records its start.
+    time_origin_ns: i64 = 0,
     /// WebCrypto §10: this global's Crypto, traced for its whole lifetime.
     crypto: ?struct {
         owner: *runtime.Instance,
@@ -250,11 +267,13 @@ pub const InternalState = struct {
             .stub_ui_backend = StubUIBackend.init(.{}),
             .stub_timing_backend = StubFrameTimingBackend.init(),
             .ui_backend = undefined, // Set by caller after init
+            .time_origin_ns = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime()),
         };
     }
 
     pub fn deinit(self: *InternalState) void {
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
+        if (self.own_performance) |*performance| performance.edge.release(performance.owner);
         // The children traced from the global object need nothing here: the
         // edges go with it, and the realm's end frees the children.
         // The popups first: each integration ends its navigable's realm (a
@@ -438,6 +457,7 @@ pub fn installHooks() void {
         .indexed_db = &settingsIndexedDB,
         .caches = &settingsCaches,
         .performance = &settingsPerformance,
+        .time_origin = &settingsTimeOrigin,
         .crypto = &settingsCrypto,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
@@ -590,9 +610,24 @@ fn settingsCaches(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return cache_storage_instance;
 }
 
+/// HR-Time: one Performance per global, reached through the settings hook -
+/// the page's (`setPerformance`), or one made on first use and traced from
+/// the global. Its time origin is this window's (`settingsTimeOrigin`), not
+/// the moment it is made.
 fn settingsPerformance(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.performance orelse error.NotImplemented;
+    if (internal.performance) |performance| return performance;
+    if (internal.own_performance) |own| return own.value;
+    const performance = try interfaces.Performance.init(internal.allocator, instance.ctx);
+    internal.own_performance = .{ .owner = instance, .value = performance };
+    internal.own_performance.?.edge.hold(instance, performance);
+    return performance;
+}
+
+/// The time origin of this window's settings object (monotonic ns).
+fn settingsTimeOrigin(instance: *runtime.Instance) ?i64 {
+    const internal = getInternal(instance) orelse return null;
+    return internal.time_origin_ns;
 }
 
 /// WebCrypto §10: one Crypto per global, reached through the settings hook.
