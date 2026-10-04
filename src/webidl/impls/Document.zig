@@ -3954,8 +3954,19 @@ pub fn call_close(instance: *runtime.Instance) anyerror!void {
 /// and fire readystatechange at the document.
 fn updateReadiness(instance: *runtime.Instance, readiness: enums.DocumentReadyState) void {
     const internal = getInternal(instance) orelse return;
+    // Steps 1-2.
     if (internal.ready_state == readiness) return;
     internal.ready_state = readiness;
+    // Step 3: the load timing info's DOM complete or DOM interactive time,
+    // the first time each comes - for the document its window shows (the
+    // timeline keeps that document's load timing info; another document of
+    // the realm - a DOMParser's - has none to record into).
+    if (isShownByItsWindow(instance) and (get_defaultView(instance) catch null) != null) switch (readiness) {
+        ._complete_ => @import("dom").performance_timeline.recordLoadTiming(instance.ctx, .dom_complete),
+        ._interactive_ => @import("dom").performance_timeline.recordLoadTiming(instance.ctx, .dom_interactive),
+        else => {},
+    };
+    // Step 4.
     fireEvent(instance, instance, "readystatechange", false);
 }
 
@@ -4481,9 +4492,17 @@ fn lifecycleTaskSteps(data: ?*anyopaque) void {
     }
 
     switch (task.step) {
-        // Step 6.2: "Fire an event named DOMContentLoaded at the Document
-        // object, with its bubbles attribute initialized to true."
-        .dom_content_loaded => fireEvent(task.target, task.target, "DOMContentLoaded", true),
+        // Step 6.1-6.3: the DOM content loaded event start time; "Fire an
+        // event named DOMContentLoaded at the Document object, with its
+        // bubbles attribute initialized to true"; its end time.
+        .dom_content_loaded => {
+            // (The timeline keeps the load timing info of the document a
+            // window shows; a windowless document's is not recorded.)
+            const has_window = (get_defaultView(task.target) catch null) != null;
+            if (has_window) @import("dom").performance_timeline.recordLoadTiming(task.target.ctx, .dom_content_loaded_event_start);
+            fireEvent(task.target, task.target, "DOMContentLoaded", true);
+            if (has_window) @import("dom").performance_timeline.recordLoadTiming(task.target.ctx, .dom_content_loaded_event_end);
+        },
         .load => completeLoading(task.target),
         // "Completely finish loading" step 4: the container's load event
         // steps - the iframe's own (dom.content_navigables), which end the
@@ -4520,8 +4539,12 @@ fn completeLoading(document: *runtime.Instance) void {
     updateReadiness(document, ._complete_);
     // Steps 9.2-9.3: no browsing context, nothing more.
     const window = (get_defaultView(document) catch null) orelse return;
+    // Step 9.4: the load event start time.
+    @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_start);
     // Step 9.5: "Fire an event named load at window".
     fireEvent(document, window, "load", false);
+    // Step 9.8: the load event end time.
+    @import("dom").performance_timeline.recordLoadTiming(document.ctx, .load_event_end);
     // Steps 9.9-9.11: page showing becomes true and pageshow fires,
     // persisted false - unless the document is showing already.
     const internal = getInternal(document) orelse return;
@@ -4536,6 +4559,8 @@ fn completeLoading(document: *runtime.Instance) void {
     if (@import("dom").navigable_container.of(window)) |container| {
         queueLifecycleTask(container, .container_load);
     }
+    // Step 9.13: "Queue the navigation timing entry for the Document."
+    @import("dom").performance_timeline.queueNavigationTimingEntry(document.ctx);
     // A declarative refresh comes due `time` seconds after the completely
     // loaded time. Its wait starts in a task queued behind the container's
     // load event, so a refresh of no time never overtakes that event.

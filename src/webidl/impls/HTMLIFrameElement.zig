@@ -848,6 +848,11 @@ const Navigation = struct {
     /// the source document can go while the fetch is in flight. Null with
     /// no source document.
     csp_reporter: ?dom_module.csp_violations.GuardedReporter = null,
+    /// Where a container-initiated navigation's request reports its timing:
+    /// the container document's global, which gets the frame's 'resource'
+    /// entry (HTML "create navigation params by fetching" step 3) - guarded,
+    /// as that document can go while the fetch is in flight.
+    timing_reporter: ?dom_module.performance_timeline.GuardedTimingReporter = null,
     /// The fetch in flight, until it answers.
     fetch: ?*fetch_mod.algorithms.AsyncFetch = null,
     /// What the fetch answered, until the commit takes it.
@@ -1356,6 +1361,23 @@ fn startFetch(record: *Navigation) void {
         // client's global (CSP 2.4.2). The record outlives the fetch: its
         // destroy terminates it.
         if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
+        // "Create navigation params by fetching" step 3: "If
+        // sourceSnapshotParams's fetch client is navigable's container
+        // document's relevant settings object, then set request's initiator
+        // type to navigable's container's local name" - only a navigation
+        // the container started is reported to resource timing, to the
+        // container document's global (its fetch client's).
+        if (record.csp_reporter) |source| {
+            if (record.integration.iframe_element) |element_ptr| {
+                const container: *runtime.Instance = @ptrCast(@alignCast(element_ptr));
+                if (container.ctx == source.global.ctx) {
+                    record.timing_reporter = dom_module.performance_timeline.GuardedTimingReporter.forGlobal(source.global);
+                    request.initiator_type = .iframe;
+                    // The record's own reporter, at its fixed address.
+                    if (record.timing_reporter) |*reporter| request.timing_reporter = reporter.reporter();
+                }
+            }
+        }
         // Step 3's POST resource: "set request's body to documentResource's
         // request body" and "Content-Type" to its request content-type. The
         // body is the record's, borrowed for as long as the fetch runs.
@@ -1473,6 +1495,21 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
         navigation_fetch.resultFromResponse(record.allocator, record.url, r.response, .{}) catch null
     else
         null;
+    // The fetch's timing info goes with the response, for the new document's
+    // navigation timing entry (its redirect count: the URLs past the first).
+    if (record.response) |*response| {
+        if (result) |*r| {
+            response.timing = .{
+                .timing_info = r.timing_info,
+                // A cross-origin redirect makes the count 0 (HTML "create
+                // navigation params by fetching").
+                .redirect_count = if (response.has_cross_origin_redirects) 0 else @intCast(@min(r.response.url_list.items.len -| 1, std.math.maxInt(u16))),
+                .response_status = r.response.status,
+                .content_encoding = r.response.body_info.content_encoding,
+            };
+            r.timing_info = fetch_mod.internal.FetchTimingInfo.init(r.timing_info.allocator);
+        }
+    }
     if (record.response == null) {
         record.response = navigation_fetch.networkErrorResult(record.allocator, record.url) catch return endNavigation(id);
     }
@@ -1532,8 +1569,14 @@ fn runCommit(context: ?*anyopaque) void {
     var swap = pageSwapOf(integration, record, response);
     defer if (swap) |*step| step.deinit();
 
-    // Step 5.3: "Unload a document and its descendants", in its realm.
+    // Step 5.3: "Unload a document and its descendants", in its realm. HTML
+    // "unload a document" steps 11 and 13 time its unload event for the new
+    // document (the unload timing info): the unsafe shared current time
+    // around it, made relative to the new document's time origin when its
+    // navigation timing entry is created.
+    const unload_start = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
     if (!unloadActiveDocument(integration, if (swap) |*step| step else null)) return endLoadDelay(integration);
+    const unload_end = fetch_mod.algorithms.http_fetch.getCurrentTimeMs();
     if (integration.state == .discarded or integration.browsing_context == null) return;
 
     // "Create and initialize a Document object" steps 5-7: the realm the new
@@ -1541,6 +1584,16 @@ fn runCommit(context: ?*anyopaque) void {
     // WindowProxy - decided with no realm entered.
     const new_origin = integration.responseOrigin(record.url, response);
     const old_origin: ?Origin = if (integration.window_proxy) |proxy| proxy.document_origin else null;
+    // Navigation Timing: the unload times are the new document's only when
+    // the previous document was same origin with it.
+    if (response.timing) |*timing| {
+        if (old_origin) |old| {
+            if (new_origin.isSameOrigin(old)) {
+                timing.unload_event_start = unload_start;
+                timing.unload_event_end = unload_end;
+            }
+        }
+    }
     integration.realmForDocument(new_origin) catch |err| {
         log.warn("[navigation] no realm for {s}: {s}", .{ record.url, @errorName(err) });
         return endLoadDelay(integration);
@@ -1807,6 +1860,42 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     defer if (computed) |o| integration.allocator.free(o);
     const origin: []const u8 = record.target_origin orelse computed orelse "null";
     const document_state = recordInHistory(integration, record, final_url, origin);
+    // "Create and initialize a Document object": Navigation Timing's "create
+    // the navigation timing entry" for the document about to be made in the
+    // navigable's realm (realmForDocument made or chose it) - which also
+    // makes the navigation's start time its time origin - before the
+    // document's parser, and any of its script, runs.
+    if (response.timing) |*timing| {
+        if (navigableContext(integration)) |realm| {
+            const report: fetch_mod.internal.TimingReport = .{
+                .timing_info = &timing.timing_info,
+                .url = final_url,
+                .initiator_type = .other,
+                .cache_state = "",
+                .body_info = .{
+                    .encoded_size = if (response.body) |b| b.len else 0,
+                    .decoded_size = if (response.body) |b| b.len else 0,
+                    .content_encoding = timing.content_encoding,
+                },
+                .response_status = timing.response_status,
+            };
+            dom_module.performance_timeline.createNavigationTimingEntry(realm, .{
+                .report = &report,
+                .unload_event_start = timing.unload_event_start,
+                .unload_event_end = timing.unload_event_end,
+                .redirect_count = timing.redirect_count,
+                // A traversal to the entry it leaves is a reload (as the
+                // navigation API's activation reads it), any other is
+                // back_forward; a push or replace navigates.
+                .navigation_type = if (record.traversal_entry == 0)
+                    .navigate
+                else if (record.traversal_entry == record.traversal_from)
+                    .reload
+                else
+                    .back_forward,
+            }) catch |err| log.debug("[navigation] no navigation timing entry for {s}: {s}", .{ record.url, @errorName(err) });
+        }
+    }
     integration.commitResponse(record.url, response) catch |err| {
         log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
         endLoadDelay(integration);
@@ -1975,6 +2064,11 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
 /// `page_swap` names, fired at `document` after its descendants have
 /// unloaded and before it does (step 6.1). False when that event's
 /// listeners took the navigable or `document` away before it unloaded.
+///
+/// `document` is going: a navigation replaces it, or its traversable
+/// closes. Unloaded, each document here is destroyed too ("unload" step 20:
+/// none is salvageable without a bfcache), and then so are the navigables
+/// of `document`'s iframes (`destroyChildNavigables`).
 fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
     var documents = collectInclusiveDescendantDocuments(document, integration.allocator);
     defer documents.deinit(integration.allocator);
@@ -1998,7 +2092,53 @@ fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration
         }
     }
     if (integration.browsing_context) |bc| destroyWindowDocuments(bc);
+    destroyChildNavigables(integration);
     return true;
+}
+
+/// The navigables of the iframes in a document that is going - unloaded and
+/// destroyed by `unloadDocumentAndDescendantsSwapping` - are destroyed after
+/// it, before a new document takes its place. HTML's navigable tree hangs off
+/// active documents: a navigable's child navigables are the content
+/// navigables of the navigable containers in its active document
+/// ("document-tree child navigables"), so once the document is unloaded and
+/// destroyed they are nobody's children. Each goes as a removed iframe's
+/// does - "destroy a child navigable" step 3, its container's content
+/// navigable is null - through the integration that owns it: its browsing
+/// context leaves `integration`'s children, closes and lets go of its own
+/// (BrowsingContext.discard), and its iframe's contentWindow reads null. The
+/// order is Blink's FrameLoader::DetachDocument: the unload event, then
+/// LocalFrame::DetachChildren (each child frame's Frame::Detach, which
+/// unlinks it from its parent - Frame::RemoveChild), then the old document's
+/// shutdown, and only then CommitDocumentLoader for the new one.
+///
+/// They stayed on the list until the replaced document's iframe elements
+/// were collected, which freed their browsing contexts there: "definitely
+/// close" walked a freed one (BrowsingContext.collectDescendants, SIGSEGV at
+/// 0xaaaa...), and History's traversal made a joint session history on a
+/// freed and reused one - a leak, and a write into another object's memory.
+///
+/// Their session history entries stay: they are the replaced document's
+/// nested histories, and the traversable's steps still count them. Their
+/// realms end as they did, with their integrations.
+fn destroyChildNavigables(integration: *IFrameIntegration) void {
+    var i: usize = if (integration.browsing_context) |bc| bc.children.items.len else 0;
+    while (i > 0) {
+        i -= 1;
+        // Read again each time: a child's navigation API hears its
+        // navigation abort below, and script can take the navigable, or
+        // more of its children, away meanwhile.
+        const bc = integration.browsing_context orelse return;
+        if (i >= bc.children.items.len) continue;
+        const child = bc.children.items[i];
+        if (integrationOfBrowsingContext(child)) |owner| {
+            owner.onRemovedFromDocument();
+        } else {
+            // A context whose integration made no realm for it: no navigable
+            // to destroy, but not `bc`'s child either.
+            child.removeFromParent();
+        }
+    }
 }
 
 const DocumentEntry = struct {

@@ -346,6 +346,9 @@ pub const FetchJob = struct {
         // Record end time
         self.timing_info.end_time = http_fetch.getCurrentTimeMs();
 
+        // Fetch response handover step 4: the report timing steps.
+        self.reportTiming(response);
+
         // Call process response callback if set
         if (self.options.process_response) |callback| {
             callback(response);
@@ -353,6 +356,78 @@ pub const FetchJob = struct {
 
         self.response = response;
         return .done;
+    }
+
+    /// Fetch "fetch response handover" steps 4.2 and 4.3 for `response`: the
+    /// report timing steps, run given the request's client's global - the
+    /// request's timing reporter, which makes its Resource Timing entry - for
+    /// a request with an initiator type. They run here, when fetch hands the
+    /// response over: the end time is now, and a body still streaming in is
+    /// not waited for (its sizes are not known yet).
+    ///
+    /// Spec: https://fetch.spec.whatwg.org/#fetch-finale
+    fn reportTiming(self: *FetchJob, response: *const InternalResponse) void {
+        const request = self.request;
+        // 4.3. Only a request with an initiator type, whose client's global
+        // hears it.
+        const initiator_type = request.initiator_type orelse return;
+        const reporter = request.timing_reporter orelse return;
+        // 4.2.1. If request's URL's scheme is not an HTTP(S) scheme, return.
+        const url = request.getUrl();
+        if (!std.mem.startsWith(u8, url, "http:") and !std.mem.startsWith(u8, url, "https:")) return;
+        // 4.2.2. The end time (now, set by `finish`) is the reporter's to make
+        // relative to its global.
+        // 4.2.3-4.2.4. cacheState and bodyInfo.
+        var cache_state: []const u8 = switch (response.cache_state) {
+            .empty => "",
+            .local => "local",
+            .validated => "validated",
+        };
+        var body_info = response.body_info;
+        // 4.2.5. A response whose timing allow passed flag is not set (a
+        // network error too) is reported with an opaque timing info and no
+        // cache state.
+        var opaque_timing: ?FetchTimingInfo = null;
+        defer if (opaque_timing) |*o| o.deinit();
+        var timing_info: *const FetchTimingInfo = &self.timing_info;
+        if (!response.timing_allow_passed) {
+            opaque_timing = @import("../internal/fetch_timing.zig").createOpaqueTimingInfo(self.allocator, &self.timing_info);
+            timing_info = &opaque_timing.?;
+            cache_state = "";
+            // Nor its sizes (Resource Timing 3.5.1: transferSize is TAO-
+            // protected; encodedBodySize, decodedBodySize and contentType
+            // with it).
+            body_info = .{};
+        }
+        // A CORS-cross-origin response (opaque tainting) exposes no body
+        // sizes, content type or encoding (Resource Timing 3.5.1).
+        if (request.response_tainting == .@"opaque") body_info = .{};
+        // 4.2.6-4.2.7. responseStatus and the minimized content type, unless
+        // this is a navigation redirected across origins.
+        var response_status: u16 = 0;
+        var content_type: ?[]const u8 = null;
+        defer if (content_type) |c| self.allocator.free(c);
+        if (request.mode != .navigate or response.redirect_taint == .same_origin) {
+            response_status = response.status;
+            if (request.response_tainting != .@"opaque") {
+                if (@import("../internal/mime.zig").extractMimeType(self.allocator, &response.header_list) catch null) |mime_type| {
+                    var parsed = mime_type;
+                    defer parsed.deinit();
+                    content_type = @import("mimesniff").minimizeSupportedMimeType(self.allocator, &parsed) catch null;
+                    if (content_type) |c| body_info.content_type = c;
+                }
+            }
+        }
+        // 4.2.8. Mark resource timing (the reporter's global does).
+        reporter.report(reporter.context, &.{
+            .timing_info = timing_info,
+            .url = url,
+            .initiator_type = initiator_type,
+            .cache_state = cache_state,
+            .body_info = body_info,
+            .response_status = response_status,
+            .timing_allow_passed = response.timing_allow_passed,
+        });
     }
 };
 
@@ -367,4 +442,86 @@ pub fn extractScheme(url_str: []const u8) []const u8 {
         return url_str[0..pos];
     }
     return "";
+}
+
+const TestTimingReports = struct {
+    count: usize = 0,
+    url: [64]u8 = undefined,
+    url_len: usize = 0,
+    initiator: ?internal_request.InitiatorType = null,
+    status: u16 = 0,
+    start_time: f64 = 0,
+
+    fn report(context: *anyopaque, timing: *const internal_request.TimingReport) void {
+        const self: *TestTimingReports = @ptrCast(@alignCast(context));
+        self.count += 1;
+        @memcpy(self.url[0..timing.url.len], timing.url);
+        self.url_len = timing.url.len;
+        self.initiator = timing.initiator_type;
+        self.status = timing.response_status;
+        self.start_time = timing.timing_info.start_time;
+    }
+};
+
+fn testAnswer(status: u16) NetworkResponse {
+    return .{
+        .allocator = std.testing.allocator,
+        .status = status,
+        .http_version = .http_1_1,
+        .headers = std.testing.allocator.alloc(NetworkResponse.Header, 0) catch unreachable,
+        .body = null,
+        .final_url = null,
+        .total_time_ms = 0,
+        .time_to_first_byte_ms = 0,
+        .redirect_count = 0,
+        .remote_ip = null,
+        .remote_port = null,
+    };
+}
+
+test "fetch response handover: a request with an initiator type reports its timing to its client's global, once" {
+    const allocator = std.testing.allocator;
+    var reports: TestTimingReports = .{};
+    const request = try InternalRequest.init(allocator, "http://a.test/x");
+    defer request.deinit();
+    try request.setOrigin("http://a.test");
+    request.initiator_type = .fetch;
+    request.timing_reporter = .{ .context = &reports, .report = &TestTimingReports.report };
+    const job = try FetchJob.create(allocator, request, false, .{});
+    defer job.destroy();
+    const step = try job.start();
+    try std.testing.expect(step == .network);
+    const done = try job.resumeNetwork(testAnswer(204));
+    try std.testing.expect(done == .done);
+    try std.testing.expectEqual(@as(usize, 1), reports.count);
+    try std.testing.expectEqualStrings("http://a.test/x", reports.url[0..reports.url_len]);
+    try std.testing.expectEqual(internal_request.InitiatorType.fetch, reports.initiator.?);
+    try std.testing.expectEqual(@as(u16, 204), reports.status);
+    try std.testing.expect(reports.start_time > 0);
+}
+
+test "fetch response handover: no initiator type, or a scheme that is not HTTP(S), reports nothing" {
+    const allocator = std.testing.allocator;
+    var reports: TestTimingReports = .{};
+    {
+        const request = try InternalRequest.init(allocator, "http://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        request.timing_reporter = .{ .context = &reports, .report = &TestTimingReports.report };
+        const job = try FetchJob.create(allocator, request, false, .{});
+        defer job.destroy();
+        _ = try job.start();
+        _ = try job.resumeNetwork(testAnswer(200));
+    }
+    {
+        const request = try InternalRequest.init(allocator, "data:,hello");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        request.initiator_type = .fetch;
+        request.timing_reporter = .{ .context = &reports, .report = &TestTimingReports.report };
+        const job = try FetchJob.create(allocator, request, false, .{});
+        defer job.destroy();
+        try std.testing.expect(try job.start() == .done);
+    }
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
 }
