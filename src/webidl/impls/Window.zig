@@ -2377,7 +2377,7 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
     // 5-6. "Return handle and then continue running this algorithm
     // asynchronously": "If the timeout property is present in options and
     // has a positive value", wait for it (a timer), then queue "invoke idle
-    // callback timeout" (idleTimeoutFired). Without a timer - a context
+    // callback timeout" (IdleTimeout.fired). Without a timer - a context
     // built for tests - there is no timeout.
     const timeout_ms: u32 = if (options.was_passed) (options.value.timeout orelse 0) else 0;
     if (timeout_ms > 0) {
