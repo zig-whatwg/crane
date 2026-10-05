@@ -214,39 +214,25 @@ fn intlWeakCallback(data: ?*anyopaque, length_in_bytes: usize) callconv(.c) void
     // Now safe to clean up the registry entry
     switch (weak_data.registry_type) {
         .datetime_format => {
-            if (dtf_registry) |*reg| {
-                reg.remove(weak_data.entry_idx);
-            }
+            dtf_registry.remove(weak_data.entry_idx);
         },
         .number_format => {
-            if (nf_registry) |*reg| {
-                reg.remove(weak_data.entry_idx);
-            }
+            nf_registry.remove(weak_data.entry_idx);
         },
         .collator => {
-            if (collator_registry) |*reg| {
-                reg.remove(weak_data.entry_idx);
-            }
+            collator_registry.remove(weak_data.entry_idx);
         },
         .plural_rules => {
-            if (plural_rules_registry) |*reg| {
-                _ = reg.entries.remove(weak_data.entry_idx);
-            }
+            plural_rules_registry.drop(weak_data.entry_idx);
         },
         .relative_time_format => {
-            if (relative_time_format_registry) |*reg| {
-                _ = reg.entries.remove(weak_data.entry_idx);
-            }
+            relative_time_format_registry.drop(weak_data.entry_idx);
         },
         .list_format => {
-            if (list_format_registry) |*reg| {
-                _ = reg.entries.remove(weak_data.entry_idx);
-            }
+            list_format_registry.drop(weak_data.entry_idx);
         },
         .display_names => {
-            if (display_names_registry) |*reg| {
-                _ = reg.entries.remove(weak_data.entry_idx);
-            }
+            display_names_registry.drop(weak_data.entry_idx);
         },
     }
 
@@ -320,7 +306,11 @@ const DateTimeFormatRegistry = struct {
         }
     };
 
-    entries: std.ArrayList(?Entry) = .empty,
+    /// Heap entries, each with the isolate that made it: a pointer `get`
+    /// hands out stays good while another thread's `register` grows the list
+    /// (each Intl object's entry is used only by its own agent's thread; the
+    /// list is shared), and an agent's end frees only its own (`deinitFor`).
+    entries: std.ArrayList(?Slot) = .empty,
     free_list: std.ArrayList(usize) = .empty,
     allocator: std.mem.Allocator,
     mutex: std.Io.Mutex = .init,
@@ -332,9 +322,10 @@ const DateTimeFormatRegistry = struct {
     }
 
     fn deinit(self: *DateTimeFormatRegistry) void {
-        for (self.entries.items) |*entry_opt| {
-            if (entry_opt.*) |*entry| {
-                entry.deinit();
+        for (self.entries.items) |slot_opt| {
+            if (slot_opt) |slot| {
+                slot.entry.deinit();
+                self.allocator.destroy(slot.entry);
             }
         }
         self.entries.deinit(self.allocator);
@@ -342,17 +333,21 @@ const DateTimeFormatRegistry = struct {
     }
 
     fn register(self: *DateTimeFormatRegistry, entry: Entry) !usize {
+        const owned = try self.allocator.create(Entry);
+        errdefer self.allocator.destroy(owned);
+        owned.* = entry;
+
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.free_list.items.len > 0) {
             const idx = self.free_list.pop().?;
-            self.entries.items[idx] = entry;
+            self.entries.items[idx] = .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() };
             return idx;
         }
 
         const idx = self.entries.items.len;
-        try self.entries.append(self.allocator, entry);
+        try self.entries.append(self.allocator, .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() });
         return idx;
     }
 
@@ -361,10 +356,8 @@ const DateTimeFormatRegistry = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return null;
-        if (self.entries.items[idx]) |*entry| {
-            return entry;
-        }
-        return null;
+        const slot = self.entries.items[idx] orelse return null;
+        return slot.entry;
     }
 
     fn remove(self: *DateTimeFormatRegistry, idx: usize) void {
@@ -372,21 +365,40 @@ const DateTimeFormatRegistry = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return;
-        if (self.entries.items[idx]) |*entry| {
-            entry.deinit();
+        if (self.entries.items[idx]) |slot| {
+            slot.entry.deinit();
+            self.allocator.destroy(slot.entry);
             self.entries.items[idx] = null;
             self.free_list.append(self.allocator, idx) catch {};
         }
     }
+
+    /// Free the entries `isolate` made - its agent is ending - and no other.
+    fn deinitFor(self: *@This(), isolate: ?*v8.Isolate) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.entries.items, 0..) |slot_opt, idx| {
+            const slot = slot_opt orelse continue;
+            if (slot.isolate != isolate) continue;
+            slot.entry.deinit();
+            self.allocator.destroy(slot.entry);
+            self.entries.items[idx] = null;
+            self.free_list.append(self.allocator, idx) catch {};
+        }
+    }
+
+    const Slot = struct {
+        entry: *Entry,
+        isolate: ?*v8.Isolate,
+    };
 };
 
-var dtf_registry: ?DateTimeFormatRegistry = null;
+/// Made with the process, not on first use: the first use can come from
+/// two threads at once (a Browser's and a worker's, docs/instances.md).
+var dtf_registry: DateTimeFormatRegistry = .{ .allocator = std.heap.page_allocator };
 
 fn getOrInitRegistry() *DateTimeFormatRegistry {
-    if (dtf_registry == null) {
-        dtf_registry = DateTimeFormatRegistry.init(std.heap.page_allocator);
-    }
-    return &dtf_registry.?;
+    return &dtf_registry;
 }
 
 // ============================================================================
@@ -1259,7 +1271,11 @@ const NumberFormatRegistry = struct {
         }
     };
 
-    entries: std.ArrayList(?Entry) = .empty,
+    /// Heap entries, each with the isolate that made it: a pointer `get`
+    /// hands out stays good while another thread's `register` grows the list
+    /// (each Intl object's entry is used only by its own agent's thread; the
+    /// list is shared), and an agent's end frees only its own (`deinitFor`).
+    entries: std.ArrayList(?Slot) = .empty,
     free_list: std.ArrayList(usize) = .empty,
     allocator: std.mem.Allocator,
     mutex: std.Io.Mutex = .init,
@@ -1271,9 +1287,10 @@ const NumberFormatRegistry = struct {
     }
 
     fn deinit(self: *NumberFormatRegistry) void {
-        for (self.entries.items) |*entry_opt| {
-            if (entry_opt.*) |*entry| {
-                entry.deinit();
+        for (self.entries.items) |slot_opt| {
+            if (slot_opt) |slot| {
+                slot.entry.deinit();
+                self.allocator.destroy(slot.entry);
             }
         }
         self.entries.deinit(self.allocator);
@@ -1281,17 +1298,21 @@ const NumberFormatRegistry = struct {
     }
 
     fn register(self: *NumberFormatRegistry, entry: Entry) !usize {
+        const owned = try self.allocator.create(Entry);
+        errdefer self.allocator.destroy(owned);
+        owned.* = entry;
+
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.free_list.items.len > 0) {
             const idx = self.free_list.pop().?;
-            self.entries.items[idx] = entry;
+            self.entries.items[idx] = .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() };
             return idx;
         }
 
         const idx = self.entries.items.len;
-        try self.entries.append(self.allocator, entry);
+        try self.entries.append(self.allocator, .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() });
         return idx;
     }
 
@@ -1300,10 +1321,8 @@ const NumberFormatRegistry = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return null;
-        if (self.entries.items[idx]) |*entry| {
-            return entry;
-        }
-        return null;
+        const slot = self.entries.items[idx] orelse return null;
+        return slot.entry;
     }
 
     fn remove(self: *NumberFormatRegistry, idx: usize) void {
@@ -1311,21 +1330,40 @@ const NumberFormatRegistry = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return;
-        if (self.entries.items[idx]) |*entry| {
-            entry.deinit();
+        if (self.entries.items[idx]) |slot| {
+            slot.entry.deinit();
+            self.allocator.destroy(slot.entry);
             self.entries.items[idx] = null;
             self.free_list.append(self.allocator, idx) catch {};
         }
     }
+
+    /// Free the entries `isolate` made - its agent is ending - and no other.
+    fn deinitFor(self: *@This(), isolate: ?*v8.Isolate) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.entries.items, 0..) |slot_opt, idx| {
+            const slot = slot_opt orelse continue;
+            if (slot.isolate != isolate) continue;
+            slot.entry.deinit();
+            self.allocator.destroy(slot.entry);
+            self.entries.items[idx] = null;
+            self.free_list.append(self.allocator, idx) catch {};
+        }
+    }
+
+    const Slot = struct {
+        entry: *Entry,
+        isolate: ?*v8.Isolate,
+    };
 };
 
-var nf_registry: ?NumberFormatRegistry = null;
+/// Made with the process, not on first use: the first use can come from
+/// two threads at once (a Browser's and a worker's, docs/instances.md).
+var nf_registry: NumberFormatRegistry = .{ .allocator = std.heap.page_allocator };
 
 fn getOrInitNumberFormatRegistry() *NumberFormatRegistry {
-    if (nf_registry == null) {
-        nf_registry = NumberFormatRegistry.init(std.heap.page_allocator);
-    }
-    return &nf_registry.?;
+    return &nf_registry;
 }
 
 // ============================================================================
@@ -2014,7 +2052,11 @@ const CollatorRegistry = struct {
         }
     };
 
-    entries: std.ArrayList(?Entry) = .empty,
+    /// Heap entries, each with the isolate that made it: a pointer `get`
+    /// hands out stays good while another thread's `register` grows the list
+    /// (each Intl object's entry is used only by its own agent's thread; the
+    /// list is shared), and an agent's end frees only its own (`deinitFor`).
+    entries: std.ArrayList(?Slot) = .empty,
     free_list: std.ArrayList(usize) = .empty,
     allocator: std.mem.Allocator,
     mutex: std.Io.Mutex = .init,
@@ -2026,9 +2068,10 @@ const CollatorRegistry = struct {
     }
 
     fn deinit(self: *CollatorRegistry) void {
-        for (self.entries.items) |*entry_opt| {
-            if (entry_opt.*) |*entry| {
-                entry.deinit();
+        for (self.entries.items) |slot_opt| {
+            if (slot_opt) |slot| {
+                slot.entry.deinit();
+                self.allocator.destroy(slot.entry);
             }
         }
         self.entries.deinit(self.allocator);
@@ -2036,17 +2079,21 @@ const CollatorRegistry = struct {
     }
 
     fn register(self: *CollatorRegistry, entry: Entry) !usize {
+        const owned = try self.allocator.create(Entry);
+        errdefer self.allocator.destroy(owned);
+        owned.* = entry;
+
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.free_list.items.len > 0) {
             const idx = self.free_list.pop().?;
-            self.entries.items[idx] = entry;
+            self.entries.items[idx] = .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() };
             return idx;
         }
 
         const idx = self.entries.items.len;
-        try self.entries.append(self.allocator, entry);
+        try self.entries.append(self.allocator, .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() });
         return idx;
     }
 
@@ -2055,10 +2102,8 @@ const CollatorRegistry = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return null;
-        if (self.entries.items[idx]) |*entry| {
-            return entry;
-        }
-        return null;
+        const slot = self.entries.items[idx] orelse return null;
+        return slot.entry;
     }
 
     fn remove(self: *CollatorRegistry, idx: usize) void {
@@ -2066,21 +2111,40 @@ const CollatorRegistry = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return;
-        if (self.entries.items[idx]) |*entry| {
-            entry.deinit();
+        if (self.entries.items[idx]) |slot| {
+            slot.entry.deinit();
+            self.allocator.destroy(slot.entry);
             self.entries.items[idx] = null;
             self.free_list.append(self.allocator, idx) catch {};
         }
     }
+
+    /// Free the entries `isolate` made - its agent is ending - and no other.
+    fn deinitFor(self: *@This(), isolate: ?*v8.Isolate) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.entries.items, 0..) |slot_opt, idx| {
+            const slot = slot_opt orelse continue;
+            if (slot.isolate != isolate) continue;
+            slot.entry.deinit();
+            self.allocator.destroy(slot.entry);
+            self.entries.items[idx] = null;
+            self.free_list.append(self.allocator, idx) catch {};
+        }
+    }
+
+    const Slot = struct {
+        entry: *Entry,
+        isolate: ?*v8.Isolate,
+    };
 };
 
-var collator_registry: ?CollatorRegistry = null;
+/// Made with the process, not on first use: the first use can come from
+/// two threads at once (a Browser's and a worker's, docs/instances.md).
+var collator_registry: CollatorRegistry = .{ .allocator = std.heap.page_allocator };
 
 fn getOrInitCollatorRegistry() *CollatorRegistry {
-    if (collator_registry == null) {
-        collator_registry = CollatorRegistry.init(std.heap.page_allocator);
-    }
-    return &collator_registry.?;
+    return &collator_registry;
 }
 
 // ============================================================================
@@ -2977,23 +3041,72 @@ const PluralRulesRegistry = struct {
         allocator: std.mem.Allocator,
     };
 
-    entries: std.AutoHashMap(usize, Entry),
+    entries: std.AutoHashMap(usize, Held),
     next_id: usize,
     allocator: std.mem.Allocator,
+    /// Protects `entries` and `next_id`: Intl objects are made and collected
+    /// on every thread that runs script (a Browser's and each worker's,
+    /// docs/instances.md). Held for one map operation. An entry is a value:
+    /// `lookup` hands out a copy, whose strings stay until the object's own
+    /// thread removes the entry.
+    mutex: std.Io.Mutex = .init,
+
+    fn add(self: *PluralRulesRegistry, entry: Entry) !usize {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const id = self.next_id;
+        self.next_id += 1;
+        try self.entries.put(id, .{ .entry = entry, .isolate = v8.v8_Isolate_GetCurrent() });
+        return id;
+    }
+
+    fn lookup(self: *PluralRulesRegistry, id: usize) ?Entry {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const held = self.entries.get(id) orelse return null;
+        return held.entry;
+    }
+
+    /// Free the entries `isolate` made - its agent is ending - and no other.
+    fn deinitFor(self: *PluralRulesRegistry, isolate: ?*v8.Isolate) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var doomed: std.ArrayListUnmanaged(usize) = .empty;
+        defer doomed.deinit(self.allocator);
+        var iter = self.entries.iterator();
+        while (iter.next()) |kv| {
+            if (kv.value_ptr.isolate != isolate) continue;
+            doomed.append(self.allocator, kv.key_ptr.*) catch continue;
+        }
+        for (doomed.items) |id| {
+            const kv = self.entries.fetchRemove(id) orelse continue;
+            kv.value.entry.allocator.free(kv.value.entry.locale);
+        }
+    }
+
+    /// An entry, with the isolate that made it.
+    const Held = struct {
+        entry: Entry,
+        isolate: ?*v8.Isolate,
+    };
+
+    fn drop(self: *PluralRulesRegistry, id: usize) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        _ = self.entries.remove(id);
+    }
 };
 
-var plural_rules_registry: ?PluralRulesRegistry = null;
+/// Made with the process, not on first use: the first use can come from
+/// two threads at once (a Browser's and a worker's, docs/instances.md).
+var plural_rules_registry: PluralRulesRegistry = .{
+    .entries = std.AutoHashMap(usize, PluralRulesRegistry.Held).init(std.heap.page_allocator),
+    .next_id = 1,
+    .allocator = std.heap.page_allocator,
+};
 
 fn getOrInitPluralRulesRegistry() *PluralRulesRegistry {
-    if (plural_rules_registry == null) {
-        const allocator = std.heap.page_allocator;
-        plural_rules_registry = .{
-            .entries = std.AutoHashMap(usize, PluralRulesRegistry.Entry).init(allocator),
-            .next_id = 1,
-            .allocator = allocator,
-        };
-    }
-    return &plural_rules_registry.?;
+    return &plural_rules_registry;
 }
 
 /// Get plural category for a number (simplified CLDR rules)
@@ -3124,9 +3237,7 @@ fn pluralRulesConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv
         .allocator = allocator,
     };
 
-    const id = registry.next_id;
-    registry.next_id += 1;
-    registry.entries.put(id, entry) catch {
+    const id = registry.add(entry) catch {
         conv.throwTypeError(isolate, "Failed to store PluralRules");
         return;
     };
@@ -3180,7 +3291,7 @@ fn pluralRulesSelectCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) 
     const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
 
     const registry = getOrInitPluralRulesRegistry();
-    const entry = registry.entries.get(id) orelse return;
+    const entry = registry.lookup(id) orelse return;
 
     // Get number argument
     if (info.length() < 1) {
@@ -3219,7 +3330,7 @@ fn pluralRulesResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) call
     const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
 
     const registry = getOrInitPluralRulesRegistry();
-    const entry = registry.entries.get(id) orelse return;
+    const entry = registry.lookup(id) orelse return;
 
     // Create result object
     const result = v8.v8_Object_New(isolate) orelse return;
@@ -3356,23 +3467,72 @@ const RelativeTimeFormatRegistry = struct {
         allocator: std.mem.Allocator,
     };
 
-    entries: std.AutoHashMap(usize, Entry),
+    entries: std.AutoHashMap(usize, Held),
     next_id: usize,
     allocator: std.mem.Allocator,
+    /// Protects `entries` and `next_id`: Intl objects are made and collected
+    /// on every thread that runs script (a Browser's and each worker's,
+    /// docs/instances.md). Held for one map operation. An entry is a value:
+    /// `lookup` hands out a copy, whose strings stay until the object's own
+    /// thread removes the entry.
+    mutex: std.Io.Mutex = .init,
+
+    fn add(self: *RelativeTimeFormatRegistry, entry: Entry) !usize {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const id = self.next_id;
+        self.next_id += 1;
+        try self.entries.put(id, .{ .entry = entry, .isolate = v8.v8_Isolate_GetCurrent() });
+        return id;
+    }
+
+    fn lookup(self: *RelativeTimeFormatRegistry, id: usize) ?Entry {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const held = self.entries.get(id) orelse return null;
+        return held.entry;
+    }
+
+    /// Free the entries `isolate` made - its agent is ending - and no other.
+    fn deinitFor(self: *RelativeTimeFormatRegistry, isolate: ?*v8.Isolate) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var doomed: std.ArrayListUnmanaged(usize) = .empty;
+        defer doomed.deinit(self.allocator);
+        var iter = self.entries.iterator();
+        while (iter.next()) |kv| {
+            if (kv.value_ptr.isolate != isolate) continue;
+            doomed.append(self.allocator, kv.key_ptr.*) catch continue;
+        }
+        for (doomed.items) |id| {
+            const kv = self.entries.fetchRemove(id) orelse continue;
+            kv.value.entry.allocator.free(kv.value.entry.locale);
+        }
+    }
+
+    /// An entry, with the isolate that made it.
+    const Held = struct {
+        entry: Entry,
+        isolate: ?*v8.Isolate,
+    };
+
+    fn drop(self: *RelativeTimeFormatRegistry, id: usize) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        _ = self.entries.remove(id);
+    }
 };
 
-var relative_time_format_registry: ?RelativeTimeFormatRegistry = null;
+/// Made with the process, not on first use: the first use can come from
+/// two threads at once (a Browser's and a worker's, docs/instances.md).
+var relative_time_format_registry: RelativeTimeFormatRegistry = .{
+    .entries = std.AutoHashMap(usize, RelativeTimeFormatRegistry.Held).init(std.heap.page_allocator),
+    .next_id = 1,
+    .allocator = std.heap.page_allocator,
+};
 
 fn getOrInitRelativeTimeFormatRegistry() *RelativeTimeFormatRegistry {
-    if (relative_time_format_registry == null) {
-        const allocator = std.heap.page_allocator;
-        relative_time_format_registry = .{
-            .entries = std.AutoHashMap(usize, RelativeTimeFormatRegistry.Entry).init(allocator),
-            .next_id = 1,
-            .allocator = allocator,
-        };
-    }
-    return &relative_time_format_registry.?;
+    return &relative_time_format_registry;
 }
 
 /// Format relative time (simplified implementation)
@@ -3555,9 +3715,7 @@ fn relativeTimeFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) c
         .allocator = allocator,
     };
 
-    const id = registry.next_id;
-    registry.next_id += 1;
-    registry.entries.put(id, entry) catch {
+    const id = registry.add(entry) catch {
         conv.throwTypeError(isolate, "Failed to store RelativeTimeFormat");
         return;
     };
@@ -3611,7 +3769,7 @@ fn relativeTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callco
     const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
 
     const registry = getOrInitRelativeTimeFormatRegistry();
-    const entry = registry.entries.get(id) orelse return;
+    const entry = registry.lookup(id) orelse return;
 
     // Get arguments: value, unit
     if (info.length() < 2) {
@@ -3664,7 +3822,7 @@ fn relativeTimeFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInf
     const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
 
     const registry = getOrInitRelativeTimeFormatRegistry();
-    const entry = registry.entries.get(id) orelse return;
+    const entry = registry.lookup(id) orelse return;
 
     // Create result object
     const result = v8.v8_Object_New(isolate) orelse return;
@@ -3739,23 +3897,72 @@ const ListFormatRegistry = struct {
         allocator: std.mem.Allocator,
     };
 
-    entries: std.AutoHashMap(usize, Entry),
+    entries: std.AutoHashMap(usize, Held),
     next_id: usize,
     allocator: std.mem.Allocator,
+    /// Protects `entries` and `next_id`: Intl objects are made and collected
+    /// on every thread that runs script (a Browser's and each worker's,
+    /// docs/instances.md). Held for one map operation. An entry is a value:
+    /// `lookup` hands out a copy, whose strings stay until the object's own
+    /// thread removes the entry.
+    mutex: std.Io.Mutex = .init,
+
+    fn add(self: *ListFormatRegistry, entry: Entry) !usize {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const id = self.next_id;
+        self.next_id += 1;
+        try self.entries.put(id, .{ .entry = entry, .isolate = v8.v8_Isolate_GetCurrent() });
+        return id;
+    }
+
+    fn lookup(self: *ListFormatRegistry, id: usize) ?Entry {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const held = self.entries.get(id) orelse return null;
+        return held.entry;
+    }
+
+    /// Free the entries `isolate` made - its agent is ending - and no other.
+    fn deinitFor(self: *ListFormatRegistry, isolate: ?*v8.Isolate) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var doomed: std.ArrayListUnmanaged(usize) = .empty;
+        defer doomed.deinit(self.allocator);
+        var iter = self.entries.iterator();
+        while (iter.next()) |kv| {
+            if (kv.value_ptr.isolate != isolate) continue;
+            doomed.append(self.allocator, kv.key_ptr.*) catch continue;
+        }
+        for (doomed.items) |id| {
+            const kv = self.entries.fetchRemove(id) orelse continue;
+            kv.value.entry.allocator.free(kv.value.entry.locale);
+        }
+    }
+
+    /// An entry, with the isolate that made it.
+    const Held = struct {
+        entry: Entry,
+        isolate: ?*v8.Isolate,
+    };
+
+    fn drop(self: *ListFormatRegistry, id: usize) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        _ = self.entries.remove(id);
+    }
 };
 
-var list_format_registry: ?ListFormatRegistry = null;
+/// Made with the process, not on first use: the first use can come from
+/// two threads at once (a Browser's and a worker's, docs/instances.md).
+var list_format_registry: ListFormatRegistry = .{
+    .entries = std.AutoHashMap(usize, ListFormatRegistry.Held).init(std.heap.page_allocator),
+    .next_id = 1,
+    .allocator = std.heap.page_allocator,
+};
 
 fn getOrInitListFormatRegistry() *ListFormatRegistry {
-    if (list_format_registry == null) {
-        const allocator = std.heap.page_allocator;
-        list_format_registry = .{
-            .entries = std.AutoHashMap(usize, ListFormatRegistry.Entry).init(allocator),
-            .next_id = 1,
-            .allocator = allocator,
-        };
-    }
-    return &list_format_registry.?;
+    return &list_format_registry;
 }
 
 /// Format a list
@@ -3899,9 +4106,7 @@ fn listFormatConstructorCallback(info: *const v8.FunctionCallbackInfo) callconv(
         .allocator = allocator,
     };
 
-    const id = registry.next_id;
-    registry.next_id += 1;
-    registry.entries.put(id, entry) catch {
+    const id = registry.add(entry) catch {
         conv.throwTypeError(isolate, "Failed to store ListFormat");
         return;
     };
@@ -3955,7 +4160,7 @@ fn listFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) v
     const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
 
     const registry = getOrInitListFormatRegistry();
-    const entry = registry.entries.get(id) orelse return;
+    const entry = registry.lookup(id) orelse return;
 
     // Get array argument
     if (info.length() < 1) {
@@ -4046,7 +4251,7 @@ fn listFormatResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) callc
     const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
 
     const registry = getOrInitListFormatRegistry();
-    const entry = registry.entries.get(id) orelse return;
+    const entry = registry.lookup(id) orelse return;
 
     // Create result object
     const result = v8.v8_Object_New(isolate) orelse return;
@@ -4118,23 +4323,72 @@ const DisplayNamesRegistry = struct {
         allocator: std.mem.Allocator,
     };
 
-    entries: std.AutoHashMap(usize, Entry),
+    entries: std.AutoHashMap(usize, Held),
     next_id: usize,
     allocator: std.mem.Allocator,
+    /// Protects `entries` and `next_id`: Intl objects are made and collected
+    /// on every thread that runs script (a Browser's and each worker's,
+    /// docs/instances.md). Held for one map operation. An entry is a value:
+    /// `lookup` hands out a copy, whose strings stay until the object's own
+    /// thread removes the entry.
+    mutex: std.Io.Mutex = .init,
+
+    fn add(self: *DisplayNamesRegistry, entry: Entry) !usize {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const id = self.next_id;
+        self.next_id += 1;
+        try self.entries.put(id, .{ .entry = entry, .isolate = v8.v8_Isolate_GetCurrent() });
+        return id;
+    }
+
+    fn lookup(self: *DisplayNamesRegistry, id: usize) ?Entry {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        const held = self.entries.get(id) orelse return null;
+        return held.entry;
+    }
+
+    /// Free the entries `isolate` made - its agent is ending - and no other.
+    fn deinitFor(self: *DisplayNamesRegistry, isolate: ?*v8.Isolate) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var doomed: std.ArrayListUnmanaged(usize) = .empty;
+        defer doomed.deinit(self.allocator);
+        var iter = self.entries.iterator();
+        while (iter.next()) |kv| {
+            if (kv.value_ptr.isolate != isolate) continue;
+            doomed.append(self.allocator, kv.key_ptr.*) catch continue;
+        }
+        for (doomed.items) |id| {
+            const kv = self.entries.fetchRemove(id) orelse continue;
+            kv.value.entry.allocator.free(kv.value.entry.locale);
+        }
+    }
+
+    /// An entry, with the isolate that made it.
+    const Held = struct {
+        entry: Entry,
+        isolate: ?*v8.Isolate,
+    };
+
+    fn drop(self: *DisplayNamesRegistry, id: usize) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        _ = self.entries.remove(id);
+    }
 };
 
-var display_names_registry: ?DisplayNamesRegistry = null;
+/// Made with the process, not on first use: the first use can come from
+/// two threads at once (a Browser's and a worker's, docs/instances.md).
+var display_names_registry: DisplayNamesRegistry = .{
+    .entries = std.AutoHashMap(usize, DisplayNamesRegistry.Held).init(std.heap.page_allocator),
+    .next_id = 1,
+    .allocator = std.heap.page_allocator,
+};
 
 fn getOrInitDisplayNamesRegistry() *DisplayNamesRegistry {
-    if (display_names_registry == null) {
-        const allocator = std.heap.page_allocator;
-        display_names_registry = .{
-            .entries = std.AutoHashMap(usize, DisplayNamesRegistry.Entry).init(allocator),
-            .next_id = 1,
-            .allocator = allocator,
-        };
-    }
-    return &display_names_registry.?;
+    return &display_names_registry;
 }
 
 /// Get display name for a code
@@ -4344,9 +4598,7 @@ fn displayNamesConstructorCallback(info: *const v8.FunctionCallbackInfo) callcon
         .allocator = allocator,
     };
 
-    const id = registry.next_id;
-    registry.next_id += 1;
-    registry.entries.put(id, entry) catch {
+    const id = registry.add(entry) catch {
         conv.throwTypeError(isolate, "Failed to store DisplayNames");
         return;
     };
@@ -4400,7 +4652,7 @@ fn displayNamesOfCallback(info: *const v8.FunctionCallbackInfo) callconv(.c) voi
     const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
 
     const registry = getOrInitDisplayNamesRegistry();
-    const entry = registry.entries.get(id) orelse return;
+    const entry = registry.lookup(id) orelse return;
 
     // Get code argument
     if (info.length() < 1) {
@@ -4452,7 +4704,7 @@ fn displayNamesResolvedOptionsCallback(info: *const v8.FunctionCallbackInfo) cal
     const id: usize = @intFromFloat(v8.v8_Value_NumberValue(id_val, context));
 
     const registry = getOrInitDisplayNamesRegistry();
-    const entry = registry.entries.get(id) orelse return;
+    const entry = registry.lookup(id) orelse return;
 
     // Create result object
     const result = v8.v8_Object_New(isolate) orelse return;
@@ -4533,7 +4785,11 @@ const SegmenterRegistry = struct {
         }
     };
 
-    entries: std.ArrayList(?Entry) = .empty,
+    /// Heap entries, each with the isolate that made it: a pointer `get`
+    /// hands out stays good while another thread's `register` grows the list
+    /// (each Intl object's entry is used only by its own agent's thread; the
+    /// list is shared), and an agent's end frees only its own (`deinitFor`).
+    entries: std.ArrayList(?Slot) = .empty,
     free_list: std.ArrayList(usize) = .empty,
     allocator: std.mem.Allocator,
     mutex: std.Io.Mutex = .init,
@@ -4545,9 +4801,10 @@ const SegmenterRegistry = struct {
     }
 
     fn deinit(self: *SegmenterRegistry) void {
-        for (self.entries.items) |*entry_opt| {
-            if (entry_opt.*) |*entry| {
-                entry.deinit();
+        for (self.entries.items) |slot_opt| {
+            if (slot_opt) |slot| {
+                slot.entry.deinit();
+                self.allocator.destroy(slot.entry);
             }
         }
         self.entries.deinit(self.allocator);
@@ -4555,17 +4812,21 @@ const SegmenterRegistry = struct {
     }
 
     fn register(self: *SegmenterRegistry, entry: Entry) !usize {
+        const owned = try self.allocator.create(Entry);
+        errdefer self.allocator.destroy(owned);
+        owned.* = entry;
+
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (self.free_list.items.len > 0) {
             const idx = self.free_list.pop().?;
-            self.entries.items[idx] = entry;
+            self.entries.items[idx] = .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() };
             return idx;
         }
 
         const idx = self.entries.items.len;
-        try self.entries.append(self.allocator, entry);
+        try self.entries.append(self.allocator, .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() });
         return idx;
     }
 
@@ -4574,10 +4835,8 @@ const SegmenterRegistry = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return null;
-        if (self.entries.items[idx]) |*entry| {
-            return entry;
-        }
-        return null;
+        const slot = self.entries.items[idx] orelse return null;
+        return slot.entry;
     }
 
     fn remove(self: *SegmenterRegistry, idx: usize) void {
@@ -4585,21 +4844,40 @@ const SegmenterRegistry = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         if (idx >= self.entries.items.len) return;
-        if (self.entries.items[idx]) |*entry| {
-            entry.deinit();
+        if (self.entries.items[idx]) |slot| {
+            slot.entry.deinit();
+            self.allocator.destroy(slot.entry);
             self.entries.items[idx] = null;
             self.free_list.append(self.allocator, idx) catch {};
         }
     }
+
+    /// Free the entries `isolate` made - its agent is ending - and no other.
+    fn deinitFor(self: *@This(), isolate: ?*v8.Isolate) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.entries.items, 0..) |slot_opt, idx| {
+            const slot = slot_opt orelse continue;
+            if (slot.isolate != isolate) continue;
+            slot.entry.deinit();
+            self.allocator.destroy(slot.entry);
+            self.entries.items[idx] = null;
+            self.free_list.append(self.allocator, idx) catch {};
+        }
+    }
+
+    const Slot = struct {
+        entry: *Entry,
+        isolate: ?*v8.Isolate,
+    };
 };
 
-var segmenter_registry: ?SegmenterRegistry = null;
+/// Made with the process, not on first use: the first use can come from
+/// two threads at once (a Browser's and a worker's, docs/instances.md).
+var segmenter_registry: SegmenterRegistry = .{ .allocator = std.heap.page_allocator };
 
 fn getOrInitSegmenterRegistry() *SegmenterRegistry {
-    if (segmenter_registry == null) {
-        segmenter_registry = SegmenterRegistry.init(std.heap.page_allocator);
-    }
-    return &segmenter_registry.?;
+    return &segmenter_registry;
 }
 
 /// Get the Segmenter registry index from an object
@@ -5136,34 +5414,57 @@ const LocaleRegistry = struct {
         }
     };
 
-    entries: std.AutoHashMap(usize, Entry),
+    /// Heap entries: a pointer `get` hands out stays good while another
+    /// thread's `register` grows the map.
+    entries: std.AutoHashMapUnmanaged(usize, Held) = .empty,
     next_id: usize = 0,
     allocator: std.mem.Allocator,
     mutex: std.Io.Mutex = .init,
 
-    fn init(allocator: std.mem.Allocator) LocaleRegistry {
-        return .{
-            .entries = std.AutoHashMap(usize, Entry).init(allocator),
-            .allocator = allocator,
-        };
+    fn deinit(self: *LocaleRegistry) void {
+        var iter = self.entries.valueIterator();
+        while (iter.next()) |held| {
+            held.entry.deinit();
+            self.allocator.destroy(held.entry);
+        }
+        self.entries.deinit(self.allocator);
     }
 
-    fn deinit(self: *LocaleRegistry) void {
+    /// Free the entries `isolate` made - its agent is ending - and no other.
+    fn deinitFor(self: *LocaleRegistry, isolate: ?*v8.Isolate) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var doomed: std.ArrayListUnmanaged(usize) = .empty;
+        defer doomed.deinit(self.allocator);
         var iter = self.entries.iterator();
         while (iter.next()) |kv| {
-            var entry = kv.value_ptr;
-            entry.deinit();
+            if (kv.value_ptr.isolate != isolate) continue;
+            doomed.append(self.allocator, kv.key_ptr.*) catch continue;
         }
-        self.entries.deinit();
+        for (doomed.items) |id| {
+            const kv = self.entries.fetchRemove(id) orelse continue;
+            kv.value.entry.deinit();
+            self.allocator.destroy(kv.value.entry);
+        }
     }
 
+    /// An entry, with the isolate that made it.
+    const Held = struct {
+        entry: *Entry,
+        isolate: ?*v8.Isolate,
+    };
+
     fn register(self: *LocaleRegistry, entry: Entry) !usize {
+        const owned = try self.allocator.create(Entry);
+        errdefer self.allocator.destroy(owned);
+        owned.* = entry;
+
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
         const id = self.next_id;
         self.next_id += 1;
-        try self.entries.put(id, entry);
+        try self.entries.put(self.allocator, id, .{ .entry = owned, .isolate = v8.v8_Isolate_GetCurrent() });
         return id;
     }
 
@@ -5171,27 +5472,27 @@ const LocaleRegistry = struct {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
-        return self.entries.getPtr(id);
+        const held = self.entries.get(id) orelse return null;
+        return held.entry;
     }
 
     fn remove(self: *LocaleRegistry, id: usize) void {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
 
-        if (self.entries.getPtr(id)) |entry| {
-            entry.deinit();
-            _ = self.entries.remove(id);
+        if (self.entries.fetchRemove(id)) |kv| {
+            kv.value.entry.deinit();
+            self.allocator.destroy(kv.value.entry);
         }
     }
 };
 
-var locale_registry: ?LocaleRegistry = null;
+/// Made with the process, not on first use: the first use can come from
+/// two threads at once (a Browser's and a worker's, docs/instances.md).
+var locale_registry: LocaleRegistry = .{ .allocator = std.heap.page_allocator };
 
 fn getOrInitLocaleRegistry() *LocaleRegistry {
-    if (locale_registry == null) {
-        locale_registry = LocaleRegistry.init(std.heap.page_allocator);
-    }
-    return &locale_registry.?;
+    return &locale_registry;
 }
 
 /// Get the Locale registry index from an object
@@ -6228,84 +6529,24 @@ pub fn registerExternalReferences() void {
     ext_refs.registerCallbackRuntime(segmenterSupportedLocalesOfCallback);
 }
 
-/// Deinitialize all Intl registries, freeing any remaining entries.
-/// Call this during runtime shutdown to clean up resources.
+/// Free the Intl registry entries of the agent that is ending - the current
+/// isolate's: context_manager.deinit runs this inside the agent's end, with
+/// its isolate entered. Only its own: every agent's entries share these
+/// registries, and a worker on a thread of its own ends as its thread's host
+/// agent while the page's Intl objects live on (docs/instances.md).
 /// Note: With weak callbacks enabled, most entries should already be cleaned
 /// up via GC. This is a safety net for any entries that weren't GC'd.
 pub fn deinitAllRegistries() void {
-    // DateTimeFormat registry
-    if (dtf_registry) |*reg| {
-        reg.deinit();
-        dtf_registry = null;
-    }
-
-    // NumberFormat registry
-    if (nf_registry) |*reg| {
-        reg.deinit();
-        nf_registry = null;
-    }
-
-    // Collator registry
-    if (collator_registry) |*reg| {
-        reg.deinit();
-        collator_registry = null;
-    }
-
-    // PluralRules registry
-    if (plural_rules_registry) |*reg| {
-        // Free locale strings for remaining entries
-        var iter = reg.entries.iterator();
-        while (iter.next()) |kv| {
-            kv.value_ptr.allocator.free(kv.value_ptr.locale);
-        }
-        reg.entries.deinit();
-        plural_rules_registry = null;
-    }
-
-    // RelativeTimeFormat registry
-    if (relative_time_format_registry) |*reg| {
-        // Free locale strings for remaining entries
-        var iter = reg.entries.iterator();
-        while (iter.next()) |kv| {
-            kv.value_ptr.allocator.free(kv.value_ptr.locale);
-        }
-        reg.entries.deinit();
-        relative_time_format_registry = null;
-    }
-
-    // ListFormat registry
-    if (list_format_registry) |*reg| {
-        // Free locale strings for remaining entries
-        var iter = reg.entries.iterator();
-        while (iter.next()) |kv| {
-            kv.value_ptr.allocator.free(kv.value_ptr.locale);
-        }
-        reg.entries.deinit();
-        list_format_registry = null;
-    }
-
-    // DisplayNames registry
-    if (display_names_registry) |*reg| {
-        // Free locale strings for remaining entries
-        var iter = reg.entries.iterator();
-        while (iter.next()) |kv| {
-            kv.value_ptr.allocator.free(kv.value_ptr.locale);
-        }
-        reg.entries.deinit();
-        display_names_registry = null;
-    }
-
-    // Locale registry
-    if (locale_registry) |*reg| {
-        reg.deinit();
-        locale_registry = null;
-    }
-
-    // Segmenter registry
-    if (segmenter_registry) |*reg| {
-        reg.deinit();
-        segmenter_registry = null;
-    }
+    const isolate = v8.v8_Isolate_GetCurrent();
+    dtf_registry.deinitFor(isolate);
+    nf_registry.deinitFor(isolate);
+    collator_registry.deinitFor(isolate);
+    plural_rules_registry.deinitFor(isolate);
+    relative_time_format_registry.deinitFor(isolate);
+    list_format_registry.deinitFor(isolate);
+    display_names_registry.deinitFor(isolate);
+    locale_registry.deinitFor(isolate);
+    segmenter_registry.deinitFor(isolate);
 }
 
 // ============================================================================

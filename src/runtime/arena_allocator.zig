@@ -9,7 +9,9 @@
 //! - Supports variable-size allocations (Node, Element, Text have different sizes)
 //! - Reset retains capacity for next GC cycle
 //!
-//! Thread safety: Single-threaded (no locks)
+//! Thread safety: every thread that makes platform objects takes its state
+//! from here - a Browser's thread and each of its workers' (docs/instances.md)
+//! - so every method takes `mutex`.
 
 const std = @import("std");
 
@@ -44,6 +46,11 @@ pub const ArenaAllocator = struct {
     /// Blocks recycled rather than taken from the arena. Diagnostic: if this stays
     /// at zero while a discard loop runs, states are not being returned at all.
     total_recycled: usize = 0,
+
+    /// Protects `arena`, `free_lists` and the statistics: every thread that
+    /// makes or frees a platform object's state takes it, for one bump or one
+    /// free-list push or pop - never across a call out of this file.
+    mutex: std.Io.Mutex = .init,
 
     /// Global instance
     var global: ?ArenaAllocator = null;
@@ -176,6 +183,8 @@ pub const ArenaAllocator = struct {
     /// recycled block also carries the previous occupant's bytes, and an optional
     /// pointer field coming back non-null would be dereferenced.
     pub fn createRaw(self: *ArenaAllocator, size: usize, alignment: usize) ![*]u8 {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.total_allocations += 1;
         self.total_bytes_allocated += size;
         self.bytes_in_use += size;
@@ -244,6 +253,8 @@ pub const ArenaAllocator = struct {
     /// something. `bytes_in_use` is still decremented, so the figure stays honest
     /// about what callers hold rather than what the arena has reserved.
     pub fn destroyRaw(self: *ArenaAllocator, ptr: [*]u8, size: usize, alignment: usize) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.bytes_in_use -|= size;
         if (sizeClassOf(size, alignment)) |class| {
             self.pushFree(class, ptr);
@@ -252,6 +263,8 @@ pub const ArenaAllocator = struct {
 
     /// Allocate a slice of items
     pub fn alloc(self: *ArenaAllocator, comptime T: type, n: usize) ![]T {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const slice = try self.arena.allocator().alloc(T, n);
         self.total_allocations += 1;
         self.total_bytes_allocated += @sizeOf(T) * n;
@@ -261,6 +274,8 @@ pub const ArenaAllocator = struct {
 
     /// Duplicate a slice
     pub fn dupe(self: *ArenaAllocator, comptime T: type, m: []const T) ![]T {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const slice = try self.arena.allocator().dupe(T, m);
         self.total_allocations += 1;
         self.total_bytes_allocated += @sizeOf(T) * m.len;
@@ -276,6 +291,8 @@ pub const ArenaAllocator = struct {
     /// Important: Caller must ensure all FullState deinit() functions
     /// have been called before reset to clean up owned resources.
     pub fn reset(self: *ArenaAllocator) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         _ = self.arena.reset(.retain_capacity);
         self.total_resets += 1;
         // The free lists point into the memory just released. Dropping them is not
@@ -287,7 +304,9 @@ pub const ArenaAllocator = struct {
     }
 
     /// Get allocation statistics
-    pub fn stats(self: *const ArenaAllocator) Stats {
+    pub fn stats(self: *ArenaAllocator) Stats {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return Stats{
             .total_allocations = self.total_allocations,
             .total_bytes_allocated = self.total_bytes_allocated,

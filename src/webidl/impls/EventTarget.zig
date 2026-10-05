@@ -277,68 +277,118 @@ pub fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !
 
 /// Global registry for internal state
 /// This is a workaround until the codegen adds _internal field to State
-/// Note: We use a raw pointer to allow cleanup to set it to null
-var internal_state_registry: ?std.AutoHashMap(usize, *InternalState) = null;
-var cleanup_hook_registered: bool = false;
+///
+/// Every EventTarget of every thread is here - a Browser's thread and each of
+/// its workers' (docs/instances.md) - so the map is reached only under
+/// `mutex`. A value is a block its instance's thread allocated and frees, so
+/// a pointer read under the lock stays good after it; what an entry holds of
+/// the engine (listeners' callbacks, event handlers) is released OUTSIDE the
+/// lock, on the entry's own thread (`releaseEntry`).
+const Registry = struct {
+    /// Protects `map`, `guard` and `cleanup_hook_registered`; held for one
+    /// map operation or one sweep of the map, never across a call that can
+    /// reach the engine or script.
+    mutex: std.Io.Mutex = .init,
+    map: ?std.AutoHashMap(usize, *InternalState) = null,
+    cleanup_hook_registered: bool = false,
+    /// Every EventTarget - every node - a page makes enters the registry and
+    /// leaves it; the guard rehashes before an insert once the tombstones
+    /// those removals leave could take half the free slots
+    /// (webidl.utils.tombstones).
+    guard: webidl.utils.tombstones.TombstoneGuard = .{},
 
-/// Every EventTarget - every node - a page makes enters the registry and
-/// leaves it; the guard rehashes before an insert once the tombstones those
-/// removals leave could take half the free slots (webidl.utils.tombstones).
-var registry_guard: webidl.utils.tombstones.TombstoneGuard = .{};
-
-fn ensureRegistry() *std.AutoHashMap(usize, *InternalState) {
-    if (internal_state_registry == null) {
-        internal_state_registry = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
-        // Register cleanup hook on first use
-        if (!cleanup_hook_registered) {
-            runtime.registerCleanupHook(cleanupRegistry);
-            cleanup_hook_registered = true;
-        }
+    fn lock(self: *Registry) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
     }
-    return &internal_state_registry.?;
-}
+
+    fn unlock(self: *Registry) void {
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+    }
+
+    /// The map, made on first use. Called with `mutex` held.
+    fn ensure(self: *Registry) *std.AutoHashMap(usize, *InternalState) {
+        if (self.map == null) {
+            self.map = std.AutoHashMap(usize, *InternalState).init(std.heap.page_allocator);
+            // Register cleanup hook on first use
+            if (!self.cleanup_hook_registered) {
+                runtime.registerCleanupHook(cleanupRegistry);
+                self.cleanup_hook_registered = true;
+            }
+        }
+        return &self.map.?;
+    }
+
+    /// Take `key`'s entry out of the map. Called with `mutex` held; the
+    /// caller releases it (`releaseEntry`) after unlocking.
+    fn take(self: *Registry, key: usize) ?*InternalState {
+        const map = &(self.map orelse return null);
+        const kv = map.fetchRemove(key) orelse return null;
+        self.guard.noteRemoval(map);
+        return kv.value;
+    }
+
+    /// The whole map, taken out for a final sweep. Called with `mutex` held.
+    fn takeAll(self: *Registry) ?std.AutoHashMap(usize, *InternalState) {
+        const map = self.map orelse return null;
+        self.map = null;
+        // So the hook can be registered again if the runtime is.
+        self.cleanup_hook_registered = false;
+        self.guard.reset();
+        return map;
+    }
+};
+var internal_state_registry: Registry = .{};
 
 /// Clean up all remaining internal states, releasing the engine values they
 /// hold (listeners' callbacks, event handlers). This should be called during
 /// browser/context cleanup, BEFORE the agent is destroyed.
 ///
 /// This is called from cleanup.cleanupAllDomRegistries() which runs before
-/// runtime.deinitializeRuntime(), while the agent is still alive.
+/// runtime.deinitializeRuntime(), while the agent is still alive - and after
+/// every worker of the Browser has ended, so every entry left is this
+/// thread's.
 pub fn cleanupAllRemainingInternal() void {
-    if (internal_state_registry) |*registry| {
+    const registry = &internal_state_registry;
+    registry.lock();
+    var taken = registry.takeAll();
+    registry.unlock();
+    if (taken) |*map| {
         // Clean up all internal states with V8 resource cleanup enabled
-        var iter = registry.valueIterator();
+        var iter = map.valueIterator();
         while (iter.next()) |internal_ptr| {
             internal_ptr.*.deinitEx(true); // the agent is alive: release its values
         }
-        registry.deinit();
-        internal_state_registry = null;
+        map.deinit();
     }
-    // Reset flag so hook can be re-registered if runtime is re-initialized
-    cleanup_hook_registered = false;
 }
 
 /// Clean up all remaining internal states and the registry itself
 /// This should be called during runtime shutdown to prevent memory leaks
 /// Note: This is called AFTER V8 isolate is disposed, so we must skip V8 resource cleanup
 pub fn cleanupRegistry() void {
-    if (internal_state_registry) |*registry| {
+    const registry = &internal_state_registry;
+    registry.lock();
+    var taken = registry.takeAll();
+    registry.unlock();
+    if (taken) |*map| {
         // Clean up any remaining internal states
         // Skip V8 cleanup (false) because the isolate is already disposed
-        var iter = registry.valueIterator();
+        var iter = map.valueIterator();
         while (iter.next()) |internal_ptr| {
             internal_ptr.*.deinitEx(false);
         }
-        registry.deinit();
-        internal_state_registry = null;
+        map.deinit();
     }
-    // Reset flag so hook can be re-registered if runtime is re-initialized
-    cleanup_hook_registered = false;
 }
 
 fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
-    const registry = ensureRegistry();
-    const internal = registry.get(@intFromPtr(instance)) orelse return null;
+    const registry = &internal_state_registry;
+    registry.lock();
+    const map = registry.ensure();
+    const internal = map.get(@intFromPtr(instance)) orelse {
+        registry.unlock();
+        return null;
+    };
     // INTERIM until every EventTarget impl chains init/deinit (queue): an
     // entry made lazily for an instance that has since been freed, whose slot
     // this instance now has. The listeners are the dead instance's: they go
@@ -346,23 +396,31 @@ fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
     // and this instance has none.
     if (internal.lazy) |lazy| {
         if (lazy.generation != runtime.SlabAllocator.generationOf(instance)) {
-            dropEntry(registry, @intFromPtr(instance));
+            const stale = registry.take(@intFromPtr(instance));
+            registry.unlock();
+            if (stale) |entry| releaseEntry(entry);
             return null;
         }
     }
+    registry.unlock();
     return internal;
 }
 
 fn setInternalInRegistry(instance: *runtime.Instance, internal: *InternalState) !void {
-    const registry = ensureRegistry();
+    const registry = &internal_state_registry;
+    var stale: ?*InternalState = null;
+    defer if (stale) |entry| releaseEntry(entry);
+    registry.lock();
+    defer registry.unlock();
+    const map = registry.ensure();
     // A lazily made entry still under this address is a freed instance's
     // (see `LazyEntry`): it goes before the new one takes its place, rather
     // than being overwritten with its listeners still held.
-    if (registry.get(@intFromPtr(instance))) |old| {
-        if (old != internal and old.lazy != null) dropEntry(registry, @intFromPtr(instance));
+    if (map.get(@intFromPtr(instance))) |old| {
+        if (old != internal and old.lazy != null) stale = registry.take(@intFromPtr(instance));
     }
-    registry_guard.beforeInsert(registry);
-    try registry.put(@intFromPtr(instance), internal);
+    registry.guard.beforeInsert(map);
+    try map.put(@intFromPtr(instance), internal);
 }
 
 /// The entry for an instance that never ran EventTarget's init (see
@@ -378,15 +436,13 @@ fn lazyInternal(instance: *runtime.Instance) !*InternalState {
     return internal;
 }
 
-/// Release an entry and what it holds - its listeners' callbacks and its
-/// event handlers - and remove it. Only for an entry whose realm's agent
-/// lives.
-fn dropEntry(registry: *std.AutoHashMap(usize, *InternalState), key: usize) void {
-    const kv = registry.fetchRemove(key) orelse return;
-    registry_guard.noteRemoval(registry);
-    kv.value.deinitEx(true);
+/// Release an entry taken out of the registry and what it holds - its
+/// listeners' callbacks and its event handlers. Only for an entry whose
+/// realm's agent lives, on that agent's thread, with the registry unlocked.
+fn releaseEntry(internal: *InternalState) void {
+    internal.deinitEx(true);
     const Arena = @import("runtime").ArenaAllocator;
-    if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, kv.value);
+    if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
 }
 
 /// EventTarget's unloading cleanup step (dom.unloading_cleanup): the entries
@@ -396,26 +452,42 @@ fn dropEntry(registry: *std.AutoHashMap(usize, *InternalState), key: usize) void
 /// realm, and the browser's end, which releases whatever is left here, is
 /// too late for it.
 fn releaseRealmEntries(environment: runtime.Context) void {
-    const registry = if (internal_state_registry) |*r| r else return;
-    var doomed: std.ArrayListUnmanaged(usize) = .empty;
+    const registry = &internal_state_registry;
+    var doomed: std.ArrayListUnmanaged(*InternalState) = .empty;
     defer doomed.deinit(std.heap.page_allocator);
-    var it = registry.iterator();
-    while (it.next()) |entry| {
-        const lazy = entry.value_ptr.*.lazy orelse continue;
-        if (lazy.realm == environment) doomed.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
+    {
+        registry.lock();
+        defer registry.unlock();
+        const map = &(registry.map orelse return);
+        var keys: std.ArrayListUnmanaged(usize) = .empty;
+        defer keys.deinit(std.heap.page_allocator);
+        var it = map.iterator();
+        while (it.next()) |entry| {
+            const lazy = entry.value_ptr.*.lazy orelse continue;
+            if (lazy.realm == environment) keys.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
+        }
+        // Room first: an entry taken out must reach `releaseEntry`. Out of
+        // memory, the entries stay in the map for the Browser's end.
+        doomed.ensureTotalCapacity(std.heap.page_allocator, keys.items.len) catch return;
+        for (keys.items) |key| {
+            const taken = registry.take(key) orelse continue;
+            doomed.appendAssumeCapacity(taken);
+        }
     }
-    for (doomed.items) |key| dropEntry(registry, key);
+    for (doomed.items) |internal| releaseEntry(internal);
 }
 
 fn removeFromRegistry(instance: *runtime.Instance) void {
-    const registry = ensureRegistry();
+    const registry = &internal_state_registry;
+    registry.lock();
+    const taken = registry.take(@intFromPtr(instance));
+    registry.unlock();
     // Return the block, not just the map entry. EventTarget keeps its own registry
     // rather than using InstanceRegistry, so it needs its own release - and it is on
     // every DOM node, so leaving it out keeps the leak on the hottest path there is.
-    if (registry.fetchRemove(@intFromPtr(instance))) |kv| {
-        registry_guard.noteRemoval(registry);
+    if (taken) |internal| {
         const Arena = @import("runtime").ArenaAllocator;
-        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, kv.value);
+        if (Arena.tryGet() catch null) |arena| arena.destroy(InternalState, internal);
     }
 }
 
@@ -640,7 +712,9 @@ fn swapCurrentEvent(window: *runtime.Instance, event: ?*runtime.Instance) ?*runt
     return null;
 }
 
-var next_handler_serial: u32 = 1;
+/// The next event handler's serial. Atomic: event handlers are set on every
+/// thread that runs script - a Browser's and each worker's.
+var next_handler_serial: std.atomic.Value(u32) = .init(1);
 
 /// HTML "activate an event handler", steps 3-7.
 /// https://html.spec.whatwg.org/multipage/webappapis.html#activate-an-event-handler
@@ -665,9 +739,9 @@ pub fn activateEventHandler(instance: *runtime.Instance, event_type: []const u8)
     // Steps 4-6: a listener whose type is the event handler event type and
     // whose callback runs the event handler processing algorithm. "Add an
     // event listener" gives it the default passive value (step 4 there).
-    const serial = next_handler_serial;
-    next_handler_serial +%= 1;
-    if (next_handler_serial == 0) next_handler_serial = 1;
+    var serial = next_handler_serial.fetchAdd(1, .monotonic);
+    // 0 means "no handler": a wrapped counter skips it.
+    if (serial == 0) serial = next_handler_serial.fetchAdd(1, .monotonic);
     try list.append(.{
         .type = try runtime.DOMString.initDupe(internal.allocator, event_type),
         .callback = null,

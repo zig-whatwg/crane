@@ -9,7 +9,11 @@
 //! - Free list is maintained across all slabs for O(1) allocation
 //! - Slabs are never freed (retained for lifetime of program)
 //!
-//! Thread safety: Single-threaded (no locks)
+//! Thread safety: every thread that makes platform objects allocates here - a
+//! Browser's thread and each of its workers' (docs/instances.md) - so `alloc`,
+//! `free` and `stats` take `mutex`. `generationOf` reads one slot without it: a
+//! holder only ever asks about an object of its own thread, which no other
+//! thread frees.
 
 const std = @import("std");
 const Instance = @import("instance.zig").Instance;
@@ -90,6 +94,12 @@ pub const SlabAllocator = struct {
     /// Next generation to stamp; never reused within a process
     next_generation: u64,
 
+    /// Protects `slabs`, `free_list`, `next_generation` and the statistics:
+    /// every thread that makes or frees a platform object takes it, for the
+    /// few instructions of a pop, a push or a slab's linking - never across a
+    /// call out of this file.
+    mutex: std.Io.Mutex = .init,
+
     /// What `generationOf` reads for a slot that is free (or never issued)
     pub const dead_generation: u64 = 0;
 
@@ -146,6 +156,8 @@ pub const SlabAllocator = struct {
 
     /// Allocate an Instance with the given vtable
     pub fn alloc(self: *SlabAllocator, vtable: *const VTable) !*Instance {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         // Try to get a slot from the free list
         if (self.free_list) |slot| {
             // Remove from free list
@@ -204,6 +216,8 @@ pub const SlabAllocator = struct {
 
     /// Free an Instance (return slot to free list)
     pub fn free(self: *SlabAllocator, inst: *Instance) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const slot: *Slot = @ptrCast(inst);
         slot.generation = dead_generation;
 
@@ -215,7 +229,9 @@ pub const SlabAllocator = struct {
     }
 
     /// Get allocation statistics
-    pub fn stats(self: *const SlabAllocator) Stats {
+    pub fn stats(self: *SlabAllocator) Stats {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return Stats{
             .total_slabs = self.total_slabs,
             .total_allocated = self.total_allocated,

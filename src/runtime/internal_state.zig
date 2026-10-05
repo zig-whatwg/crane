@@ -47,38 +47,36 @@
 const std = @import("std");
 const Instance = @import("instance.zig").Instance;
 
-/// Type-erased internal state storage
-/// Maps instance pointer -> internal state pointer
-/// The actual InternalState type is known by the caller
-var global_registry: std.AutoHashMap(usize, *anyopaque) = undefined;
-var registry_initialized: bool = false;
-var registry_allocator: std.mem.Allocator = undefined;
+/// Type-erased internal state storage: instance address -> internal state
+/// pointer (the actual InternalState type is known by the caller).
+///
+/// Every thread that makes platform objects - a Browser's and each of its
+/// workers' (docs/instances.md) - registers here, so the map is reached only
+/// under `mutex`. A value is a pointer to a block the instance's own thread
+/// allocated and frees, so a pointer read under the lock stays good after it.
+const Registry = struct {
+    /// Protects `map` and `initialized`; held for one map operation, never
+    /// across a call out of this file.
+    mutex: std.Io.Mutex = .init,
+    map: std.AutoHashMapUnmanaged(usize, *anyopaque) = .empty,
+    allocator: std.mem.Allocator = std.heap.page_allocator,
+    initialized: bool = false,
+};
+var global_registry: Registry = .{};
 
 /// Initialize the registry with a specific allocator
 /// This should be called early in application startup.
-/// If not called, ensureRegistry() will use page_allocator as fallback.
+/// If not called, registrations use page_allocator.
 pub fn initRegistry(allocator: std.mem.Allocator) void {
-    if (registry_initialized) {
-        // Already initialized - just update allocator reference
-        // (Registry contents preserved, but new allocations use new allocator)
-        registry_allocator = allocator;
+    std.Io.Threaded.mutexLock(&global_registry.mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
+    if (global_registry.initialized) {
+        // Already initialized: the map keeps its allocator - an entry's
+        // storage must be freed by the allocator that made it.
         return;
     }
-    registry_allocator = allocator;
-    global_registry = std.AutoHashMap(usize, *anyopaque).init(allocator);
-    registry_initialized = true;
-}
-
-/// Ensure the global registry is initialized
-/// Falls back to page_allocator if initRegistry() was not called
-fn ensureRegistry() void {
-    if (!registry_initialized) {
-        // Fallback to page_allocator if no allocator was provided
-        // This maintains backwards compatibility but may cause fragmentation
-        registry_allocator = std.heap.page_allocator;
-        global_registry = std.AutoHashMap(usize, *anyopaque).init(std.heap.page_allocator);
-        registry_initialized = true;
-    }
+    global_registry.allocator = allocator;
+    global_registry.initialized = true;
 }
 
 /// Register internal state for an instance
@@ -102,9 +100,10 @@ fn ensureRegistry() void {
 /// }
 /// ```
 pub fn setInternal(instance: *Instance, internal: anytype) !void {
-    ensureRegistry();
-    const key = @intFromPtr(instance);
-    try global_registry.put(key, @ptrCast(internal));
+    std.Io.Threaded.mutexLock(&global_registry.mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
+    global_registry.initialized = true;
+    try global_registry.map.put(global_registry.allocator, @intFromPtr(instance), @ptrCast(internal));
 }
 
 /// Get internal state for an instance
@@ -135,9 +134,9 @@ pub fn setInternal(instance: *Instance, internal: anytype) !void {
 /// }
 /// ```
 pub fn getInternal(comptime InternalStateType: type, instance: *Instance) ?*InternalStateType {
-    ensureRegistry();
-    const key = @intFromPtr(instance);
-    const ptr = global_registry.get(key) orelse return null;
+    std.Io.Threaded.mutexLock(&global_registry.mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
+    const ptr = global_registry.map.get(@intFromPtr(instance)) orelse return null;
     return @ptrCast(@alignCast(ptr));
 }
 
@@ -150,9 +149,9 @@ pub fn getInternal(comptime InternalStateType: type, instance: *Instance) ?*Inte
 /// ## Parameters
 /// - `instance`: The WebIDL instance
 pub fn removeInternal(instance: *Instance) void {
-    ensureRegistry();
-    const key = @intFromPtr(instance);
-    _ = global_registry.remove(key);
+    std.Io.Threaded.mutexLock(&global_registry.mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
+    _ = global_registry.map.remove(@intFromPtr(instance));
 }
 
 /// Check if an instance has internal state registered
@@ -163,9 +162,9 @@ pub fn removeInternal(instance: *Instance) void {
 /// ## Returns
 /// true if internal state is registered, false otherwise
 pub fn hasInternal(instance: *Instance) bool {
-    ensureRegistry();
-    const key = @intFromPtr(instance);
-    return global_registry.contains(key);
+    std.Io.Threaded.mutexLock(&global_registry.mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
+    return global_registry.map.contains(@intFromPtr(instance));
 }
 
 /// Reset the entire registry (for testing or shutdown)
@@ -173,9 +172,14 @@ pub fn hasInternal(instance: *Instance) bool {
 /// Warning: This does NOT free the internal state memory.
 /// Only use during shutdown or between test runs.
 pub fn resetRegistry() void {
-    if (registry_initialized) {
-        global_registry.clearAndFree();
-        registry_initialized = false;
+    std.Io.Threaded.mutexLock(&global_registry.mutex);
+    defer std.Io.Threaded.mutexUnlock(&global_registry.mutex);
+    if (global_registry.initialized) {
+        global_registry.map.clearAndFree(global_registry.allocator);
+        global_registry.initialized = false;
+        // A registration before the next initRegistry uses page_allocator,
+        // as it always did.
+        global_registry.allocator = std.heap.page_allocator;
     }
 }
 

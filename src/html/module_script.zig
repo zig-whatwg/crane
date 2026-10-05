@@ -290,32 +290,48 @@ pub fn createJavaScriptModuleScript(
 // import.meta, and the scripts a record names
 // =============================================================================
 
-/// Every module script alive: the page's, its frames' and its workers', which
-/// all run on the page's thread (a worker's module map is its WorkerHost's).
-/// A module map owns each; this only links them, so that a [[HostDefined]]
-/// the engine hands back is read only while its script exists.
-var live_scripts: ?*ModuleScript = null;
+/// Every module script alive: the page's, its frames' and its workers'. A
+/// module map owns each; this only links them, so that a [[HostDefined]]
+/// the engine hands back is read only while its script exists. Workers run
+/// on threads of their own (docs/instances.md), so the list is reached only
+/// under its `mutex`.
+const LiveScripts = struct {
+    /// Protects `head` and every script's `live_prev`/`live_next`/`live`;
+    /// held for one link, unlink or walk, never across a call out of this
+    /// file.
+    mutex: std.Io.Mutex = .init,
+    head: ?*ModuleScript = null,
+};
+var live_scripts: LiveScripts = .{};
 
 fn track(script: *ModuleScript) void {
+    std.Io.Threaded.mutexLock(&live_scripts.mutex);
+    defer std.Io.Threaded.mutexUnlock(&live_scripts.mutex);
     script.live_prev = null;
-    script.live_next = live_scripts;
-    if (live_scripts) |head| head.live_prev = script;
-    live_scripts = script;
+    script.live_next = live_scripts.head;
+    if (live_scripts.head) |head| head.live_prev = script;
+    live_scripts.head = script;
     script.live = true;
 }
 
 fn untrack(script: *ModuleScript) void {
+    std.Io.Threaded.mutexLock(&live_scripts.mutex);
+    defer std.Io.Threaded.mutexUnlock(&live_scripts.mutex);
     if (!script.live) return;
-    if (script.live_prev) |prev| prev.live_next = script.live_next else live_scripts = script.live_next;
+    if (script.live_prev) |prev| prev.live_next = script.live_next else live_scripts.head = script.live_next;
     if (script.live_next) |next| next.live_prev = script.live_prev;
     script.live = false;
 }
 
 /// The module script a record's [[HostDefined]] names, while it exists.
 /// (A freed script's address reused by a new one is read as the new one: a
-/// wrong base URL, never freed memory.)
+/// wrong base URL, never freed memory.) The engine hands back only a
+/// [[HostDefined]] of the calling thread's own realms, so the script found
+/// is this thread's, and stays while its realm does.
 pub fn scriptOf(host_defined: *anyopaque) ?*ModuleScript {
-    var it = live_scripts;
+    std.Io.Threaded.mutexLock(&live_scripts.mutex);
+    defer std.Io.Threaded.mutexUnlock(&live_scripts.mutex);
+    var it = live_scripts.head;
     while (it) |script| : (it = script.live_next) {
         if (@as(*anyopaque, @ptrCast(script)) == host_defined) return script;
     }
@@ -929,7 +945,9 @@ fn failWith(env: *const Environment, kind: ErrorKind, message: []const u8) LoadF
 const Linking = struct {
     root: *ModuleScript,
 };
-var search_epoch: u32 = 0;
+/// The epoch of the latest walk. Atomic: each thread walks its own graphs,
+/// but every walk must get an epoch no earlier walk of its thread had.
+var search_epoch: std.atomic.Value(u32) = .init(0);
 
 /// Link(), with each request answered from the edges recorded while loading
 /// (HostLoadImportedModule, for a graph HTML has already fetched). The link
@@ -958,8 +976,8 @@ fn resolveRequest(data: ?*anyopaque, referrer: *engine.ModuleRecord, request: en
 
 /// The script in `root`'s graph whose record is `record`.
 fn findByRecord(root: *ModuleScript, record: *engine.ModuleRecord) ?*ModuleScript {
-    search_epoch +%= 1;
-    return findIn(root, record, search_epoch);
+    const epoch = search_epoch.fetchAdd(1, .monotonic) +% 1;
+    return findIn(root, record, epoch);
 }
 
 fn findIn(script: *ModuleScript, record: *engine.ModuleRecord, epoch: u32) ?*ModuleScript {

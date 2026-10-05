@@ -1332,14 +1332,6 @@ pub fn V8Interface(comptime Interface: type) type {
     return struct {
         const Self = @This();
 
-        /// Template cache - created once per interface type at first use
-        /// NOTE: Templates are isolate-specific - cache the isolate and generation
-        var template_cache: ?*v8.FunctionTemplate = null;
-        var template_cache_isolate: ?*v8.Isolate = null;
-        /// Cache generation at time of caching - used to detect isolate disposal
-        /// Even if V8 reuses the same isolate address, the generation will differ
-        var template_cache_generation: u64 = 0;
-
         /// The iterator prototype template for an isolate without template
         /// storage (see iteratorPrototypeTemplate): isolate-scoped, no context.
         var iterator_template_cache: ?*v8.FunctionTemplate = null;
@@ -2130,15 +2122,15 @@ pub fn V8Interface(comptime Interface: type) type {
         /// - Prototype with all methods
         /// - Internal fields for Zig instance storage
         ///
-        /// ## Template Caching Strategy (Defense in Depth)
+        /// ## Template caching
         ///
-        /// Templates are cached at TWO levels:
-        /// 1. **Isolate-local storage** (PRIMARY) - Templates stored in V8 isolate data slot
-        ///    Automatically cleaned up when isolate is disposed
-        /// 2. **Per-interface static cache** (BACKUP) - Generation counter validates freshness
-        ///    Handles edge cases where isolate-local storage fails
-        ///
-        /// The generation counter is retained as a safety net even with isolate-local storage.
+        /// Templates are cached in the isolate's own template storage (its data
+        /// slot), cleaned up with the isolate. There was a per-interface static
+        /// "backup" cache too: one isolate's template in a process global,
+        /// written by every isolate that made one - a page and a worker on two
+        /// threads (docs/instances.md) could read each other's half-written pair
+        /// and get the other isolate's template. Callers register templates in
+        /// template_registry, keyed by isolate, and look there first.
         ///
         /// IMPORTANT: For constructable interfaces, we MUST ensure callbacks are fresh.
         /// After snapshot restore, templates in cache may have stale callback pointers.
@@ -2179,28 +2171,14 @@ pub fn V8Interface(comptime Interface: type) type {
             // Skip cache lookup in snapshot mode - always create fresh templates
             // as Local handles that V8 can serialize without complaining about Global handles
             if (!template_registry.snapshot_mode) {
-                // FIRST: Check isolate-local storage (primary cache)
-                // This is the canonical approach - templates live with their isolate
+                // The isolate's own template storage: templates live with their
+                // isolate.
                 if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
                     if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
                         if (storage.get(interface_name)) |cached| {
                             return cached;
                         }
                     }
-                }
-
-                // SECOND: Check per-interface static cache (backup/fallback)
-                // Retained as defense in depth - handles cases where isolate-local fails
-                if (template_cache) |cached| {
-                    if (template_cache_isolate == isolate and
-                        template_cache_generation == template_registry.cache_generation)
-                    {
-                        return cached;
-                    }
-                    // Different isolate or different generation - cache is stale
-                    // Clear it before creating new template
-                    template_cache = null;
-                    template_cache_isolate = null;
                 }
             }
 
@@ -2271,9 +2249,6 @@ pub fn V8Interface(comptime Interface: type) type {
                             storage.put(interface_name, template) catch {};
                         }
                     }
-                    template_cache = template;
-                    template_cache_isolate = isolate;
-                    template_cache_generation = template_registry.cache_generation;
                 }
                 return template;
             }
@@ -2663,21 +2638,13 @@ pub fn V8Interface(comptime Interface: type) type {
                 return template;
             }
 
-            // Cache the template in BOTH places for defense in depth
-            //
-            // 1. Isolate-local storage (PRIMARY) - auto-cleanup on isolate disposal
+            // Cache the template in the isolate's own storage (cleaned up
+            // with the isolate).
             if (isolate_alloc.getIsolateAllocator(isolate)) |alloc| {
                 if (isolate_templates.getOrCreateTemplateStorage(isolate, alloc, template_registry.cache_generation) catch null) |storage| {
-                    storage.put(interface_name, template) catch {
-                        // Log but don't fail - static cache will work as backup
-                    };
+                    storage.put(interface_name, template) catch {};
                 }
             }
-
-            // 2. Per-interface static cache (BACKUP) - generation counter validates
-            template_cache = template;
-            template_cache_isolate = isolate;
-            template_cache_generation = template_registry.cache_generation;
 
             return template;
         }

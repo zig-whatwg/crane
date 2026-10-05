@@ -76,7 +76,7 @@ const originOfUrl = wpt_server.originOfUrl;
 ///
 /// Per HTML spec, blob URLs are same-origin with their creating context.
 /// This resolver accesses the global BlobURLStore to look up blobs.
-fn resolveBlobUrl(_: std.mem.Allocator, url: []const u8, origin: []const u8) ?workers.BlobResolveResult {
+fn resolveBlobUrl(allocator: std.mem.Allocator, url: []const u8, origin: []const u8) ?workers.BlobResolveResult {
     // Get the global blob URL store
     const store = file.getGlobalBlobURLStore() orelse {
         log.warn("resolveBlobUrl: no global blob URL store available", .{});
@@ -89,12 +89,19 @@ fn resolveBlobUrl(_: std.mem.Allocator, url: []const u8, origin: []const u8) ?wo
         return null;
     };
 
-    // Return the blob data without copying (BlobData is persistent)
+    // The store hands out a reference of our own; copies outlive it - a
+    // revoke on another thread could free the entry's data once released.
     // Note: BlobData uses mime_type field (not content_type)
+    defer blob_data.deinit();
+    const bytes = allocator.dupe(u8, blob_data.bytes) catch return null;
+    const content_type = allocator.dupe(u8, blob_data.mime_type) catch {
+        allocator.free(bytes);
+        return null;
+    };
     return .{
-        .bytes = blob_data.bytes,
-        .content_type = blob_data.mime_type,
-        .owns_bytes = false, // BlobURLStore owns the data
+        .bytes = bytes,
+        .content_type = content_type,
+        .owns_bytes = true, // both copies are the caller's
     };
 }
 
