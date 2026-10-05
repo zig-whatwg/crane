@@ -174,17 +174,24 @@ const ParseReport = struct {
     }
 };
 
-test "the test adapter reports a script it cannot parse as its parse error" {
-    // Only the runtime tier's test adapter runs classic scripts this way; the
-    // JavaScriptCore and QuickJS roots answer NotSupported until they have an
-    // engine.
-    if (!std.mem.eql(u8, engine.name, "test")) return error.SkipZigTest;
+test "a script the adapter cannot parse is reported as its parse error; an adapter with no engine says NotSupported" {
     var data = try runtime.ContextData.init(std.testing.allocator, .{});
     defer data.deinit();
     const realm: engine.Context = &data;
 
     var seen: ParseReport = .{};
     const reporter: engine.Reporter = .{ .report = ParseReport.report, .host = &seen };
+    // The JavaScriptCore and QuickJS roots compiled here have no engine yet:
+    // they run no script, and report nothing (their parse_error is declared
+    // false - docs/engine-protocol.md 7a).
+    if (!std.mem.eql(u8, engine.name, "test")) {
+        try std.testing.expectError(error.NotSupported, engine.runClassicScript(realm, .{ .utf8 = "postMessage(1);" }, "w.js", null, reporter));
+        try std.testing.expectEqual(@as(usize, 0), seen.count);
+        return;
+    }
+    // The runtime tier's test adapter parses nothing: every non-empty script
+    // is reported as its parse error, so host code can be driven through
+    // "run a worker" onComplete step 1.
     try std.testing.expectError(error.ExceptionReported, engine.runClassicScript(realm, .{ .utf8 = "postMessage(1);" }, "w.js", null, reporter));
     try std.testing.expectEqual(@as(usize, 1), seen.count);
     try std.testing.expect(seen.parse_error);
