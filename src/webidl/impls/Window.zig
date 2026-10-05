@@ -1986,8 +1986,25 @@ pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOM
 /// `appendChild`, so the child posts before its parent has listened. And a
 /// message that is not a copy lets the poster change what the receiver reads.
 pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(runtime.JSValue)) anyerror!void {
-    _ = transfer; // TODO: step 6 - transferable objects
+    if (getInternal(instance) == null) return error.InvalidStateError;
+    // "2. Let options be «[ "targetOrigin" → targetOrigin, "transfer" →
+    // transfer ]»": the sequence<object> the binding hands over as a value.
+    if (!transfer.wasPassed()) return windowPostMessageSteps(instance, message, targetOrigin, &.{});
+    const allocator = instance.ctx.allocator;
+    const objects = try engine.convertToSequenceOfObjects(instance.ctx, transfer.getValue(), allocator);
+    defer {
+        for (objects) |object| object.release();
+        allocator.free(objects);
+    }
+    const list = try allocator.alloc(runtime.JSValue, objects.len);
+    defer allocator.free(list);
+    for (objects, list) |object, *item| item.* = object.value;
+    return windowPostMessageSteps(instance, message, targetOrigin, list);
+}
 
+/// HTML "window post message steps" given targetWindow `instance`,
+/// `message`, and options' targetOrigin and transfer.
+fn windowPostMessageSteps(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: []const u8, transfer: []const runtime.JSValue) anyerror!void {
     if (getInternal(instance) == null) return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
@@ -2005,10 +2022,17 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, t
     const target_origin = try TargetOrigin.resolve(allocator, instance, targetOrigin, source_window, source_origin);
     errdefer target_origin.deinit(allocator);
 
-    // Step 7: StructuredSerializeWithTransfer(message, transfer). Rethrow any
-    // exceptions - which the serializer has already thrown, as the spec's
-    // DataCloneError or as whatever script threw mid-walk.
-    var serialized = try SerializedMessage.serialize(engine.currentRealm() orelse incumbent, allocator, message);
+    // Steps 6-7: StructuredSerializeWithTransfer(message, transfer). Rethrow
+    // any exceptions - which the serializer has already thrown, as the
+    // spec's DataCloneError or as whatever script threw mid-walk. A transfer
+    // list ships its MessagePorts (their transfer steps, dom.message_ports)
+    // and detaches its ArrayBuffers, as a port's and a worker's postMessage
+    // do (html.worker_host.serializePortMessage).
+    const serialize_realm = engine.currentRealm() orelse incumbent;
+    var serialized: SerializedMessage = if (transfer.len > 0)
+        .{ .with_transfer = try @import("html").worker_host.serializePortMessage(serialize_realm, message, transfer, allocator) }
+    else
+        try SerializedMessage.serialize(serialize_realm, allocator, message);
     errdefer serialized.deinit(allocator);
 
     const origin = try allocator.dupe(u8, source_origin);
@@ -2060,8 +2084,8 @@ pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue
         options.value.targetOrigin orelse "/"
     else
         "/";
-    // TODO: step 6 - options.transfer, as in the three-argument form.
-    return call_postMessage(instance, message, target_origin, webidl.Opt(runtime.JSValue).notPassed());
+    const transfer: []const runtime.JSValue = if (options.was_passed) (options.value.base.transfer orelse &.{}) else &.{};
+    return windowPostMessageSteps(instance, message, target_origin, transfer);
 }
 
 /// What `targetOrigin` names: steps 3-5 of the window post message steps.
@@ -2129,6 +2153,10 @@ const SerializedMessage = union(enum) {
     string: []const u8,
     /// The engine's serialization of an object, OWNED (the allocator).
     serialized: engine.SerializedWithTransfer,
+    /// A message posted with a transfer list: the serialization, the
+    /// transferred ArrayBuffers' contents and the shipped ports' ends - a
+    /// port message's shape (dom.port_channels). OWNED.
+    with_transfer: *@import("dom").port_channels.PortMessage,
 
     /// Step 7, in `realm`. Primitives and strings arrive already converted;
     /// an object goes through the engine's serializer, which throws the
@@ -2140,7 +2168,8 @@ const SerializedMessage = union(enum) {
             .boolean => |b| .{ .boolean = b },
             .number => |n| .{ .number = n },
             .string => |s| .{ .string = try allocator.dupe(u8, s.data) },
-            // TODO: step 6 - the transfer list; none is passed yet.
+            // No transfer list (a message with one is serialized by
+            // html.worker_host.serializePortMessage).
             .handle, .instance => .{ .serialized = try engine.structuredSerializeWithTransfer(realm, value, &.{}, noTransferables, null, allocator) },
         };
     }
@@ -2161,6 +2190,8 @@ const SerializedMessage = union(enum) {
                 const value = try engine.structuredDeserializeWithTransfer(realm, serialized.serialized, serialized.array_buffers);
                 return value.take();
             },
+            // Delivered by `deliverWithTransfer`, which receives its ports.
+            .with_transfer => return error.DataCloneError,
         }
     }
 
@@ -2168,6 +2199,8 @@ const SerializedMessage = union(enum) {
         switch (self.*) {
             .string => |s| allocator.free(s),
             .serialized => |*serialized| serialized.deinit(allocator),
+            // Its ends no port took are discarded with it.
+            .with_transfer => |message| message.destroy(),
             else => {},
         }
         self.* = .undefined;
@@ -2183,7 +2216,7 @@ const SerializedMessage = union(enum) {
     }
 };
 
-/// No platform object is transferable yet (step 6 is a TODO).
+/// A message posted with no transfer list transfers nothing.
 fn noTransferables(_: ?*anyopaque, _: *runtime.Instance) runtime.TransferableState {
     return .not_transferable;
 }
@@ -2250,6 +2283,12 @@ fn deliverPostedMessage(data: ?*anyopaque) void {
     else
         null;
 
+    // Steps 8.4-8.7 for a message with a transfer list.
+    switch (posted.message) {
+        .with_transfer => |message| return deliverWithTransfer(target, message, posted.origin, source),
+        else => {},
+    }
+
     // Steps 8.4-8.5. A value that will not deserialize is a messageerror.
     const message = posted.message.deserialize(target.ctx) catch {
         fireMessageEvent(target, "messageerror", runtime.JSValue.jsUndefined, posted.origin, source);
@@ -2258,6 +2297,55 @@ fn deliverPostedMessage(data: ?*anyopaque) void {
 
     // Step 8.7.
     fireMessageEvent(target, "message", message, posted.origin, source);
+}
+
+/// Steps 8.4-8.7 for `message`, posted with a transfer list, in `target`'s
+/// realm: its MessagePorts received into the realm (their transfer-receiving
+/// steps) - newPorts, in transfer-list order - and the message deserialized
+/// with its transferred ArrayBuffers; `message` fired with them, or
+/// `messageerror` when it does not deserialize. The message keeps nothing it
+/// handed over; it is freed with the posted message.
+fn deliverWithTransfer(target: *runtime.Instance, message: *@import("dom").port_channels.PortMessage, origin: []const u8, source: ?*runtime.Instance) void {
+    const dom = @import("dom");
+    const allocator = target.ctx.allocator;
+    var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
+    defer ports.deinit(allocator);
+    const ends = message.takeEnds();
+    defer message.allocator.free(ends);
+    for (ends) |end| {
+        const port = dom.message_ports.receive(target.ctx, @ptrCast(end)) catch continue;
+        ports.append(allocator, port) catch continue;
+    }
+    // Step 8.4: StructuredDeserializeWithTransfer in the target's realm; an
+    // exception is a messageerror, with origin and source.
+    const data = engine.structuredDeserializeWithTransfer(target.ctx, message.serialized, message.array_buffers) catch {
+        fireTransferEvent(target, "messageerror", runtime.JSValue.jsUndefined, origin, source, &.{});
+        return;
+    };
+    defer data.release();
+    // Steps 8.5-8.7: messageClone, newPorts, and the message event.
+    fireTransferEvent(target, "message", data.value, origin, source, ports.items);
+}
+
+/// Fire `event_type` at `target` as a trusted MessageEvent with origin,
+/// source and ports. `data` is borrowed: the event keeps its own.
+fn fireTransferEvent(target: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, origin: []const u8, source: ?*runtime.Instance, ports: []const *runtime.Instance) void {
+    const init_dict = dictionaries.MessageEventInit{
+        .base = .{},
+        .data = data,
+        .origin = origin,
+        .source = if (source) |sw| typedefs.MessageEventSource{ .window_proxy = @ptrCast(sw) } else null,
+        .ports = ports,
+    };
+    const event = interfaces.MessageEvent.call_constructor(
+        target.ctx,
+        runtime.DOMString.initInterned(event_type),
+        webidl.Opt(dictionaries.MessageEventInit).passed(init_dict),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    // Fired by the user agent: trusted (DOM 2.10).
+    _ = @import("dom").fire_event.dispatchTrusted(target, event) catch {};
+    event.releaseIfUnwrapped(generation);
 }
 
 /// Fire `event_type` at `target` as a MessageEvent that takes `data`.
