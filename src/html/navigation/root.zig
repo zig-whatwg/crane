@@ -15,6 +15,7 @@
 //! - **declarative_refresh**: parsing a meta refresh or Refresh header value
 //! - **fetch_integration**: the navigation fetch
 //! - **document_type**: which document a response makes
+//! - **object_resource_type**: what an object's or embed's resource is
 //! - **termination_nesting**: the event loop's termination nesting level
 //! - **security_policies**: COOP, COEP, CORP, sandboxing, framing
 
@@ -24,6 +25,7 @@ pub const declarative_refresh = @import("declarative_refresh.zig");
 pub const termination_nesting = @import("termination_nesting.zig");
 pub const joint_history = @import("joint_history.zig");
 pub const document_type = @import("document_type.zig");
+pub const object_resource_type = @import("object_resource_type.zig");
 pub const security_policies = @import("security_policies.zig");
 
 pub const fetchNavigationResource = fetch_integration.fetchNavigationResource;

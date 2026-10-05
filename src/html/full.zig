@@ -214,6 +214,10 @@ pub const style_sheet_loading = @import("style_sheet_loading.zig");
 // Media owner tasks, events and incremental resource fetching.
 pub const media_runtime = @import("media/runtime.zig");
 
+/// What an object or embed element represents, and its fetch, events and
+/// child navigable (HTML 4.8.6, 4.8.7).
+pub const embedded_content = @import("embedded_content.zig");
+
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing
 pub const scripted_parser = @import("scripted_parser.zig");

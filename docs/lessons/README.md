@@ -199,6 +199,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A tree walk must reach an element's own destructor](architecture-a-tree-walk-must-reach-an-elements-own-destructor.md) - Test both an object's destructor and the real tree walk that is supposed to call it.
 - [Lazy same-object children need immediate handout](architecture-lazy-same-object-children-need-immediate-handout.md) - Every child allocated for the wrapper collector must actually reach that collector.
 - [A waiting algorithm resumes once and restores its registration](architecture-a-waiting-algorithm-resumes-once-and-restores-its-registration.md) - A generation identifies an algorithm, not its phase or whether same-generation cleanup is still safe.
+- [An element type the tree teardown does not list runs Element's deinit - and one alive at teardown runs none](architecture-an-element-the-tree-teardown-does-not-list-runs-elements-deinit.md) - A new element type with state of its own: keep its records in the runtime arena, and check that a tree teardown reaches its deinit (deinitNodeByType).
+- [Steps that run outside script ask the structure, not script's getters](architecture-engine-side-steps-ask-the-structure-not-scripts-getters.md) - An IDL getter is script's: its security checks assume a script accessor; engine-side steps read the navigable and the NodeBase tree.
+- [The DOM's callbacks find an element by its NodeBase name, which most elements leave empty](architecture-dom-callbacks-find-an-element-by-its-nodebase-name.md) - Before filtering a DOM callback by node name, check that the element type's init sets the NodeBase name.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -368,6 +371,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [HTML attribute steps must check the element's namespace](debugging-html-steps-must-check-the-namespace.md) - A step HTML defines for HTML elements is keyed by namespace AND local name, and a state cast is checked, never assumed.
 - [A V8 deserialization runs no script - not even to make its exception](debugging-a-v8-deserialization-runs-no-script.md) - Anything a V8 deserializer delegate calls must run no script; report a failure with an exception V8 makes itself, and let the caller turn it into the DOMException once V8 has returned.
 - [An errdefer must end at the ownership transfer](debugging-an-errdefer-must-end-at-the-ownership-transfer.md) - Stop error cleanup from freeing an allocation after its owner changes.
+- [The WPT runner's stderr is positional - redirected to a file it overwrites what came before; pipe it](debugging-the-wpt-runners-stderr-is-positional-pipe-it-through-cat.md) - Never redirect the runner straight into a file you will grep: pipe it through cat.
 
 ### Workflow
 - [`pgrep -f` matches the shell that is running it](workflow-pgrep-f-matches-the-shell-that-is-running-it.md) - Wait on what the process WRITES, not on whether a string is in the process table - the string is in yours too.

@@ -160,6 +160,10 @@ pub const InternalState = struct {
     /// "The end" is waiting at step 8 - something delays the load event -
     /// and has not queued step 9's task yet.
     load_waiting_on_delay: bool = false,
+    /// HTML "delay the load event": how many delays are held on this
+    /// document's load event (dom.document_lifecycle.delayLoadEvent) - an
+    /// object element's fetch, say. Blink's load_event_delay_count_.
+    load_event_delay_count: u32 = 0,
     /// HTML 7.4.6.4 "target element": what :target matches, set by "scroll
     /// to the fragment"; initially null. A weak link - the element can be
     /// removed and freed while it is the target (dom.target_element).
@@ -622,6 +626,8 @@ pub fn installHooks() void {
         .declarative_refresh = &lifecycleDeclarativeRefresh,
         .set_iframe_load_in_progress = &lifecycleSetIframeLoadInProgress,
         .is_iframe_load_muted = &lifecycleIsIframeLoadMuted,
+        .delay_load_event = &lifecycleDelayLoadEvent,
+        .undelay_load_event = &lifecycleUndelayLoadEvent,
     });
     @import("dom").document_origin.install(.{ .domain = &originDomain });
     // Its policy container, for whatever sets or reads one without naming
@@ -4071,7 +4077,7 @@ fn queueLoadUnlessDelayed(document: *runtime.Instance) void {
     // in order as soon as possible are empty" - script_execution says when a
     // script leaves them (loadDelayMayHaveEnded). Then step 8.
     const scripts_pending = internal.scripts.scripts_to_execute_asap.items.len > 0 or internal.scripts.scripts_to_execute_in_order_asap.items.len > 0;
-    if (scripts_pending or @import("dom").content_navigables.delaysLoadEvent(document) or @import("dom").style_sheet_owners.delaysLoadEvent(document) or @import("dom").media_elements.mediaDelaysLoadEvent(document)) {
+    if (scripts_pending or internal.load_event_delay_count > 0 or @import("dom").content_navigables.delaysLoadEvent(document) or @import("dom").style_sheet_owners.delaysLoadEvent(document) or @import("dom").media_elements.mediaDelaysLoadEvent(document)) {
         internal.load_waiting_on_delay = true;
         return;
     }
@@ -4085,6 +4091,21 @@ fn lifecycleLoadDelayMayHaveEnded(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     if (!internal.load_waiting_on_delay) return;
     queueLoadUnlessDelayed(document);
+}
+
+/// dom.document_lifecycle: HTML "delay the load event" - one more thing
+/// the load event waits on (Blink's IncrementLoadEventDelayCount).
+fn lifecycleDelayLoadEvent(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    internal.load_event_delay_count += 1;
+}
+
+/// dom.document_lifecycle: one delay ended (Blink's
+/// DecrementLoadEventDelayCount); "the end" goes on if it was the last.
+fn lifecycleUndelayLoadEvent(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    internal.load_event_delay_count -|= 1;
+    if (internal.load_event_delay_count == 0) lifecycleLoadDelayMayHaveEnded(document);
 }
 
 fn lifecycleIsCompletelyLoaded(document: *runtime.Instance) bool {

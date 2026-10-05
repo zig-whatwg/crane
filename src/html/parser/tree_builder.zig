@@ -582,6 +582,16 @@ pub const TreeBuilder = struct {
     /// then. Called with `dom_adapter_context`.
     dom_adapter_on_element_popped: ?*const fn (*TreeNode, ?*anyopaque) void = null,
 
+    /// An element left the stack of open elements - "popped off the stack
+    /// of open elements of an HTML parser" - by any removal: its end tag, an
+    /// implied end tag, a popUntil*, the adoption agency's removal of a node
+    /// that is not the current node, or "stop parsing" popping everything at
+    /// the end of the input. Its children are parsed (Blink's
+    /// Element::FinishParsingChildren, which HTMLElementStack's PopCommon,
+    /// RemoveNonTopCommon and PopAll call). Called with
+    /// `dom_adapter_context`; see `finishedParsingChildren`.
+    dom_adapter_on_children_finished: ?*const fn (*TreeNode, ?*anyopaque) void = null,
+
     /// Input stream manager for document.write() support.
     ///
     /// HTML Standard §13.2.3: When document.write() is called during parsing,
@@ -698,6 +708,12 @@ pub const TreeBuilder = struct {
     /// `dom_adapter_on_element_popped`); it shares `dom_adapter_context`.
     pub fn setDomAdapterPoppedCallback(self: *TreeBuilder, on_popped: ?*const fn (*TreeNode, ?*anyopaque) void) void {
         self.dom_adapter_on_element_popped = on_popped;
+    }
+
+    /// Set the adapter's finished-parsing-children callback (see
+    /// `dom_adapter_on_children_finished`); it shares `dom_adapter_context`.
+    pub fn setDomAdapterFinishedCallback(self: *TreeBuilder, on_finished: ?*const fn (*TreeNode, ?*anyopaque) void) void {
+        self.dom_adapter_on_children_finished = on_finished;
     }
 
     /// Set the adapter's attribute-added callback (see
@@ -839,6 +855,8 @@ pub const TreeBuilder = struct {
             // Check for EOF
             if (tok == .eof) break;
         }
+        // The end of the input: "stop parsing" pops every open element.
+        self.popAllOpenElements();
     }
 
     /// Process a single token.
@@ -1025,7 +1043,7 @@ pub const TreeBuilder = struct {
                         {
                             break;
                         }
-                        _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                        if (self.popCurrentNode() == null) break;
                     }
 
                     // Reprocess the token according to the current insertion mode
@@ -1050,7 +1068,7 @@ pub const TreeBuilder = struct {
                             // "Pop the current node off the stack of open
                             // elements and acknowledge the token's
                             // self-closing flag."
-                            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                            _ = self.popCurrentNode();
                         }
                     }
                 }
@@ -1072,7 +1090,7 @@ pub const TreeBuilder = struct {
                         {
                             break;
                         }
-                        _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                        if (self.popCurrentNode() == null) break;
                     }
 
                     // Reprocess the token
@@ -1097,7 +1115,7 @@ pub const TreeBuilder = struct {
                         // pop up to and including it.
                         if (node.local_name != null and std.ascii.eqlIgnoreCase(node.local_name.?, name)) {
                             while (self.open_elements.len > node_index) {
-                                _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                                if (self.popCurrentNode() == null) break;
                             }
                             return;
                         }
@@ -1364,7 +1382,7 @@ pub const TreeBuilder = struct {
     /// script element")
     fn processSvgScriptEndTag(self: *TreeBuilder) void {
         const script_element = self.currentNode() orelse return;
-        _ = self.open_elements.remove(self.open_elements.len - 1) catch return;
+        if (self.popCurrentNode() == null) return;
 
         if (!self.scripting_enabled) return;
         self.flushPendingText();
@@ -1656,11 +1674,11 @@ pub const TreeBuilder = struct {
                     std.mem.eql(u8, name, "link"))
                 {
                     _ = try self.insertHtmlElement(tag);
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch unreachable;
+                    _ = self.popCurrentNode();
                     // Acknowledge self-closing flag
                 } else if (std.mem.eql(u8, name, "meta")) {
                     _ = try self.insertHtmlElement(tag);
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch unreachable;
+                    _ = self.popCurrentNode();
 
                     // "If the active speculative HTML parser is null" -
                     // Crane has none - the encoding the element declares
@@ -1698,7 +1716,7 @@ pub const TreeBuilder = struct {
             .end_tag => |tag| {
                 const name = tag.getTagName();
                 if (std.mem.eql(u8, name, "head")) {
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch unreachable;
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .after_head;
                 } else if (std.mem.eql(u8, name, "body") or
                     std.mem.eql(u8, name, "html") or
@@ -1726,7 +1744,7 @@ pub const TreeBuilder = struct {
 
     fn handleInHeadAnythingElse(self: *TreeBuilder) !void {
         // Pop head and switch to after_head
-        _ = self.open_elements.remove(self.open_elements.len - 1) catch unreachable;
+        _ = self.popCurrentNode();
         self.insertion_mode = .after_head;
     }
 
@@ -1782,7 +1800,7 @@ pub const TreeBuilder = struct {
 
         // Pop elements until template
         while (self.open_elements.len > 0) {
-            const elem = self.open_elements.remove(self.open_elements.len - 1) catch break;
+            const elem = self.popCurrentNode() orelse break;
             if (elem.hasTagName("template")) break;
         }
 
@@ -1820,7 +1838,7 @@ pub const TreeBuilder = struct {
                     self.reportError(.invalid_first_character_of_tag_name);
                 } else {
                     self.reportError(.invalid_first_character_of_tag_name);
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_head;
                     try self.processToken(token);
                 }
@@ -1828,11 +1846,11 @@ pub const TreeBuilder = struct {
             .end_tag => |tag| {
                 const name = tag.getTagName();
                 if (std.mem.eql(u8, name, "noscript")) {
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_head;
                 } else if (std.mem.eql(u8, name, "br")) {
                     self.reportError(.invalid_first_character_of_tag_name);
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_head;
                     try self.processToken(token);
                 } else {
@@ -1844,7 +1862,7 @@ pub const TreeBuilder = struct {
                     try self.handleInHeadMode(token);
                 } else {
                     self.reportError(.invalid_first_character_of_tag_name);
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_head;
                     try self.processToken(token);
                 }
@@ -1854,14 +1872,14 @@ pub const TreeBuilder = struct {
             },
             .eof => {
                 self.reportError(.invalid_first_character_of_tag_name);
-                _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                _ = self.popCurrentNode();
                 self.insertion_mode = .in_head;
                 try self.processToken(token);
             },
             .text_run => {
                 // Text runs contain non-whitespace text
                 self.reportError(.invalid_first_character_of_tag_name);
-                _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                _ = self.popCurrentNode();
                 self.insertion_mode = .in_head;
                 try self.processToken(token);
             },
@@ -1916,7 +1934,7 @@ pub const TreeBuilder = struct {
                         var i: usize = 0;
                         while (i < self.open_elements.len) : (i += 1) {
                             if (self.open_elements.get(i) == head) {
-                                _ = self.open_elements.remove(i) catch {};
+                                _ = self.removeOpenElementAt(i);
                                 break;
                             }
                         }
@@ -2077,12 +2095,12 @@ pub const TreeBuilder = struct {
         } else if (std.mem.eql(u8, name, "br")) {
             try self.reconstructActiveFormattingElements();
             _ = try self.insertHtmlElement(tag);
-            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+            _ = self.popCurrentNode();
             self.frameset_ok = false;
         } else if (isVoidElement(name)) {
             try self.reconstructActiveFormattingElements();
             _ = try self.insertHtmlElement(tag);
-            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+            _ = self.popCurrentNode();
         } else if (std.mem.eql(u8, name, "math") or std.mem.eql(u8, name, "svg")) {
             // "A start tag whose tag name is "math"" / ""svg"": reconstruct
             // the active formatting elements, adjust the MathML or SVG
@@ -2092,7 +2110,7 @@ pub const TreeBuilder = struct {
             try self.reconstructActiveFormattingElements();
             _ = try self.insertForeignElement(tag, if (name[0] == 'm') .mathml else .svg);
             if (tag.self_closing) {
-                _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                _ = self.popCurrentNode();
             }
         } else {
             // Generic handling for other start tags
@@ -2178,7 +2196,7 @@ pub const TreeBuilder = struct {
                 }
                 // Pop until and including this element
                 while (self.open_elements.len > i) {
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                    if (self.popCurrentNode() == null) break;
                 }
                 break;
             }
@@ -2214,7 +2232,7 @@ pub const TreeBuilder = struct {
                     // HTML Standard §13.2.6.4.20: Script end tag processing
                     // 1. Pop the current node (script element)
                     const script_element = self.open_elements.get(self.open_elements.len - 1);
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
 
                     // 2. Switch back to original insertion mode
                     self.insertion_mode = self.original_insertion_mode;
@@ -2259,7 +2277,52 @@ pub const TreeBuilder = struct {
     /// style element updates its style block with all of its text.
     fn textModePopped(self: *TreeBuilder, element: *TreeNode) void {
         self.flushPendingText();
-        const callback = self.dom_adapter_on_element_popped orelse return;
+        if (self.dom_adapter_on_element_popped) |callback| callback(element, self.dom_adapter_context);
+        self.finishedParsingChildren(element);
+    }
+
+    /// Pop the current node off the stack of open elements, and tell the
+    /// adapter its children are parsed. Null when the stack is empty.
+    fn popCurrentNode(self: *TreeBuilder) ?*TreeNode {
+        if (self.open_elements.len == 0) return null;
+        const node = self.open_elements.remove(self.open_elements.len - 1) catch return null;
+        self.finishedParsingChildren(node);
+        return node;
+    }
+
+    /// Remove the element at `index` - not necessarily the current node -
+    /// from the stack of open elements, and tell the adapter. Blink's
+    /// HTMLElementStack::RemoveNonTopCommon calls FinishParsingChildren for
+    /// such a removal too.
+    fn removeOpenElementAt(self: *TreeBuilder, index: usize) ?*TreeNode {
+        const node = self.open_elements.remove(index) catch return null;
+        self.finishedParsingChildren(node);
+        return node;
+    }
+
+    /// HTML "stop parsing" (13.2.7 "the end") step 4: "Pop all the nodes off
+    /// the stack of open elements", the current node first - each one
+    /// finished parsing its children (Blink's HTMLElementStack::PopAll).
+    ///
+    /// Deviation, stated: it runs as the tree builder stops at the end of
+    /// the input, before step 3's readiness change to "interactive", which
+    /// the callers run once parse() returns (HTMLParser's
+    /// parseHTMLWithScripting, a frame's document). What an element type
+    /// does on the pop queues its work (the object element's processing is
+    /// a task), so nothing can observe the order.
+    fn popAllOpenElements(self: *TreeBuilder) void {
+        while (self.popCurrentNode() != null) {}
+    }
+
+    /// `element` left the stack of open elements: the adapter hears that its
+    /// children are parsed. Text the parser still holds for `element` - its
+    /// last child, a run not yet told - goes to the adapter first; text held
+    /// anywhere else is left to the next flush, so no run is told in pieces.
+    fn finishedParsingChildren(self: *TreeBuilder, element: *TreeNode) void {
+        const callback = self.dom_adapter_on_children_finished orelse return;
+        if (self.pending_text) |text| {
+            if (text.parent == element) self.flushPendingText();
+        }
         callback(element, self.dom_adapter_context);
     }
 
@@ -2369,7 +2432,7 @@ pub const TreeBuilder = struct {
                     if (self.hasTypeHiddenAttribute(tag)) {
                         self.reportError(.invalid_first_character_of_tag_name);
                         _ = try self.insertHtmlElement(tag);
-                        _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                        _ = self.popCurrentNode();
                     } else {
                         // Anything else
                         self.reportError(.invalid_first_character_of_tag_name);
@@ -2384,7 +2447,7 @@ pub const TreeBuilder = struct {
                     }
                     const form = try self.insertHtmlElement(tag);
                     self.form_element = form;
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                 } else {
                     // Anything else
                     self.reportError(.invalid_first_character_of_tag_name);
@@ -2588,7 +2651,7 @@ pub const TreeBuilder = struct {
                             return;
                         }
                     }
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table;
                     try self.processToken(token);
                 }
@@ -2605,7 +2668,7 @@ pub const TreeBuilder = struct {
                     try self.handleInBodyMode(token);
                 } else if (std.mem.eql(u8, name, "col")) {
                     _ = try self.insertHtmlElement(tag);
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                 } else if (std.mem.eql(u8, name, "template")) {
                     try self.handleInHeadMode(token);
                 } else {
@@ -2616,7 +2679,7 @@ pub const TreeBuilder = struct {
                             return;
                         }
                     }
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table;
                     try self.processToken(token);
                 }
@@ -2630,7 +2693,7 @@ pub const TreeBuilder = struct {
                             return;
                         }
                     }
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table;
                 } else if (std.mem.eql(u8, name, "col")) {
                     self.reportError(.invalid_first_character_of_tag_name);
@@ -2645,7 +2708,7 @@ pub const TreeBuilder = struct {
                             return;
                         }
                     }
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table;
                     try self.processToken(token);
                 }
@@ -2661,7 +2724,7 @@ pub const TreeBuilder = struct {
                         return;
                     }
                 }
-                _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                _ = self.popCurrentNode();
                 self.insertion_mode = .in_table;
                 try self.processToken(token);
             },
@@ -2704,7 +2767,7 @@ pub const TreeBuilder = struct {
                         return;
                     }
                     self.clearStackBackToTableBodyContext();
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table;
                     try self.processToken(token);
                 } else {
@@ -2722,7 +2785,7 @@ pub const TreeBuilder = struct {
                         return;
                     }
                     self.clearStackBackToTableBodyContext();
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table;
                 } else if (std.mem.eql(u8, name, "table")) {
                     if (!self.hasTableBodyElementInTableScope()) {
@@ -2730,7 +2793,7 @@ pub const TreeBuilder = struct {
                         return;
                     }
                     self.clearStackBackToTableBodyContext();
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table;
                     try self.processToken(token);
                 } else if (std.mem.eql(u8, name, "body") or
@@ -2778,7 +2841,7 @@ pub const TreeBuilder = struct {
                         return;
                     }
                     self.clearStackBackToTableRowContext();
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table_body;
                     try self.processToken(token);
                 } else {
@@ -2793,7 +2856,7 @@ pub const TreeBuilder = struct {
                         return;
                     }
                     self.clearStackBackToTableRowContext();
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table_body;
                 } else if (std.mem.eql(u8, name, "table")) {
                     if (!self.hasElementInTableScope("tr")) {
@@ -2801,7 +2864,7 @@ pub const TreeBuilder = struct {
                         return;
                     }
                     self.clearStackBackToTableRowContext();
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table_body;
                     try self.processToken(token);
                 } else if (std.mem.eql(u8, name, "tbody") or
@@ -2816,7 +2879,7 @@ pub const TreeBuilder = struct {
                         return; // Ignore
                     }
                     self.clearStackBackToTableRowContext();
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     self.insertion_mode = .in_table_body;
                     try self.processToken(token);
                 } else if (std.mem.eql(u8, name, "body") or
@@ -2932,35 +2995,35 @@ pub const TreeBuilder = struct {
                 } else if (std.mem.eql(u8, name, "option")) {
                     if (self.currentNode()) |current| {
                         if (current.hasTagName("option")) {
-                            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                            _ = self.popCurrentNode();
                         }
                     }
                     _ = try self.insertHtmlElement(tag);
                 } else if (std.mem.eql(u8, name, "optgroup")) {
                     if (self.currentNode()) |current| {
                         if (current.hasTagName("option")) {
-                            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                            _ = self.popCurrentNode();
                         }
                     }
                     if (self.currentNode()) |current| {
                         if (current.hasTagName("optgroup")) {
-                            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                            _ = self.popCurrentNode();
                         }
                     }
                     _ = try self.insertHtmlElement(tag);
                 } else if (std.mem.eql(u8, name, "hr")) {
                     if (self.currentNode()) |current| {
                         if (current.hasTagName("option")) {
-                            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                            _ = self.popCurrentNode();
                         }
                     }
                     if (self.currentNode()) |current| {
                         if (current.hasTagName("optgroup")) {
-                            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                            _ = self.popCurrentNode();
                         }
                     }
                     _ = try self.insertHtmlElement(tag);
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                 } else if (std.mem.eql(u8, name, "select")) {
                     self.reportError(.invalid_first_character_of_tag_name);
                     if (!self.hasElementInSelectScope("select")) {
@@ -2995,7 +3058,7 @@ pub const TreeBuilder = struct {
                                 const prev = self.open_elements.get(self.open_elements.len - 2);
                                 if (prev) |p| {
                                     if (p.hasTagName("optgroup")) {
-                                        _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                                        _ = self.popCurrentNode();
                                     }
                                 }
                             }
@@ -3003,7 +3066,7 @@ pub const TreeBuilder = struct {
                     }
                     if (self.currentNode()) |current| {
                         if (current.hasTagName("optgroup")) {
-                            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                            _ = self.popCurrentNode();
                         } else {
                             self.reportError(.invalid_first_character_of_tag_name);
                         }
@@ -3011,7 +3074,7 @@ pub const TreeBuilder = struct {
                 } else if (std.mem.eql(u8, name, "option")) {
                     if (self.currentNode()) |current| {
                         if (current.hasTagName("option")) {
-                            _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                            _ = self.popCurrentNode();
                         } else {
                             self.reportError(.invalid_first_character_of_tag_name);
                         }
@@ -3246,7 +3309,7 @@ pub const TreeBuilder = struct {
                     _ = try self.insertHtmlElement(tag);
                 } else if (std.mem.eql(u8, name, "frame")) {
                     _ = try self.insertHtmlElement(tag);
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                 } else if (std.mem.eql(u8, name, "noframes")) {
                     try self.handleInHeadMode(token);
                 } else {
@@ -3264,7 +3327,7 @@ pub const TreeBuilder = struct {
                             return;
                         }
                     }
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
+                    _ = self.popCurrentNode();
                     // If not root and not frameset, switch mode
                     if (self.currentNode()) |current| {
                         if (!current.hasTagName("frameset")) {
@@ -3620,7 +3683,7 @@ pub const TreeBuilder = struct {
                 }
             }
             if (should_pop) {
-                _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                if (self.popCurrentNode() == null) break;
             } else {
                 break;
             }
@@ -3645,7 +3708,7 @@ pub const TreeBuilder = struct {
                 }
             }
             if (should_pop) {
-                _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                if (self.popCurrentNode() == null) break;
             } else {
                 break;
             }
@@ -3734,7 +3797,7 @@ pub const TreeBuilder = struct {
     /// Pop elements until tag name.
     fn popUntilTagName(self: *TreeBuilder, tag_name: []const u8) void {
         while (self.open_elements.len > 0) {
-            const node = self.open_elements.remove(self.open_elements.len - 1) catch break;
+            const node = self.popCurrentNode() orelse break;
             if (node.hasTagName(tag_name)) break;
         }
     }
@@ -3980,7 +4043,7 @@ pub const TreeBuilder = struct {
             if (furthest_block == null) {
                 // Pop until and including the formatting element
                 while (self.open_elements.len > fe_stack_idx) {
-                    _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                    if (self.popCurrentNode() == null) break;
                 }
                 _ = self.active_formatting_elements.remove(formatting_index.?) catch {};
                 return;
@@ -4034,7 +4097,7 @@ pub const TreeBuilder = struct {
 
                 // Step 15.5: If node not in list, remove from stack and continue
                 if (node_in_list == null) {
-                    _ = self.open_elements.remove(node_index) catch {};
+                    _ = self.removeOpenElementAt(node_index);
                     continue;
                 }
 
@@ -4065,7 +4128,7 @@ pub const TreeBuilder = struct {
 
             // Pop until the formatting element (inclusive)
             while (self.open_elements.len > fe_stack_idx) {
-                _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                if (self.popCurrentNode() == null) break;
             }
 
             // Remove from active formatting elements
@@ -4168,7 +4231,7 @@ pub const TreeBuilder = struct {
             if (node.hasTagName("table") or node.hasTagName("template") or node.hasTagName("html")) {
                 break;
             }
-            _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+            if (self.popCurrentNode() == null) break;
         }
     }
 
@@ -4185,7 +4248,7 @@ pub const TreeBuilder = struct {
             {
                 break;
             }
-            _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+            if (self.popCurrentNode() == null) break;
         }
     }
 
@@ -4197,7 +4260,7 @@ pub const TreeBuilder = struct {
             if (node.hasTagName("tr") or node.hasTagName("template") or node.hasTagName("html")) {
                 break;
             }
-            _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+            if (self.popCurrentNode() == null) break;
         }
     }
 
@@ -4271,7 +4334,7 @@ pub const TreeBuilder = struct {
         }
         // Pop until td or th
         while (self.open_elements.len > 0) {
-            const node = self.open_elements.remove(self.open_elements.len - 1) catch break;
+            const node = self.popCurrentNode() orelse break;
             if (node.hasTagName("td") or node.hasTagName("th")) break;
         }
         self.clearActiveFormattingToMarker();
