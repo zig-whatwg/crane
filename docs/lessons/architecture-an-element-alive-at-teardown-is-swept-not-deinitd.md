@@ -1,5 +1,7 @@
 # Architecture: An element alive at teardown is swept, not deinit'd
 
+**Status** (2026-10-05, leaks3): the in-document case is gone. The realm's end tears its document down through each element's own deinit (`deinitNodeByType` dispatches on the vtable), so an input still in its document frees its value in its deinit; the input's sweep freed nothing over 2,881 files and was retired. What still reaches the browser's end is an ORPHAN - a node removed while unwrapped, or whose wrapper was collected while it was in a tree - which no exit frees (1,632 nodes over the same files); the sweeps that remain cover those, and the lazily filled maps' runtime boundary (`src/dom/teardown_sweeps.zig`).
+
 **Date**: 2026-09-29
 **Lesson**: `HTMLInputElement.set_value` was reported as leaking "one dupe per call". It did not: the input's `deinit` frees its value, but an input still in the document when the browser ends is never deinit'd one by one. Final teardown (`impls/cleanup.zig`, `cleanupAllDomRegistries`) sweeps Element's and HTMLElement's registries wholesale, and nothing swept the input's own table.
 
