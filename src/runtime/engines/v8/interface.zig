@@ -449,6 +449,12 @@ fn memberHandleIsSafe(comptime T: type) bool {
     if (argumentHandleIsKeptInValue(T)) return true;
     const info = @typeInfo(T);
     if (info == .optional) return memberHandleIsSafe(info.optional.child);
+    // A sequence member reads each element through its own handle
+    // (v8_Array_Get on the member's array), so no element can alias the
+    // dictionary's handle either: StructuredSerializeOptions' `transfer`
+    // (sequence<object>) kept every postMessage(message, options) dictionary's
+    // argument handle - one Global per call (workers2's leaks --atExit).
+    if (info == .pointer and info.pointer.size == .slice) return memberHandleIsSafe(info.pointer.child);
     return false;
 }
 
