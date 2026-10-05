@@ -41,3 +41,45 @@ test "a host decoder receives bytes, reports metadata and current data distinctl
     decoder.deinit();
     try testing.expect(host.destroyed);
 }
+
+test "C host adapter preserves result tags bytes and decoder ownership" {
+    const adapter = @import("platform").media_adapter;
+    const Host = struct {
+        opens: u32 = 0,
+        bytes: usize = 0,
+        closes: u32 = 0,
+        fn support(_: ?*anyopaque, _: [*]const u8, _: usize) callconv(.c) u8 {
+            return 2;
+        }
+        fn open(raw: ?*anyopaque, _: [*]const u8, _: usize) callconv(.c) ?*anyopaque {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            self.opens += 1;
+            return raw;
+        }
+        fn push(raw: ?*anyopaque, _: [*]const u8, length: usize, end: bool, metadata: *adapter.Metadata) callconv(.c) u8 {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            self.bytes += length;
+            metadata.* = .{ .duration = 3.5, .width = 80, .height = 60 };
+            return if (end) 4 else 3;
+        }
+        fn close(raw: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            self.closes += 1;
+        }
+    };
+    var host: Host = .{};
+    var bridge = adapter.Adapter.init(&host, &.{ .can_play_type = Host.support, .open = Host.open, .push = Host.push, .close = Host.close });
+    const backend = bridge.backend();
+    try testing.expectEqual(media.Support.probably, backend.canPlayType("video/example"));
+    var decoder = try backend.open(testing.allocator, "video/example");
+    const metadata = decoder.push("ab", false);
+    try testing.expect(metadata == .metadata);
+    try testing.expectEqual(@as(f64, 3.5), metadata.metadata.duration);
+    const data = decoder.push("cde", true);
+    try testing.expect(data == .current_data);
+    try testing.expectEqual(@as(u32, 80), data.current_data.width);
+    decoder.deinit();
+    try testing.expectEqual(@as(u32, 1), host.opens);
+    try testing.expectEqual(@as(usize, 5), host.bytes);
+    try testing.expectEqual(@as(u32, 1), host.closes);
+}
