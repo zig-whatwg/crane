@@ -2029,6 +2029,15 @@ fn windowPostMessageSteps(instance: *runtime.Instance, message: runtime.JSValue,
     // and detaches its ArrayBuffers, as a port's and a worker's postMessage
     // do (html.worker_host.serializePortMessage).
     const serialize_realm = engine.currentRealm() orelse incumbent;
+    // StructuredSerializeWithTransfer step 5.4.3's DetachArrayBuffer throws a
+    // TypeError for an ArrayBuffer whose [[ArrayBufferDetachKey]] is not
+    // undefined - a WebAssembly.Memory's. Checked before the engine's
+    // serializer, which detaches without asking (V8 aborts: "Only detachable
+    // ArrayBuffers can be detached").
+    for (transfer) |item| {
+        if (engine.borrowArrayBufferBytes(serialize_realm, item) == null) continue;
+        if (!engine.canTransferArrayBuffer(serialize_realm, item)) return error.TypeError;
+    }
     var serialized: SerializedMessage = if (transfer.len > 0)
         .{ .with_transfer = try @import("html").worker_host.serializePortMessage(serialize_realm, message, transfer, allocator) }
     else
