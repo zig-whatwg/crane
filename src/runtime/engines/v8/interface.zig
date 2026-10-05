@@ -421,6 +421,11 @@ pub fn argHandleIsCopied(comptime T: type) bool {
         // unknown pointer keeps the conservative answer.
         if (info == .@"struct" and !@hasDecl(T, "Meta")) {
             for (info.@"struct".fields) |field| {
+                // A member that is a sequence of the dictionary itself
+                // (AuctionAdConfig.componentAuctions,
+                // HIDCollectionInfo.children) is as safe as the rest of
+                // the dictionary; walking it would recurse forever.
+                if (isSelfMember(field.type, T)) continue;
                 if (!memberHandleIsSafe(field.type)) break :blk false;
             }
             break :blk true;
@@ -440,6 +445,16 @@ pub fn argHandleIsCopied(comptime T: type) bool {
     };
 }
 
+/// Whether member type `M` is dictionary `T` itself, through optionals and
+/// sequences.
+fn isSelfMember(comptime M: type, comptime T: type) bool {
+    if (M == T) return true;
+    const info = @typeInfo(M);
+    if (info == .optional) return isSelfMember(info.optional.child, T);
+    if (info == .pointer and info.pointer.size == .slice) return isSelfMember(info.pointer.child, T);
+    return false;
+}
+
 /// A dictionary member's conversion may alias the handle Get made for that
 /// member - a JSValue does, so does a buffer source (a reference to its
 /// object) or an `object` arm - but never the dictionary's own.
@@ -449,6 +464,14 @@ fn memberHandleIsSafe(comptime T: type) bool {
     if (argumentHandleIsKeptInValue(T)) return true;
     const info = @typeInfo(T);
     if (info == .optional) return memberHandleIsSafe(info.optional.child);
+    // A sequence<any> / sequence<object> member reads each element through
+    // its own handle (v8_Array_Get on the member's array), so no element can
+    // alias the dictionary's handle either: StructuredSerializeOptions'
+    // `transfer` kept every postMessage(message, options) dictionary's
+    // argument handle - one Global per call (workers2's leaks --atExit).
+    // JSValue elements only: a sequence of copied elements is already
+    // copied (argHandleIsCopied).
+    if (info == .pointer and info.pointer.size == .slice and info.pointer.child == runtime.JSValue) return true;
     return false;
 }
 
