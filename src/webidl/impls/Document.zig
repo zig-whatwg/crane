@@ -3632,56 +3632,27 @@ pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!runtime.JSValue
 /// Steps:
 /// 1. If node is a document, throw "NotSupportedError"
 /// 2. If node is a shadow root, throw "HierarchyRequestError"
-/// 3. If node is a DocumentFragment whose host is non-null, return node
-/// 4. Adopt node into this document
-/// 5. Return node
+/// 3. Adopt node into this document
+/// 4. Return node
 pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
-    const node_type = NodeImpl.getNodeType(node);
-
     // Step 1: Document nodes cannot be adopted
-    if (node_type == NodeImpl.NodeType.DOCUMENT_NODE) {
+    if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_NODE()) {
         return error.NotSupportedError;
     }
 
     // Step 2: Shadow roots cannot be adopted
-    // TODO: Check for shadow root when shadow DOM is implemented
+    if (node.stateAs(interfaces.ShadowRoot.State) != null) return error.HierarchyRequestError;
 
-    // Step 3: DocumentFragment with host - just return
-    if (node_type == NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE) {
-        // TODO: Check DocumentFragment.host when shadow DOM is implemented
-        // For now, DocumentFragment doesn't have host field
-    }
+    // Step 3: the shared adoption algorithm removes the old parent, updates
+    // shadow-including descendants and live ranges, and enqueues reactions.
+    const dom = @import("dom");
+    const node_base = dom.instance_bridge.getNodeBase(node) orelse return error.InvalidStateError;
+    const document_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;
+    const document = document_base.getNodeDocument() orelse return error.InvalidStateError;
+    try dom.mutation.adopt(node_base, document);
 
-    // Step 4: Adopt node into this document
-    // This involves:
-    // a) Remove node from its parent (if any)
-    // b) Set node's node document to this
-    // c) Recursively set node document for all descendants
-
-    // Remove from parent if attached
-    if (NodeImpl.getParent(node)) |parent| {
-        try NodeImpl.removeNodeFromParent(node, parent);
-    }
-
-    // Set owner document (recursively for descendants)
-    try adoptNodeRecursive(instance, node);
-
-    // Step 5: Return node
+    // Step 4: Return node
     return node;
-}
-
-/// Recursively adopt a node and all its descendants
-/// Spec: https://dom.spec.whatwg.org/#concept-node-adopt
-fn adoptNodeRecursive(doc: *runtime.Instance, node: *runtime.Instance) ImplError!void {
-    // Set this node's owner document
-    try NodeImpl.setOwnerDocument(node, doc);
-
-    // Iterate children and adopt recursively using first_child/next_sibling traversal
-    var child = NodeImpl.getFirstChild(node);
-    while (child) |c| {
-        try adoptNodeRecursive(doc, c);
-        child = NodeImpl.getNextSibling(c);
-    }
 }
 
 /// Operation: createTextNode
