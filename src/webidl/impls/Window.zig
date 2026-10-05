@@ -470,6 +470,7 @@ pub fn installHooks() void {
         .trusted_types = &settingsTrustedTypes,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
+        .prohibits_mixed_security_contexts = &settingsProhibitsMixedSecurityContexts,
     });
 }
 
@@ -526,6 +527,33 @@ fn setUserActivationTimestamps(window: *runtime.Instance, timestamps: @import("d
 fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return instance.ctx.allocator.dupe(u8, effectiveOrigin(instance, internal));
+}
+
+/// Mixed Content 4.3: any authenticated embedding document prohibits
+/// mixed content, even when this document's own origin is opaque.
+fn settingsProhibitsMixedSecurityContexts(instance: *runtime.Instance) error{OutOfMemory}!bool {
+    const internal = getInternal(instance) orelse return false;
+    const mixed = @import("fetch").mixed_content;
+    // 1. Check this environment settings object's origin.
+    if (try mixed.isOriginAuthenticated(instance.ctx.allocator, effectiveOrigin(instance, internal))) return true;
+    // 2.2.1. Check each ancestor navigable's active document origin. This is not
+    // isSecureContext: one authenticated ancestor is sufficient.
+    const navigable = navigableOf(instance, internal) orelse return false;
+    var parent = navigable.parent;
+    while (parent) |ancestor| : (parent = ancestor.parent) {
+        const active = ancestor.getActiveWindow() orelse continue;
+        const global: *runtime.Instance = @ptrCast(@alignCast(active));
+        const settings = @import("dom").global_settings.of(global) orelse continue;
+        const ancestor_origin = settings.origin(global) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            // An unreadable embedding origin must not authorize a downgrade.
+            else => return true,
+        };
+        defer global.ctx.allocator.free(ancestor_origin);
+        if (try mixed.isOriginAuthenticated(instance.ctx.allocator, ancestor_origin)) return true;
+    }
+    // 3. Does not restrict mixed security contexts.
+    return false;
 }
 
 /// The user agent's cookie jar, which a window reaches through its browsing
