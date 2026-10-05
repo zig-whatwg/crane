@@ -512,14 +512,14 @@ const owner_steps: worker_host.OwnerSteps = .{
 };
 
 /// HTML "report an exception" step 7, for the worker's global scope, when
-/// the error went unhandled there: "fire an event named error at
-/// workerObject, using ErrorEvent, with the cancelable attribute initialized
-/// to true, and additional attributes initialized according to errorInfo" -
-/// `error` null: the exception value does not reach the owner's realm.
-///
-/// TODO(workers): "If notHandled is true, then report exception for
-/// workerObject's relevant global object with omitError set to true" - the
-/// owner's own error event. Not yet: the owner's global does not hear it.
+/// the error went unhandled there: "Let notHandled be the result of firing
+/// an event named error at workerObject, using ErrorEvent, with the
+/// cancelable attribute initialized to true, and additional attributes
+/// initialized according to errorInfo" - `error` null: the exception value
+/// does not reach the owner's realm. "If notHandled is true, then report
+/// exception for workerObject's relevant global object with omitError set to
+/// true": the owner's global hears it - window.onerror, or, for a nested
+/// worker, the outer worker's global scope and so its Worker in turn.
 fn errorReported(worker: *runtime.Instance, report: *const worker_host.ErrorReport.Info) void {
     const internal = getInternal(worker) orelse return;
     if (internal.terminated) return;
@@ -548,8 +548,19 @@ const ErrorFire = struct {
             webidl.Opt(dictionaries.ErrorEventInit).passed(init_dict),
         ) catch return;
         const generation = runtime.SlabAllocator.generationOf(event);
-        _ = dom.fire_event.dispatchTrusted(worker, event) catch {};
+        const not_handled = dom.fire_event.dispatchTrusted(worker, event) catch true;
         event.releaseIfUnwrapped(generation);
+        if (!not_handled) return;
+        const record = worker.ctx.getRealm() orelse return;
+        const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
+        const info: runtime.ErrorInfo = .{
+            .message = self.info.message,
+            .filename = self.info.filename,
+            .lineno = self.info.lineno,
+            .colno = self.info.colno,
+            .error_value = null,
+        };
+        _ = html.report_exception.reportErrorInfo(global, &info, .{ .omit_error = true });
     }
 };
 
