@@ -1447,7 +1447,9 @@ fn startFetch(record: *Navigation) void {
             .alive = &fetchAlive,
             .gone = &fetchGone,
         };
-        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{}, fetch_mod.network.scheduler.threadScheduler(), client) catch {
+        // The request's final referrer comes back with the result, for the
+        // new document's referrer (fetchDone frees it with the result).
+        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{ .report_referrer = true }, fetch_mod.network.scheduler.threadScheduler(), client) catch {
             // The fetch owned the request, and freed it.
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);

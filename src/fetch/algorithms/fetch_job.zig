@@ -52,7 +52,7 @@ pub const FetchResult = struct {
     /// null for "no-referrer" (or "client", which main fetch never leaves).
     /// HTML "create and initialize a Document object" step 14 sets a
     /// navigation's new document's referrer from it. Owned, by the
-    /// response's allocator.
+    /// response's allocator; null unless FetchOptions.report_referrer.
     referrer: ?[]u8 = null,
 
     pub fn deinit(self: *FetchResult) void {
@@ -74,6 +74,10 @@ pub const FetchOptions = struct {
     use_cors: bool = false,
     /// Cross-origin isolated capability
     cross_origin_isolated_capability: bool = false,
+    /// Hand the request's final referrer back in FetchResult.referrer. Only
+    /// a caller that frees its result with FetchResult.deinit asks: the
+    /// others take the response and timing info apart and would leak it.
+    report_referrer: bool = false,
 };
 
 pub const FetchJob = struct {
@@ -244,7 +248,7 @@ pub const FetchJob = struct {
         self.timing_info = FetchTimingInfo.init(self.allocator);
         // Out of memory, the referrer is left out (null): the document gets
         // the empty string, as for no referrer.
-        const referrer: ?[]u8 = switch (self.request.referrer) {
+        const referrer: ?[]u8 = if (!self.options.report_referrer) null else switch (self.request.referrer) {
             .url => |url| response.allocator.dupe(u8, url) catch null,
             .no_referrer, .client => null,
         };
@@ -550,7 +554,7 @@ test "fetch result: the request's referrer as main fetch determined it" {
         defer request.deinit();
         try request.setOrigin("http://a.test");
         try request.setReferrerUrl("http://a.test/page?q=1#frag");
-        const job = try FetchJob.create(allocator, request, false, .{});
+        const job = try FetchJob.create(allocator, request, false, .{ .report_referrer = true });
         defer job.destroy();
         try std.testing.expect(try job.start() == .network);
         try std.testing.expect(try job.resumeNetwork(testAnswer(200)) == .done);
@@ -564,7 +568,7 @@ test "fetch result: the request's referrer as main fetch determined it" {
         defer request.deinit();
         try request.setOrigin("http://a.test");
         try request.setReferrerUrl("http://a.test/page?q=1");
-        const job = try FetchJob.create(allocator, request, false, .{});
+        const job = try FetchJob.create(allocator, request, false, .{ .report_referrer = true });
         defer job.destroy();
         try std.testing.expect(try job.start() == .network);
         try std.testing.expect(try job.resumeNetwork(testAnswer(200)) == .done);
@@ -578,7 +582,7 @@ test "fetch result: the request's referrer as main fetch determined it" {
         defer request.deinit();
         try request.setOrigin("http://a.test");
         request.setReferrer(.no_referrer);
-        const job = try FetchJob.create(allocator, request, false, .{});
+        const job = try FetchJob.create(allocator, request, false, .{ .report_referrer = true });
         defer job.destroy();
         _ = try job.start();
         _ = try job.resumeNetwork(testAnswer(200));
@@ -592,6 +596,21 @@ test "fetch result: the request's referrer as main fetch determined it" {
         try request.setOrigin("http://a.test");
         try request.setReferrerUrl("http://a.test/page");
         request.referrer_policy = .no_referrer;
+        const job = try FetchJob.create(allocator, request, false, .{ .report_referrer = true });
+        defer job.destroy();
+        _ = try job.start();
+        _ = try job.resumeNetwork(testAnswer(200));
+        var result = job.takeResult();
+        defer result.deinit();
+        try std.testing.expect(result.referrer == null);
+    }
+    // Not asked for: none, whatever the request's referrer - the callers that
+    // take a result apart without FetchResult.deinit never see one to free.
+    {
+        const request = try InternalRequest.init(allocator, "http://a.test/x");
+        defer request.deinit();
+        try request.setOrigin("http://a.test");
+        try request.setReferrerUrl("http://a.test/page");
         const job = try FetchJob.create(allocator, request, false, .{});
         defer job.destroy();
         _ = try job.start();
