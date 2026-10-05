@@ -48,7 +48,9 @@ test "mixed content: upgradeable destinations preserve URL components and normal
         .{ "http://example.test/a?b#c", "https://example.test/a?b#c" },
         .{ "http://example.test:80/a", "https://example.test/a" },
         .{ "http://example.test:8443/a", "https://example.test:8443/a" },
-        .{ "http://user:pass@example.test:443/a", "https://user:pass@example.test/a" },
+        .{ "http://user:pass@example.test:443/a", "https://user:pass@example.test:443/a" },
+        // Mixed Content 4.1 has no IP-literal exclusion (Q4).
+        .{ "http://192.0.2.1/a", "https://192.0.2.1/a" },
     };
     for ([_]fetch.internal.Destination{ .image, .audio, .video }) |destination| {
         for (cases) |case| {

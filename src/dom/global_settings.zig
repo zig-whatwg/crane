@@ -167,3 +167,66 @@ test "a global no kind owns has no settings, and a kind installs once" {
     try std.testing.expect(of(global) != null);
     try std.testing.expect(installed[1] == null);
 }
+
+test "mixed content settings: a missing callback and a null client do not prohibit" {
+    const saved = installed;
+    defer installed = saved;
+    installed = @splat(null);
+    var context = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer context.deinit();
+    const vtable: runtime.VTable = .{ .name = "MixedContentTestGlobal", .deinit = null, .methods_ptr = &context };
+    test_owned = .{ .ctx = &context, .vtable = &vtable, .state = &context };
+    defer test_owned = undefined;
+    var absent = try requestClient(&test_owned);
+    defer absent.deinit();
+    try std.testing.expect(!absent.request.prohibits_mixed_security_contexts);
+    install(.{ .owns = &testOwns, .origin = &testOrigin, .is_secure_context = &testFalse, .cross_origin_isolated = &testFalse });
+    var no_callback = try requestClient(&test_owned);
+    defer no_callback.deinit();
+    try std.testing.expect(!no_callback.request.prohibits_mixed_security_contexts);
+}
+
+test "mixed content settings: callback answers are captured and OOM frees the copied origin" {
+    const saved = installed;
+    defer installed = saved;
+    installed = @splat(null);
+    var context = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer context.deinit();
+    const vtable: runtime.VTable = .{ .name = "MixedContentTestGlobal", .deinit = null, .methods_ptr = &context };
+    test_owned = .{ .ctx = &context, .vtable = &vtable, .state = &context };
+    defer test_owned = undefined;
+    const Callbacks = struct {
+        fn originOf(global: *runtime.Instance) anyerror!runtime.USVString {
+            return global.ctx.allocator.dupe(u8, "https://example.test");
+        }
+        fn prohibits(_: *runtime.Instance) error{OutOfMemory}!bool {
+            return true;
+        }
+        fn allows(_: *runtime.Instance) error{OutOfMemory}!bool {
+            return false;
+        }
+        fn fails(global: *runtime.Instance) error{OutOfMemory}!bool {
+            var failing = std.testing.FailingAllocator.init(global.ctx.allocator, .{ .fail_index = 0 });
+            const allocation = try failing.allocator().alloc(u8, 1);
+            defer failing.allocator().free(allocation);
+            return false;
+        }
+    };
+    install(.{
+        .owns = &testOwns,
+        .origin = &Callbacks.originOf,
+        .is_secure_context = &testFalse,
+        .cross_origin_isolated = &testFalse,
+        .prohibits_mixed_security_contexts = &Callbacks.prohibits,
+    });
+    var captured = try requestClient(&test_owned);
+    defer captured.deinit();
+    try std.testing.expect(captured.request.prohibits_mixed_security_contexts);
+    installed[0].?.prohibits_mixed_security_contexts = &Callbacks.allows;
+    var allowed = try requestClient(&test_owned);
+    defer allowed.deinit();
+    try std.testing.expect(!allowed.request.prohibits_mixed_security_contexts);
+    try std.testing.expect(captured.request.prohibits_mixed_security_contexts);
+    installed[0].?.prohibits_mixed_security_contexts = &Callbacks.fails;
+    try std.testing.expectError(error.OutOfMemory, requestClient(&test_owned));
+}
