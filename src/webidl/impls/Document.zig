@@ -19,6 +19,7 @@ const std = @import("std");
 const log = std.log.scoped(.document_impl);
 const runtime = @import("runtime");
 const engine = @import("engine");
+const dom_creation = @import("dom").node_creation;
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -1945,9 +1946,11 @@ pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// Getter for customElementRegistry
 /// Returns the custom element registry associated with this document, or null.
 pub fn get_customElementRegistry(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    // Custom elements not yet implemented
-    return null;
+    // Deviation: the global registry is currently kept by Window. The spec
+    // keeps it on Document even after its browsing context ends. Moving that
+    // ownership, together with scoped registries, is a follow-up batch.
+    const window = (try get_defaultView(instance)) orelse return null;
+    return try interfaces.Window.get_customElements(window);
 }
 
 /// Getter for fullscreenElement
@@ -2445,8 +2448,10 @@ pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerr
 /// HTML tag names dispatch to their corresponding interfaces (e.g., "iframe" → HTMLIFrameElement).
 /// Unknown tag names create HTMLUnknownElement.
 pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    _ = options; // TODO: Handle ElementCreationOptions (custom elements)
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+    const realm = instance.ctx;
+    const allocator = realm.allocator;
+    const was_live = realm.hasEngine();
 
     // DOM 4.5 createElement step 1: "If localName is not a valid element local
     // name, then throw an "InvalidCharacterError" DOMException."
@@ -2454,9 +2459,15 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
 
     // Step 2: "If this is an HTML document, then set localName to localName in
     // ASCII lowercase."
-    const lowered: ?[]u8 = if (internal.doc_type == .html) try std.ascii.allocLowerString(internal.allocator, localName.asSlice()) else null;
-    defer if (lowered) |l| internal.allocator.free(l);
+    const lowered: ?[]u8 = if (internal.doc_type == .html) try std.ascii.allocLowerString(allocator, localName.asSlice()) else null;
+    defer if (lowered) |l| allocator.free(l);
     const local_name_slice: []const u8 = lowered orelse localName.asSlice();
+
+    // Step 3: flatten element creation options; the legacy string is ignored.
+    // customElementRegistry options are the deferred scoped-registry work.
+    const is_value = try @import("html").custom_element_creation.flattenIs(instance, options);
+    defer if (is_value) |value| allocator.free(value);
+    if (was_live and !realm.hasEngine()) return error.InvalidStateError;
 
     // Step 4: "Let namespace be the HTML namespace, if this is an HTML document
     // or this's content type is "application/xhtml+xml"; otherwise null."
@@ -2469,52 +2480,26 @@ pub fn call_createElement(instance: *runtime.Instance, localName: runtime.DOMStr
         std.mem.eql(u8, internal.content_type.asSlice(), "application/xhtml+xml");
 
     // Step 5: create an element given this, localName, namespace.
-    return createAnElement(instance, local_name_slice, if (in_html_namespace) html_namespace else null, null);
+    return @import("html").custom_element_creation.create(.{
+        .document = instance,
+        .local_name = local_name_slice,
+        .namespace = if (in_html_namespace) html_namespace else null,
+        .is_value = is_value,
+        .synchronous = true,
+    });
 }
 
 const html_namespace = "http://www.w3.org/1999/xhtml";
 
-/// DOM "create an element", for a document, local name, namespace and prefix
-/// - custom element definitions aside (TODO: steps 2-5 look one up).
-///
-/// Spec: https://dom.spec.whatwg.org/#concept-create-element step 6: "a new
-/// element that implements interface" - the element interface for localName
-/// and namespace - "with ... namespace set to namespace, namespace prefix set
-/// to prefix, local name set to localName ... and node document set to
-/// document".
-///
-/// Deviation: of the other namespaces' element interfaces only the SVG
-/// script's, SVGScriptElement, is made - every other SVG or MathML element is
-/// a plain Element (TODO).
+/// DOM create-an-element with the default options, used by Document's other
+/// algorithms. The factory operations explicitly set synchronous creation.
 fn createAnElement(instance: *runtime.Instance, local_name: []const u8, namespace: ?[]const u8, prefix: ?[]const u8) !*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const ElementImpl = @import("Element.zig");
-    const is_html = if (namespace) |ns| std.mem.eql(u8, ns, html_namespace) else false;
-    const is_svg = if (namespace) |ns| std.mem.eql(u8, ns, svg_namespace) else false;
-    const is_svg_script = is_svg and std.mem.eql(u8, local_name, "script");
-    // An SVG a is an SVGAElement: its activation behaviour follows its
-    // hyperlink (SVG 2 "a"). Other SVG elements stay plain Elements until
-    // their interfaces' impls chain (stated).
-    const is_svg_a = is_svg and std.mem.eql(u8, local_name, "a");
-
-    const element = if (is_html)
-        try createHTMLElement(internal.allocator, instance.ctx, local_name)
-    else if (is_svg_script)
-        try interfaces.SVGScriptElement.init(internal.allocator, instance.ctx)
-    else if (is_svg_a)
-        try interfaces.SVGAElement.init(internal.allocator, instance.ctx)
-    else
-        try interfaces.Element.init(internal.allocator, instance.ctx);
-    errdefer runtime.Instance.deinit(element);
-
-    // An HTML element's init chain sets its node type; a plain Element's
-    // does not.
-    if (!is_html) try NodeImpl.setNodeType(element, NodeImpl.NodeType.ELEMENT_NODE);
-    try ElementImpl.setLocalName(element, local_name);
-    if (namespace) |ns| try ElementImpl.setNamespaceURI(element, ns);
-    if (prefix) |p| try ElementImpl.setPrefix(element, p);
-    try NodeImpl.setOwnerDocument(element, instance);
-    return element;
+    return @import("html").custom_element_creation.create(.{
+        .document = instance,
+        .local_name = local_name,
+        .namespace = namespace,
+        .prefix = prefix,
+    });
 }
 
 /// Create an element in the HTML namespace: it implements the interface HTML's
@@ -3367,149 +3352,29 @@ pub fn call_hasStorageAccess(instance: *runtime.Instance) anyerror!runtime.JSVal
 /// 1. If node is a document or shadow root, throw "NotSupportedError"
 /// 2. Return clone a node with document=this, subtree=deep
 pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    _ = options; // TODO: Handle ImportNodeOptions (deep flag)
+    const realm = instance.ctx;
+    const was_live = realm.hasEngine();
+    // Step 1: neither documents nor shadow roots can be imported.
+    if (try interfaces.Node.get_nodeType(node) == interfaces.Node.get_DOCUMENT_NODE() or
+        node.stateAs(interfaces.ShadowRoot.State) != null) return error.NotSupportedError;
 
-    // Step 1: Check node type
-    const node_type = NodeImpl.getNodeType(node);
-
-    // Document nodes cannot be imported
-    if (node_type == NodeImpl.NodeType.DOCUMENT_NODE) {
-        return error.NotSupportedError;
-    }
-
-    // TODO: Check for shadow root when shadow DOM is implemented
-
-    // Step 2: Clone the node into this document
-    // For now, do a shallow clone (deep=false by default)
-    // TODO: Parse options to get deep flag
-    return cloneNode(instance, node, false);
-}
-
-/// Clone a node for importNode/cloneNode
-/// Spec: https://dom.spec.whatwg.org/#concept-node-clone
-fn cloneNode(doc: *runtime.Instance, node: *runtime.Instance, deep: bool) ImplError!*runtime.Instance {
-    const internal = getInternal(doc) orelse return error.InvalidStateError;
-    const node_type = NodeImpl.getNodeType(node) orelse return error.InvalidStateError;
-
-    // Clone based on node type
-    const copy = switch (node_type) {
-        NodeImpl.NodeType.ELEMENT_NODE => blk: {
-            // Create new element
-            // Use interface instead of impl (per Golden Rule #13)
-            const ElementImpl = @import("Element.zig");
-            const elem = try interfaces.Element.init(internal.allocator, doc.ctx);
-            try NodeImpl.setNodeType(elem, NodeImpl.NodeType.ELEMENT_NODE);
-
-            // Copy element properties from source
-            if (ElementImpl.getInternal(node)) |src_internal| {
-                const elem_internal = ElementImpl.getInternal(elem) orelse break :blk elem;
-
-                // Copy namespace, prefix, local name
-                if (src_internal.namespace_uri) |ns| {
-                    elem_internal.namespace_uri = try ns.clone(internal.allocator);
-                }
-                if (src_internal.prefix) |p| {
-                    elem_internal.prefix = try p.clone(internal.allocator);
-                }
-                elem_internal.local_name = try src_internal.local_name.clone(internal.allocator);
-                elem_internal.id = try src_internal.id.clone(internal.allocator);
-                elem_internal.class_name = try src_internal.class_name.clone(internal.allocator);
-                elem_internal.slot = try src_internal.slot.clone(internal.allocator);
-
-                // Copy all attributes using iterator
-                var attr_iter = src_internal.attributeIterator();
-                while (attr_iter.next()) |attr| {
-                    const new_attr = ElementImpl.AttributeEntry{
-                        .namespace_uri = if (attr.namespace_uri) |ns| try internal.allocator.dupe(u8, ns) else null,
-                        .prefix = if (attr.prefix) |p| try internal.allocator.dupe(u8, p) else null,
-                        .local_name = try internal.allocator.dupe(u8, attr.local_name),
-                        .value = try internal.allocator.dupe(u8, attr.value),
-                    };
-                    try elem_internal.addAttribute(new_attr);
-                }
-            }
-
-            break :blk elem;
+    // Steps 2–5.1: WebIDL selects the dictionary for objects/null and the
+    // boolean branch for other values. Omitted options default to false.
+    // Scoped customElementRegistry options remain a follow-up batch.
+    const subtree = if (!options.was_passed) false else switch (engine.typeOf(realm, options.value)) {
+        .undefined => false,
+        .null => true,
+        .object => blk: {
+            const self_only = try engine.getProperty(realm, options.value, "selfOnly");
+            defer self_only.release();
+            break :blk !engine.toBoolean(realm, self_only.value);
         },
-        NodeImpl.NodeType.TEXT_NODE => blk: {
-            // Clone text data
-            const CharacterDataImpl = @import("CharacterData.zig");
-            const src_data = CharacterDataImpl.getData(node) orelse "";
-            // Use interface instead of impl (per Golden Rule #13)
-            const text = try interfaces.Text.call_constructor(doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
-            break :blk text;
-        },
-        NodeImpl.NodeType.COMMENT_NODE => blk: {
-            // Clone comment data
-            const CharacterDataImpl = @import("CharacterData.zig");
-            const src_data = CharacterDataImpl.getData(node) orelse "";
-            // Use interface instead of impl (per Golden Rule #13)
-            const comment = try interfaces.Comment.call_constructor(doc.ctx, webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(src_data)));
-            break :blk comment;
-        },
-        NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE => blk: {
-            // Use interface instead of impl (per Golden Rule #13)
-            const fragment = try interfaces.DocumentFragment.init(internal.allocator, doc.ctx);
-            try NodeImpl.setNodeType(fragment, NodeImpl.NodeType.DOCUMENT_FRAGMENT_NODE);
-            break :blk fragment;
-        },
-        NodeImpl.NodeType.PROCESSING_INSTRUCTION_NODE => blk: {
-            // Get source target and data
-            const src_target = ProcessingInstructionImpl.getTarget(node) orelse "";
-            const CharacterDataImpl = @import("CharacterData.zig");
-            const src_data = CharacterDataImpl.getData(node) orelse "";
-
-            // Create PI with target and data
-            const pi = try ProcessingInstructionImpl.createProcessingInstruction(
-                internal.allocator,
-                doc.ctx,
-                src_target,
-                src_data,
-            );
-            break :blk pi;
-        },
-        NodeImpl.NodeType.CDATA_SECTION_NODE => blk: {
-            // Get source data
-            const CharacterDataImpl = @import("CharacterData.zig");
-            const src_data = CharacterDataImpl.getData(node) orelse "";
-
-            // Use interface instead of impl (per Golden Rule #13)
-            const cdata = try interfaces.CDATASection.init(internal.allocator, doc.ctx);
-            try NodeImpl.setNodeType(cdata, NodeImpl.NodeType.CDATA_SECTION_NODE);
-
-            // Set the data via CharacterData (internal method)
-            try CharacterDataImpl.setData(cdata, src_data);
-
-            break :blk cdata;
-        },
-        NodeImpl.NodeType.DOCUMENT_TYPE_NODE => {
-            // DocumentType cannot be imported via importNode per spec
-            return error.NotSupportedError;
-        },
-        else => return error.NotSupportedError,
+        else => engine.toBoolean(realm, options.value),
     };
-    errdefer {
-        // Clean up on error - cast to generic deinit
-        runtime.Instance.deinit(copy);
-    }
-
-    // Set owner document
-    try NodeImpl.setOwnerDocument(copy, doc);
-
-    // If deep clone, recursively clone children
-    if (deep) {
-        // Iterate node's children using first_child/next_sibling traversal
-        var child = NodeImpl.getFirstChild(node);
-        while (child) |c| {
-            const child_copy = try cloneNode(doc, c, true);
-            // TODO: Append child_copy to copy using proper appendChild
-            // For now we just clone; tree structure maintenance needs mutation algorithms
-            _ = child_copy;
-            child = NodeImpl.getNextSibling(c);
-        }
-    }
-
-    return copy;
+    if (was_live and !realm.hasEngine()) return error.InvalidStateError;
+    // Steps 6–7: cloning uses this document's global registry, not the source
+    // document's, and never runs adoption steps.
+    return dom_creation.clone(node, instance, subtree, null);
 }
 
 /// Operation: createCDATASection
@@ -4657,7 +4522,9 @@ pub fn call_requestStorageAccess__1(instance: *runtime.Instance) anyerror!runtim
 /// 2. Parse qualifiedName for prefix:localName
 /// 3. Create element with namespace, prefix, localName
 pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, qualifiedName: runtime.DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    _ = options; // TODO: Handle ElementCreationOptions (custom elements)
+    const realm = instance.ctx;
+    const allocator = realm.allocator;
+    const was_live = realm.hasEngine();
 
     // DOM 4.5 "internal createElementNS steps" step 1: "Let (namespace,
     // prefix, localName) be the result of validating and extracting namespace
@@ -4668,9 +4535,21 @@ pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?runtime.DOM
         .element,
     );
 
-    // Step 5: "Return the result of creating an element given document,
+    // Internal createElementNS step 2: flatten element creation options.
+    const is_value = try @import("html").custom_element_creation.flattenIs(instance, options);
+    defer if (is_value) |value| allocator.free(value);
+    if (was_live and !realm.hasEngine()) return error.InvalidStateError;
+
+    // Step 3: "Return the result of creating an element given document,
     // localName, namespace, prefix, is, and true."
-    return createAnElement(instance, extracted.local_name, extracted.namespace, extracted.prefix);
+    return @import("html").custom_element_creation.create(.{
+        .document = instance,
+        .local_name = extracted.local_name,
+        .namespace = extracted.namespace,
+        .prefix = extracted.prefix,
+        .is_value = is_value,
+        .synchronous = true,
+    });
 }
 
 /// Operation: captureEvents

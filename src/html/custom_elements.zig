@@ -14,6 +14,7 @@ pub const begin = driver.begin;
 pub const end = driver.end;
 pub const clearRealm = driver.clearRealm;
 pub const clearElement = driver.clearElement;
+pub const cancelElement = driver.cancelElement;
 pub const stateForRealm = driver.stateForRealm;
 pub const enqueueCallback = driver.enqueueCallback;
 pub const enqueueUpgrade = driver.enqueueUpgrade;

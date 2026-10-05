@@ -135,6 +135,7 @@ pub const InternalState = struct {
     /// Custom element state per HTML spec
     custom_element_state: CustomElementState = .undefined,
     custom_element_definition: ?*dom.custom_elements.Definition = null,
+    custom_element_ever_enqueued: bool = false,
 
     /// "is" value for customized built-in elements
     is_value: ?runtime.DOMString = null,
@@ -551,11 +552,16 @@ pub fn installHooks() void {
         .set_state = &setCustomElementState,
         .set_definition = &setCustomElementDefinition,
         .shadow_root_of = &shadowRootOf,
+        .mark_enqueued = &markCustomElementEnqueued,
     });
 }
 
 fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
     return (getInternal(instance) orelse return null).shadow_root;
+}
+
+fn markCustomElementEnqueued(instance: *runtime.Instance) void {
+    (getInternal(instance) orelse return).custom_element_ever_enqueued = true;
 }
 
 fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementData {
@@ -629,6 +635,7 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 pub fn deinit(instance: *runtime.Instance) void {
     // Clean up from registry
     if (Registry.get(instance)) |internal| {
+        if (internal.custom_element_ever_enqueued) dom.custom_elements.cancelElement(instance);
         // The host lets its shadow root go: the shadow root forgets its host
         // (dom.shadow_hosts); the host's edge to it goes with the host's
         // wrapper, so the wrapper cache frees it - and its subtree - once

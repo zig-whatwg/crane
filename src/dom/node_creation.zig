@@ -44,6 +44,8 @@ pub const DocumentTypeSteps = struct {
 pub const NodeSteps = struct {
     /// Free `node`, which was created and never inserted, and its subtree.
     destroy_uninserted: *const fn (node: *runtime.Instance) void,
+    /// DOM clone-a-node, with an explicit document and optional parent.
+    clone: *const fn (*runtime.Instance, ?*runtime.Instance, bool, ?*runtime.Instance) anyerror!*runtime.Instance,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -87,6 +89,10 @@ pub fn setDoctypeIds(doctype: *runtime.Instance, name: ?[]const u8, public_id: ?
 pub fn destroyUninserted(node: *runtime.Instance) void {
     const steps = node_steps orelse return;
     steps.destroy_uninserted(node);
+}
+
+pub fn clone(node: *runtime.Instance, document: ?*runtime.Instance, subtree: bool, parent: ?*runtime.Instance) !*runtime.Instance {
+    return (node_steps orelse return error.InvalidStateError).clone(node, document, subtree, parent);
 }
 
 test "without installed steps nothing is set or freed" {

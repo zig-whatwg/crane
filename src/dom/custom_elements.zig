@@ -27,6 +27,7 @@ pub const ElementSteps = struct {
     set_state: *const fn (*runtime.Instance, State) void,
     set_definition: *const fn (*runtime.Instance, ?*Definition) void,
     shadow_root_of: *const fn (*runtime.Instance) ?*runtime.Instance,
+    mark_enqueued: *const fn (*runtime.Instance) void,
 };
 pub const Creation = struct {
     document: *runtime.Instance,
@@ -39,9 +40,11 @@ pub const Creation = struct {
 pub const OwnerSteps = struct {
     has_definitions: *const fn (runtime.Context) bool,
     lookup: *const fn (?*runtime.Instance, ?[]const u8, []const u8, ?[]const u8) ?*Definition,
+    definition_for_constructor: *const fn (*runtime.Instance, runtime.Context, runtime.JSValue) ?*Definition,
     create: *const fn (Creation) anyerror!*runtime.Instance,
     try_upgrade: *const fn (*runtime.Instance) void,
     enqueue_callback: *const fn (*runtime.Instance, CallbackType, CallbackArgs) void,
+    cancel_element: *const fn (*runtime.Instance) void,
 };
 const Implementation = struct { element: ?ElementSteps = null, owner: ?OwnerSteps = null };
 // process-wide: immutable function pointers installed at process start; all mutable data belongs to elements or agents, so many Browsers and threads share no reaction state
@@ -73,9 +76,19 @@ pub fn setDefinition(element: *runtime.Instance, definition: ?*Definition) void 
 pub fn shadowRootOf(element: *runtime.Instance) ?*runtime.Instance {
     return (implementation.element orelse return null).shadow_root_of(element);
 }
+pub fn markEnqueued(element: *runtime.Instance) void {
+    (implementation.element orelse return).mark_enqueued(element);
+}
+pub fn cancelElement(element: *runtime.Instance) void {
+    (implementation.owner orelse return).cancel_element(element);
+}
 /// The registry is explicit: lookup never substitutes an entered realm.
 pub fn lookup(registry: ?*runtime.Instance, namespace: ?[]const u8, local_name: []const u8, is_value: ?[]const u8) ?*Definition {
     return (implementation.owner orelse return null).lookup(registry, namespace, local_name, is_value);
+}
+/// HTMLConstructor's registry lookup uses SameValue on the constructor.
+pub fn definitionForConstructor(registry: *runtime.Instance, realm: runtime.Context, constructor: runtime.JSValue) ?*Definition {
+    return (implementation.owner orelse return null).definition_for_constructor(registry, realm, constructor);
 }
 pub fn create(options: Creation) !*runtime.Instance {
     return (implementation.owner orelse return error.InvalidStateError).create(options);

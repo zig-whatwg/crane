@@ -86,6 +86,36 @@ fn exercise() !void {
     // It is idempotent, as AgentHost.deinit follows the pre-agent drop.
     state.releasePending();
     try testing.expectEqual(baseline, try liveHandles());
+
+    // An explicitly destroyed clone can free its slot while this realm is
+    // still live. Cancelling releases both its element root and callback.
+    const Hold = struct {
+        realm: runtime.Context,
+        value: runtime.JSValue,
+        fn acquire(self: @This(), _: *runtime.Instance) !engine.Owned {
+            return engine.retainValue(self.realm, self.value);
+        }
+        fn never(_: void, _: *runtime.Instance, _: *ce.Reaction) void {
+            unreachable;
+        }
+    };
+    state.begin();
+    for (0..2) |_| {
+        var queued = try ce.Reaction.initCallback(testing.allocator, parent, .{
+            .function = callback_value,
+            .context = retired,
+        }, .connected, .none);
+        _ = state.enqueue(Hold{ .realm = parent, .value = callback_value.value }, dead_element, parent, queued, Hold.acquire) catch |err| {
+            queued.deinit();
+            return err;
+        };
+        try testing.expect(try liveHandles() > baseline);
+        state.cancelElement(dead_element);
+        state.cancelElement(dead_element);
+        try testing.expectEqual(baseline, try liveHandles());
+    }
+    state.end({}, Hold.never);
+    try testing.expectEqual(baseline, try liveHandles());
 }
 
 test "CE cleanup: retired realm callbacks release their live handles without touching dead instances" {

@@ -452,7 +452,7 @@ pub fn installHooks() void {
     // Other types reach a window's container through this hook.
     @import("dom").navigable_container.install(.{ .of = &containerOf });
     // A frame's host binds the Window to the global its realm made here.
-    @import("dom").window_globals.install(.{ .bind = &setBoundV8Global });
+    @import("dom").window_globals.install(.{ .bind = &setBoundV8Global, .set_document = &setDocument });
     // The user activation algorithms (src/html/user_activation.zig) keep a
     // window's activation timestamps here.
     @import("dom").user_activation_state.install(.{ .get = &userActivationTimestamps, .set = &setUserActivationTimestamps });

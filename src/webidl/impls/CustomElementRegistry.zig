@@ -125,6 +125,28 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
+/// Immutable owner hooks, installed before any Browser or worker starts.
+pub fn installHooks() void {
+    const dom = @import("dom");
+    const html = @import("html");
+    dom.process_start.assertInstalling();
+    runtime.CEReactions.install(.{ .begin = html.custom_elements.begin, .end = html.custom_elements.end });
+    dom.custom_elements.installOwner(.{
+        .has_definitions = html.custom_elements.hasDefinitions,
+        .lookup = lookUpCustomElementDefinition,
+        .definition_for_constructor = definitionForConstructor,
+        .create = html.custom_element_creation.create,
+        .try_upgrade = html.upgrade.tryToUpgrade,
+        .enqueue_callback = html.custom_elements.callbackFromMutation,
+        .cancel_element = html.custom_elements.cancelElement,
+    });
+    dom.unloading_cleanup.install(html.custom_elements.clearRealm);
+}
+
+fn definitionForConstructor(registry: *runtime.Instance, realm: runtime.Context, constructor: runtime.JSValue) ?*CustomElementDefinition {
+    return (getInternal(registry) orelse return null).getDefinitionByConstructor(realm, constructor);
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -275,22 +297,29 @@ pub fn call_define(instance: *runtime.Instance, name: runtime.DOMString, constru
     def.form_associated = collected.form_associated;
     def.disable_internals = collected.disable_internals;
     def.disable_shadow = collected.disable_shadow;
-    errdefer def.deinit();
+    var registered = false;
+    errdefer if (!registered) def.deinit();
 
     // Step 16: "Append definition to this's custom element definition set."
     try internal.addDefinition(def);
+    registered = true;
     def.registry = instance;
     if (@import("html").custom_elements.stateForRealm(instance.ctx)) |agent_state| {
         def.agent_definition_count = &agent_state.definition_count;
         agent_state.definition_count += 1;
     }
 
-    // Steps 17-18: "upgrade particular elements within a document". Upgrade
-    // constructs each candidate through the definition's constructor, which
-    // Crane cannot do yet: [HTMLConstructor] and the construction stack are
-    // the custom-elements construction work (tmp/plans/lane-domcore-handoff.md).
-    // TODO(custom-elements): enqueue a custom element upgrade reaction for
-    // each candidate once upgrades construct.
+    // Steps 17–18: enqueue matching candidates in shadow-including tree order.
+    // Scoped document sets belong to the scoped-registry follow-up batch.
+    if (!internal.is_scoped) {
+        if (realm.getRealm()) |record| {
+            if (record.global_object) |global| {
+                const window: *runtime.Instance = @ptrCast(@alignCast(global));
+                const document = try interfaces.Window.get_document(window);
+                try @import("html").upgrade.enqueueCandidates(instance, document, def);
+            }
+        }
+    }
 
     // Step 19: "If this's when-defined promise map[name] exists: resolve it
     // with constructor, and remove it."
@@ -482,21 +511,8 @@ pub fn call_getName(instance: *runtime.Instance, constructor_data: callbacks.Cus
 ///
 /// Tries to upgrade all shadow-including inclusive descendant elements of root.
 pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    _ = root;
-    _ = internal;
-
-    // Step 1: Let candidates be a list of all of root's shadow-including inclusive
-    //         descendant elements, in shadow-including tree order.
-    // Step 2: For each candidate of candidates, try to upgrade candidate.
-
-    // TODO: Implement full tree traversal and upgrade logic
-    // This requires:
-    // 1. Walking the DOM tree including shadow roots
-    // 2. For each element, calling tryToUpgrade()
-    // 3. tryToUpgrade() looks up definition and enqueues upgrade reaction
-
-    // For now, this is a no-op placeholder
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    try @import("html").upgrade.upgradeSubtree(root, instance);
 }
 
 /// Operation: initialize(root)

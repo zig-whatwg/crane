@@ -48,24 +48,36 @@ fn relevantRealm(instance: ?*runtime.Instance) ?runtime.Context {
     return if (instance) |object| object.ctx else engine.currentRealm();
 }
 
-pub fn begin(instance: ?*runtime.Instance) void {
-    const state = stateForRealm(relevantRealm(instance) orelse return) orelse return;
+pub fn begin(instance: ?*runtime.Instance) runtime.CEReactions.Scope {
+    const realm = relevantRealm(instance) orelse return .{};
+    const agent = realm.agent orelse return .{};
+    const state = stateForRealm(realm) orelse return .{};
     state.begin();
+    return .{ .agent = agent, .agent_state = state };
 }
 
-pub fn end(instance: ?*runtime.Instance) void {
-    const realm = relevantRealm(instance) orelse return;
-    const state = stateForRealm(realm) orelse return;
+pub fn end(scope: runtime.CEReactions.Scope) void {
+    const state: *AgentState = @ptrCast(@alignCast(scope.agent_state orelse return));
     // [CEReactions] step 3 invokes even after abrupt completion. Empty queues
     // make no exception operation, which is the common no-definition path.
     if (!state.hasCurrentQueue()) {
         state.end({}, invokeReaction);
         return;
     }
-    const pending = engine.takePendingException(realm) catch null;
-    defer if (pending) |exception| exception.release();
+    // Neither the receiver nor any realm survives by assumption. The engine
+    // suspends the agent's pending exception while the popped queue invokes.
+    const agent = scope.agent orelse unreachable;
+    engine.withPendingExceptionSetAside(agent, invokeCurrentQueue, state) catch {
+        // NotSupported/termination guarantees the closure did not run. Pop
+        // without script and defer the elements until the exception unwinds.
+        const schedule = state.deferCurrent() catch return;
+        if (schedule) engine.queueMicrotask(agent, runBackup, state) catch state.cancelBackup();
+    };
+}
+
+fn invokeCurrentQueue(data: ?*anyopaque) void {
+    const state: *AgentState = @ptrCast(@alignCast(data orelse return));
     state.end({}, invokeReaction);
-    if (pending) |exception| engine.throwValue(realm, exception.value) catch {};
 }
 
 fn acquireRoot(_: void, element: *runtime.Instance) !engine.Owned {
@@ -74,6 +86,7 @@ fn acquireRoot(_: void, element: *runtime.Instance) !engine.Owned {
 
 fn enqueue(state: *AgentState, element: *runtime.Instance, reaction: Reaction) !void {
     const schedule = try state.enqueue({}, element, element.ctx, reaction, acquireRoot);
+    ce.markEnqueued(element);
     if (!schedule) return;
     const agent = element.ctx.agent orelse unreachable;
     engine.queueMicrotask(agent, runBackup, state) catch {
@@ -119,6 +132,12 @@ pub fn clearRealm(realm: runtime.Context) void {
 pub fn clearElement(element: *runtime.Instance) void {
     const state = stateForRealm(element.ctx) orelse return;
     state.clearElement(element);
+}
+
+pub fn cancelElement(element: *runtime.Instance) void {
+    // endAgent may already have forgotten its host during final collection.
+    const state = stateForRealm(element.ctx) orelse return;
+    state.cancelElement(element);
 }
 
 /// Mutation hooks enqueue callbacks only for custom elements. Upgrade's
@@ -174,15 +193,23 @@ pub fn enqueueUpgrade(element: *runtime.Instance, definition: *Definition) !void
 
 fn invokeReaction(_: void, element: *runtime.Instance, reaction: *Reaction) void {
     switch (reaction.reaction_type) {
-        .upgrade => @import("../upgrade.zig").upgradeElement(element, reaction.definition orelse return),
+        .upgrade => {
+            const realm = element.ctx;
+            const exception = @import("../upgrade.zig").upgradeElement(element, reaction.definition orelse return) catch return;
+            if (exception) |value| {
+                defer value.release();
+                if (realm.hasEngine()) reportThrown(realm, value.value);
+            }
+        },
         .callback => {
             const callback = reaction.callbackFunction() orelse return;
             var arguments: [4]runtime.JSValue = undefined;
             const args = switch (reaction.callback_args orelse .none) {
                 .none => arguments[0..0],
-                .adopted => |adopted| blk: {
-                    arguments[0] = .{ .instance = adopted.old_document };
-                    arguments[1] = .{ .instance = adopted.new_document };
+                .adopted => blk: {
+                    const values = reaction.adoptedValues() orelse return;
+                    arguments[0] = values[0];
+                    arguments[1] = values[1];
                     break :blk arguments[0..2];
                 },
                 .attribute_changed => |attribute| blk: {
@@ -214,6 +241,7 @@ fn stringOrNull(value: ?[]const u8) runtime.JSValue {
 pub fn reportException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
     const fallback: runtime.Context = @ptrCast(@alignCast(host orelse return));
     const realm = info.realm orelse fallback;
+    if (!realm.hasEngine()) return;
     const record = realm.getRealm() orelse return;
     const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
     const extracted: runtime.ErrorInfo = .{
