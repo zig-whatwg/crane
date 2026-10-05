@@ -224,9 +224,11 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 /// Per DOM spec semantics, destroying a parent node should release all
 /// child nodes since they are no longer reachable through the tree.
 pub fn deinit(instance: *runtime.Instance) void {
-    // Check if cleanup was already marked as started. The most-derived class's deinit
-    // (e.g., HTMLIFrameElement.deinit) should mark cleanup started. If it wasn't marked
-    // yet (e.g., direct call to Node.deinit), mark it now.
+    // Check if cleanup was already marked as started. A tree's teardown
+    // (deinitNodeByType) marks it before the node's own deinit runs; any
+    // other caller - the collector's onObjectFreed, a direct call, the
+    // realm end's orphaned-iframe phase through HTMLIFrameElement.deinit -
+    // may not have, and it is marked now.
     // This handles both cases:
     // 1. Called through type-specific deinit chain: already marked, proceed with cleanup
     // 2. Called directly (e.g., for Text nodes): mark now and proceed
@@ -368,12 +370,16 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Also used by DomTreeAdapter to clean up orphaned nodes that were never attached
 /// to the document tree.
 pub fn deinitNodeByType(instance: *runtime.Instance) void {
-    // Check if already being cleaned up to prevent double-cleanup.
-    // This guards against the case where GC cleanup and tree cleanup
-    // both try to deinit the same node.
-    if (runtime.instance_lifecycle.isBeingCleanedUp(instance)) {
-        return; // Already being cleaned up, skip
-    }
+    // The teardown is recorded FIRST, before anything of the node runs - and
+    // this is the check that it has not begun already (a collection's and a
+    // tree's, or two trees'). platformObjectDestroyed below arms the node's
+    // wrapper weak, and the node's own deinit runs before Node.deinit's part:
+    // a collection inside that window found a teardown that had "not
+    // started", and its finalizer ran the node's deinit again, under itself
+    // (tests/v8/teardown_gc_window_test.zig). A node with a parent was its
+    // tree's anyway (wrapper_cache treeOwns); a root - the parser's adapter
+    // frees one through dom.node_creation.destroyUninserted - was not.
+    if (!runtime.instance_lifecycle.markCleanupStarted(instance)) return;
 
     // Its wrapper must not free it again (engine.platformObjectDestroyed).
     engine.platformObjectDestroyed(instance);
