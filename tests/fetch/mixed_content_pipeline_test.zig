@@ -71,9 +71,37 @@ test "main fetch response check uses the internal response URL before opaque fil
     const response = try fetch.internal.InternalResponse.init(allocator);
     try response.url_list.append(allocator, try allocator.dupe(u8, "http://example.test/response"));
     response.status = 200;
+    try response.setStatusMessage("OK");
+    try response.header_list.append("Content-Type", "text/plain");
+    response.body = try fetch.internal.Body.fromBytes(allocator, "secret response");
     const result = main.mainFetchFinish(params, false, response);
     defer result.deinit();
     try std.testing.expectEqual(fetch.internal.ResponseType.@"error", result.response_type);
     try std.testing.expectEqual(@as(u16, 0), result.status);
     try std.testing.expectEqual(@as(usize, 0), result.url_list.items.len);
+    try std.testing.expectEqualStrings("", result.status_message);
+    try std.testing.expectEqual(@as(usize, 0), result.header_list.entries.items.len);
+    try std.testing.expect(result.body == null);
+}
+
+test "main fetch response check fails closed when authentication allocation fails" {
+    const allocator = std.testing.allocator;
+    const request = try Request.init(allocator, "https://example.test/request");
+    defer request.deinit();
+    request.prohibits_mixed_security_contexts = true;
+    const controller = try fetch.internal.FetchController.init(allocator);
+    defer controller.deinit();
+    var timing = fetch.internal.FetchTimingInfo.init(allocator);
+    defer timing.deinit();
+    const params = try fetch.internal.FetchParams.init(allocator, request, controller, &timing);
+    defer params.deinit();
+    const response = try fetch.internal.InternalResponse.init(allocator);
+    // Empty response URL list uses Fetch's step 16 fallback to the request.
+    var failing = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+    request.allocator = failing.allocator();
+    defer request.allocator = allocator;
+    const result = main.mainFetchFinish(params, false, response);
+    defer result.deinit();
+    try std.testing.expectEqual(fetch.internal.ResponseType.@"error", result.response_type);
+    try std.testing.expectEqual(@as(u16, 0), result.status);
 }
