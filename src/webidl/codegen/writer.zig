@@ -2715,6 +2715,25 @@ fn writeSingleOperation(
     return writeOperationDelegate(writer, impl_name, op, type_registry, "", false, ce_functions);
 }
 
+/// HTML 3.2.3 "HTML element constructors": an interface whose constructor
+/// carries [HTMLConstructor] has HTML's overridden constructor steps, which
+/// the binding runs across the engine seam (engine.HostHooks.htmlConstructor):
+///
+///     pub const html_constructor = true;
+///
+/// Written beside the binding's other tables; nothing for any other
+/// interface.
+pub fn writeHTMLConstructor(writer: anytype, constructors: []const types.Constructor) !void {
+    for (constructors) |constructor| {
+        if (!hasExtendedAttribute(constructor.extAttrs, "HTMLConstructor")) continue;
+        try writer.writeAll("    /// HTML 3.2.3 [HTMLConstructor]: the constructor's steps are HTML's \"HTML\n");
+        try writer.writeAll("    /// element constructors\" - the binding runs them with\n");
+        try writer.writeAll("    /// engine.HostHooks.htmlConstructor.\n");
+        try writer.writeAll("    pub const html_constructor = true;\n\n");
+        return;
+    }
+}
+
 /// Whether an operation's delegate runs a [CEReactions] bracket. The one test
 /// both the bracket and the `ce_reactions` table use.
 fn operationRunsCEReactions(op: types.Operation) bool {

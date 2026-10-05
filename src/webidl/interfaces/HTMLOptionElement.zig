@@ -225,6 +225,11 @@ pub const HTMLOptionElement = struct {
         pub const has_constructor = true;
     };
 
+    /// HTML 3.2.3 [HTMLConstructor]: the constructor's steps are HTML's "HTML
+    /// element constructors" - the binding runs them with
+    /// engine.HostHooks.htmlConstructor.
+    pub const html_constructor = true;
+
     pub const State = runtime.FlattenedState(
         Meta.BaseType,
         Meta.MixinTypes,
