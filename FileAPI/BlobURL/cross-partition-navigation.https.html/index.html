@@ -22,11 +22,11 @@
 <h1 class="page-title"><code>cross-<wbr>partition-<wbr>navigation.<wbr>https.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="FileAPI/BlobURL/cross-partition-navigation.https.html">
 <p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 5</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>3</dd></div></dl>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>1</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ec56962b50</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ec56962b50"><code>ec56962b50</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-d701ec00fc</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/d701ec00fc"><code>d701ec00fc</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/FileAPI/BlobURL/cross-partition-navigation.https.html"><code>FileAPI/<wbr>BlobURL/<wbr>cross-<wbr>partition-<wbr>navigation.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -37,9 +37,9 @@
 <h3 class="run-head"><code>/FileAPI/BlobURL/cross-partition-navigation.https.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>0</b> / 5</span></h3>
 <ol class="subtests">
 <li class="sub s-fail" id="s-6ede4844"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob URL window.open should enforce noopener for a cross-top-level-site navigation</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;Blob URL handle wasn&#39;t null in not-same-top-level-site iframe: Navigation handle returns not null&quot;</pre></details><a class="self" href="#s-6ede4844" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-timeout" id="s-090bed75"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Blob URL should partition subframe navigation.</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-090bed75" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-notrun" id="s-89862890"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Blob URL link click should enforce noopener for a cross-top-level-site navigation</span></div><a class="self" href="#s-89862890" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-notrun" id="s-1bebd74f"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Blob URL area element click should enforce noopener for a cross-top-level-site navigation</span></div><a class="self" href="#s-1bebd74f" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-090bed75"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob URL should partition subframe navigation.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;Blob URL subframe navigation succeeded in not-same-top-level-site iframe.&quot;</pre></details><a class="self" href="#s-090bed75" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-89862890"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob URL link click should enforce noopener for a cross-top-level-site navigation</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;Blob URL page opener wasn&#39;t null in not-same-top-level-site iframe.&quot;</pre></details><a class="self" href="#s-89862890" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-timeout" id="s-1bebd74f"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Blob URL area element click should enforce noopener for a cross-top-level-site navigation</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-1bebd74f" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-notrun" id="s-c8379a1b"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Blob URL SVG &lt;a&gt; element click should enforce noopener for a cross-top-level-site navigation</span></div><a class="self" href="#s-c8379a1b" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>

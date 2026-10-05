@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../../fetch/api/"><code>api/</code></a></li><li><a href="../../../../fetch/api/basic/"><code>basic/</code></a></li><li aria-current="page"><code>response-<wbr>url.<wbr>sub.<wbr>any.<wbr>js</code></li></ol></nav>
 <h1 class="page-title"><code>response-<wbr>url.<wbr>sub.<wbr>any.<wbr>js</code></h1>
 <div class="figures" role="group" aria-label="fetch/api/basic/response-url.sub.any.js">
-<p class="figures-main"><span class="fg-pass">4</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>4</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">2</span><span class="fg-of"> / 8</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>6</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ec56962b50</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ec56962b50"><code>ec56962b50</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-d701ec00fc</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/d701ec00fc"><code>d701ec00fc</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/api/basic/response-url.sub.any.js"><code>fetch/<wbr>api/<wbr>basic/<wbr>response-<wbr>url.<wbr>sub.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 </header>
@@ -34,19 +34,19 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/fetch/api/basic/response-url.sub.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 4</span></h3>
+<h3 class="run-head"><code>/fetch/api/basic/response-url.sub.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 4</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-1a61f912"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing response url getter with http://web-platform.test:8000/ada</span></div><a class="self" href="#s-1a61f912" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-b2763535"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing response url getter with http://web-platform.test:8000/#</span></div><a class="self" href="#s-b2763535" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b2763535"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing response url getter with http://web-platform.test:8000/#</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/&quot; but got &quot;http://web-platform.test:8000/#&quot;</pre></details><a class="self" href="#s-b2763535" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-304136a1"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing response url getter with http://web-platform.test:8000/#ada</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/&quot; but got &quot;http://web-platform.test:8000/#ada&quot;</pre></details><a class="self" href="#s-304136a1" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-cc1b7fba"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing response url getter with http://web-platform.test:8000#ada</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/&quot; but got &quot;http://web-platform.test:8000/#ada&quot;</pre></details><a class="self" href="#s-cc1b7fba" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/fetch/api/basic/response-url.sub.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 4</span></h3>
+<h3 class="run-head"><code>/fetch/api/basic/response-url.sub.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 4</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-b0ea3ce2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing response url getter with http://web-platform.test:8000/ada</span></div><a class="self" href="#s-b0ea3ce2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-pass" id="s-b6bde918"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Testing response url getter with http://web-platform.test:8000/#</span></div><a class="self" href="#s-b6bde918" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-b6bde918"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing response url getter with http://web-platform.test:8000/#</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/&quot; but got &quot;http://web-platform.test:8000/#&quot;</pre></details><a class="self" href="#s-b6bde918" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-1ac83568"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing response url getter with http://web-platform.test:8000/#ada</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/&quot; but got &quot;http://web-platform.test:8000/#ada&quot;</pre></details><a class="self" href="#s-1ac83568" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-6f7c5217"><details><summary><span class="mark">FAIL</span><span class="sub-name">Testing response url getter with http://web-platform.test:8000#ada</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/&quot; but got &quot;http://web-platform.test:8000/#ada&quot;</pre></details><a class="self" href="#s-6f7c5217" aria-label="Link to this subtest">&para;</a></li>
 </ol>

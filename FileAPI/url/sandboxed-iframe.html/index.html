@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../FileAPI/"><code>FileAPI/</code></a></li><li><a href="../../../FileAPI/url/"><code>url/</code></a></li><li aria-current="page"><code>sandboxed-<wbr>iframe.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>sandboxed-<wbr>iframe.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="FileAPI/url/sandboxed-iframe.html">
-<p class="figures-main"><span class="fg-pass">25</span><span class="fg-of"> / 40</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>14</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">26</span><span class="fg-of"> / 40</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>13</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
 <div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ec56962b50</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ec56962b50"><code>ec56962b50</code></a></dd></div>
+<div><dt>Run</dt><dd><code>sweep-d701ec00fc</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/d701ec00fc"><code>d701ec00fc</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/FileAPI/url/sandboxed-iframe.html"><code>FileAPI/<wbr>url/<wbr>sandboxed-<wbr>iframe.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -34,7 +34,7 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/FileAPI/url/sandboxed-iframe.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>25</b> / 40</span></h3>
+<h3 class="run-head"><code>/FileAPI/url/sandboxed-iframe.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>26</b> / 40</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-8791b16a"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Generated Blob URLs are unique</span></div><a class="self" href="#s-8791b16a" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-3104f5f5"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Blob URL starts with &quot;blob:&quot;</span></div><a class="self" href="#s-3104f5f5" aria-label="Link to this subtest">&para;</a></li>
@@ -44,7 +44,7 @@
 <li class="sub s-pass" id="s-06bedcbc"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Origin of Blob URL matches our origin for Files</span></div><a class="self" href="#s-06bedcbc" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-2c7ea59e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Blob URLs can be used in &lt;script&gt; tags</span></div><a class="self" href="#s-2c7ea59e" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-23a1bf1f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob URLs can be used in module &lt;script&gt; tags</span></summary><pre class="msg">assert_unreached: Reached unreachable code</pre></details><a class="self" href="#s-23a1bf1f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-300f32ba"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob URLs can be used in iframes, and are treated same origin</span></summary><pre class="msg">assert_equals: expected (string) &quot;test_frame_OK&quot; but got (undefined) undefined</pre></details><a class="self" href="#s-300f32ba" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-300f32ba"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Blob URLs can be used in iframes, and are treated same origin</span></div><a class="self" href="#s-300f32ba" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-timeout" id="s-7a311f3d"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Blob URL fragment is implemented.</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-7a311f3d" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-91b7bbbe"><details><summary><span class="mark">FAIL</span><span class="sub-name">Blob URLs can be used in XHR</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;Got unexpected error event&quot;</pre></details><a class="self" href="#s-91b7bbbe" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-2ff392b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">XHR with a fragment should succeed</span></summary><pre class="msg">promise_test: Unhandled rejection with value: &quot;Got unexpected error event&quot;</pre></details><a class="self" href="#s-2ff392b8" aria-label="Link to this subtest">&para;</a></li>

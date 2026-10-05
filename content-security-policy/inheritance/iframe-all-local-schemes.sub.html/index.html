@@ -21,12 +21,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../content-security-policy/"><code>content-<wbr>security-<wbr>policy/</code></a></li><li><a href="../../../content-security-policy/inheritance/"><code>inheritance/</code></a></li><li aria-current="page"><code>iframe-<wbr>all-<wbr>local-<wbr>schemes.<wbr>sub.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>iframe-<wbr>all-<wbr>local-<wbr>schemes.<wbr>sub.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="content-security-policy/inheritance/iframe-all-local-schemes.sub.html">
-<p class="figures-main"><span class="fg-pass">5</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>3</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">10</span><span class="fg-of"> / 10</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-ec56962b50</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/ec56962b50"><code>ec56962b50</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-d701ec00fc</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/d701ec00fc"><code>d701ec00fc</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/inheritance/iframe-all-local-schemes.sub.html"><code>content-<wbr>security-<wbr>policy/<wbr>inheritance/<wbr>iframe-<wbr>all-<wbr>local-<wbr>schemes.<wbr>sub.<wbr>html</code></a></dd></div>
 </dl>
 </header>
@@ -34,18 +34,17 @@
 <h2 id="subtests-h">Subtests</h2>
 <p class="sub-hint">Each subtest that failed opens in place to its message.</p>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/inheritance/iframe-all-local-schemes.sub.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>5</b> / 10</span></h3>
 <ol class="subtests">
 <li class="sub s-pass" id="s-0af84520"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&lt;iframe&gt;&#39;s about:blank inherits policy.</span></div><a class="self" href="#s-0af84520" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-af96b789"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">window about:blank inherits policy.</span></div><a class="self" href="#s-af96b789" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-b378b3e4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&lt;iframe srcdoc&gt;&#39;s inherits policy.</span></div><a class="self" href="#s-b378b3e4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-timeout" id="s-a19fa09e"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">&lt;iframe src=&#39;blob:...&#39;&gt;&#39;s inherits policy.</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-a19fa09e" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-timeout" id="s-2a9ca0ec"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">window url=&#39;blob:...&#39; inherits policy.</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-2a9ca0ec" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a19fa09e"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&lt;iframe src=&#39;blob:...&#39;&gt;&#39;s inherits policy.</span></div><a class="self" href="#s-a19fa09e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-2a9ca0ec"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">window url=&#39;blob:...&#39; inherits policy.</span></div><a class="self" href="#s-2a9ca0ec" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-645848f9"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&lt;iframe src=&#39;data:...&#39;&gt;&#39;s inherits policy.</span></div><a class="self" href="#s-645848f9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-819eff64"><details><summary><span class="mark">FAIL</span><span class="sub-name">&lt;iframe src=&#39;javascript:...&#39;&gt;&#39;s inherits policy (static &lt;img&gt; is blocked)</span></summary><pre class="msg">assert_equals: expected &quot;error&quot; but got &quot;load&quot;</pre></details><a class="self" href="#s-819eff64" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7006f1d4"><details><summary><span class="mark">FAIL</span><span class="sub-name">window url=&#39;javascript:...&#39;&gt;&#39;s inherits policy (static &lt;img&gt; is blocked)</span></summary><pre class="msg">assert_equals: expected &quot;error&quot; but got &quot;load&quot;</pre></details><a class="self" href="#s-7006f1d4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-819eff64"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&lt;iframe src=&#39;javascript:...&#39;&gt;&#39;s inherits policy (static &lt;img&gt; is blocked)</span></div><a class="self" href="#s-819eff64" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-7006f1d4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">window url=&#39;javascript:...&#39;&gt;&#39;s inherits policy (static &lt;img&gt; is blocked)</span></div><a class="self" href="#s-7006f1d4" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-pass" id="s-6cb75e4d"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&lt;iframe src=&#39;javascript:...&#39;&gt;&#39;s inherits policy (dynamically inserted &lt;img&gt; is blocked)</span></div><a class="self" href="#s-6cb75e4d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-timeout" id="s-a9d92abb"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">&lt;iframe sandbox src=&#39;blob:...&#39;&gt;&#39;s inherits policy. (opaque origin sandbox)</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-a9d92abb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a9d92abb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">&lt;iframe sandbox src=&#39;blob:...&#39;&gt;&#39;s inherits policy. (opaque origin sandbox)</span></div><a class="self" href="#s-a9d92abb" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </section>
