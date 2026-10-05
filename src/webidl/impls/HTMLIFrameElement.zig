@@ -1378,9 +1378,43 @@ fn startFetch(record: *Navigation) void {
         return;
     }
 
-    // Everything else this engine can load without the network.
+    // Everything else this engine can load without the network. Its request's
+    // destination is the container's local name, or "document" for a
+    // top-level traversable (a popup) - which scheme fetch "blob" reads: a
+    // top-level navigation obtains its blob with no partition check.
+    const destination: navigation_fetch.NavigationFetchOptions.Destination = if (record.integration.iframe_element) |element_ptr|
+        switch (dom_module.navigables.containerKind(@ptrCast(@alignCast(element_ptr))) orelse .iframe) {
+            .iframe => .iframe,
+            .frame => .frame,
+            .object => .object,
+            .embed => .embed,
+        }
+    else
+        .document;
+    if (std.mem.eql(u8, scheme, "blob")) {
+        // A blob: URL is fetched by Fetch (scheme fetch "blob") with the
+        // request "create navigation params by fetching" step 3 makes: its
+        // policy container the source snapshot params' - main fetch step 7
+        // checks it (frame-src: 'self' does not match blob:) - and its
+        // violations reported to the source document's global. Fetched now,
+        // while the blob URL's entry is the one the navigation was given.
+        const request = navigation_fetch.navigationRequest(allocator, url, .{
+            .destination = destination,
+            .mode = .navigate,
+            .redirect = .follow,
+            .referrer = record.referrer,
+            .referrer_policy = record.referrer_policy,
+            .policy_container = if (record.initiator_policy_container) |*container| container else null,
+        }) catch {
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        };
+        if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
+        record.response = navigation_fetch.fetchRequestNow(allocator, url, request, .{}) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        return queueNavigationTask(record.integration, record.id, &runCommit);
+    }
     record.response = navigation_fetch.fetchNavigationResource(allocator, url, .{
-        .destination = .iframe,
+        .destination = destination,
         .mode = .navigate,
         .redirect = .follow,
     }) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
