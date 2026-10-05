@@ -24,6 +24,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+/// A policy container, as a document state's history policy container keeps
+/// one (Fetch's: CSP list, referrer policy).
+pub const PolicyContainer = @import("fetch").internal.PolicyContainer;
+
 extern "c" fn getentropy(buf: [*]u8, len: usize) c_int;
 
 /// Serialized state: a primitive, a string, or V8's serialization of an
@@ -84,6 +88,13 @@ pub const Entry = struct {
     /// document's markup, which a traversal loads again rather than the
     /// srcdoc attribute's current value. Owned.
     resource: ?[]u8 = null,
+    /// The document state's history policy container: the policy container
+    /// its document was made with, when the document's URL "requires storing
+    /// the policy container in history" (an about: or data: URL) - for a
+    /// traversal back to it ("determining navigation params policy
+    /// container" step 1). Shared by the entries of the document state, each
+    /// holding its own clone. Owned.
+    history_policy_container: ?PolicyContainer = null,
     /// "Scroll restoration mode" is "manual".
     scroll_restoration_manual: bool = false,
     /// What the navigation that committed its document state's document
@@ -97,7 +108,13 @@ pub const Entry = struct {
         self.api_state.deinit(allocator);
         allocator.free(self.origin);
         if (self.resource) |r| allocator.free(r);
+        self.dropHistoryPolicyContainer();
         self.dropActivation(allocator);
+    }
+
+    fn dropHistoryPolicyContainer(self: *Entry) void {
+        if (self.history_policy_container) |*container| container.deinit();
+        self.history_policy_container = null;
     }
 
     fn dropActivation(self: *Entry, allocator: Allocator) void {
@@ -450,11 +467,37 @@ pub const JointHistory = struct {
         errdefer if (resource) |r| self.allocator.free(r);
         const origin = try self.allocator.dupe(u8, current.origin);
         defer self.allocator.free(origin);
+        // And so is its history policy container.
+        var history_container: ?PolicyContainer = if (current.history_policy_container) |*c| try c.clone(self.allocator) else null;
+        errdefer if (history_container) |*c| c.deinit();
         const new_api_state = api_state orelse try current.api_state.clone(self.allocator);
         try self.commit(navigable, url, current.document_state, current.document, state, new_api_state, origin, handling, true, null);
         const committed = self.currentEntry(navigable) orelse unreachable;
         if (committed.resource) |old| self.allocator.free(old);
         committed.resource = resource;
+        committed.dropHistoryPolicyContainer();
+        committed.history_policy_container = history_container;
+        history_container = null;
+    }
+
+    /// HTML "populate a session history entry" step 7.2.3: `document_state`'s
+    /// history policy container becomes a clone of `container` - on every
+    /// entry of the state.
+    pub fn setHistoryPolicyContainer(self: *JointHistory, document_state: u64, container: *const PolicyContainer) !void {
+        for (self.entries.items) |*entry| {
+            if (entry.document_state != document_state) continue;
+            const copy = try container.clone(self.allocator);
+            entry.dropHistoryPolicyContainer();
+            entry.history_policy_container = copy;
+        }
+    }
+
+    /// The history policy container of the document state of the entry whose
+    /// id is `entry_id`, if it has one. BORROWED: the entry keeps it.
+    pub fn historyPolicyContainer(self: *JointHistory, entry_id: u64) ?*const PolicyContainer {
+        const entry = self.entryById(entry_id) orelse return null;
+        if (entry.history_policy_container) |*container| return container;
+        return null;
     }
 
     /// navigation.updateCurrentEntry() and navigate()'s state: `navigable`'s
@@ -554,11 +597,12 @@ pub const JointHistory = struct {
                     current.id = self.next_id;
                     self.next_id += 1;
                 }
-                // A new document state has a resource and an activation of
-                // its own, if any.
+                // A new document state has a resource, a history policy
+                // container and an activation of its own, if any.
                 if (current.document_state != doc_state) {
                     if (current.resource) |r| self.allocator.free(r);
                     current.resource = null;
+                    current.dropHistoryPolicyContainer();
                     current.dropActivation(self.allocator);
                 }
                 current.document_state = doc_state;

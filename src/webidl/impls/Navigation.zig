@@ -724,8 +724,67 @@ fn traverseToKey(instance: *runtime.Instance, key: []const u8, info: runtime.JSV
     // that shows it (JointHistory.nearestStepOf, as browsers do).
     ensureHistoryTraversal(scope.window);
     dom.history_traversal.traverseToStep(scope.window, scope.history.nearestStepOf(destination));
+    // Step 12.3, when the queued traversal has run: its target already the
+    // navigable's active entry - a traversal queued before it took the
+    // navigable there - rejects the finished promise.
+    queueActiveTargetCheck(instance, scope.window, tracker);
     // Step 13.
     return derivedResult(instance, internal, tracker);
+}
+
+/// "Perform a navigation API traversal" step 12.3, checked in a task queued
+/// after the traversal's own (History's traversal task, on the same loop):
+/// "If targetSHE is navigable's active session history entry: queue a global
+/// task ... to reject the finished promise for apiMethodTracker with an
+/// "InvalidStateError" DOMException." A traversal that changed the entry
+/// fired its navigate event, which took the tracker out of the upcoming
+/// ones; one that went to another document has not made it active yet.
+const ActiveTargetCheck = struct {
+    navigation: *runtime.Instance,
+    generation: u64,
+    tracker: *Tracker,
+    allocator: Allocator,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *ActiveTargetCheck = @ptrCast(@alignCast(data orelse return));
+        defer self.allocator.destroy(self);
+        if (runtime.SlabAllocator.generationOf(self.navigation) != self.generation) return;
+        const internal = getInternal(self.navigation) orelse return;
+        // Still an upcoming tracker - pointer and key both: a freed tracker's
+        // block is never in the list.
+        const key = for (internal.upcoming.items) |t| {
+            if (t == self.tracker) break t.key orelse return;
+        } else return;
+        const scope = scopeOf(self.navigation, internal) orelse return;
+        const current = scope.history.currentEntry(scope.navigable.id) orelse return;
+        if (!std.mem.eql(u8, &current.api_key, &key)) return;
+        const reason = engine.createDOMException(self.navigation.ctx, "InvalidStateError", "The traversal's destination is already the current entry.") catch {
+            cleanUp(internal, self.tracker);
+            return;
+        };
+        defer reason.release();
+        rejectFinished(internal, self.tracker, reason.value);
+        collect(internal);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *ActiveTargetCheck = @ptrCast(@alignCast(data orelse return));
+        self.allocator.destroy(self);
+    }
+};
+
+fn queueActiveTargetCheck(navigation: *runtime.Instance, window: *runtime.Instance, tracker: *Tracker) void {
+    const internal = getInternal(navigation) orelse return;
+    const check = internal.allocator.create(ActiveTargetCheck) catch return;
+    check.* = .{
+        .navigation = navigation,
+        .generation = runtime.SlabAllocator.generationOf(navigation),
+        .tracker = tracker,
+        .allocator = internal.allocator,
+    };
+    // With no loop (a context built for tests) the traversal ran in the call.
+    const loop = window.ctx.getOptionalEventLoop() orelse return ActiveTargetCheck.run(check);
+    loop.queueTask(.{ .callback = &ActiveTargetCheck.run, .context = check, .drop = &ActiveTargetCheck.drop });
 }
 
 /// dom.history_traversal is History's: a window that has not made its

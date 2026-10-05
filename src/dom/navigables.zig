@@ -107,6 +107,12 @@ pub const Implementation = struct {
     /// container. False when the node document has no navigable to be the
     /// parent (createHTMLDocument(), DOMParser) or creation failed.
     create_browsing_context_and_document: *const fn (container: *runtime.Instance, integration: *IFrameIntegration) bool,
+    /// HTML "process the frame attributes" for a frame element `element`
+    /// whose content navigable is `integration`: the shared attribute
+    /// processing steps for iframe and frame elements, then - unless its URL
+    /// matches about:blank on initial insertion, which fires load at it -
+    /// "navigate an iframe or frame".
+    process_frame_attributes: *const fn (element: *runtime.Instance, integration: *IFrameIntegration, initial_insertion: bool) void,
 };
 
 var implementation: ?Implementation = null;
@@ -183,6 +189,16 @@ fn isContainerName(name: []const u8) bool {
         if (std.ascii.eqlIgnoreCase(name, container)) return true;
     }
     return false;
+}
+
+/// HTML "process the frame attributes" for the frame element `element`, whose
+/// content navigable is `integration` (16.3.2): its src URL (the shared
+/// attribute processing steps for iframe and frame elements) navigated to,
+/// or - for a URL matching about:blank on its initial insertion - a load
+/// event fired at it.
+pub fn processFrameAttributes(element: *runtime.Instance, integration: *IFrameIntegration, initial_insertion: bool) void {
+    const impl = implementation orelse return;
+    impl.process_frame_attributes(element, integration, initial_insertion);
 }
 
 /// HTML "create a new child navigable" for `container`, whose content

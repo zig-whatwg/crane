@@ -355,3 +355,52 @@ test "every committed interface and mixin module's table matches its brackets" {
     // The tree is there: over a thousand interfaces and mixins.
     try testing.expect(checked > 1000);
 }
+
+// ---------------------------------------------------------------------------
+// A [CEReactions] operation whose result is a platform object (codex-ce
+// Q28): `end` runs reactions - script - before the binding converts the
+// result, and a reaction that ends the result's realm frees it. So `end`
+// runs explicitly, between two reads of the result's slab generation, and a
+// result freed meanwhile is an InvalidStateError, never a stale pointer.
+// ---------------------------------------------------------------------------
+
+fn interfaceRegistry() !codegen.ir.TypeRegistry {
+    var reg = codegen.ir.TypeRegistry.init(testing.allocator);
+    errdefer reg.deinit();
+    try reg.registerInterface("Node", "dom.idl", null);
+    // No inheritance: TypeRegistry.deinit does not free an inheritance name.
+    try reg.registerInterface("Element", "dom.idl", null);
+    return reg;
+}
+
+test "a [CEReactions] operation returning a platform object checks its result after end" {
+    var reg = try interfaceRegistry();
+    defer reg.deinit();
+    var node_arg = [_]types.Argument{.{ .name = "node", .idlType = .{ .type = "Node" } }};
+    const ops = [_]types.Operation{
+        .{ .name = "appendChild", .idlType = .{ .type = "Node" }, .arguments = &node_arg, .extAttrs = @constCast(&ce_reactions) },
+        .{ .name = "closest", .idlType = .{ .type = "Element", .nullable = true }, .extAttrs = @constCast(&ce_reactions) },
+        .{ .name = "normalize", .idlType = .{ .type = "undefined" }, .extAttrs = @constCast(&ce_reactions) },
+    };
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writer.writeDelegateFunctions(&buffer.writer, "NodeImpl", &reg, &.{}, &ops, &ops, .{});
+    const out = buffer.written();
+
+    const append = try body(out, "call_appendChild");
+    try testing.expect(contains(append, "const ce_scope = runtime.CEReactions.begin(instance);"));
+    // end() runs explicitly - on the error path too - never by defer.
+    try testing.expect(!contains(append, "defer runtime.CEReactions.end"));
+    try testing.expect(contains(append, "const result = NodeImpl.call_appendChild(instance, node) catch |err| {\n            runtime.CEReactions.end(ce_scope);\n            return err;\n        };"));
+    try testing.expect(contains(append, "const result_generation = runtime.SlabAllocator.generationOf(result);\n        runtime.CEReactions.end(ce_scope);\n        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;\n        return result;"));
+
+    // An optional result is checked when there is one.
+    const closest = try body(out, "call_closest");
+    try testing.expect(contains(closest, "const result_generation = if (result) |r| runtime.SlabAllocator.generationOf(r) else 0;"));
+    try testing.expect(contains(closest, "if (result) |r| if (runtime.SlabAllocator.generationOf(r) != result_generation) return error.InvalidStateError;"));
+
+    // Nothing to check: the plain bracket.
+    const normalize = try body(out, "call_normalize");
+    try testing.expect(contains(normalize, "defer runtime.CEReactions.end(ce_scope);"));
+    try testing.expect(!contains(normalize, "result_generation"));
+}

@@ -174,6 +174,7 @@ pub fn installHooks() void {
         .traverse_navigable = &traverseNavigable,
         .find_by_name = &frameWindowByName,
         .create_browsing_context_and_document = &createBrowsingContextAndDocument,
+        .process_frame_attributes = &processFrameAttributes,
     });
 }
 
@@ -724,6 +725,10 @@ const Navigation = struct {
     /// between evaluating it and committing it. Owned.
     javascript_result: ?[]u8 = null,
     javascript_url: ?[]u8 = null,
+    /// "Evaluate a javascript: URL" step 12's policy container: the target
+    /// navigable's active document's, cloned before that document unloads,
+    /// for the String's document. Owned until the commit hands it over.
+    javascript_policy_container: ?fetch_mod.internal.PolicyContainer = null,
     /// Navigate step 5's initiatorBaseURLSnapshot - the source document's
     /// document base URL - which an about:blank or about:srcdoc document the
     /// navigation makes takes as its about base URL. Owned.
@@ -736,6 +741,18 @@ const Navigation = struct {
     /// request's policy container, and the initiator's a local URL's
     /// document inherits. Owned; null with no source document.
     initiator_policy_container: ?fetch_mod.internal.PolicyContainer = null,
+    /// A traversal's (or reload's) navigation with no source document: the
+    /// navigable's active document's policy container, cloned as the
+    /// traversal starts - "apply the history step" step 12.4: with no source
+    /// snapshot params, the navigable "navigated itself". Only the new
+    /// document's inheritance reads it (a local URL's, step 3 of
+    /// "determining navigation params policy container"); the traversal's
+    /// request keeps none. Owned.
+    traversal_policy_container: ?fetch_mod.internal.PolicyContainer = null,
+    /// What the commit puts in the document state's history policy container
+    /// for a document whose URL requires storing it (about:, data:): a clone
+    /// of the navigation params' policy container. Owned until recorded.
+    history_policy_container: ?fetch_mod.internal.PolicyContainer = null,
     /// Mixed Content 4.3 for the source snapshot's fetch client. Captured
     /// by value; a later document must not change this navigation's policy.
     prohibits_mixed_security_contexts: bool = false,
@@ -770,6 +787,9 @@ const Navigation = struct {
         if (self.target_origin) |o| self.allocator.free(o);
         if (self.referrer) |r| self.allocator.free(r);
         if (self.initiator_policy_container) |*container| container.deinit();
+        if (self.javascript_policy_container) |*container| container.deinit();
+        if (self.traversal_policy_container) |*container| container.deinit();
+        if (self.history_policy_container) |*container| container.deinit();
         self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
@@ -1093,6 +1113,16 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             }
         }
     }
+    // "Apply the history step" step 12.4 for a traversal or reload no
+    // document started: "set it to the result of snapshotting source
+    // snapshot params given navigable's active document".
+    if (options.traversal_entry != 0 and options.source_document == null) {
+        if (active) |doc| {
+            if (dom_module.policy_containers.of(doc)) |container| {
+                record.traversal_policy_container = container.clone(allocator) catch null;
+            }
+        }
+    }
     // Step 5: "Let initiatorBaseURLSnapshot be sourceDocument's document base
     // URL" - kept only where it can be used, for a document at about:blank
     // or about:srcdoc (navigate step 22.3's document state).
@@ -1381,9 +1411,43 @@ fn startFetch(record: *Navigation) void {
         return;
     }
 
-    // Everything else this engine can load without the network.
+    // Everything else this engine can load without the network. Its request's
+    // destination is the container's local name, or "document" for a
+    // top-level traversable (a popup) - which scheme fetch "blob" reads: a
+    // top-level navigation obtains its blob with no partition check.
+    const destination: navigation_fetch.NavigationFetchOptions.Destination = if (record.integration.iframe_element) |element_ptr|
+        switch (dom_module.navigables.containerKind(@ptrCast(@alignCast(element_ptr))) orelse .iframe) {
+            .iframe => .iframe,
+            .frame => .frame,
+            .object => .object,
+            .embed => .embed,
+        }
+    else
+        .document;
+    if (std.mem.eql(u8, scheme, "blob")) {
+        // A blob: URL is fetched by Fetch (scheme fetch "blob") with the
+        // request "create navigation params by fetching" step 3 makes: its
+        // policy container the source snapshot params' - main fetch step 7
+        // checks it (frame-src: 'self' does not match blob:) - and its
+        // violations reported to the source document's global. Fetched now,
+        // while the blob URL's entry is the one the navigation was given.
+        const request = navigation_fetch.navigationRequest(allocator, url, .{
+            .destination = destination,
+            .mode = .navigate,
+            .redirect = .follow,
+            .referrer = record.referrer,
+            .referrer_policy = record.referrer_policy,
+            .policy_container = if (record.initiator_policy_container) |*container| container else null,
+        }) catch {
+            record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+            return queueNavigationTask(record.integration, record.id, &runCommit);
+        };
+        if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
+        record.response = navigation_fetch.fetchRequestNow(allocator, url, request, .{}) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
+        return queueNavigationTask(record.integration, record.id, &runCommit);
+    }
     record.response = navigation_fetch.fetchNavigationResource(allocator, url, .{
-        .destination = .iframe,
+        .destination = destination,
         .mode = .navigate,
         .redirect = .follow,
     }) catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
@@ -1597,7 +1661,17 @@ fn runCommit(context: ?*anyopaque) void {
     defer integration.setNextAboutBaseUrl(null);
     // "Create and initialize a Document object" step 9: the document's policy
     // container, waiting for whatever makes the document.
-    integration.setNextPolicyContainer(navigationParamsPolicyContainer(integration, record, response));
+    const params_container = navigationParamsPolicyContainer(integration, record, response);
+    // "Populate a session history entry" step 7.2.3: a document whose URL
+    // requires storing the policy container in history has its document
+    // state keep it (commitInRealm records it).
+    if (params_container) |*container| {
+        const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+        if (navigate_steps.requiresStoringPolicyContainerInHistory(response_url)) {
+            record.history_policy_container = container.clone(integration.allocator) catch null;
+        }
+    }
+    integration.setNextPolicyContainer(params_container);
     defer integration.setNextPolicyContainer(null);
     // Step 14: its referrer, the request's as main fetch left it.
     integration.setNextReferrer(response.referrer);
@@ -1612,13 +1686,24 @@ fn runCommit(context: ?*anyopaque) void {
 /// `record`'s navigation makes from `response`, owned by the caller; null
 /// when it could not be made (out of memory: the document keeps a new one).
 ///
-/// Not modelled, stated: step 1's history policy container - a traversal's
-/// document state keeps none, so a traversal to a local URL takes its
-/// initiator's or the response's, as a first visit does.
+/// Step 1's history policy container is the traversed entry's document
+/// state's (about: and data: documents keep one); step 3's initiator is the
+/// source document's, or - for a traversal no document started - the
+/// navigable's active document's.
 fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) ?fetch_mod.internal.PolicyContainer {
     const allocator = integration.allocator;
     const PolicyContainer = fetch_mod.internal.PolicyContainer;
     const response_url = if (response.final_url.len > 0) response.final_url else record.url;
+    // 1. "If historyPolicyContainer is not null": assert that responseURL
+    // requires storing the policy container in history, and return a clone
+    // of it.
+    if (record.traversal_entry != 0 and navigate_steps.requiresStoringPolicyContainerInHistory(response_url)) {
+        if (integration.browsing_context) |bc| {
+            if (bc.jointHistory() catch null) |history| {
+                if (history.historyPolicyContainer(record.traversal_entry)) |container| return container.clone(allocator) catch null;
+            }
+        }
+    }
     // 2. "If responseURL is about:srcdoc": a clone of parentPolicyContainer,
     // the container document's.
     if (record.srcdoc != null or navigate_steps.matchesAboutSrcdoc(response_url)) {
@@ -1635,6 +1720,7 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
     const is_local = std.mem.eql(u8, scheme, "about") or std.mem.eql(u8, scheme, "blob") or std.mem.eql(u8, scheme, "data");
     if (is_local) {
         if (record.initiator_policy_container) |*container| return container.clone(allocator) catch null;
+        if (record.traversal_policy_container) |*container| return container.clone(allocator) catch null;
     }
     // 4. "If responsePolicyContainer is not null, then return
     // responsePolicyContainer": "create a policy container from a fetch
@@ -1869,6 +1955,13 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     defer if (computed) |o| integration.allocator.free(o);
     const origin: []const u8 = record.target_origin orelse computed orelse "null";
     const document_state = recordInHistory(integration, record, final_url, origin);
+    if (record.history_policy_container) |*container| {
+        if (document_state) |state| {
+            if (integration.browsing_context) |bc| {
+                if (bc.jointHistory() catch null) |history| history.setHistoryPolicyContainer(state, container) catch {};
+            }
+        }
+    }
     // "Create and initialize a Document object": Navigation Timing's "create
     // the navigation timing entry" for the document about to be made in the
     // navigable's realm (realmForDocument made or chose it) - which also
@@ -2382,6 +2475,12 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     // Step 11: the new document state's about base URL is oldDocState's.
     integration.setNextAboutBaseUrl(record.initiator_base_url);
     defer integration.setNextAboutBaseUrl(null);
+    // Step 12: navigationParams's policy container, the replaced document's
+    // ("create and initialize a Document object" step 9 gives it the new
+    // document before its parser runs).
+    integration.setNextPolicyContainer(record.javascript_policy_container);
+    record.javascript_policy_container = null;
+    defer integration.setNextPolicyContainer(null);
     const ctx = navigableContext(integration) orelse return endLoadDelay(integration);
     if (!inRealm(ctx, commitJavascriptResult, .{ integration, record, url, html })) endLoadDelay(integration);
 }
@@ -2448,6 +2547,15 @@ fn javascriptNavigationInRealm(integration: *IFrameIntegration, record: *Navigat
     if (active) |old| {
         if (document_lifecycle.aboutFallbackBaseUrl(old)) |about| {
             record.initiator_base_url = integration.allocator.dupe(u8, about) catch null;
+        }
+    }
+    // Step 12: "Let policyContainer be targetNavigable's active document's
+    // policy container" - the String's document keeps the policies of the
+    // document it replaces, not its initiator's (whatever navigated it).
+    // Taken before that document unloads.
+    if (active) |old| {
+        if (dom_module.policy_containers.of(old)) |container| {
+            record.javascript_policy_container = container.clone(integration.allocator) catch null;
         }
     }
     if (active) |old| unloadDocumentAndDescendants(old, integration);
@@ -2713,7 +2821,9 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
             break :blk chosenOf(parentDocumentOf(current) orelse current);
         }
         if (std.ascii.eqlIgnoreCase(name, "_top")) break :blk chosenOf(topDocumentOf(current));
-        if (!std.ascii.eqlIgnoreCase(name, "_blank") and !request.noopener) {
+        // Step 7: "find a navigable by target name", whatever noopener is
+        // (a rel=noreferrer link navigates the frame its target names).
+        if (!std.ascii.eqlIgnoreCase(name, "_blank")) {
             if (findNavigableByName(current, name)) |integration| break :blk .{ .navigable = integration };
         }
         break :blk .none;
@@ -2758,15 +2868,25 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
                 .csp_navigation_type = request.csp_navigation_type,
             });
         },
-        // Step 8: a new top-level traversable - the window open steps.
+        // Step 7's popups of the page's browsing context group, else step 8:
+        // a new top-level traversable - Window keeps both - navigated as the
+        // hyperlink or form asks, with its POST resource, referrer policy and
+        // source element (a form submitted to "_blank" POSTs to the new
+        // window).
         .none => {
             const window = (interfaces.Document.get_defaultView(current) catch null) orelse return;
-            _ = interfaces.Window.call_open(
-                window,
-                webidl.Opt(runtime.USVString).passed(request.url),
-                webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(name)),
-                webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(if (request.noopener) "noopener" else "")),
-            ) catch {};
+            const chosen_top = dom_module.auxiliary_navigables.chooseTopLevel(window, name, request.noopener) orelse return;
+            const integration: *IFrameIntegration = @ptrCast(@alignCast(chosen_top.integration));
+            navigate(integration, request.url, .{
+                .source_document = source_document,
+                .source_element = request.source_element,
+                .user_involvement = request.user_involvement,
+                .navigation_api_state = request.navigation_api_state,
+                .post_resource = request.post_resource,
+                .form_data = request.form_data,
+                .referrer_policy = referrer_policy,
+                .csp_navigation_type = request.csp_navigation_type,
+            });
         },
     }
 }
@@ -2860,30 +2980,13 @@ fn downloadHyperlink(subject: *runtime.Instance, user_involvement: dom_module.na
     // taken for every download.
 }
 
-/// The target of the first base element in `document` that has one, or "".
+/// The target of the first base element in `document`, in tree order, that
+/// has a target attribute, or "" (HTML "get an element's target" step 2).
+/// BORROWED from the base element's attribute.
 fn baseTarget(document: *runtime.Instance) []const u8 {
-    const NodeImpl = @import("Node.zig");
-    const node_internal = NodeImpl.getInternalState(document) orelse return "";
-    const root = node_internal.node_base orelse return "";
-    const base = findBaseWithTarget(root, 0) orelse return "";
-    const ElementImpl = @import("Element.zig");
-    const value = (ElementImpl.call_getAttribute(base, runtime.DOMString.initInterned("target")) catch null) orelse return "";
+    const base = (interfaces.Document.call_querySelector(document, runtime.DOMString.initInterned("base[target]")) catch null) orelse return "";
+    const value = (interfaces.Element.call_getAttribute(base, runtime.DOMString.initInterned("target")) catch null) orelse return "";
     return value.asSlice();
-}
-
-fn findBaseWithTarget(node: *NodeBase, depth: usize) ?*runtime.Instance {
-    if (depth > 512) return null;
-    for (node.child_nodes.items()) |child| {
-        if (child.node_type == 1 and std.ascii.eqlIgnoreCase(child.node_name, "base")) {
-            if (instance_bridge.getInstance(child)) |ptr| {
-                const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
-                const ElementImpl = @import("Element.zig");
-                if (ElementImpl.call_hasAttribute(instance, runtime.DOMString.initInterned("target")) catch false) return instance;
-            }
-        }
-        if (findBaseWithTarget(child, depth + 1)) |found| return found;
-    }
-    return null;
 }
 
 /// Whether the space-separated `value` (a rel attribute) has the link type
@@ -3037,10 +3140,37 @@ fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
     return false;
 }
 
-/// HTML "navigate an iframe or frame" (§4.8.5).
+/// HTML "navigate an iframe or frame" (§4.8.5) for an iframe element.
 fn navigateIframeOrFrame(element: *runtime.Instance, url: []const u8, srcdoc: ?[]const u8, initial_insertion: bool) void {
     const internal = getInternal(element) orelse return;
-    const integration = internal.integration;
+    navigateContainer(element, internal.integration, url, srcdoc, initial_insertion);
+}
+
+/// dom.navigables: HTML "process the frame attributes" (16.3.2) for the
+/// frame element `element`, whose content navigable is `integration`.
+fn processFrameAttributes(element: *runtime.Instance, integration: *IFrameIntegration, initial_insertion: bool) void {
+    if (integration.state == .discarded or integration.browsing_context == null) return;
+    // Step 1: "Let url be the result of running the shared attribute
+    // processing steps for iframe and frame elements given element and
+    // initialInsertion." Step 2: "If url is null, then return."
+    const url = sharedAttributeProcessingSteps(element) orelse return;
+    defer element.ctx.allocator.free(url);
+    // Step 3: "If url matches about:blank and initialInsertion is true: fire
+    // an event named load at element" - the frame keeps its initial
+    // about:blank document, and with the event its navigable no longer
+    // delays its node document's load.
+    if (navigate_steps.matchesAboutBlank(url) and initial_insertion) {
+        dom_module.navigables.containerLoadEventSteps(element, integration);
+        return;
+    }
+    // Step 4: "Navigate an iframe or frame given element, url, the empty
+    // string, null, and initialInsertion."
+    navigateContainer(element, integration, url, null, initial_insertion);
+}
+
+/// HTML "navigate an iframe or frame" (§4.8.5) for `element`, an iframe or
+/// frame element whose content navigable is `integration`.
+fn navigateContainer(element: *runtime.Instance, integration: *IFrameIntegration, url: []const u8, srcdoc: ?[]const u8, initial_insertion: bool) void {
     // Step 1: "Let historyHandling be "auto"."
     var behavior: navigate_steps.HistoryBehavior = .auto;
     // Step 2: "If element's content navigable's active document is not

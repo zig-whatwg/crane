@@ -270,21 +270,33 @@ pub const Range = struct {
     pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
         // [NewObject] - Caller owns the returned object
-        return try RangeImpl.call_cloneContents(instance);
+        const result = RangeImpl.call_cloneContents(instance) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_createContextualFragment(instance: *runtime.Instance, string: TrustedHTMLOrDOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
         // [NewObject] - Caller owns the returned object
 
-        return try RangeImpl.call_createContextualFragment(instance, string);
+        const result = RangeImpl.call_createContextualFragment(instance, string) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_setStartAfter(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
@@ -317,10 +329,16 @@ pub const Range = struct {
     pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
         // [NewObject] - Caller owns the returned object
-        return try RangeImpl.call_extractContents(instance);
+        const result = RangeImpl.call_extractContents(instance) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_intersectsNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!bool {

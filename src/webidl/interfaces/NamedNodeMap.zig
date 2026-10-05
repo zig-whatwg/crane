@@ -136,36 +136,64 @@ pub const NamedNodeMap = struct {
     pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try NamedNodeMapImpl.call_removeNamedItem(instance, qualifiedName);
+        const result = NamedNodeMapImpl.call_removeNamedItem(instance, qualifiedName) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     /// Extended attributes: [CEReactions]
     pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try NamedNodeMapImpl.call_setNamedItem(instance, attr);
+        const result = NamedNodeMapImpl.call_setNamedItem(instance, attr) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = if (result) |r| runtime.SlabAllocator.generationOf(r) else 0;
+        runtime.CEReactions.end(ce_scope);
+        if (result) |r| if (runtime.SlabAllocator.generationOf(r) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     /// Extended attributes: [CEReactions]
     pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try NamedNodeMapImpl.call_setNamedItemNS(instance, attr);
+        const result = NamedNodeMapImpl.call_setNamedItemNS(instance, attr) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = if (result) |r| runtime.SlabAllocator.generationOf(r) else 0;
+        runtime.CEReactions.end(ce_scope);
+        if (result) |r| if (runtime.SlabAllocator.generationOf(r) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     /// Extended attributes: [CEReactions]
     pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try NamedNodeMapImpl.call_removeNamedItemNS(instance, namespace, localName);
+        const result = NamedNodeMapImpl.call_removeNamedItemNS(instance, namespace, localName) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_getNamedItemNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?*runtime.Instance {

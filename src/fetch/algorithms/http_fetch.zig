@@ -709,16 +709,15 @@ pub fn httpNetworkFetchFinish(
         };
     }
 
-    // Set response URL from request (or final URL if redirected)
-    if (network_response.final_url) |final_url| {
-        response.addUrl(final_url) catch {
-            return HttpFetchError.OutOfMemory;
-        };
-    } else {
-        response.addUrl(request.currentUrl()) catch {
-            return HttpFetchError.OutOfMemory;
-        };
-    }
+    // The response's URL is the request's current URL (main fetch: "set
+    // [response's URL list] to a clone of request's URL list"). Fetch follows
+    // redirects itself - the network is told not to - so the network's
+    // `final_url` is only its own re-serialization of the same URL, and
+    // curl's drops an empty query: a frame at `blank.html?` read its
+    // location as `blank.html`.
+    response.addUrl(request.currentUrl()) catch {
+        return HttpFetchError.OutOfMemory;
+    };
 
     // Set status code, and the status message: the status line's
     // reason-phrase (HTTP/1.x; none after).

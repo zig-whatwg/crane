@@ -470,6 +470,10 @@ pub const BrowsingContext = struct {
     /// Create a new auxiliary browsing context (via window.open())
     pub fn initAuxiliary(allocator: Allocator, opener_ctx: *BrowsingContext, is_popup_flag: bool) !*BrowsingContext {
         const ctx = try initTopLevel(allocator);
+        // HTML "create a new auxiliary browsing context" step 1-2: "Let group
+        // be openerBrowsingContext's top-level browsing context's group",
+        // which the new context joins.
+        ctx.virtual_group_id = opener_ctx.getTop().virtual_group_id;
         ctx.opener = opener_ctx;
         ctx.is_popup = is_popup_flag;
         // "The rules for choosing a navigable" step 8.10: "Set chosen's is
@@ -769,6 +773,15 @@ pub const BrowsingContext = struct {
     /// Returns null if no window has been created yet
     pub fn getActiveWindow(self: *const BrowsingContext) ?InstancePtr {
         return self.active_window;
+    }
+
+    /// Move this top-level context into a browsing context group of its own:
+    /// HTML "the rules for choosing a navigable" step 8.7, a new top-level
+    /// traversable made with noopener, is "created given null" opener - a
+    /// new top-level browsing context, in a new group ("create a new
+    /// top-level browsing context and document" step 1).
+    pub fn startOwnGroup(self: *BrowsingContext) void {
+        self.virtual_group_id = @atomicRmw(u64, &next_group_id, .Add, 1, .monotonic);
     }
 
     /// Check if two browsing contexts are in the same browsing context group
