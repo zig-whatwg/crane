@@ -217,15 +217,15 @@ pub fn createChildNavigable(container: *runtime.Instance, integration: *IFrameIn
 /// keeps its length.
 fn placeInTreeOrder(child: *BrowsingContext, container: *runtime.Instance) void {
     const parent = child.parent orelse return;
+    const container_base = instance_bridge.getNodeBase(container) orelse return;
     const items = parent.children.items;
     const from = std.mem.indexOfScalar(*BrowsingContext, items, child) orelse return;
     var to: usize = from;
     for (items, 0..) |sibling, i| {
         if (i >= from) break;
-        const other: *runtime.Instance = @ptrCast(@alignCast(sibling.container orelse continue));
-        const position = interfaces.Node.call_compareDocumentPosition(container, other) catch continue;
+        const other = instance_bridge.getNodeBase(sibling.container orelse continue) orelse continue;
         // `other` follows `container` in tree order: `child` goes before it.
-        if (position & interfaces.Node.get_DOCUMENT_POSITION_FOLLOWING() != 0) {
+        if (follows(other, container_base)) {
             to = i;
             break;
         }
@@ -233,6 +233,48 @@ fn placeInTreeOrder(child: *BrowsingContext, container: *runtime.Instance) void 
     if (to == from) return;
     std.mem.copyBackwards(*BrowsingContext, items[to + 1 .. from + 1], items[to..from]);
     items[to] = child;
+}
+
+/// Whether `a` follows `b` in tree order (preorder, depth-first): `b` is an
+/// ancestor of `a`, or, below their nearest common ancestor, `a`'s branch
+/// comes after `b`'s. False for nodes in different trees.
+fn follows(a: *NodeBase, b: *NodeBase) bool {
+    if (a == b) return false;
+    // The ancestor chains, root last.
+    var chain_a: [512]*NodeBase = undefined;
+    var chain_b: [512]*NodeBase = undefined;
+    const len_a = ancestorChain(a, &chain_a);
+    const len_b = ancestorChain(b, &chain_b);
+    if (len_a == 0 or len_b == 0 or chain_a[len_a - 1] != chain_b[len_b - 1]) return false;
+    // Walk down from the root while the chains agree.
+    var i: usize = 1;
+    while (i <= len_a and i <= len_b and chain_a[len_a - i] == chain_b[len_b - i]) : (i += 1) {}
+    // `b` is an ancestor of `a` (its chain ran out first): `a` follows it.
+    if (i > len_b) return true;
+    // `a` is an ancestor of `b`: `a` precedes it.
+    if (i > len_a) return false;
+    // Siblings under the common ancestor: their order decides.
+    const parent = chain_a[len_a - i + 1];
+    const branch_a = chain_a[len_a - i];
+    const branch_b = chain_b[len_b - i];
+    for (parent.child_nodes.items()) |child| {
+        if (child == branch_b) return true;
+        if (child == branch_a) return false;
+    }
+    return false;
+}
+
+/// `node` and its ancestors into `out`, the node first; their count (0 when
+/// deeper than `out` holds).
+fn ancestorChain(node: *NodeBase, out: []*NodeBase) usize {
+    var count: usize = 0;
+    var current: ?*NodeBase = node;
+    while (current) |n| : (current = n.parent_node) {
+        if (count == out.len) return 0;
+        out[count] = n;
+        count += 1;
+    }
+    return count;
 }
 
 /// BrowsingContext.ensureHistoryEntries's `info_of`: a document's URL and
@@ -640,4 +682,56 @@ test "a serialized origin parses back to the origin it names; anything else is o
 test "navigable containers are iframe, frame, object and embed" {
     for ([_][]const u8{ "iframe", "IFRAME", "frame", "object", "embed" }) |name| try std.testing.expect(isContainerName(name));
     for ([_][]const u8{ "img", "video", "frameset", "objects" }) |name| try std.testing.expect(!isContainerName(name));
+}
+
+test "tree order: ancestors precede, then siblings' branches in their order" {
+    const infra = @import("infra");
+    const node_base = @import("node_base.zig");
+    const a = std.testing.allocator;
+    const Tree = struct {
+        nodes: [6]NodeBase = undefined,
+        fn init(self: *@This(), allocator: std.mem.Allocator) void {
+            for (&self.nodes) |*n| n.* = .{
+                .allocator = allocator,
+                .node_type = 1,
+                .node_name = "X",
+                .child_nodes = infra.List(*NodeBase).init(allocator),
+                .registered_observers = infra.List(node_base.RegisteredObserverType).init(allocator),
+            };
+        }
+        fn deinit(self: *@This()) void {
+            for (&self.nodes) |*n| {
+                n.child_nodes.deinit();
+                n.registered_observers.deinit();
+            }
+        }
+        fn append(parent: *NodeBase, child: *NodeBase) !void {
+            try parent.child_nodes.append(child);
+            child.parent_node = parent;
+        }
+    };
+    var tree: Tree = .{};
+    tree.init(a);
+    defer tree.deinit();
+    // root(0) { x(1) { x1(2), x2(3) }, y(4) { y1(5) } }
+    const n = &tree.nodes;
+    try Tree.append(&n[0], &n[1]);
+    try Tree.append(&n[1], &n[2]);
+    try Tree.append(&n[1], &n[3]);
+    try Tree.append(&n[0], &n[4]);
+    try Tree.append(&n[4], &n[5]);
+    try std.testing.expect(follows(&n[3], &n[2]));
+    try std.testing.expect(!follows(&n[2], &n[3]));
+    try std.testing.expect(follows(&n[5], &n[3]));
+    try std.testing.expect(follows(&n[4], &n[3]));
+    try std.testing.expect(!follows(&n[2], &n[4]));
+    // An ancestor precedes its descendants.
+    try std.testing.expect(follows(&n[2], &n[1]));
+    try std.testing.expect(!follows(&n[1], &n[2]));
+    try std.testing.expect(!follows(&n[2], &n[2]));
+    // Different trees: no order.
+    var other: Tree = .{};
+    other.init(a);
+    defer other.deinit();
+    try std.testing.expect(!follows(&other.nodes[0], &n[2]));
 }

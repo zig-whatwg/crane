@@ -769,13 +769,17 @@ fn documentHasBrowsingContext(element: *runtime.Instance) bool {
     return (interfaces.Document.get_defaultView(document) catch null) != null;
 }
 
-/// Whether the element's node document is fully active: its window's
-/// document, the active document of a navigable.
+/// Whether the element's node document is fully active: the active document
+/// of its window's navigable. Asked of the browsing context, not of the
+/// Window's `document` getter, which is script's and refuses an accessor of
+/// another origin - this runs from the event loop and the network sweep,
+/// where whatever realm is current is no accessor (an object in a data:
+/// frame, of an opaque origin, never processed).
 fn documentIsFullyActive(element: *runtime.Instance) bool {
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
     const window = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
-    const shown = interfaces.Window.get_document(window) catch return false;
-    return shown == document;
+    const navigable = html_core.BrowsingContext.ofWindow(@ptrCast(window)) orelse return false;
+    return navigable.getActiveDocument() == @as(*anyopaque, @ptrCast(document));
 }
 
 /// Whether the element has an ancestor media element, or an ancestor object
