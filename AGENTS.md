@@ -143,11 +143,17 @@ page, and nothing says so: the headline simply does not move.
 
 After every feature commit:
 
-1. **Put its WPT runs where the report reads them.** Point `--output` at
-   `wpt-results/<label>/` (e.g. `wpt-results/ab-<short-sha>/`), or copy a run's
-   `journal*.jsonl` there afterwards with `cp -p` - `-p` keeps the mtime, and
-   the mtime decides which result is latest. Several runs under one label go
-   side by side as `journal.<area>.jsonl`, never in subdirectories.
+1. **Put main's WPT runs where the report reads them - and only main's.** A run
+   of main (a sweep, or the integrator's targeted run after a merge): point
+   `--output` at `wpt-results/<label>/` (e.g. `wpt-results/sweep-<short-sha>/`),
+   or copy its `journal*.jsonl` there afterwards with `cp -p` - `-p` keeps the
+   mtime, and the mtime decides which result is latest. Several runs under one
+   label go side by side as `journal.<area>.jsonl`, never in subdirectories.
+   **A lane's run (any branch that is not main) goes to `wpt-results/lanes/<label>/`**,
+   which the report never reads: it takes the newest result per file, so a
+   branch's run replaces main's - on 2026-10-04 a lane's full A/B, on a branch
+   without main's IndexedDB merge, made a generation 25,000 subtests lower than
+   main's own sweep ([lesson](docs/lessons/workflow-a-branchs-wpt-run-replaces-mains-in-the-report.md)).
 2. **Regenerate:** `zig build wpt-progress -j2 --cache-dir ~/Library/Caches/crane-z16-cache`.
    `wpt-progress` also regenerates Crane's public results site
    (tools/wpt_site/generate.zig, published at https://zig-whatwg.github.io/crane/) into
