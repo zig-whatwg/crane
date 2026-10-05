@@ -21,16 +21,16 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../content-security-policy/"><code>content-<wbr>security-<wbr>policy/</code></a></li><li aria-current="page"><code>navigation/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">7.18</span><code>content-<wbr>security-<wbr>policy/<wbr>navigation/</code></h1>
 <div class="figures" role="group" aria-label="content-security-policy/navigation/">
-<p class="figures-main"><span class="fg-pass">4</span><span class="fg-of"> / 29</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>3</dd></div><div><dt>Timed out</dt><dd>4</dd></div><div><dt>Not run</dt><dd>18</dd></div><div><dt>Test files</dt><dd>6</dd></div><div class="blk"><dt>Blocking files</dt><dd>5</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">28</span><span class="fg-of"> / 29</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>6</dd></div><div class="blk"><dt>Blocking files</dt><dd>1</dd></div></dl>
 </div>
 </header>
 <div class="boxes">
 <aside class="box conf" aria-label="Conformance of content-security-policy/navigation/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">6 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="1 clean, 0 with failures, 5 blocking, 0 with no subtests, 0 not run, of 6 files"><span class="m-clean" style="width:16.667%"></span><span class="m-blocking" style="width:83.333%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>1</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>5</dd></div><p class="kinds"><b>1</b> NONE-PASSED, <b>4</b> TIMEOUT</p></dl>
+<div class="meter" role="img" aria-label="5 clean, 0 with failures, 1 blocking, 0 with no subtests, 0 not run, of 6 files"><span class="m-clean" style="width:83.333%"></span><span class="m-blocking" style="width:16.667%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>5</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>1</dd></div><p class="kinds"><b>1</b> NONE-PASSED</p></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -39,11 +39,11 @@
 <thead><tr><th scope="col">Test file</th><th scope="col" class="n">Subtests passing</th><th scope="col" class="n">Failed</th><th scope="col">Standing</th></tr></thead>
 <tbody>
 <tr data-gate="none-passed"><th scope="row"><a href="../../content-security-policy/navigation/javascript-url-navigation-evaluated-to-string-inherits-csp.html/"><code>javascript-<wbr>url-<wbr>navigation-<wbr>evaluated-<wbr>to-<wbr>string-<wbr>inherits-<wbr>csp.<wbr>html</code></a></th><td class="n" data-v="0" data-of="1"><b>0</b> / 1</td><td class="n" data-v="1"><span class="fail">1</span></td><td data-v="3"><span class="gate gate-none-passed g-block">NONE-PASSED</span></td></tr>
-<tr data-gate="timeout"><th scope="row"><a href="../../content-security-policy/navigation/to-javascript-parent-initiated-check-csp-order.html/"><code>to-<wbr>javascript-<wbr>parent-<wbr>initiated-<wbr>check-<wbr>csp-<wbr>order.<wbr>html</code></a></th><td class="n" data-v="0" data-of="7"><b>0</b> / 7</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
-<tr data-gate="timeout"><th scope="row"><a href="../../content-security-policy/navigation/to-javascript-parent-initiated-child-csp.html/"><code>to-<wbr>javascript-<wbr>parent-<wbr>initiated-<wbr>child-<wbr>csp.<wbr>html</code></a></th><td class="n" data-v="3" data-of="9"><b>3</b> / 9</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
-<tr data-gate="timeout"><th scope="row"><a href="../../content-security-policy/navigation/to-javascript-parent-initiated-parent-csp.html/"><code>to-<wbr>javascript-<wbr>parent-<wbr>initiated-<wbr>parent-<wbr>csp.<wbr>html</code></a></th><td class="n" data-v="0" data-of="7"><b>0</b> / 7</td><td class="n" data-v="2"><span class="fail">2</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
+<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/navigation/to-javascript-parent-initiated-check-csp-order.html/"><code>to-<wbr>javascript-<wbr>parent-<wbr>initiated-<wbr>check-<wbr>csp-<wbr>order.<wbr>html</code></a></th><td class="n" data-v="7" data-of="7"><b>7</b> / 7</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
+<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/navigation/to-javascript-parent-initiated-child-csp.html/"><code>to-<wbr>javascript-<wbr>parent-<wbr>initiated-<wbr>child-<wbr>csp.<wbr>html</code></a></th><td class="n" data-v="9" data-of="9"><b>9</b> / 9</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
+<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/navigation/to-javascript-parent-initiated-parent-csp.html/"><code>to-<wbr>javascript-<wbr>parent-<wbr>initiated-<wbr>parent-<wbr>csp.<wbr>html</code></a></th><td class="n" data-v="7" data-of="7"><b>7</b> / 7</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
 <tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/navigation/to-javascript-url-frame-src.html/"><code>to-<wbr>javascript-<wbr>url-<wbr>frame-<wbr>src.<wbr>html</code></a></th><td class="n" data-v="1" data-of="1"><b>1</b> / 1</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
-<tr data-gate="timeout"><th scope="row"><a href="../../content-security-policy/navigation/to-javascript-url-script-src.html/"><code>to-<wbr>javascript-<wbr>url-<wbr>script-<wbr>src.<wbr>html</code></a></th><td class="n" data-v="0" data-of="4"><b>0</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="4"><span class="gate gate-timeout g-block">TIMEOUT</span></td></tr>
+<tr data-gate="clean"><th scope="row"><a href="../../content-security-policy/navigation/to-javascript-url-script-src.html/"><code>to-<wbr>javascript-<wbr>url-<wbr>script-<wbr>src.<wbr>html</code></a></th><td class="n" data-v="4" data-of="4"><b>4</b> / 4</td><td class="n" data-v="0"><span class="quiet">0</span></td><td data-v="0"><span class="gate gate-clean">Clean</span></td></tr>
 </tbody>
 </table>
 </div>
