@@ -31,6 +31,8 @@ const CharacterDataImpl = @import("CharacterData.zig");
 
 pub const State = Node.State;
 
+const log = std.log.scoped(.node);
+
 pub const ImplError = error{
     NotImplemented,
     InvalidStateError,
@@ -405,43 +407,7 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
         NodeType.CDATA_SECTION_NODE => {
             interfaces.CDATASection.deinit(instance);
         },
-        NodeType.ELEMENT_NODE => {
-            // Element nodes could be any HTML element subclass.
-            // Check local_name to dispatch to the correct HTML element deinit
-            // so that element-specific internal state gets cleaned up.
-            const local_name = if (internal.local_name) |ln| ln.asSlice() else "";
-            if (instance.vtable == &interfaces.SVGScriptElement.vtable) {
-                // An SVG script shares HTML's local name, not its interface:
-                // taken for an HTMLScriptElement, its own teardown never ran
-                // and its script element state leaked with every page that
-                // had one (SVGScriptElement.init, leak-traced).
-                interfaces.SVGScriptElement.deinit(instance);
-            } else if (instance.vtable == &interfaces.HTMLAudioElement.vtable) {
-                interfaces.HTMLAudioElement.deinit(instance);
-            } else if (instance.vtable == &interfaces.HTMLVideoElement.vtable) {
-                interfaces.HTMLVideoElement.deinit(instance);
-            } else if (instance.vtable == &interfaces.HTMLSourceElement.vtable) {
-                interfaces.HTMLSourceElement.deinit(instance);
-            } else if (instance.vtable == &interfaces.HTMLTrackElement.vtable) {
-                interfaces.HTMLTrackElement.deinit(instance);
-            } else if (std.mem.eql(u8, local_name, "script")) {
-                interfaces.HTMLScriptElement.deinit(instance);
-            } else if (std.mem.eql(u8, local_name, "iframe")) {
-                // iframe elements need special cleanup for their browsing context
-                interfaces.HTMLIFrameElement.deinit(instance);
-            } else if (instance.vtable == &interfaces.HTMLObjectElement.vtable) {
-                // An object or embed element keeps its processing and its
-                // content navigable, which only its own deinit hands back:
-                // taken for a plain Element, one that had shown a document
-                // leaked what its navigable committed.
-                interfaces.HTMLObjectElement.deinit(instance);
-            } else if (instance.vtable == &interfaces.HTMLEmbedElement.vtable) {
-                interfaces.HTMLEmbedElement.deinit(instance);
-            } else {
-                // For other elements, use base Element.deinit
-                interfaces.Element.deinit(instance);
-            }
-        },
+        NodeType.ELEMENT_NODE => deinitElement(instance),
         NodeType.DOCUMENT_NODE => {
             // Document nodes - this shouldn't typically happen in child iteration
             // but handle it for completeness
@@ -453,6 +419,32 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
             Registry.remove(instance);
             EventTargetImpl.deinit(instance);
         },
+    }
+}
+
+/// An element's teardown is its OWN: the deinit its interface's vtable names
+/// - the function the collector's finalizer runs for a collected root
+/// (gc_integration.onObjectFreed) - which chains through its ancestors'
+/// deinits to Node.deinit, and from there to its children. Blink and WebKit
+/// destroy a node through its own virtual destructor the same way.
+///
+/// It used to be chosen by local name, with Element.deinit for every element
+/// it did not name: HTMLElement's state (an element's inline style) and the
+/// element type's own (an input's dirty value, a textarea's raw value, an
+/// object's content navigable) stayed in their address-keyed registries, to
+/// be overwritten - leaked - or inherited by the next element the slab put at
+/// the address (docs/lessons/architecture-an-address-keyed-entry-a-teardown-misses-is-inherited.md).
+///
+/// The default is the safe answer: a deinit that never reaches Node's - a
+/// codegen stub that does not chain, or none at all - is completed as an
+/// Element, so a type nobody audited loses at most its own state, never its
+/// node state or its subtree. Every element a tree can hold today chains
+/// (tests/html/element_teardown_test.zig makes each one the HTML factory can).
+fn deinitElement(instance: *runtime.Instance) void {
+    if (instance.vtable.deinit) |own_deinit| own_deinit(instance);
+    if (!runtime.instance_lifecycle.isCleanedUp(instance)) {
+        log.debug("{s}'s deinit did not reach Node's: completed as an Element", .{instance.vtable.name});
+        interfaces.Element.deinit(instance);
     }
 }
 
