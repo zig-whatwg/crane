@@ -2744,7 +2744,9 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
             break :blk chosenOf(parentDocumentOf(current) orelse current);
         }
         if (std.ascii.eqlIgnoreCase(name, "_top")) break :blk chosenOf(topDocumentOf(current));
-        if (!std.ascii.eqlIgnoreCase(name, "_blank") and !request.noopener) {
+        // Step 7: "find a navigable by target name", whatever noopener is
+        // (a rel=noreferrer link navigates the frame its target names).
+        if (!std.ascii.eqlIgnoreCase(name, "_blank")) {
             if (findNavigableByName(current, name)) |integration| break :blk .{ .navigable = integration };
         }
         break :blk .none;
@@ -2789,15 +2791,25 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
                 .csp_navigation_type = request.csp_navigation_type,
             });
         },
-        // Step 8: a new top-level traversable - the window open steps.
+        // Step 7's popups of the page's browsing context group, else step 8:
+        // a new top-level traversable - Window keeps both - navigated as the
+        // hyperlink or form asks, with its POST resource, referrer policy and
+        // source element (a form submitted to "_blank" POSTs to the new
+        // window).
         .none => {
             const window = (interfaces.Document.get_defaultView(current) catch null) orelse return;
-            _ = interfaces.Window.call_open(
-                window,
-                webidl.Opt(runtime.USVString).passed(request.url),
-                webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(name)),
-                webidl.Opt(runtime.DOMString).passed(runtime.DOMString.initInterned(if (request.noopener) "noopener" else "")),
-            ) catch {};
+            const chosen_top = dom_module.auxiliary_navigables.chooseTopLevel(window, name, request.noopener) orelse return;
+            const integration: *IFrameIntegration = @ptrCast(@alignCast(chosen_top.integration));
+            navigate(integration, request.url, .{
+                .source_document = source_document,
+                .source_element = request.source_element,
+                .user_involvement = request.user_involvement,
+                .navigation_api_state = request.navigation_api_state,
+                .post_resource = request.post_resource,
+                .form_data = request.form_data,
+                .referrer_policy = referrer_policy,
+                .csp_navigation_type = request.csp_navigation_type,
+            });
         },
     }
 }
@@ -2891,30 +2903,13 @@ fn downloadHyperlink(subject: *runtime.Instance, user_involvement: dom_module.na
     // taken for every download.
 }
 
-/// The target of the first base element in `document` that has one, or "".
+/// The target of the first base element in `document`, in tree order, that
+/// has a target attribute, or "" (HTML "get an element's target" step 2).
+/// BORROWED from the base element's attribute.
 fn baseTarget(document: *runtime.Instance) []const u8 {
-    const NodeImpl = @import("Node.zig");
-    const node_internal = NodeImpl.getInternalState(document) orelse return "";
-    const root = node_internal.node_base orelse return "";
-    const base = findBaseWithTarget(root, 0) orelse return "";
-    const ElementImpl = @import("Element.zig");
-    const value = (ElementImpl.call_getAttribute(base, runtime.DOMString.initInterned("target")) catch null) orelse return "";
+    const base = (interfaces.Document.call_querySelector(document, runtime.DOMString.initInterned("base[target]")) catch null) orelse return "";
+    const value = (interfaces.Element.call_getAttribute(base, runtime.DOMString.initInterned("target")) catch null) orelse return "";
     return value.asSlice();
-}
-
-fn findBaseWithTarget(node: *NodeBase, depth: usize) ?*runtime.Instance {
-    if (depth > 512) return null;
-    for (node.child_nodes.items()) |child| {
-        if (child.node_type == 1 and std.ascii.eqlIgnoreCase(child.node_name, "base")) {
-            if (instance_bridge.getInstance(child)) |ptr| {
-                const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
-                const ElementImpl = @import("Element.zig");
-                if (ElementImpl.call_hasAttribute(instance, runtime.DOMString.initInterned("target")) catch false) return instance;
-            }
-        }
-        if (findBaseWithTarget(child, depth + 1)) |found| return found;
-    }
-    return null;
 }
 
 /// Whether the space-separated `value` (a rel attribute) has the link type

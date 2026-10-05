@@ -453,6 +453,9 @@ pub fn installHooks() void {
     @import("dom").navigable_container.install(.{ .of = &containerOf });
     // A frame's host binds the Window to the global its realm made here.
     @import("dom").window_globals.install(.{ .bind = &setBoundV8Global });
+    // A hyperlink's or form's target that names no frame: the popups this
+    // window keeps, or a new one (the rules for choosing a navigable).
+    @import("dom").auxiliary_navigables.installTopLevelChooser(.{ .choose = &chooseTopLevelTraversable });
     // The user activation algorithms (src/html/user_activation.zig) keep a
     // window's activation timestamps here.
     @import("dom").user_activation_state.install(.{ .get = &userActivationTimestamps, .set = &setUserActivationTimestamps });
@@ -3024,27 +3027,24 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // opened from it, however deep. A popup's own script calling
     // `opener.open(url, name)` has the popup as the entry global, and the
     // name is one its opener gave.
-    // "The rules for choosing a navigable" step 7: an existing navigable by
-    // that name is chosen only when noopener is false - with noopener, every
-    // open() makes a new one.
-    if (!noopener and !std.ascii.eqlIgnoreCase(target_str, "_blank")) {
+    // "The rules for choosing a navigable" step 7: "find a navigable by
+    // target name" whatever noopener is - noopener decides only what a NEW
+    // top-level traversable is (step 8.7). A window that was opened with
+    // noopener is in a browsing context group of its own, which step 7's
+    // search of this page's group never reaches (`namedPopup`).
+    if (!std.ascii.eqlIgnoreCase(target_str, "_blank")) {
         // A frame of the source's page carrying the name, first - "find a
         // navigable by target name" looks through every navigable the
         // source is familiar with, and its page's frames are.
         const navigables = @import("dom").navigables;
         const this_document = interfaces.Window.get_document(this) catch source_document;
         if (navigables.findByName(this_document, target_str)) |frame_window| {
-            // Step 16.1: navigate it, then (step 18) return its WindowProxy.
-            if (url_record) |u| navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .current_document = this_document });
-            return frame_window;
+            // Step 16.1: navigate it, then (step 18) return its WindowProxy -
+            // or null with noopener.
+            if (url_record) |u| navigables.navigateByTarget(source_document, .{ .target = target_str, .url = u, .current_document = this_document, .noopener = noopener });
+            return if (noopener) null else frame_window;
         }
-        var root = instance;
-        var hops: usize = 0;
-        while (hops < 16) : (hops += 1) {
-            const root_internal = getInternal(root) orelse break;
-            root = root_internal.opener orelse break;
-        }
-        if (namedPopup(root, target_str, 0)) |found| {
+        if (popupByName(instance, target_str)) |found| {
             // Step 16.1: "If urlRecord is not null, then navigate targetNavigable
             // to urlRecord using sourceDocument, with referrerPolicy and
             // exceptionsEnabled set to true."
@@ -3053,18 +3053,15 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
         }
     }
 
-    // Step 15: a new top-level traversable, auxiliary unless noopener. The
-    // machinery is HTMLIFrameElement's, installed when the first iframe
-    // element is made: make one if no page has yet. Script never sees it, so
-    // it goes as soon as it has done that.
-    const auxiliary_navigables = @import("dom").auxiliary_navigables;
+    // Step 15: a new top-level traversable, auxiliary unless noopener.
     // Step 15.1: "Set targetNavigable's active browsing context's is popup
     // to the result of checking if a popup window is requested". Deviation,
     // stated, matching Chrome and Safari (window-open-popup-behavior passes
     // 51/51 in both; Firefox follows the text): a window opened with noopener
     // or noreferrer is never a popup, whatever its features.
     const is_popup = window_features.popup and !noopener;
-    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, is_popup) orelse return null;
+    const created = try newTopLevelTraversable(instance, target_str, noopener, is_popup) orelse return null;
+    const integration = created.integration;
     // Step 15.2: "Set up browsing context features for targetNavigable's
     // active browsing context given tokenizedFeatures" - the window's
     // position and viewport size, which each of its Windows reports
@@ -3073,20 +3070,6 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
         created_internal.browsing_context.requested_window = window_features.geometry;
         applyRequestedWindow(created_internal);
     }
-    const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
-    internal.auxiliary_navigables.append(allocator, integration) catch {
-        integration.deinit();
-        allocator.destroy(integration);
-        return error.OutOfMemory;
-    };
-
-    // A named target names the new navigable.
-    if (!std.ascii.eqlIgnoreCase(target_str, "_blank")) {
-        if (integration.browsing_context) |bc| bc.setTargetName(target_str) catch {};
-    }
-
-    // Its opener is this window, unless noopener.
-    if (noopener) setOpenerNoopener(created.window) catch {} else setOpener(created.window, instance) catch {};
 
     // Steps 15.3-15.5: navigate it, unless the URL is about:blank - the
     // initial document it already has. "Navigate" fetches in parallel and
@@ -3112,10 +3095,71 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
 
 const NamedPopup = struct { integration: *html_core.IFrameIntegration, window: *runtime.Instance };
 
+/// "Find a navigable by target name" steps 5-7 for the popups: an open popup
+/// named `name` in the browsing context group of `window`'s page - the root
+/// of its opener chain and every popup opened from it, however deep.
+fn popupByName(window: *runtime.Instance, name: []const u8) ?NamedPopup {
+    const internal = getInternal(window) orelse return null;
+    var root = window;
+    var hops: usize = 0;
+    while (hops < 16) : (hops += 1) {
+        const root_internal = getInternal(root) orelse break;
+        root = root_internal.opener orelse break;
+    }
+    // Step 7 searches this page's browsing context group: a popup opened
+    // with noopener began a group of its own.
+    const group = internal.browsing_context.getTop().virtual_group_id;
+    return namedPopup(root, name, group, 0);
+}
+
+/// "The rules for choosing a navigable" step 8 for `window`'s navigable (the
+/// currentNavigable): "creating a new top-level traversable" - given
+/// `window`'s browsing context as the opener, or given null with noopener -
+/// its target name `target` unless that is "_blank", showing its initial
+/// about:blank document. The popup is `window`'s: it goes with `window`'s
+/// page. The machinery is HTMLIFrameElement's (dom.auxiliary_navigables).
+/// Null when none can be made.
+fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopener: bool, is_popup: bool) error{OutOfMemory}!?NamedPopup {
+    const internal = getInternal(window) orelse return null;
+    const allocator = internal.allocator;
+    const auxiliary_navigables = @import("dom").auxiliary_navigables;
+    const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, is_popup) orelse return null;
+    const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
+    internal.auxiliary_navigables.append(allocator, integration) catch {
+        integration.deinit();
+        allocator.destroy(integration);
+        return error.OutOfMemory;
+    };
+    // Steps 8.5-8.6: a named target names the new navigable.
+    if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
+        if (integration.browsing_context) |bc| bc.setTargetName(target) catch {};
+    }
+    // Steps 8.7-8.8: its opener is this window, unless noopener - which makes
+    // it a new top-level traversable "given null" opener, in a browsing
+    // context group of its own.
+    if (noopener) {
+        setOpenerNoopener(created.window) catch {};
+        if (integration.browsing_context) |bc| bc.startOwnGroup();
+    } else setOpener(created.window, window) catch {};
+    return .{ .integration = integration, .window = created.window };
+}
+
+/// dom.auxiliary_navigables: the rest of "the rules for choosing a navigable"
+/// for a hyperlink or a form whose target names no frame of its page - an
+/// open popup of that name in the page's group (step 7), else a new
+/// top-level traversable (step 8).
+fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const u8, noopener: bool) ?@import("dom").auxiliary_navigables.Chosen {
+    if (!std.ascii.eqlIgnoreCase(target, "_blank")) {
+        if (popupByName(current_window, target)) |found| return .{ .integration = @ptrCast(found.integration), .window = found.window };
+    }
+    const created = (newTopLevelTraversable(current_window, target, noopener, false) catch null) orelse return null;
+    return .{ .integration = @ptrCast(created.integration), .window = created.window };
+}
+
 /// An open popup named `name` that `window` opened, or that one of its
 /// popups did, depth first. A popup's page is torn down by its opener's, so
 /// every window reached here is live.
-fn namedPopup(window: *runtime.Instance, name: []const u8, depth: usize) ?NamedPopup {
+fn namedPopup(window: *runtime.Instance, name: []const u8, group: u64, depth: usize) ?NamedPopup {
     if (depth > 16) return null;
     const internal = getInternal(window) orelse return null;
     for (internal.auxiliary_navigables.items) |integration| {
@@ -3124,9 +3168,13 @@ fn namedPopup(window: *runtime.Instance, name: []const u8, depth: usize) ?NamedP
         // by from that moment (close-method.window.js: "window.close()
         // affects name targeting immediately").
         if (bc.is_closed or bc.is_closing) continue;
+        // "Find a navigable by target name" step 7 looks through the
+        // searching page's browsing context group: a popup opened with
+        // noopener, and every popup it opened, are another group's.
+        if (bc.virtual_group_id != group) continue;
         const popup: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse continue));
         if (std.mem.eql(u8, bc.target_name, name)) return .{ .integration = integration, .window = popup };
-        if (namedPopup(popup, name, depth + 1)) |found| return found;
+        if (namedPopup(popup, name, group, depth + 1)) |found| return found;
     }
     return null;
 }
