@@ -196,6 +196,9 @@ A lane brief now carries the lessons chosen for its batch.
 - [A document's URL is the navigation's only once it is its window's document](architecture-a-documents-url-is-the-navigations-only-once-it-is-its-windows.md) - In a frame commit, steps that read the new document's URL go after the document is its window's; the ones that only store state can go before.
 - [An owned field added to a result that callers take apart leaks in every one of them](architecture-an-owned-field-on-a-result-callers-take-apart-leaks-in-each.md) - Before adding an owned field to a result type, grep how every caller frees it; if any takes it apart, make the field opt-in or borrowed - and count `leaked:` lines, not only statuses.
 - [V8 asks its code generation callback only where code generation is disallowed](architecture-v8-asks-its-code-generation-callback-only-where-codegen-is-disallowed.md) - Before wiring an engine callback, read where the engine calls it - a callback behind a per-context flag is dead code until every context the host cares about sets that flag.
+- [A tree walk must reach an element's own destructor](architecture-a-tree-walk-must-reach-an-elements-own-destructor.md) - Test both an object's destructor and the real tree walk that is supposed to call it.
+- [Lazy same-object children need immediate handout](architecture-lazy-same-object-children-need-immediate-handout.md) - Every child allocated for the wrapper collector must actually reach that collector.
+- [A waiting algorithm resumes once and restores its registration](architecture-a-waiting-algorithm-resumes-once-and-restores-its-registration.md) - A generation identifies an algorithm, not its phase or whether same-generation cleanup is still safe.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -248,6 +251,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A network error may need a native cause](spec-compliance-a-network-error-may-need-a-native-cause.md) - Preserve the native failure distinction for an allowlisted retry decision.
 - [Create an event before queuing its dispatch](spec-compliance-create-an-event-before-queuing-its-dispatch.md) - Creation captures observable state before the dispatch task runs.
 - [A tick added to match ordering tests goes stale when the spec moves](spec-compliance-a-tick-added-to-match-tests-goes-stale-when-the-spec-moves.md) - When ordering tests fail against a stated deviation, re-read the current spec text before tuning the deviation: the deviation may be what is now wrong.
+- [Media source exhaustion is not a media error](spec-compliance-media-source-exhaustion-is-not-a-media-error.md) - A candidate failure is not necessarily a media-element failure; preserve its selected mode, target and continuation.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
