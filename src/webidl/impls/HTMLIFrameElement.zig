@@ -2406,6 +2406,17 @@ fn javascriptNavigationInRealm(integration: *IFrameIntegration, record: *Navigat
     };
     defer integration.allocator.free(html);
     if (integration.state == .discarded or integration.browsing_context == null) return;
+    // Not in the spec, stated: a navigation the script itself started
+    // (`javascript:location.href='...'`, whose value is a String) keeps
+    // going, and the String makes no document - step 3 left the ongoing
+    // navigation null, so one now is the script's. Committing a document
+    // here would unload the active one at once, with the tasks its script
+    // queued (a violation's event among them), and cancel that navigation.
+    // Blink's ScriptController::ExecuteJavaScriptURL ignores the result the
+    // same way when a navigation started during the script ("replacing the
+    // document would cancel the navigation"); trusted-types/
+    // trusted-types-navigation.html's report-only cases depend on it.
+    if (integration.ongoing_navigation != .none) return;
 
     // Steps 9-12: the new document's URL is the active entry's URL - a
     // javascript: URL is never a document's URL.
