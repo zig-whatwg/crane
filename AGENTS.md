@@ -198,6 +198,10 @@ it starts; setting one after is a fatal CHECK). A test that needs a fresh
 per-thread state runs its body on a `std.Thread` of its own. One file alone,
 for a quick red/green:
 `zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.
+Once per merge round the integrator runs `zig build test -Dtest-isolation=file`
+(every file its own executable and process, about four times the CPU) to catch
+what sharing hides: a test that passes only because an earlier file started V8
+or installed a hook for it.
 
 Two kinds this codebase keeps needing:
 

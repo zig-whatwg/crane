@@ -485,6 +485,16 @@ fn warnIfSystemCurlLacksWebSockets(b: *std.Build) void {
 /// test directory (gitignored).
 const test_root_name = ".all_tests.zig";
 
+/// Which test executables `addTestFilesFromDir` builds.
+const TestSelection = struct {
+    /// -Dtest-file: only this file, as its own executable.
+    file: ?[]const u8 = null,
+    /// -Dtest-isolation: one executable per directory (the default) or per file.
+    isolation: TestIsolation = .directory,
+};
+
+const TestIsolation = enum { directory, file };
+
 /// Add the `*_test.zig` files under `dir_path` (recursively) to `step`, as ONE
 /// test executable per directory.
 ///
@@ -500,9 +510,15 @@ const test_root_name = ".all_tests.zig";
 /// share one binary: a test must not assume it is the first to start the
 /// engine.
 ///
-/// `test_file`, a path such as `tests/v8/foo_test.zig` (-Dtest-file), builds
+/// `select.file`, a path such as `tests/v8/foo_test.zig` (-Dtest-file), builds
 /// that one file as its own executable and skips every directory that does
 /// not hold it - the quick red/green loop for a single test file.
+///
+/// `select.isolation = .file` (-Dtest-isolation=file) builds every file as its
+/// own executable, as before the directories were joined: each test in a
+/// process of its own file's. It costs about four times the CPU and runs once
+/// per merge round, to catch what sharing a process hides - a test that passes
+/// only because an earlier file started the engine or installed a hook for it.
 fn addTestFilesFromDir(
     builder: *std.Build,
     step: *std.Build.Step,
@@ -510,12 +526,12 @@ fn addTestFilesFromDir(
     target: std.Build.ResolvedTarget,
     modules: []const std.Build.Module.Import,
     link_v8: bool,
-    test_file: ?[]const u8,
+    select: TestSelection,
 ) !void {
     const allocator = builder.allocator;
     const io = builder.graph.io;
 
-    if (test_file) |file| {
+    if (select.file) |file| {
         if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
         addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), target, modules, link_v8);
         return;
@@ -542,6 +558,15 @@ fn addTestFilesFromDir(
             return std.mem.lessThan(u8, a, b);
         }
     }.lessThan);
+
+    if (select.isolation == .file) {
+        for (files.items) |file| {
+            var name: std.ArrayList(u8) = .empty;
+            for (builder.fmt("{s}/{s}", .{ dir_path, file[0 .. file.len - ".zig".len] })) |c| try name.append(allocator, if (c == '/') '-' else c);
+            addTestRoot(builder, step, builder.fmt("{s}/{s}", .{ dir_path, file }), name.items, target, modules, link_v8);
+        }
+        return;
+    }
 
     var root: std.Io.Writer.Allocating = .init(allocator);
     try root.writer.writeAll(
@@ -920,11 +945,18 @@ pub fn build(b: *std.Build) void {
         "spec",
         "Run tests for a specific spec (infra, webidl, dom, encoding, url, console, streams, mimesniff, or 'all')",
     );
-    const test_file = b.option(
-        []const u8,
-        "test-file",
-        "Build and run only this tests/**/*_test.zig file, as its own executable (with -Dspec=<its directory's spec>)",
-    );
+    const test_selection: TestSelection = .{
+        .file = b.option(
+            []const u8,
+            "test-file",
+            "Build and run only this tests/**/*_test.zig file, as its own executable (with -Dspec=<its directory's spec>)",
+        ),
+        .isolation = b.option(
+            TestIsolation,
+            "test-isolation",
+            "directory (default): one test executable per tests/<dir>/; file: one per test file, each in a process of its own (once per merge round)",
+        ) orelse .directory,
+    };
 
     // WHATWG TestUtils Standard - Build-time gating
     // Per spec: "must not be enabled in the default shipping configuration of user agents"
@@ -2415,7 +2447,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "streams", .module = streams_mod },
             .{ .name = "console", .module = console_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/webidl", target, &webidl_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/webidl", target, &webidl_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add webidl test files: {}\n", .{err});
         };
     }
@@ -2444,7 +2476,7 @@ pub fn build(b: *std.Build) void {
         // which also drags in libuv's event loop. With `false` this was the only
         // one of 262 build steps that failed to link, with 246 undefined symbols
         // (236 _v8_* + 10 _uv_*).
-        addTestFilesFromDir(b, test_step, "tests/dom", target, &dom_imports, true, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/dom", target, &dom_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add dom test files: {}\n", .{err});
         };
     }
@@ -2462,7 +2494,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "dom", .module = dom_mod },
             .{ .name = "selector", .module = selector_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/selector", target, &selector_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/selector", target, &selector_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add selector test files: {}\n", .{err});
         };
     }
@@ -2480,7 +2512,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "encoding", .module = encoding_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/encoding", target, &encoding_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/encoding", target, &encoding_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add encoding test files: {}\n", .{err});
         };
     }
@@ -2499,7 +2531,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "encoding", .module = encoding_mod },
             .{ .name = "url", .module = url_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/url", target, &url_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/url", target, &url_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add url test files: {}\n", .{err});
         };
     }
@@ -2516,7 +2548,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "urlpattern", .module = urlpattern_mod },
             .{ .name = "url", .module = url_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/urlpattern", target, &urlpattern_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/urlpattern", target, &urlpattern_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add urlpattern test files: {}\n", .{err});
         };
     }
@@ -2534,7 +2566,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "console", .module = console_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/console", target, &console_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/console", target, &console_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add console test files: {}\n", .{err});
         };
     }
@@ -2566,7 +2598,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "streams_event_loop", .module = streams_event_loop_mod },
             .{ .name = "streams_test_event_loop", .module = streams_test_event_loop_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/streams", target, &streams_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/streams", target, &streams_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add streams test files: {}\n", .{err});
         };
     }
@@ -2583,7 +2615,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "mimesniff", .module = mimesniff_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/mimesniff", target, &mimesniff_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/mimesniff", target, &mimesniff_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add mimesniff test files: {}\n", .{err});
         };
     }
@@ -2599,7 +2631,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "quirks", .module = quirks_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/quirks", target, &quirks_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/quirks", target, &quirks_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add quirks test files: {}\n", .{err});
         };
     }
@@ -2616,7 +2648,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "css", .module = css_mod },
             .{ .name = "quirks", .module = quirks_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/css", target, &css_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/css", target, &css_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add css test files: {}\n", .{err});
         };
     }
@@ -2680,7 +2712,7 @@ pub fn build(b: *std.Build) void {
             // (interfaces.process_hooks.startHooksForTest).
             .{ .name = "interfaces", .module = interfaces_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
         };
     }
@@ -2721,7 +2753,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "file", .module = file_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/file", target, &file_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/file", target, &file_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add file test files: {}\n", .{err});
         };
     }
@@ -2743,7 +2775,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "host", .module = host_mod },
             .{ .name = "fetch", .module = fetch_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/fetch", target, &fetch_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/fetch", target, &fetch_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add fetch test files: {}\n", .{err});
         };
     }
@@ -2777,7 +2809,7 @@ pub fn build(b: *std.Build) void {
             // reads "" out of it.
             .{ .name = "fetch", .module = fetch_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/xhr", target, &xhr_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/xhr", target, &xhr_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add xhr test files: {}\n", .{err});
         };
     }
@@ -2804,7 +2836,7 @@ pub fn build(b: *std.Build) void {
         const websocket_imports = [_]std.Build.Module.Import{
             .{ .name = "websocket", .module = websocket_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/websocket", target, &websocket_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/websocket", target, &websocket_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add websocket test files: {}\n", .{err});
         };
     }
@@ -2821,7 +2853,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "fs", .module = fs_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/fs", target, &fs_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/fs", target, &fs_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add fs test files: {}\n", .{err});
         };
     }
@@ -2838,7 +2870,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "trusted_types", .module = trusted_types_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/trusted_types", target, &trusted_types_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/trusted_types", target, &trusted_types_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add trusted_types test files: {}\n", .{err});
         };
     }
@@ -2855,7 +2887,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "csp", .module = csp_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/csp", target, &csp_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/csp", target, &csp_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add csp test files: {}\n", .{err});
         };
     }
@@ -2872,7 +2904,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "permissions", .module = permissions_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/permissions", target, &permissions_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/permissions", target, &permissions_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add permissions test files: {}\n", .{err});
         };
     }
@@ -2889,7 +2921,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "host", .module = host_mod },
             .{ .name = "storage", .module = storage_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/storage", target, &storage_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add storage test files: {}\n", .{err});
         };
     }
@@ -2909,7 +2941,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "interfaces", .module = interfaces_mod },
             .{ .name = "runtime", .module = runtime_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/cookiestore", target, &cookiestore_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/cookiestore", target, &cookiestore_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add cookiestore test files: {}\n", .{err});
         };
     }
@@ -2966,7 +2998,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "engine", .module = test_adapter_engine_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/runtime", target, &runtime_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/runtime", target, &runtime_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add runtime test files: {}\n", .{err});
         };
     }
@@ -2996,7 +3028,7 @@ pub fn build(b: *std.Build) void {
             // through impls, not a second binding of it.
             .{ .name = "dom", .module = dom_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
         };
     }
@@ -3010,7 +3042,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "infra", .module = infra_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/codegen", target, &codegen_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/codegen", target, &codegen_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add codegen test files: {}\n", .{err});
         };
     }
@@ -3027,7 +3059,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "host", .module = host_mod },
             .{ .name = "intl", .module = intl_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/intl", target, &intl_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/intl", target, &intl_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add intl test files: {}\n", .{err});
         };
     }
@@ -3043,7 +3075,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = clock_mod },
             .{ .name = "platform", .module = platform_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
         };
     }
@@ -3072,7 +3104,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "browser", .module = browser_mod },
             .{ .name = "runtime", .module = runtime_mod },
         };
-        addTestFilesFromDir(b, bench_step, "tests/benchmarks", target, &benchmark_imports, true, test_file) catch |err| {
+        addTestFilesFromDir(b, bench_step, "tests/benchmarks", target, &benchmark_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add benchmark test files: {}\n", .{err});
         };
 
@@ -3085,7 +3117,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "host", .module = host_mod },
             .{ .name = "intl", .module = intl_mod },
         };
-        addTestFilesFromDir(b, bench_step, "tests/intl_bench", target, &intl_bench_imports, false, test_file) catch |err| {
+        addTestFilesFromDir(b, bench_step, "tests/intl_bench", target, &intl_bench_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add intl benchmark test files: {}\n", .{err});
         };
     }

@@ -19,7 +19,7 @@ Sharing one process exposed three tests that assumed they were first: one needed
 
 **Fix**:
 1. `addTestFilesFromDir` (build.zig) writes `tests/<dir>/.all_tests.zig` - `test { _ = @import("<file>"); ... }` over every `*_test.zig` under the directory, sorted - and builds that as the directory's one executable. The root must sit in the directory (a module cannot import files outside its root's directory), so it is generated into the source tree, gitignored, and rewritten through a temporary and a rename only when the list changes.
-2. `-Dtest-file=tests/<dir>/foo_test.zig` builds one file alone, for red/green.
+2. `-Dtest-file=tests/<dir>/foo_test.zig` builds one file alone, for red/green; `-Dtest-isolation=file` builds every file alone (the old layout), run once per merge round, because a shared process can hide a test whose setup an earlier file did for it.
 3. The three tests: run the body on a `std.Thread` (fresh per-thread state); exit every entered isolate, not just your own; set V8 flags only `if (!v8_Platform_IsInitialized())`.
 
 **Takeaway**: **Count compiles, not files: in Zig every test executable re-analyses everything it imports, so tests that reach the engine share one executable per directory - and a test must never assume it is the first in its process.**
