@@ -671,8 +671,7 @@ fn register(timeline: *Timeline, observer: *Observer, options: Options) !void {
 /// "queue the PerformanceObserver task" (5.3) for `timeline`'s global: once
 /// until it runs, on the performance timeline task source - a global task of
 /// the timeline's realm, on its event loop (a window's: dropped, not run,
-/// once the Window's document is not fully active), or a worker realm's
-/// timer.
+/// once the Window's document is not fully active; a worker's own).
 pub fn queueObserverTask(timeline: *Timeline) void {
     // 1-2.
     if (timeline.task_queued) return;
@@ -693,14 +692,8 @@ pub fn queueObserverTask(timeline: *Timeline) void {
         });
         return;
     }
-    if (ctx.getOptionalTimer()) |timer| {
-        if (timer.setTimeout(0, ObserverTask.run, task) != 0) {
-            timeline.task_queued = true;
-            return;
-        }
-    }
-    // Nowhere to queue it: no task, and the flag stays unset so that a later
-    // entry tries again.
+    // Nowhere to queue it (a bare realm, a unit test's): no task, and the
+    // flag stays unset so that a later entry tries again.
     timeline.allocator.destroy(task);
 }
 
@@ -978,9 +971,9 @@ const GlobalTask = struct {
 };
 
 /// Queue a global task for `target` (a Performance or a global) on its
-/// realm's event loop - naming the realm's Window, so that it is dropped
-/// once the Window's document is not fully active - or, in a worker realm,
-/// as a timer.
+/// realm's event loop - a worker's own, or a window's, naming the realm's
+/// Window, so that it is dropped once the Window's document is not fully
+/// active.
 fn queueGlobalTask(target: *Instance, run: *const fn (?*anyopaque) void, drop: *const fn (?*anyopaque) void) !void {
     const ctx = target.ctx;
     const allocator = ctx.allocator;
@@ -997,9 +990,7 @@ fn queueGlobalTask(target: *Instance, run: *const fn (?*anyopaque) void, drop: *
         });
         return;
     }
-    if (ctx.getOptionalTimer()) |timer| {
-        if (timer.setTimeout(0, run, task) != 0) return;
-    }
+    // None (a bare realm, a unit test's).
     task.destroy();
     return error.NotSupported;
 }

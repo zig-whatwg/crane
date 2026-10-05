@@ -378,9 +378,9 @@ const ReadOperation = struct {
         return self;
     }
 
-    /// Queue a task on the file reading task source to run `step` - on the
-    /// reader's realm's event loop, or, in a worker, whose realm has none and
-    /// runs its tasks as timers, as a timer.
+    /// Queue a task on the file reading task source to run `step`, on the
+    /// reader's realm's event loop - a window's, or a worker's own (every
+    /// worker runs its own loop on its own thread).
     fn queue(self: *ReadOperation, step: Step) void {
         const task = self.allocator.create(Task) catch return;
         task.* = .{ .op = self, .step = step };
@@ -390,14 +390,8 @@ const ReadOperation = struct {
             loop.queueTask(.{ .callback = Task.run, .context = task, .drop = Task.drop });
             return;
         }
-        if (ctx.getOptionalTimer()) |timer| {
-            if (timer.setTimeout(0, Task.run, task) != 0) {
-                self.queued += 1;
-                return;
-            }
-        }
-        // Nowhere to queue it (a realm with no event loop and no timer): the
-        // steps run now, which is better than never.
+        // Nowhere to queue it (a bare realm with no event loop - a unit
+        // test's): the steps run now, which is better than never.
         self.allocator.destroy(task);
         self.runStep(step);
         self.maybeFree();

@@ -890,8 +890,8 @@ pub fn call_abort(instance: *runtime.Instance) anyerror!void {
 /// The fetch used to run inside that task, blocked in curl, so none of the
 /// last three held.
 ///
-/// With no event loop and no timer - a bare realm, or a unit test - it waits
-/// inline, which is better than dropping the request.
+/// With no event loop - a bare realm, a unit test's - it waits inline, which
+/// is better than dropping the request.
 pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)) anyerror!void {
     const xhr_state = getXHRState(instance);
     const internal = getInternal(instance);
@@ -946,10 +946,10 @@ pub fn call_send(instance: *runtime.Instance, body: webidl.Opt(?runtime.JSValue)
     // `loadstart` never.
     if (!send_algo.sendStart(xhr_state, effective_body)) return;
 
-    // A realm with no event loop and no timer to run the fetch's task on - a
-    // bare realm, or a unit test - waits for it here, which is better than
-    // dropping the request.
-    if (instance.ctx.getOptionalEventLoop() == null and instance.ctx.getOptionalTimer() == null) {
+    // A realm with no event loop to run the fetch's task on - a bare realm, a
+    // unit test's - waits for it here, which is better than dropping the
+    // request. (Every window and worker realm has one: a worker's own.)
+    if (instance.ctx.getOptionalEventLoop() == null) {
         send_algo.sendDispatch(xhr_state, effective_body) catch |err| {
             log.debug("inline send failed: {s}", .{@errorName(err)});
         };
@@ -1135,22 +1135,13 @@ const PendingFetch = struct {
     }
 
     /// Queue the task that acts on what has arrived, on the realm's event
-    /// loop - or, in a worker, whose realm has none and runs its tasks as
-    /// timers on the page's, as a timer.
+    /// loop - a window's, or a worker's own. (send() takes this path only for
+    /// a realm that has one.)
     fn queueTask(self: *PendingFetch) void {
         if (self.task_queued or self.cancelled) return;
-        const ctx = self.instance.ctx;
-        if (ctx.getOptionalEventLoop()) |loop| {
-            self.task_queued = true;
-            loop.queueTask(.{ .callback = run, .context = self, .drop = drop });
-            return;
-        }
-        if (ctx.getOptionalTimer()) |timer| {
-            if (timer.setTimeout(0, run, self) != 0) {
-                self.task_queued = true;
-                return;
-            }
-        }
+        const loop = self.instance.ctx.getOptionalEventLoop() orelse return;
+        self.task_queued = true;
+        loop.queueTask(.{ .callback = run, .context = self, .drop = drop });
     }
 
     /// The task: send() steps 11.9 onwards - the response's headers once,

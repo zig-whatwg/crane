@@ -552,44 +552,26 @@ pub fn agentCleanupList(realm: runtime.Context) ?*CleanupList {
     return &host.indexeddb_cleanup;
 }
 
-/// ED 2.8 database-access tasks use the realm's host queue. Q28's worker
-/// fallback remains here until the host supplies that queue to worker realms.
-/// Ownership transfers only on success; a failure never invokes the task.
+/// ED 2.8 database-access tasks use the realm's host queue: its event loop -
+/// a window's, or a worker's own (every worker runs its own loop on its own
+/// thread, so the timer fallback workers once needed is gone). Ownership
+/// transfers only on success; a failure never invokes the task.
 pub fn queueDatabaseTask(realm: runtime.Context, task: runtime.EventLoopTask) !DatabaseTaskHandle {
-    if (realm.getOptionalEventLoop()) |loop| {
-        loop.queueTask(task);
-        return .{};
-    }
-    if (realm.getOptionalTimer()) |timer| {
-        const id = timer.setTimeout(0, task.callback, task.context);
-        if (id == 0) return error.OutOfMemory;
-        return .{ .registration = .{ .timer = timer, .id = id } };
-    }
-    return error.NoTaskQueue;
+    const loop = realm.getOptionalEventLoop() orelse return error.NoTaskQueue;
+    loop.queueTask(task);
+    return .{};
 }
 
-/// Callers hold this handle without inspecting its queue registration.
-/// EventLoop owns a task until callback/drop; the worker fallback also lets
-/// its source reclaim a cancelled payload before the native timer is torn down.
-pub const DatabaseTaskHandle = struct {
-    registration: ?TimerRegistration = null,
+/// Callers hold this handle without inspecting it. The event loop owns a
+/// task until its callback or drop runs, so no source takes a queued task
+/// back.
+pub const DatabaseTaskHandle = struct {};
 
-    const TimerRegistration = struct {
-        // worker_host.zig teardownRealm cancels only its script timers, then
-        // destroyWorkerRealm frees the IDB owners while the timer lives. The
-        // worker's timer records go in WorkerHost.free, after realm teardown.
-        // A source may use this receipt only while that WorkerHost lives.
-        timer: runtime.TimerInterface,
-        id: runtime.TimerId,
-    };
-};
-
-/// True alone transfers payload ownership back to the source. On false,
-/// the already-starting callback (or EventLoop callback/drop) still owns it.
+/// True would transfer payload ownership back to the source; a task on an
+/// event loop is the loop's until its callback or drop, so never.
 pub fn cancelDatabaseTask(handle: *DatabaseTaskHandle) bool {
-    const registration = handle.registration orelse return false;
-    handle.* = .{};
-    return registration.timer.clearTimeout(registration.id);
+    _ = handle;
+    return false;
 }
 
 /// Called at callback/drop entry, before invoking anything reentrant.
@@ -611,24 +593,22 @@ test "IndexedDB queue absence does not run a task synchronously" {
     try std.testing.expect(!ran);
 }
 
-test "IndexedDB worker timer fallback transfers a task without running it" {
+test "IndexedDB queues a database task on the event loop only, never on a timer" {
+    // A realm with timers and no event loop was a shared worker's, before
+    // every worker ran its own loop: no realm is one now, and its timers are
+    // not a task queue.
     const Timer = struct {
-        task: ?runtime.EventLoopTask = null,
-        fail: bool = false,
-
-        fn set(data: *anyopaque, delay: u64, callback: runtime.TimerCallback, context: ?*anyopaque) runtime.TimerId {
+        armed: usize = 0,
+        fn set(data: *anyopaque, _: u64, _: runtime.TimerCallback, _: ?*anyopaque) runtime.TimerId {
             const self: *@This() = @ptrCast(@alignCast(data));
-            std.debug.assert(delay == 0);
-            if (self.fail) return 0;
-            self.task = .{ .callback = callback, .context = context };
+            self.armed += 1;
             return 1;
         }
         fn clear(_: *anyopaque, _: runtime.TimerId) bool {
             return false;
         }
-        fn run(data: ?*anyopaque) void {
-            const flag: *bool = @ptrCast(@alignCast(data.?));
-            flag.* = true;
+        fn run(_: ?*anyopaque) void {
+            @panic("the task must not run");
         }
     };
     var timer = Timer{};
@@ -637,101 +617,14 @@ test "IndexedDB worker timer fallback transfers a task without running it" {
         .vtable = &.{ .setTimeout = Timer.set, .clearTimeout = Timer.clear },
     } });
     defer realm.deinit();
-    var ran = false;
-    _ = try queueDatabaseTask(&realm, .{ .callback = Timer.run, .context = &ran });
-    try std.testing.expect(!ran);
-    const queued = timer.task.?;
-    queued.callback(queued.context);
-    try std.testing.expect(ran);
-    timer.task = null;
-    timer.fail = true;
-    ran = false;
-    try std.testing.expectError(error.OutOfMemory, queueDatabaseTask(&realm, .{ .callback = Timer.run, .context = &ran }));
-    try std.testing.expect(timer.task == null);
-    try std.testing.expect(!ran);
+    try std.testing.expectError(error.NoTaskQueue, queueDatabaseTask(&realm, .{ .callback = Timer.run, .context = null }));
+    try std.testing.expectEqual(@as(usize, 0), timer.armed);
+    var handle: DatabaseTaskHandle = .{};
+    try std.testing.expect(!cancelDatabaseTask(&handle));
 }
 
 pub fn setRequestPending(instance: *runtime.Instance) void {
     (requests orelse return).set_pending(instance);
-}
-
-test "IndexedDB cancellation uses the original timer and returns payload ownership once" {
-    const Timer = struct {
-        task: ?runtime.EventLoopTask = null,
-        cancellations: usize = 0,
-        fn set(data: *anyopaque, _: u64, callback: runtime.TimerCallback, context: ?*anyopaque) runtime.TimerId {
-            const self: *@This() = @ptrCast(@alignCast(data));
-            self.task = .{ .callback = callback, .context = context };
-            return 7;
-        }
-        fn clear(data: *anyopaque, id: runtime.TimerId) bool {
-            const self: *@This() = @ptrCast(@alignCast(data));
-            self.cancellations += 1;
-            if (id != 7 or self.task == null) return false;
-            self.task = null;
-            return true;
-        }
-        fn run(_: ?*anyopaque) void {
-            @panic("a cancelled IndexedDB task must not run");
-        }
-        fn interface(self: *@This()) runtime.TimerInterface {
-            return .{ .ctx = self, .vtable = &.{ .setTimeout = set, .clearTimeout = clear } };
-        }
-    };
-    var original = Timer{};
-    var other = Timer{};
-    var realm = try runtime.ContextData.init(std.testing.allocator, .{ .timer = original.interface() });
-    defer realm.deinit();
-    const payload = try std.testing.allocator.create(u64);
-    defer std.testing.allocator.destroy(payload);
-    var receipt = try queueDatabaseTask(&realm, .{ .callback = Timer.run, .context = payload });
-    realm.timer = other.interface();
-    try std.testing.expect(cancelDatabaseTask(&receipt));
-    try std.testing.expect(!cancelDatabaseTask(&receipt));
-    try std.testing.expectEqual(@as(usize, 1), original.cancellations);
-    try std.testing.expectEqual(@as(usize, 0), other.cancellations);
-    try std.testing.expect(original.task == null);
-}
-
-test "IndexedDB failed cancellation leaves the callback owning its payload" {
-    const Timer = struct {
-        task: ?runtime.EventLoopTask = null,
-        cancellations: usize = 0,
-        fn set(data: *anyopaque, _: u64, callback: runtime.TimerCallback, context: ?*anyopaque) runtime.TimerId {
-            const self: *@This() = @ptrCast(@alignCast(data));
-            self.task = .{ .callback = callback, .context = context };
-            return 9;
-        }
-        fn clear(data: *anyopaque, _: runtime.TimerId) bool {
-            const self: *@This() = @ptrCast(@alignCast(data));
-            self.cancellations += 1;
-            return false;
-        }
-        fn run(data: ?*anyopaque) void {
-            const payload: *u64 = @ptrCast(@alignCast(data.?));
-            std.debug.assert(payload.* == 42);
-            std.testing.allocator.destroy(payload);
-        }
-    };
-    var timer = Timer{};
-    var realm = try runtime.ContextData.init(std.testing.allocator, .{ .timer = .{
-        .ctx = &timer,
-        .vtable = &.{ .setTimeout = Timer.set, .clearTimeout = Timer.clear },
-    } });
-    defer realm.deinit();
-    const payload = try std.testing.allocator.create(u64);
-    var callback_ran = false;
-    defer if (!callback_ran) std.testing.allocator.destroy(payload);
-    payload.* = 42;
-    var receipt = try queueDatabaseTask(&realm, .{ .callback = Timer.run, .context = payload });
-    try std.testing.expect(!cancelDatabaseTask(&receipt));
-    const queued = timer.task.?;
-    timer.task = null;
-    databaseTaskStarted(&receipt);
-    queued.callback(queued.context);
-    callback_ran = true;
-    try std.testing.expect(!cancelDatabaseTask(&receipt));
-    try std.testing.expectEqual(@as(usize, 1), timer.cancellations);
 }
 
 pub fn setRequestSource(instance: *runtime.Instance, source: ?*runtime.Instance) void {

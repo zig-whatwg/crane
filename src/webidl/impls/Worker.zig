@@ -620,26 +620,19 @@ fn releaseWhenIdle(worker: *runtime.Instance) void {
 /// "Run a worker" onComplete step 1, from the constructor: the worker never
 /// runs, and `error` is fired at it from "a global task on the DOM
 /// manipulation task source" of its realm. Its pending activity ends with
-/// that task. On the realm's own event loop when it has one - the queue the
-/// fetch's CSP violation report went to first (securitypolicyviolation
-/// before `error`, as the worker-src tests count); a shared worker's realm,
-/// which has none, posts to its loop's inbox.
+/// that task. On the realm's own event loop - a window's, or a worker's own
+/// for a nested worker - the queue the fetch's CSP violation report went to
+/// first (securitypolicyviolation before `error`, as the worker-src tests
+/// count). A bare realm with none (a unit test's) fires nothing.
 fn queueStartFailure(instance: *runtime.Instance) void {
+    const loop = instance.ctx.getOptionalEventLoop() orelse return releasePendingActivity(instance);
     const task = instance.ctx.allocator.create(StartFailure) catch return releasePendingActivity(instance);
     task.* = .{
         .instance = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
         .allocator = instance.ctx.allocator,
     };
-    if (instance.ctx.getOptionalEventLoop()) |loop| {
-        loop.queueTask(.{ .callback = StartFailure.run, .context = task, .drop = StartFailure.drop });
-        return;
-    }
-    const sink = instance.ctx.task_sink orelse {
-        task.allocator.destroy(task);
-        return releasePendingActivity(instance);
-    };
-    _ = sink.post(.{ .run = StartFailure.run, .drop = StartFailure.drop, .data = task });
+    loop.queueTask(.{ .callback = StartFailure.run, .context = task, .drop = StartFailure.drop });
 }
 
 const StartFailure = struct {
