@@ -191,10 +191,8 @@ src/html/window/browsing_context.zig live 1 TL I/engine decl:4eb3c63ce8391a0c
 src/html/window/browsing_context.zig next_context_id 1 G I/engine decl:e78eed1e4659a6b5
 src/html/window/browsing_context.zig next_group_id 1 G I/engine decl:e78eed1e4659a6b5
 src/html/window/browsing_context.zig retired 1 G I/engine decl:4eb3c63ce8391a0c
-src/html/worker_host.zig armed_shared_connects 1 TL I/profile decl:7179d01264e2a27b
 src/html/worker_host.zig hosts 1 TL I/engine decl:edd1a75261d8d8dd
 src/html/worker_host.zig live_contexts 1 TL I/engine decl:edd1a75261d8d8dd
-src/html/worker_host.zig shared_scopes 1 TL I/profile decl:edd1a75261d8d8dd
 src/intl/v8_bridge/c_api.zig global_allocator 1 G P-res decl:0b9204adbe527b7e
 src/intl/v8_bridge/c_api.zig last_error 1 TL C decl:3f5aa6740061fdcb
 src/permissions/status.zig PermissionStatus.next_id 1 G P-res decl:1dfcee87d8da8735

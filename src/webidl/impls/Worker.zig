@@ -309,7 +309,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     };
     defer fetched.deinit();
 
-    var start: worker_host.DedicatedWorkerStart = .{
+    var start: worker_host.WorkerStart = .{
         .source = fetched.source,
         .script_url = fetched.final_url,
         .worker_type = worker_type,

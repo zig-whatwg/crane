@@ -6,8 +6,11 @@
 //!
 //! The constructor's own steps are here: the options, the URL, the outside
 //! port. Step 11 - the shared worker manager's steps, which find a running
-//! SharedWorkerGlobalScope or run a new worker - belongs to the worker host
-//! (src/html/worker_host.zig), which runs every worker's agent.
+//! SharedWorkerGlobalScope or run a new worker on a thread of its own -
+//! belongs to the worker host (src/html/worker_host.zig), which runs every
+//! worker's agent. What the worker's start does at this object - `error`
+//! when it cannot start, the end of the object's pending activity when it
+//! has - comes back as a task of this object's loop (`owner_steps`).
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -77,8 +80,18 @@ pub fn init(
     return interfaces.EventTarget.initWithState(allocator, StateType, vtable, ctx);
 }
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // "Destroy a document" step 8: the Document leaves every shared worker's
+    // owner set, and a worker whose owner set empties is closed.
+    @import("dom").unloading_cleanup.install(&worker_host.sharedWorkerOwnerGone);
+}
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
+    // Whatever pending-activity hold is left on it goes with it.
+    engine.releasePlatformObject(instance);
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.port_edge.release(instance);
@@ -145,6 +158,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     inside_end_owned = false;
     try worker_host.connectSharedWorker(.{
         .worker = instance,
+        .steps = &owner_steps,
         .owner_realm = ctx,
         .url = url_record,
         .origin = origin,
@@ -152,10 +166,57 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         .worker_type = worker_options.worker_type,
         .credentials = worker_options.credentials,
         .inside_end = @ptrCast(inside_end),
+        // "Run a worker" step 3, should the steps run one: the unsafe worker
+        // creation time.
+        .creation_time_ms = @as(f64, @floatFromInt(@import("clock").wallNanos())) / std.time.ns_per_ms,
     });
 
     return instance;
 }
+
+/// What the shared worker manager's steps, and the start of the worker they
+/// ran, do at this object - on its own realm's loop, each after a check of
+/// its slab generation (html.worker_host.OwnerSteps).
+const owner_steps: worker_host.OwnerSteps = .{
+    .error_reported = errorReported,
+    .start_failed = startFailed,
+    .started = started,
+    .ended = ended,
+};
+
+/// A shared worker's errors stay in it ("report an exception" step 7 is a
+/// dedicated worker's): never called.
+fn errorReported(_: *runtime.Instance, _: *const worker_host.ErrorReport.Info) void {}
+
+/// "Run a worker" onComplete step 1.1, and the manager's step 4.1: "queue a
+/// global task on the DOM manipulation task source given worker's relevant
+/// global object to fire an event named error at worker" - a plain Event,
+/// not cancelable. Then the object's pending activity ends.
+fn startFailed(worker: *runtime.Instance) void {
+    defer engine.releasePlatformObject(worker);
+    engine.runTaskInRealm(worker.ctx, fireErrorSteps, worker) catch {};
+}
+
+fn fireErrorSteps(data: ?*anyopaque) void {
+    const worker: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
+    const event = interfaces.Event.call_constructor(
+        worker.ctx,
+        runtime.DOMString.initInterned("error"),
+        webidl.Opt(dictionaries.EventInit).notPassed(),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = @import("dom").fire_event.dispatchTrusted(worker, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
+
+/// The worker this object ran has started: no `error` can come from its
+/// start any more, and its pending activity ends.
+fn started(worker: *runtime.Instance) void {
+    engine.releasePlatformObject(worker);
+}
+
+/// A shared worker's end tells its SharedWorkers nothing.
+fn ended(_: *runtime.Instance) void {}
 
 /// WorkerOptions, as the constructor's step 2 leaves it. `name` OWNED.
 const Options = struct {
