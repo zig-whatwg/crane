@@ -1,6 +1,6 @@
 //! HTML 4.8.11.5: state shared by the load and resource selection algorithms.
-//! Written before implementation. The red is not yet observed: chat.local is
-//! unreachable from this session and local builds are forbidden (media Q1).
+//! Written before implementation; missing-module red and passing green observed
+//! on chat.local (2026-10-05, media Q8).
 const std = @import("std");
 const testing = std.testing;
 const media = @import("html_core").media;

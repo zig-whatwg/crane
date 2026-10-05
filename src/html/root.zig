@@ -283,6 +283,7 @@ pub const queryCommandSupported = editing.queryCommandSupported;
 pub const queryCommandValue = editing.queryCommandValue;
 
 pub const agent_host = @import("agent_host.zig");
+pub const media = @import("media/root.zig");
 
 test {
     std.testing.refAllDecls(@This());

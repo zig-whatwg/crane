@@ -1,5 +1,5 @@
 //! The media registry belongs to one AgentHost; pointers here are borrowed.
-//! Red not yet observed: written before remote access (media Q1).
+//! Missing-module red and passing green observed on chat.local (media Q8).
 const std = @import("std");
 const testing = std.testing;
 const Registry = @import("html_core").media.Registry(*u8, *u8);
