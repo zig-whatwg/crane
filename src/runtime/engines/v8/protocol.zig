@@ -70,6 +70,9 @@ pub const capabilities: engine.Capabilities = .{
     .heap_snapshots = .native,
     .diagnostic_counters = .native,
     .script_abort = .native,
+    // Isolate::SetModifyCodeGenerationFromStringsCallback and
+    // SetAllowWasmCodeGenerationCallback (protocol_agents.zig).
+    .code_generation_checks = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.

@@ -189,6 +189,9 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
     // does the same with the interface template's InstanceTemplate().
     const context = ffi.v8_Context_NewWithGlobalConstructor(isolate, globalScopeTemplate(Kind.Interface, isolate)) orelse
         return EngineError.OperationFailed;
+    // [code_generation_checks]: eval and Function in it reach the agent's
+    // host, when the host checks them.
+    @import("protocol_agents.zig").restrictCodeGenerationFromStrings(isolate, context);
     ffi.v8_Context_Enter(context);
     defer ffi.v8_Context_Exit(context);
 

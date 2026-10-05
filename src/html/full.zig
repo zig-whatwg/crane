@@ -177,6 +177,10 @@ pub const microtask_checkpoint = @import("microtask_checkpoint.zig");
 /// unhandledrejection / rejectionhandled events.
 pub const rejected_promises = @import("rejected_promises.zig");
 
+/// HostEnsureCanCompileStrings, HostGetCodeForEval and
+/// HostEnsureCanCompileWasmBytes: CSP over eval, Function and WebAssembly.
+pub const code_generation = @import("code_generation.zig");
+
 /// Script runner for coordinating script scheduling
 pub const script_runner = @import("script_runner.zig");
 
@@ -202,6 +206,12 @@ pub const hyperlink_auditing = @import("hyperlink_auditing.zig");
 /// A link or style element's style sheet load, with its critical
 /// subresources, and a link's preload.
 pub const style_sheet_loading = @import("style_sheet_loading.zig");
+// Media owner tasks, events and incremental resource fetching.
+pub const media_runtime = @import("media/runtime.zig");
+
+/// What an object or embed element represents, and its fetch, events and
+/// child navigable (HTML 4.8.6, 4.8.7).
+pub const embedded_content = @import("embedded_content.zig");
 
 /// Scripted HTML parser with incremental DOM conversion
 /// Use this when scripts need access to DOM nodes during parsing

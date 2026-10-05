@@ -242,8 +242,6 @@ src/webidl/impls/HTMLAreaElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLAreaElement.zig Element.call_removeAttribute 1
 src/webidl/impls/HTMLAreaElement.zig Element.getInternal 7
 src/webidl/impls/HTMLAreaElement.zig HTMLElement.init 1
-src/webidl/impls/HTMLAudioElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLAudioElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLBRElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLBRElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLBaseElement.zig HTMLElement.deinit 2
@@ -284,8 +282,6 @@ src/webidl/impls/HTMLElement.zig Element.removeAttributeByNamespaceAndLocalName 
 src/webidl/impls/HTMLElement.zig Element.setAttributeValue 1
 src/webidl/impls/HTMLElement.zig Node.get_textContent 2
 src/webidl/impls/HTMLElement.zig Node.set_textContent 2
-src/webidl/impls/HTMLEmbedElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLEmbedElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLFencedFrameElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLFencedFrameElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLFieldSetElement.zig HTMLElement.deinit 2
@@ -329,11 +325,11 @@ src/webidl/impls/HTMLIFrameElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLIFrameElement.zig Location.setNavigateCallback 2
 src/webidl/impls/HTMLIFrameElement.zig Location.setURLFromString 2
 src/webidl/impls/HTMLIFrameElement.zig Location.setWindow 2
-src/webidl/impls/HTMLIFrameElement.zig Node.call_appendChild 51
-src/webidl/impls/HTMLIFrameElement.zig Node.getInternalState 34
-src/webidl/impls/HTMLIFrameElement.zig Node.getOwnerDocument 205
-src/webidl/impls/HTMLIFrameElement.zig Node.get_isConnected 68
-src/webidl/impls/HTMLIFrameElement.zig Node.setLocalName 17
+src/webidl/impls/HTMLIFrameElement.zig Node.call_appendChild 45
+src/webidl/impls/HTMLIFrameElement.zig Node.getInternalState 15
+src/webidl/impls/HTMLIFrameElement.zig Node.getOwnerDocument 166
+src/webidl/impls/HTMLIFrameElement.zig Node.get_isConnected 60
+src/webidl/impls/HTMLIFrameElement.zig Node.setLocalName 15
 src/webidl/impls/HTMLIFrameElement.zig Window.getInternal 15
 src/webidl/impls/HTMLIFrameElement.zig Window.replaceBrowsingContext 1
 src/webidl/impls/HTMLIFrameElement.zig Window.setDocument 10
@@ -349,8 +345,6 @@ src/webidl/impls/HTMLMapElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLMapElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLMarqueeElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLMarqueeElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLMediaElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLMediaElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLMenuElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLMenuElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLMetaElement.zig Element.call_getAttribute 4
@@ -365,8 +359,6 @@ src/webidl/impls/HTMLModelElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLModelElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLOListElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLOListElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLObjectElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLObjectElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLOptGroupElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLOptGroupElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLOptionElement.zig CharacterData.getData 1
@@ -428,8 +420,6 @@ src/webidl/impls/HTMLSelectedContentElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLSelectedContentElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLSlotElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLSlotElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLSourceElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLSourceElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLSpanElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLSpanElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLTableCaptionElement.zig HTMLElement.deinit 2
@@ -458,12 +448,8 @@ src/webidl/impls/HTMLTimeElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLTimeElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLTitleElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLTitleElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLTrackElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLTrackElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLUListElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLUListElement.zig HTMLElement.init 2
-src/webidl/impls/HTMLVideoElement.zig HTMLElement.deinit 2
-src/webidl/impls/HTMLVideoElement.zig HTMLElement.init 2
 src/webidl/impls/IntersectionObserver.zig IntersectionObserverEntry.createEntry 1
 src/webidl/impls/MouseEvent.zig Event.InternalState 2
 src/webidl/impls/NavigateEvent.zig Event.getDispatchFlag 1

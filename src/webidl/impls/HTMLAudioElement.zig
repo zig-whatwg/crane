@@ -29,9 +29,8 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    // Chain through HTMLMediaElement so its load state is initialized.
+    const instance = try interfaces.HTMLMediaElement.initWithState(allocator, StateType, vtable, ctx);
     // HTMLAudioElement has no additional initialization
     return instance;
 }
@@ -40,8 +39,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // HTMLAudioElement has no additional cleanup
     // Chain to parent class
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    interfaces.HTMLMediaElement.deinit(instance);
 }
 
 /// Constructor implementation

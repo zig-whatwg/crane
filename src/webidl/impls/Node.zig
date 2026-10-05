@@ -416,11 +416,27 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
                 // and its script element state leaked with every page that
                 // had one (SVGScriptElement.init, leak-traced).
                 interfaces.SVGScriptElement.deinit(instance);
+            } else if (instance.vtable == &interfaces.HTMLAudioElement.vtable) {
+                interfaces.HTMLAudioElement.deinit(instance);
+            } else if (instance.vtable == &interfaces.HTMLVideoElement.vtable) {
+                interfaces.HTMLVideoElement.deinit(instance);
+            } else if (instance.vtable == &interfaces.HTMLSourceElement.vtable) {
+                interfaces.HTMLSourceElement.deinit(instance);
+            } else if (instance.vtable == &interfaces.HTMLTrackElement.vtable) {
+                interfaces.HTMLTrackElement.deinit(instance);
             } else if (std.mem.eql(u8, local_name, "script")) {
                 interfaces.HTMLScriptElement.deinit(instance);
             } else if (std.mem.eql(u8, local_name, "iframe")) {
                 // iframe elements need special cleanup for their browsing context
                 interfaces.HTMLIFrameElement.deinit(instance);
+            } else if (instance.vtable == &interfaces.HTMLObjectElement.vtable) {
+                // An object or embed element keeps its processing and its
+                // content navigable, which only its own deinit hands back:
+                // taken for a plain Element, one that had shown a document
+                // leaked what its navigable committed.
+                interfaces.HTMLObjectElement.deinit(instance);
+            } else if (instance.vtable == &interfaces.HTMLEmbedElement.vtable) {
+                interfaces.HTMLEmbedElement.deinit(instance);
             } else {
                 // For other elements, use base Element.deinit
                 interfaces.Element.deinit(instance);

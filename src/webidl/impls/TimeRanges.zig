@@ -1,60 +1,24 @@
-//! Implementation for TimeRanges interface
-
+//! HTML 4.8.11.14: snapshots of empty ranges for resources with no decoded data.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const TimeRanges = interfaces.TimeRanges;
-
-pub const State = TimeRanges.State;
-
-pub const ImplError = error{
-    NotImplemented,
-};
-
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
+pub const State = interfaces.TimeRanges.State;
 pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
+pub fn init(allocator: std.mem.Allocator, comptime StateType: type, vtable: *const runtime.VTable, ctx: runtime.Context) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    instance.getState(State).own.length = 0;
+    instance.getState(State).own._internal = null;
     return instance;
 }
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinit(_: *runtime.Instance) void {}
+pub fn get_length(_: *runtime.Instance) anyerror!u32 {
+    return 0;
 }
-
-/// Getter for length
-pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
-    _ = instance;
-    return error.NotImplemented;
+pub fn call_start(_: *runtime.Instance, _: u32) anyerror!f64 {
+    // start(index), step 1: every index is >= the empty range list's size.
+    return error.IndexSizeError;
 }
-
-/// Operation: start
-pub fn call_start(instance: *runtime.Instance, index: u32) anyerror!f64 {
-    _ = instance;
-    _ = index;
-    return error.NotImplemented;
-}
-
-/// Operation: end
-pub fn call_end(instance: *runtime.Instance, index: u32) anyerror!f64 {
-    _ = instance;
-    _ = index;
-    return error.NotImplemented;
+pub fn call_end(_: *runtime.Instance, _: u32) anyerror!f64 {
+    // end(index), step 1.
+    return error.IndexSizeError;
 }

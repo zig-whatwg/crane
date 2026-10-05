@@ -481,7 +481,64 @@ pub const HostHooks = struct {
     /// HTML "perform a microtask checkpoint" step 5: notify about rejected
     /// promises.
     afterMicrotaskCheckpoint: ?*const fn (host: ?*anyopaque, agent: *Agent) void = null,
+    /// HostEnsureCanCompileStrings(realm, parameterStrings, bodyString,
+    /// codeString, compilationType, parameterArgs, bodyArg)
+    /// [code_generation_checks] (HTML 8.1.6.2): whether eval or a Function
+    /// constructor in `realm` may compile `compilation.code_string`.
+    /// `.blocked`: the engine throws an EvalError in `realm` and compiles
+    /// nothing. A verdict, never a replacement source: CSP 4.4.1 step 2.4.3
+    /// throws when the default policy changes the string, so an allowed
+    /// compilation compiles codeString as it is. The host may run script (a
+    /// Trusted Types default policy) and leaves no exception pending (step
+    /// 2.4.2: a throw there is the EvalError the verdict carries). Called
+    /// for every compilation from a string in a realm of an agent that has
+    /// the hook - before any policy exists as much as after - so it costs
+    /// every eval and Function call one host call.
+    ensureCanCompileStrings: ?*const fn (host: ?*anyopaque, realm: Context, compilation: *const StringCompilation) StringCompilationVerdict = null,
+    /// HostGetCodeForEval(argument) [code_generation_checks] (HTML 8.1.6.3):
+    /// the code of an eval argument that is an object - a TrustedScript's
+    /// data - OWNED (`allocator`), or null for "no-code": eval then returns
+    /// the argument unchanged, compiling and checking nothing. `argument`
+    /// BORROWED for the call. Runs no script.
+    getCodeForEval: ?*const fn (host: ?*anyopaque, realm: Context, argument: JSValue, allocator: std.mem.Allocator) ?[]u8 = null,
+    /// HostEnsureCanCompileWasmBytes(realm) [code_generation_checks]
+    /// (WebAssembly JS API; CSP 4.5.1): whether WebAssembly bytes may be
+    /// compiled in `realm`. False: the engine throws a
+    /// WebAssembly.CompileError (a compile that returns a promise rejects
+    /// with one).
+    ensureCanCompileWasmBytes: ?*const fn (host: ?*anyopaque, realm: Context) bool = null,
 };
+
+/// HostEnsureCanCompileStrings's compilationType (Dynamic Code Brand Checks;
+/// HTML 8.1.6.2) as an engine reports it. Direct and indirect eval are one
+/// value: no engine API tells them apart, and neither CSP 4.4.1 nor Trusted
+/// Types reads the difference. "TIMER" is not here: a timer's string
+/// handler is compiled by the host, which runs that check itself.
+pub const StringCompilationType = enum {
+    /// PerformEval: CSP's compilationSink "eval".
+    eval,
+    /// CreateDynamicFunction (the Function, AsyncFunction,
+    /// GeneratorFunction and AsyncGeneratorFunction constructors):
+    /// compilationSink "Function".
+    function,
+};
+
+/// What HostEnsureCanCompileStrings is given, as far as the host reads it.
+pub const StringCompilation = struct {
+    compilation_type: StringCompilationType,
+    /// codeString, UTF-8, BORROWED for the call. For eval, the argument
+    /// string (or the code `getCodeForEval` gave for an object). For a
+    /// constructor, CreateDynamicFunction's sourceString: "<prefix>
+    /// anonymous(" + P + "\n) {" + LF + body + LF + "}".
+    code_string: []const u8,
+    /// Whether bodyArg and every one of parameterArgs are code-like -
+    /// TrustedScript objects (CSP 4.4.1 steps 2.2-2.3, isTrusted). An engine
+    /// that cannot see the arguments says false.
+    arguments_are_code_like: bool,
+};
+
+/// HostEnsureCanCompileStrings's answer.
+pub const StringCompilationVerdict = enum { allowed, blocked };
 
 /// HostLoadImportedModule's referrer: the [[HostDefined]] of the script or
 /// module whose `import()` this is, or none.
@@ -613,6 +670,13 @@ pub const Capabilities = struct {
     /// (`abortRunningScript`). Unsupported: a script that never returns holds
     /// its agent's thread until something outside the process ends it.
     script_abort: Support,
+    /// HostEnsureCanCompileStrings, HostGetCodeForEval and
+    /// HostEnsureCanCompileWasmBytes reach the host (HostHooks).
+    /// Unsupported: eval, the Function constructors and WebAssembly
+    /// compilation are never checked - CSP script-src without 'unsafe-eval'
+    /// or 'wasm-unsafe-eval', and Trusted Types' eval sink, are not
+    /// enforced. A security-relevant difference, declared.
+    code_generation_checks: Support,
 };
 
 /// The capabilities of the engine this build selected.

@@ -356,57 +356,6 @@ pub fn shouldBlockInlineStyle(
 }
 
 // ============================================================================
-// eval() Blocking
-// ============================================================================
-
-/// Check if eval() should be blocked.
-/// Spec: CSP Level 3 § 6.1.4
-pub fn shouldBlockEval(csp_list: *const types.CSPList) bool {
-    if (csp_list.isEmpty()) {
-        return false;
-    }
-
-    for (csp_list.policies.items) |*policy| {
-        const directive = fallback.getEffectiveDirective(policy, "script-src") orelse
-            fallback.getEffectiveDirective(policy, "default-src");
-
-        if (directive) |d| {
-            if (!matching.allowsUnsafeEval(&d.value)) {
-                if (policy.disposition == .enforce) {
-                    return true;
-                }
-            }
-        }
-    }
-
-    return false;
-}
-
-/// Check if WebAssembly.compile/instantiate should be blocked.
-/// Spec: CSP Level 3 § 6.1.4
-pub fn shouldBlockWasmEval(csp_list: *const types.CSPList) bool {
-    if (csp_list.isEmpty()) {
-        return false;
-    }
-
-    for (csp_list.policies.items) |*policy| {
-        const directive = fallback.getEffectiveDirective(policy, "script-src") orelse
-            fallback.getEffectiveDirective(policy, "default-src");
-
-        if (directive) |d| {
-            // wasm-unsafe-eval allows WASM without unsafe-eval
-            if (!matching.allowsUnsafeEval(&d.value) and !matching.allowsWasmUnsafeEval(&d.value)) {
-                if (policy.disposition == .enforce) {
-                    return true;
-                }
-            }
-        }
-    }
-
-    return false;
-}
-
-// ============================================================================
 // Tests
 // ============================================================================
 
@@ -440,43 +389,4 @@ test "getDirectiveForDestination" {
     try std.testing.expectEqualStrings("img-src", getDirectiveForDestination(.image));
     try std.testing.expectEqualStrings("connect-src", getDirectiveForDestination(.fetch));
     try std.testing.expectEqualStrings("frame-src", getDirectiveForDestination(.iframe));
-}
-
-test "shouldBlockEval - no policy allows" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    try std.testing.expect(!shouldBlockEval(&csp_list));
-}
-
-test "shouldBlockEval - blocks without unsafe-eval" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    var policy = types.Policy.init(allocator, .enforce, .header);
-    var directive = try types.Directive.create(allocator, "script-src");
-    try directive.value.append(types.SourceExpression.createBorrowed(.keyword_self, "'self'"));
-    try policy.directive_set.append(directive);
-    try csp_list.append(policy);
-
-    try std.testing.expect(shouldBlockEval(&csp_list));
-}
-
-test "shouldBlockEval - allows with unsafe-eval" {
-    const allocator = std.testing.allocator;
-
-    var csp_list = types.CSPList.init(allocator);
-    defer csp_list.deinit();
-
-    var policy = types.Policy.init(allocator, .enforce, .header);
-    var directive = try types.Directive.create(allocator, "script-src");
-    try directive.value.append(types.SourceExpression.createBorrowed(.keyword_unsafe_eval, "'unsafe-eval'"));
-    try policy.directive_set.append(directive);
-    try csp_list.append(policy);
-
-    try std.testing.expect(!shouldBlockEval(&csp_list));
 }

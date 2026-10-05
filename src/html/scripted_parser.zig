@@ -296,6 +296,10 @@ pub fn parseHTMLWithScripting(
     // except in an iframe srcdoc document, whose URL matches about:srcdoc.
     tree_builder.setDomAdapterModeCallback(&parser_scripts.domAdapterOnModeSet);
     tree_builder.setDomAdapterPoppedCallback(&parser_scripts.domAdapterOnElementPopped);
+    // Every element the tree builder removes from its stack of open elements:
+    // the element types that act on that pop hear it (dom.finish_parsing_children).
+    tree_builder.setDomAdapterFinishedCallback(&parser_scripts.domAdapterOnChildrenFinished);
+    adapter.notifies_children_finished = true;
     if (document_internals.getURL(document)) |url| tree_builder.iframe_srcdoc = matchesAboutSrcdoc(url);
 
     // Step 5: the script end-tag steps.

@@ -49,6 +49,7 @@ src/dom/event_dispatch.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/event_handlers.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/fetch_objects.zig request_steps 1 G H decl:30978182fd939a7b
 src/dom/fetch_objects.zig response_steps 1 G H decl:fb5cd971a78a8840
+src/dom/finish_parsing_children.zig table 1 G P-res decl:f6c637cc7c367f73
 src/dom/fire_event.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/focus_matching.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/focused_area.zig implementation 1 G H decl:9c737e7125e9c3d4
@@ -77,6 +78,7 @@ src/dom/indexeddb.zig transactions 1 G P-res decl:0aff5c30d889fb93
 src/dom/instance_bridge.zig instance_to_nodebase 1 G I/engine decl:2f2aefbbd5d3307c
 src/dom/intersection_targets.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/live_collections.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/media_elements.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/message_ports.zig steps 1 G H decl:da3da99c8e42439e
 src/dom/mutation.zig children_changed_callbacks 1 G H decl:953ea8bb2d43fd58
 src/dom/mutation.zig insertion_steps_callbacks 1 G H decl:a9a68b5e4b303a01
@@ -273,10 +275,12 @@ src/runtime/engines/v8/v8_wrapper.cpp g_next_context_id 1 C++G P-const decl:0803
 src/runtime/engines/v8/v8_wrapper.cpp g_obj_src 1 C++G D decl:a77999f16fffafe4
 src/runtime/engines/v8/v8_wrapper.cpp g_platform 1 C++G P-res decl:04332a53a4ac320c
 src/runtime/engines/v8/v8_wrapper.cpp g_promise_reject_callback 1 C++G I/engine decl:71cfa251892f06c3
+src/runtime/engines/v8/v8_wrapper.cpp g_protocol_code_generation 1 C++G P-res decl:399f490c0d76ef53
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_dynamic_import 1 C++G H decl:d2b81a848e9fb100
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_import_meta_resolve 1 C++G H decl:c9afcd8df74f9f36
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_import_meta_url 1 C++G H decl:70ca9288052ee146
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_promise_reject 1 C++G H decl:d0a937e41815c8d2
+src/runtime/engines/v8/v8_wrapper.cpp g_protocol_wasm_code_generation 1 C++G P-res decl:c68296efdda570c5
 src/runtime/engines/v8/v8_wrapper.cpp g_shadow_realm_callback 1 C++G I/engine decl:d1d37d7f3e839786
 src/runtime/engines/v8/v8_wrapper.cpp g_site_count 1 C++G D decl:c4af8dddffd39994
 src/runtime/engines/v8/v8_wrapper.cpp g_site_pc 1 C++G D decl:cccefce67abe09da

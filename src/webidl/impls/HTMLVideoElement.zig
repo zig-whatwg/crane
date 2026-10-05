@@ -29,9 +29,8 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Chain to parent class (HTMLElement)
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
+    // Chain through HTMLMediaElement so its load state is initialized.
+    const instance = try interfaces.HTMLMediaElement.initWithState(allocator, StateType, vtable, ctx);
     // HTMLVideoElement has no additional initialization
     return instance;
 }
@@ -40,8 +39,7 @@ pub fn init(
 pub fn deinit(instance: *runtime.Instance) void {
     // HTMLVideoElement has no additional cleanup
     // Chain to parent class
-    const HTMLElementImpl = @import("HTMLElement.zig");
-    HTMLElementImpl.deinit(instance);
+    interfaces.HTMLMediaElement.deinit(instance);
 }
 
 /// Constructor implementation
@@ -59,13 +57,13 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// Getter for videoWidth
 pub fn get_videoWidth(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0; // No host decoder is installed (media Q4).
 }
 
 /// Getter for videoHeight
 pub fn get_videoHeight(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0; // No host decoder is installed (media Q4).
 }
 
 /// Getter for onenterpictureinpicture

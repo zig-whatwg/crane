@@ -252,6 +252,24 @@ pub fn startStyle(element: *runtime.Instance, text: []const u8) ?u64 {
     return load.id;
 }
 
+/// A style element whose block Content Security Policy blocked ("update a
+/// style block" step 5): no sheet is made, and the element fires `error`
+/// as one whose sheet failed would. The load's id, or null when none could
+/// start (no event fires).
+///
+/// Deviation, stated: HTML's step 5 returns with no event. Chrome, Firefox
+/// and Safari fire `error` at a CSP-blocked style element (WebKit
+/// d487138f2ba5, bug 246710, "Fire error event when CSP blocks inline
+/// stylesheets"), and WPT tests it: content-security-policy/style-src/
+/// style-src-error-event-fires.html and style-src-inline-style-nonce-
+/// blocked-error-event.html. No whatwg/html issue asks for it.
+pub fn startBlockedStyle(element: *runtime.Instance) ?u64 {
+    const load = newLoad(element, .style) orelse return null;
+    load.failed = true;
+    complete(load);
+    return load.id;
+}
+
 /// The element fetches again, or no longer has a style sheet: the load `id`
 /// ends, its fetches terminated, and its event does not fire - HTML
 /// "process the linked resource" step 2, "if el no longer creates an
