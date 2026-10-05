@@ -2014,7 +2014,18 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
         history.entryById(record.traversal_from)
     else
         history.currentEntry(bc.id);
-    var previous: ?joint_history.EntrySnapshot = if (previous_entry) |entry| history.snapshot(entry) catch null else null;
+    // An entry whose document is the initial about:blank is never the
+    // activation's old entry: step 7.4 requires "previousEntryForActivation's
+    // document's is initial about:blank is false", and a navigation away from
+    // it is a replace, which leaves it out of the entry list (step 7.3).
+    // Asked of the navigable's active document - the previous entry's, for
+    // a navigation (a traversal's from-entry may name a document gone since).
+    const previous_is_initial = record.traversal_entry == 0 and
+        (if (activeDocumentOf(integration)) |doc| document_lifecycle.isInitialAboutBlank(doc) else false);
+    var previous: ?joint_history.EntrySnapshot = if (previous_entry) |entry|
+        (if (previous_is_initial) null else history.snapshot(entry) catch null)
+    else
+        null;
     // recordActivation takes it; anything left here goes.
     defer if (previous) |*p| p.deinit(history.allocator);
     if (record.traversal_entry != 0) {

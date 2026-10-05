@@ -3029,7 +3029,16 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // commits in a later task, so open() returns the window before its page
     // loads, as it must for `w.onload = f` to hear the load.
     if (url_record) |u| {
-        if (!std.mem.startsWith(u8, u, "about:blank")) integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy });
+        if (html_core.navigation.navigate_steps.matchesAboutBlank(u)) {
+            // Step 15.4: "If urlRecord matches about:blank, then perform the
+            // URL and history update steps given targetNavigable's active
+            // document and urlRecord" - about:blank#frag or ?query becomes the
+            // initial about:blank's URL, a replace, with no navigation.
+            if (!std.mem.eql(u8, u, "about:blank")) {
+                if (!@import("dom").history_traversal.isInstalled()) _ = get_history(created.window) catch {};
+                @import("dom").history_traversal.urlAndHistoryUpdate(created.window, u, null, .replace);
+            }
+        } else integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy });
     }
 
     // Steps 17-18: "If noopener is true or windowType is "new with no
