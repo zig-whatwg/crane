@@ -224,6 +224,10 @@ pub fn create(
     const instance = try init(allocator, State, &ShadowRoot.vtable, ctx);
     errdefer deinit(instance);
 
+    // DOM attach-a-shadow-root step 5: create with the host's node document.
+    // For an element, ownerDocument is its node document.
+    try @import("dom").node_document.set(instance, try interfaces.Node.get_ownerDocument(host));
+
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     internal.host = host;
     internal.shadow_mode = mode;
