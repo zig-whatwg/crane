@@ -11,6 +11,7 @@
 const process_start = @import("process_start.zig");
 
 const runtime = @import("runtime");
+const csp = @import("csp");
 const joint_history = @import("html_core").navigation.joint_history;
 const navigation_api = @import("navigation_api.zig");
 
@@ -29,6 +30,8 @@ pub const Params = struct {
     /// navigation has a POST resource, and the navigate event its formData.
     /// BORROWED.
     form_data: ?*runtime.Instance = null,
+    /// cspNavigationType (CSP 4.2.4's type).
+    csp_navigation_type: csp.navigation_check.NavigationType = .other,
 };
 
 pub const Implementation = struct {

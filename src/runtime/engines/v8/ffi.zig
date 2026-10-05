@@ -3561,3 +3561,11 @@ pub extern fn v8_Isolate_SetProtocolCodeGenerationHooks(isolate: *Isolate, strin
 /// Context::IsCodeGenerationFromStringsAllowed.
 pub extern fn v8_Context_IsCodeGenerationFromStringsAllowed(context: *Context) bool;
 // ---- end lane: cspenforce ----
+// ---- lane: csp2 ----
+/// The top frame of the current stack trace (StackTrace::CurrentStackTrace,
+/// one frame): its GetScriptNameOrSourceURL as UTF-8 in `url.*` (malloc'd,
+/// freed by the caller; null for none) and its 1-based line and column (0:
+/// unknown). False when the stack has no frame. `isolate` must be the
+/// current one.
+pub extern fn v8_Isolate_RunningScriptLocation(isolate: *Isolate, url: *?[*]u8, url_len: *usize, line: *c_int, column: *c_int) bool;
+// ---- end lane: csp2 ----

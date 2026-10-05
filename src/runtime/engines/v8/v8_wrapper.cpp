@@ -13368,3 +13368,43 @@ bool v8_Context_IsCodeGenerationFromStringsAllowed(Global<Context>* context) {
 
 } // extern "C"
 // ---- end lane: cspenforce ----
+// ---- lane: csp2 ----
+extern "C" {
+
+/// CSP 2.4.1 step 2's running script position: the top frame of the
+/// current stack trace (StackTrace::CurrentStackTrace with one frame - the
+/// topmost JavaScript frame; Blink's SourceLocation::Capture reads the
+/// same). `*url` gets its GetScriptNameOrSourceURL as malloc'd UTF-8 (null
+/// when the frame names none), `*line` and `*column` its 1-based position
+/// (Message::kNoLineNumberInfo / kNoColumnInfo, 0, when unknown). False
+/// when the stack has no frame. `isolate` must be the current isolate.
+bool v8_Isolate_RunningScriptLocation(Isolate* isolate, char** url, size_t* url_len, int* line, int* column) {
+    *url = nullptr;
+    *url_len = 0;
+    *line = 0;
+    *column = 0;
+    HandleScope handle_scope(isolate);
+    Local<StackTrace> trace = StackTrace::CurrentStackTrace(isolate, 1);
+    if (trace.IsEmpty() || trace->GetFrameCount() < 1) return false;
+    Local<StackFrame> frame = trace->GetFrame(isolate, 0);
+    if (frame.IsEmpty()) return false;
+    *line = frame->GetLineNumber();
+    *column = frame->GetColumn();
+    Local<String> name = frame->GetScriptNameOrSourceURL();
+    if (!name.IsEmpty() && name->Length() > 0) {
+        String::Utf8Value utf8(isolate, name);
+        if (*utf8 && utf8.length() > 0) {
+            char* copy = static_cast<char*>(malloc(static_cast<size_t>(utf8.length())));
+            if (copy) {
+                memcpy(copy, *utf8, static_cast<size_t>(utf8.length()));
+                *url = copy;
+                *url_len = static_cast<size_t>(utf8.length());
+            }
+        }
+    }
+    return true;
+}
+
+} // extern "C"
+// ---- end lane: csp2 ----
+

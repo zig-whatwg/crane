@@ -683,6 +683,9 @@ pub const NavigateOptions = struct {
     /// no-referrer for noreferrer), an iframe's for "navigate an iframe or
     /// frame". The empty string defers to the initiator's policy container.
     referrer_policy: fetch_mod.internal.ReferrerPolicy = .empty,
+    /// "cspNavigationType": "form-submission" for a form's planned
+    /// navigation, else "other" (CSP 4.2.4's type).
+    csp_navigation_type: @import("csp").navigation_check.NavigationType = .other,
 };
 
 /// One navigation, from "navigate" step 19 until its document commits or it
@@ -738,6 +741,9 @@ const Navigation = struct {
     /// the source document can go while the fetch is in flight. Null with
     /// no source document.
     csp_reporter: ?dom_module.csp_violations.GuardedReporter = null,
+    /// "cspNavigationType", which "navigate to a javascript: URL" step 5 asks
+    /// CSP 4.2.4 with.
+    csp_navigation_type: @import("csp").navigation_check.NavigationType = .other,
     /// Where a container-initiated navigation's request reports its timing:
     /// the container document's global, which gets the frame's 'resource'
     /// entry (HTML "create navigation params by fetching" step 3) - guarded,
@@ -1037,6 +1043,7 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         .traversal_entry = options.traversal_entry,
         .traversal_from = options.traversal_from,
         .browser_initiated = options.user_involvement == .browser_ui,
+        .csp_navigation_type = options.csp_navigation_type,
     };
     if (options.srcdoc) |html| {
         record.srcdoc = allocator.dupe(u8, html) catch {
@@ -2306,13 +2313,14 @@ fn fireHashChange(data: ?*anyopaque) void {
 
 /// HTML "navigate to a javascript: URL" (§7.4.2.3.2), as its task.
 ///
-/// Step 3 (the initiator's origin) is not modelled. Steps 4-5 are, for
-/// require-trusted-types-for's pre-navigation check (Trusted Types 4.2.1.1)
-/// over the record's initiator policy container: its default policy may
-/// rewrite the URL, and an enforced policy may block it. CSP 4.2.4's other
-/// checks (the javascript: inline check) are not run. The new document's
-/// origin is the container's, not the initiator's - the same when, as in
-/// every case this engine reaches, the page navigates its own frame.
+/// Step 3 (the initiator's origin) is not modelled. Steps 4-5 are: CSP
+/// 4.2.4 over the record's initiator policy container, with its
+/// cspNavigationType (dom.csp_violations.shouldJavascriptNavigationBeBlocked:
+/// require-trusted-types-for's pre-navigation check, whose default policy
+/// may rewrite the URL, form-action's for a form submission, and the
+/// javascript: URL's inline check). The new document's origin is the
+/// container's, not the initiator's - the same when, as in every case this
+/// engine reaches, the page navigates its own frame.
 fn runJavascriptNavigation(context: ?*anyopaque) void {
     const id = idOf(context);
     const kv = navigations.fetchRemove(id) orelse return;
@@ -2325,16 +2333,17 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
 
     // Steps 4-5: the request - url, the initiator policy container - and
     // "should navigation request of type be blocked by Content Security
-    // Policy?". Its client is the source document's global, the record's
-    // reporter's; one that is gone has no default policy, so a javascript:
-    // URL under enforced Trusted Types is then Blocked.
+    // Policy?" given it and cspNavigationType. Its client is the source
+    // document's global, the record's reporter's, where its violations go;
+    // one that is gone has no default policy, so a javascript: URL under
+    // enforced Trusted Types is then Blocked.
+    const client: ?*runtime.Instance = if (record.csp_reporter) |reporter| blk: {
+        if (runtime.SlabAllocator.generationOf(reporter.global) != reporter.generation) break :blk null;
+        if (!reporter.global.ctx.hasEngine()) break :blk null;
+        break :blk reporter.global;
+    } else null;
     if (record.initiator_policy_container) |*container| {
-        const client: ?*runtime.Instance = if (record.csp_reporter) |reporter| blk: {
-            if (runtime.SlabAllocator.generationOf(reporter.global) != reporter.generation) break :blk null;
-            if (!reporter.global.ctx.hasEngine()) break :blk null;
-            break :blk reporter.global;
-        } else null;
-        const check = dom_module.trusted_types.javascriptUrlPreNavigationCheck(record.allocator, &container.csp_list, client, record.url, &isParsableUrl) catch return endLoadDelay(integration);
+        const check = dom_module.csp_violations.shouldJavascriptNavigationBeBlocked(record.allocator, &container.csp_list, client, containerElement(integration), record.url, record.csp_navigation_type, &isParsableUrl) catch return endLoadDelay(integration);
         switch (check) {
             .allowed => {},
             .rewritten => |url| {
@@ -2342,6 +2351,18 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
                 record.url = url;
             },
             .blocked => return endLoadDelay(integration),
+        }
+    }
+    // Not in the spec, stated (whatwg/html#4651;
+    // dom.csp_violations.shouldTargetBlockJavascriptUrl): Chrome and Firefox
+    // check the target's CSP too, after the initiator's, and WPT's
+    // to-javascript-parent-initiated-child-csp.html asserts it - skipped when
+    // the target is the initiator, whose list step 5 just checked.
+    if (integration.browsing_context) |bc| {
+        if (bc.getActiveWindow()) |active| {
+            const target_window: *runtime.Instance = @ptrCast(@alignCast(active));
+            if (target_window != client and target_window.ctx.hasEngine() and
+                dom_module.csp_violations.shouldTargetBlockJavascriptUrl(target_window, record.url)) return endLoadDelay(integration);
         }
     }
 
@@ -2374,6 +2395,12 @@ fn commitJavascriptResult(integration: *IFrameIntegration, record: *Navigation, 
     attachDocument(integration, document_state);
 }
 
+/// The navigable's container element, if it has one (a popup has none).
+fn containerElement(integration: *IFrameIntegration) ?*runtime.Instance {
+    const element = integration.iframe_element orelse return null;
+    return @ptrCast(@alignCast(element));
+}
+
 /// `runJavascriptNavigation`'s work, inside the navigable's realm.
 fn javascriptNavigation(integration: *IFrameIntegration, record: *Navigation) void {
     const ctx = navigableContext(integration) orelse return endLoadDelay(integration);
@@ -2395,6 +2422,17 @@ fn javascriptNavigationInRealm(integration: *IFrameIntegration, record: *Navigat
     };
     defer integration.allocator.free(html);
     if (integration.state == .discarded or integration.browsing_context == null) return;
+    // Not in the spec, stated: a navigation the script itself started
+    // (`javascript:location.href='...'`, whose value is a String) keeps
+    // going, and the String makes no document - step 3 left the ongoing
+    // navigation null, so one now is the script's. Committing a document
+    // here would unload the active one at once, with the tasks its script
+    // queued (a violation's event among them), and cancel that navigation.
+    // Blink's ScriptController::ExecuteJavaScriptURL ignores the result the
+    // same way when a navigation started during the script ("replacing the
+    // document would cancel the navigation"); trusted-types/
+    // trusted-types-navigation.html's report-only cases depend on it.
+    if (integration.ongoing_navigation != .none) return;
 
     // Steps 9-12: the new document's URL is the active entry's URL - a
     // javascript: URL is never a document's URL.
@@ -2694,6 +2732,7 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
                 .post_resource = request.post_resource,
                 .form_data = request.form_data,
                 .referrer_policy = referrer_policy,
+                .csp_navigation_type = request.csp_navigation_type,
             });
         },
         .page => |page| {
@@ -2713,6 +2752,7 @@ fn navigateByTargetWithReferrerPolicy(source_document: *runtime.Instance, reques
                 .user_involvement = request.user_involvement,
                 .navigation_api_state = request.navigation_api_state,
                 .form_data = if (request.post_resource != null) request.form_data else null,
+                .csp_navigation_type = request.csp_navigation_type,
             });
         },
         // Step 8: a new top-level traversable - the window open steps.

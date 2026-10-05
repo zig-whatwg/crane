@@ -156,6 +156,9 @@ pub fn queueMicrotask(_: *Agent, _: engine.RealmSteps, _: ?*anyopaque) Error!voi
 pub fn extractErrorInformation(_: Context, _: JSValue, _: Allocator) Error!engine.ErrorInfo {
     return error.NotSupported;
 }
+pub fn runningScriptLocation(_: *Agent, _: Allocator) Error!?engine.ScriptLocation {
+    return null;
+}
 pub fn parseModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
     return error.NotSupported;
 }
