@@ -1144,6 +1144,15 @@ fn platformObjectArm(comptime T: type, allocator: std.mem.Allocator, isolate: *v
     return null;
 }
 
+/// Whether dictionary member type `M` is a sequence (through optionals):
+/// its converted value never refers to the handle Get made for the member -
+/// the elements are read through handles of their own.
+fn isSequenceMember(comptime M: type) bool {
+    const info = @typeInfo(M);
+    if (info == .optional) return isSequenceMember(info.optional.child);
+    return info == .pointer and info.pointer.size == .slice and M != []const u8;
+}
+
 /// WebIDL 3.2.18 steps 4-5: a dictionary's members are read least-derived
 /// dictionary first, and within one dictionary "in lexicographical order" of
 /// their identifiers. Codegen emits a dictionary as its inherited dictionary
@@ -1997,8 +2006,12 @@ pub fn fromV8Value(
                 // Get made this handle for the member, and it is released when
                 // the member's conversion copied out of it - the rule the
                 // binding applies to arguments. Kept, an object member (a
-                // Headers, a signal) pinned its page.
-                defer if (comptime interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
+                // Headers, a signal) pinned its page. A sequence member never
+                // refers to it either: its elements are read through handles
+                // of their own (v8_Array_Get) - kept, StructuredSerializeOptions'
+                // `transfer` leaked one per postMessage(message, options).
+                const member_handle_released = comptime interface_mod.argHandleIsCopied(field.type) or isSequenceMember(field.type);
+                defer if (member_handle_released) v8.v8_Value_Dispose(field_v8);
                 // Step 4.1.4.4: "Otherwise, if jsMemberValue is undefined and
                 // member is required, then throw a TypeError." Codegen emits a
                 // required member as the one kind of field with no default
@@ -2006,7 +2019,7 @@ pub fn fromV8Value(
                 // instead - 0, "undefined".
                 if (comptime isRequiredMember(field)) {
                     if (v8.v8_Value_IsUndefined(field_v8)) {
-                        if (comptime !interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
+                        if (!member_handle_released) v8.v8_Value_Dispose(field_v8);
                         return ConversionError.TypeError;
                     }
                 }
@@ -2018,7 +2031,7 @@ pub fn fromV8Value(
                 if (is_any_member and v8.v8_Value_IsNull(field_v8)) {
                     // Nothing keeps the handle Get made (the defer above
                     // releases it only for a copying conversion).
-                    if (comptime !interface_mod.argHandleIsCopied(field.type)) v8.v8_Value_Dispose(field_v8);
+                    if (!member_handle_released) v8.v8_Value_Dispose(field_v8);
                     @field(result, field.name) = runtime.JSValue.jsNull;
                 } else if (comptime interface_mod.argumentHandleIsKeptInValue(field.type)) {
                     // An `any` member, an `object` arm or a buffer source:
