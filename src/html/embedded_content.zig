@@ -30,9 +30,9 @@
 //! Deviations, stated:
 //! - Crane has no plugins. An embed element's "type of the content" takes
 //!   the object element's resource type rules (navigation/object_resource_type.zig):
-//!   a document type is shown in a child navigable, an image in one as a
-//!   media document, anything else is "no plugin" - as Blink, Gecko and
-//!   WebKit show documents and images in an embed (Blink's
+//!   a document type is shown in a child navigable, an image as an image
+//!   (load, no navigable), anything else is "no plugin" - as Blink, Gecko
+//!   and WebKit show documents and images in an embed (Blink's
 //!   HTMLPlugInElement::GetObjectContentType gives kFrame for a supported
 //!   non-image type, kImage for an image).
 //! - The object element's step 2 "is not being rendered": Crane has no
@@ -518,10 +518,19 @@ fn embedResponse(content: *Content, response: *const ResponseSummary) void {
     }) catch null;
     defer if (resource_type) |t| content.allocator.free(t);
     // 4: "null: display no plugin"; otherwise the child navigable,
-    // navigated to the response's URL. (An image is shown in it as a media
-    // document.)
-    if (object_resource_type.handlerFor(resource_type) == .fallback) return displayNoPlugin(content);
-    showNavigable(content, response.url, false);
+    // navigated to the response's URL. An image is shown as an image, with
+    // no navigable, and fires load - Blink's kImage, an image loader
+    // (indexed-browsing-contexts-01: an embed of a PNG adds no child
+    // browsing context); an SVG image is an XML document, in a navigable.
+    switch (object_resource_type.handlerFor(resource_type)) {
+        .fallback => displayNoPlugin(content),
+        .navigable => showNavigable(content, response.url, false),
+        .image => {
+            destroyNavigable(content);
+            content.represents = .image;
+            queueTask(content, .fire_load, content.current, null);
+        },
+    }
 }
 
 /// HTML "display no plugin": "Destroy a child navigable given element.
