@@ -65,6 +65,7 @@ pub const PostResource = struct {
 pub const Implementation = struct {
     navigate_by_target: *const fn (source_document: *runtime.Instance, request: Request) void,
     follow_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
+    download_hyperlink: *const fn (subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void,
     traverse_navigable: *const fn (browsing_context: *anyopaque, entry_id: u64, url: []const u8, resource: ?[]const u8, from_entry_id: u64) void,
     find_by_name: *const fn (source_document: *runtime.Instance, name: []const u8) ?*runtime.Instance,
 };
@@ -98,6 +99,14 @@ pub fn followHyperlink(subject: *runtime.Instance, user_involvement: navigation_
     impl.follow_hyperlink(subject, user_involvement);
 }
 
+/// HTML "download the hyperlink created by" `subject` - an `a` or `area`
+/// element with a download attribute - with no hyperlink suffix, with
+/// `user_involvement`.
+pub fn downloadHyperlink(subject: *runtime.Instance, user_involvement: navigation_api.UserInvolvement) void {
+    const impl = implementation orelse return;
+    impl.download_hyperlink(subject, user_involvement);
+}
+
 /// A history traversal changes `browsing_context`'s document (an
 /// `html_core` BrowsingContext): navigate it to its session history entry
 /// `entry_id`, whose URL is `url`, without adding an entry - the entry takes
@@ -129,6 +138,7 @@ test "without an installed implementation nothing navigates" {
     var element: runtime.Instance = undefined;
     navigateByTarget(&element, .{ .target = "", .url = "about:blank" });
     followHyperlink(&element, .activation);
+    downloadHyperlink(&element, .activation);
     traverseNavigable(@ptrCast(&element), 1, "about:blank", null, 1);
     try std.testing.expect(findByName(&element, "name") == null);
 }

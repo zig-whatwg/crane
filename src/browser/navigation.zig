@@ -25,6 +25,7 @@ const log = std.log.scoped(.navigation);
 
 /// Response type from the Fetch implementation, for `isNetworkErrorResponse`.
 const ResponseType = @import("fetch").internal.ResponseType;
+const html_navigation_fetch = @import("html").navigation.fetch_integration;
 
 /// Navigation result containing parsed content info
 pub const NavigationResult = struct {
@@ -369,9 +370,10 @@ fn fetchHttpUrl(
     } else try allocator.dupe(u8, "");
     errdefer allocator.free(body);
 
-    // Extract content type
-    const ct = response.header_list.getFirstValue("Content-Type") orelse "text/html";
-    const content_type = try allocator.dupe(u8, ct);
+    // The response's MIME type: Fetch "extract a MIME type" - the last valid
+    // Content-Type value, not the first header - or text/html without one.
+    const extracted = html_navigation_fetch.extractedContentType(allocator, &response.header_list) catch return NavigationError.OutOfMemory;
+    const content_type: []u8 = extracted orelse try allocator.dupe(u8, "text/html");
     errdefer allocator.free(content_type);
 
     const final_url = try allocator.dupe(u8, url);

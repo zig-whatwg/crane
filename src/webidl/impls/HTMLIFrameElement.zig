@@ -174,6 +174,7 @@ pub fn installHooks() void {
     dom_module.navigables.install(.{
         .navigate_by_target = &navigateByTarget,
         .follow_hyperlink = &followHyperlink,
+        .download_hyperlink = &downloadHyperlink,
         .traverse_navigable = &traverseNavigable,
         .find_by_name = &frameWindowByName,
     });
@@ -404,6 +405,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     };
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
+    giveReferrer(document_instance, browsing_ctx_ptr);
     // HTML "create a new browsing context and document" step 15: the initial
     // about:blank document's type is "html" and its content type
     // "text/html". Set before the elements below are created, which it makes
@@ -529,6 +531,7 @@ fn parseHtmlForIframe(
     document_internals.setContentType(document_instance, "text/html") catch {};
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
+    giveReferrer(document_instance, browsing_ctx_ptr);
 
     const DocumentImpl = @import("Document.zig");
     if (window_instance) |window_inst| {
@@ -539,6 +542,9 @@ fn parseHtmlForIframe(
     } else {
         log.debug("[parseHtmlForIframe] BC={*} WARNING: No active window, document {*} will NOT be linked!", .{ browsing_ctx_ptr, document_instance });
     }
+    // Step 17, once the document is its window's - its URL, which the
+    // header's URL is parsed against, is the navigation's from then on.
+    giveRefresh(document_instance, browsing_ctx_ptr);
 
     // The encoding sniffing algorithm's step 6: the container document's
     // encoding, when it is same origin with the new document.
@@ -738,8 +744,9 @@ fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8) void {
 //   navigate()         steps 1-22: history handling, a fragment navigation
 //                      (committed on the spot), the ongoing navigation, and
 //                      a javascript: URL, which runs in a task of its own
-//   runBeforeUnload    step 23.1: beforeunload at the active document
-//   (the fetch)        step 23.9: about:, data: and file: answered at once,
+//   runBeforeUnload    step 24.1: beforeunload at the active document - run
+//                      by navigate() itself, as browsers do (see there)
+//   (the fetch)        step 24.9: about:, data: and file: answered at once,
 //                      http(s) through the event loop's AsyncFetch
 //   runCommit          "finalize a cross-document navigation" and the history
 //                      step it applies: unload the active document and its
@@ -1079,6 +1086,14 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         if (document_lifecycle.isUnloading(doc)) return;
     }
 
+    // Step 12: "If navigable's allowed to perform a navigation or history
+    // update returns blocked, then ... return." Not for the navigations the
+    // engine starts itself - an element's insertion, a traversal, the
+    // browser's UI - which Blink's limiter does not count either.
+    if (!options.initial_insertion and options.traversal_entry == 0 and options.user_involvement != .browser_ui) {
+        if (!browsing_context.allowedToNavigateOrUpdateHistory()) return;
+    }
+
     // The navigable's session history has its current entry before anything
     // changes ("initialize the navigable").
     _ = browsing_context.ensureHistoryEntries(&history_documents.infoOf) catch {};
@@ -1110,7 +1125,20 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // ends any earlier one.
     const id = next_navigation_id;
     next_navigation_id += 1;
-    setOngoingNavigation(integration, .{ .id = id });
+    if (options.traversal_entry != 0) {
+        // A traversal's (or reload's) navigation: "apply the history step"
+        // sets the navigable's ongoing navigation itself - not through "set
+        // the ongoing navigation", so the navigation API is not informed
+        // about aborting navigation. The traverse or reload navigate event
+        // that led here, and its API method tracker, stay ongoing: a
+        // cross-document traversal's promises never settle
+        // (navigation-methods/return-value/reload.html, reload-no-args.html).
+        switch (integration.ongoing_navigation) {
+            .id => |old| endNavigation(old),
+            else => {},
+        }
+        integration.ongoing_navigation = .{ .id = id };
+    } else setOngoingNavigation(integration, .{ .id = id });
 
     const record = allocator.create(Navigation) catch return;
     record.* = .{
@@ -1217,8 +1245,20 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             if (navigationById(id) == null or !isOngoing(integration, id)) return;
         }
     }
-    // Step 23: "In parallel": beforeunload, then the fetch.
-    queueNavigationTask(integration, id, &runBeforeUnload);
+    // Step 24: "In parallel": beforeunload, then the fetch. Deviation,
+    // stated: "checking if unloading is canceled" runs now, inside the call
+    // that navigates, not from a task - as Blink (FrameLoader::StartNavigation
+    // asks the frame's ShouldClose) and Gecko (nsDocShell::InternalLoad's
+    // PermitUnload) do, and as WPT expects of a same-agent navigation
+    // (unloading-documents/beforeunload-synchronous.html, prompt/001.html,
+    // navigation-api/navigation-methods/return-value/*-beforeunload.html:
+    // the beforeunload handler has run when location.href= or navigate()
+    // returns). A traversal's navigation (and a reload's) has had its
+    // beforeunload already: "apply the history step" checks it for every
+    // navigable the traversal takes to another document, before their
+    // navigate events (History's runTraversal and reload).
+    if (options.traversal_entry != 0) return startFetch(navigationById(id) orelse return);
+    runBeforeUnload(@ptrFromInt(id));
 }
 
 /// Fetch "determine request's referrer" step 2 for a request whose
@@ -1269,10 +1309,10 @@ fn navigableContext(integration: *IFrameIntegration) ?runtime.Context {
     return @ptrCast(@alignCast(integration.runtime_context orelse return null));
 }
 
-/// Step 23.1: "checking if unloading is canceled" for the active document's
+/// Step 24.1: "checking if unloading is canceled" for the active document's
 /// inclusive descendant navigables - beforeunload at each, parents first.
-/// Step 23.2: canceled, or navigated again meanwhile, and this navigation
-/// ends. Step 23.3 (abort the active document) is not modelled.
+/// Step 24.2: canceled, or navigated again meanwhile, and this navigation
+/// ends. Step 24.3 (abort the active document) is not modelled.
 fn runBeforeUnload(context: ?*anyopaque) void {
     const id = idOf(context);
     const record = navigationById(id) orelse return;
@@ -1294,6 +1334,16 @@ fn runBeforeUnload(context: ?*anyopaque) void {
             setOngoingNavigation(again.integration, .none);
             endLoadDelay(again.integration);
             return;
+        }
+        // Step 24.3: "Queue a global task ... to abort a document and its
+        // descendants given navigable's active document." Deviation, stated:
+        // done now, not from a task - Crane parses a document in one run, so a
+        // task would always find its parser finished; done now, it stops the
+        // load of a document whose own script started this navigation while
+        // it was being parsed, as browsers do (replace-before-load/*).
+        for (documents.items) |entry| {
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            document_lifecycle.abort(entry.document);
         }
     }
     startFetch(navigationById(id) orelse return);
@@ -1397,7 +1447,9 @@ fn startFetch(record: *Navigation) void {
             .alive = &fetchAlive,
             .gone = &fetchGone,
         };
-        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{}, fetch_mod.network.scheduler.threadScheduler(), client) catch {
+        // The request's final referrer comes back with the result, for the
+        // new document's referrer (fetchDone frees it with the result).
+        record.fetch = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{ .report_referrer = true }, fetch_mod.network.scheduler.threadScheduler(), client) catch {
             // The fetch owned the request, and freed it.
             record.response = navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.id);
             return queueNavigationTask(record.integration, record.id, &runCommit);
@@ -1495,6 +1547,12 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
         navigation_fetch.resultFromResponse(record.allocator, record.url, r.response, .{}) catch null
     else
         null;
+    // The request's referrer as main fetch left it, for the new document.
+    if (record.response) |*response| {
+        if (result) |r| {
+            if (r.referrer) |referrer| response.referrer = record.allocator.dupe(u8, referrer) catch null;
+        }
+    }
     // The fetch's timing info goes with the response, for the new document's
     // navigation timing entry (its redirect count: the URLs past the first).
     if (record.response) |*response| {
@@ -1617,6 +1675,12 @@ fn runCommit(context: ?*anyopaque) void {
     // container, waiting for whatever makes the document.
     integration.setNextPolicyContainer(navigationParamsPolicyContainer(integration, record, response));
     defer integration.setNextPolicyContainer(null);
+    // Step 14: its referrer, the request's as main fetch left it.
+    integration.setNextReferrer(response.referrer);
+    defer integration.setNextReferrer(null);
+    // Step 17: the response's Refresh header.
+    integration.setNextRefresh(if (response.headers) |h| h.get("refresh") else null);
+    defer integration.setNextRefresh(null);
     commitNavigation(integration, record, response);
 }
 
@@ -1743,6 +1807,27 @@ fn containerDocumentOf(integration: *IFrameIntegration) ?*runtime.Instance {
 fn givePolicyContainer(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
     const integration = integrationOfBrowsingContext(browsing_context) orelse return;
     if (integration.takeNextPolicyContainer()) |container| dom_module.policy_containers.set(document, container);
+}
+
+/// HTML "create and initialize a Document object" step 14: the new
+/// document's referrer - the navigation request's referrer as main fetch
+/// left it, waiting on the navigable (IFrameIntegration.next_referrer). The
+/// empty string when there is none, or no request was fetched.
+fn giveReferrer(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse return;
+    const referrer = integration.next_referrer orelse return;
+    document_internals.setReferrer(document, referrer) catch {};
+}
+
+/// HTML "create and initialize a Document object" step 17: "If
+/// navigationParams's response has a `Refresh` header", the shared
+/// declarative refresh steps with the document and the header's value
+/// (isomorphic decoded, waiting on the navigable) - before the parser runs,
+/// so a later meta refresh finds "will declaratively refresh" set.
+fn giveRefresh(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse return;
+    const value = integration.next_refresh orelse return;
+    document_lifecycle.declarativeRefresh(document, value, null);
 }
 
 /// `document`'s document base URL, serialized, owned by `allocator`; null
@@ -1931,7 +2016,18 @@ fn recordInHistory(integration: *IFrameIntegration, record: *Navigation, url: []
         history.entryById(record.traversal_from)
     else
         history.currentEntry(bc.id);
-    var previous: ?joint_history.EntrySnapshot = if (previous_entry) |entry| history.snapshot(entry) catch null else null;
+    // An entry whose document is the initial about:blank is never the
+    // activation's old entry: step 7.4 requires "previousEntryForActivation's
+    // document's is initial about:blank is false", and a navigation away from
+    // it is a replace, which leaves it out of the entry list (step 7.3).
+    // Asked of the navigable's active document - the previous entry's, for
+    // a navigation (a traversal's from-entry may name a document gone since).
+    const previous_is_initial = record.traversal_entry == 0 and
+        (if (activeDocumentOf(integration)) |doc| document_lifecycle.isInitialAboutBlank(doc) else false);
+    var previous: ?joint_history.EntrySnapshot = if (previous_entry) |entry|
+        (if (previous_is_initial) null else history.snapshot(entry) catch null)
+    else
+        null;
     // recordActivation takes it; anything left here goes.
     defer if (previous) |*p| p.deinit(history.allocator);
     if (record.traversal_entry != 0) {
@@ -2238,8 +2334,9 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
     }
     // Step 12: "Set navigable's active document's URL to url."
     integration.setDocumentUrl(url);
-    // Step 13: "Update the navigation API entries for a same-document
-    // navigation given navigation, historyEntry, and historyHandling."
+    // Step 15, "update document for history step application" 6.4.2:
+    // "Update the navigation API entries for a same-document navigation
+    // given navigation, historyEntry, and historyHandling."
     if (integration.browsing_context) |bc| {
         if (bc.getActiveWindow()) |window| {
             dom_module.navigation_api.sameDocumentNavigation(@ptrCast(@alignCast(window)), switch (handling) {
@@ -2248,13 +2345,36 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
             });
         }
     }
-    // Step 14, "update document for history step application" step 6.4.5:
-    // "If oldURL's fragment is not equal to entry's URL's fragment, then
-    // queue a global task ... to fire an event named hashchange".
+    // Step 15, "update document for history step application" step 6.4.3:
+    // "Fire an event named popstate at document's relevant global object,
+    // using PopStateEvent, with the state attribute initialized to
+    // document's history object's state" - null: step 6.3 restored it from
+    // the new entry, whose classic history API state is never carried over.
+    if (integration.state != .discarded) {
+        if (integration.browsing_context) |bc| {
+            if (bc.getActiveWindow()) |window| firePopStateNull(@ptrCast(@alignCast(window)));
+        }
+    }
+    // Step 6.4.5: "If oldURL's fragment is not equal to entry's URL's
+    // fragment, then queue a global task ... to fire an event named
+    // hashchange".
     const old_fragment = navigate_steps.fragmentOf(old_url);
     const new_fragment = navigate_steps.fragmentOf(url);
     const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
     if (!same) queueHashChange(integration, old_url, url);
+}
+
+/// "Update document for history step application" step 6.4.3 for a
+/// fragment navigation's entry: popstate at `window`, its state null.
+fn firePopStateNull(window: *runtime.Instance) void {
+    const event = interfaces.PopStateEvent.call_constructor(
+        window.ctx,
+        runtime.DOMString.initInterned("popstate"),
+        webidl.Opt(dictionaries.PopStateEventInit).passed(.{ .base = .{}, .state = runtime.JSValue.jsNull }),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = dom_module.fire_event.dispatchTrusted(window, event) catch {};
+    event.releaseIfUnwrapped(generation);
 }
 
 /// A queued hashchange: the window it fires at, held with its slab
@@ -2791,6 +2911,42 @@ fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navi
     navigateByTargetWithReferrerPolicy(document, .{ .target = target, .url = url, .noopener = noopener, .source_element = subject, .user_involvement = user_involvement }, referrer_policy);
 }
 
+/// HTML "download the hyperlink" created by `subject` (an `a` or `area`
+/// element with a download attribute), with no hyperlink suffix.
+fn downloadHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navigation_api.UserInvolvement) void {
+    const document = (interfaces.Node.get_ownerDocument(subject) catch null) orelse return;
+    // Step 1: "If subject cannot navigate, then return."
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    const is_anchor = subject.stateAs(interfaces.HTMLAnchorElement.State) != null;
+    if (!is_anchor and !(interfaces.Node.get_isConnected(subject) catch false)) return;
+    // Step 2: "If subject's node document's active sandboxing flag set has
+    // the sandboxed downloads browsing context flag set, then return." The
+    // document's flags are its navigable's (as for scripts and forms).
+    if (html_core.BrowsingContext.ofWindow(@ptrCast(window))) |bc| {
+        if (bc.sandbox_flags) |flags| if (!flags.allow_downloads) return;
+    }
+    // Steps 3-4: "Let urlString be the result of encoding-parsing-and-
+    // serializing a URL given subject's href attribute value, relative to
+    // subject's node document. If urlString is failure, then return."
+    const href = (interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("href")) catch null) orelse return;
+    const url = parseRelativeToDocument(document, href.asSlice()) orelse return;
+    defer document.ctx.allocator.free(url);
+    // Step 6: not "browser UI": the download request navigate event, with
+    // the download attribute's value as its filename.
+    if (user_involvement != .browser_ui) {
+        const filename = (interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("download")) catch null) orelse runtime.DOMString.initEmpty();
+        // 6.4-6.5: "If continue is false, then return."
+        if (!dom_module.navigation_api.fireDownloadRequest(window, url, user_involvement, subject, filename.asSlice())) return;
+        // 6.6: "Inform the navigation API about aborting navigation given
+        // subject's node navigable."
+        dom_module.navigation_api.informAboutAbortingNavigation(window);
+    }
+    // Steps 7-9 (fetch the URL and "handle as a download") are not modelled,
+    // stated: Crane has no download manager, so the request is never made and
+    // nothing is saved - the step 7 option ("the user agent may return")
+    // taken for every download.
+}
+
 /// The target of the first base element in `document` that has one, or "".
 fn baseTarget(document: *runtime.Instance) []const u8 {
     const NodeImpl = @import("Node.zig");
@@ -2851,6 +3007,7 @@ fn navigateFromIntegration(integration: *IFrameIntegration, url: []const u8, req
     navigate(integration, url, .{
         .source_document = if (request.source_document) |d| @ptrCast(@alignCast(d)) else null,
         .history_behavior = request.history_behavior,
+        .referrer_policy = request.referrer_policy,
     });
 }
 
@@ -3225,9 +3382,17 @@ fn attachNavigableContext(
     if (createDocumentForIframe(@ptrCast(realm), browsing_context)) |document_ptr| {
         const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
         dom_module.document_lifecycle.markInitialAboutBlank(document);
-        // Step 19.2: "If creator is non-null, set document's policy container
-        // to a clone of creator's policy container."
-        if (creator) |creator_document| inheritPolicyContainer(document, creator_document);
+        if (creator) |creator_document| {
+            // Step 19.1: "Set document's referrer to the serialization of
+            // creator's URL."
+            if (interfaces.Document.get_URL(creator_document)) |creator_url| {
+                defer creator_document.ctx.allocator.free(creator_url);
+                document_internals.setReferrer(document, creator_url) catch {};
+            } else |_| {}
+            // Step 19.2: "Set document's policy container to a clone of
+            // creator's policy container."
+            inheritPolicyContainer(document, creator_document);
+        }
     }
     return realm;
 }

@@ -22,17 +22,10 @@
 //! event (EventRecord): the navigation reads and settles it.
 //!
 //! Deviations, stated:
-//! - A navigate event nobody intercepts, for a same-document destination,
-//!   settles like an intercepted one with no handlers - navigatesuccess, and
-//!   the API method tracker's finished promise, a microtask later - as the
-//!   standard did before its precommit rework and as browsers and WPT
-//!   (navigate-event/navigatesuccess-same-document.html) do. The December
-//!   2025 text returns there and never settles either.
-//! - Committing an intercepted navigation cleans its API method tracker up
-//!   when the navigation settles, not right after committing (step 15): a
-//!   traversal's tracker is notified of its committed-to entry when the
-//!   resumed traversal applies, which is later than step 15, and a tracker
-//!   cleaned up by then is never notified.
+//! - A navigate event nobody intercepts keeps its API method tracker ongoing
+//!   when its destination is cross-document (Blink, and ordering-and-
+//!   transition/navigate-cross-document-double: a later navigation rejects
+//!   its promises); "commit a navigate event" step 9 would clean it up.
 //! - The event's formData carries a form's string entries only; the focus
 //!   reset runs the focusing steps on the body (or document element)
 //!   without an autofocus delegate; scroll behavior records only that
@@ -164,6 +157,14 @@ const EventRecord = struct {
     user_involvement: dom.navigation_api.UserInvolvement = .none,
     /// Set while the event is being dispatched (its dispatch flag).
     dispatching: bool = false,
+    /// Set while its handlers are being invoked: a handler can abort the
+    /// navigation (remove its frame, start another), and the record it
+    /// iterates must outlive that.
+    invoking: bool = false,
+    /// Its destination's "is same document".
+    same_document: bool = false,
+    /// The navigate event intercept commit handler steps have run for it.
+    handlers_run: bool = false,
     /// "Wait for all"s not yet settled.
     waits: u32 = 0,
 
@@ -271,6 +272,7 @@ pub fn installHooks() void {
         .entries_removed = &entriesRemovedHook,
         .fire_push_replace_reload = &firePushReplaceReloadHook,
         .fire_traverse = &fireTraverseHook,
+        .fire_download_request = &fireDownloadRequestHook,
         .inform_about_aborting_navigation = &informAboutAbortingNavigationHook,
         .inform_about_child_navigable_destruction = &informAboutChildNavigableDestructionHook,
         .intercept = &interceptHook,
@@ -499,11 +501,17 @@ pub fn call_updateCurrentEntry(instance: *runtime.Instance, options: dictionarie
 pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, options: webidl.Opt(dictionaries.NavigationNavigateOptions)) anyerror!dictionaries.NavigationResult {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const opts: ?dictionaries.NavigationNavigateOptions = if (options.was_passed) options.value else null;
-    const scope = scopeOf(instance, internal) orelse return earlyError(instance, "InvalidStateError", "The document is not fully active.");
+    // Step 4's document - "this's relevant global object's associated
+    // Document" - whether or not it is fully active: steps 1-7 run first
+    // (navigate-rejection-order-*-detached.html: a detached frame's
+    // navigate() with an unparsable URL or unserializable state reports
+    // that, not InvalidStateError).
+    const window = windowOf(instance, internal) orelse return earlyError(instance, "InvalidStateError", "The document is not fully active.");
+    const document = interfaces.Window.get_document(window) catch return earlyError(instance, "InvalidStateError", "The document is not fully active.");
 
     // Step 1: "Let urlRecord be the result of parsing a URL given url,
     // relative to this's relevant settings object." Failure: SyntaxError.
-    const url_record = parseRelative(scope.document, url, internal.allocator) catch
+    const url_record = parseRelative(document, url, internal.allocator) catch
         return earlyError(instance, "SyntaxError", "The URL could not be parsed.");
     defer internal.allocator.free(url_record);
 
@@ -521,7 +529,7 @@ pub fn call_navigate(instance: *runtime.Instance, url: runtime.USVString, option
         ._push_ => .push,
         ._replace_ => .replace,
     } else .auto;
-    if (behavior == .push and dom.document_lifecycle.isInitialAboutBlank(scope.document)) {
+    if (behavior == .push and dom.document_lifecycle.isInitialAboutBlank(document)) {
         return earlyError(instance, "NotSupportedError", "A push is not possible here.");
     }
 
@@ -712,9 +720,10 @@ fn traverseToKey(instance: *runtime.Instance, key: []const u8, info: runtime.JSV
         tracker.held = false;
         collect(internal);
     }
-    // Steps 9-12: the traversal to the destination's step.
+    // Steps 9-12: the traversal to the destination's step - the nearest one
+    // that shows it (JointHistory.nearestStepOf, as browsers do).
     ensureHistoryTraversal(scope.window);
-    dom.history_traversal.traverseToStep(scope.window, destination.step);
+    dom.history_traversal.traverseToStep(scope.window, scope.history.nearestStepOf(destination));
     // Step 13.
     return derivedResult(instance, internal, tracker);
 }
@@ -858,7 +867,7 @@ fn collect(internal: *InternalState) void {
     var r: usize = 0;
     while (r < internal.records.items.len) {
         const record = internal.records.items[r];
-        if (internal.ongoing_event == record or record.waits > 0 or record.dispatching) {
+        if (internal.ongoing_event == record or record.waits > 0 or record.dispatching or record.invoking) {
             r += 1;
             continue;
         }
@@ -1177,6 +1186,40 @@ fn fireTraverseHook(window: *runtime.Instance, entry_id: u64, user_involvement: 
     });
 }
 
+/// dom.navigation_api: HTML "fire a download request navigate event".
+fn fireDownloadRequestHook(window: *runtime.Instance, destination_url: []const u8, user_involvement: dom.navigation_api.UserInvolvement, source_element: ?*runtime.Instance, filename: []const u8) bool {
+    const target = targetOf(window) orelse return true;
+    const instance = target.instance;
+    const internal = target.internal;
+    // Deviation, stated: the navigation in progress is aborted first, as
+    // "fire a push/replace/reload navigate event" step 2 does - the download
+    // request steps leave it ongoing (the inner algorithm's step 2 asserts no
+    // ongoing API method tracker), and Blink aborts it
+    // (ordering-and-transition/anchor-download-aborts-previous-navigation).
+    informAboutAbortingNavigation(instance, internal);
+    const s = scopeOf(instance, internal) orelse return true;
+    // Steps 2-7: classic history API state null, and a destination at
+    // destinationURL with no entry, state StructuredSerializeForStorage(null)
+    // and is same document false.
+    const destination = makeDestination(instance, .{
+        .url = destination_url,
+        .state = .null,
+        .is_same_document = false,
+    }) orelse return true;
+    // Step 8: "Return the result of performing the inner navigate event
+    // firing algorithm given navigation, "push", event, destination,
+    // userInvolvement, sourceElement, null, and filename."
+    return innerFire(instance, internal, s, .{
+        .navigation_type = .push,
+        .destination = destination,
+        .destination_url = destination_url,
+        .is_same_document = false,
+        .user_involvement = user_involvement,
+        .source_element = source_element,
+        .download_request = filename,
+    });
+}
+
 /// A new NavigationDestination in `instance`'s relevant realm; null when it
 /// could not be made (the navigation then goes on without an event).
 fn makeDestination(instance: *runtime.Instance, init_state: dom.navigation_objects.DestinationInit) ?*runtime.Instance {
@@ -1200,6 +1243,9 @@ const Firing = struct {
     classic_state: ?joint_history.SerializedState = null,
     /// "formDataEntryList", as a FormData holding it. BORROWED.
     form_data: ?*runtime.Instance = null,
+    /// "downloadRequestFilename": a download's filename (the hyperlink's
+    /// download attribute value), null for a navigation. BORROWED.
+    download_request: ?[]const u8 = null,
     tracker: ?*Tracker = null,
 };
 
@@ -1297,7 +1343,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
         .hashChange = hash_change,
         .signal = signal,
         .formData = form_data,
-        .downloadRequest = null,
+        .downloadRequest = if (firing.download_request) |filename| runtime.DOMString.initInterned(filename) else null,
         .info = if (info) |i| i.borrow() else null,
         .hasUAVisualTransition = false,
         .sourceElement = firing.source_element,
@@ -1323,6 +1369,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
         .controller = controller,
         .tracker = api_tracker,
         .user_involvement = firing.user_involvement,
+        .same_document = firing.is_same_document,
     };
     internal.next_record_id += 1;
     if (firing.classic_state) |state| record.classic_state = state.clone(allocator) catch null;
@@ -1354,16 +1401,17 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
         return false;
     }
 
-    // Step 31: "If event's interception state is "none", then return true."
-    // A same-document navigation nobody intercepted still settles (see the
-    // file comment). A cross-document one keeps its navigate event and API
-    // method tracker ongoing: a later navigation aborts them, rejecting the
-    // tracker's promises (ordering-and-transition/
-    // navigate-cross-document-double).
-    if (record.interception_state == .none) {
-        if (firing.is_same_document) waitForAll(instance, record, .plain, &.{});
-        return true;
-    }
+    // Step 32: "If event's interception state is "none", then return true."
+    // A same-document navigation nobody intercepted settles when its update
+    // runs the navigate event intercept commit handler steps ("update the
+    // navigation API entries for a same-document navigation" step 14) - with
+    // no handlers, navigatesuccess a microtask later. A cross-document one
+    // keeps its navigate event and API method tracker ongoing: a later
+    // navigation aborts them, rejecting the tracker's promises
+    // (ordering-and-transition/navigate-cross-document-double). Deviation,
+    // stated: step 30 commits it, and commit step 9 cleans that tracker up -
+    // which leaves it ongoing in Blink and the WPT ordering tests.
+    if (record.interception_state == .none) return true;
 
     // Steps 32-33: "Let fromNHE be the current entry of navigation."
     const from = (currentEntryObject(instance, internal) catch null) orelse {
@@ -1472,7 +1520,9 @@ fn runPrecommitHandlers(instance: *runtime.Instance, internal: *InternalState, r
         promises.deinit(internal.allocator);
     }
     // The list can grow while it is walked: a handler's own addHandler()
-    // adds to the navigation handler list, not this one.
+    // adds to the navigation handler list, not this one. The record is held
+    // while they run: a handler can abort the navigation.
+    record.invoking = true;
     var i: usize = 0;
     while (i < record.precommit_handlers.items.len) : (i += 1) {
         const handler = record.precommit_handlers.items[i];
@@ -1482,6 +1532,7 @@ fn runPrecommitHandlers(instance: *runtime.Instance, internal: *InternalState, r
             continue;
         };
     }
+    record.invoking = false;
     var values: std.ArrayListUnmanaged(runtime.JSValue) = .empty;
     defer values.deinit(internal.allocator);
     for (promises.items) |p| values.append(internal.allocator, p.value) catch {};
@@ -1508,21 +1559,23 @@ fn invokeToPromise(realm: runtime.Context, handler: *const engine.CallbackFuncti
     };
 }
 
-/// HTML "commit an intercepted navigate event" given the event's record.
+/// HTML "commit a navigate event" given the event's record, for an event
+/// that was intercepted (step 7; innerFire returns for the others).
 fn commit(instance: *runtime.Instance, internal: *InternalState, record: *EventRecord) void {
     const realm = instance.ctx;
-    // Step 5: "If event's relevant global object's associated Document is not
+    // Step 3: "If event's relevant global object's associated Document is not
     // fully active, then return."
     const scope = scopeOf(instance, internal) orelse return;
-    // Step 6: "If event's abort controller's signal is aborted, then return."
+    // Step 4: "If event's abort controller's signal is aborted, then return."
     if (signalAborted(record)) return;
-    // Step 7: "Prepare to run script given navigation's relevant settings
-    // object" - microtasks wait until the handlers below have been invoked.
+    // Step 6: "Prepare to run script given navigation's relevant settings
+    // object" - microtasks wait until the update below has fired its events
+    // and invoked the handlers.
     const script_scope = engine.prepareToRunScript(realm) catch null;
     defer if (script_scope) |s| engine.cleanUpAfterRunningScript(s);
-    // Step 8.
+    // Step 7.1.
     record.interception_state = .committed;
-    // Step 9.
+    // Step 7.2.
     switch (record.navigation_type) {
         .push, .replace => {
             // "Run the URL and history update steps given event's relevant
@@ -1550,34 +1603,73 @@ fn commit(instance: *runtime.Instance, internal: *InternalState, record: *EventR
             dom.history_traversal.resumeTraversal(scope.window, she.step);
         },
     }
-    // Step 10: "If navigation's transition is not null, then resolve
+    // Step 8: "If navigation's transition is not null, then resolve
     // navigation's transition's committed promise with undefined."
     if (internal.transition) |transition| engine.resolvePromise(&transition.committed, runtime.JSValue.jsUndefined) catch {};
-    // Steps 11-13: the tracker's committed promise, then each handler's.
+    // Step 9 cleans up the tracker of a navigation whose end result is not
+    // same-document: an intercepted one always is. Step 10 is the defer
+    // above. The handlers run when the update the switch above started
+    // reaches the navigation API entries (interceptCommitHandlerSteps).
+}
+
+/// HTML "navigate event intercept commit handler steps" for the event
+/// `record`, run by "update the navigation API entries for a same-document
+/// navigation" (step 14) after currententrychange and dispose: each of the
+/// event's navigation handlers invoked, and "wait for all" of their
+/// promises - one resolved with undefined when there are none - whose
+/// success steps fire navigatesuccess and whose failure step processes the
+/// handler failure. Once per event.
+fn interceptCommitHandlerSteps(instance: *runtime.Instance, internal: *InternalState, record: *EventRecord) void {
+    if (record.handlers_run) return;
+    record.handlers_run = true;
+    const realm = instance.ctx;
+    // Steps 1-2: "For each handler of event's navigation handler list:
+    // append the result of invoking handler with an empty arguments list to
+    // promisesList."
     var promises: std.ArrayListUnmanaged(engine.Owned) = .empty;
     defer {
         for (promises.items) |p| p.release();
         promises.deinit(internal.allocator);
     }
-    if (record.tracker) |tracker| {
-        if (engine.retainValue(realm, tracker.committed.promise)) |p| {
-            promises.append(internal.allocator, p) catch p.release();
-        } else |_| {}
-    }
-    for (record.handlers.items) |*handler| {
-        const promise = invokeToPromise(realm, handler, &.{}) orelse continue;
+    // The record is held while they run (a handler that removes its frame
+    // aborts the navigation, which would let the record go), and a handler
+    // that calls intercept() again cannot add to it: interception state is
+    // "committed".
+    record.invoking = true;
+    var i: usize = 0;
+    while (i < record.handlers.items.len) : (i += 1) {
+        const handler = record.handlers.items[i];
+        const promise = invokeToPromise(realm, &handler, &.{}) orelse continue;
         promises.append(internal.allocator, promise) catch promise.release();
     }
+    record.invoking = false;
     var values: std.ArrayListUnmanaged(runtime.JSValue) = .empty;
     defer values.deinit(internal.allocator);
     for (promises.items) |p| values.append(internal.allocator, p.value) catch {};
-    // Step 14.
+    // Steps 3-4: none is one resolved with undefined (waitForAll), then
+    // "wait for all of promisesList".
     waitForAll(instance, record, .handlers, values.items);
-    // Step 15 is deferred to the settling steps; step 16 is the defer above.
+}
+
+/// The ongoing navigate event whose handlers a same-document update runs
+/// (step 14's navigateEvent): one that is not being dispatched - an update
+/// its own listener made (history.pushState() in onnavigate) is not its
+/// commit - and that either committed an interception or, uninterepted,
+/// navigates to a same-document destination. Null for none: an update no
+/// navigate event led to (none was fired, or a cross-document navigation's
+/// is ongoing), which the standard leaves unguarded.
+fn eventForUpdate(internal: *InternalState) ?*EventRecord {
+    const record = internal.ongoing_event orelse return null;
+    if (record.dispatching or record.handlers_run) return null;
+    return switch (record.interception_state) {
+        .committed => record,
+        .none => if (record.same_document) record else null,
+        .intercepted, .scrolled, .finished => null,
+    };
 }
 
 /// What a "wait for all" settles.
-const WaitPhase = enum { precommit, handlers, plain };
+const WaitPhase = enum { precommit, handlers };
 
 /// WebIDL "wait for all" of `promises` (BORROWED), for the event `record`:
 /// the success steps or the failure steps of `phase`, in a microtask.
@@ -1626,11 +1718,12 @@ fn waitForAll(instance: *runtime.Instance, record: *EventRecord, phase: WaitPhas
 /// run frees it. The navigation is held by address and slab generation - a
 /// reaction can run after the page is gone.
 ///
-/// The outcome is delivered one microtask after the reaction that decides
-/// it, as `Promise.all(promises).then(...)` would: browsers wait that way,
-/// and WPT's ordering tests (ordering-and-transition/) see promise
-/// reactions script attached after the navigation began run before
-/// navigatesuccess or navigateerror.
+/// The outcome is delivered by the reaction that decides it, as WebIDL's
+/// fulfillment and rejection handlers perform successSteps and failureSteps:
+/// for promises already settled when the wait begins, in the first
+/// microtask after the navigation, before the reactions script attaches to
+/// the navigation's promises afterwards (ordering-and-transition/:
+/// navigatesuccess before "committed fulfilled").
 const Wait = struct {
     navigation: *runtime.Instance,
     generation: u64,
@@ -1646,7 +1739,6 @@ const Wait = struct {
     const Outcome = enum { fulfilled, rejected };
 
     const steps: engine.PromiseReactionSteps = .{ .fulfilled = fulfilled, .rejected = rejected, .dropped = droppedWait };
-    const deliver_steps: engine.PromiseReactionSteps = .{ .fulfilled = delivered, .rejected = delivered, .dropped = droppedWait };
 
     /// A reaction that ended without a step - its realm ended first: only
     /// the reference it held goes; nothing is delivered.
@@ -1670,29 +1762,14 @@ const Wait = struct {
         self.release();
     }
 
-    /// The outcome is known: deliver it a microtask from now.
+    /// The outcome is known: deliver it now.
     fn decide(self: *Wait, outcome: Outcome, reason: runtime.JSValue) void {
         self.done = true;
         self.outcome = outcome;
         if (runtime.SlabAllocator.generationOf(self.navigation) != self.generation) return;
         const realm = self.navigation.ctx;
         if (outcome == .rejected) self.reason = engine.retainValue(realm, reason) catch null;
-        const tick = engine.createResolvedPromise(realm, runtime.JSValue.jsUndefined) catch {
-            self.deliver();
-            return;
-        };
-        defer tick.release();
-        self.live += 1;
-        engine.reactToPromise(realm, tick.value, &deliver_steps, self) catch {
-            self.live -= 1;
-            self.deliver();
-        };
-    }
-
-    fn delivered(data: ?*anyopaque, _: runtime.JSValue) void {
-        const self: *Wait = @ptrCast(@alignCast(data.?));
         self.deliver();
-        self.release();
     }
 
     fn release(self: *Wait) void {
@@ -1716,7 +1793,7 @@ const Wait = struct {
         switch (outcome) {
             .fulfilled => switch (self.phase) {
                 .precommit => commit(self.navigation, internal, record),
-                .handlers, .plain => successSteps(self.navigation, internal, record),
+                .handlers => successSteps(self.navigation, internal, record),
             },
             .rejected => processHandlerFailure(self.navigation, internal, record, if (self.reason) |r| r.value else runtime.JSValue.jsUndefined),
         }
@@ -2059,15 +2136,23 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
         for (disposed.items) |handed| {
             _ = internal.handed.remove(dom.navigation_history_entries.entryId(handed.instance));
         }
+        // Steps 5.3 and 6 append them in entry list order; the map has none.
+        // The entries are gone from the history, so their ids - made in the
+        // order the entries were - stand for their places in the list.
+        std.mem.sort(*Handed, disposed.items, {}, struct {
+            fn lessThan(_: void, a: *Handed, b: *Handed) bool {
+                return dom.navigation_history_entries.entryId(a.instance) < dom.navigation_history_entries.entryId(b.instance);
+            }
+        }.lessThan);
     }
 
     const new_current = entryObject(internal, s.window, destination) catch return;
 
-    // Step 9's "prepare to run script given navigation's relevant settings
+    // Step 11's "prepare to run script given navigation's relevant settings
     // object", taken before step 8: resolving the committed promise is a
     // call into the engine, which - with nothing else on the stack, in a
     // traversal's task - would run its reactions right away, before
-    // currententrychange. Step 12 cleans up.
+    // currententrychange. Step 15 cleans up.
     const script_scope = engine.prepareToRunScript(navigation.ctx) catch null;
     defer if (script_scope) |scope_| engine.cleanUpAfterRunningScript(scope_);
 
@@ -2082,17 +2167,23 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
     // forward-to-pruned-entry). The traversal itself finds nothing to do.
     if (kind == .push) abortPrunedTraversals(navigation, internal, s);
 
-    // Steps 9-10: currententrychange, from the old current entry (for a
+    // Step 12: currententrychange, from the old current entry (for a
     // reload, the current one).
     if (old_current) |from| fireCurrentEntryChange(navigation, navigationTypeOf(kind), from);
 
-    // Step 11: "For each disposedNHE of disposedNHEs: fire an event named
+    // Step 13: "For each disposedNHE of disposedNHEs: fire an event named
     // dispose at disposedNHE." Then let each go.
     for (disposed.items) |handed| {
         fireSimple(handed.instance, "dispose");
         handed.edge.release(internal.navigation);
         internal.allocator.destroy(handed);
     }
+
+    // Step 14: "Run the navigate event intercept commit handler steps given
+    // navigation, navigateEvent, and apiMethodTracker" - navigation's ongoing
+    // navigate event and API method tracker (steps 9-10), read now: the
+    // events above can start another navigation.
+    if (eventForUpdate(internal)) |record| interceptCommitHandlerSteps(navigation, internal, record);
 
     // A push cleared the forward session history of the whole traversable:
     // the other navigables' forward entries went with it.

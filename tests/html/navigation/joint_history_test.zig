@@ -341,3 +341,27 @@ test "a child navigable's first entry takes the step its parent's document began
     try h.addChildInitialEntry(3, 99, "about:blank", null, "http://x.test");
     try testing.expectEqual(h.current_step, h.currentEntry(3).?.step);
 }
+
+test "a traversal to a frame's entry goes to the nearest step where the frame shows it" {
+    // navigation-api/navigation-methods/disambigaute-*.html: the top pushes
+    // (#top), then the frame does (#1). The frame's first entry is current at
+    // steps 0 and 1; its back() goes to step 1 - the nearest - and leaves the
+    // top where it is, as Blink and Gecko do.
+    var h = joint.JointHistory.init(testing.allocator);
+    defer h.deinit();
+    try h.addInitialEntry(top, "http://x.test/t", null, "http://x.test");
+    try h.addInitialEntry(frame, "http://x.test/f", null, "http://x.test");
+    try h.commitSameDocument(top, "http://x.test/t#top", .null, .push, null);
+    try h.commitSameDocument(frame, "http://x.test/f#1", .null, .push, null);
+    try testing.expectEqual(@as(u32, 2), h.current_step);
+    const frame_first = h.entryAt(frame, 0).?;
+    try testing.expectEqual(frame_first, h.entryAt(frame, 1).?);
+    // Back: the latest step at or before the current one.
+    try testing.expectEqual(@as(u32, 1), h.nearestStepOf(frame_first));
+    // Forward from step 0: the frame's later entry is current from step 2 on.
+    h.current_step = 0;
+    try testing.expectEqual(@as(u32, 2), h.nearestStepOf(h.entryAt(frame, 2).?));
+    // The top's first entry, from step 2: only step 0 shows it.
+    h.current_step = 2;
+    try testing.expectEqual(@as(u32, 0), h.nearestStepOf(h.entryAt(top, 0).?));
+}

@@ -831,6 +831,21 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     // Set this Window as the active window on the browsing context
     log.debug("[replaceBrowsingContext] BC={*} Window={*} calling setActiveWindow", .{ existing_bc, instance });
     existing_bc.setActiveWindow(@ptrCast(instance));
+
+    // The window's position and viewport size window.open() set up for the
+    // browsing context: every Window it shows reports them.
+    applyRequestedWindow(internal);
+}
+
+/// CSSOM View "set up browsing context features", as a Window of the
+/// browsing context reports it: the requested position (screenX/screenY)
+/// and viewport size (innerWidth/innerHeight), each that was given.
+fn applyRequestedWindow(internal: *InternalState) void {
+    const requested = internal.browsing_context.requested_window;
+    if (requested.x) |x| internal.screen_x = x;
+    if (requested.y) |y| internal.screen_y = y;
+    if (requested.width) |width| internal.inner_width = width;
+    if (requested.height) |height| internal.inner_height = height;
 }
 
 /// Set the document associated with this Window.
@@ -1175,9 +1190,32 @@ pub fn get_status(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Per spec: Returns true if the browsing context has been discarded.
 pub fn get_closed(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // "Return true if this's browsing context is null or its is closing is
-    // true; otherwise false."
-    return internal.closed or internal.browsing_context.is_closed or internal.browsing_context.is_closing;
+    // "Return true if this's navigable is null or its is closing is true;
+    // otherwise false."
+    const navigable = navigableOf(instance, internal) orelse return true;
+    return internal.closed or navigable.is_closing;
+}
+
+/// HTML "a Window's navigable": "the navigable whose active document is the
+/// Window's associated Document's, or null if there is no such navigable."
+/// Null for a Window a navigation replaced - its browsing context's active
+/// window is its successor - and for one whose navigable was destroyed: its
+/// container removed (BrowsingContext.discard) or an ancestor's, which closes
+/// every descendant, or a top-level traversable definitely closed. HTML
+/// "destroy a document" sets the document state's document to null, so the
+/// navigable has no active document left that is this Window's. Blink's
+/// DOMWindow::parent()/top() answer null for a detached frame (no GetFrame()).
+/// A browsing context that has no active window yet (a Window being made) is
+/// this Window's.
+fn navigableOf(instance: *runtime.Instance, internal: *InternalState) ?*BrowsingContext {
+    const bc_ptr = @intFromPtr(internal.browsing_context);
+    if (bc_ptr == 0 or bc_ptr < 0x1000) return null;
+    const bc = internal.browsing_context;
+    if (bc.orphaned or bc.is_closed) return null;
+    if (bc.getActiveWindow()) |active| {
+        if (active != @as(*anyopaque, @ptrCast(instance))) return null;
+    }
+    return bc;
 }
 
 /// Getter for frames - Same as window
@@ -1190,7 +1228,12 @@ pub fn get_frames(instance: *runtime.Instance) anyerror!typedefs.WindowProxy {
 /// Per spec: Returns the number of child navigables.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return @intCast(internal.browsing_context.children.items.len);
+    // "Return this's associated Document's document-tree child navigables's
+    // size." A Window with no navigable has a destroyed document, whose child
+    // navigables were destroyed with it - the context's list is its
+    // successor's.
+    const navigable = navigableOf(instance, internal) orelse return 0;
+    return @intCast(navigable.children.items.len);
 }
 
 /// Indexed getter for frames[index] access
@@ -1202,7 +1245,10 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Spec: https://html.spec.whatwg.org/#windowproxy-getownproperty
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    const children = internal.browsing_context.children.items;
+    // The document-tree child navigables of this's associated Document: none
+    // once it has no navigable (see get_length).
+    const navigable = navigableOf(instance, internal) orelse return null;
+    const children = navigable.children.items;
 
     // Out of bounds check
     if (index >= children.len) {
@@ -1221,32 +1267,25 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
 /// Per spec: Returns the WindowProxy of the top-level traversable.
 pub fn get_top(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Walk up the parent chain to find the top-level context
-    var ctx = internal.browsing_context;
-    while (ctx.parent) |parent| {
-        ctx = parent;
-    }
-
-    // If we're already at the top, return self
-    if (ctx == internal.browsing_context) {
-        return getWindowProxy(instance);
-    }
-
-    // Get the active Window from the top browsing context
-    if (ctx.getActiveWindow()) |top_window_ptr| {
-        const top_window: *runtime.Instance = @ptrCast(@alignCast(top_window_ptr));
-        return @ptrCast(top_window);
-    }
-
-    // Fallback to self if top window not found (shouldn't happen if browsing context is set up correctly)
-    return getWindowProxy(instance);
+    // "1. If this's navigable is null, then return null."
+    const navigable = navigableOf(instance, internal) orelse return null;
+    // "2. Return this's navigable's top-level traversable's active
+    // WindowProxy."
+    const top = navigable.getTop();
+    if (top == navigable) return getWindowProxy(instance);
+    const top_window = top.getActiveWindow() orelse return null;
+    return @ptrCast(@alignCast(top_window));
 }
 
 /// Getter for opener
 /// Per spec: Returns the WindowProxy of the opener browsing context.
 pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // "1. Let current be this's browsing context. 2. If current is null, then
+    // return null." A destroyed document's browsing context is null ("destroy
+    // a document" step 8): a Window with no navigable has none.
+    if (navigableOf(instance, internal) == null) return runtime.JSValue.jsNull;
 
     // If disowned, return null
     if (internal.browsing_context.disowned) {
@@ -1276,34 +1315,14 @@ pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// Per spec: Returns the WindowProxy of the parent browsing context.
 pub fn get_parent(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Safety check: browsing_context should never be null for a valid Window,
-    // but check anyway to prevent segfault in case of corruption/cleanup race
-    const bc_ptr = @intFromPtr(internal.browsing_context);
-    if (bc_ptr == 0 or bc_ptr < 0x1000) {
-        // Invalid pointer - check if this Window has a bound V8 global to return
-        if (internal.bound_v8_global) |bound_global| {
-            // Return the bound global directly - this will be dereferenced by SetReturnValueGlobal
-            // Cast through usize to satisfy alignment requirements
-            return @ptrFromInt(@intFromPtr(bound_global));
-        }
-        return getWindowProxy(instance);
-    }
-
-    // Per HTML spec §7.2.2, the parent getter:
-    // 1. If this browsing context has a parent, return parent's WindowProxy
-    // 2. Otherwise, return this Window's WindowProxy (self)
-    if (internal.browsing_context.parent) |parent_bc| {
-        // Get the active Window from the parent browsing context
-        if (parent_bc.getActiveWindow()) |parent_window_ptr| {
-            // Cast from *anyopaque to *runtime.Instance
-            const parent_window: *runtime.Instance = @ptrCast(@alignCast(parent_window_ptr));
-            return @ptrCast(parent_window);
-        }
-    }
-
-    // If no parent or no parent window, return self per spec
-    return getWindowProxy(instance);
+    // "1. Let navigable be this's navigable. 2. If navigable is null, then
+    // return null."
+    const navigable = navigableOf(instance, internal) orelse return null;
+    // "3. If navigable's parent is not null, then set navigable to
+    // navigable's parent. 4. Return navigable's active WindowProxy."
+    const parent = navigable.parent orelse return getWindowProxy(instance);
+    const parent_window = parent.getActiveWindow() orelse return null;
+    return @ptrCast(@alignCast(parent_window));
 }
 
 /// Getter for frameElement
@@ -2843,11 +2862,18 @@ pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return; // No-op if window is closed
     }
 
-    // HTML "stop loading" this's navigable, as far as this engine keeps one:
-    // step 2's "set the ongoing navigation for navigable to null" informs the
-    // navigation API about aborting navigation - which aborts its ongoing
-    // navigate event. Not modelled, stated: ending a frame's ongoing fetch
-    // and "abort a document" (step 3).
+    // Step 1: "If this's navigable is null, then return."
+    if (navigableOf(instance, internal) == null) return;
+    // Step 2: "Stop loading this's navigable": a frame's or popup's ongoing
+    // navigation is set to null (dom.content_navigables) - its fetch ends,
+    // and nothing commits - which informs the navigation API about aborting
+    // navigation. The top-level page has no navigation of Crane's to end:
+    // its navigation API is informed directly (an intercepted navigation's
+    // navigate event is aborted either way). Step 3 of "stop loading",
+    // aborting the document, is not modelled, stated.
+    if (get_document(instance)) |document| {
+        @import("dom").content_navigables.stopLoading(document);
+    } else |_| {}
     @import("dom").navigation_api.informAboutAbortingNavigation(instance);
 }
 
@@ -2908,6 +2934,10 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // Steps 6-12: tokenize the features; noreferrer implies noopener.
     const window_features = WindowFeatures.parse(if (features.wasPassed()) features.getValue().asSlice() else "");
     const noopener = window_features.noopener or window_features.noreferrer;
+    // Steps 11-12: "Let referrerPolicy be the empty string. If noreferrer is
+    // true, then set noopener to true and set referrerPolicy to
+    // "no-referrer"."
+    const referrer_policy: @FieldType(html_core.window.iframe_integration.NavigateRequest, "referrer_policy") = if (window_features.noreferrer) .no_referrer else .empty;
 
     // Step 13: the rules for choosing a navigable. The keywords name this
     // one (see the deviation above).
@@ -2961,7 +2991,7 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
             // Step 16.1: "If urlRecord is not null, then navigate targetNavigable
             // to urlRecord using sourceDocument, with referrerPolicy and
             // exceptionsEnabled set to true."
-            if (url_record) |u| found.integration.navigate(u, .{ .source_document = @ptrCast(source_document) });
+            if (url_record) |u| found.integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy });
             return if (noopener) null else found.window;
         }
     }
@@ -2978,6 +3008,14 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // or noreferrer is never a popup, whatever its features.
     const is_popup = window_features.popup and !noopener;
     const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, is_popup) orelse return null;
+    // Step 15.2: "Set up browsing context features for targetNavigable's
+    // active browsing context given tokenizedFeatures" - the window's
+    // position and viewport size, which each of its Windows reports
+    // (replaceBrowsingContext gives a later one the same).
+    if (getInternal(created.window)) |created_internal| {
+        created_internal.browsing_context.requested_window = window_features.geometry;
+        applyRequestedWindow(created_internal);
+    }
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
     internal.auxiliary_navigables.append(allocator, integration) catch {
         integration.deinit();
@@ -2998,7 +3036,16 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // commits in a later task, so open() returns the window before its page
     // loads, as it must for `w.onload = f` to hear the load.
     if (url_record) |u| {
-        if (!std.mem.startsWith(u8, u, "about:blank")) integration.navigate(u, .{ .source_document = @ptrCast(source_document) });
+        if (html_core.navigation.navigate_steps.matchesAboutBlank(u)) {
+            // Step 15.4: "If urlRecord matches about:blank, then perform the
+            // URL and history update steps given targetNavigable's active
+            // document and urlRecord" - about:blank#frag or ?query becomes the
+            // initial about:blank's URL, a replace, with no navigation.
+            if (!std.mem.eql(u8, u, "about:blank")) {
+                if (!@import("dom").history_traversal.isInstalled()) _ = get_history(created.window) catch {};
+                @import("dom").history_traversal.urlAndHistoryUpdate(created.window, u, null, .replace);
+            }
+        } else integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy });
     }
 
     // Steps 17-18: "If noopener is true or windowType is "new with no
@@ -3064,6 +3111,9 @@ const WindowFeatures = struct {
     noopener: bool = false,
     noreferrer: bool = false,
     popup: bool = false,
+    /// CSSOM View's supported open() feature names - left, top, width and
+    /// height - as "set up browsing context features" reads them.
+    geometry: html_core.window.browsing_context.WindowGeometry = .{},
 
     const max_features = 32;
 
@@ -3119,6 +3169,7 @@ const WindowFeatures = struct {
             .noopener = if (map.get("noopener")) |v| parseBoolean(v) else false,
             .noreferrer = if (map.get("noreferrer")) |v| parseBoolean(v) else false,
             .popup = isPopupRequested(map),
+            .geometry = geometryOf(map),
         };
     }
 
@@ -3191,6 +3242,37 @@ const WindowFeatures = struct {
             digits += 1;
         }
         return if (digits == 0) 0 else sign * n;
+    }
+
+    /// The smallest viewport a window.open() size feature gives: the
+    /// "optionally, clamp" of CSSOM View steps 7.3.1 and 8.3.1, as Blink
+    /// and Gecko clamp a popup to 100 x 100 CSS pixels.
+    const min_window_size: i32 = 100;
+
+    /// CSSOM View "set up browsing context features" steps 5-8: each of
+    /// left, top, width and height that is given, through the rules for
+    /// parsing integers (an error is 0). A width or height of 0 sizes
+    /// nothing. The optional clamps: a position stays on the screen area -
+    /// not left of or above its origin - and a size is at least
+    /// `min_window_size` (open-features-negative-*.html: a negative or tiny
+    /// value gives the same window as width=1).
+    fn geometryOf(map: Map) html_core.window.browsing_context.WindowGeometry {
+        var geometry: html_core.window.browsing_context.WindowGeometry = .{};
+        if (map.get("left")) |v| geometry.x = @max(0, clampI32(parseInteger(v)));
+        if (map.get("top")) |v| geometry.y = @max(0, clampI32(parseInteger(v)));
+        if (map.get("width")) |v| {
+            const width = clampI32(parseInteger(v));
+            if (width != 0) geometry.width = @max(min_window_size, width);
+        }
+        if (map.get("height")) |v| {
+            const height = clampI32(parseInteger(v));
+            if (height != 0) geometry.height = @max(min_window_size, height);
+        }
+        return geometry;
+    }
+
+    fn clampI32(value: i64) i32 {
+        return @intCast(std.math.clamp(value, std.math.minInt(i32), std.math.maxInt(i32)));
     }
 
     /// "Check if a popup window is requested".
