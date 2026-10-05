@@ -123,6 +123,8 @@ progress = [
   "3c46ac8da (merged bd798db40) - the navigation API's hangs, window.close() with its definitely-close task, the Location setters, the window scroll methods, the storage event broadcast, POST form submission, BroadcastChannel, ImageData; named access returns the iframe element (navigation lane, batches 1-2)",
   "eb2162471 - meta refresh (the Refresh pragma and the shared declarative refresh steps), the srcdoc navigate event, dispose across navigables, BroadcastChannel in closing workers, planned form navigation after reparenting, batch 3's BarProp and initial about:blank fixes (navigation lane, final batch)",
   "35dc32ef6..eceadb5b4 (merged 5803428e4) - pageswap and NavigationActivation (navigation.activation), the joint history's reserved entries and child steps, cross-window navigate events (same origin-domain, the navigable's own document), frame Referer, top-level javascript: URLs, navigator.keyboard (navigation lane, batch 5)",
+  "70f11029e5 (merged 07ba782f8a) - navigation batch 6: a Window's navigable, navigate event handler steps, document.referrer, beforeunload, rate limit, fragment popstate, window.open geometry, download navigations, traversal order, Content-Type as Fetch extracts it, blob: frames through scheme fetch (navigation lane)",
+  "79327bce39 (merged a3c966f636) - navigation batch 7: blob: documents load with their source's policies, noopener name lookup and browsing context groups, <frame> content navigables, the response URL is the request's, history and javascript: URL policy containers, window.postMessage transfer (nav7 lane)",
 ]
 
   [[infra.items]]
