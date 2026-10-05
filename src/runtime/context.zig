@@ -47,6 +47,8 @@ const Logger = @import("logger.zig").Logger;
 const LoggerConfig = @import("logger.zig").LoggerConfig;
 const infra = @import("infra");
 const timer_mod = @import("timer.zig");
+const BrowserScope = @import("browser_scope.zig").BrowserScope;
+const TaskSink = @import("task_sink.zig").TaskSink;
 
 // Realm infrastructure for context type and exposure checking
 const realm_mod = @import("realm.zig");
@@ -180,6 +182,22 @@ pub const ContextData = struct {
     /// that runs the realm (the worker host installs it); null for a window
     /// realm, whose global object reports its own.
     report_exception: ?*const fn (realm: *ContextData, info: *const @import("engine_types.zig").ErrorInfo) void = null,
+
+    /// The Browser this realm belongs to: its scope, where the Browser's state
+    /// lives as supplements (docs/instances.md, rule 2) - its live workers
+    /// (html.WorkerRegistry). Set by the host that makes the realm: the
+    /// Browser's window realm (browser/Context.zig), a frame its parent's, a
+    /// worker realm its owner's. BORROWED: the Browser outlives its realms.
+    browser_scope: ?*BrowserScope = null,
+
+    /// The cross-thread inbox of this realm's event loop (runtime.TaskSink):
+    /// what another thread posts a task of this realm to - a message for a
+    /// port of the realm, a worker's end for a Worker of it. Set with
+    /// `event_loop`, from the same loop: the window realm's by
+    /// browser/Context.zig, a frame's from its parent, a worker realm's by
+    /// its host. BORROWED: a holder that keeps it past a call takes a
+    /// reference (`TaskSink.retain`).
+    task_sink: ?*TaskSink = null,
 
     /// The agent this realm belongs to (V8: its isolate), set by the adapter
     /// that created the realm. Operations that enter a realm from outside it

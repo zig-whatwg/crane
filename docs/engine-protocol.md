@@ -151,6 +151,17 @@ the caller's.
   the agent's entered realm for its life. A realm whose WindowProxy went on
   to a later one (`window_proxy_of`) is severed from its Window at its end:
   a function of it that script still holds finds no Window, not a freed one.
+- **Threads:** an agent is used only on the thread that made it - every
+  operation that takes the agent, or a realm or value of it, runs there. The
+  one exception is `abortRunningScript`, which may be called from any thread
+  for as long as the agent lives (the host serialises it against the agent's
+  end with a lock of its own: html/worker_link.zig's `agent_lock`).
+  `destroyAgent` runs on the agent's thread. Each worker makes its agent on a
+  thread of its own with no other agent entered there, so that agent is its
+  thread's host agent (`AgentRecord.host_agent`), and its end takes the
+  thread's engine state down with it. A worker realm records its own event
+  loop (`WorkerRealmOptions.event_loop`) as a window realm does; the engine
+  stores it and never runs it.
 
 ## 4. Capabilities
 

@@ -2735,6 +2735,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "runtime", .module = runtime_mod },
             .{ .name = "platform", .module = platform_mod },
+            // The engine protocol html already reaches, for tests whose host
+            // makes an agent and a realm (the worker-thread tests).
+            .{ .name = "engine", .module = engine_mod },
             // For tests that make platform objects with no Browser: the hooks
             // (interfaces.process_hooks.startHooksForTest).
             .{ .name = "interfaces", .module = interfaces_mod },

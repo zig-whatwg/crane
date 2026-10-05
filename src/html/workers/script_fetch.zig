@@ -251,7 +251,7 @@ pub fn fetchWorkerScript(
     }
 
     if (std.mem.startsWith(u8, url, "blob:")) {
-        return handleBlobUrl(allocator, url, options.requesting_origin);
+        return handleBlobUrl(allocator, url, options.requesting_origin, options.worker_type);
     }
 
     // Step 3: For HTTP(S) URLs, use the fetch module
@@ -348,7 +348,7 @@ fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
 /// This uses a callback-based approach to access the BlobURLStore,
 /// which is registered by the browser context during initialization.
 /// This design avoids circular module dependencies (html_core cannot import file).
-fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]const u8) WorkerScriptError!FetchedScript {
+fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]const u8, worker_type: WorkerType) WorkerScriptError!FetchedScript {
     std.log.debug("handleBlobUrl: resolving URL: {s}", .{url});
 
     // Get the blob resolver callback
@@ -380,10 +380,14 @@ fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]co
         return WorkerScriptError.FetchFailed;
     };
 
-    // Validate content type is JavaScript
-    // Per HTML spec, worker scripts must be JavaScript MIME type
-    if (!isJavaScriptMimeType(result.content_type)) {
-        std.log.warn("handleBlobUrl: Blob has non-JavaScript MIME type: {s}", .{result.content_type});
+    // HTML "fetch a classic worker script", processResponseConsumeBody step
+    // 3, refuses a script for its MIME type only when "response's URL's
+    // scheme is an HTTP(S) scheme": a classic worker's blob script runs
+    // whatever the blob's type. A module worker's script is a module script,
+    // which "fetch a single module script" accepts only with a JavaScript
+    // MIME type, whatever its scheme.
+    if (worker_type == .module and !isJavaScriptMimeType(result.content_type)) {
+        std.log.debug("handleBlobUrl: Blob has non-JavaScript MIME type: {s}", .{result.content_type});
         result.freeResolved(allocator);
         return WorkerScriptError.ParseError;
     }

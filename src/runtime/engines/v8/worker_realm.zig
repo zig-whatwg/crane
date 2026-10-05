@@ -200,7 +200,10 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
 
     // The realm's runtime context: the context manager's entry for it. Every
     // Instance created in the realm points here - the global scope first.
-    const realm = context_manager.getOrCreateWithExternalEventLoop(context, options.timer, null, options.allocator) catch {
+    // The context manager is per thread, and a worker on a thread of its own
+    // makes the first realm there.
+    context_manager.init(options.allocator) catch {};
+    const realm = context_manager.getOrCreateWithExternalEventLoop(context, options.timer, options.event_loop, options.allocator) catch {
         ffi.v8_Context_Dispose(context);
         return EngineError.OperationFailed;
     };
