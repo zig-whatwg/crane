@@ -1,14 +1,28 @@
 //! Final teardown's sweeps of per-type side tables.
 //!
-//! An element still alive when the browser ends is never deinit'd one by
-//! one: `impls/cleanup.zig` sweeps the node registries wholesale instead. A
-//! type that keeps state of its own outside those registries - an input's
-//! dirty value, a textarea's raw value - leaks it unless it is swept too. The
-//! state is the type's own, so its impl installs the sweep here (once, at
-//! process start: its installHooks) and cleanup runs every installed sweep; cleanup never imports
-//! the type.
+//! A node in its document when its realm ends is torn down by the realm's
+//! tree walk, through its own deinit (Node.deinitNodeByType dispatches on
+//! the vtable). What reaches the browser's end is what no exit reached: a
+//! node removed from its tree while script held no wrapper of it, or whose
+//! wrapper was collected while it was still in a tree - nothing frees such an
+//! orphan (node lifetime: the tree traced both ways is the fix). By then its
+//! realm is gone, so `impls/cleanup.zig` frees the node registries wholesale,
+//! never through a deinit, which would read the instance's freed context. A
+//! type that keeps state of its own outside those registries installs a sweep
+//! here (once, at process start: its installHooks) and cleanup runs every
+//! installed sweep; cleanup never imports the type.
 //!
-//! lint-impls: hook for HTMLInputElement, HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction
+//! The sweeps installed, and why (counted at leaks3's tip over the forms,
+//! dom/ranges and one-in-four-sample files, 2,881, 2026-10-05):
+//! - ProcessingInstruction: an orphaned PI's target (17 freed).
+//! - HTMLTextAreaElement, HTMLOptionElement: their state maps fill lazily and
+//!   their init frees an entry it finds at the new address, so no entry may
+//!   outlive its browser - the allocator its values came from goes with it
+//!   (0 entries left at the end: the boundary, not a leak).
+//! HTMLInputElement's sweep retired with the vtable dispatch: an input in a
+//! document is deinit'd by its tree, and none was left at the end (0 of 0).
+//!
+//! lint-impls: hook for HTMLTextAreaElement, HTMLOptionElement, ProcessingInstruction
 
 const std = @import("std");
 const process_start = @import("process_start.zig");

@@ -97,9 +97,11 @@ const StateMap = struct {
     }
 };
 
-/// dom.teardown_sweeps: a textarea still alive when the browser ends is
-/// never deinit'd one by one, and its dirty raw value is its own
-/// allocation.
+/// dom.teardown_sweeps: no entry outlives its browser. A textarea in its
+/// document is deinit'd by its tree; what is left at the end is an orphan's
+/// (none, over 2,881 files at leaks3's tip), and init frees an entry it finds
+/// at a new textarea's address - which must never be one whose raw value
+/// came from an allocator that has gone with an earlier browser.
 pub fn cleanupAllRemainingInternal() void {
     StateMap.sweep();
 }
