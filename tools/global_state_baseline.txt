@@ -189,14 +189,9 @@ src/html/window/browsing_context.zig next_context_id 1 G I/engine decl:e78eed1e4
 src/html/window/browsing_context.zig next_group_id 1 G I/engine decl:e78eed1e4659a6b5
 src/html/window/browsing_context.zig retired 1 G I/engine decl:4eb3c63ce8391a0c
 src/html/worker_host.zig armed_shared_connects 1 TL I/profile decl:7179d01264e2a27b
-src/html/worker_host.zig current_worker_context 1 TL C decl:5eec90332fddd207
-src/html/worker_host.zig disposed_isolates 1 TL D decl:3796f88280404836
 src/html/worker_host.zig hosts 1 TL I/engine decl:edd1a75261d8d8dd
 src/html/worker_host.zig live_contexts 1 TL I/engine decl:edd1a75261d8d8dd
 src/html/worker_host.zig shared_scopes 1 TL I/profile decl:edd1a75261d8d8dd
-src/html/workers/dedicated_worker.zig DedicatedWorker.pending_messages 1 TL C decl:f2f7d30adf8cb89f
-src/html/workers/message_channel.zig WorkerPort.next_id 1 G X decl:e78eed1e4659a6b5
-src/html/workers/script_fetch.zig blob_resolver_callback 1 TL I/profile decl:5ba1865ee2a93d1b
 src/intl/v8_bridge/c_api.zig global_allocator 1 G P-res decl:0b9204adbe527b7e
 src/intl/v8_bridge/c_api.zig last_error 1 TL C decl:3f5aa6740061fdcb
 src/permissions/status.zig PermissionStatus.next_id 1 G P-res decl:1dfcee87d8da8735
@@ -332,7 +327,6 @@ src/url/blob_url.zig global_blob_store 1 G I/profile decl:52c96a63e119de70
 src/url/public_suffix.zig psl_result_buf 1 TL C decl:6d938526b5bf4769
 src/urlpattern/pcre2_ffi.zig Regex.static_captures 1 TL C decl:0e6fd21dca79378c
 src/webdriver/main.zig main.handler.server_ptr 1 G P-res decl:f033b82c181714a1
-src/webidl/impls/BroadcastChannel.zig channels 1 TL I/profile decl:61a1585a523daad3
 src/webidl/impls/CookieStore.zig listening 1 TL I/profile decl:0e4d49470b43a231
 src/webidl/impls/Element.zig undefined_sentinel 1 G P-const decl:f33e1c60fc8c8315
 src/webidl/impls/EventTarget.zig current_events 1 G R decl:776d6beda41b573f

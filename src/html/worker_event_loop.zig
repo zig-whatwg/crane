@@ -63,6 +63,12 @@ pub const WorkerEventLoop = struct {
     /// For promise allocation (the interface's promiseAllocator).
     promise_arena: std.heap.ArenaAllocator,
     in_turn: bool = false,
+    /// The host microtasks queued in the agent and not yet run (each one's
+    /// record is linked here until it runs). The engine drops a microtask it
+    /// never runs - a terminated agent's queue is cleared - and frees nothing
+    /// of it, so the loop's end frees what is still linked; it ends after
+    /// the agent (WorkerThread), when nothing can run them any more.
+    microtasks: ?*QueuedMicrotask = null,
 
     /// The most a turn waits while the engine or the network has work in
     /// flight that will finish without posting to the sink.
@@ -79,17 +85,29 @@ pub const WorkerEventLoop = struct {
         };
     }
 
-    /// The loop's end, on the worker thread: HTML close() and "terminate a
-    /// worker" discard the worker's tasks - each queued task is told it will
-    /// never run, the sink closes (dropping what it holds), and the timers
-    /// end (an owned timer's data dropped).
+    /// The loop's end, on the worker thread, after the agent's: HTML close()
+    /// and "terminate a worker" discard the worker's tasks - each queued task
+    /// is told it will never run, the sink closes (dropping what it holds),
+    /// the timers end (an owned timer's data dropped), and the records of
+    /// microtasks the agent never ran are freed. The promise arena goes last:
+    /// a microtask the agent's end ran may have used it.
     pub fn deinit(self: *WorkerEventLoop) void {
         self.dropTasks();
         self.sink.close();
         self.timers.deinit();
         self.tasks.deinit(self.allocator);
         self.sink.release();
+        self.freeDroppedMicrotasks();
         self.promise_arena.deinit();
+    }
+
+    /// Free the records of host microtasks the agent dropped unrun. Call
+    /// once the agent has ended: a record still linked then never runs.
+    fn freeDroppedMicrotasks(self: *WorkerEventLoop) void {
+        while (self.microtasks) |queued| {
+            queued.unlink();
+            self.allocator.destroy(queued);
+        }
     }
 
     /// Drop every task queued and every task posted: none will run.
@@ -228,8 +246,10 @@ pub const WorkerEventLoop = struct {
             log.debug("out of memory queueing a microtask; dropped", .{});
             return;
         };
-        queued.* = .{ .task = task, .allocator = self.allocator };
+        queued.* = .{ .task = task, .allocator = self.allocator, .list = &self.microtasks };
+        queued.link();
         engine.queueMicrotask(agent, QueuedMicrotask.run, queued) catch {
+            queued.unlink();
             self.allocator.destroy(queued);
             log.debug("a microtask was not queued", .{});
         };
@@ -265,14 +285,35 @@ pub const WorkerEventLoop = struct {
     }
 };
 
-/// A host microtask in the agent's queue, until it runs.
+/// A host microtask in the agent's queue, until it runs - linked into its
+/// loop's list (`WorkerEventLoop.microtasks`), which frees it if the agent
+/// ends without running it.
 const QueuedMicrotask = struct {
     task: Microtask,
     allocator: Allocator,
+    /// The loop's list head. The loop outlives every run: it ends after the
+    /// agent.
+    list: *?*QueuedMicrotask,
+    prev: ?*QueuedMicrotask = null,
+    next: ?*QueuedMicrotask = null,
+
+    fn link(self: *QueuedMicrotask) void {
+        self.next = self.list.*;
+        if (self.next) |next| next.prev = self;
+        self.list.* = self;
+    }
+
+    fn unlink(self: *QueuedMicrotask) void {
+        if (self.prev) |prev| prev.next = self.next else self.list.* = self.next;
+        if (self.next) |next| next.prev = self.prev;
+        self.prev = null;
+        self.next = null;
+    }
 
     fn run(data: ?*anyopaque) void {
         const self: *QueuedMicrotask = @ptrCast(@alignCast(data.?));
         const task = self.task;
+        self.unlink();
         self.allocator.destroy(self);
         task.callback(task.context);
     }

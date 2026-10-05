@@ -18,9 +18,11 @@
 //!      an outer worker does not end before its children (Blink's
 //!      PerformShutdownOnWorkerThread: `CHECK(child_threads_.empty())`);
 //!   c. the realm's end (the host's), while the agent lives;
-//!   d. the loop's end - its timers freed, an owned timer's data dropped;
-//!   e. the agent's end: retired from the link under its lock - the owner can
+//!   d. the agent's end: retired from the link under its lock - the owner can
 //!      no longer abort script in it - then destroyed, on this thread;
+//!   e. the loop's end - its timers freed, an owned timer's data dropped, and
+//!      the microtasks the agent never ran freed (after the agent: its end
+//!      may still run some, into the loop's promise arena);
 //!   f. what this thread kept for itself: the instance lifecycle registry,
 //!      the fetches in flight, the network scheduler;
 //!   g. the worker's end posted to its owner, which joins the thread.
@@ -74,8 +76,9 @@ pub const WorkerThread = struct {
         /// last instruction, so joining it does not wait long.
         ended: *const fn (data: ?*anyopaque, link: *WorkerLink) void,
         /// The end will never reach the owner (its loop ended first): free
-        /// `data`. Any thread; no engine.
-        drop: *const fn (data: ?*anyopaque) void,
+        /// `data`; the thread has been joined, or will be by whoever ends
+        /// the owner's loop or Browser. Any thread; no engine.
+        drop: *const fn (data: ?*anyopaque, link: *WorkerLink) void,
     };
 
     /// Start the worker's thread. The thread takes a reference to `link`;
@@ -115,14 +118,17 @@ pub const WorkerThread = struct {
             }
             // c. The realm's end, while the agent lives.
             self.host.end_realm(self.host.data, self);
-            // d. The loop's end.
-            self.loop.deinit();
         } else {
             _ = link.requestClose();
         }
-        // e. The agent's end: retired first, so the owner cannot abort
+        // d. The agent's end: retired first, so the owner cannot abort
         // script in it any more.
         if (link.retireAgent()) |agent| engine.destroyAgent(agent);
+        // e. The loop's end, now that nothing can run in it.
+        if (loop_made) {
+            self.loop.agent = null;
+            self.loop.deinit();
+        }
         self.host.free(self.host.data);
         // f. What this thread kept for itself.
         endThreadState();
@@ -147,7 +153,7 @@ pub const WorkerThread = struct {
     fn postEnded(self: *WorkerThread) void {
         const task = self.allocator.create(Ended) catch {
             log.debug("out of memory posting a worker's end; its owner joins it at its own end", .{});
-            self.owner.drop(self.owner.data);
+            self.owner.drop(self.owner.data, self.link);
             return;
         };
         task.* = .{ .allocator = self.allocator, .owner = self.owner, .link = self.link.retain() };
@@ -176,6 +182,6 @@ const Ended = struct {
         const link = self.link;
         self.allocator.destroy(self);
         defer link.release();
-        owner.drop(owner.data);
+        owner.drop(owner.data, link);
     }
 };

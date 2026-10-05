@@ -1,26 +1,28 @@
 //! Implementation for Worker interface
 //!
-//! Spec: HTML Standard § 10.2.3 Dedicated workers and the Worker interface
-//! https://html.spec.whatwg.org/#dedicated-workers-and-the-worker-interface
+//! Spec: HTML Standard § 10.2.6.3 Dedicated workers and the Worker interface
+//! https://html.spec.whatwg.org/multipage/workers.html#dedicated-workers-and-the-worker-interface
 //!
-//! This implementation bridges the WebIDL Worker interface to the underlying
-//! DedicatedWorker implementation in src/html/workers/.
+//! A Worker object is its owner's side of a dedicated worker, which runs on a
+//! thread of its own (docs/instances.md, "Decisions"): its agent, realm and
+//! event loop are made, run and ended there (html.worker_host,
+//! html.WorkerThread). What the object holds:
 //!
-//! ## Message Passing Architecture
+//! - its outside port: one end of a dom.port_channels Channel whose other end
+//!   is the worker's implicit port. Worker.postMessage is the outside port's
+//!   postMessage - serialized here, queued at the implicit port, delivered by
+//!   the worker's loop - and what the worker posts arrives at this end and is
+//!   fired at this object by a task of its own realm's loop;
+//! - the worker's link (html.WorkerLink): "terminate a worker" through it
+//!   aborts the worker's script from this thread, and the worker's end comes
+//!   back through it as a task that joins the thread.
 //!
-//! When `worker.postMessage(data)` is called from JS:
-//! 1. call_postMessage serializes `data` with transfer through the Engine
-//!    table (StructuredSerializeWithTransfer)
-//! 2. Message is queued to DedicatedWorker's outside_port
-//! 3. outside_port delivers to entangled inside_port (worker side)
-//! 4. The worker host fires a MessageEvent at the worker's global scope
-//!
-//! When worker calls `self.postMessage(data)`:
-//! 1. The worker host serializes `data` in the worker's realm
-//! 2. Message is queued to inside_port
-//! 3. inside_port delivers to entangled outside_port (main thread)
-//! 4. handleMessageFromWorker deserializes it into this realm
-//! 5. `message` is fired at the Worker object (onmessage and listeners)
+//! A Worker has pending activity (Blink's DedicatedWorker::HasPendingActivity)
+//! from its construction until its worker has ended and what it posted has
+//! been delivered: script may drop it at once - `new Worker(url).onmessage =
+//! f` - and the worker still runs. Every task the worker posts for it carries
+//! its slab generation, checked before use. When its realm ends, its worker
+//! is terminated (`endWorkersOf`), and when it is freed, it lets go of both.
 
 const std = @import("std");
 const log = std.log.scoped(.worker);
@@ -32,12 +34,9 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
+const dom = @import("dom");
 const Worker = interfaces.Worker;
 const MessageEvent = interfaces.MessageEvent;
-const EventTarget = interfaces.EventTarget;
-
-// Import parent class implementation for proper initialization chain
-const EventTargetImpl = @import("EventTarget.zig");
 
 // The constructor parses the script URL (the URL Standard's API parser), and
 // the blob-URL check needs the outside settings' origin.
@@ -45,30 +44,18 @@ const api_parser = @import("api_parser");
 const url_serializer = @import("url_serializer");
 const url_origin = @import("origin");
 
-// Import workers infrastructure
-const html_core = @import("html_core");
-const workers = html_core.workers;
-const DedicatedWorker = workers.DedicatedWorker;
-const WorkerOptions = workers.WorkerOptions;
+// The worker script fetch and the options' types.
+const workers = @import("html_core").workers;
 const WorkerType = workers.WorkerType;
 const RequestCredentials = workers.RequestCredentials;
-const message_channel = workers.message_channel;
-const WorkerErrorEvent = workers.worker_error.WorkerErrorEvent;
-const QueuedMessage = message_channel.QueuedMessage;
-const EngineMessage = message_channel.EngineMessage;
-const WorkerContext = workers.WorkerContext;
 
-// The worker host: the HTML half of "run a worker" (has interface access,
-// unlike html_core).
-const html_full = @import("html");
-const WorkerHost = html_full.WorkerHost;
-const worker_host = html_full.worker_host;
+// The worker host: the HTML half of "run a worker", on the worker's thread.
+const html = @import("html");
+const worker_host = html.worker_host;
 
-// Import platform for TimerBackend (used to create DedicatedWorker)
-const platform = @import("platform");
-
-// Import event loop for task scheduling (message dispatch)
-const event_loop_mod = @import("streams_event_loop");
+// The implicit ports' channel, whose ends cross threads.
+const port_channels = dom.port_channels;
+const End = port_channels.End;
 
 pub const State = Worker.State;
 
@@ -80,124 +67,64 @@ pub const ImplError = error{
     PostMessageFailed,
 };
 
-/// Internal state for Worker implementation
-///
-/// Contains the backing DedicatedWorker from src/html/workers/
-/// and the entangled MessagePort pair for communication.
-///
-/// Note: The DedicatedWorker requires a TimerBackend which comes from
-/// the platform layer. The WebIDL impl stores worker configuration,
-/// and actual worker lifecycle is managed when platform is available.
+/// A Worker's own state, on its owner's thread.
 pub const InternalState = struct {
-    /// The underlying dedicated worker implementation (optional - created when platform is set)
-    dedicated_worker: ?*DedicatedWorker = null,
-
-    /// The worker host running the worker (created when DedicatedWorker starts)
-    host: ?*WorkerHost = null,
-
-    /// Outside MessagePort (exposed to the caller)
-    outside_port: ?*runtime.Instance = null,
-
-    /// Worker configuration
-    script_url: []const u8,
-    name: []const u8,
-    worker_type: WorkerType,
-    credentials: RequestCredentials,
-
-    /// Whether the worker has been terminated
-    terminated: bool = false,
-
-    /// Whether the worker script has been evaluated
-    /// Per Chromium's DedicatedWorkerMessagingProxy::was_script_evaluated_ pattern:
-    /// Messages must not be dispatched until the script finishes executing.
-    script_evaluated: bool = false,
-
-    /// Allocator used for this state
     allocator: std.mem.Allocator,
-
-    /// Reference to the Worker instance (for message handling)
-    worker_instance: ?*runtime.Instance = null,
-
-    /// Runtime context for creating MessageEvent
-    ctx: ?runtime.Context = null,
-
-    /// Pending script source to execute (deferred from constructor)
-    /// This is set during constructor and executed via timer callback
-    pending_script: ?[]const u8 = null,
-
-    /// Final URL of the script (after resolution, for V8 context)
-    /// Stored during constructor to avoid re-fetching when blob URLs are revoked
-    script_final_url: ?[]const u8 = null,
-
-    /// The worker global scope's policy container, as "initialize a worker
-    /// global scope's policy container" chose it from the fetched script
-    /// (the response's, or a clone of this Worker's owner's for a data:
-    /// script), waiting for the WorkerHost the worker runs in. Owned until
-    /// the host takes it.
-    pending_policy_container: ?@import("fetch").internal.PolicyContainer = null,
-
-    /// Pending messages to send to worker (before DedicatedWorker is created)
-    /// Messages are queued here if postMessage is called before worker initialization completes.
-    /// Once the DedicatedWorker is ready, these are flushed to the inside port.
-    pending_outgoing_messages: std.ArrayList(EngineMessage),
+    /// The worker's link - the owner side's reference - while the worker was
+    /// started: null when its script could not be fetched or its thread did
+    /// not start.
+    link: ?*html.WorkerLink = null,
+    /// The outside port: this Worker's end of the implicit channel, bound to
+    /// this object on its realm's loop. Discarded with the object.
+    outside: ?*End = null,
+    /// terminate() was called: what the worker posts is discarded from now
+    /// on (Blink: a messaging proxy asked to terminate delivers nothing).
+    terminated: bool = false,
+    /// The worker's end has reached this object: its pending activity ends
+    /// once what the worker posted has been delivered.
+    ended: bool = false,
 
     pub fn deinit(self: *InternalState) void {
-        // Clean up pending outgoing messages
-        for (self.pending_outgoing_messages.items) |*msg| msg.deinit();
-        self.pending_outgoing_messages.deinit(self.allocator);
-
-        // Clean up V8 context first (it uses the dedicated_worker's WorkerContext).
-        //
-        // deinit() releases V8 resources and is idempotent; it does NOT free the
-        // context. The worker chain below reaches WorkerContext.deinit ->
-        // disposeContextCallback -> deinit() a second time, which now early-returns
-        // on a flag in LIVE memory. Only after that chain has finished is it safe to
-        // release the storage, and this is the single place that does it.
-        const host_owned = self.host;
-        if (host_owned) |host| {
-            host.deinit();
-            self.host = null;
+        // The owner lets go: a worker still running is terminated (it is no
+        // longer actively needed), and the link and the port go.
+        if (self.link) |link| {
+            _ = link.terminate();
+            link.release();
         }
-        if (self.dedicated_worker) |worker| {
-            worker.deinit();
-        }
-        if (host_owned) |host| {
-            host.destroy();
-        }
-        self.allocator.free(self.script_url);
-        if (self.name.len > 0) {
-            self.allocator.free(self.name);
-        }
-        // Free pending script if not yet executed
-        if (self.pending_script) |script| {
-            self.allocator.free(script);
-        }
-        // Free script_final_url if set
-        if (self.script_final_url) |url| {
-            self.allocator.free(url);
-        }
-        // A policy container no host took (the worker never started).
-        if (self.pending_policy_container) |*container| container.deinit();
+        self.link = null;
+        if (self.outside) |end| end.discard();
+        self.outside = null;
     }
 };
 
-/// Initialize instance (creates the instance)
-/// IMPORTANT: Worker extends EventTarget, so we must chain to EventTarget.init()
-/// to properly set up the event listener infrastructure needed for addEventListener.
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    dom.unloading_cleanup.install(&endWorkersOf);
+}
+
+/// An unloading document cleanup step: the realm `realm` ends - its document
+/// is destroyed, or its worker has ended - and every worker whose Worker
+/// object lives in it is no longer actively needed: "terminate a worker"
+/// (HTML 10.2.3; Blink's DedicatedWorker::ContextDestroyed terminates its
+/// worker). Their ends reach `realm`'s loop, or are dropped with it.
+fn endWorkersOf(realm: runtime.Context) void {
+    const registry = html.WorkerRegistry.existingOf(realm) orelse return;
+    registry.terminateOwnedByRealm(realm);
+}
+
+/// Initialize instance: a Worker is an EventTarget, so its EventTarget state
+/// comes first (through the interface).
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    // Chain to parent class (EventTarget) to set up event listener state
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    return instance;
+    return interfaces.EventTarget.initWithState(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
-/// IMPORTANT: Must chain to EventTarget.deinit() through interface (not impl directly)
-/// to clean up event listener state.
 pub fn deinit(instance: *runtime.Instance) void {
     // Whatever pending-activity hold is left on it goes with it.
     releasePendingActivity(instance);
@@ -205,9 +132,14 @@ pub fn deinit(instance: *runtime.Instance) void {
     if (state.own._internal) |internal| {
         internal.deinit();
         internal.allocator.destroy(internal);
+        state.own._internal = null;
     }
-    // Chain to parent class through interface for proper deinit
-    EventTarget.deinit(instance);
+    interfaces.EventTarget.deinit(instance);
+}
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// `script_url` encoding-parsed relative to `api_base_url` and serialized:
@@ -268,44 +200,24 @@ fn relevantWindow(instance: *runtime.Instance) ?*runtime.Instance {
     return global;
 }
 
-/// Constructor implementation
+/// Constructor: new Worker(scriptURL, options)
 ///
-/// Spec: HTML Standard § 10.2.3.1 The Worker() constructor
-/// https://html.spec.whatwg.org/#dom-worker
-///
-/// This is called when the interface is constructed from JavaScript:
-/// new Worker(scriptURL, options)
+/// Spec: https://html.spec.whatwg.org/multipage/workers.html#dom-worker
 pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptURLOrUSVString, options: webidl.Opt(dictionaries.WorkerOptions)) !*runtime.Instance {
-    // Step 1: "Let compliantScriptURL be the result of invoking the get
-    // trusted type compliant string algorithm with TrustedScriptURL, this's
-    // relevant global object, scriptURL, "Worker constructor", and "script"."
-    const compliant_script_url = try @import("dom").trusted_types.compliantStringForRealm(ctx.allocator, .script_url, ctx, scriptURL, "Worker constructor");
+    // 1. "Let compliantScriptURL be the result of invoking the get trusted
+    // type compliant string algorithm with TrustedScriptURL, this's relevant
+    // global object, scriptURL, "Worker constructor", and "script"."
+    const compliant_script_url = try dom.trusted_types.compliantStringForRealm(ctx.allocator, .script_url, ctx, scriptURL, "Worker constructor");
     defer ctx.allocator.free(compliant_script_url);
 
-    // NOTE: We rely on the persistent HandleScope from BrowserContext.
-    // Creating a local HandleScope here and disposing it at the end of the constructor
-    // would leave V8 without a HandleScope for subsequent JavaScript execution.
-    // The persistent HandleScope in BrowserContext stays active for the entire test.
-
-    // Create instance through init()
     const instance = try init(ctx.allocator, State, &Worker.vtable, ctx);
     errdefer deinit(instance);
-
-    // A Worker has pending activity from the moment it is made until its
-    // worker has ended (Blink's DedicatedWorker::HasPendingActivity): script
-    // may drop it at once - `new Worker(url).onmessage = f`, or a worker's own
-    // nested worker held in a local - and the worker still runs, and the
-    // tasks queued for it must not find it freed. The binding wraps it after
-    // this returns, and the wrapper takes the hold then; the worker host
-    // releases it once the worker has ended (`releaseOwnerWhenIdle`).
-    keepPendingActivity(instance);
 
     // The WorkerOptions dictionary: type ("classic" or "module"),
     // credentials (for a module worker's fetches) and name.
     var worker_type = WorkerType.classic;
     var credentials = RequestCredentials.same_origin;
     var name: []const u8 = "";
-
     if (options.wasPassed()) {
         const opts = options.getValue();
         if (opts.type) |t| worker_type = switch (t) {
@@ -317,132 +229,113 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
             ._same_origin_ => .same_origin,
             ._include_ => .include,
         };
-        if (opts.name) |n| {
-            name = n.asSlice();
-        }
+        if (opts.name) |n| name = n.asSlice();
     }
 
-    // Steps 2-4: "Let outsideSettings be the current settings object. Let
-    // workerURL be the result of encoding-parsing a URL given scriptURL,
-    // relative to outsideSettings. If workerURL is failure, then throw a
-    // "SyntaxError" DOMException." Relative to its API base URL - a window's
-    // document's URL - which Crane used to replace with the document's
-    // origin, so `support/x.js` from /workers/y.html fetched /support/x.js.
+    // 2-4. "Let outsideSettings be this's relevant settings object. Let
+    // workerURL be the result of encoding-parsing a URL given
+    // compliantScriptURL, relative to outsideSettings. If workerURL is
+    // failure, then throw a "SyntaxError" DOMException." Relative to its API
+    // base URL - a window's document's URL, a worker's script URL.
     const base_url = apiBaseURL(instance);
     defer if (base_url) |b| ctx.allocator.free(b);
-    const url_copy = try resolveScriptURL(ctx.allocator, compliant_script_url, base_url);
-    errdefer ctx.allocator.free(url_copy);
+    const worker_url = try resolveScriptURL(ctx.allocator, compliant_script_url, base_url);
+    defer ctx.allocator.free(worker_url);
     // Its origin, for the blob-URL store's same-origin check.
     const requesting_origin = try serializedOriginOf(ctx.allocator, base_url);
     defer ctx.allocator.free(requesting_origin);
 
-    // Copy the name if present
-    const name_copy = if (name.len > 0)
-        try ctx.allocator.dupe(u8, name)
-    else
-        "";
-    errdefer if (name_copy.len > 0) ctx.allocator.free(name_copy);
+    const internal = try ctx.allocator.create(InternalState);
+    internal.* = .{ .allocator = ctx.allocator };
+    instance.getState(State).own._internal = internal;
 
-    // Create internal state
-    const internal_state = try ctx.allocator.create(InternalState);
-    errdefer ctx.allocator.destroy(internal_state);
+    // 5-7. "Let outsidePort be a new MessagePort in outsideSettings's realm.
+    // Set outsidePort's message event target to this. Set this's outside
+    // port to outsidePort." The outside port is not script-visible: it is
+    // this object's end of a fresh channel, bound to this object on its
+    // realm's loop. Its other end becomes the worker's implicit port ("run a
+    // worker" onComplete 3-5: entangled with it), handed to the worker's
+    // thread.
+    const channel = try port_channels.Channel.create(ctx.allocator);
+    internal.outside = channel.end(0);
+    var inside_end: ?*End = channel.end(1);
+    defer if (inside_end) |end| end.discard();
+    if (ctx.task_sink) |sink| {
+        channel.end(0).bind(.{
+            .sink = sink,
+            .receiver = instance,
+            .generation = runtime.SlabAllocator.generationOf(instance),
+            .hooks = &outside_port_hooks,
+        });
+        // "Run a worker" step 11 enables the outside port's queue only after
+        // the worker's script has run. Deviation, stated: every engine
+        // delivers a worker's message as soon as it is posted - Blink's
+        // DedicatedWorkerObjectProxy::PostMessageToWorkerObject posts to the
+        // parent's task runner at once, Gecko's WorkerPrivate::
+        // PostMessageToParent dispatches to the parent at once - and so does
+        // Crane: a worker that posts and then spins its first script forever
+        // is heard.
+        channel.end(0).enable();
+    }
 
-    internal_state.* = .{
-        .dedicated_worker = null,
-        .script_url = url_copy,
-        .name = name_copy,
-        .worker_type = worker_type,
-        .credentials = credentials,
-        .allocator = ctx.allocator,
-        .worker_instance = instance,
-        .ctx = ctx,
-        .pending_outgoing_messages = .empty,
-    };
+    // Pending activity from now until the worker has ended (see the file's
+    // header); the binding wraps the object after this returns, and the
+    // wrapper takes the hold then.
+    keepPendingActivity(instance);
 
-    // Store internal state in instance
-    var state = instance.getState(State);
-    state.own._internal = internal_state;
+    // "Run a worker" step 3: the unsafe worker creation time - the worker
+    // global scope's time origin.
+    const creation_time_ms = @as(f64, @floatFromInt(@import("clock").wallNanos())) / std.time.ns_per_ms;
 
-    // CRITICAL: Fetch the worker script IMMEDIATELY in the constructor!
-    //
-    // Per Chromium's implementation, the script fetch must start as soon as the
-    // Worker is constructed. This is critical for blob URLs because:
-    // 1. JavaScript creates a blob URL with URL.createObjectURL()
-    // 2. JavaScript creates a Worker with the blob URL
-    // 3. Later, cleanup code may call URL.revokeObjectURL()
-    //
-    // If we defer the script fetch to a queueTask callback, the blob URL may
-    // be revoked by the time we try to fetch it, causing "Blob not found" errors.
-    //
-    // The fix is to fetch the script content immediately (while the blob URL
-    // is still valid) and store it. Only the script EXECUTION is deferred.
-    var fetched_script = workers.fetchWorkerScript(ctx.allocator, url_copy, .{
+    // 9. "Run a worker" in parallel. Its fetch happens here, before the
+    // constructor returns - a blob URL revoked right after `new Worker(url)`
+    // still runs (Blink starts the fetch in the constructor too); the rest
+    // runs on the worker's own thread.
+    var fetched = workers.fetchWorkerScript(ctx.allocator, worker_url, .{
         .worker_type = worker_type,
         .requesting_origin = requesting_origin,
         // The outside settings' policy container: its CSP decides whether
         // the script may be fetched at all.
         .policy_container = worker_host.creatorPolicyContainer(ctx),
         // Its violations are reported to the outside settings' global.
-        .csp_violation_reporter = @import("dom").csp_violations.reporterForRealm(ctx),
+        .csp_violation_reporter = dom.csp_violations.reporterForRealm(ctx),
     }) catch |err| {
-        std.log.warn("Failed to fetch worker script in constructor: {}", .{err});
-        // Continue with null pending_script: initializeWorkerSync still makes
-        // the worker, and executeWorkerScriptSync, finding no script, queues
-        // `error` at it ("run a worker" onComplete step 1) - once.
-        internal_state.pending_script = null;
-        internal_state.script_final_url = null;
-        // Don't return error - still schedule initialization
-        if (ctx.getOptionalEventLoop()) |event_loop| {
-            WorkerTask.queue(event_loop, instance, &initializeWorker);
-        }
+        // onComplete 1: script is null - a network error, a status that is
+        // not ok, a MIME type that is not JavaScript - so `error` is fired at
+        // the worker, once, and nothing runs.
+        log.debug("worker script fetch failed: {}", .{err});
+        queueStartFailure(instance);
         return instance;
     };
+    defer fetched.deinit();
 
-    // The worker global scope's policy container, chosen now - from the
-    // response, or the owner (this realm's global) for a data: script.
-    internal_state.pending_policy_container = worker_host.workerPolicyContainer(ctx.allocator, &fetched_script, ctx);
-
-    // Store the fetched script content and final URL for later execution
-    internal_state.pending_script = ctx.allocator.dupe(u8, fetched_script.source) catch {
-        fetched_script.deinit();
-        return error.OutOfMemory;
+    var start: worker_host.DedicatedWorkerStart = .{
+        .source = fetched.source,
+        .script_url = fetched.final_url,
+        .worker_type = worker_type,
+        .name = name,
+        // "Initialize a worker global scope's policy container", from the
+        // response - or this realm's global's, for a data: or blob: script.
+        .policy_container = worker_host.workerPolicyContainer(ctx.allocator, &fetched, ctx),
+        // The worker shares its creator's cookie jar - the user agent's.
+        .cookie_jar = creatorCookieJar(ctx),
+        .owner_realm = ctx,
+        .owner_worker = .{
+            .instance = instance,
+            .generation = runtime.SlabAllocator.generationOf(instance),
+            .steps = &owner_steps,
+        },
+        .inside_end = inside_end,
+        .time_origin_ms = creation_time_ms,
     };
-    internal_state.script_final_url = ctx.allocator.dupe(u8, fetched_script.final_url) catch {
-        ctx.allocator.free(internal_state.pending_script.?);
-        internal_state.pending_script = null;
-        fetched_script.deinit();
-        return error.OutOfMemory;
+    defer if (start.policy_container) |*container| container.deinit();
+    internal.link = worker_host.startDedicatedWorker(ctx.allocator, &start) catch |err| {
+        log.debug("the worker's thread did not start: {}", .{err});
+        queueStartFailure(instance);
+        return instance;
     };
-
-    // Clean up the fetched script metadata (we've copied what we need)
-    fetched_script.deinit();
-
-    // CRITICAL: Use queueTask to schedule worker initialization.
-    // The initialization MUST be deferred because:
-    // 1. The Worker constructor is called from within a V8 callback
-    // 2. Entering the worker's isolate corrupts the current HandleScope
-    // 3. Deferred execution runs after V8 has restored its state
-    //
-    // NOTE: The event loop processes ONE task per iteration, then polls timers.
-    // This means worker init tasks may run AFTER JavaScript setTimeout callbacks
-    // if there are many workers being initialized simultaneously.
-    //
-    // For reliable message delivery timing, the script fetch is done in the
-    // constructor (above), only the script EXECUTION is deferred.
-    if (ctx.getOptionalEventLoop()) |event_loop| {
-        WorkerTask.queue(event_loop, instance, &initializeWorker);
-    } else {
-        // A realm with no event loop - a worker's, making a nested worker -
-        // runs its tasks as timers on the loop its host runs on, which its
-        // realm records.
-        if (ctx.timer) |t| {
-            WorkerTask.arm(t, 1, instance, &initializeWorker);
-        } else {
-            std.log.warn("Worker: no timer available, using synchronous initialization", .{});
-            initializeWorkerSync(internal_state, ctx);
-        }
-    }
-
+    // The thread took the implicit port.
+    inside_end = start.inside_end;
     return instance;
 }
 
@@ -450,727 +343,146 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
 // EventTarget's event handler map, where firing `message` or `error` at this
 // Worker finds them - in order with every listener.
 
-/// Getter for onerror
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "error");
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "error");
 }
 
-/// Getter for onmessage
 pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "message");
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "message");
 }
 
-/// Getter for onmessageerror
 pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "messageerror");
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "messageerror");
 }
 
-/// Get internal state from instance
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    const state = instance.getState(State);
-    return if (state.own._internal) |internal| @constCast(internal) else null;
-}
-
-/// Setter for onerror
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "error", value);
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "error", value);
 }
 
-/// Setter for onmessage
-///
-/// When onmessage is set, we also process any queued messages. This handles the
-/// common pattern where:
-/// 1. Worker constructor executes the worker script (which posts messages)
-/// 2. JavaScript continues and sets worker.onmessage
-/// 3. Messages should now be delivered
-///
-/// Per HTML spec, messages should be delivered asynchronously via the event loop.
-/// However, for practical purposes (especially WPT tests), processing messages
-/// when the handler is set achieves the correct observable behavior - messages
-/// are delivered after the handler is ready.
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "message", value);
-
-    if (getInternal(instance)) |internal| {
-        // Process any messages that were queued before the handler was set
-        // This ensures messages posted by the worker during script execution
-        // are delivered now that there's a handler to receive them.
-        if (internal.dedicated_worker) |dedicated_worker| {
-            keepAliveWhileRunning(internal);
-            dedicated_worker.processQueuedMessages();
-        }
-    }
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "message", value);
 }
 
-/// Setter for onmessageerror
 pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "messageerror", value);
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "messageerror", value);
 }
 
-/// The deferred half of the constructor, as a task (WorkerTask): ALL worker
-/// creation is deferred, for nested workers too - entering and exiting the
-/// worker's agent during a constructor disrupts the calling agent's scopes.
+/// Operation: terminate
 ///
-/// It does all the heavy work:
-/// 1. Creates DedicatedWorker with timer backend
-/// 2. Fetches and resolves the script URL
-/// 3. Creates WorkerHost (new isolate)
-/// 4. Sets up DedicatedWorkerGlobalScope
-/// 5. Schedules script execution
-fn initializeWorker(instance: *runtime.Instance) void {
+/// Spec: "The terminate() method steps are to terminate a worker given
+/// this's worker." Steps 1-3 reach the worker's thread through its link
+/// (the closing flag, its loop woken to discard its tasks, the script
+/// running in it aborted - from this thread, while the worker's thread may be
+/// inside it). Step 4, here: "empty the port message queue of the port that
+/// the worker's implicit port is entangled with" - this object's outside
+/// port - and nothing the worker posts is delivered from now on. The
+/// worker's end reaches this object later, as a task, and its pending
+/// activity ends then.
+pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    // Terminated before it ran: "terminate a worker" sets the closing flag,
-    // and a worker whose flag is set runs nothing - not its script either
-    // (workers/Worker-terminate-forever.html: a `while (1);` script ran, and
-    // hung the page, once its URL resolved).
     if (internal.terminated) return;
-
-    // Get the stored context - we need it for timer operations
-    const ctx = internal.ctx orelse {
-        std.log.warn("Worker: no runtime context available for deferred initialization", .{});
-        return;
-    };
-    initializeWorkerSync(internal, ctx);
-}
-
-/// Initialize worker synchronously (internal helper)
-/// Called from either initializeWorkerCallback or synchronous fallback
-///
-/// This does all the heavy work that was previously in the constructor:
-/// - Creates DedicatedWorker
-/// - Creates V8 context (enters/exits worker isolate)
-/// - Sets up global scope
-/// - Schedules script execution
-///
-/// NOTE: Script fetch is now done in the constructor to ensure blob URLs
-/// are fetched before they can be revoked. The script content is already
-/// stored in internal.pending_script and internal.script_final_url.
-fn initializeWorkerSync(internal: *InternalState, ctx: runtime.Context) void {
-    const allocator = internal.allocator;
-    const url = internal.script_url;
-    const name = internal.name;
-    const worker_type = internal.worker_type;
-    const credentials = internal.credentials;
-
-    // Check if script was fetched successfully in the constructor
-    // If not, we still create the worker but it won't execute any script
-    const script_final_url = internal.script_final_url orelse blk: {
-        std.log.warn("No script_final_url - script fetch failed in constructor", .{});
-        // Still create worker for postMessage capability, but no script execution
-        internal.pending_script = null;
-        break :blk url; // Fall back to original URL for DedicatedWorker init
-    };
-
-    // Try to create the DedicatedWorker using the global timer backend
-    const timer_backend = platform.getDefaultTimerBackend(allocator) catch |err| {
-        std.log.warn("TimerBackend not available: {}, worker will not start", .{err});
-        return;
-    };
-
-    const dedicated_worker = DedicatedWorker.init(
-        allocator,
-        timer_backend,
-        url,
-        .{
-            .name = name,
-            .worker_type = worker_type,
-            .credentials = credentials,
-        },
-    ) catch |err| {
-        std.log.warn("Failed to create DedicatedWorker: {}", .{err});
-        return;
-    };
-    internal.dedicated_worker = dedicated_worker;
-
-    // Store reference to Worker instance for message callbacks
-    dedicated_worker.setUserData(internal.worker_instance);
-
-    // Set up message handler on outside port to receive messages from worker
-    dedicated_worker.setOnMessage(handleMessageFromWorkerCallback);
-
-    // Set up error handler to receive errors from worker
-    dedicated_worker.setParentErrorCallback(handleErrorFromWorkerCallback);
-
-    // Enable message dispatch on outside port
-    dedicated_worker.startMessageQueue();
-
-    // NOTE: Pending messages are NOT flushed here. Per Chromium's implementation,
-    // messages must be held until the worker script finishes evaluating.
-    // See DedicatedWorkerMessagingProxy::was_script_evaluated_ flag.
-    // The flush happens in executeWorkerScriptCallback AFTER script execution.
-
-    // The worker's agent ("run a worker" step 4), for the pre-fetched
-    // script's final URL.
-    // Its tasks run on its creator's loop: the timers the creator's realm
-    // records.
-    const host = WorkerHost.init(
-        allocator,
-        script_final_url,
-        worker_type,
-        ctx,
-    ) catch |err| {
-        std.log.warn("Failed to create the worker's agent: {}", .{err});
-        return;
-    };
-    internal.host = host;
-    // The worker shares its creator's cookie jar - the user agent's - which
-    // its global scope's settings hand out (a nested worker's creator is a
-    // worker, whose settings have it the same way).
-    host.cookie_jar = creatorCookieJar(ctx);
-    // Its policy container, chosen when the script was fetched.
-    if (internal.pending_policy_container) |container| {
-        host.setPolicyContainer(container);
-        internal.pending_policy_container = null;
-    }
-
-    // Create the WorkerContext
-    dedicated_worker.startWithContext() catch |err| {
-        std.log.warn("Failed to start worker context: {}", .{err});
-        return;
-    };
-
-    // Wire up the V8 context to the WorkerAgent's WorkerContext
-    if (dedicated_worker.agent.worker_context) |worker_ctx| {
-        worker_ctx.setEngineContext(host.getEngineContext(), host.getCallbacks());
+    internal.terminated = true;
+    if (internal.link) |link| {
+        _ = link.terminate();
     } else {
-        std.log.warn("WorkerContext not created after startWithContext", .{});
-        return;
+        // Never started: no end will come.
+        releasePendingActivity(instance);
     }
-
-    // Set up DedicatedWorkerGlobalScope with proper globals
-    host.setupWorkerGlobalScope(dedicated_worker) catch |err| {
-        std.log.warn("Failed to set up worker global scope: {}", .{err});
-        return;
-    };
-
-    // Start the worker's message queue
-    dedicated_worker.startWorkerMessageQueue();
-
-    // NOTE: pending_script is already set from constructor - no need to fetch again
-
-    // Execute worker script SYNCHRONOUSLY to prevent race with cleanup.
-    //
-    // The issue: If we defer script execution to a timer, test cleanup can call
-    // worker.terminate() BEFORE the script runs. This happens because:
-    // 1. Constructor schedules 1ms timer for script execution
-    // 2. Test harness checks all_done() after window.load (0ms timer)
-    // 3. If all_done() returns true, cleanup runs and terminates workers
-    // 4. 1ms timer fires but workers are already terminated
-    //
-    // The fix: Execute script synchronously during construction. This ensures
-    // the script runs before any cleanup can interfere.
-    //
-    // Per Chromium's DedicatedWorkerMessagingProxy pattern:
-    // - Script executes synchronously
-    // - Messages are queued in pending_outgoing_messages (not dispatched yet)
-    // - script_evaluated flag is set after script completes
-    // - Message dispatch happens in a deferred callback (for handler setup)
-    _ = executeWorkerScriptSync(internal);
-
-    // CRITICAL: Mark script as evaluated AFTER execution completes.
-    // This flag gates message dispatch in postMessage() - without it, messages
-    // posted before the script runs would be dispatched to a non-existent handler.
-    internal.script_evaluated = true;
-
-    // Schedule message dispatch to allow JavaScript to set up worker.onmessage
-    // handlers before messages are dispatched. This is the deferred part.
-    //
-    // CRITICAL: Use queueTask instead of setTimeout to guarantee task ordering.
-    // Per research on Chromium's DedicatedWorkerMessagingProxy and V8 event loop:
-    // - Tasks queued via queueTask are processed BEFORE libuv timers
-    // - This ensures message dispatch happens before test timeout timers
-    // - Using setTimeout(1ms) creates a race condition with test timeouts
-    if (ctx.getOptionalEventLoop()) |event_loop| {
-        if (internal.worker_instance) |worker_instance| {
-            WorkerTask.queue(event_loop, worker_instance, &dispatchMessagesOf);
-        }
-    } else if (ctx.timer) |timer| {
-        // Fallback to timer if no event loop available (a worker's realm,
-        // making a nested worker).
-        if (internal.worker_instance) |worker_instance| {
-            WorkerTask.arm(timer, 1, worker_instance, &dispatchMessagesOf);
-        }
-    } else {
-        // No timer or event loop - dispatch messages synchronously (handlers may not be set up)
-        dispatchWorkerMessages(internal);
+    if (internal.outside) |end| {
+        end.clearQueue();
+        // A notification already posted finds nothing.
+        end.unbind();
     }
 }
 
-/// Timer callback for executing the worker script (deferred from constructor)
+/// Operation: postMessage(message, transfer)
 ///
-/// CRITICAL: Worker script execution is deferred to this callback to avoid
-/// HandleScope corruption. Entering/exiting the worker isolate during the
-/// constructor disrupts the main isolate's HandleScope state.
-///
-/// This callback runs after:
-/// 1. The constructor returns and V8 has wrapped the instance
-/// 2. JavaScript continues (fetch_tests_from_worker sets up handlers)
-/// 3. The event loop runs this scheduled task
-fn executeWorkerScriptCallback(user_data: ?*anyopaque) void {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
+/// Spec: "act as if, when invoked, it immediately invoked the respective
+/// postMessage(message, transfer) ... on this's outside port" - the message
+/// port post message steps with options «[ "transfer" → transfer ]».
+pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
+    const allocator = instance.ctx.allocator;
+    const objects = try engine.convertToSequenceOfObjects(instance.ctx, transfer, allocator);
+    defer {
+        for (objects) |object| object.release();
+        allocator.free(objects);
+    }
+    const list = try allocator.alloc(runtime.JSValue, objects.len);
+    defer allocator.free(list);
+    for (objects, list) |object, *item| item.* = object.value;
+    return postMessageSteps(instance, message, list);
+}
+
+/// Operation: postMessage(message, options)
+pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!void {
+    const transfer: []const runtime.JSValue = if (options.wasPassed()) (options.getValue().transfer orelse &.{}) else &.{};
+    return postMessageSteps(instance, message, transfer);
+}
+
+/// The message port post message steps for the outside port: serialize with
+/// transfer in this realm - whatever the worker's state: a transferred
+/// ArrayBuffer is detached, a transferred port shipped - then add the
+/// message to the implicit port's queue, which the worker's loop delivers.
+/// A worker that has ended is no longer entangled (its realm's end
+/// disentangled its implicit port): the message is dropped ("If targetPort is
+/// null ... return"), and so is one a terminated worker never runs.
+fn postMessageSteps(instance: *runtime.Instance, message: runtime.JSValue, transfer: []const runtime.JSValue) anyerror!void {
     const internal = getInternal(instance) orelse return;
-
-    // Execute worker script.
-    //
-    // Timeline (per Chromium's DedicatedWorkerMessagingProxy):
-    // 1. new Worker(...) - constructor returns, fetch_tests_from_worker sets up handlers
-    // 2. JavaScript calls worker.postMessage() - messages queued in pending_outgoing_messages
-    // 3. setTimeout(0, executeWorkerScriptCallback) fires (we're here)
-    // 4. Worker script runs, sets self.onmessage handler
-    // 5. Script evaluation complete - NOW flush pending messages (was_script_evaluated_ = true)
-    // 6. Messages dispatched to worker's onmessage handler
-    _ = executeWorkerScriptSync(internal);
-
-    // CRITICAL: Mark script as evaluated AFTER execution completes.
-    // This flag gates message dispatch in postMessage() - without it, messages
-    // posted before the script runs would be dispatched to a non-existent handler.
-    internal.script_evaluated = true;
-
-    // CRITICAL: Flush pending messages AFTER script evaluation (per Chromium pattern).
-    // Before this point, was_script_evaluated_ was effectively false.
-    // Now the worker's onmessage handler is set up and ready to receive messages.
-    const dedicated_worker = internal.dedicated_worker orelse return;
-    const pending_count = internal.pending_outgoing_messages.items.len;
-    if (pending_count > 0) {
-        std.log.debug("[Worker] Flushing {d} pending messages after script eval", .{pending_count});
-        flushPendingOutgoing(internal, dedicated_worker);
-    }
-
-    // Now process the messages in the worker's realm.
-    // The messages are in inside_port.message_queue (via port entanglement).
-    if (internal.host) |host| {
-        worker_host.processIncomingMessages(host);
-    }
-
-    // Check if worker sent any messages back and dispatch them to main thread
-    const outside_queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
-    const has_messages = outside_queue_len > 0;
-
-    log.debug("[executeWorkerScriptCallback] outside_port queue len={d}, has_messages={}", .{ outside_queue_len, has_messages });
-
-    // Dispatch worker→main messages synchronously.
-    // Although worker script execution enters/exits the worker isolate (which could
-    // corrupt the outer HandleScope), dispatchMessageEvent creates its own fresh
-    // HandleScope for V8 operations. This is safe because:
-    // 1. We've exited the worker isolate and are back in the main isolate
-    // 2. dispatchMessageEvent creates a new HandleScope before any V8 operations
-    // 3. This avoids timer scheduling delays that cause test timeouts
-    if (has_messages) {
-        log.debug("[executeWorkerScriptCallback] Calling processQueuedMessages", .{});
-        keepAliveWhileRunning(internal);
-        dedicated_worker.processQueuedMessages();
-
-        // CRITICAL: Message handlers may have posted NEW messages via self.postMessage().
-        // For nested workers, the outer worker's onmessage handler calling self.postMessage()
-        // will queue messages in pending_messages. These may go to DIFFERENT worker ports!
-        //
-        // Example flow:
-        // 1. Inner worker: self.postMessage("from inner") → queued in pending_messages
-        // 2. flushPendingMessages() → moved to inner worker's outside_port.message_queue
-        // 3. processQueuedMessages() → dispatches to outer worker's onmessage
-        // 4. Outer worker's onmessage: self.postMessage("outer received: ...")
-        //    → queued in pending_messages for OUTER worker's outside_port
-        // 5. We need to flush and process ALL affected ports!
-        processAllPendingMessages(internal);
-    }
+    const end = internal.outside orelse return;
+    const port_message = try worker_host.serializePortMessage(instance.ctx, message, transfer, instance.ctx.allocator);
+    end.post(port_message);
 }
 
-/// Dispatch the worker's messages, as a task (WorkerTask) armed after its
-/// script ran - so JavaScript has set up worker.onmessage first.
-fn dispatchMessagesOf(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    dispatchWorkerMessages(internal);
-}
+// ============================================================================
+// What the worker sends its Worker object, on the Worker's own loop
+// ============================================================================
 
-/// A running worker keeps its Worker object alive, as Blink's
-/// ActiveScriptWrappable does. Dispatching the worker's messages runs the
-/// page's handlers, and one of them can drop the last reference to the Worker
-/// - the harness does, when the worker reports its tests complete. A
-/// collection then freed the Worker, and its DedicatedWorker, while
-/// processQueuedMessages was still walking its port: a segfault on every run
-/// of html/webappapis/atob/base64.any.js once a turn stopped draining the
-/// queue in one go. So the wrapper is held from the first dispatch on, until
-/// the worker has ended and everything it posted is delivered - the worker
-/// host releases it then (`releaseOwnerWhenIdle`), from a turn of its own.
-fn keepAliveWhileRunning(internal: *InternalState) void {
-    keepPendingActivity(internal.worker_instance orelse return);
-}
-
-/// Take the engine's pending-activity hold on a Worker.
-fn keepPendingActivity(instance: *runtime.Instance) void {
-    engine.keepPlatformObjectAlive(instance);
-}
-
-/// End it (idempotent).
-fn releasePendingActivity(instance: *runtime.Instance) void {
-    engine.releasePlatformObject(instance);
-}
-
-/// Post the messages queued before the worker existed, in order.
-fn flushPendingOutgoing(internal: *InternalState, dedicated_worker: *DedicatedWorker) void {
-    for (internal.pending_outgoing_messages.items) |*message| {
-        dedicated_worker.port_pair.outside_port.postEngineMessage(message.*) catch |err| {
-            std.log.warn("[Worker] Failed to flush pending message: {}", .{err});
-            message.deinit();
-        };
-    }
-    internal.pending_outgoing_messages.clearRetainingCapacity();
-}
-
-/// An event-loop task for a Worker, holding it as (address, slab generation).
-///
-/// A Worker nothing has dispatched to yet is not held (keepAliveWhileRunning),
-/// so script can drop it and a collection free it - and reissue its slot -
-/// between the task being queued and being run. The task then reads whatever
-/// lives there; with the generation it runs only for the Worker it was for.
-const WorkerTask = struct {
-    instance: *runtime.Instance,
-    generation: u64,
-    allocator: std.mem.Allocator,
-    step: *const fn (*runtime.Instance) void,
-
-    fn queue(event_loop: anytype, instance: *runtime.Instance, step: *const fn (*runtime.Instance) void) void {
-        const allocator = instance.ctx.allocator;
-        const task = allocator.create(WorkerTask) catch return;
-        task.* = .{
-            .instance = instance,
-            .generation = runtime.SlabAllocator.generationOf(instance),
-            .allocator = allocator,
-            .step = step,
-        };
-        event_loop.queueTask(event_loop_mod.Task{ .callback = &run, .context = task, .drop = &drop });
-    }
-
-    /// The same step, as a timer on `timer` after `delay_ms` - for a realm
-    /// with no event loop (a worker's, making a nested worker). It used to be
-    /// a timer carrying the bare Worker pointer, which a Worker collected in
-    /// the meantime left pointing at a freed slot.
-    fn arm(timer: runtime.TimerInterface, delay_ms: u64, instance: *runtime.Instance, step: *const fn (*runtime.Instance) void) void {
-        const allocator = instance.ctx.allocator;
-        const task = allocator.create(WorkerTask) catch return;
-        task.* = .{
-            .instance = instance,
-            .generation = runtime.SlabAllocator.generationOf(instance),
-            .allocator = allocator,
-            .step = step,
-        };
-        if (timer.setTimeout(delay_ms, &run, task) == 0) allocator.destroy(task);
-    }
-
-    fn run(data: ?*anyopaque) void {
-        const task: *WorkerTask = @ptrCast(@alignCast(data orelse return));
-        defer task.allocator.destroy(task);
-        if (runtime.SlabAllocator.generationOf(task.instance) != task.generation) return;
-        task.step(task.instance);
-    }
-
-    fn drop(data: ?*anyopaque) void {
-        const task: *WorkerTask = @ptrCast(@alignCast(data orelse return));
-        task.allocator.destroy(task);
-    }
+/// The outside port's receiver: this Worker, on its realm's loop.
+const outside_port_hooks: port_channels.ReceiverHooks = .{
+    .deliver = deliverHook,
+    .closed = closedHook,
 };
 
-/// Dispatch worker messages to main thread handlers.
-/// This is called either from the timer callback or synchronously as fallback.
-fn dispatchWorkerMessages(internal: *InternalState) void {
-    const dedicated_worker = internal.dedicated_worker orelse return;
-
-    // Flush pending messages to the inside port for worker to receive
-    flushPendingOutgoing(internal, dedicated_worker);
-
-    // Process messages in the worker's realm
-    if (internal.host) |host| {
-        worker_host.processIncomingMessages(host);
-    }
-
-    // CRITICAL: Flush messages from threadlocal pending_messages to port queues.
-    // Worker's self.postMessage() adds messages to pending_messages, not directly
-    // to outside_port.message_queue. This flush moves them to the actual port.
-    DedicatedWorker.flushPendingMessages();
-
-    // Check if worker sent any messages back and dispatch them to main thread
-    const outside_queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
-    const has_messages = outside_queue_len > 0;
-
-    log.debug("[dispatchWorkerMessages] worker={*} outside_port={*} queue len={d}, has_messages={}", .{ dedicated_worker, dedicated_worker.port_pair.outside_port, outside_queue_len, has_messages });
-
-    // Dispatch worker→main messages
-    if (has_messages) {
-        log.debug("[dispatchWorkerMessages] Calling processQueuedMessages", .{});
-        keepAliveWhileRunning(internal);
-        dedicated_worker.processQueuedMessages();
-        processAllPendingMessages(internal);
-    }
+/// The Worker, if `receiver` is still the object its port was bound to: a
+/// collected Worker's slot can be reissued.
+fn liveReceiver(receiver: *anyopaque, generation: u64) ?*runtime.Instance {
+    const worker: *runtime.Instance = @ptrCast(@alignCast(receiver));
+    if (runtime.SlabAllocator.generationOf(worker) != generation) return null;
+    return worker;
 }
 
-/// Process all pending messages across all worker ports.
-/// This handles the case where message handlers post to different workers.
-fn processAllPendingMessages(initial_internal: *InternalState) void {
-    // Keep processing until no more messages are pending
-    var iterations: usize = 0;
-    const max_iterations: usize = 100; // Prevent infinite loops
-
-    while (iterations < max_iterations) {
-        iterations += 1;
-
-        // Flush pending messages and get the ports that received them
-        var affected_ports = DedicatedWorker.flushPendingMessagesAndGetPorts(initial_internal.allocator) catch return;
-        defer affected_ports.deinit(initial_internal.allocator);
-
-        if (affected_ports.items.len == 0) {
-            break; // No more pending messages
-        }
-
-        // Process messages on each affected port
-        for (affected_ports.items) |port| {
-            while (port.message_queue.items.len > 0) {
-                const queued_msg = port.message_queue.orderedRemove(0);
-                if (port.on_message) |handler| {
-                    handler(port, queued_msg, port.on_message_context);
-                }
-                queued_msg.deinit();
-            }
-        }
-    }
-
-    if (iterations >= max_iterations) {
-        std.log.warn("processAllPendingMessages: hit max iterations", .{});
-    }
-}
-
-/// Callback to dispatch worker messages in a clean V8 state.
-///
-/// This runs in a separate timer callback (not immediately after worker script
-/// execution) to ensure V8's HandleScope state is properly restored.
-///
-/// The event loop's timer handling runs after V8 microtask checkpoints,
-/// so we're guaranteed to have a valid HandleScope context here.
-fn dispatchWorkerMessagesCallback(user_data: ?*anyopaque) void {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data orelse return));
-    const internal = getInternal(instance) orelse return;
-    const dedicated_worker = internal.dedicated_worker orelse return;
-
-    // Now dispatch messages - we're in a clean V8 state with proper HandleScope
-    keepAliveWhileRunning(internal);
-    dedicated_worker.processQueuedMessages();
-}
-
-/// Execute worker script synchronously (internal helper)
-/// Called from either executeWorkerScriptCallback or synchronous fallback
-///
-/// CRITICAL DESIGN NOTE:
-/// V8's HandleScope state is per-isolate and becomes corrupted when we switch
-/// between isolates on the same thread. The worker's executeScript() enters the
-/// worker isolate, which invalidates any HandleScope state in the main isolate.
-///
-/// Therefore, we MUST NOT do any V8 operations (like message dispatch) immediately
-/// after worker script execution. Instead, we queue a task to dispatch messages
-/// in the next event loop iteration, where the HandleScope state is clean.
-///
-/// Returns: true if messages were queued for dispatch, false otherwise
-fn executeWorkerScriptSync(internal: *InternalState) bool {
-    std.log.debug("[executeWorkerScriptSync] ENTRY", .{});
-    const dedicated_worker = internal.dedicated_worker orelse {
-        std.log.debug("[executeWorkerScriptSync] No dedicated_worker, returning", .{});
-        return false;
-    };
-    const script = internal.pending_script orelse {
-        // "Run a worker" onComplete step 1: the script is null - its fetch
-        // failed (a network error, a status that is not ok, a MIME type that
-        // is no JavaScript MIME type) - so `error` is fired at the worker.
-        std.log.debug("[executeWorkerScriptSync] No pending_script, returning", .{});
-        queueErrorEvent(internal);
-        return false;
-    };
-    std.log.debug("[executeWorkerScriptSync] Script len={d}, preview: {s}", .{ script.len, script[0..@min(script.len, 80)] });
-
-    // Run the script through the worker host - the realm its messages are
-    // dispatched in. dedicated_worker.executeScript() runs through the older
-    // WorkerContext, whose realm is not the one onmessage is looked up in.
-    if (internal.host) |host| {
-        switch (internal.worker_type) {
-            .classic => host.executeScript(script) catch |err| {
-                std.log.err("[executeWorkerScriptSync] Failed to execute: {}", .{err});
-            },
-            // A module worker's graph, from the fetched root: one that is
-            // null, or that carries an error to rethrow, fails the worker.
-            .module => if (!host.executeModuleScript(internal.script_url, script)) queueErrorEvent(internal),
-        }
-        log.debug("[executeWorkerScriptSync] executeScript returned", .{});
-    } else {
-        std.log.err("[executeWorkerScriptSync] No WorkerHost!", .{});
-    }
-
-    // Flush pending messages to port queues
-    // This is a pure Zig operation - NO V8 operations!
-    DedicatedWorker.flushPendingMessages();
-
-    // Free the script source
-    internal.allocator.free(script);
-    internal.pending_script = null;
-
-    // Check if there are messages to dispatch
-    const queue_len = dedicated_worker.port_pair.outside_port.message_queue.items.len;
-
-    // DO NOT dispatch messages here!
-    // The V8 HandleScope state is corrupted after worker isolate enter/exit.
-    // Messages will be dispatched by the event loop in the next iteration,
-    // where the HandleScope is properly managed.
-    //
-    // The event loop will call processQueuedMessages() in its runOnce() or via
-    // a queued task, both of which have clean HandleScope state.
-
-    return queue_len > 0;
-}
-
-/// "Run a worker" onComplete, step 1.1: "Queue a global task on the DOM
-/// manipulation task source given worker's relevant global object to fire
-/// an event named error at worker" - a plain Event, not cancelable.
-fn queueErrorEvent(internal: *InternalState) void {
-    const instance = internal.worker_instance orelse return;
-    const ctx = internal.ctx orelse return;
-    if (ctx.getOptionalEventLoop()) |event_loop| {
-        WorkerTask.queue(event_loop, instance, &fireErrorEvent);
-    } else if (ctx.timer) |timer| {
-        WorkerTask.arm(timer, 0, instance, &fireErrorEvent);
-    }
-}
-
-fn fireErrorEvent(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    const ctx = internal.ctx orelse return;
-    engine.runTaskInRealm(ctx, fireErrorEventSteps, instance) catch {};
-}
-
-fn fireErrorEventSteps(data: ?*anyopaque) void {
-    const worker: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
-    const event = interfaces.Event.call_constructor(
-        worker.ctx,
-        runtime.DOMString.initInterned("error"),
-        webidl.Opt(dictionaries.EventInit).notPassed(),
-    ) catch return;
-    const generation = runtime.SlabAllocator.generationOf(event);
-    _ = @import("dom").fire_event.dispatchTrusted(worker, event) catch {};
-    event.releaseIfUnwrapped(generation);
-}
-
-/// Callback for messages received from the worker via the outside port
-///
-/// Spec: HTML Standard § 10.2.3
-/// "When a message is received on the outside port..."
-/// 1. Deserialize the message data
-/// 2. Create a MessageEvent with the data
-/// 3. Dispatch the event (invoke onmessage handler)
-///
-/// This is called by DedicatedWorker when a message arrives from the worker
-/// on the outside_port (worker → main thread direction).
-fn handleMessageFromWorkerCallback(dedicated_worker: *DedicatedWorker, msg: *QueuedMessage) void {
-    // Get the Worker instance from user_data stored in DedicatedWorker
-    const user_data = dedicated_worker.getUserData() orelse return;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data));
-
-    // Dispatch the message event to onmessage handler
-    dispatchMessageEvent(instance, msg);
-}
-
-/// Callback to handle errors from the worker
-///
-/// This is called by DedicatedWorker when an uncaught error occurs in the worker
-/// and self.onerror didn't handle it. We create an ErrorEvent and dispatch it
-/// to the Worker object's onerror handler.
-///
-/// Spec: HTML Standard § 10.2.5 step 11
-/// "Queue a task to fire an event named error at worker."
-fn handleErrorFromWorkerCallback(dedicated_worker: *DedicatedWorker, error_event: *WorkerErrorEvent) void {
-    // Get the Worker instance from user_data stored in DedicatedWorker
-    const user_data = dedicated_worker.getUserData() orelse {
-        error_event.deinit();
+/// One task of the outside port's message queue: the message port post
+/// message steps' step 7 with this Worker as the message event target - a
+/// task of its realm (`runTaskInRealm`: a nested worker's Worker lives in a
+/// worker's realm, whose task has an end of its own).
+fn deliverHook(receiver: *anyopaque, generation: u64, delivery: *port_channels.Delivery) void {
+    const worker = liveReceiver(receiver, generation) orelse return;
+    const internal = getInternal(worker) orelse return;
+    if (internal.terminated) {
+        if (delivery.next()) |message| message.destroy();
         return;
-    };
-    const instance: *runtime.Instance = @ptrCast(@alignCast(user_data));
-
-    // Dispatch the error event to onerror handler
-    dispatchWorkerErrorEvent(instance, error_event);
-}
-
-/// Fire `error` at the Worker - HTML "report an exception" for the worker's
-/// global scope, when it went unhandled there: "fire an event named error at
-/// workerObject, using ErrorEvent, with the cancelable attribute initialized
-/// to true, and additional attributes initialized according to errorInfo" -
-/// with `error` null: the exception value does not reach the owner's realm.
-///
-/// Every "error" listener hears it, and `onerror`, in the order they were
-/// added (EventTarget's list holds both).
-///
-/// TODO(workers): "If notHandled is true, then report exception for
-/// workerObject's relevant global object with omitError set to true" - the
-/// owner's own error event. Not yet: the owner's global does not hear it.
-fn dispatchWorkerErrorEvent(instance: *runtime.Instance, error_event: *WorkerErrorEvent) void {
-    defer error_event.deinit();
-    const internal = getInternal(instance) orelse return;
-    const ctx = internal.ctx orelse return;
-    // A task of the owner's realm, entered from the event loop, and ended
-    // the owner's way (see `dispatchMessageEvent`).
-    var fire = ErrorFire{ .worker = instance, .error_event = error_event };
-    engine.runTaskInRealm(ctx, ErrorFire.steps, &fire) catch {};
-}
-
-const ErrorFire = struct {
-    worker: *runtime.Instance,
-    error_event: *WorkerErrorEvent,
-
-    fn steps(data: ?*anyopaque) void {
-        const self: *ErrorFire = @ptrCast(@alignCast(data orelse return));
-        const worker = self.worker;
-        const init_dict = dictionaries.ErrorEventInit{
-            .base = .{ .cancelable = true },
-            .message = runtime.DOMString.initInterned(self.error_event.message),
-            .filename = self.error_event.filename,
-            .lineno = self.error_event.lineno,
-            .colno = self.error_event.colno,
-            .@"error" = runtime.JSValue.jsNull,
-        };
-        const event = interfaces.ErrorEvent.call_constructor(
-            worker.ctx,
-            runtime.DOMString.initInterned("error"),
-            webidl.Opt(dictionaries.ErrorEventInit).passed(init_dict),
-        ) catch return;
-        const generation = runtime.SlabAllocator.generationOf(event);
-        // Fired by the user agent: trusted (DOM 2.10). EventTarget is an
-        // ancestor, so its impl.
-        _ = EventTargetImpl.dispatchTrusted(worker, event) catch {};
-        event.releaseIfUnwrapped(generation);
     }
-};
-
-/// Deliver a message the worker posted: the receiving half of the message
-/// port post message steps for the Worker's outside port - deserialized into
-/// this realm, its transferred ports received here, and `message` fired at
-/// the Worker (or `messageerror`, when it does not deserialize). Every
-/// "message" listener hears it, and `onmessage`.
-fn dispatchMessageEvent(instance: *runtime.Instance, msg: *QueuedMessage) void {
-    const internal = getInternal(instance) orelse return;
-    const ctx = internal.ctx orelse return;
-    const message = if (msg.engine_message) |*m| m else return;
-    var delivery = Delivery{ .worker = instance, .message = message };
-    // The owner's task: its realm entered from the loop, then the task's
-    // end - which for a worker's realm (a nested worker's owner) is the
-    // worker's own: a microtask checkpoint, and what the handler posted
-    // leaving for the worker's owner. Entered with runInRealm, the task had
-    // no end there, so a nested worker's messages reached the outer worker's
-    // handler and whatever it posted on sat in its queue.
-    engine.runTaskInRealm(ctx, Delivery.steps, &delivery) catch {};
+    var task: Delivery = .{ .worker = worker, .delivery = delivery };
+    engine.runTaskInRealm(worker.ctx, Delivery.steps, &task) catch {};
+    // The last message of a worker that has ended: nothing is pending now.
+    releaseWhenIdle(worker);
 }
 
 const Delivery = struct {
     worker: *runtime.Instance,
-    message: *EngineMessage,
+    delivery: *port_channels.Delivery,
 
     fn steps(data: ?*anyopaque) void {
         const self: *Delivery = @ptrCast(@alignCast(data orelse return));
-        worker_host.deliverEngineMessage(self.worker.ctx, self.worker, self.message, fireAtWorker);
+        const message = self.delivery.next() orelse return;
+        defer message.destroy();
+        worker_host.deliverPortMessage(self.worker.ctx, self.worker, message, fireAtWorker);
     }
 };
+
+/// The implicit port was disentangled - the worker's realm ended. A Worker
+/// hears no `close`: its end arrives as a task of its own.
+fn closedHook(_: *anyopaque, _: u64) void {}
 
 /// Fire a MessageEvent at the Worker `target`, made in `realm`. `data` is
 /// borrowed: the event keeps its own.
@@ -1193,107 +505,170 @@ fn fireAtWorker(
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
     // Fired by the user agent: trusted (DOM 2.10).
-    _ = EventTargetImpl.dispatchTrusted(target, event) catch {};
+    _ = dom.fire_event.dispatchTrusted(target, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
-/// Operation: terminate
-///
-/// Spec: HTML Standard § 10.2.3.1 terminate()
-/// "The terminate() method, when invoked, must cause the terminate a worker
-/// algorithm to be run on the worker with which the object is associated."
-pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
-    log.debug("[Worker.call_terminate] ENTRY", .{});
+/// What the worker's tasks do at this Worker (html.worker_host.OwnerSteps).
+const owner_steps: worker_host.OwnerSteps = .{
+    .error_reported = errorReported,
+    .start_failed = startFailed,
+    .ended = workerEnded,
+};
 
-    const state = instance.getState(State);
-    if (state.own._internal) |internal_ptr| {
-        // Mark as terminated
-        const internal = @constCast(internal_ptr);
-        internal.terminated = true;
-        if (internal.dedicated_worker) |worker| {
-            log.debug("[Worker.call_terminate] worker={*}, agent={*}", .{ worker, worker.agent });
-            worker.terminate();
-        }
-        // The host's half: discard the worker's tasks, empty the port queue
-        // its implicit port is entangled with, and let its realm and isolate
-        // go (HTML "terminate a worker"). The host releases the Worker's
-        // pending-activity hold once the realm is gone; a worker that never
-        // started has no host, and nothing is left pending now.
-        if (internal.host) |host| host.terminate() else releasePendingActivity(instance);
-    }
+/// HTML "report an exception" step 7, for the worker's global scope, when
+/// the error went unhandled there: "Let notHandled be the result of firing
+/// an event named error at workerObject, using ErrorEvent, with the
+/// cancelable attribute initialized to true, and additional attributes
+/// initialized according to errorInfo" - `error` null: the exception value
+/// does not reach the owner's realm. "If notHandled is true, then report
+/// exception for workerObject's relevant global object with omitError set to
+/// true": the owner's global hears it - window.onerror, or, for a nested
+/// worker, the outer worker's global scope and so its Worker in turn.
+fn errorReported(worker: *runtime.Instance, report: *const worker_host.ErrorReport.Info) void {
+    const internal = getInternal(worker) orelse return;
+    if (internal.terminated) return;
+    var fire = ErrorFire{ .worker = worker, .info = report };
+    engine.runTaskInRealm(worker.ctx, ErrorFire.steps, &fire) catch {};
 }
 
-/// Operation: postMessage(message, transfer)
-///
-/// Spec: HTML Standard § 10.2.3.1: "act as if, when invoked, it immediately
-/// invoked the respective postMessage(message, transfer) ... on the port"
-/// its outside port is entangled with - the message port post message steps
-/// with options «[ "transfer" → transfer ]».
-pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, transfer: runtime.JSValue) anyerror!void {
-    const allocator = instance.ctx.allocator;
-    const objects = try engine.convertToSequenceOfObjects(instance.ctx, transfer, allocator);
-    defer {
-        for (objects) |object| object.release();
-        allocator.free(objects);
-    }
-    const list = try allocator.alloc(runtime.JSValue, objects.len);
-    defer allocator.free(list);
-    for (objects, list) |object, *item| item.* = object.value;
-    return postMessageSteps(instance, message, list);
-}
+const ErrorFire = struct {
+    worker: *runtime.Instance,
+    info: *const worker_host.ErrorReport.Info,
 
-/// Operation: postMessage(message, options)
-pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(dictionaries.StructuredSerializeOptions)) anyerror!void {
-    const transfer: []const runtime.JSValue = if (options.wasPassed()) (options.getValue().transfer orelse &.{}) else &.{};
-    return postMessageSteps(instance, message, transfer);
-}
-
-/// The message port post message steps for the outside port: serialize with
-/// transfer in this realm (a MessagePort in `transfer` is shipped), then queue
-/// the message for the worker - or hold it until the worker exists.
-fn postMessageSteps(instance: *runtime.Instance, message: runtime.JSValue, transfer: []const runtime.JSValue) anyerror!void {
-    const state = instance.getState(State);
-    const internal = state.own._internal orelse return;
-    if (internal.terminated) return; // Worker is terminated, ignore message
-
-    var serialized = try worker_host.serializeMessage(instance.ctx, message, transfer, internal.allocator);
-
-    if (internal.dedicated_worker) |worker| {
-        worker.port_pair.outside_port.postEngineMessage(serialized) catch |err| {
-            serialized.deinit();
-            return switch (err) {
-                error.PortClosed => error.WorkerClosed,
-                error.NotEntangled => error.WorkerClosed,
-                else => error.PostMessageFailed,
-            };
+    fn steps(data: ?*anyopaque) void {
+        const self: *ErrorFire = @ptrCast(@alignCast(data orelse return));
+        const worker = self.worker;
+        const init_dict = dictionaries.ErrorEventInit{
+            .base = .{ .cancelable = true },
+            .message = runtime.DOMString.initInterned(self.info.message),
+            .filename = self.info.filename,
+            .lineno = self.info.lineno,
+            .colno = self.info.colno,
+            .@"error" = runtime.JSValue.jsNull,
         };
-    } else {
-        // Queue for later - worker not ready yet
-        internal.pending_outgoing_messages.append(internal.allocator, serialized) catch |err| {
-            serialized.deinit();
-            return err;
+        const event = interfaces.ErrorEvent.call_constructor(
+            worker.ctx,
+            runtime.DOMString.initInterned("error"),
+            webidl.Opt(dictionaries.ErrorEventInit).passed(init_dict),
+        ) catch return;
+        const generation = runtime.SlabAllocator.generationOf(event);
+        const not_handled = dom.fire_event.dispatchTrusted(worker, event) catch true;
+        event.releaseIfUnwrapped(generation);
+        if (!not_handled) return;
+        const record = worker.ctx.getRealm() orelse return;
+        const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return));
+        const info: runtime.ErrorInfo = .{
+            .message = self.info.message,
+            .filename = self.info.filename,
+            .lineno = self.info.lineno,
+            .colno = self.info.colno,
+            .error_value = null,
         };
+        _ = html.report_exception.reportErrorInfo(global, &info, .{ .omit_error = true });
     }
+};
 
-    // CRITICAL: Only process messages if the worker script has been evaluated.
-    // Per Chromium's DedicatedWorkerMessagingProxy::was_script_evaluated_ pattern:
-    // - If script hasn't run yet, messages are queued and will be processed later
-    //   in executeWorkerScriptCallback after the script finishes
-    // - If script HAS run, we can immediately dispatch to self.onmessage
-    if (internal.script_evaluated) {
-        if (internal.host) |host| {
-            worker_host.processIncomingMessages(host);
+/// "Run a worker" onComplete step 1.1: "queue a global task on the DOM
+/// manipulation task source given worker's relevant global object to fire
+/// an event named error at worker" - a plain Event, not cancelable. (A
+/// worker terminated first hears nothing.)
+fn startFailed(worker: *runtime.Instance) void {
+    const internal = getInternal(worker) orelse return;
+    if (internal.terminated) return;
+    engine.runTaskInRealm(worker.ctx, fireErrorEventSteps, worker) catch {};
+}
 
-            // After processing, check if worker sent back any messages and dispatch them
-            // This handles the echo pattern: main → worker → main
-            if (internal.dedicated_worker) |dw| {
-                if (dw.port_pair.outside_port.message_queue.items.len > 0) {
-                    keepAliveWhileRunning(internal);
-                    dw.processQueuedMessages();
-                }
-            }
+fn fireErrorEventSteps(data: ?*anyopaque) void {
+    const worker: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
+    const event = interfaces.Event.call_constructor(
+        worker.ctx,
+        runtime.DOMString.initInterned("error"),
+        webidl.Opt(dictionaries.EventInit).notPassed(),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = dom.fire_event.dispatchTrusted(worker, event) catch {};
+    event.releaseIfUnwrapped(generation);
+}
+
+/// The worker has ended - its thread is joined. Its Worker's pending
+/// activity ends once what the worker posted has been delivered.
+fn workerEnded(worker: *runtime.Instance) void {
+    const internal = getInternal(worker) orelse return;
+    internal.ended = true;
+    releaseWhenIdle(worker);
+}
+
+/// Blink's DedicatedWorker::HasPendingActivity() turning false: the worker
+/// has ended, and nothing it posted waits to be delivered (a terminated
+/// worker's messages never are). Then a Worker script no longer references
+/// is collected like any other object. Always after a dispatch, never inside
+/// one: a handler that drops the last reference must not have its Worker
+/// collected under the dispatch.
+fn releaseWhenIdle(worker: *runtime.Instance) void {
+    const internal = getInternal(worker) orelse return;
+    if (!internal.ended) return;
+    if (!internal.terminated) {
+        if (internal.outside) |end| {
+            const state = end.state();
+            if (state.enabled and state.queued > 0) return;
         }
     }
+    releasePendingActivity(worker);
+}
+
+/// "Run a worker" onComplete step 1, from the constructor: the worker never
+/// runs, and `error` is fired at it from "a global task on the DOM
+/// manipulation task source" of its realm. Its pending activity ends with
+/// that task. On the realm's own event loop when it has one - the queue the
+/// fetch's CSP violation report went to first (securitypolicyviolation
+/// before `error`, as the worker-src tests count); a shared worker's realm,
+/// which has none, posts to its loop's inbox.
+fn queueStartFailure(instance: *runtime.Instance) void {
+    const task = instance.ctx.allocator.create(StartFailure) catch return releasePendingActivity(instance);
+    task.* = .{
+        .instance = instance,
+        .generation = runtime.SlabAllocator.generationOf(instance),
+        .allocator = instance.ctx.allocator,
+    };
+    if (instance.ctx.getOptionalEventLoop()) |loop| {
+        loop.queueTask(.{ .callback = StartFailure.run, .context = task, .drop = StartFailure.drop });
+        return;
+    }
+    const sink = instance.ctx.task_sink orelse {
+        task.allocator.destroy(task);
+        return releasePendingActivity(instance);
+    };
+    _ = sink.post(.{ .run = StartFailure.run, .drop = StartFailure.drop, .data = task });
+}
+
+const StartFailure = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+    allocator: std.mem.Allocator,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *StartFailure = @ptrCast(@alignCast(data.?));
+        defer self.allocator.destroy(self);
+        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return;
+        startFailed(self.instance);
+        releasePendingActivity(self.instance);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *StartFailure = @ptrCast(@alignCast(data.?));
+        self.allocator.destroy(self);
+    }
+};
+
+/// Take the engine's pending-activity hold on a Worker.
+fn keepPendingActivity(instance: *runtime.Instance) void {
+    engine.keepPlatformObjectAlive(instance);
+}
+
+/// End it (idempotent).
+fn releasePendingActivity(instance: *runtime.Instance) void {
+    engine.releasePlatformObject(instance);
 }
 
 /// The cookie jar of the global whose realm is `realm`: the worker's

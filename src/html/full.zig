@@ -133,11 +133,6 @@ pub const WorkerType = core.WorkerType;
 pub const WorkerOptions = core.WorkerOptions;
 pub const WorkerState = core.WorkerState;
 pub const WorkerError = core.WorkerError;
-pub const WorkerAgent = core.WorkerAgent;
-pub const DedicatedWorker = core.DedicatedWorker;
-pub const SharedWorker = core.SharedWorker;
-pub const SharedWorkerConnection = core.SharedWorkerConnection;
-pub const SharedWorkerManager = core.SharedWorkerManager;
 pub const WorkerLocation = core.WorkerLocation;
 pub const WorkerNavigator = core.WorkerNavigator;
 
@@ -248,10 +243,6 @@ pub const structure_commands = @import("structure_commands.zig");
 /// messages, errors and life); the engine half is behind the engine.
 pub const worker_host = @import("worker_host.zig");
 pub const WorkerHost = worker_host.WorkerHost;
-/// TRANSITIONAL: the name networking's held files (Response, XMLHttpRequest,
-/// WindowOrWorkerGlobalScope) still call `finishTaskIn` through. Goes when
-/// they move onto runTaskInRealm.
-pub const worker_v8_context = worker_host;
 
 /// A worker on a thread of its own: the link both threads share (its life,
 /// its agent for "terminate a worker", its thread), the event loop the thread
