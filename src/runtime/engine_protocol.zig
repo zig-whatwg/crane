@@ -1049,6 +1049,34 @@ pub inline fn invokeCallbackFunction(realm: Context, callback: *const CallbackFu
     return impl.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
 
+/// WebIDL "construct a callback function" (3.12): Construct(F, args) for a
+/// callback function type value used as a constructor - HTML's custom
+/// element constructors ("create an element" step 5.1.4, "upgrade an
+/// element" step 8). `realm` and the incumbent as for invokeCallbackFunction:
+/// the construction runs in F's associated realm (prepare to run script
+/// there) with the callback's context as the incumbent (prepare to run a
+/// callback), then cleans up. `callback` and `args` are BORROWED.
+///
+/// The result is a Completion, OWNED either way: `.normal`, the constructed
+/// object (its conversion to the callback's return type is the caller's, as
+/// for invokeCallbackFunction); `.throw`, what Construct threw - or, for step
+/// 3 ("If IsConstructor(F) is false, throw a TypeError"), a new TypeError of
+/// `realm`, made before any script is prepared. There is no exception
+/// behavior: construction always hands a throw back, for the caller to
+/// rethrow (`throwValue`) or report.
+///
+/// A constructed platform object comes back as its wrapper, a `.handle`:
+/// `convertToPlatformObject` reads its instance. That *Instance does not root
+/// the wrapper; the Owned does, until it is released. An impl that returns
+/// the *Instance (a custom element constructed here) calls
+/// `keepPlatformObjectAlive` before releasing the Owned, and ends that hold
+/// once its caller has the value: between the impl's return and the binding
+/// wrapping its result, a [CEReactions] end can run script, and so a
+/// collection.
+pub inline fn constructCallbackFunction(realm: Context, callback: *const CallbackFunction, args: []const JSValue) Error!Completion {
+    return impl.constructCallbackFunction(realm, callback, args);
+}
+
 /// WebIDL "call a user object's operation": a callback interface value
 /// called as a function, or through its `operation`. `realm` and the
 /// incumbent as for invokeCallbackFunction; `callback` is BORROWED.

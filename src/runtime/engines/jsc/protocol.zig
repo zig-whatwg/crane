@@ -193,6 +193,15 @@ pub fn releaseModuleRecord(_: *engine.ModuleRecord) void {}
 pub fn invokeCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }
+/// WebIDL "construct a callback function". Linked: JSObjectIsConstructor
+/// (false is a TypeError of the realm, the throw completion), then, in the
+/// function's context with the callback context pushed as the incumbent,
+/// JSObjectCallAsConstructor(ctx, F, argc, argv, &exception) - a non-null
+/// `exception` is the throw completion, else the result is the normal one
+/// (JSValueProtect'ed as the Owned).
+pub fn constructCallbackFunction(_: Context, _: *const engine.CallbackFunction, _: []const JSValue) Error!engine.Completion {
+    return error.NotSupported;
+}
 pub fn callUserObjectOperation(_: Context, _: *const engine.CallbackInterface, _: []const u8, _: engine.CallbackThis, _: []const JSValue, _: engine.ExceptionBehavior) Error!engine.Completion {
     return error.NotSupported;
 }

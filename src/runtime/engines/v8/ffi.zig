@@ -3491,6 +3491,12 @@ pub extern fn v8_Value_ToObject(context: *Context, value: *Value) ?*Value;
 /// HTML "extract error information" for what a callback threw: a thrown
 /// value that is not an Error carries no position of its own.
 pub extern fn v8_Function_CallCatchingWithSite(context: *Context, function: *Value, recv: ?*Value, argc: c_int, argv: ?[*]const *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
+/// ECMAScript Construct(function, argv) - newTarget the function - under a
+/// TryCatch: the result with `threw.*` false, or the thrown value with
+/// `threw.*` true and `site.*` where it was thrown. Null (threw true) only
+/// for a non-constructor or a terminating isolate. A non-null result is a new
+/// Global<Value>* the caller owns.
+pub extern fn v8_Function_ConstructCatchingWithSite(context: *Context, function: *Value, argc: c_int, argv: ?[*]const *Value, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
 /// v8_Object_GetCatching, and the throw site as v8_Function_CallCatchingWithSite.
 pub extern fn v8_Object_GetCatchingWithSite(context: *Context, object: *Value, key: [*]const u8, key_len: c_int, threw: *bool, site: *?*V8ErrorInfo) ?*Value;
 // ---- end lane: protocol ----

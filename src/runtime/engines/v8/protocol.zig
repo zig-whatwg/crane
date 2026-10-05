@@ -295,6 +295,7 @@ pub const releaseModuleRecord = protocol_modules.releaseModuleRecord;
 
 const protocol_callbacks = @import("protocol_callbacks.zig");
 pub const invokeCallbackFunction = protocol_callbacks.invokeCallbackFunction;
+pub const constructCallbackFunction = protocol_callbacks.constructCallbackFunction;
 pub const callUserObjectOperation = protocol_callbacks.callUserObjectOperation;
 
 /// In `realm`'s agent: a realm that cannot be entered reads nothing.
