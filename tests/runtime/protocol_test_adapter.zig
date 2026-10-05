@@ -106,8 +106,29 @@ pub fn defineBuiltinFunction(_: Context, _: []const u8, _: u32, _: *const engine
 }
 
 // 4.3 Running script
-pub fn runClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!void {
-    return error.NotSupported;
+
+/// No engine parses here, so every non-empty script fails to parse: it is
+/// reported as its parse error (ErrorInfo.parse_error), as an engine reports a
+/// script it cannot compile - what a host's "run a worker" onComplete step 1
+/// is driven by. An empty script completes normally. A string value source
+/// has no text to look at: NotSupported.
+pub fn runClassicScript(realm: Context, source: engine.ScriptSource, url: []const u8, _: ?*anyopaque, reporter: engine.Reporter) Error!void {
+    const text = switch (source) {
+        .utf8 => |bytes| bytes,
+        .string => return error.NotSupported,
+    };
+    if (text.len == 0) return;
+    const info: engine.ErrorInfo = .{
+        .message = "SyntaxError: the test adapter parses no script",
+        .filename = url,
+        .lineno = 1,
+        .colno = 1,
+        .error_value = JSValue.jsUndefined,
+        .realm = realm,
+        .parse_error = true,
+    };
+    reporter.report(reporter.host, &info);
+    return error.ExceptionReported;
 }
 pub fn evaluateClassicScript(_: Context, _: engine.ScriptSource, _: []const u8, _: ?*anyopaque, _: engine.Reporter) Error!Owned {
     return error.NotSupported;

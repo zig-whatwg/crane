@@ -49,6 +49,13 @@ pub const WorkerRegistry = struct {
         return scope.of(WorkerRegistry) catch null;
     }
 
+    /// The registry of the Browser `realm` belongs to, if one was made; never
+    /// makes one (a realm's end asks, and most realms never made a worker).
+    pub fn existingOf(realm: runtime.Context) ?*WorkerRegistry {
+        const scope = realm.browser_scope orelse return null;
+        return scope.existing(WorkerRegistry);
+    }
+
     /// Record a worker about to start: the registry takes a reference.
     /// error.Closed once the Browser is ending - the worker must not start.
     pub fn register(self: *WorkerRegistry, link: *WorkerLink) error{ Closed, OutOfMemory }!void {
@@ -109,6 +116,18 @@ pub const WorkerRegistry = struct {
         for (links.items) |link| _ = link.terminate();
     }
 
+    /// The realm `owner_realm` ends - its document is destroyed, or its
+    /// worker has ended: "terminate a worker" for every worker whose Worker
+    /// object lives in it (the worker is no longer actively needed - HTML
+    /// 10.2.3, and Blink's DedicatedWorker::ContextDestroyed). Their ends
+    /// reach the realm's loop, or are dropped with it; their threads are
+    /// joined there, or by the Browser's end.
+    pub fn terminateOwnedByRealm(self: *WorkerRegistry, owner_realm: *const anyopaque) void {
+        var links = self.snapshotByRealm(owner_realm) catch return self.terminateRealmEachLocked(owner_realm);
+        defer self.releaseSnapshot(&links);
+        for (links.items) |link| _ = link.terminate();
+    }
+
     /// An outer worker's end: join the threads of the workers it owns.
     pub fn joinOwnedBy(self: *WorkerRegistry, owner_sink: *runtime.TaskSink) void {
         while (self.nextWithThread(owner_sink)) |link| {
@@ -131,6 +150,27 @@ pub const WorkerRegistry = struct {
             list.appendAssumeCapacity(link.retain());
         }
         return list;
+    }
+
+    /// The registered links (each retained) whose owner realm is `realm`.
+    fn snapshotByRealm(self: *WorkerRegistry, realm: *const anyopaque) Allocator.Error!std.ArrayListUnmanaged(*WorkerLink) {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var list: std.ArrayListUnmanaged(*WorkerLink) = .empty;
+        errdefer list.deinit(self.allocator);
+        for (self.links.items) |link| {
+            if (link.owner_realm != realm) continue;
+            try list.append(self.allocator, link.retain());
+        }
+        return list;
+    }
+
+    fn terminateRealmEachLocked(self: *WorkerRegistry, realm: *const anyopaque) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.links.items) |link| {
+            if (link.owner_realm == realm) _ = link.terminate();
+        }
     }
 
     fn releaseSnapshot(self: *WorkerRegistry, list: *std.ArrayListUnmanaged(*WorkerLink)) void {

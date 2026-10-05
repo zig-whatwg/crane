@@ -8,10 +8,14 @@
 //! same storage key - in any window, frame or worker - as a `message` event
 //! in a task of the receiver's global.
 //!
-//! Every global a page makes - its windows, its frames' and its workers' -
-//! runs on the page's thread, so the channels live in one per-thread list,
-//! in creation order: what postMessage's destinations are drawn from, and
-//! the order they are sorted in (step 8).
+//! A Browser's windows and frames run on its thread and every dedicated
+//! worker on a thread of its own (docs/instances.md), so the channels live in
+//! one list per Browser - a supplement of its scope (runtime.BrowserScope),
+//! under a mutex - in creation order: what postMessage's destinations are
+//! drawn from, and the order they are sorted in (step 8). An entry holds what
+//! another thread may compare without touching the channel - its name and
+//! its storage key, copied when it is made - and its realm's TaskSink: the
+//! delivery is a task posted there, which runs on the channel's own thread.
 //!
 //! Stated, not modelled:
 //! - "Obtain a storage key for non-storage purposes" is the settings
@@ -35,7 +39,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
 const dom = @import("dom");
-const EventTargetImpl = @import("EventTarget.zig");
 const BroadcastChannel = interfaces.BroadcastChannel;
 
 pub const State = BroadcastChannel.State;
@@ -58,33 +61,137 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return state.own._internal;
 }
 
-/// A live channel: its address, and the generation of its block, which tells
-/// a freed channel from one reusing the block.
+/// A channel that is not closed, as other threads see it. Only `instance`'s
+/// own thread dereferences it (the delivery task, generation-checked).
 const Entry = struct {
     instance: *runtime.Instance,
     generation: u64,
+    /// The channel name. Owned.
+    name: []u8,
+    /// Its relevant settings object's storage key: the origin, serialized.
+    /// Owned.
+    storage_key: []u8,
+    /// Its relevant global, for an opaque origin: equal only to itself (see
+    /// the file comment). Compared, never dereferenced.
+    global: *const anyopaque,
+    /// Its realm's loop's inbox. A reference.
+    sink: *runtime.TaskSink,
+};
 
-    fn live(self: Entry) ?*runtime.Instance {
-        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
-        return self.instance;
+/// One destination of a message, copied out of the registry: its channel
+/// (dereferenced only on its own thread) and a reference to its sink.
+const Destination = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+    sink: *runtime.TaskSink,
+};
+
+/// A Browser's BroadcastChannels that are not closed, in creation order: a
+/// supplement of its scope, reached from any of its threads.
+const Registry = struct {
+    allocator: std.mem.Allocator,
+    /// Protects `entries`. Never held across a channel's steps: posting to a
+    /// sink takes only the sink's own lock.
+    mutex: std.Io.Mutex = .init,
+    entries: std.ArrayListUnmanaged(Entry) = .empty,
+
+    pub fn init(allocator: std.mem.Allocator) Registry {
+        return .{ .allocator = allocator };
+    }
+
+    /// The Browser's end: every channel's realm has ended.
+    pub fn deinit(self: *Registry) void {
+        for (self.entries.items) |entry| self.free(entry);
+        self.entries.deinit(self.allocator);
+    }
+
+    fn free(self: *Registry, entry: Entry) void {
+        self.allocator.free(entry.name);
+        self.allocator.free(entry.storage_key);
+        entry.sink.release();
+    }
+
+    fn of(realm: runtime.Context) ?*Registry {
+        const scope = realm.browser_scope orelse return null;
+        return scope.of(Registry) catch null;
+    }
+
+    fn add(self: *Registry, entry: Entry) !void {
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        try self.entries.append(self.allocator, entry);
+    }
+
+    /// Step 6-8's destinations for a message `source` posts: the other
+    /// channels named `name` whose storage key is `source_origin` (an opaque
+    /// one: of `source_global` itself), in creation order - copied under the
+    /// lock, each with a reference to its sink, which the caller releases.
+    fn destinationsOf(
+        self: *Registry,
+        source: *runtime.Instance,
+        name: []const u8,
+        source_global: *const anyopaque,
+        source_origin: []const u8,
+        allocator: std.mem.Allocator,
+    ) !std.ArrayListUnmanaged(Destination) {
+        const opaque_source = std.mem.eql(u8, source_origin, "null");
+        var list: std.ArrayListUnmanaged(Destination) = .empty;
+        errdefer {
+            for (list.items) |destination| destination.sink.release();
+            list.deinit(allocator);
+        }
+        std.Io.Threaded.mutexLock(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.entries.items) |entry| {
+            if (entry.instance == source) continue;
+            if (!std.mem.eql(u8, entry.name, name)) continue;
+            if (opaque_source) {
+                if (entry.global != source_global) continue;
+            } else if (!std.mem.eql(u8, entry.storage_key, source_origin)) continue;
+            try list.append(allocator, .{ .instance = entry.instance, .generation = entry.generation, .sink = entry.sink.retain() });
+        }
+        return list;
+    }
+
+    fn remove(self: *Registry, instance: *runtime.Instance) void {
+        const removed: ?Entry = blk: {
+            std.Io.Threaded.mutexLock(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
+            for (self.entries.items, 0..) |entry, i| {
+                if (entry.instance == instance) break :blk self.entries.orderedRemove(i);
+            }
+            break :blk null;
+        };
+        if (removed) |entry| self.free(entry);
     }
 };
 
-/// Every BroadcastChannel on this thread that is not closed, in creation
-/// order.
-threadlocal var channels: std.ArrayListUnmanaged(Entry) = .empty;
-
+/// Record `instance` - its name set - in its Browser's registry. A realm
+/// with no Browser scope or no loop (a test's) has no channel to reach.
 fn register(instance: *runtime.Instance) !void {
-    try channels.append(std.heap.page_allocator, .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) });
+    const registry = Registry.of(instance.ctx) orelse return;
+    const sink = instance.ctx.task_sink orelse return;
+    const internal = getInternal(instance) orelse return;
+    const global = relevantGlobal(instance) orelse return;
+    const origin = originOf(global) orelse return;
+    defer global.ctx.allocator.free(origin);
+    const name = try registry.allocator.dupe(u8, internal.name);
+    errdefer registry.allocator.free(name);
+    const storage_key = try registry.allocator.dupe(u8, origin);
+    errdefer registry.allocator.free(storage_key);
+    try registry.add(.{
+        .instance = instance,
+        .generation = runtime.SlabAllocator.generationOf(instance),
+        .name = name,
+        .storage_key = storage_key,
+        .global = global,
+        .sink = sink.retain(),
+    });
 }
 
 fn unregister(instance: *runtime.Instance) void {
-    for (channels.items, 0..) |entry, i| {
-        if (entry.instance == instance) {
-            _ = channels.orderedRemove(i);
-            return;
-        }
-    }
+    const registry = Registry.of(instance.ctx) orelse return;
+    registry.remove(instance);
 }
 
 /// Initialize instance (creates the instance)
@@ -95,8 +202,8 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     // A BroadcastChannel is an EventTarget: `message` is fired at it.
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
+    const instance = try interfaces.EventTarget.initWithState(allocator, StateType, vtable, ctx);
+    errdefer interfaces.EventTarget.deinit(instance);
     const internal = try allocator.create(InternalState);
     internal.* = .{ .allocator = allocator };
     instance.getState(StateType).own._internal = internal;
@@ -113,7 +220,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    EventTargetImpl.deinit(instance);
+    interfaces.EventTarget.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
 }
 
@@ -140,19 +247,19 @@ pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
 // handler map.
 
 pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "message");
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "message");
 }
 
 pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "messageerror");
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "messageerror");
 }
 
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "message", value);
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "message", value);
 }
 
 pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "messageerror", value);
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "messageerror", value);
 }
 
 /// "The close() method steps are to set this's closed flag to true." A
@@ -187,20 +294,21 @@ pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue) a
     // the following criteria: They are eligible for messaging. [Their storage
     // key] equals sourceStorageKey. Their channel name is this's channel
     // name. 7. Remove source from destinations. 8. Sort destinations [by
-    // creation order]." The list is in creation order; queueing the tasks
-    // runs no script, so it does not change while it is walked.
-    for (channels.items) |entry| {
-        const destination = entry.live() orelse continue;
-        if (destination == instance) continue;
-        const other = getInternal(destination) orelse continue;
-        if (other.closed or !std.mem.eql(u8, other.name, internal.name)) continue;
-        if (!eligibleForMessaging(destination)) continue;
-        if (!sameStorageKey(source_global, source_origin, destination)) continue;
-        // "9. For each destination in destinations, queue a global task on
-        // the DOM manipulation task source given destination's relevant
-        // global object."
-        queueDelivery(destination, serialized.serialized, source_origin);
+    // creation order]." The registry is in creation order. A destination
+    // may live on another thread: its name and storage key are compared
+    // here from the registry's copies, and whether it is eligible for
+    // messaging is decided by its own task, on its own thread (a stated
+    // approximation: the spec decides it now).
+    const registry = Registry.of(instance.ctx) orelse return;
+    var destinations = try registry.destinationsOf(instance, internal.name, source_global, source_origin, allocator);
+    defer {
+        for (destinations.items) |destination| destination.sink.release();
+        destinations.deinit(allocator);
     }
+    // "9. For each destination in destinations, queue a global task on the
+    // DOM manipulation task source given destination's relevant global
+    // object." Outside the registry's lock: each post allocates.
+    for (destinations.items) |destination| queueDelivery(destination, serialized.serialized, source_origin, allocator);
 }
 
 /// Nothing is transferred: the transfer list is empty, so this is never
@@ -222,18 +330,6 @@ fn relevantGlobal(instance: *runtime.Instance) ?*runtime.Instance {
 fn originOf(global: *runtime.Instance) ?[]const u8 {
     const settings = dom.global_settings.of(global) orelse return null;
     return settings.origin(global) catch null;
-}
-
-/// Whether `destination`'s storage key equals the source's (`source_global`,
-/// whose origin serializes to `source_origin`). An opaque origin ("null")
-/// equals only itself: approximated as the same global (see the file
-/// comment).
-fn sameStorageKey(source_global: *runtime.Instance, source_origin: []const u8, destination: *runtime.Instance) bool {
-    const global = relevantGlobal(destination) orelse return false;
-    if (std.mem.eql(u8, source_origin, "null")) return global == source_global;
-    const origin = originOf(global) orelse return false;
-    defer global.ctx.allocator.free(origin);
-    return std.mem.eql(u8, origin, source_origin);
 }
 
 /// "A BroadcastChannel object is said to be eligible for messaging when its
@@ -282,6 +378,12 @@ const Delivery = struct {
         self.allocator.destroy(self);
     }
 
+    /// Never run: its loop has ended. Any thread; no engine.
+    fn drop(data: ?*anyopaque) void {
+        const self: *Delivery = @ptrCast(@alignCast(data orelse return));
+        self.destroy();
+    }
+
     /// The task, from the destination global's event loop.
     fn run(data: ?*anyopaque) void {
         const self: *Delivery = @ptrCast(@alignCast(data orelse return));
@@ -318,10 +420,10 @@ const Delivery = struct {
     }
 };
 
-/// Queue step 9's task for `destination` on its global's event loop.
-fn queueDelivery(destination: *runtime.Instance, serialized: []const u8, origin: []const u8) void {
-    const timer = destination.ctx.getOptionalTimer() orelse return;
-    const allocator = destination.ctx.allocator;
+/// Queue step 9's task for the channel `entry` on its global's event loop:
+/// posted to its realm's sink, from whichever thread posts. `allocator` is
+/// thread-safe: the destination's thread frees what this one made.
+fn queueDelivery(entry: Destination, serialized: []const u8, origin: []const u8, allocator: std.mem.Allocator) void {
     const task = allocator.create(Delivery) catch return;
     const bytes = allocator.dupe(u8, serialized) catch {
         allocator.destroy(task);
@@ -333,13 +435,14 @@ fn queueDelivery(destination: *runtime.Instance, serialized: []const u8, origin:
         return;
     };
     task.* = .{
-        .channel = destination,
-        .generation = runtime.SlabAllocator.generationOf(destination),
+        .channel = entry.instance,
+        .generation = entry.generation,
         .allocator = allocator,
         .serialized = bytes,
         .origin = origin_copy,
     };
-    if (timer.setTimeout(0, Delivery.run, task) == 0) task.destroy();
+    // A closed sink - its loop has ended - drops the task.
+    _ = entry.sink.post(.{ .run = Delivery.run, .drop = Delivery.drop, .data = task });
 }
 
 /// Fire a MessageEvent named `event_type` at `channel`, with `data` (null for
@@ -357,6 +460,6 @@ fn fire(channel: *runtime.Instance, event_type: []const u8, data: ?runtime.JSVal
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
     // Fired by the user agent: trusted.
-    _ = EventTargetImpl.dispatchTrusted(channel, event) catch {};
+    _ = dom.fire_event.dispatchTrusted(channel, event) catch {};
     event.releaseIfUnwrapped(generation);
 }

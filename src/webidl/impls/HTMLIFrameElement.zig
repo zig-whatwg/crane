@@ -733,6 +733,9 @@ const Navigation = struct {
     /// request's policy container, and the initiator's a local URL's
     /// document inherits. Owned; null with no source document.
     initiator_policy_container: ?fetch_mod.internal.PolicyContainer = null,
+    /// Mixed Content 4.3 for the source snapshot's fetch client. Captured
+    /// by value; a later document must not change this navigation's policy.
+    prohibits_mixed_security_contexts: bool = false,
     /// Where the navigation request's CSP violations go: the source
     /// document's global, the request's client's (CSP 2.4.2) - guarded, as
     /// the source document can go while the fetch is in flight. Null with
@@ -1074,6 +1077,18 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
         // relevant settings object: the request's client, whose global a
         // violation of the request is (CSP 2.4.2).
         record.csp_reporter = dom_module.csp_violations.GuardedReporter.forRealm(source.ctx);
+        // Step 4's fetch client: snapshot Mixed Content 4.3 while the
+        // source document's settings still describe this navigation.
+        if (windowOfRealm(source.ctx)) |global| {
+            if (dom_module.global_settings.of(global)) |settings| {
+                if (settings.prohibits_mixed_security_contexts) |prohibits| {
+                    record.prohibits_mixed_security_contexts = prohibits(global) catch {
+                        record.destroy();
+                        return;
+                    };
+                }
+            }
+        }
     }
     // Step 5: "Let initiatorBaseURLSnapshot be sourceDocument's document base
     // URL" - kept only where it can be used, for a document at about:blank
@@ -1309,6 +1324,7 @@ fn startFetch(record: *Navigation) void {
         // client's global (CSP 2.4.2). The record outlives the fetch: its
         // destroy terminates it.
         if (record.csp_reporter) |*reporter| request.csp_violation_reporter = reporter.reporter();
+        request.prohibits_mixed_security_contexts = record.prohibits_mixed_security_contexts;
         // "Create navigation params by fetching" step 3: "If
         // sourceSnapshotParams's fetch client is navigable's container
         // document's relevant settings object, then set request's initiator

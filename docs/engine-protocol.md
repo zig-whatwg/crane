@@ -66,7 +66,7 @@ engine pointer or a flag saying who frees it.
 | `Completion` | ECMAScript's Completion Record from an operation that runs script: `normal` or `throw`, OWNED either way. |
 | `CallbackFunction`, `CallbackInterface` | WebIDL's callback values: the function or object (OWNED) and the callback context (the incumbent realm when the value was converted). The invoke operations take them BORROWED. |
 | `PromiseCapability` | WebIDL "a new promise": OWNED until `releasePromiseCapability`; its `promise` is a BORROWED view. |
-| `ErrorInfo` | HTML "extract error information": BORROWED for the call it is handed to. |
+| `ErrorInfo` | HTML "extract error information": BORROWED for the call it is handed to. `parse_error` says the reported exception is the script's PARSE ERROR (HTML "create a classic script": the script's parse error and error to rethrow), not what its evaluation threw - set by the classic-script operations; "run a worker" onComplete step 1 reads it (a worker whose script does not parse fires a plain `error` at its Worker and runs nothing). |
 | `Reporter` | HTML "report an exception", as the host supplies it to an operation that runs script. |
 | `ModuleRecord`, `IteratorRecord`, `ImportRequest` | Opaque, OWNED until their release or finish operation. |
 
@@ -293,6 +293,18 @@ from the integrator, who owns engine_protocol.zig. It lands in one change:
   constructor given TrustedScripts is checked as one given strings (eval of
   a TrustedScript is exact, through `getCodeForEval`). V8 also says
   is_code_like for a Function constructor given no arguments at all.
+
+## 7a. Declared differences between adapters
+
+- `ErrorInfo.parse_error` - V8: set when the classic script failed to compile
+  (protocol_scripts.zig, the compile-failed path of runClassicScript and
+  evaluateClassicScript*). JSC/QuickJS: always false - a worker whose
+  top-level script fails to parse is reported as a runtime error would be
+  ("run a worker" onComplete step 1 not distinguished). The route there:
+  JavaScriptCore's `JSCheckScriptSyntax` on the error path; QuickJS a
+  compile-only `JS_Eval` (`JS_EVAL_FLAG_COMPILE_ONLY`) before running. The
+  runtime tier's test adapter reports every non-empty script as its parse
+  error (it parses nothing), so host code can be driven through the path.
 
 ## 8. Transitional pieces
 

@@ -175,6 +175,18 @@ pub const ErrorInfo = struct {
     /// The realm whose global object the exception is reported for, when the
     /// engine knows it.
     realm: ?Context,
+    /// The exception is the script's PARSE ERROR: HTML "create a classic
+    /// script" found its source text unparsable and set the script's parse
+    /// error and error to rethrow - not an exception its evaluation threw (a
+    /// top-level `throw`, even of a SyntaxError, is false). Set by the
+    /// classic-script operations (runClassicScript, evaluateClassicScript*).
+    /// Its consumer is "run a worker" onComplete step 1: a worker whose
+    /// script has an error to rethrow fires a plain `error` event at its
+    /// Worker and runs nothing, rather than reporting the exception. A window
+    /// ignores it ("run a classic script" reports both alike). An engine that
+    /// cannot tell leaves it false (docs/engine-protocol.md: JavaScriptCore
+    /// and QuickJS, for now).
+    parse_error: bool = false,
 };
 
 /// A script's position: where `runningScriptLocation` finds the running

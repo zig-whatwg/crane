@@ -119,6 +119,13 @@ const Evaluation = struct {
     compiled: *ffi.V8ScriptCompileResult,
     run: ?*ffi.V8ScriptRunResult = null,
 
+    /// Whether the script failed to compile: its parse error is what it
+    /// "threw" (HTML "create a classic script": parse error and error to
+    /// rethrow).
+    fn parseFailed(self: Evaluation) bool {
+        return self.compiled.script == null;
+    }
+
     /// What the evaluation threw - a parse error, or an exception - as V8
     /// caught it; null for a normal completion.
     fn thrown(self: Evaluation) ?*const ffi.V8ErrorInfo {
@@ -216,7 +223,9 @@ const EvaluateAndReport = struct {
         // 8. An abrupt completion, rethrow errors false (8.3): 1. report an
         // exception for the global.
         if (evaluation.thrown()) |info| {
-            const error_info = protocolErrorInfo(info, self.realm);
+            var error_info = protocolErrorInfo(info, self.realm);
+            // The parse error, as opposed to what evaluation threw.
+            error_info.parse_error = evaluation.parseFailed();
             self.reporter.report(self.reporter.host, &error_info);
             self.threw = true;
             return;
