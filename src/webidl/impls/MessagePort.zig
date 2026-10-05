@@ -483,10 +483,21 @@ fn documentIsFullyActive(instance: *runtime.Instance) bool {
     return location != null;
 }
 
+/// Whether `instance`'s realm is a worker's whose closing flag is set: HTML
+/// close() and "terminate a worker" discard every task added to the worker's
+/// event loop - a port's among them (webmessaging/message-channels/
+/// worker-post-after-close: a channel made and used after close() delivers
+/// nothing). While a worker's tasks run on its creator's loop, that loop
+/// cannot tell; a worker's own loop discards them itself.
+fn inClosingWorker(instance: *runtime.Instance) bool {
+    return @import("html").worker_host.scopeClosing(instance.ctx) orelse false;
+}
+
 /// One task of the port message queue: the message port post message steps'
 /// step 7, as a task of the receiving port's realm.
 fn deliverHook(receiver: *anyopaque, generation: u64, delivery: *port_channels.Delivery) void {
     const port = liveReceiver(receiver, generation) orelse return;
+    if (inClosingWorker(port)) return;
     var task = Delivery{ .port = port, .delivery = delivery };
     engine.runTaskInRealm(port.ctx, Delivery.steps, &task) catch {};
 }
@@ -560,6 +571,7 @@ fn fire(port: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, 
 /// the task of its realm that fires `close` at it.
 fn closedHook(receiver: *anyopaque, generation: u64) void {
     const port = liveReceiver(receiver, generation) orelse return;
+    if (inClosingWorker(port)) return;
     engine.runTaskInRealm(port.ctx, fireCloseSteps, port) catch {};
 }
 
