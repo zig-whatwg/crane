@@ -3547,9 +3547,12 @@ pub const ProtocolCodeGenerationDispatch = *const fn (
 ) callconv(.c) c_int;
 /// The WebAssembly compilation dispatcher: whether `context` may compile.
 pub const ProtocolWasmCodeGenerationDispatch = *const fn (isolate: *Isolate, context: *Context) callconv(.c) bool;
+/// The process's two code generation dispatchers: once, at process start
+/// (initializeEngine).
+pub extern fn v8_SetProtocolCodeGenerationDispatchers(strings: ?ProtocolCodeGenerationDispatch, wasm: ?ProtocolWasmCodeGenerationDispatch) void;
 /// Isolate::SetModifyCodeGenerationFromStringsCallback and
-/// SetAllowWasmCodeGenerationCallback, each only when given.
-pub extern fn v8_Isolate_SetProtocolCodeGenerationHooks(isolate: *Isolate, strings: ?ProtocolCodeGenerationDispatch, wasm: ?ProtocolWasmCodeGenerationDispatch) void;
+/// SetAllowWasmCodeGenerationCallback on `isolate`, each only when asked.
+pub extern fn v8_Isolate_SetProtocolCodeGenerationHooks(isolate: *Isolate, strings: bool, wasm: bool) void;
 /// Context::IsCodeGenerationFromStringsAllowed.
 pub extern fn v8_Context_IsCodeGenerationFromStringsAllowed(context: *Context) bool;
 // ---- end lane: cspenforce ----

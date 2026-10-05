@@ -56,6 +56,9 @@ pub fn initializeEngine(options: engine.EngineOptions) Error!void {
     // the process starts: agents are made on every Browser and worker thread
     // (docs/instances.md), and the handler table is read-only after this.
     isolate_lifecycle.registerBuiltinHandlers() catch |err| log.warn("the isolate teardown handlers were not registered: {}", .{err});
+    // [code_generation_checks]: the process's dispatchers, once, before any
+    // agent's thread runs; each agent enables its isolate's callbacks.
+    ffi.v8_SetProtocolCodeGenerationDispatchers(onCodeGenerationFromStrings, onWasmCodeGeneration);
     engine_snapshot = null;
     if (options.snapshot) |stamped| engine_snapshot = try usableSnapshot(stamped);
 }
@@ -185,15 +188,10 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // HostGetCodeForEval) and HostEnsureCanCompileWasmBytes. The strings
     // check reaches the host only from realms made with code generation
     // from strings disallowed (`restrictCodeGenerationFromStrings`).
+    // The dispatchers they reach are the process's, set by initializeEngine.
     const strings = options.hooks.ensureCanCompileStrings != null;
     const wasm = options.hooks.ensureCanCompileWasmBytes != null;
-    if (strings or wasm) {
-        ffi.v8_Isolate_SetProtocolCodeGenerationHooks(
-            isolate,
-            if (strings) onCodeGenerationFromStrings else null,
-            if (wasm) onWasmCodeGeneration else null,
-        );
-    }
+    if (strings or wasm) ffi.v8_Isolate_SetProtocolCodeGenerationHooks(isolate, strings, wasm);
     // [module_scripts]: import() and import.meta.
     const load = options.hooks.loadImportedModule != null;
     const meta = options.hooks.importMetaUrl != null;

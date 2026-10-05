@@ -13270,9 +13270,9 @@ typedef int (*ProtocolCodeGenerationDispatch)(
 );
 typedef bool (*ProtocolWasmCodeGenerationDispatch)(Isolate* isolate, Global<Context>* context);
 
-// process-wide: the one Zig dispatcher (protocol_agents.onCodeGenerationFromStrings) every hooked agent's isolate calls, finding its agent by isolate; each createAgent that installs it writes the same function, nothing else writes it.
+// process-wide: the one Zig dispatcher (protocol_agents.onCodeGenerationFromStrings) every hooked agent's isolate calls, finding its agent by isolate; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
 static ProtocolCodeGenerationDispatch g_protocol_code_generation = nullptr;
-// process-wide: the one Zig dispatcher (protocol_agents.onWasmCodeGeneration) every hooked agent's isolate calls, finding its agent by isolate; each createAgent that installs it writes the same function, nothing else writes it.
+// process-wide: the one Zig dispatcher (protocol_agents.onWasmCodeGeneration) every hooked agent's isolate calls, finding its agent by isolate; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
 static ProtocolWasmCodeGenerationDispatch g_protocol_wasm_code_generation = nullptr;
 
 /// V8 calls this from eval (direct and indirect) and CreateDynamicFunction,
@@ -13327,18 +13327,22 @@ static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String
     return dispatch(isolate, &realm);
 }
 
+/// The process's code generation dispatchers (one Zig function each, which
+/// finds the agent's hooks by its isolate): set once, while the process
+/// starts (engine.initializeEngine), before any agent's thread runs - never
+/// per agent, which with agents on their own threads would be concurrent
+/// writes of one global.
+void v8_SetProtocolCodeGenerationDispatchers(ProtocolCodeGenerationDispatch strings, ProtocolWasmCodeGenerationDispatch wasm) {
+    g_protocol_code_generation = strings;
+    g_protocol_wasm_code_generation = wasm;
+}
+
 /// Install the protocol's code generation checks on `isolate`, each only
-/// when given. The dispatchers are process-wide (one Zig function each),
-/// finding the agent's hooks by its isolate.
-void v8_Isolate_SetProtocolCodeGenerationHooks(Isolate* isolate, ProtocolCodeGenerationDispatch strings, ProtocolWasmCodeGenerationDispatch wasm) {
-    if (strings) {
-        g_protocol_code_generation = strings;
-        isolate->SetModifyCodeGenerationFromStringsCallback(ProtocolModifyCodeGenerationFromStrings);
-    }
-    if (wasm) {
-        g_protocol_wasm_code_generation = wasm;
-        isolate->SetAllowWasmCodeGenerationCallback(ProtocolAllowWasmCodeGeneration);
-    }
+/// when asked. With no dispatcher set (a host that never called
+/// initializeEngine), the callbacks allow everything.
+void v8_Isolate_SetProtocolCodeGenerationHooks(Isolate* isolate, bool strings, bool wasm) {
+    if (strings) isolate->SetModifyCodeGenerationFromStringsCallback(ProtocolModifyCodeGenerationFromStrings);
+    if (wasm) isolate->SetAllowWasmCodeGenerationCallback(ProtocolAllowWasmCodeGeneration);
 }
 
 /// Whether `context` allows code generation from strings without asking
