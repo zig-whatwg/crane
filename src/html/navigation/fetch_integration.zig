@@ -263,10 +263,24 @@ fn fetchHttpResource(
     options: NavigationFetchOptions,
 ) NavigationFetchError!NavigationFetchResult {
     const internal_request = try navigationRequest(allocator, url, options);
+    return fetchRequestNow(allocator, url, internal_request, options);
+}
 
-    // Step 3: Execute fetch
-    var fetch_result = fetch.algorithms.fetch(allocator, internal_request, .{}) catch |err| {
-        internal_request.deinit();
+/// Step 3 of a navigation fetch for `request` - which the caller built with
+/// `navigationRequest` and completed (its CSP violation reporter, say) -
+/// fetched now, blocking until the response is in: what the navigation needs
+/// of the response to `url`. Takes the request, which is freed whatever
+/// happens. For a scheme Fetch answers without the network - "blob" - whose
+/// entry has to be read while the navigation starts (a blob URL revoked right
+/// after the navigation began still loads).
+pub fn fetchRequestNow(
+    allocator: Allocator,
+    url: []const u8,
+    request: *fetch.internal.InternalRequest,
+    options: NavigationFetchOptions,
+) NavigationFetchError!NavigationFetchResult {
+    var fetch_result = fetch.algorithms.fetch(allocator, request, .{}) catch |err| {
+        request.deinit();
         return switch (err) {
             fetch.FetchError.OutOfMemory => NavigationFetchError.OutOfMemory,
             fetch.FetchError.NetworkError => NavigationFetchError.NetworkError,
@@ -274,7 +288,7 @@ fn fetchHttpResource(
         };
     };
     defer fetch_result.timing_info.deinit();
-    internal_request.deinit();
+    request.deinit();
 
     const response = fetch_result.response;
     defer response.deinit();
@@ -343,6 +357,19 @@ pub fn navigationRequest(
     // Set origin if provided
     if (options.origin) |org| {
         internal_request.origin = .{ .origin = org };
+    } else if (blobEnvironmentOrigin(url)) |blob_origin| {
+        // Scheme fetch "blob" steps 3-7 obtain the blob for the request's
+        // environment - for a navigation, its reserved client, whose creation
+        // URL is this blob URL: URL's origin of a blob URL is its entry's
+        // environment's origin, the creator's, which the blob URL serializes.
+        // A top-level navigation ("top-level-navigation") obtains it with no
+        // partition check at all. Crane's store compares the request's origin
+        // with the entry's, so the request carries that origin: the store
+        // answers a navigation to a live entry whatever the source document's
+        // origin (the creator's blob reaches a frame a cross-origin document
+        // navigated), and a revoked entry stays a network error. Stated: no
+        // storage partitioning by top-level site.
+        internal_request.setOrigin(blob_origin) catch return NavigationFetchError.OutOfMemory;
     }
 
     // The cookie store its fetch sends from and stores to.
@@ -355,6 +382,20 @@ pub fn navigationRequest(
         internal_request.setPolicyContainer(container.clone(allocator) catch return NavigationFetchError.OutOfMemory);
     }
     return internal_request;
+}
+
+/// The origin a blob URL names, serialized - the text between "blob:" and the
+/// path's last "/", fragment excluded - or null for a URL that is not a blob
+/// URL of that shape. File API "generate a new blob URL" writes the
+/// creator's origin there, "null" for an opaque one, and the blob URL store
+/// records the same string as the entry's origin.
+pub fn blobEnvironmentOrigin(url: []const u8) ?[]const u8 {
+    if (url.len < "blob:".len or !std.ascii.eqlIgnoreCase(url[0.."blob:".len], "blob:")) return null;
+    const rest = url["blob:".len..];
+    const without_fragment = rest[0 .. std.mem.indexOfScalar(u8, rest, '#') orelse rest.len];
+    const slash = std.mem.lastIndexOfScalar(u8, without_fragment, '/') orelse return null;
+    if (slash == 0) return null;
+    return without_fragment[0..slash];
 }
 
 /// Step 4 of a navigation fetch: what the navigation needs of `response`,

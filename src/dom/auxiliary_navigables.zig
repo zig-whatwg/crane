@@ -9,7 +9,11 @@
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-auxiliary-browsing-context
 //!
-//! lint-impls: hook for HTMLIFrameElement
+//! Window, which keeps the popups a page opened, installs the other half:
+//! choosing among them, or making a new one, for a hyperlink's or a form's
+//! target (`chooseTopLevel`).
+//!
+//! lint-impls: hook for HTMLIFrameElement, Window
 
 const std = @import("std");
 const process_start = @import("process_start.zig");
@@ -45,6 +49,51 @@ pub fn install(impl: Implementation) void {
 /// unless a test cleared it.
 pub fn isInstalled() bool {
     return implementation != null;
+}
+
+/// The navigable "the rules for choosing a navigable" chose among the
+/// top-level traversables: an open popup, or a new one. Both BORROWED - the
+/// popup is its opener window's, which owns it.
+pub const Chosen = struct {
+    /// Its `html_core.IFrameIntegration`.
+    integration: *anyopaque,
+    /// Its active window.
+    window: *runtime.Instance,
+};
+
+/// What Window supplies: the steps of "the rules for choosing a navigable"
+/// that reach past the page's own frames - "find a navigable by target name"
+/// among the popups of the page's browsing context group (step 7), and step
+/// 8's new top-level traversable, made the way the window open steps make
+/// one (the opener window keeps it). A hyperlink's or a form's target that
+/// names no frame ends here, and then navigates what was chosen with
+/// everything its navigation carries (a form's POST resource, the
+/// hyperlink's referrer policy and source element).
+pub const TopLevelChooser = struct {
+    choose: *const fn (current_window: *runtime.Instance, target: []const u8, noopener: bool) ?Chosen,
+};
+
+/// A hook like `implementation`: one stateless function, installed once at
+/// process start by Window's installHooks, the same for every Browser and
+/// thread.
+// process-wide: only a function pointer (Window's chooser), set once by installHooks at process start; it keeps no state, so one serves every Browser and thread
+var top_level_chooser: ?TopLevelChooser = null;
+
+/// Called by Window's installHooks, once, at process start (process_start.zig).
+pub fn installTopLevelChooser(impl: TopLevelChooser) void {
+    process_start.assertInstalling();
+    top_level_chooser = impl;
+}
+
+/// "The rules for choosing a navigable" for `target` - not "_self",
+/// "_parent", "_top", nor a frame of the page - from `current_window`'s
+/// navigable: an open popup by that name in the page's browsing context
+/// group, or a new top-level traversable (named `target` unless "_blank";
+/// with no opener and in a group of its own when `noopener`). Null when
+/// none can be made.
+pub fn chooseTopLevel(current_window: *runtime.Instance, target: []const u8, noopener: bool) ?Chosen {
+    const impl = top_level_chooser orelse return null;
+    return impl.choose(current_window, target, noopener);
 }
 
 /// A new auxiliary navigable opened by `opener_browsing_context` (an

@@ -25,6 +25,7 @@ src/dom/attribute_change_steps.zig count 1 G H decl:3796f88280404836
 src/dom/attribute_change_steps.zig entries 1 G H decl:b8a83a581032bd02
 src/dom/attribute_change_steps.zig test_calls 1 G X decl:3796f88280404836
 src/dom/auxiliary_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/auxiliary_navigables.zig top_level_chooser 1 G P-res decl:687f4918d611e3cc
 src/dom/blob_bytes.zig steps 1 G H decl:da3da99c8e42439e
 src/dom/child_navigables.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/cloning_steps.zig installed 1 G H decl:7233c1f9921baf3d

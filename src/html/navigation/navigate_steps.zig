@@ -85,6 +85,15 @@ pub fn matchesAboutSrcdoc(url: []const u8) bool {
     return url[prefix.len] == '?' or url[prefix.len] == '#';
 }
 
+/// HTML "requires storing the policy container in history": "1. If url's
+/// scheme is "blob", then return false. 2. If url is local, then return
+/// true. 3. Return false." Fetch's local schemes are about, blob and data.
+pub fn requiresStoringPolicyContainerInHistory(url: []const u8) bool {
+    const scheme = schemeOf(url);
+    if (std.ascii.eqlIgnoreCase(scheme, "blob")) return false;
+    return std.ascii.eqlIgnoreCase(scheme, "about") or std.ascii.eqlIgnoreCase(scheme, "data");
+}
+
 /// Whether `url`'s scheme is "javascript".
 pub fn isJavascript(url: []const u8) bool {
     return std.mem.eql(u8, schemeOf(url), "javascript");
