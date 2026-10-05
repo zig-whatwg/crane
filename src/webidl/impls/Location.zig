@@ -1114,18 +1114,37 @@ fn topLevelFragmentNavigation(
     // with a window reads its URL from its realm's record.
     try window.ctx.setDocumentUrl(url);
 
-    // Step 14, "update document for history step application" 6.4.1:
+    // Step 15, "update document for history step application" 6.4.2:
     // "Update the navigation API entries for a same-document navigation
     // given navigation, historyEntry, and historyHandling."
     if (html_core.window.BrowsingContext.ofWindow(@ptrCast(window)) != null) {
         dom.navigation_api.sameDocumentNavigation(window, if (handling == .push) .push else .replace);
     }
 
+    // 6.4.3: "Fire an event named popstate at document's relevant global
+    // object, using PopStateEvent, with the state attribute initialized to
+    // document's history object's state" - null: 6.3 restored it from the
+    // new entry, whose classic history API state is never carried over.
+    firePopStateNull(window);
+
     // 6.4.5: hashchange, if the fragment changed.
     const old_fragment = navigate_steps.fragmentOf(old_url);
     const new_fragment = navigate_steps.fragmentOf(url);
     const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
     if (!same) queueHashChange(allocator, window, old_url, url);
+}
+
+/// "Update document for history step application" step 6.4.3 for a
+/// fragment navigation's entry: popstate at `window`, its state null.
+fn firePopStateNull(window: *runtime.Instance) void {
+    const event = interfaces.PopStateEvent.call_constructor(
+        window.ctx,
+        runtime.DOMString.initInterned("popstate"),
+        webidl.Opt(dictionaries.PopStateEventInit).passed(.{ .base = .{}, .state = runtime.JSValue.jsNull }),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = dom.fire_event.dispatchTrusted(window, event) catch {};
+    event.releaseIfUnwrapped(generation);
 }
 
 /// BrowsingContext.ensureHistoryEntries's `url_of`.

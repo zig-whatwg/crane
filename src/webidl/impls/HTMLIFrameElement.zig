@@ -2293,8 +2293,9 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
     }
     // Step 12: "Set navigable's active document's URL to url."
     integration.setDocumentUrl(url);
-    // Step 13: "Update the navigation API entries for a same-document
-    // navigation given navigation, historyEntry, and historyHandling."
+    // Step 15, "update document for history step application" 6.4.2:
+    // "Update the navigation API entries for a same-document navigation
+    // given navigation, historyEntry, and historyHandling."
     if (integration.browsing_context) |bc| {
         if (bc.getActiveWindow()) |window| {
             dom_module.navigation_api.sameDocumentNavigation(@ptrCast(@alignCast(window)), switch (handling) {
@@ -2303,13 +2304,36 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
             });
         }
     }
-    // Step 14, "update document for history step application" step 6.4.5:
-    // "If oldURL's fragment is not equal to entry's URL's fragment, then
-    // queue a global task ... to fire an event named hashchange".
+    // Step 15, "update document for history step application" step 6.4.3:
+    // "Fire an event named popstate at document's relevant global object,
+    // using PopStateEvent, with the state attribute initialized to
+    // document's history object's state" - null: step 6.3 restored it from
+    // the new entry, whose classic history API state is never carried over.
+    if (integration.state != .discarded) {
+        if (integration.browsing_context) |bc| {
+            if (bc.getActiveWindow()) |window| firePopStateNull(@ptrCast(@alignCast(window)));
+        }
+    }
+    // Step 6.4.5: "If oldURL's fragment is not equal to entry's URL's
+    // fragment, then queue a global task ... to fire an event named
+    // hashchange".
     const old_fragment = navigate_steps.fragmentOf(old_url);
     const new_fragment = navigate_steps.fragmentOf(url);
     const same = if (old_fragment) |a| (if (new_fragment) |b| std.mem.eql(u8, a, b) else false) else new_fragment == null;
     if (!same) queueHashChange(integration, old_url, url);
+}
+
+/// "Update document for history step application" step 6.4.3 for a
+/// fragment navigation's entry: popstate at `window`, its state null.
+fn firePopStateNull(window: *runtime.Instance) void {
+    const event = interfaces.PopStateEvent.call_constructor(
+        window.ctx,
+        runtime.DOMString.initInterned("popstate"),
+        webidl.Opt(dictionaries.PopStateEventInit).passed(.{ .base = .{}, .state = runtime.JSValue.jsNull }),
+    ) catch return;
+    const generation = runtime.SlabAllocator.generationOf(event);
+    _ = dom_module.fire_event.dispatchTrusted(window, event) catch {};
+    event.releaseIfUnwrapped(generation);
 }
 
 /// A queued hashchange: the window it fires at, held with its slab
