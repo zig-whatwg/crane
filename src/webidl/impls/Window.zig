@@ -831,6 +831,21 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     // Set this Window as the active window on the browsing context
     log.debug("[replaceBrowsingContext] BC={*} Window={*} calling setActiveWindow", .{ existing_bc, instance });
     existing_bc.setActiveWindow(@ptrCast(instance));
+
+    // The window's position and viewport size window.open() set up for the
+    // browsing context: every Window it shows reports them.
+    applyRequestedWindow(internal);
+}
+
+/// CSSOM View "set up browsing context features", as a Window of the
+/// browsing context reports it: the requested position (screenX/screenY)
+/// and viewport size (innerWidth/innerHeight), each that was given.
+fn applyRequestedWindow(internal: *InternalState) void {
+    const requested = internal.browsing_context.requested_window;
+    if (requested.x) |x| internal.screen_x = x;
+    if (requested.y) |y| internal.screen_y = y;
+    if (requested.width) |width| internal.inner_width = width;
+    if (requested.height) |height| internal.inner_height = height;
 }
 
 /// Set the document associated with this Window.
@@ -2986,6 +3001,14 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // or noreferrer is never a popup, whatever its features.
     const is_popup = window_features.popup and !noopener;
     const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), internal.origin, is_popup) orelse return null;
+    // Step 15.2: "Set up browsing context features for targetNavigable's
+    // active browsing context given tokenizedFeatures" - the window's
+    // position and viewport size, which each of its Windows reports
+    // (replaceBrowsingContext gives a later one the same).
+    if (getInternal(created.window)) |created_internal| {
+        created_internal.browsing_context.requested_window = window_features.geometry;
+        applyRequestedWindow(created_internal);
+    }
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
     internal.auxiliary_navigables.append(allocator, integration) catch {
         integration.deinit();
@@ -3072,6 +3095,9 @@ const WindowFeatures = struct {
     noopener: bool = false,
     noreferrer: bool = false,
     popup: bool = false,
+    /// CSSOM View's supported open() feature names - left, top, width and
+    /// height - as "set up browsing context features" reads them.
+    geometry: html_core.window.browsing_context.WindowGeometry = .{},
 
     const max_features = 32;
 
@@ -3127,6 +3153,7 @@ const WindowFeatures = struct {
             .noopener = if (map.get("noopener")) |v| parseBoolean(v) else false,
             .noreferrer = if (map.get("noreferrer")) |v| parseBoolean(v) else false,
             .popup = isPopupRequested(map),
+            .geometry = geometryOf(map),
         };
     }
 
@@ -3199,6 +3226,37 @@ const WindowFeatures = struct {
             digits += 1;
         }
         return if (digits == 0) 0 else sign * n;
+    }
+
+    /// The smallest viewport a window.open() size feature gives: the
+    /// "optionally, clamp" of CSSOM View steps 7.3.1 and 8.3.1, as Blink
+    /// and Gecko clamp a popup to 100 x 100 CSS pixels.
+    const min_window_size: i32 = 100;
+
+    /// CSSOM View "set up browsing context features" steps 5-8: each of
+    /// left, top, width and height that is given, through the rules for
+    /// parsing integers (an error is 0). A width or height of 0 sizes
+    /// nothing. The optional clamps: a position stays on the screen area -
+    /// not left of or above its origin - and a size is at least
+    /// `min_window_size` (open-features-negative-*.html: a negative or tiny
+    /// value gives the same window as width=1).
+    fn geometryOf(map: Map) html_core.window.browsing_context.WindowGeometry {
+        var geometry: html_core.window.browsing_context.WindowGeometry = .{};
+        if (map.get("left")) |v| geometry.x = @max(0, clampI32(parseInteger(v)));
+        if (map.get("top")) |v| geometry.y = @max(0, clampI32(parseInteger(v)));
+        if (map.get("width")) |v| {
+            const width = clampI32(parseInteger(v));
+            if (width != 0) geometry.width = @max(min_window_size, width);
+        }
+        if (map.get("height")) |v| {
+            const height = clampI32(parseInteger(v));
+            if (height != 0) geometry.height = @max(min_window_size, height);
+        }
+        return geometry;
+    }
+
+    fn clampI32(value: i64) i32 {
+        return @intCast(std.math.clamp(value, std.math.minInt(i32), std.math.maxInt(i32)));
     }
 
     /// "Check if a popup window is requested".

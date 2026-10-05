@@ -281,6 +281,15 @@ var retired: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
 /// Every browsing context not yet freed, for `ofWindow` and `byId`.
 threadlocal var live: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
 
+/// A window's position (its left and top edges on the Web-exposed screen
+/// area) and its viewport's size, in CSS pixels; null for "not given".
+pub const WindowGeometry = struct {
+    x: ?i32 = null,
+    y: ?i32 = null,
+    width: ?i32 = null,
+    height: ?i32 = null,
+};
+
 pub const BrowsingContext = struct {
     /// Allocator used for this context
     allocator: Allocator,
@@ -387,6 +396,12 @@ pub const BrowsingContext = struct {
     /// The traversable navigable's session history, on a top-level context
     /// (see `jointHistory`). Owned.
     joint_history: ?*JointHistory = null,
+
+    /// CSSOM View "set up browsing context features": the position and
+    /// viewport size window.open() asked for this context's window - what
+    /// every Window it shows reports as screenX/screenY and
+    /// innerWidth/innerHeight. Null: the default.
+    requested_window: WindowGeometry = .{},
 
     /// "Allowed to perform a navigation or history update"'s window: when
     /// it began (monotonic ns) and how many navigations and history updates
