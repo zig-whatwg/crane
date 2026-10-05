@@ -31,6 +31,7 @@ const webidl = @import("webidl");
 const csp = @import("csp");
 const fire_event = @import("fire_event.zig");
 const policy_containers = @import("policy_containers.zig");
+const trusted_types = @import("trusted_types.zig");
 
 const log = std.log.scoped(.csp_violations);
 
@@ -95,6 +96,109 @@ pub fn shouldBlockInline(
     }
     // 4. Return result.
     return blocked;
+}
+
+/// CSP 4.2.4 "Should navigation request of type be blocked by Content
+/// Security Policy?" for HTML "navigate to a javascript: URL" step 5's
+/// request: its URL `url` (serialized), its policy container's CSP list
+/// `csp_list` - the initiator's - and its client's global `client`, whose
+/// default policy runs and to which violations go (null: neither).
+/// `isValidUrl` is the URL parser's verdict on a string.
+///
+/// Step 3 runs both pre-navigation checks a directive has:
+/// require-trusted-types-for's (Trusted Types 4.2.1.1,
+/// dom.trusted_types.javascriptUrlPreNavigationCheck), which may set the
+/// request's URL to the default policy's value, and form-action's, for a
+/// `navigation_type` of form submission. Step 4, for a result still
+/// "Allowed", is the javascript: URL's inline check of type "navigation" -
+/// on the URL as step 3 left it. Within step 3, the Trusted Types check
+/// runs for every policy before form-action's does: the two never apply to
+/// the same navigation except a form submitted to a javascript: URL.
+///
+/// Returns what the navigation goes on with: the URL as it was, a
+/// rewritten one (OWNED by `allocator`), or nothing.
+///
+/// `container` is the navigated navigable's container - an iframe navigated
+/// to the URL - or null (a popup, the top-level page). Not in the spec,
+/// stated: step 4's violations name it as their element, so one whose
+/// container is in the client's document fires at the container and bubbles
+/// from there (CSP 5.5 step 3.1 sends one whose container is elsewhere to
+/// the document). Blink's FrameLoader::StartNavigation passes the frame's
+/// owner element to its javascript: URL inline check, and WPT listens on
+/// the iframe (securitypolicyviolation/script-sample.html, "JavaScript URLs
+/// in iframes").
+///
+/// Spec: https://w3c.github.io/webappsec-csp/#should-block-navigation-request
+pub fn shouldJavascriptNavigationBeBlocked(
+    allocator: std.mem.Allocator,
+    csp_list: *const csp.CSPList,
+    client: ?*runtime.Instance,
+    container: ?*runtime.Instance,
+    url: []const u8,
+    navigation_type: csp.navigation_check.NavigationType,
+    isValidUrl: *const fn (allocator: std.mem.Allocator, url: []const u8) bool,
+) error{OutOfMemory}!trusted_types.PreNavigation {
+    const reporter: ?Reporter = if (client) |global| reporterFor(global) else null;
+    var with_element: ElementReporter = .{ .global = client, .element = container };
+    // 1-3: require-trusted-types-for's pre-navigation check.
+    const result = try trusted_types.javascriptUrlPreNavigationCheck(allocator, csp_list, client, url, isValidUrl);
+    const current_url: []const u8 = switch (result) {
+        .rewritten => |rewritten| rewritten,
+        else => url,
+    };
+    const request = csp.navigation_check.NavigationRequest.ofSerialized(current_url);
+    // 1-3: form-action's.
+    var blocked = result == .blocked;
+    if (csp.navigation_check.preNavigationChecks(csp_list, request, navigation_type, reporter) == .blocked) blocked = true;
+    // 4. "If result is "Allowed"": the javascript: URL's inline check.
+    if (!blocked and csp.navigation_check.javascriptUrlInlineChecks(csp_list, request, with_element.reporter()) == .blocked) blocked = true;
+    // 5. Return result.
+    if (!blocked) return result;
+    if (result == .rewritten) allocator.free(result.rewritten);
+    return .blocked;
+}
+
+/// A reporter for `global` (null: none) whose violations name `element`.
+const ElementReporter = struct {
+    global: ?*runtime.Instance,
+    element: ?*runtime.Instance,
+
+    fn reporter(self: *ElementReporter) ?Reporter {
+        if (self.global == null) return null;
+        return .{ .context = self, .report = &reportWithElement };
+    }
+
+    fn reportWithElement(context: *anyopaque, violation: *const Violation) void {
+        const self: *ElementReporter = @ptrCast(@alignCast(context));
+        var named = violation.*;
+        if (named.element == null) named.element = self.element;
+        reportViolation(self.global.?, &named);
+    }
+};
+
+/// The javascript: URL's inline check against the TARGET's policies: the
+/// CSP list of `target_window`'s document - the active document of the
+/// navigable a javascript: URL is about to run in - for each policy the
+/// inline check of type "navigation" upon `url`, each violation reported to
+/// `target_window`. True when an enforced policy blocks it.
+///
+/// Not in the spec, stated: HTML "navigate to a javascript: URL" checks only
+/// the initiator's policies (step 5, `shouldJavascriptNavigationBeBlocked`).
+/// Chrome and Firefox check the target's as well, after the initiator's -
+/// Blink's ScriptController::ExecuteJavaScriptURL asks the target window's
+/// ContentSecurityPolicy::AllowInline(kNavigation) - and WPT asserts both and
+/// that order (content-security-policy/navigation/to-javascript-parent-
+/// initiated-child-csp.html, -check-csp-order.html); the spec gap is
+/// whatwg/html#4651. Trusted Types' pre-navigation check stays the
+/// initiator's alone (trusted-types/navigate-to-javascript-url-010.html).
+/// A caller skips it when the target is the initiator: its list was just
+/// checked.
+pub fn shouldTargetBlockJavascriptUrl(target_window: *runtime.Instance, url: []const u8) bool {
+    const document = windowDocument(target_window) orelse return false;
+    const container = policy_containers.of(document) orelse return false;
+    if (container.csp_list.policies.items.len == 0) return false;
+    const request = csp.navigation_check.NavigationRequest.ofSerialized(url);
+    return csp.navigation_check.javascriptUrlInlineChecks(&container.csp_list, request, reporterFor(target_window)) == .blocked;
 }
 
 /// The reporter for violations of `global`'s policies (a Window's or a

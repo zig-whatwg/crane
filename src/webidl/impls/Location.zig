@@ -830,7 +830,7 @@ fn topLevelNavigate(window: *runtime.Instance, url: []const u8, params: dom.top_
     // Step 20: "If url's scheme is "javascript", then queue a global task on
     // the navigation and traversal task source given navigable's active
     // window to navigate to a javascript: URL", and return.
-    if (navigate_steps.isJavascript(url)) return queueJavascriptNavigation(window, url, params.source_document);
+    if (navigate_steps.isJavascript(url)) return queueJavascriptNavigation(window, url, params.source_document, params.csp_navigation_type);
     // Step 21: the navigate event, for a navigation from a same-origin
     // source to a fetch scheme, when the active document is not the initial
     // about:blank.
@@ -879,6 +879,8 @@ const JavascriptNavigation = struct {
     initiator_policy_container: ?dom.policy_containers.PolicyContainer = null,
     source_window: ?*runtime.Instance = null,
     source_generation: u64 = 0,
+    /// "Navigate"'s cspNavigationType, which step 5 asks CSP 4.2.4 with.
+    csp_navigation_type: @import("csp").navigation_check.NavigationType = .other,
 
     fn destroy(self: *JavascriptNavigation) void {
         self.allocator.free(self.url);
@@ -915,7 +917,7 @@ const JavascriptNavigation = struct {
     }
 };
 
-fn queueJavascriptNavigation(window: *runtime.Instance, url: []const u8, source: ?*runtime.Instance) !void {
+fn queueJavascriptNavigation(window: *runtime.Instance, url: []const u8, source: ?*runtime.Instance, csp_navigation_type: @import("csp").navigation_check.NavigationType) !void {
     const allocator = window.ctx.allocator;
     const task = try allocator.create(JavascriptNavigation);
     errdefer allocator.destroy(task);
@@ -947,18 +949,16 @@ fn queueJavascriptNavigation(window: *runtime.Instance, url: []const u8, source:
         .initiator_policy_container = initiator_container,
         .source_window = source_window,
         .source_generation = if (source_window) |w| runtime.SlabAllocator.generationOf(w) else 0,
+        .csp_navigation_type = csp_navigation_type,
     };
     const loop = window.ctx.getOptionalEventLoop() orelse return JavascriptNavigation.run(task);
     loop.queueTask(.{ .callback = JavascriptNavigation.run, .context = task, .drop = JavascriptNavigation.drop });
 }
 
 /// "Navigate to a javascript: URL", in the page's realm. Not modelled,
-/// stated: step 2 (the page's navigable keeps no ongoing navigation); of step
-/// 5's CSP check, every directive but require-trusted-types-for (its
-/// pre-navigation check, Trusted Types 4.2.1.1) - CSP 4.2.4's javascript:
-/// inline check is not run; and steps 8-17 - a String result would be the
-/// page's new document, which this engine cannot make for the top-level
-/// page: the result is dropped.
+/// stated: step 2 (the page's navigable keeps no ongoing navigation); and
+/// steps 8-17 - a String result would be the page's new document, which
+/// this engine cannot make for the top-level page: the result is dropped.
 fn navigateToJavascriptUrl(task: *JavascriptNavigation) void {
     const window = task.window;
     // Step 3: "If initiatorOrigin is not same origin-domain with
@@ -971,14 +971,14 @@ fn navigateToJavascriptUrl(task: *JavascriptNavigation) void {
     // policy container is initiatorPolicyContainer. If the result of should
     // navigation request of type be blocked by Content Security Policy?
     // given request and cspNavigationType is "Blocked", then return." The
-    // request's client is the source window: a source window that is gone
-    // has no default policy, so a javascript: URL under enforced Trusted
-    // Types is then Blocked.
+    // request's client is the source window, where violations go: a source
+    // window that is gone has no default policy, so a javascript: URL under
+    // enforced Trusted Types is then Blocked.
     var url: []const u8 = task.url;
     var rewritten: ?[]u8 = null;
     defer if (rewritten) |u| task.allocator.free(u);
     if (task.initiator_policy_container) |*container| {
-        const check = dom.trusted_types.javascriptUrlPreNavigationCheck(task.allocator, &container.csp_list, task.liveSourceWindow(), task.url, &isValidUrl) catch return;
+        const check = dom.csp_violations.shouldJavascriptNavigationBeBlocked(task.allocator, &container.csp_list, task.liveSourceWindow(), null, task.url, task.csp_navigation_type, &isValidUrl) catch return;
         switch (check) {
             .allowed => {},
             .rewritten => |u| {
@@ -988,6 +988,12 @@ fn navigateToJavascriptUrl(task: *JavascriptNavigation) void {
             .blocked => return,
         }
     }
+    // Not in the spec, stated (whatwg/html#4651;
+    // dom.csp_violations.shouldTargetBlockJavascriptUrl): Chrome and Firefox
+    // check the target's CSP too, after the initiator's, and WPT's
+    // to-javascript-parent-initiated-child-csp.html asserts it - skipped when
+    // the page is the initiator, whose list step 5 just checked.
+    if (task.liveSourceWindow() != window and dom.csp_violations.shouldTargetBlockJavascriptUrl(window, url)) return;
     // Step 6: "Let newDocument be the result of evaluating a javascript: URL".
     const result = evaluateJavascriptUrl(window, url, task.allocator) orelse return;
     task.allocator.free(result);
