@@ -240,6 +240,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Restore temporary state on abrupt completion](spec-compliance-restore-temporary-state-on-abrupt-completion.md) - Restore only the temporary state, preserving changes made by reentrant script.
 - [Queued IndexedDB writes keep their schema](spec-compliance-queued-indexeddb-writes-keep-their-schema.md) - Synchronous schema visibility does not rewrite accepted operations.
 - [A [Default] toJSON null is a property; a dictionary's is not](spec-compliance-a-default-tojson-null-is-a-property.md) - Two Zig structs with optional fields can need different JavaScript conversions; mark the one whose null is a value.
+- [A network error may need a native cause](spec-compliance-a-network-error-may-need-a-native-cause.md) - Preserve the native failure distinction for an allowlisted retry decision.
+- [Create an event before queuing its dispatch](spec-compliance-create-an-event-before-queuing-its-dispatch.md) - Creation captures observable state before the dispatch task runs.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
