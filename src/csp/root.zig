@@ -128,6 +128,8 @@ pub const violation_events = @import("violation_events.zig");
 pub const inline_check = @import("inline_check.zig");
 /// §4.4.1 and §4.5.1: string and WebAssembly compilation, per policy.
 pub const code_generation = @import("code_generation.zig");
+/// §6.1.9 object-src for plugin content without a URL.
+pub const plugin_check = @import("plugin_check.zig");
 /// §4.2.4 should navigation request of type be blocked.
 pub const navigation_check = @import("navigation_check.zig");
 

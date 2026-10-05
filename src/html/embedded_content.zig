@@ -66,6 +66,7 @@ const fetch = @import("fetch");
 const dom = @import("dom");
 const html_core = @import("html_core");
 const encoding_parse = @import("encoding_parse.zig");
+const csp = @import("csp");
 
 const object_resource_type = html_core.navigation.object_resource_type;
 const navigate_steps = html_core.navigation.navigate_steps;
@@ -398,8 +399,14 @@ fn processObject(content: *Content, id: u64) void {
     }
     // Step 3: "If the data attribute is present and its value is not the
     // empty string".
-    const data = attributeValue(element, "data") orelse return fallback(content);
-    if (data.len == 0) return fallback(content);
+    const data = attributeValue(element, "data") orelse "";
+    if (data.len == 0) {
+        // No URL: a type alone would load a plugin, which CSP's object-src
+        // 'none' blocks and reports (CSP 6.1.9). Crane has no plugins, so
+        // either way the element shows its fallback content.
+        pluginWithoutUrlCheck(element);
+        return fallback(content);
+    }
     // 3.1: the user agent fetches whatever the type attribute says.
     // 3.2-3.3: "Let url be the result of encoding-parsing a URL given the
     // data attribute's value, relative to the element's node document. If
@@ -479,7 +486,11 @@ fn setupEmbed(content: *Content, id: u64) void {
     // ancestor media element or object element not showing its fallback.
     if (!isConnected(element) or !documentHasBrowsingContext(element) or hasInactiveAncestor(element)) return displayNoPlugin(content);
     // Step 2: "If element has a src attribute set".
-    const src = attributeValue(element, "src") orelse return displayNoPlugin(content);
+    const src = attributeValue(element, "src") orelse {
+        // Step 3, with a type alone: CSP 6.1.9 first, then no plugin.
+        pluginWithoutUrlCheck(element);
+        return displayNoPlugin(content);
+    };
     // 2.1-2.2: "Let url be the result of encoding-parsing a URL given
     // element's src attribute's value, relative to element's node document.
     // If url is failure, then return."
@@ -517,6 +528,22 @@ fn embedResponse(content: *Content, response: *const ResponseSummary) void {
 fn displayNoPlugin(content: *Content) void {
     destroyNavigable(content);
     content.represents = .nothing;
+}
+
+/// CSP 6.1.9: "If plugin content is loaded without an associated URL
+/// (perhaps an object element lacks a data attribute, but loads some default
+/// plugin based on the specified type), it MUST be blocked if object-src's
+/// value is 'none'" - and reported (csp.plugin_check). An element whose type
+/// attribute names a type is one that would load such content; Crane loads
+/// none either way (no plugins), so only the violation is observable.
+fn pluginWithoutUrlCheck(element: *runtime.Instance) void {
+    const type_attribute = attributeValue(element, "type") orelse return;
+    if (std.mem.trim(u8, type_attribute, " \t\n\r\x0c").len == 0) return;
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return;
+    const container = dom.policy_containers.of(document) orelse return;
+    if (container.csp_list.policies.items.len == 0) return;
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    _ = csp.plugin_check.shouldPluginContentWithoutUrlBeBlocked(&container.csp_list, dom.csp_violations.reporterFor(window), element);
 }
 
 // ============================================================================
