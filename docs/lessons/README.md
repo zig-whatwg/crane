@@ -190,6 +190,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A conversion that fails part-way has already converted the rest](architecture-a-conversion-that-fails-part-way-converted-the-rest.md) - Every place that converts a list of values one by one needs an errdefer for the ones already converted, and every place that builds arguments needs the matching free.
 - [A navigable's children are its active document's - a list kept past the document that owned its entries is read freed](architecture-a-navigables-children-are-its-active-documents.md) - A pointer list that mirrors a spec structure must be emptied by the spec step that changes the structure, not left to its entries' owners to free; match leaked addresses against a trace before calling a leak "never freed".
 - [An object many native lists hold is held by an edge from each list's owner](architecture-an-entry-many-lists-hold-is-held-by-an-edge-from-each.md) - When several native lists hold one platform object, give each list's owner its own traced edge to it and move holders edge-first; never a root, never a shared count.
+- [Trying overloads until one converts is not overload resolution](architecture-trying-overloads-until-one-converts-is-not-overload-resolution.md) - Select the overload from the arguments' types first, then convert once; a conversion's throw is the call's exception, never a reason to try another overload.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -238,6 +239,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Clean up after dispatch in the same task](spec-compliance-clean-up-after-dispatch-in-the-same-task.md) - Preserve callback microtask observations while completing post-dispatch state changes before later tasks.
 - [Restore temporary state on abrupt completion](spec-compliance-restore-temporary-state-on-abrupt-completion.md) - Restore only the temporary state, preserving changes made by reentrant script.
 - [Queued IndexedDB writes keep their schema](spec-compliance-queued-indexeddb-writes-keep-their-schema.md) - Synchronous schema visibility does not rewrite accepted operations.
+- [A [Default] toJSON null is a property; a dictionary's is not](spec-compliance-a-default-tojson-null-is-a-property.md) - Two Zig structs with optional fields can need different JavaScript conversions; mark the one whose null is a value.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
@@ -259,6 +261,8 @@ A lane brief now carries the lessons chosen for its batch.
 - [Restate a member another spec redefines, and list it](codegen-restate-a-redefined-member-and-list-it.md) - Compare the defining spec's IDL with webref's; restate it in specs/supplementary and list the replacement in member_overrides.zig - never merge a redefinition silently.
 - [An `inherit attribute` gets its own State slot - one variable, two copies](codegen-an-inherit-attribute-gets-its-own-state-slot.md) - A variable belongs to the interface that defines it; `inherit attribute` adds a setter, not a second variable - read it through the owner's getters and write it through the owner's hook, whatever slots codegen emitted.
 - [A typedef'd sequence return fell through to undefined](codegen-a-typedef-d-sequence-return-fell-through-to-undefined.md) - A typedef must map exactly as its target would; when a binding's fallback for an unknown return type is `undefined`, a type the mapper mis-resolves compiles and silently returns nothing - check the generated signature of every operation you implement against how the binding converts it.
+- [A typedef registered without its type is no type at all](codegen-a-typedef-registered-without-its-type-is-no-type.md) - When a generated table classifies types, grep it for the fallback category (`.other`) after every change: each hit is a type the classifier could not see.
+- [A mangled identifier cannot be unmangled](codegen-a-mangled-identifier-cannot-be-unmangled.md) - Keep the source string beside a generated identifier; never derive one from the other.
 
 ### Testing
 - [Regression-check handle changes with timers, not DOM](testing-regression-check-handle-changes-with-timers-not.md) - Pick the regression suite that exercises the lifetime you changed, not the one that touches the same file.
