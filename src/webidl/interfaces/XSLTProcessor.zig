@@ -133,9 +133,16 @@ pub const XSLTProcessor = struct {
     pub fn call_transformToDocument(instance: *runtime.Instance, source: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try XSLTProcessorImpl.call_transformToDocument(instance, source);
+        const result = XSLTProcessorImpl.call_transformToDocument(instance, source) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_setParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString, value: runtime.JSValue) anyerror!void {
@@ -154,9 +161,16 @@ pub const XSLTProcessor = struct {
     pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.Instance, output: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try XSLTProcessorImpl.call_transformToFragment(instance, source, output);
+        const result = XSLTProcessorImpl.call_transformToFragment(instance, source, output) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_getParameter(instance: *runtime.Instance, namespaceURI: DOMString, localName: DOMString) anyerror!runtime.JSValue {

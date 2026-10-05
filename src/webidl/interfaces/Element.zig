@@ -1864,9 +1864,16 @@ pub const Element = struct {
     pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: DOMString, element: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try ElementImpl.call_insertAdjacentElement(instance, where, element);
+        const result = ElementImpl.call_insertAdjacentElement(instance, where, element) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = if (result) |r| runtime.SlabAllocator.generationOf(r) else 0;
+        runtime.CEReactions.end(ce_scope);
+        if (result) |r| if (runtime.SlabAllocator.generationOf(r) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub const call_append = mixins.ParentNode.call_append;
@@ -1922,9 +1929,16 @@ pub const Element = struct {
     pub fn call_setAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try ElementImpl.call_setAttributeNode(instance, attr);
+        const result = ElementImpl.call_setAttributeNode(instance, attr) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = if (result) |r| runtime.SlabAllocator.generationOf(r) else 0;
+        runtime.CEReactions.end(ce_scope);
+        if (result) |r| if (runtime.SlabAllocator.generationOf(r) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
@@ -1941,9 +1955,16 @@ pub const Element = struct {
     pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try ElementImpl.call_setAttributeNodeNS(instance, attr);
+        const result = ElementImpl.call_setAttributeNodeNS(instance, attr) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = if (result) |r| runtime.SlabAllocator.generationOf(r) else 0;
+        runtime.CEReactions.end(ce_scope);
+        if (result) |r| if (runtime.SlabAllocator.generationOf(r) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!?DOMString {
@@ -2079,9 +2100,16 @@ pub const Element = struct {
     pub fn call_removeAttributeNode(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
 
-        return try ElementImpl.call_removeAttributeNode(instance, attr);
+        const result = ElementImpl.call_removeAttributeNode(instance, attr) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_hasAttribute(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!bool {
