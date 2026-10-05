@@ -576,6 +576,31 @@ pub const JointHistory = struct {
         std.mem.sort(u32, out.items, {}, std.sort.asc(u32));
     }
 
+    /// The used step nearest the current one at which `entry` is its
+    /// navigable's entry - the step a navigation API traversal to it applies.
+    /// HTML's "perform a navigation API traversal" applies the entry's own
+    /// step (the first at which it was current); Blink and Gecko go to the
+    /// nearest joint entry that shows it, so a frame's back() after its
+    /// parent pushed leaves the parent where it is (WPT
+    /// navigation-api/navigation-methods/disambigaute-*.html). Ties go back.
+    pub fn nearestStepOf(self: *JointHistory, entry: *const Entry) u32 {
+        var steps: std.ArrayListUnmanaged(u32) = .empty;
+        defer steps.deinit(self.allocator);
+        self.usedSteps(self.allocator, &steps) catch return entry.step;
+        var best: ?u32 = null;
+        var best_distance: u32 = std.math.maxInt(u32);
+        for (steps.items) |step| {
+            const at = self.entryAt(entry.navigable, step) orelse continue;
+            if (at != entry) continue;
+            const distance = if (step > self.current_step) step - self.current_step else self.current_step - step;
+            if (distance < best_distance) {
+                best = step;
+                best_distance = distance;
+            }
+        }
+        return best orelse entry.step;
+    }
+
     /// "Get the history object length and index" for the current step:
     /// (the number of used steps, the current step's index among them).
     pub fn lengthAndIndex(self: *const JointHistory) struct { length: u32, index: u32 } {

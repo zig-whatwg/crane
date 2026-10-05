@@ -714,9 +714,10 @@ fn traverseToKey(instance: *runtime.Instance, key: []const u8, info: runtime.JSV
         tracker.held = false;
         collect(internal);
     }
-    // Steps 9-12: the traversal to the destination's step.
+    // Steps 9-12: the traversal to the destination's step - the nearest one
+    // that shows it (JointHistory.nearestStepOf, as browsers do).
     ensureHistoryTraversal(scope.window);
-    dom.history_traversal.traverseToStep(scope.window, destination.step);
+    dom.history_traversal.traverseToStep(scope.window, scope.history.nearestStepOf(destination));
     // Step 13.
     return derivedResult(instance, internal, tracker);
 }
