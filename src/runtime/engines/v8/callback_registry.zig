@@ -31,6 +31,10 @@ pub fn register(wrapper: *CallbackWrapper) void {
 /// Stop tracking `wrapper`. Called by `CallbackWrapper.deinit`.
 pub fn unregister(wrapper: *CallbackWrapper) void {
     _ = live.remove(wrapper);
+    // The map's memory goes with its last wrapper: a worker thread's
+    // wrappers all go before it ends, and what a threadlocal still holds
+    // when its thread exits is never freed.
+    if (live.count() == 0) live.clearAndFree(std.heap.page_allocator);
 }
 
 /// Release the handles of every wrapper created for the context whose raw V8
@@ -50,6 +54,7 @@ pub fn cleanupForContext(context_raw_addr: ?*anyopaque) void {
         wrapper.releaseHandles();
         _ = live.remove(wrapper);
     }
+    if (live.count() == 0) live.clearAndFree(std.heap.page_allocator);
 }
 
 /// How many wrappers are tracked - for tests.

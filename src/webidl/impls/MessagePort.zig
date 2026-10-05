@@ -163,12 +163,18 @@ fn initWithEnd(
 /// a document" reaches (`disentangleIn`).
 threadlocal var live_ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
 
+/// `instance` is gone from this thread's list. The list's memory goes with
+/// its last port: a dedicated worker's thread loses every port with its
+/// realm and then ends, and the capacity a threadlocal list still holds
+/// when its thread exits is never freed (page_allocator, invisible to
+/// `leaks`: one page per worker thread that made a port).
 fn forgetPort(instance: *runtime.Instance) void {
     for (live_ports.items, 0..) |port, i| {
         if (port != instance) continue;
         _ = live_ports.swapRemove(i);
-        return;
+        break;
     }
+    if (live_ports.items.len == 0) live_ports.clearAndFree(std.heap.page_allocator);
 }
 
 /// HTML "destroy a document" steps 4-5: "Let ports be the list of

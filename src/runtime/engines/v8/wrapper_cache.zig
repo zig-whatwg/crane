@@ -1318,6 +1318,10 @@ pub const WrapperCache = struct {
                 break;
             }
         }
+        // The list's memory goes with its last cache: a worker thread's
+        // caches all go before it ends, and what a threadlocal still holds
+        // when its thread exits is never freed.
+        if (live_caches.items.len == 0) live_caches.clearAndFree(std.heap.page_allocator);
         self.registered = false;
     }
 
