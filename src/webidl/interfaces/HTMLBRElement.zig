@@ -276,10 +276,18 @@ pub const HTMLBRElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_clear(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBRElementImpl, "set_clear")) return try HTMLBRElementImpl.set_clear(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "clear" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_clear",
+    };
 };

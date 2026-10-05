@@ -184,4 +184,15 @@ pub const DocumentType = struct {
     pub const call_remove = mixins.ChildNode.call_remove;
 
     pub const call_after = mixins.ChildNode.call_after;
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "call_before",
+        "call_replaceWith",
+        "call_remove",
+        "call_after",
+    };
 };

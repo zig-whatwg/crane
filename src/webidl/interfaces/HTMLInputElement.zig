@@ -563,8 +563,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_accept(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_accept")) return try HTMLInputElementImpl.set_accept(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "accept" }, value);
@@ -579,8 +579,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_alpha(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_alpha")) return try HTMLInputElementImpl.set_alpha(instance, value);
         try reflection.set(bool, instance, .{ .name = "alpha" }, value);
@@ -595,8 +595,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_alt(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_alt")) return try HTMLInputElementImpl.set_alt(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "alt" }, value);
@@ -610,8 +610,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_autocomplete(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_autocomplete")) return try HTMLInputElementImpl.set_autocomplete(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "autocomplete" }, value);
@@ -626,8 +626,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="checked"]
     pub fn set_defaultChecked(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_defaultChecked")) return try HTMLInputElementImpl.set_defaultChecked(instance, value);
         try reflection.set(bool, instance, .{ .name = "checked" }, value);
@@ -649,8 +649,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_colorSpace(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLInputElementImpl.set_colorSpace(instance, value);
     }
@@ -664,8 +664,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_dirName(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_dirName")) return try HTMLInputElementImpl.set_dirName(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "dirname" }, value);
@@ -680,8 +680,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_disabled")) return try HTMLInputElementImpl.set_disabled(instance, value);
         try reflection.set(bool, instance, .{ .name = "disabled" }, value);
@@ -707,8 +707,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_formAction(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_formAction")) return try HTMLInputElementImpl.set_formAction(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "formaction" }, value);
@@ -722,8 +722,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_formEnctype(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLInputElementImpl.set_formEnctype(instance, value);
     }
@@ -736,8 +736,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_formMethod(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLInputElementImpl.set_formMethod(instance, value);
     }
@@ -751,8 +751,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_formNoValidate(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_formNoValidate")) return try HTMLInputElementImpl.set_formNoValidate(instance, value);
         try reflection.set(bool, instance, .{ .name = "formnovalidate" }, value);
@@ -767,8 +767,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_formTarget(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_formTarget")) return try HTMLInputElementImpl.set_formTarget(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "formtarget" }, value);
@@ -782,8 +782,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_height")) return try HTMLInputElementImpl.set_height(instance, value);
         try reflection.set(u32, instance, .{ .name = "height" }, value);
@@ -810,8 +810,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_max(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_max")) return try HTMLInputElementImpl.set_max(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "max" }, value);
@@ -826,8 +826,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
     pub fn set_maxLength(instance: *runtime.Instance, value: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_maxLength")) return try HTMLInputElementImpl.set_maxLength(instance, value);
         try reflection.set(i32, instance, .{ .name = "maxlength", .limit = .non_negative }, value);
@@ -842,8 +842,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_min(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_min")) return try HTMLInputElementImpl.set_min(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "min" }, value);
@@ -858,8 +858,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
     pub fn set_minLength(instance: *runtime.Instance, value: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_minLength")) return try HTMLInputElementImpl.set_minLength(instance, value);
         try reflection.set(i32, instance, .{ .name = "minlength", .limit = .non_negative }, value);
@@ -874,8 +874,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_multiple(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_multiple")) return try HTMLInputElementImpl.set_multiple(instance, value);
         try reflection.set(bool, instance, .{ .name = "multiple" }, value);
@@ -890,8 +890,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_name")) return try HTMLInputElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -906,8 +906,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_pattern(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_pattern")) return try HTMLInputElementImpl.set_pattern(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "pattern" }, value);
@@ -922,8 +922,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_placeholder(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_placeholder")) return try HTMLInputElementImpl.set_placeholder(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "placeholder" }, value);
@@ -938,8 +938,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_readOnly(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_readOnly")) return try HTMLInputElementImpl.set_readOnly(instance, value);
         try reflection.set(bool, instance, .{ .name = "readonly" }, value);
@@ -954,8 +954,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_required(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_required")) return try HTMLInputElementImpl.set_required(instance, value);
         try reflection.set(bool, instance, .{ .name = "required" }, value);
@@ -970,8 +970,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_size(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_size")) return try HTMLInputElementImpl.set_size(instance, value);
         try reflection.set(u32, instance, .{ .name = "size" }, value);
@@ -986,8 +986,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_src")) return try HTMLInputElementImpl.set_src(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
@@ -1002,8 +1002,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_step(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_step")) return try HTMLInputElementImpl.set_step(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "step" }, value);
@@ -1017,8 +1017,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLInputElementImpl.set_type(instance, value);
     }
@@ -1032,8 +1032,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="value"]
     pub fn set_defaultValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_defaultValue")) return try HTMLInputElementImpl.set_defaultValue(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "value" }, value);
@@ -1047,8 +1047,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLInputElementImpl.set_value(instance, value);
     }
@@ -1077,8 +1077,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_width")) return try HTMLInputElementImpl.set_width(instance, value);
         try reflection.set(u32, instance, .{ .name = "width" }, value);
@@ -1144,8 +1144,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_capture(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLInputElementImpl.set_capture(instance, value);
     }
@@ -1159,8 +1159,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_align")) return try HTMLInputElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);
@@ -1175,8 +1175,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_useMap(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLInputElementImpl, "set_useMap")) return try HTMLInputElementImpl.set_useMap(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "usemap" }, value);
@@ -1190,8 +1190,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLInputElementImpl.set_popoverTargetElement(instance, value);
     }
@@ -1204,8 +1204,8 @@ pub const HTMLInputElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_popoverTargetAction(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLInputElementImpl.set_popoverTargetAction(instance, value);
     }
@@ -1269,5 +1269,48 @@ pub const HTMLInputElement = struct {
     /// (bit i = argument i; an attribute setter's value is bit 0).
     pub const legacy_null_to_empty = .{
         .{ "set_value", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_accept",
+        "set_alpha",
+        "set_alt",
+        "set_autocomplete",
+        "set_defaultChecked",
+        "set_colorSpace",
+        "set_dirName",
+        "set_disabled",
+        "set_formAction",
+        "set_formEnctype",
+        "set_formMethod",
+        "set_formNoValidate",
+        "set_formTarget",
+        "set_height",
+        "set_max",
+        "set_maxLength",
+        "set_min",
+        "set_minLength",
+        "set_multiple",
+        "set_name",
+        "set_pattern",
+        "set_placeholder",
+        "set_readOnly",
+        "set_required",
+        "set_size",
+        "set_src",
+        "set_step",
+        "set_type",
+        "set_defaultValue",
+        "set_value",
+        "set_width",
+        "set_capture",
+        "set_align",
+        "set_useMap",
+        "set_popoverTargetElement",
+        "set_popoverTargetAction",
     };
 };

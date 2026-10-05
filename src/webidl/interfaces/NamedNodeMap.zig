@@ -135,8 +135,8 @@ pub const NamedNodeMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NamedNodeMapImpl.call_removeNamedItem(instance, qualifiedName);
     }
@@ -144,8 +144,8 @@ pub const NamedNodeMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NamedNodeMapImpl.call_setNamedItem(instance, attr);
     }
@@ -153,8 +153,8 @@ pub const NamedNodeMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NamedNodeMapImpl.call_setNamedItemNS(instance, attr);
     }
@@ -162,8 +162,8 @@ pub const NamedNodeMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NamedNodeMapImpl.call_removeNamedItemNS(instance, namespace, localName);
     }
@@ -175,6 +175,17 @@ pub const NamedNodeMap = struct {
     pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
         return try NamedNodeMapImpl.call_item(instance, index);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "call_removeNamedItem",
+        "call_setNamedItem",
+        "call_setNamedItemNS",
+        "call_removeNamedItemNS",
+    };
 
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration

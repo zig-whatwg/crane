@@ -120,8 +120,8 @@ pub const CSSStyleProperties = struct {
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn set_cssFloat(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try CSSStylePropertiesImpl.set_cssFloat(instance, value);
     }
@@ -130,6 +130,14 @@ pub const CSSStyleProperties = struct {
     /// (bit i = argument i; an attribute setter's value is bit 0).
     pub const legacy_null_to_empty = .{
         .{ "set_cssFloat", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_cssFloat",
     };
 
     /// Named property getter for CSS property access

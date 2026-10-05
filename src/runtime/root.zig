@@ -14,14 +14,38 @@ pub const Instance = @import("instance.zig").Instance;
 
 /// CEReactions - Custom Element Reactions
 ///
-/// Stubs for DOM mutation tracking per Custom Elements spec.
-/// Used by [CEReactions] extended attribute in WebIDL.
+/// The bracket every [CEReactions] member's generated delegate runs (HTML
+/// 4.13.6): `const ce_scope = begin(instance); defer end(ce_scope);`. `begin`
+/// pushes a new element queue onto "this object's relevant agent's custom
+/// element reactions stack" - `this_object` is the member's instance, or null
+/// for a static member (the agent is then the current realm's) - and returns
+/// what `end` needs, captured while the receiver is certainly alive. `end`
+/// pops the queue and invokes its reactions from that alone: it dereferences
+/// neither the receiver nor any realm, any of which can end while the member
+/// runs script (removing an iframe ends its realm and frees its Instances) -
+/// the reactions run under `engine.withPendingExceptionSetAside(scope.agent,
+/// ...)`, which needs only the agent. Stubs for now: the custom element
+/// reactions stack replaces them, and its `Scope`.
 pub const CEReactions = struct {
-    pub fn begin() void {
+    /// What `begin` captured for `end`, all of agent lifetime.
+    pub const Scope = struct {
+        /// The engine agent the bracket's reactions run in.
+        agent: ?*Agent = null,
+        /// The agent's custom element reactions state. Null only when the
+        /// agent has none - the zero-cost path; an agent with state but no
+        /// definitions still counts the bracket's depth, so a
+        /// customElements.define inside an open bracket balances.
+        agent_state: ?*anyopaque = null,
+    };
+
+    pub fn begin(this_object: ?*Instance) Scope {
+        _ = this_object;
         // TODO: Implement Custom Element reaction queue
+        return .{};
     }
 
-    pub fn end() void {
+    pub fn end(scope: Scope) void {
+        _ = scope;
         // TODO: Invoke queued Custom Element callbacks
     }
 };
@@ -341,6 +365,7 @@ pub fn clamp(comptime T: type, value: anytype) T {
 pub fn initializeRuntime(allocator: std.mem.Allocator) void {
     SlabAllocator.init(allocator);
     ArenaAllocator.init(allocator);
+    @import("webidl").utils.beginRegistryRuntime(); // a new arena: the registries' entries from before it are gone
     // Initialize internal state registry with provided allocator
     // This prevents memory fragmentation from using page_allocator
     internal_state.initRegistry(allocator);

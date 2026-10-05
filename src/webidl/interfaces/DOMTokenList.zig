@@ -152,8 +152,8 @@ pub const DOMTokenList = struct {
     /// Extended attributes: [CEReactions], [Stringifier]
     pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try DOMTokenListImpl.set_value(instance, value);
     }
@@ -165,8 +165,8 @@ pub const DOMTokenList = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_toggle(instance: *runtime.Instance, token: DOMString, force: webidl.Opt(bool)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DOMTokenListImpl.call_toggle(instance, token, force);
     }
@@ -174,8 +174,8 @@ pub const DOMTokenList = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_replace(instance: *runtime.Instance, token: DOMString, newToken: DOMString) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DOMTokenListImpl.call_replace(instance, token, newToken);
     }
@@ -183,8 +183,8 @@ pub const DOMTokenList = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_remove(instance: *runtime.Instance, tokens: []const DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DOMTokenListImpl.call_remove(instance, tokens);
     }
@@ -204,9 +204,21 @@ pub const DOMTokenList = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_add(instance: *runtime.Instance, tokens: []const DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DOMTokenListImpl.call_add(instance, tokens);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_value",
+        "call_toggle",
+        "call_replace",
+        "call_remove",
+        "call_add",
+    };
 };

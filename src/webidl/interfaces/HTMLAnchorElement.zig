@@ -426,8 +426,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_target(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_target")) return try HTMLAnchorElementImpl.set_target(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "target" }, value);
@@ -442,8 +442,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_download(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_download")) return try HTMLAnchorElementImpl.set_download(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "download" }, value);
@@ -458,8 +458,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_ping(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_ping")) return try HTMLAnchorElementImpl.set_ping(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "ping" }, value);
@@ -474,8 +474,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_rel(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_rel")) return try HTMLAnchorElementImpl.set_rel(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "rel" }, value);
@@ -513,8 +513,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_hreflang(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_hreflang")) return try HTMLAnchorElementImpl.set_hreflang(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "hreflang" }, value);
@@ -529,8 +529,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_type")) return try HTMLAnchorElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);
@@ -544,8 +544,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_text(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLAnchorElementImpl.set_text(instance, value);
     }
@@ -558,8 +558,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLAnchorElementImpl.set_referrerPolicy(instance, value);
     }
@@ -573,8 +573,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_coords(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_coords")) return try HTMLAnchorElementImpl.set_coords(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "coords" }, value);
@@ -589,8 +589,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_charset(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_charset")) return try HTMLAnchorElementImpl.set_charset(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "charset" }, value);
@@ -605,8 +605,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_name")) return try HTMLAnchorElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -621,8 +621,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_rev(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_rev")) return try HTMLAnchorElementImpl.set_rev(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "rev" }, value);
@@ -637,8 +637,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_shape(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAnchorElementImpl, "set_shape")) return try HTMLAnchorElementImpl.set_shape(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "shape" }, value);
@@ -652,8 +652,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_attributionSourceId(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLAnchorElementImpl.set_attributionSourceId(instance, value);
     }
@@ -666,8 +666,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_attributionDestination(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLAnchorElementImpl.set_attributionDestination(instance, value);
     }
@@ -680,8 +680,8 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions], [SecureContext]
     pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLAnchorElementImpl.set_attributionSrc(instance, value);
     }
@@ -727,4 +727,37 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions]
     pub const get_hash = mixins.HTMLHyperlinkElementUtils.get_hash;
     pub const set_hash = mixins.HTMLHyperlinkElementUtils.set_hash;
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_target",
+        "set_download",
+        "set_ping",
+        "set_rel",
+        "set_hreflang",
+        "set_type",
+        "set_text",
+        "set_referrerPolicy",
+        "set_coords",
+        "set_charset",
+        "set_name",
+        "set_rev",
+        "set_shape",
+        "set_attributionSourceId",
+        "set_attributionDestination",
+        "set_attributionSrc",
+        "set_href",
+        "set_protocol",
+        "set_username",
+        "set_password",
+        "set_host",
+        "set_hostname",
+        "set_port",
+        "set_pathname",
+        "set_search",
+        "set_hash",
+    };
 };

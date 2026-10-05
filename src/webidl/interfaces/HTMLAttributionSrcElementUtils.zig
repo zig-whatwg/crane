@@ -103,9 +103,17 @@ pub const HTMLAttributionSrcElementUtils = struct {
     /// Extended attributes: [CEReactions], [SecureContext]
     pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLAttributionSrcElementUtilsImpl.set_attributionSrc(instance, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_attributionSrc",
+    };
 };
