@@ -1,4 +1,9 @@
 //! Implementation for NavigatorLocks interface
+//!
+//! Web Locks 3.1: Navigator and WorkerNavigator include NavigatorLocks, so
+//! both inherit this one `locks` getter.
+//!
+//! Spec: https://w3c.github.io/web-locks/#navigator-mixins
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -39,8 +44,10 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for locks
+/// Web Locks 3.1: "The locks getter's steps are to return this's relevant
+/// settings object's LockManager object" - LockManager's to make and find
+/// (html.web_locks.lock_managers). `this` is a Navigator or a
+/// WorkerNavigator; its relevant realm is its environment's.
 pub fn get_locks(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    _ = instance;
-    return error.NotImplemented;
+    return @import("html").web_locks.lock_managers.of(instance.ctx);
 }
