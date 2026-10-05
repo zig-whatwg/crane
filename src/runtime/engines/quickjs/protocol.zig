@@ -39,6 +39,7 @@ pub const capabilities: engine.Capabilities = .{
     .heap_snapshots = .unsupported,
     .diagnostic_counters = .unsupported,
     .script_abort = .unsupported,
+    .code_generation_checks = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

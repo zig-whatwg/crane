@@ -13238,3 +13238,120 @@ bool v8_AllowSharedBufferSource_Bytes(Global<Value>* value, void** data, size_t*
 
 } // extern "C"
 // ---- end lane: conversions ----
+// ---- lane: cspenforce ----
+// ============================================================================
+// The engine protocol's code generation checks [code_generation_checks]:
+// HostEnsureCanCompileStrings and HostGetCodeForEval through V8's
+// ModifyCodeGenerationFromStringsCallback, HostEnsureCanCompileWasmBytes
+// through its AllowWasmCodeGenerationCallback - as Blink's
+// V8Initializer::CodeGenerationCheckCallbackInMainThread and
+// WasmCodeGenerationCheckCallback do. V8 asks the strings callback only for
+// a context whose allow_code_gen_from_strings is false
+// (Compiler::ValidateDynamicCompilationSource), so every realm of a hooked
+// agent is made with it false (v8_Context_AllowCodeGenerationFromStrings).
+// ============================================================================
+
+extern "C" {
+
+/// The strings dispatcher's answer: 0 blocked; 1 allowed, V8 compiling the
+/// source it was given (or, for an object, returning it unchanged); 2
+/// allowed with `*code` - malloc'd UTF-8 of `*code_len` bytes, freed here -
+/// as the source. `source` is the source as UTF-8 when it is a string, else
+/// null and `object` the value (BORROWED for the call).
+typedef int (*ProtocolCodeGenerationDispatch)(
+    Isolate* isolate,
+    Global<Context>* context,
+    const char* source,
+    size_t source_len,
+    Global<Value>* object,
+    bool is_code_like,
+    char** code,
+    size_t* code_len
+);
+typedef bool (*ProtocolWasmCodeGenerationDispatch)(Isolate* isolate, Global<Context>* context);
+
+// process-wide: the one Zig dispatcher (protocol_agents.onCodeGenerationFromStrings) every hooked agent's isolate calls, finding its agent by isolate; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
+static ProtocolCodeGenerationDispatch g_protocol_code_generation = nullptr;
+// process-wide: the one Zig dispatcher (protocol_agents.onWasmCodeGeneration) every hooked agent's isolate calls, finding its agent by isolate; written once at process start (protocol_agents.initializeEngine, before any agent thread exists), read-only after.
+static ProtocolWasmCodeGenerationDispatch g_protocol_wasm_code_generation = nullptr;
+
+/// V8 calls this from eval (direct and indirect) and CreateDynamicFunction,
+/// inside their own HandleScope: the modified source made here lives in it.
+static ModifyCodeGenerationFromStringsResult ProtocolModifyCodeGenerationFromStrings(
+    Local<Context> context,
+    Local<Value> source,
+    bool is_code_like
+) {
+    ModifyCodeGenerationFromStringsResult result;
+    result.codegen_allowed = true;
+    auto dispatch = g_protocol_code_generation;
+    if (!dispatch) return result;
+    Isolate* isolate = context->GetIsolate();
+    Global<Context> realm(isolate, context);
+    char* code = nullptr;
+    size_t code_len = 0;
+    int verdict = 1;
+    if (source->IsString()) {
+        String::Utf8Value utf8(isolate, source);
+        verdict = dispatch(isolate, &realm, *utf8 ? *utf8 : "", *utf8 ? utf8.length() : 0, nullptr, is_code_like, &code, &code_len);
+    } else if (source->IsObject()) {
+        Global<Value> object(isolate, source);
+        verdict = dispatch(isolate, &realm, nullptr, 0, &object, is_code_like, &code, &code_len);
+    }
+    // A primitive that is no string: eval returns it (PerformEval step 2),
+    // unchecked.
+    if (verdict == 0) {
+        free(code);
+        result.codegen_allowed = false;
+        return result;
+    }
+    if (verdict == 2 && code) {
+        Local<String> replacement;
+        if (String::NewFromUtf8(isolate, code, NewStringType::kNormal, static_cast<int>(code_len)).ToLocal(&replacement)) {
+            result.modified_source = replacement;
+        } else {
+            // No source to compile: compile nothing.
+            result.codegen_allowed = false;
+        }
+    }
+    free(code);
+    return result;
+}
+
+static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String> source) {
+    (void)source;  // V8 passes the empty string (wasm-module.cc IsWasmCodegenAllowed).
+    auto dispatch = g_protocol_wasm_code_generation;
+    if (!dispatch) return true;
+    Isolate* isolate = context->GetIsolate();
+    Global<Context> realm(isolate, context);
+    return dispatch(isolate, &realm);
+}
+
+/// The process's code generation dispatchers (one Zig function each, which
+/// finds the agent's hooks by its isolate): set once, while the process
+/// starts (engine.initializeEngine), before any agent's thread runs - never
+/// per agent, which with agents on their own threads would be concurrent
+/// writes of one global.
+void v8_SetProtocolCodeGenerationDispatchers(ProtocolCodeGenerationDispatch strings, ProtocolWasmCodeGenerationDispatch wasm) {
+    g_protocol_code_generation = strings;
+    g_protocol_wasm_code_generation = wasm;
+}
+
+/// Install the protocol's code generation checks on `isolate`, each only
+/// when asked. With no dispatcher set (a host that never called
+/// initializeEngine), the callbacks allow everything.
+void v8_Isolate_SetProtocolCodeGenerationHooks(Isolate* isolate, bool strings, bool wasm) {
+    if (strings) isolate->SetModifyCodeGenerationFromStringsCallback(ProtocolModifyCodeGenerationFromStrings);
+    if (wasm) isolate->SetAllowWasmCodeGenerationCallback(ProtocolAllowWasmCodeGeneration);
+}
+
+/// Whether `context` allows code generation from strings without asking
+/// (Context::IsCodeGenerationFromStringsAllowed), for tests.
+bool v8_Context_IsCodeGenerationFromStringsAllowed(Global<Context>* context) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    return context->Get(isolate)->IsCodeGenerationFromStringsAllowed();
+}
+
+} // extern "C"
+// ---- end lane: cspenforce ----

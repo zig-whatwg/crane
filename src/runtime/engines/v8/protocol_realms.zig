@@ -240,6 +240,9 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
             ffi.v8_Context_SetSecurityToken(context, token);
         }
     }
+    // [code_generation_checks]: eval and Function in it reach the agent's
+    // host, when the host checks them.
+    @import("protocol_agents.zig").restrictCodeGenerationFromStrings(isolate, context);
     // The page's context stays entered while it lives; destroyWindowRealm
     // exits it. A frame's is entered only while it is made (below).
     ffi.v8_Context_Enter(context);

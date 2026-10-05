@@ -28,11 +28,72 @@ const enums = @import("enums");
 const webidl = @import("webidl");
 const csp = @import("csp");
 const fire_event = @import("fire_event.zig");
+const policy_containers = @import("policy_containers.zig");
 
 const log = std.log.scoped(.csp_violations);
 
 pub const Reporter = csp.violation_events.Reporter;
 pub const Violation = csp.violation_events.Violation;
+
+/// CSP §4.2.3 "Should element's inline type behavior be blocked by Content
+/// Security Policy?" for `element`'s inline `inline_type` behaviour with
+/// `source`: true for "Blocked". `matching` is what §6.7.3 reads of the
+/// element - its nonce when it is nonceable, whether it is a parser-inserted
+/// script.
+///
+/// For each policy of the element's node document's CSP list, the inline
+/// check of the directive §6.8.4 picks (csp.inline_check); a policy it
+/// blocks reports a violation - the effective directive for inline checks,
+/// resource "inline", the element, a sample under 'report-sample' - and
+/// blocks when it is enforced. A monitored policy reports and lets it
+/// through.
+///
+/// The violation's global (step 3.1.3, "the current settings object's
+/// global object") is the element's node document's window. That is what
+/// Blink, Gecko and WebKit report to, and what WPT reads: an attribute set
+/// from the parent on an element of a child frame's document reports to the
+/// child frame (securitypolicyviolation/targeting-for-inline-handler-on-
+/// subframe-element.html) - while the parent's script is the current one.
+/// A document with no window reports to no one, and still blocks.
+///
+/// Spec: https://w3c.github.io/webappsec-csp/#should-block-inline
+pub fn shouldBlockInline(
+    element: *runtime.Instance,
+    inline_type: csp.inline_check.InlineType,
+    source: []const u8,
+    matching: csp.inline_check.Element,
+) bool {
+    // 1. "Assert: element is not null."
+    // "element's Document's global object's CSP list": a Window's is its
+    // associated Document's policy container's (§4.2.2); a document with no
+    // window is read the same way, its own container.
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    const container = policy_containers.of(document) orelse return false;
+    if (container.csp_list.policies.items.len == 0) return false;
+    const window: ?*runtime.Instance = interfaces.Document.get_defaultView(document) catch null;
+    // 2. Let result be "Allowed".
+    var blocked = false;
+    // 3. For each policy of the CSP list:
+    for (container.csp_list.policies.items) |*policy| {
+        // 3.1.1. A directive whose inline check allows it is skipped.
+        const directive = csp.inline_check.blockingDirective(policy, matching, inline_type, source) orelse continue;
+        // 3.1.2-3.1.7. A violation of the effective directive for inline
+        // checks, its resource "inline", its element the element, a sample
+        // when the directive asks for one - reported.
+        if (window) |w| reportViolation(w, &.{
+            .policy = policy,
+            .effective_directive = csp.inline_check.effectiveDirectiveForInlineCheck(inline_type),
+            .resource = .@"inline",
+            .element = element,
+            .sample = csp.violation_events.sampleFor(directive, source),
+        });
+        // 3.1.8. "If policy's disposition is "enforce", then set result to
+        // "Blocked"."
+        if (policy.disposition == .enforce) blocked = true;
+    }
+    // 4. Return result.
+    return blocked;
+}
 
 /// The reporter for violations of `global`'s policies (a Window's or a
 /// WorkerGlobalScope's).
@@ -159,7 +220,7 @@ const ViolationTask = struct {
         // target to null."
         if (element) |e| {
             if (document) |d| {
-                const root = interfaces.Node.call_getRootNode(e, webidl.Opt(dictionaries.GetRootNodeOptions).passed(.{ .composed = true })) catch null;
+                const root = shadowIncludingRoot(e);
                 if (root == null or root.? != d) element = null;
             }
         }
@@ -201,6 +262,25 @@ const ViolationTask = struct {
         _ = try fire_event.dispatchTrusted(at, event);
     }
 };
+
+/// DOM "shadow-including root": `node`'s root's host's shadow-including
+/// root when its root is a shadow root, else its root. Walked here through
+/// ShadowRoot's host: Node.getRootNode({composed: true}) does not cross a
+/// shadow root yet (its TODO), so an element in a shadow tree read as
+/// disconnected and its violation went to the document
+/// (securitypolicyviolation/targeting-for-inline-style-in-shadow-dom.html).
+fn shadowIncludingRoot(node: *runtime.Instance) ?*runtime.Instance {
+    var current = node;
+    // A chain of shadow roots is a handful deep; the bound only stops a
+    // corrupt tree from looping here.
+    var depth: usize = 0;
+    while (depth < 64) : (depth += 1) {
+        const root = interfaces.Node.call_getRootNode(current, webidl.Opt(dictionaries.GetRootNodeOptions).passed(.{})) catch return null;
+        // A root that is no shadow root has no host: it is the answer.
+        current = interfaces.ShadowRoot.get_host(root) catch return root;
+    }
+    return null;
+}
 
 /// The Window `global`'s associated Document, or null for any other global.
 fn windowDocument(global: *runtime.Instance) ?*runtime.Instance {
