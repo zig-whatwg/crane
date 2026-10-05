@@ -4102,6 +4102,16 @@ Global<Value>* v8_Value_StructuredCloneWithTransfer(
             return nullptr;
         }
 
+        // A buffer that cannot be detached (a WebAssembly.Memory's): a
+        // TypeError (ECMAScript DetachArrayBuffer) before anything is detached;
+        // V8's Detach on one is a fatal CHECK. Code 3: the TypeError is pending.
+        if (!ab->IsDetachable()) {
+            isolate->ThrowException(Exception::TypeError(
+                String::NewFromUtf8Literal(isolate, "An ArrayBuffer in the transfer list cannot be detached")));
+            if (error_code) *error_code = 3;
+            return nullptr;
+        }
+
         array_buffers_to_transfer.push_back(ab);
     }
 
@@ -11576,7 +11586,26 @@ static uint8_t* serializeWithTransfer(
 
         // Check if already detached
         if (ab->WasDetached()) {
+            for (auto& d : copied_data) {
+                if (d.first) free(d.first);
+            }
             if (error_code) *error_code = 1;  // DataCloneError
+            return nullptr;
+        }
+
+        // ECMAScript DetachArrayBuffer (StructuredSerializeWithTransfer step
+        // 5.4.3) throws a TypeError for a buffer whose [[ArrayBufferDetachKey]]
+        // is not undefined - a WebAssembly.Memory's - and V8's Detach on one is
+        // a fatal CHECK. Refused here, before anything is detached, so a
+        // failed transfer leaves every buffer of the list attached. Code 3:
+        // the TypeError is pending.
+        if (!ab->IsDetachable()) {
+            for (auto& d : copied_data) {
+                if (d.first) free(d.first);
+            }
+            isolate->ThrowException(Exception::TypeError(
+                String::NewFromUtf8Literal(isolate, "An ArrayBuffer in the transfer list cannot be detached")));
+            if (error_code) *error_code = 3;
             return nullptr;
         }
 

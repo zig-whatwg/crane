@@ -860,7 +860,8 @@ pub extern fn v8_Value_StructuredClone(value: *Value) ?*Value;
 //   value: The value to clone
 //   transfer_list: Array of Value* (ArrayBuffers) to transfer
 //   transfer_count: Number of items in transfer_list
-//   error_code: Pointer to receive error code (0=success, 1=DataCloneError, 2=other)
+//   error_code: Pointer to receive error code (0=success, 1=DataCloneError, 2=other,
+//               3=a TypeError is pending: a buffer that cannot be detached)
 pub extern fn v8_Value_StructuredCloneWithTransfer(
     value: *Value,
     transfer_list: [*]*Value,
@@ -887,7 +888,9 @@ pub const ArrayBufferTransferData = extern struct {
 ///   transfer_count: Number of ArrayBuffers to transfer
 ///   out_size: OUTPUT - Size of serialized data
 ///   out_arraybuffer_data: OUTPUT - Array of ArrayBufferTransferData (caller provides, filled with copied data)
-///   error_code: OUTPUT - 0=success, 1=DataCloneError, 2=other error
+///   error_code: OUTPUT - 0=success, 1=DataCloneError, 2=other error, 3=a
+///     TypeError is pending (a buffer that cannot be detached - nothing was
+///     detached)
 /// Returns: Pointer to serialized data (caller must free with v8_Free_SerializedBuffer)
 pub extern fn v8_Value_SerializeWithTransfer_CrossIsolate(
     value: *Value,
@@ -901,7 +904,9 @@ pub extern fn v8_Value_SerializeWithTransfer_CrossIsolate(
 /// HTML StructuredSerializeWithTransfer: the same bytes as
 /// `v8_Value_SerializeWithTransfer_CrossIsolate`, with the spec's exceptions.
 /// error_code 3 means an exception is PENDING - a "DataCloneError"
-/// DOMException, or whatever script threw during serialization - so the caller
+/// DOMException, whatever script threw during serialization, or the
+/// TypeError for a transferred buffer that cannot be detached (a
+/// WebAssembly.Memory's; nothing was detached) - so the caller
 /// returns `error.ExceptionPending` rather than throwing a second one. Code 1 (a
 /// bad transfer list) has thrown nothing. Free the result with
 /// `v8_Free_SerializedBuffer`; `v8_Value_DeserializeWithTransfer_CrossIsolate`
