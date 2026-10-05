@@ -142,6 +142,18 @@ pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload
             self.queues.clearElement(record);
         }
 
+        /// Native error cleanup can destroy an element in a live realm. Its
+        /// address may immediately be reissued; stale queue slots keep this
+        /// cancelled identity, never the replacement's record.
+        pub fn cancelElement(self: *Self, element: Element) void {
+            const entry = self.elements.fetchRemove(element) orelse return;
+            const record = entry.value;
+            record.cancelled = true;
+            self.queues.clearElement(record);
+            record.release();
+            self.collectQuiescent();
+        }
+
         /// Called before the realm's instances or engine roots are destroyed.
         /// A scheduled backup microtask borrows this agent state, so it remains
         /// safe to run afterwards; cancelled records contain no callable work.

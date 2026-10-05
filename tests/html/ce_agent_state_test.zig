@@ -123,6 +123,25 @@ test "CE agent: deferring a scope keeps its roots until the backup invocation" {
     try testing.expectEqual(counts.held, counts.released);
 }
 
+test "CE agent: a destroyed element address gets a new identity in the same realm" {
+    var state = State.init(testing.allocator);
+    defer state.deinit();
+    var counts = Counts{};
+    var log = Log{ .state = &state, .counts = &counts };
+    state.begin();
+    _ = try state.enqueue(&counts, 1, 10, .{ .value = 1, .counts = &counts }, acquire);
+    _ = try state.enqueue(&counts, 2, 10, .{ .value = 2, .counts = &counts }, acquire);
+    state.cancelElement(1);
+    state.cancelElement(1);
+    try testing.expectEqual(@as(usize, 1), counts.released);
+    try testing.expectEqual(@as(usize, 1), counts.dropped);
+    _ = try state.enqueue(&counts, 1, 10, .{ .value = 3, .counts = &counts }, acquire);
+    state.end(&log, Log.invoke);
+    try testing.expectEqualSlices(u32, &.{ 2, 3 }, log.values[0..log.len]);
+    try testing.expectEqual(counts.held, counts.released);
+    try testing.expectEqual(@as(usize, 3), counts.dropped);
+}
+
 test "CE agent: realm cleanup preserves constructor scope slots until they pop" {
     var state = State.init(testing.allocator);
     defer state.deinit();
