@@ -126,6 +126,8 @@ pub const documentWriteln = parser.documentWriteln;
 pub const documentClose = parser.documentClose;
 
 // Custom Elements
+pub const custom_element_reactions = @import("custom_elements/reactions.zig");
+
 // Note: custom_elements.zig and upgrade.zig require webidl access for
 // CustomElementDefinition fields. They are available via the html module
 // (full.zig) instead of html_core.
