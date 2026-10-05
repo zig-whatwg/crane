@@ -416,6 +416,14 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
                 // and its script element state leaked with every page that
                 // had one (SVGScriptElement.init, leak-traced).
                 interfaces.SVGScriptElement.deinit(instance);
+            } else if (instance.vtable == &interfaces.HTMLAudioElement.vtable) {
+                interfaces.HTMLAudioElement.deinit(instance);
+            } else if (instance.vtable == &interfaces.HTMLVideoElement.vtable) {
+                interfaces.HTMLVideoElement.deinit(instance);
+            } else if (instance.vtable == &interfaces.HTMLSourceElement.vtable) {
+                interfaces.HTMLSourceElement.deinit(instance);
+            } else if (instance.vtable == &interfaces.HTMLTrackElement.vtable) {
+                interfaces.HTMLTrackElement.deinit(instance);
             } else if (std.mem.eql(u8, local_name, "script")) {
                 interfaces.HTMLScriptElement.deinit(instance);
             } else if (std.mem.eql(u8, local_name, "iframe")) {
