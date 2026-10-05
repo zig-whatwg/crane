@@ -203,6 +203,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Steps that run outside script ask the structure, not script's getters](architecture-engine-side-steps-ask-the-structure-not-scripts-getters.md) - An IDL getter is script's: its security checks assume a script accessor; engine-side steps read the navigable and the NodeBase tree.
 - [The DOM's callbacks find an element by its NodeBase name, which most elements leave empty](architecture-dom-callbacks-find-an-element-by-its-nodebase-name.md) - Before filtering a DOM callback by node name, check that the element type's init sets the NodeBase name.
 - [A Fetch policy needs every request construction path](architecture-a-fetch-policy-needs-every-request-construction-path.md) - Trace a policy from its owning settings object through every request constructor to the network boundary.
+- [A loop and its agent end in an order, and what each holds of the other must survive it](architecture-a-loop-and-its-agent-end-in-an-order-each-queue-must-survive.md) - When a loop and an engine agent end, write down which ends first and what each still holds of the other - queued microtasks, task drops that touch the engine - then make each holder survive the order, rather than reordering until one case stops crashing.
 
 ### Spec Compliance
 - [The decoder reports the error; the caller picks the mode](spec-compliance-the-decoder-reports-the-error-the-caller-picks.md) - When one decoder in a family passes a conformance file and its siblings do not, diff their contracts before their algorithms.
@@ -256,6 +257,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [Create an event before queuing its dispatch](spec-compliance-create-an-event-before-queuing-its-dispatch.md) - Creation captures observable state before the dispatch task runs.
 - [A tick added to match ordering tests goes stale when the spec moves](spec-compliance-a-tick-added-to-match-tests-goes-stale-when-the-spec-moves.md) - When ordering tests fail against a stated deviation, re-read the current spec text before tuning the deviation: the deviation may be what is now wrong.
 - [Media source exhaustion is not a media error](spec-compliance-media-source-exhaustion-is-not-a-media-error.md) - A candidate failure is not necessarily a media-element failure; preserve its selected mode, target and continuation.
+- [A worker script that does not parse is not a runtime error](spec-compliance-a-worker-script-that-does-not-parse-is-not-a-runtime-error.md) - When a spec algorithm branches on how a script failed (parse error vs. thrown), the engine operation must report which - one reporter for both makes whichever branch you implement break the other's tests. Write the case for each branch before touching either.
 
 ### Codegen
 - [Callback FUNCTIONS cannot move to CallbackWrapper until the registry is real](codegen-callback-functions-cannot-move-to.md) - When a change is mechanical but keeps getting reverted, the blocker is under it, not in it.
