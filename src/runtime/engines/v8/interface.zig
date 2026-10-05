@@ -361,7 +361,7 @@ fn typeRetainsContextDepth(comptime T: type, comptime depth: u32) bool {
 pub fn argHandleIsCopied(comptime T: type) bool {
     return comptime blk: {
         // Dictionaries are walked member by member, recursively.
-        @setEvalBranchQuota(100_000);
+        @setEvalBranchQuota(1_000_000);
         // Scalars decode to a Zig value; the handle is read and done with.
         if (T == void or T == bool) break :blk true;
         if (T == i8 or T == i16 or T == i32 or T == i64 or T == isize) break :blk true;
