@@ -165,6 +165,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         .name = worker_options.name,
         .worker_type = worker_options.worker_type,
         .credentials = worker_options.credentials,
+        .extended_lifetime = worker_options.extended_lifetime,
         .inside_end = @ptrCast(inside_end),
         // "Run a worker" step 3, should the steps run one: the unsafe worker
         // creation time.
@@ -218,11 +219,16 @@ fn started(worker: *runtime.Instance) void {
 /// A shared worker's end tells its SharedWorkers nothing.
 fn ended(_: *runtime.Instance) void {}
 
-/// WorkerOptions, as the constructor's step 2 leaves it. `name` OWNED.
+/// SharedWorkerOptions, as the constructor's step 2 leaves it. `name` OWNED.
 const Options = struct {
     name: []const u8,
     worker_type: WorkerType = .classic,
     credentials: RequestCredentials = .same_origin,
+    /// SharedWorkerOptions' own member (HTML, 2025): the worker's extended
+    /// lifetime. The pinned IDL (specs/idl) predates it and types the
+    /// argument (DOMString or WorkerOptions); this conversion follows the
+    /// current dictionary, SharedWorkerOptions : WorkerOptions.
+    extended_lifetime: bool = false,
 
     fn deinit(self: *Options, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
@@ -244,10 +250,12 @@ fn convertOptions(ctx: runtime.Context, options: webidl.Opt(runtime.JSValue)) !O
     }
 }
 
-/// WebIDL's dictionary conversion of `value`, an object, to WorkerOptions:
-/// its members in lexicographic order - credentials, name, type - each Get,
-/// then converted, or its default when undefined. An enumeration value that
-/// is not one of the enum's throws a TypeError.
+/// WebIDL's dictionary conversion of `value`, an object, to
+/// SharedWorkerOptions: its members - the inherited dictionary's first
+/// (WorkerOptions: credentials, name, type), then its own (extendedLifetime),
+/// each set in lexicographic order - each Get, then converted, or its default
+/// when undefined. An enumeration value that is not one of the enum's throws
+/// a TypeError.
 fn convertWorkerOptions(ctx: runtime.Context, value: runtime.JSValue) !Options {
     const allocator = ctx.allocator;
     var result: Options = .{ .name = try allocator.dupe(u8, "") };
@@ -265,6 +273,8 @@ fn convertWorkerOptions(ctx: runtime.Context, value: runtime.JSValue) !Options {
         defer allocator.free(text);
         result.worker_type = WorkerType.fromString(text) orelse return error.TypeError;
     }
+    // SharedWorkerOptions' own member: boolean, ToBoolean of the value.
+    if (try engine.getPropertyBoolean(ctx, value, "extendedLifetime")) |extended| result.extended_lifetime = extended;
     return result;
 }
 

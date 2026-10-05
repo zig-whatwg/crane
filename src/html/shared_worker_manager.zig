@@ -29,6 +29,14 @@
 //! and keeps executing may be terminated ("terminate a worker", § 10.2.4) -
 //! so the close aborts a script that is running, as Chromium's does.
 //!
+//! A worker made with extendedLifetime true is "in extended lifetime" while
+//! its owner set has been empty for less than the extended lifetime shared
+//! worker timeout - and so actively needed and protected: it closes only
+//! once that timeout has passed with its owner set still empty
+//! (`closeIfStillOrphaned`; the caller arms the timer, on its Browser's
+//! window loop). (Crane's Documents are fully active until destroyed, so
+//! "in extended lifetime" steps 4-5 add nothing.)
+//!
 //! The manager's steps run on its Browser's window thread (SharedWorker is
 //! [Exposed=Window]); a realm's end on ANY thread asks it to drop that realm
 //! from every owner set (a worker realm owns no shared worker, and finds
@@ -62,6 +70,22 @@ pub const SharedWorkerManager = struct {
         name: []const u8,
     };
 
+    /// HTML's extended lifetime shared worker timeout: "how long the user
+    /// agent allows shared workers which the web developer has requested be
+    /// given an extended lifetime, to survive and perform work after all of
+    /// their owners have disappeared" - implementation-defined, "anywhere
+    /// from 10 seconds to 5 minutes"; the lower end, so an orphan of a test
+    /// page does not outlive the next ones by long.
+    pub const extended_lifetime_timeout_ms: u64 = 10_000;
+
+    /// A worker whose owner set emptied with an extended lifetime: closed
+    /// once the timeout passes, unless an owner joined since (`epoch`).
+    pub const Orphan = struct {
+        /// A reference, the caller's to release.
+        link: *WorkerLink,
+        epoch: u64,
+    };
+
     /// One SharedWorkerGlobalScope the manager knows.
     pub const Entry = struct {
         /// The key, OWNED.
@@ -70,6 +94,11 @@ pub const SharedWorkerManager = struct {
         name: []u8,
         worker_type: workers.WorkerType,
         credentials: workers.RequestCredentials,
+        /// The global scope's extended lifetime: options["extendedLifetime"].
+        extended_lifetime: bool = false,
+        /// Bumped whenever the owner set empties: an extended lifetime's
+        /// timer armed for an earlier emptying finds another epoch.
+        orphan_epoch: u64 = 0,
         /// The worker's link (a reference): its closing flag, its sink, its
         /// termination.
         link: *WorkerLink,
@@ -116,19 +145,29 @@ pub const SharedWorkerManager = struct {
         return scope.existing(SharedWorkerManager);
     }
 
+    /// What a constructor asks for beyond the key: options["type"],
+    /// ["credentials"] and ["extendedLifetime"] (step 11.4).
+    pub const Options = struct {
+        worker_type: workers.WorkerType,
+        credentials: workers.RequestCredentials,
+        extended_lifetime: bool = false,
+    };
+
     /// The SharedWorker constructor's steps 11.1-11.2: the worker whose
     /// constructor storage key, constructor URL and name are `key`'s and
     /// whose closing flag is false - and, when there is one, `owner` joins
-    /// its owner set (step 11.5.8; the caller has checked step 11.4 first
-    /// through `type` and `credentials` of the result: a mismatch is not an
-    /// owner, so `owner` is added only when they match). The worker's link
-    /// (retained - the caller releases it), its thread host and whether its
-    /// type and credentials matched; null when no worker matches.
-    pub fn connect(self: *SharedWorkerManager, key: Key, worker_type: workers.WorkerType, credentials: workers.RequestCredentials, owner: *const anyopaque) Allocator.Error!?Found {
+    /// its owner set (step 11.5.8). Step 11.4 is checked here too, through
+    /// `options`: a mismatch is no owner. The worker's link (retained - the
+    /// caller releases it), its thread host and whether its type,
+    /// credentials and extended lifetime matched; null when no worker
+    /// matches.
+    pub fn connect(self: *SharedWorkerManager, key: Key, options: Options, owner: *const anyopaque) Allocator.Error!?Found {
         std.Io.Threaded.mutexLock(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         const entry = self.findRunning(key) orelse return null;
-        const matched = entry.worker_type == worker_type and entry.credentials == credentials;
+        const matched = entry.worker_type == options.worker_type and
+            entry.credentials == options.credentials and
+            entry.extended_lifetime == options.extended_lifetime;
         if (matched and !entry.hasOwner(owner)) try entry.owners.append(self.allocator, owner);
         return .{ .link = entry.link.retain(), .host = entry.host, .matched = matched };
     }
@@ -146,8 +185,7 @@ pub const SharedWorkerManager = struct {
     pub fn add(
         self: *SharedWorkerManager,
         key: Key,
-        worker_type: workers.WorkerType,
-        credentials: workers.RequestCredentials,
+        options: Options,
         link: *WorkerLink,
         host: *anyopaque,
         owner: *const anyopaque,
@@ -164,8 +202,9 @@ pub const SharedWorkerManager = struct {
             .storage_key = storage_key,
             .url = url,
             .name = name,
-            .worker_type = worker_type,
-            .credentials = credentials,
+            .worker_type = options.worker_type,
+            .credentials = options.credentials,
+            .extended_lifetime = options.extended_lifetime,
             .link = link,
             .host = host,
         };
@@ -194,9 +233,13 @@ pub const SharedWorkerManager = struct {
 
     /// "Destroy a document" step 8 for the Document whose realm is `owner`:
     /// it leaves every owner set it is in, and each worker whose owner set
-    /// it empties is closed (see the file's header: closing orphan
-    /// workers). How many workers were closed.
-    pub fn removeOwner(self: *SharedWorkerManager, owner: *const anyopaque) usize {
+    /// it empties is closed (see the file's header: closing orphan workers) -
+    /// now, or, for a worker with an extended lifetime, once the timeout has
+    /// passed: those are appended to `extended` (each link retained) for the
+    /// caller to arm (`closeIfStillOrphaned` when it fires); with no list,
+    /// or no room in it, they are closed now. How many workers were closed
+    /// now.
+    pub fn removeOwner(self: *SharedWorkerManager, owner: *const anyopaque, extended: ?*std.ArrayListUnmanaged(Orphan)) usize {
         var orphans: std.ArrayListUnmanaged(*WorkerLink) = .empty;
         defer orphans.deinit(self.allocator);
         {
@@ -208,6 +251,14 @@ pub const SharedWorkerManager = struct {
                 if (entry.owners.items.len != 0) continue;
                 // Freed when the owner set empties, as every container here.
                 entry.owners.clearAndFree(self.allocator);
+                entry.orphan_epoch +%= 1;
+                if (entry.extended_lifetime) {
+                    if (extended) |list| {
+                        if (list.append(self.allocator, .{ .link = entry.link.retain(), .epoch = entry.orphan_epoch })) |_| {
+                            continue;
+                        } else |_| entry.link.release();
+                    }
+                }
                 // No memory to note it: close it under the lock (a link's
                 // terminate takes only its own lock, which no path holds
                 // while taking this one).
@@ -222,6 +273,24 @@ pub const SharedWorkerManager = struct {
             link.release();
         }
         return orphans.items.len;
+    }
+
+    /// The extended lifetime shared worker timeout has passed since the owner
+    /// set of the worker whose link is `link` emptied (its `epoch`): closed
+    /// now if its owner set is still empty - no Document connected since.
+    /// Whether it was.
+    pub fn closeIfStillOrphaned(self: *SharedWorkerManager, link: *WorkerLink, epoch: u64) bool {
+        const orphaned = blk: {
+            std.Io.Threaded.mutexLock(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
+            for (self.entries.items) |entry| {
+                if (entry.link != link) continue;
+                break :blk entry.owners.items.len == 0 and entry.orphan_epoch == epoch;
+            }
+            break :blk false;
+        };
+        if (orphaned) _ = link.terminate();
+        return orphaned;
     }
 
     /// How many workers the manager knows (closing ones included).

@@ -1766,6 +1766,12 @@ pub const SharedScope = struct {
     /// options["credentials"].
     worker_type: WorkerType,
     credentials: workers.RequestCredentials,
+    /// The global scope's extended lifetime: options["extendedLifetime"].
+    extended_lifetime: bool = false,
+
+    fn options(self: *const SharedScope) SharedWorkerManager.Options {
+        return .{ .worker_type = self.worker_type, .credentials = self.credentials, .extended_lifetime = self.extended_lifetime };
+    }
 
     fn deinit(self: *SharedScope, allocator: Allocator) void {
         allocator.free(self.constructor_origin);
@@ -1792,10 +1798,12 @@ pub const SharedWorkerRequest = struct {
     /// outsideStorageKey, and the constructor origin: the outside settings'
     /// origin, serialized. BORROWED for the call.
     origin: []const u8,
-    /// options["name"], ["type"] and ["credentials"]. `name` BORROWED.
+    /// options["name"], ["type"], ["credentials"] and ["extendedLifetime"].
+    /// `name` BORROWED.
     name: []const u8,
     worker_type: WorkerType,
     credentials: workers.RequestCredentials,
+    extended_lifetime: bool = false,
     /// The other end of outsidePort's channel, which becomes the inside
     /// port - a MessagePort of the worker's realm. OWNED: the manager takes
     /// it whatever happens, including when this returns an error.
@@ -1835,6 +1843,7 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
         .name = name,
         .worker_type = request.worker_type,
         .credentials = request.credentials,
+        .extended_lifetime = request.extended_lifetime,
         .inside_end = request.inside_end,
         .creation_time_ms = request.creation_time_ms,
         .allocator = allocator,
@@ -1850,13 +1859,63 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
 /// each WorkerGlobalScope object whose set contains document" - as an
 /// unloading document cleanup step (the SharedWorker impl installs it): a
 /// shared worker whose owner set this empties is closed (the manager's
-/// "closing orphan workers"). Every realm's end runs it, on its own thread;
-/// a worker's realm owns no shared worker, and finds nothing.
+/// "closing orphan workers") - one with an extended lifetime once the
+/// extended lifetime shared worker timeout has passed, from a timer of the
+/// ending realm's loop (a window realm's is its Browser's window loop, where
+/// the manager's steps run). Every realm's end runs it, on its own thread; a
+/// worker's realm owns no shared worker, and finds nothing.
 pub fn sharedWorkerOwnerGone(realm: runtime.Context) void {
     const manager = SharedWorkerManager.existingOf(realm) orelse return;
-    const closed = manager.removeOwner(realm);
+    var extended: std.ArrayListUnmanaged(SharedWorkerManager.Orphan) = .empty;
+    defer extended.deinit(manager.allocator);
+    const closed = manager.removeOwner(realm, &extended);
     if (closed > 0) log.debug("{d} shared worker(s) closed: their owner set emptied", .{closed});
+    for (extended.items) |orphan| ExtendedOrphan.arm(manager, realm, orphan);
 }
+
+/// A shared worker in extended lifetime: its timer, on its Browser's window
+/// loop. Holds a link reference; the manager outlives the loop (the
+/// Browser's scope ends after its event loop), so a timer never fired is
+/// dropped while the manager is there.
+const ExtendedOrphan = struct {
+    manager: *SharedWorkerManager,
+    orphan: SharedWorkerManager.Orphan,
+
+    /// Arm the timeout for `orphan` (taken). With no loop to arm it on, the
+    /// worker is closed now - the earliest the spec allows.
+    fn arm(manager: *SharedWorkerManager, realm: runtime.Context, orphan: SharedWorkerManager.Orphan) void {
+        const timer = realm.getOptionalTimer() orelse return closeNow(manager, orphan);
+        const self = manager.allocator.create(ExtendedOrphan) catch return closeNow(manager, orphan);
+        self.* = .{ .manager = manager, .orphan = orphan };
+        if (timer.setTimeoutOwned(SharedWorkerManager.extended_lifetime_timeout_ms, fire, self, drop) == 0) {
+            manager.allocator.destroy(self);
+            closeNow(manager, orphan);
+        }
+    }
+
+    fn closeNow(manager: *SharedWorkerManager, orphan: SharedWorkerManager.Orphan) void {
+        _ = manager.closeIfStillOrphaned(orphan.link, orphan.epoch);
+        orphan.link.release();
+    }
+
+    /// The timeout has passed: closed, unless a Document connected since.
+    fn fire(data: ?*anyopaque) void {
+        const self: *ExtendedOrphan = @ptrCast(@alignCast(data.?));
+        const manager = self.manager;
+        const orphan = self.orphan;
+        manager.allocator.destroy(self);
+        closeNow(manager, orphan);
+    }
+
+    /// Never fired: its loop ended (the Browser's end, which terminates
+    /// every worker itself).
+    fn drop(data: ?*anyopaque) void {
+        const self: *ExtendedOrphan = @ptrCast(@alignCast(data.?));
+        const link = self.orphan.link;
+        self.manager.allocator.destroy(self);
+        link.release();
+    }
+};
 
 /// The manager's steps for one SharedWorker, as a task on its owner's loop.
 const SharedConnect = struct {
@@ -1869,6 +1928,7 @@ const SharedConnect = struct {
     name: []const u8,
     worker_type: WorkerType,
     credentials: workers.RequestCredentials,
+    extended_lifetime: bool,
     /// Null once a worker's loop has taken it.
     inside_end: ?*anyopaque,
     creation_time_ms: ?f64,
@@ -1916,12 +1976,18 @@ const SharedConnect = struct {
         // constructor URL equals urlRecord and whose name equals
         // options["name"] - and 5.8, the relevant owner to add (this
         // Document) joins its owner set.
-        const found = manager.connect(key, self.worker_type, self.credentials, self.owner_realm) catch
+        const options: SharedWorkerManager.Options = .{
+            .worker_type = self.worker_type,
+            .credentials = self.credentials,
+            .extended_lifetime = self.extended_lifetime,
+        };
+        const found = manager.connect(key, options, self.owner_realm) catch
             return self.fireError();
         if (found) |worker| {
             defer worker.link.release();
             // 3. No user agent configuration disallows the connection.
-            // 4. A type or credentials mismatch: `error` at worker.
+            // 4. A type, credentials or extended lifetime mismatch: `error`
+            // at worker.
             if (!worker.matched) return self.fireError();
             // 5.1-5.3: a secure context mismatch fires `error` too. Crane's
             // settings objects record no secure context yet, so outside and
@@ -2019,6 +2085,7 @@ fn sharedScopeOf(allocator: Allocator, connect: *const SharedConnect) !SharedSco
         .name = try allocator.dupe(u8, connect.name),
         .worker_type = connect.worker_type,
         .credentials = connect.credentials,
+        .extended_lifetime = connect.extended_lifetime,
     };
 }
 
@@ -2056,7 +2123,7 @@ fn startSharedWorker(
     errdefer allocator.destroy(owner_end);
     owner_end.* = .{ .allocator = allocator, .owner = start.owner_worker, .registry = registry, .manager = manager };
 
-    try manager.add(key, shared.worker_type, shared.credentials, link, thread_host, start.owner_realm);
+    try manager.add(key, shared.options(), link, thread_host, start.owner_realm);
     errdefer manager.remove(link);
 
     try WorkerThread.spawn(allocator, link, thread_host.asHost(), owner_end.asOwner(), registry);
