@@ -154,3 +154,16 @@ test "the first track getter seeds attributes set before lazy creation" {
     try testing.expect((try interfaces.TextTrack.get_kind(child)) == ._captions_);
     try testing.expectEqual(child, try interfaces.HTMLTrackElement.get_track(element));
 }
+
+test "empty TextTrackCueList rejects every anonymous indexed getter" {
+    start();
+    defer runtime.deinitializeRuntime();
+    var ctx = try runtime.ContextData.init(testing.allocator, .{});
+    defer ctx.deinit();
+    const list = try interfaces.TextTrackCueList.init(testing.allocator, &ctx);
+    defer interfaces.TextTrackCueList.deinit(list);
+    try testing.expectEqual(@as(u32, 0), try interfaces.TextTrackCueList.get_length(list));
+    for ([_]u32{ 0, 1, std.math.maxInt(u32) }) |index| {
+        try testing.expectError(error.IndexSizeError, interfaces.TextTrackCueList.call_getter(list, index));
+    }
+}
