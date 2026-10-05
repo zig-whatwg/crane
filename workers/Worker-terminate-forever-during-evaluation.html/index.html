@@ -21,19 +21,29 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../workers/"><code>workers/</code></a></li><li aria-current="page"><code>Worker-<wbr>terminate-<wbr>forever-<wbr>during-<wbr>evaluation.<wbr>html</code></li></ol></nav>
 <h1 class="page-title"><code>Worker-<wbr>terminate-<wbr>forever-<wbr>during-<wbr>evaluation.<wbr>html</code></h1>
 <div class="figures" role="group" aria-label="workers/Worker-terminate-forever-during-evaluation.html">
-<p class="figures-main"><span class="fg-pass">0</span><span class="fg-of"> / 0</span> <span class="fg-label">WPT subtests passing</span></p>
+<p class="figures-main"><span class="fg-pass">7</span><span class="fg-of"> / 7</span> <span class="fg-label">WPT subtests passing</span></p>
 <dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div></dl>
 </div>
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
-<div><dt>Run</dt><dd><code>sweep-9ef434a820</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/9ef434a820"><code>9ef434a820</code></a></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Run</dt><dd><code>sweep-86593942c6</code>, <span class="nowrap">5 Oct 2026</span>, Crane <a href="https://github.com/zig-whatwg/crane/commit/86593942c6"><code>86593942c6</code></a></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/workers/Worker-terminate-forever-during-evaluation.html"><code>workers/<wbr>Worker-<wbr>terminate-<wbr>forever-<wbr>during-<wbr>evaluation.<wbr>html</code></a></dd></div>
 </dl>
-<div class="harness"><p class="harness-label">Harness message</p><pre class="msg">supervisor killed a child that made no progress for 150000ms</pre></div>
 </header>
 <section class="subtests-section" aria-labelledby="subtests-h">
 <h2 id="subtests-h">Subtests</h2>
-<p class="no-detail"><strong>No per-subtest data for this file.</strong> Its latest run reported no subtests.</p>
+<p class="sub-hint">Each subtest that failed opens in place to its message.</p>
+<div class="run">
+<ol class="subtests">
+<li class="sub s-pass" id="s-8b76e566"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Worker is terminated during top-level script evaluation</span></div><a class="self" href="#s-8b76e566" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-75afaabb"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Worker is terminated during top-level script evaluation (module)</span></div><a class="self" href="#s-75afaabb" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-39410cf4"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Worker is terminated during importScripts() call</span></div><a class="self" href="#s-39410cf4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-36d4d4d8"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Worker is terminated during nested importScripts() call</span></div><a class="self" href="#s-36d4d4d8" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-a157fff2"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Worker is terminated during dynamic import()</span></div><a class="self" href="#s-a157fff2" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-c0f8eeaf"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Worker is terminated during dynamic import() (module)</span></div><a class="self" href="#s-c0f8eeaf" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-pass" id="s-09c86b46"><div class="sub-line"><span class="mark">PASS</span><span class="sub-name">Worker is terminated during top-level await</span></div><a class="self" href="#s-09c86b46" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+</div>
 </section>
 <footer class="foot">
 <p>Written as HTML by <code>tools/wpt_site/generate.zig</code> from the runner&rsquo;s journals and result streams; <code>site.js</code> adds the interactive chart, sorting, filtering and search. Faces: Source Serif 4, Public Sans and Source Code Pro, under the SIL Open Font License. <a href="https://github.com/zig-whatwg/crane">Crane on GitHub</a>.</p>
