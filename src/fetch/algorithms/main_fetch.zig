@@ -8,7 +8,7 @@
 //! The main fetch algorithm:
 //! 1. Checks local-URLs-only flag
 //! 2. Reports CSP violations (stubbed)
-//! 3. Upgrades mixed content (stubbed)
+//! 3. Upgrades and blocks mixed content
 //! 4. Checks bad ports
 //! 5. Sets referrer policy
 //! 6. Determines referrer
@@ -31,6 +31,7 @@ const validation = @import("../internal/validation.zig");
 const referrer_policy = @import("referrer_policy");
 const mime_blocking = @import("mime_blocking.zig");
 const csp_check = @import("csp_check.zig");
+const mixed_content = @import("../mixed_content.zig");
 const origins = @import("../internal/origins.zig");
 const clock = @import("clock");
 
@@ -188,7 +189,16 @@ pub fn mainFetchStart(
     upgradeRequestToPotentiallyTrustworthyUrl(request) catch return MainFetchError.OutOfMemory;
 
     // Step 6: "Upgrade a mixed content request to a potentially trustworthy
-    // URL, if appropriate" - not modelled yet (Mixed Content).
+    // URL, if appropriate" (Mixed Content 4.1). UIR runs first and may
+    // upgrade destinations and IP hosts that Mixed Content does not upgrade.
+    mixed_content.upgradeRequest(request) catch return MainFetchError.OutOfMemory;
+
+    // Step 7 (Mixed Content 4.4): blocked is a network error. Redirect
+    // fetch calls main fetch recursively with the same client snapshot,
+    // so every new current URL is checked before its network dispatch.
+    if (mixed_content.shouldBlockRequest(request) catch return MainFetchError.OutOfMemory) {
+        return .{ .response = try internal_response.networkError(allocator) };
+    }
 
     // Step 7 (bad port): Check bad port
     if (shouldBlockDueToBadPort(request)) {
@@ -451,12 +461,11 @@ pub fn mainFetchFinish(
         return fetched;
     }
 
-    // Step 19 (ahead of 14: it only ever makes response a network error,
-    // which step 14 leaves alone): if response is not a network error and
-    // it should be blocked - as mixed content or by CSP (neither exists
-    // here yet), due to its MIME type, or due to nosniff - then response is
-    // a network error.
-    const response = blockedByMime(request, fetched);
+    // Step 20 (current Fetch numbering), before marking the response's
+    // filter: Mixed Content 4.5 reads the INTERNAL response URL. Step 16
+    // supplies the request URL list when the response has none. Blocking
+    // only makes a network error, which the filtering steps leave alone.
+    const response = blockedByMime(request, blockedByMixedContent(request, fetched));
 
     // Step 20: a response to HEAD or CONNECT, or with a null body status, has
     // a null body, "and disregard any enqueuing toward it" - a body still
@@ -510,6 +519,23 @@ pub fn mainFetchFinish(
 
     // Step 17-18: Process callbacks (handled by caller)
 
+    return response;
+}
+
+/// Main fetch step 20's Mixed Content response check. Fail closed even if
+/// URL authentication cannot allocate: clearing the response needs none.
+fn blockedByMixedContent(request: *const InternalRequest, response: *InternalResponse) *InternalResponse {
+    if (isNetworkError(response)) return response;
+    const response_url = response.url() orelse request.currentUrl();
+    if (!(mixed_content.shouldBlockResponse(request, response_url) catch true)) return response;
+    // A network error hides the same data as the opaque filter (URL list,
+    // status/message, headers and body), but has type "error". Reuse its
+    // allocation-free clearing rather than risk returning data on OOM.
+    response.response_type = .@"opaque";
+    response.applyFilter();
+    response.response_type = .@"error";
+    response.network_error_cause = .unspecified;
+    response.timing_allow_passed = false;
     return response;
 }
 

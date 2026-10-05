@@ -73,7 +73,7 @@ test "mixed content: CORS media is autoupgraded" {
         request.mode = .cors;
         request.prohibits_mixed_security_contexts = true;
         try mixed.upgradeRequest(request);
-        // Editor's Draft 4.1 has no CORS exclusion (corrected Q12).
+        // Editor's Draft 4.1 has no CORS exclusion.
         try std.testing.expectEqualStrings("https://example.test/resource", request.currentUrl());
         try std.testing.expect(!try mixed.shouldBlockRequest(request));
     }
