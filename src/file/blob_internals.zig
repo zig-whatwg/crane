@@ -54,8 +54,10 @@ pub const BlobData = struct {
     /// so sharing them is the Blob staying alive in every way script can
     /// observe. Blink's BlobDataHandle, WebKit's RefPtr<BlobData> in its blob
     /// registry and Gecko's BlobImpl in BlobURLProtocolHandler are the same
-    /// shape. `deinit` drops one.
-    ref_count: u32 = 1,
+    /// shape. `deinit` drops one. Atomic: the holders are on different
+    /// threads - a blob URL entry made in a worker, a fetch of it in the page
+    /// (docs/instances.md).
+    ref_count: std.atomic.Value(u32) = .init(1),
 
     /// Initialize a new BlobData with the given bytes and MIME type.
     ///
@@ -103,15 +105,19 @@ pub const BlobData = struct {
     /// Take another reference: the data stays until each holder has called
     /// `deinit`. Returns `self`, for the holder to keep.
     pub fn retain(self: *BlobData) *BlobData {
-        self.ref_count += 1;
+        // A holder that can retain already holds one: no ordering needed.
+        _ = self.ref_count.fetchAdd(1, .monotonic);
         return self;
     }
 
     /// Drop one reference; the last one frees the data.
     pub fn deinit(self: *BlobData) void {
-        std.debug.assert(self.ref_count > 0);
-        self.ref_count -= 1;
-        if (self.ref_count > 0) return;
+        // Release: this holder's uses of the data happen before the free.
+        const previous = self.ref_count.fetchSub(1, .release);
+        std.debug.assert(previous > 0);
+        if (previous != 1) return;
+        // Acquire: every other holder's uses happened before this free.
+        _ = self.ref_count.load(.acquire);
         if (self.owns_bytes) {
             self.allocator.free(@constCast(self.bytes));
         }

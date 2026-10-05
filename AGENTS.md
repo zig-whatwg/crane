@@ -143,11 +143,17 @@ page, and nothing says so: the headline simply does not move.
 
 After every feature commit:
 
-1. **Put its WPT runs where the report reads them.** Point `--output` at
-   `wpt-results/<label>/` (e.g. `wpt-results/ab-<short-sha>/`), or copy a run's
-   `journal*.jsonl` there afterwards with `cp -p` - `-p` keeps the mtime, and
-   the mtime decides which result is latest. Several runs under one label go
-   side by side as `journal.<area>.jsonl`, never in subdirectories.
+1. **Put main's WPT runs where the report reads them - and only main's.** A run
+   of main (a sweep, or the integrator's targeted run after a merge): point
+   `--output` at `wpt-results/<label>/` (e.g. `wpt-results/sweep-<short-sha>/`),
+   or copy its `journal*.jsonl` there afterwards with `cp -p` - `-p` keeps the
+   mtime, and the mtime decides which result is latest. Several runs under one
+   label go side by side as `journal.<area>.jsonl`, never in subdirectories.
+   **A lane's run (any branch that is not main) goes to `wpt-results/lanes/<label>/`**,
+   which the report never reads: it takes the newest result per file, so a
+   branch's run replaces main's - on 2026-10-04 a lane's full A/B, on a branch
+   without main's IndexedDB merge, made a generation 25,000 subtests lower than
+   main's own sweep ([lesson](docs/lessons/workflow-a-branchs-wpt-run-replaces-mains-in-the-report.md)).
 2. **Regenerate:** `zig build wpt-progress -j2 --cache-dir ~/Library/Caches/crane-z16-cache`.
    `wpt-progress` also regenerates Crane's public results site
    (tools/wpt_site/generate.zig, published at https://zig-whatwg.github.io/crane/) into
@@ -187,6 +193,21 @@ Where that is awkward, do it anyway but adapt the form:
 WPT is the bar: `zig build wpt -- <path>`. Unit tests use
 `std.testing.allocator` always, so leaks fail the test. Realistic inputs, spec
 edge cases.
+
+**A test directory is one executable.** `zig build test` compiles each
+`tests/<dir>/` as ONE test binary, from a root build.zig generates
+(`tests/<dir>/.all_tests.zig`, gitignored) - a new `*_test.zig` joins it with
+no list to edit. So a test file shares its process with its directory's other
+files: never assume yours is the first to start V8, initialise a per-thread
+manager, leave no isolate entered, or set a V8 flag (V8 freezes its flags when
+it starts; setting one after is a fatal CHECK). A test that needs a fresh
+per-thread state runs its body on a `std.Thread` of its own. One file alone,
+for a quick red/green:
+`zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.
+Once per merge round the integrator runs `zig build test -Dtest-isolation=file`
+(every file its own executable and process, about four times the CPU) to catch
+what sharing hides: a test that passes only because an earlier file started V8
+or installed a hook for it.
 
 Two kinds this codebase keeps needing:
 

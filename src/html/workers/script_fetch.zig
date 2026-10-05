@@ -39,8 +39,16 @@ pub const BlobResolveResult = struct {
     bytes: []const u8,
     /// The blob's MIME type
     content_type: []const u8,
-    /// Whether we own the bytes (caller should free)
+    /// Whether we own the bytes and the MIME type (caller should free both:
+    /// `freeResolved`)
     owns_bytes: bool,
+
+    /// Free what the result owns.
+    fn freeResolved(self: BlobResolveResult, allocator: Allocator) void {
+        if (!self.owns_bytes) return;
+        allocator.free(@constCast(self.bytes));
+        allocator.free(@constCast(self.content_type));
+    }
 };
 
 /// Callback function type for resolving blob URLs.
@@ -376,9 +384,7 @@ fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]co
     // Per HTML spec, worker scripts must be JavaScript MIME type
     if (!isJavaScriptMimeType(result.content_type)) {
         std.log.warn("handleBlobUrl: Blob has non-JavaScript MIME type: {s}", .{result.content_type});
-        if (result.owns_bytes) {
-            allocator.free(@constCast(result.bytes));
-        }
+        result.freeResolved(allocator);
         return WorkerScriptError.ParseError;
     }
 
@@ -391,16 +397,12 @@ fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]co
         result.content_type,
         true, // Blob URLs are always same-origin (enforced by resolver)
     ) catch {
-        if (result.owns_bytes) {
-            allocator.free(@constCast(result.bytes));
-        }
+        result.freeResolved(allocator);
         return WorkerScriptError.OutOfMemory;
     };
 
-    // Free the original bytes if we own them (FetchedScript made a copy)
-    if (result.owns_bytes) {
-        allocator.free(@constCast(result.bytes));
-    }
+    // Free what we own (FetchedScript made copies)
+    result.freeResolved(allocator);
 
     return fetched;
 }

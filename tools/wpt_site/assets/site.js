@@ -96,6 +96,7 @@
         n: num(d, "n"), at: d.at, head: d.head || null, pass: num(d, "pass"), total: num(d, "total"),
         fail: num(d, "fail"), timeout: num(d, "timeout"), notrun: num(d, "notrun"), est: d.est === "1",
         blocking: num(d, "blocking"), files: num(d, "files"), recon: d.recon === "1", event: d.event || null,
+        since: d.since || null, commits: num(d, "commits"), landed: d.landed ? d.landed.split(" ") : [],
       };
     }).filter((g) => Number.isFinite(g.pass) && Number.isFinite(g.total));
     if (all.length < 2) return;
@@ -144,7 +145,11 @@
         el("p", { class: "ro-meta" },
           `Generation ${g.n} · ${when(g.at)}`,
           g.head ? " · Crane " : g.recon ? " · reconstructed" : null,
-          g.head ? el("a", { href: `https://github.com/zig-whatwg/crane/commit/${g.head}` }, el("code", { text: g.head })) : null),
+          // A generation is every commit since the one before it, not its head
+          // alone: link the range, and name what merged in it (detail, below).
+          g.head && g.since
+            ? el("a", { href: `https://github.com/zig-whatwg/crane/compare/${g.since}...${g.head}` }, el("code", { text: g.since }), "…", el("code", { text: g.head }))
+            : g.head ? el("a", { href: `https://github.com/zig-whatwg/crane/commit/${g.head}` }, el("code", { text: g.head })) : null),
         el("p", { class: "ro-detail" }, ...detail(g, prev)));
       plot.setAttribute("aria-valuenow", String(g.n));
       plot.setAttribute("aria-valuetext", `Generation ${g.n}, ${when(g.at)}: ${fmt(g.pass)} of ${g.est ? "about " : ""}${fmt(g.total)} WPT subtests passing`);
@@ -158,6 +163,20 @@
         // with the method, not with Crane: say so instead of printing a delta.
         out.push(prev.est && !g.est ? ` since generation ${prev.n}; the total is an exact sum from here` : `, ${signed(g.total - prev.total)} in total since generation ${prev.n}`);
       } else out.push("The first generation");
+      if (g.since) {
+        sep();
+        if (!g.commits) out.push("no new commits");
+        else {
+          out.push(`${fmt(g.commits)} commit${g.commits === 1 ? "" : "s"}`);
+          if (g.landed.length) {
+            out.push(", merging ");
+            g.landed.forEach((name, i) => {
+              if (i) out.push(i === g.landed.length - 1 ? (g.landed.length > 2 ? ", and " : " and ") : ", ");
+              out.push(el("code", { text: name }));
+            });
+          }
+        }
+      }
       if (g.fail != null) {
         sep();
         out.push(el("span", { class: g.fail ? "fail" : null, text: `${fmt(g.fail)} failed` }), `, ${fmt(g.timeout)} timed out, ${fmt(g.notrun)} not run`);

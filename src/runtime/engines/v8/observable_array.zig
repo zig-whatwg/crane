@@ -42,6 +42,10 @@ pub const ObservableArrayState = struct {
     /// Used to clear weak callback during cleanup
     proxy: ?*v8.Object = null,
 
+    /// The isolate the proxy and target are of: only its own agent's end
+    /// (`cleanupAll`, on its thread) frees this state.
+    isolate: ?*v8.Isolate = null,
+
     /// Callback for when an indexed value is set
     on_set_indexed_value: ?*const fn (index: usize, value: JSValue) void = null,
 
@@ -63,14 +67,25 @@ pub const ObservableArrayState = struct {
 
 /// Registry mapping Proxy objects to their internal state
 /// Uses the V8 Object pointer as the key
-var state_registry: ?std.AutoHashMap(usize, *ObservableArrayState) = null;
+///
+/// Every thread that runs script reaches it (a Browser's and each worker's,
+/// docs/instances.md), so the map is reached only under `mutex`. A state is
+/// read and freed only on its isolate's thread; the lock keeps the map whole.
+const Registry = struct {
+    /// Protects `map`; held for one map operation or one scan, never across
+    /// a call into V8.
+    mutex: std.Io.Mutex = .init,
+    map: std.AutoHashMapUnmanaged(usize, *ObservableArrayState) = .empty,
 
-fn getRegistry(allocator: std.mem.Allocator) *std.AutoHashMap(usize, *ObservableArrayState) {
-    if (state_registry == null) {
-        state_registry = std.AutoHashMap(usize, *ObservableArrayState).init(allocator);
+    fn lock(self: *Registry) void {
+        std.Io.Threaded.mutexLock(&self.mutex);
     }
-    return &state_registry.?;
-}
+
+    fn unlock(self: *Registry) void {
+        std.Io.Threaded.mutexUnlock(&self.mutex);
+    }
+};
+var state_registry: Registry = .{};
 
 /// V8 weak callback for GC-driven cleanup of ObservableArrayState
 /// Called when the V8 Proxy object is garbage collected
@@ -78,10 +93,12 @@ fn weakCallback(data: ?*anyopaque, _: usize) callconv(.c) void {
     const state: *ObservableArrayState = @ptrCast(@alignCast(data orelse return));
 
     // Remove from registry using the proxy pointer stored in state
-    if (state_registry) |*reg| {
+    {
+        state_registry.lock();
+        defer state_registry.unlock();
         // Find and remove this state from the registry
         var key_to_remove: ?usize = null;
-        var iter = reg.iterator();
+        var iter = state_registry.map.iterator();
         while (iter.next()) |entry| {
             if (entry.value_ptr.* == state) {
                 key_to_remove = entry.key_ptr.*;
@@ -89,7 +106,7 @@ fn weakCallback(data: ?*anyopaque, _: usize) callconv(.c) void {
             }
         }
         if (key_to_remove) |key| {
-            _ = reg.remove(key);
+            _ = state_registry.map.remove(key);
         }
     }
 
@@ -98,31 +115,45 @@ fn weakCallback(data: ?*anyopaque, _: usize) callconv(.c) void {
     state.allocator.destroy(state);
 }
 
-/// Clean up all ObservableArrayState entries
-/// Called during context teardown to ensure no leaks
+/// Clean up the current agent's ObservableArrayState entries
+/// Called during an agent's context teardown (context_manager.deinit, with the
+/// agent's isolate entered) to ensure no leaks. Only that isolate's: it used
+/// to free every agent's, and a worker on a thread of its own ends as its
+/// thread's host agent while the page's arrays live on.
 pub fn cleanupAll() void {
-    if (state_registry) |*reg| {
-        // PHASE 1: Clear all weak callbacks first to prevent them from firing
-        // during cleanup. This avoids double-free when GC runs during teardown.
-        {
-            var iter = reg.valueIterator();
-            while (iter.next()) |state_ptr| {
-                const state = state_ptr.*;
-                if (state.proxy) |proxy| {
-                    v8.v8_Global_ClearWeak(@ptrCast(proxy));
-                }
-            }
+    const current = v8.v8_Isolate_GetCurrent();
+    var mine: std.ArrayListUnmanaged(*ObservableArrayState) = .empty;
+    defer mine.deinit(std.heap.page_allocator);
+    {
+        state_registry.lock();
+        defer state_registry.unlock();
+        var keys: std.ArrayListUnmanaged(usize) = .empty;
+        defer keys.deinit(std.heap.page_allocator);
+        var iter = state_registry.map.iterator();
+        while (iter.next()) |entry| {
+            if (entry.value_ptr.*.isolate != current) continue;
+            keys.append(std.heap.page_allocator, entry.key_ptr.*) catch continue;
         }
+        // Room first: a state taken out must be freed.
+        mine.ensureTotalCapacity(std.heap.page_allocator, keys.items.len) catch return;
+        for (keys.items) |key| {
+            const kv = state_registry.map.fetchRemove(key) orelse continue;
+            mine.appendAssumeCapacity(kv.value);
+        }
+    }
 
-        // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
-        var iter = reg.valueIterator();
-        while (iter.next()) |state_ptr| {
-            const state = state_ptr.*;
-            state.deinit();
-            state.allocator.destroy(state);
+    // PHASE 1: Clear all weak callbacks first to prevent them from firing
+    // during cleanup. This avoids double-free when GC runs during teardown.
+    for (mine.items) |state| {
+        if (state.proxy) |proxy| {
+            v8.v8_Global_ClearWeak(@ptrCast(proxy));
         }
-        reg.deinit();
-        state_registry = null;
+    }
+
+    // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
+    for (mine.items) |state| {
+        state.deinit();
+        state.allocator.destroy(state);
     }
 }
 
@@ -160,10 +191,14 @@ pub fn create(ctx: Context) !JSValue {
 
     // Store proxy pointer in state for cleanup
     state.proxy = @ptrCast(proxy);
+    state.isolate = isolate;
 
     // Register the state with the proxy's address
-    const registry = getRegistry(allocator);
-    try registry.put(@intFromPtr(proxy), state);
+    {
+        state_registry.lock();
+        defer state_registry.unlock();
+        try state_registry.map.put(std.heap.page_allocator, @intFromPtr(proxy), state);
+    }
 
     // Set up V8 weak callback for GC-driven cleanup
     // When the Proxy is garbage collected, the weak callback will clean up the state
@@ -619,10 +654,9 @@ pub fn getState(proxy: JSValue) ?*ObservableArrayState {
         else => return null,
     };
     const ptr = @intFromPtr(handle_ptr);
-    if (state_registry) |*reg| {
-        return reg.get(ptr);
-    }
-    return null;
+    state_registry.lock();
+    defer state_registry.unlock();
+    return state_registry.map.get(ptr);
 }
 
 /// Clean up an ObservableArray and its state
@@ -632,10 +666,13 @@ pub fn destroy(proxy: JSValue, allocator: std.mem.Allocator) void {
         else => return,
     };
     const ptr = @intFromPtr(handle_ptr);
-    if (state_registry) |*reg| {
-        if (reg.fetchRemove(ptr)) |entry| {
-            entry.value.deinit();
-            allocator.destroy(entry.value);
-        }
+    const removed = blk: {
+        state_registry.lock();
+        defer state_registry.unlock();
+        break :blk state_registry.map.fetchRemove(ptr);
+    };
+    if (removed) |entry| {
+        entry.value.deinit();
+        allocator.destroy(entry.value);
     }
 }

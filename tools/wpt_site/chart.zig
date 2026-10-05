@@ -48,6 +48,14 @@ pub const Generation = struct {
     sub_targeted: ?u64 = null,
     /// Recorded from 2026-09-30: the headline's own sums.
     subs: ?Subs = null,
+    /// Not in the history: the generator fills these from git. The Crane
+    /// commits since the previous generation with a recorded head - `since` is
+    /// that generation's head and `since_n` its number - and the branches
+    /// merged among them, oldest first. Empty `since`: no range is known.
+    since: []const u8 = "",
+    since_n: u64 = 0,
+    commits: u32 = 0,
+    landed: []const []const u8 = &.{},
 
     /// WPT subtests passing.
     pub fn passing(g: Generation) u64 {
