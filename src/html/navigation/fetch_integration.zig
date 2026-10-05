@@ -12,6 +12,7 @@
 //! - `isHtmlResponse`: Checks if response is HTML based on Content-Type
 
 const std = @import("std");
+const mimesniff = @import("mimesniff");
 const Allocator = std.mem.Allocator;
 
 // Fetch module for HTTP(S) requests - now available via html_core_mod.addImport("fetch")
@@ -245,7 +246,8 @@ pub fn fetchNavigationResource(
         return handleFileUrl(allocator, url);
     }
 
-    // For HTTP(S) URLs, use the fetch module
+    // HTTP(S) URLs, and blob: URLs - Fetch's scheme fetch answers a blob URL
+    // from the blob URL store, with no network - go through the fetch module.
     return fetchHttpResource(allocator, url, options);
 }
 
@@ -384,14 +386,10 @@ pub fn resultFromResponse(
         };
     }
 
-    // Get Content-Type header
-    // getFirstValue, not get: `get` takes an allocator and returns an owned
-    // string, and this dupes into `result` immediately afterwards anyway.
-    if (response.header_list.getFirstValue("content-type")) |ct| {
-        result.content_type = allocator.dupe(u8, ct) catch {
-            return NavigationFetchError.OutOfMemory;
-        };
-    }
+    // The response's MIME type: Fetch "extract a MIME type" - the last valid
+    // Content-Type value, not the first header (cookies/resources/
+    // postToParent.py sends application/json, then text/html).
+    result.content_type = extractedContentType(allocator, &response.header_list) catch return NavigationFetchError.OutOfMemory;
 
     // Get body bytes
     if (response.body) |body| {
@@ -455,6 +453,16 @@ pub fn resultFromResponse(
     }
 
     return result;
+}
+
+/// Fetch "extract a MIME type" from `headers`, serialized: the type a
+/// navigation computes the document's type and transport encoding from.
+/// OWNED; null for failure (no Content-Type, or none valid).
+pub fn extractedContentType(allocator: Allocator, headers: *const fetch.internal.HeaderList) !?[]u8 {
+    var extracted = (try fetch.internal.mime.extractMimeType(allocator, headers)) orelse return null;
+    defer extracted.deinit();
+    const bytes = try mimesniff.serializeMimeTypeToBytes(allocator, extracted);
+    return @constCast(bytes);
 }
 
 /// A network error, as a navigation sees one: no response to show.

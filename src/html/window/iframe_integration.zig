@@ -1363,7 +1363,14 @@ pub const IFrameIntegration = struct {
     /// Parse origin from URL (simplified)
     fn parseOriginFromURL(self: *IFrameIntegration, url: []const u8) Origin {
         // Simplified parsing - in real implementation, use full URL parser
-        // For data: and blob: URLs, return opaque origin
+        // URL "origin" for a blob: URL: its path's URL's origin when that is
+        // http(s) - a blob URL is of the origin that made it. (The entry's
+        // environment's origin, step 1, is the same for the URLs
+        // URL.createObjectURL makes.)
+        if (std.mem.startsWith(u8, url, "blob:http://") or std.mem.startsWith(u8, url, "blob:https://")) {
+            return self.parseOriginFromURL(url["blob:".len..]);
+        }
+        // For data: (and any other blob:) URLs, return opaque origin
         if (std.mem.startsWith(u8, url, "data:") or
             std.mem.startsWith(u8, url, "blob:") or
             std.mem.startsWith(u8, url, "javascript:"))
