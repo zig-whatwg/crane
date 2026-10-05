@@ -373,6 +373,8 @@ a.box-sub code { font-size: 0.8rem; }
 .gens td.blk { color: var(--block); }
 .gens td.fail { color: var(--fail); }
 .gens td.est { font-style: italic; }
+/* What merged in a generation's range, under its commits. */
+.gens td .landed { display: block; color: var(--ink-2); font-size: 0.85em; white-space: normal; max-width: 28rem; }
 .gens tr.recon td { color: var(--ink-2); }
 
 /* ------------------------------------------------------------------ what site.js adds
