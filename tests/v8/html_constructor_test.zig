@@ -46,10 +46,10 @@ const Host = struct {
         return switch (self.answer) {
             // 9.1: a new object implementing the interface - here the plain
             // element the interface's own constructor makes.
-            .created => .{ .created = if (std.mem.eql(u8, interface, "HTMLParagraphElement"))
-                try interfaces.HTMLParagraphElement.call_constructor(realm)
+            .created => .{ .created = (if (std.mem.eql(u8, interface, "HTMLParagraphElement"))
+                interfaces.HTMLParagraphElement.call_constructor(realm)
             else
-                try interfaces.HTMLElement.call_constructor(realm) },
+                interfaces.HTMLElement.call_constructor(realm)) catch return error.OperationFailed },
             .upgrading => .{ .upgrading = self.upgrading.? },
             .type_error => error.TypeError,
         };
@@ -178,9 +178,10 @@ const Page = struct {
 
 test "created: a custom element class constructs the host's new element, with NewTarget's prototype" {
     var host: Host = .{};
-    defer host.deinit();
     const page = try Page.open(&Host.hooks, &host);
     defer page.close();
+    // Before the page closes: the hook's retained NewTarget is of its agent.
+    defer host.deinit();
 
     try page.expect(
         \\globalThis.X = class X extends HTMLElement {};
@@ -201,18 +202,20 @@ test "created: a custom element class constructs the host's new element, with Ne
 
 test "created: a customized built-in's super() names its own interface" {
     var host: Host = .{};
-    defer host.deinit();
     const page = try Page.open(&Host.hooks, &host);
     defer page.close();
+    // Before the page closes: the hook's retained NewTarget is of its agent.
+    defer host.deinit();
     _ = try page.eval("class P extends HTMLParagraphElement {}; void new P()");
     try std.testing.expectEqualStrings("HTMLParagraphElement", host.seenInterface());
 }
 
 test "step 1: NewTarget equal to the active function object is a TypeError, and the host is never asked" {
     var host: Host = .{};
-    defer host.deinit();
     const page = try Page.open(&Host.hooks, &host);
     defer page.close();
+    // Before the page closes: the hook's retained NewTarget is of its agent.
+    defer host.deinit();
     try page.expect("try { new HTMLElement(); 'constructed' } catch (e) { e.constructor.name }", "TypeError");
     try page.expect("try { new HTMLParagraphElement(); 'constructed' } catch (e) { e.constructor.name }", "TypeError");
     try page.expect("try { Reflect.construct(HTMLElement, [], HTMLElement); 'constructed' } catch (e) { e.constructor.name }", "TypeError");
@@ -223,18 +226,18 @@ test "step 1: NewTarget equal to the active function object is a TypeError, and 
 
 test "the host's TypeError is thrown by the construction" {
     var host: Host = .{ .answer = .type_error };
-    defer host.deinit();
     const page = try Page.open(&Host.hooks, &host);
     defer page.close();
+    defer host.deinit();
     try page.expect("class X extends HTMLElement {}; try { new X(); 'constructed' } catch (e) { e instanceof TypeError }", "true");
     try std.testing.expectEqual(@as(usize, 1), host.calls);
 }
 
 test "upgrading an element script never saw: the object made for NewTarget becomes its wrapper" {
     var host: Host = .{ .answer = .upgrading };
-    defer host.deinit();
     const page = try Page.open(&Host.hooks, &host);
     defer page.close();
+    defer host.deinit();
     // An element with no wrapper yet, as the parser makes one.
     const element = try interfaces.HTMLElement.call_constructor(page.realm);
     host.upgrading = element;
@@ -247,9 +250,10 @@ test "upgrading an element script never saw: the object made for NewTarget becom
 
 test "upgrading an element with a wrapper: that wrapper, its prototype set, is the result; the receiver is bound to nothing" {
     var host: Host = .{};
-    defer host.deinit();
     const page = try Page.open(&Host.hooks, &host);
     defer page.close();
+    // Before the page closes: the hook's retained NewTarget is of its agent.
+    defer host.deinit();
     // A wrapped element: one the host created and script holds.
     try page.expect("globalThis.X = class X extends HTMLElement {}; globalThis.first = new X(); 'ok'", "ok");
     const element = try page.instance("first");
@@ -290,10 +294,10 @@ test "the legacy factory functions are their own constructors: Image, Audio and 
     const sources = .{ "new Image()", "new Audio()", "new Option()", "class I extends Image {}; new I()" };
     var outcomes: [sources.len][]u8 = undefined;
     var host: Host = .{};
-    defer host.deinit();
     {
         const page = try Page.open(&Host.hooks, &host);
         defer page.close();
+        defer host.deinit();
         inline for (sources, 0..) |source, i| {
             outcomes[i] = try page.eval("try { const o = " ++ source ++ "; o.constructor.name } catch (e) { e.constructor.name }");
         }

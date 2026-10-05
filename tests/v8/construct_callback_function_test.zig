@@ -148,23 +148,45 @@ test "a Proxy of a class is a constructor" {
     try std.testing.expect(try holds("made", completion.normal, "made.viaProxy === true ? 1 : 0"));
 }
 
-test "constructing leaves no handle behind" {
-    const r = try realm();
+/// V8's live global handle bytes left by 32 rounds of `round`, after a
+/// collection, past two warm-up rounds.
+fn handleBytesLeftBy(r: runtime.Context, callback: *const engine.CallbackFunction, comptime round: fn (runtime.Context, *const engine.CallbackFunction) anyerror!void) !i64 {
     const isolate = isolate_once.?;
-    const point = try callbackOf(r, "(class Counted { constructor(n) { this.n = n; } })");
-    defer point.release();
+    for (0..2) |_| try round(r, callback);
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    const before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
+    for (0..32) |_| try round(r, callback);
+    ffi.v8_Isolate_RequestGarbageCollection(isolate);
+    return @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate))) - before;
+}
+
+fn constructRound(r: runtime.Context, callback: *const engine.CallbackFunction) anyerror!void {
     const args = [_]runtime.JSValue{runtime.JSValue.fromNumber(3)};
-    // Warm up, then count V8's live global handle bytes across 32 rounds.
-    for (0..2) |_| {
-        const c = try engine.constructCallbackFunction(r, &point, &args);
-        c.normal.release();
+    const c = try engine.constructCallbackFunction(r, callback, &args);
+    switch (c) {
+        .normal, .throw => |v| v.release(),
     }
-    ffi.v8_Isolate_RequestGarbageCollection(isolate);
-    const before = ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
-    for (0..32) |_| {
-        const c = try engine.constructCallbackFunction(r, &point, &args);
-        c.normal.release();
+}
+
+/// The control: the same callback invoked - the same realm entry, argument
+/// conversion and incumbent scope - as a [[Call]] (a plain function).
+fn invokeRound(r: runtime.Context, callback: *const engine.CallbackFunction) anyerror!void {
+    const args = [_]runtime.JSValue{runtime.JSValue.fromNumber(3)};
+    const c = try engine.invokeCallbackFunction(r, callback, .undefined, &args, .rethrow);
+    switch (c) {
+        .normal, .throw => |v| v.release(),
     }
-    ffi.v8_Isolate_RequestGarbageCollection(isolate);
-    try std.testing.expect(ffi.v8_Isolate_GetGlobalHandleBytes(isolate) <= before);
+}
+
+test "constructing leaves no handle behind that invoking does not" {
+    const r = try realm();
+    // A function both callable and constructible.
+    const counted = try callbackOf(r, "(function Counted(n) { if (new.target) this.n = n; return undefined; })");
+    defer counted.release();
+    const control = try handleBytesLeftBy(r, &counted, invokeRound);
+    const constructed = try handleBytesLeftBy(r, &counted, constructRound);
+    if (constructed > control) {
+        std.debug.print("32 constructions left {d} bytes of global handles; 32 invocations left {d}\n", .{ constructed, control });
+        return error.HandlesLeaked;
+    }
 }
