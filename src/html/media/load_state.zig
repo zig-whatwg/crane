@@ -123,6 +123,7 @@ pub const LoadState = struct {
     /// when NETWORK_EMPTY, without the reset that an explicit load performs.
     pub fn beginSelection(self: *LoadState) u64 {
         self.generation +%= 1;
+        self.delaying_load_event = false;
         self.network = .no_source;
         self.show_poster = true;
         self.mode = .none;
@@ -232,7 +233,32 @@ pub const LoadState = struct {
     /// and returns pending task holds through their normal run/drop paths.
     pub fn cancel(self: *LoadState) void {
         self.generation +%= 1;
+        self.delaying_load_event = false;
         self.phase = .idle;
+    }
+
+    /// Resource fetch algorithm's fatal network/decode processing errors.
+    /// The owner fires error and notifies the document when the flag clears.
+    pub fn fatalFailure(self: *LoadState, generation: u64, code: ErrorCode) void {
+        if (generation != self.generation) return;
+        self.error_code = code;
+        self.network = .idle;
+        self.phase = .failed;
+        self.delaying_load_event = false;
+    }
+
+    /// Resource fetch: suspend fetching, set NETWORK_IDLE and release the delay.
+    pub fn suspendFetch(self: *LoadState, generation: u64) void {
+        if (generation != self.generation) return;
+        self.network = .idle;
+        self.delaying_load_event = false;
+    }
+
+    /// Ready state change to HAVE_CURRENT_DATA: data, not merely metadata.
+    pub fn haveCurrentData(self: *LoadState, generation: u64) void {
+        if (generation != self.generation) return;
+        self.ready = .current_data;
+        self.delaying_load_event = false;
     }
 
     fn clearCurrentSrc(self: *LoadState) void {

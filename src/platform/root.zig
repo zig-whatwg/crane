@@ -170,3 +170,7 @@ pub const stub_battery_vtable = stub_platform_backend.stub_battery_vtable;
 pub const stub_share_vtable = stub_platform_backend.stub_share_vtable;
 pub const stub_permissions_vtable = stub_platform_backend.stub_permissions_vtable;
 pub const stub_media_vtable = stub_platform_backend.stub_media_vtable;
+
+// Host media decoding (independent of capture/MSE/EME).
+pub const media_backend = @import("media_backend.zig");
+pub const media_adapter = @import("media_adapter.zig");

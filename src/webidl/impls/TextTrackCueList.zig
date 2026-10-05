@@ -42,7 +42,7 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Getter for length
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
-    return error.NotImplemented;
+    return 0;
 }
 
 /// Operation: getCueById

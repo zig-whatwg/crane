@@ -2738,6 +2738,8 @@ pub fn build(b: *std.Build) void {
             // For tests that make platform objects with no Browser: the hooks
             // (interfaces.process_hooks.startHooksForTest).
             .{ .name = "interfaces", .module = interfaces_mod },
+            // Media owner-hook tests reach only the public DOM seam.
+            .{ .name = "dom", .module = dom_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/html", target, &html_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add html test files: {}\n", .{err});
