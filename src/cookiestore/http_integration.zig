@@ -369,6 +369,41 @@ pub fn generateCookieHeader(
     return serializeCookies(allocator, cookies.items);
 }
 
+/// WebDriver "all associated cookies" of a document whose URL is `url` (a
+/// serialized URL): the cookies RFC 6265's cookie-string step 1 selects for
+/// an HTTP API - its host's, whose path the URL's path-matches, a Secure one
+/// only for a secure scheme, HttpOnly ones included, no same-site filter -
+/// only those named `name` when it is given. Copies, sorted; the list and
+/// its cookies are the caller's. Empty for a URL cookies are not kept for.
+pub fn webdriverAssociatedCookies(jar: *CookieJar, url: []const u8, name: ?[]const u8) !std.ArrayListUnmanaged(Cookie) {
+    const options = webdriverOptions(url, name) orelse return .empty;
+    jar.lock();
+    defer jar.unlock();
+    return jar.retrieve(options);
+}
+
+/// WebDriver "delete cookies" for the document whose URL is `url`: every one
+/// of its associated cookies (only those named `name` when it is given) gets
+/// an expiry time in the past, and so leaves the store. Returns how many.
+pub fn webdriverDeleteCookies(jar: *CookieJar, url: []const u8, name: ?[]const u8) usize {
+    const options = webdriverOptions(url, name) orelse return 0;
+    jar.lock();
+    defer jar.unlock();
+    return jar.expireMatching(options);
+}
+
+fn webdriverOptions(url: []const u8, name: ?[]const u8) ?RetrieveOptions {
+    const parts = RequestUrl.of(url) orelse return null;
+    return .{
+        .host = parts.host,
+        .path = parts.path,
+        .is_http = true,
+        .is_secure = parts.secure,
+        .same_site = .strict_or_less,
+        .name = name,
+    };
+}
+
 /// Parse and store each of a response's `Set-Cookie` values - each on its
 /// own: they never combine.
 pub fn processSetCookieHeaders(

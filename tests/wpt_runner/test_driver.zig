@@ -13,6 +13,9 @@
 //!   minimize_window(ctx)          WebDriver 11.8.4 Minimize Window
 //!   set_window_rect(rect, ctx)    WebDriver 11.8.2 Set Window Rect (restores)
 //!   get_window_rect(ctx)          WebDriver 11.8.1 Get Window Rect
+//!   get_all_cookies(ctx)          WebDriver 14.1 Get All Cookies
+//!   get_named_cookie(name, ctx)   WebDriver 14.2 Get Named Cookie
+//!   delete_all_cookies(ctx)       WebDriver 14.5 Delete All Cookies
 //!
 //! Each returns a promise and runs as tasks: the command's steps run from a
 //! timer on the page's event loop, a tick of actions per timer, each tick
@@ -42,6 +45,7 @@ const interfaces = @import("interfaces");
 const html = @import("html_full");
 const html_core = @import("html");
 const keys = @import("webdriver_keys.zig");
+const cookiestore = @import("cookiestore");
 
 const Instance = runtime.Instance;
 const JSValue = runtime.JSValue;
@@ -61,7 +65,7 @@ pub const vendor_path = "/resources/testdriver-vendor.js";
 // The driver: its natives, its commands, the session's input state
 // ============================================================================
 
-const Native = enum { click, send_keys, action_sequence, minimize_window, set_window_rect, get_window_rect };
+const Native = enum { click, send_keys, action_sequence, minimize_window, set_window_rect, get_window_rect, get_all_cookies, get_named_cookie, delete_all_cookies };
 
 fn nativeName(comptime native: Native) []const u8 {
     return "__crane_test_driver_" ++ @tagName(native);
@@ -239,7 +243,7 @@ const Failure = struct {
 // Commands
 // ============================================================================
 
-const Kind = enum { click, send_keys, actions, minimize, restore, get_rect };
+const Kind = enum { click, send_keys, actions, minimize, restore, get_rect, get_cookies, get_named_cookie, delete_cookies };
 
 const Command = struct {
     driver: *TestDriver,
@@ -251,7 +255,7 @@ const Command = struct {
     window: ?Weak,
     /// The element a click or send_keys acts on.
     element: ?Weak = null,
-    /// send_keys's text. OWNED.
+    /// send_keys's text, or get_named_cookie's name. OWNED.
     text: []u8 = &.{},
     /// Where key actions go: this document's top-level traversable.
     key_document: ?Weak = null,
@@ -335,6 +339,7 @@ const Command = struct {
             if (self.start()) |failure| return self.reject(failure);
             switch (self.kind) {
                 .minimize, .restore, .get_rect => return self.resolveWindowRect(),
+                .get_cookies, .get_named_cookie, .delete_cookies => return self.resolveCookies(),
                 else => {},
             }
         }
@@ -358,7 +363,7 @@ const Command = struct {
             .actions => null,
             .minimize => self.setSystemVisibility(.hidden),
             .restore => self.setSystemVisibility(.visible),
-            .get_rect => null,
+            .get_rect, .get_cookies, .get_named_cookie, .delete_cookies => null,
         };
     }
 
@@ -680,7 +685,108 @@ const Command = struct {
         defer rect.release();
         self.resolve(rect.borrow());
     }
+
+    // ------------------------------------------------------------------------
+    // Cookies (14): "all associated cookies" of the window's active document,
+    // in the Browser's cookie store (the jar its browsing context shares)
+    // ------------------------------------------------------------------------
+
+    fn resolveCookies(self: *Command) void {
+        // Step 1: the current browsing context no longer open: no such window.
+        const window = (self.target_window orelse return self.reject(noSuchWindow())).get() orelse return self.reject(noSuchWindow());
+        const context = BrowsingContext.ofWindow(@ptrCast(window)) orelse return self.reject(noSuchWindow());
+        if (context.is_closed) return self.reject(noSuchWindow());
+        const document = (interfaces.Window.get_document(window) catch null) orelse return self.reject(noSuchWindow());
+        const url = interfaces.Document.get_URL(document) catch return self.reject(outOfMemory());
+        defer document.ctx.allocator.free(url);
+        const jar = context.cookie_jar orelse {
+            // No store: a document no cookie can be associated with.
+            return switch (self.kind) {
+                .get_cookies => self.resolveCookieList(&.{}),
+                else => self.resolve(JSValue.jsNull),
+            };
+        };
+        switch (self.kind) {
+            // 14.5 step 3: delete cookies, no filter.
+            .delete_cookies => {
+                _ = cookiestore.webdriverDeleteCookies(jar, url, null);
+                self.resolve(JSValue.jsNull);
+            },
+            .get_cookies, .get_named_cookie => {
+                const name: ?[]const u8 = if (self.kind == .get_named_cookie) self.text else null;
+                var cookies = cookiestore.webdriverAssociatedCookies(jar, url, name) catch return self.reject(outOfMemory());
+                defer {
+                    for (cookies.items) |*c| c.deinit();
+                    cookies.deinit(jar.allocator);
+                }
+                if (self.kind == .get_cookies) return self.resolveCookieList(cookies.items);
+                // 14.2 step 3: the serialized cookie, or "no such cookie" -
+                // testdriver.js's get_named_cookie throws that itself when the
+                // vendor's answer is null.
+                if (cookies.items.len == 0) return self.resolve(JSValue.jsNull);
+                const object = serializedCookie(self.realm, &cookies.items[0]) catch return self.reject(outOfMemory());
+                defer object.release();
+                self.resolve(object.borrow());
+            },
+            else => unreachable,
+        }
+    }
+
+    fn resolveCookieList(self: *Command, cookies: []const cookiestore.Cookie) void {
+        const allocator = self.driver.allocator;
+        var owned: std.ArrayListUnmanaged(engine.Owned) = .empty;
+        defer {
+            for (owned.items) |o| o.release();
+            owned.deinit(allocator);
+        }
+        var values: std.ArrayListUnmanaged(JSValue) = .empty;
+        defer values.deinit(allocator);
+        for (cookies) |*cookie| {
+            const object = serializedCookie(self.realm, cookie) catch return self.reject(outOfMemory());
+            owned.append(allocator, object) catch {
+                object.release();
+                return self.reject(outOfMemory());
+            };
+            values.append(allocator, object.borrow()) catch return self.reject(outOfMemory());
+        }
+        const list = engine.createSequenceOfValues(self.realm, values.items) catch return self.reject(outOfMemory());
+        defer list.release();
+        self.resolve(list.borrow());
+    }
 };
+
+/// WebDriver 14 "serialized cookie": the table for cookie conversion's JSON
+/// keys. `expiry` (seconds since the epoch) only for a cookie that has one;
+/// a cookie with no SameSite attribute reads as "Lax" - RFC 6265bis enforces
+/// it as Lax by default, and browsers report it so (cookies/samesite/
+/// get_named_cookie-default-samesite.html). OWNED.
+fn serializedCookie(realm: runtime.Context, cookie: *const cookiestore.Cookie) engine.Error!engine.Owned {
+    var members: [8]engine.DictionaryMember = undefined;
+    var n: usize = 0;
+    members[n] = .{ .name = "name", .value = JSValue.fromStringRef(cookie.name) };
+    n += 1;
+    members[n] = .{ .name = "value", .value = JSValue.fromStringRef(cookie.value) };
+    n += 1;
+    members[n] = .{ .name = "path", .value = JSValue.fromStringRef(cookie.path) };
+    n += 1;
+    members[n] = .{ .name = "domain", .value = JSValue.fromStringRef(cookie.domain orelse "") };
+    n += 1;
+    members[n] = .{ .name = "secure", .value = JSValue.fromBoolean(cookie.secure) };
+    n += 1;
+    members[n] = .{ .name = "httpOnly", .value = JSValue.fromBoolean(cookie.http_only) };
+    n += 1;
+    if (cookie.expiry_time) |ms| {
+        members[n] = .{ .name = "expiry", .value = JSValue.fromNumber(@floatFromInt(@divFloor(ms, 1000))) };
+        n += 1;
+    }
+    members[n] = .{ .name = "sameSite", .value = JSValue.fromStringRef(switch (cookie.same_site) {
+        .strict => "Strict",
+        .lax, .unset => "Lax",
+        .none => "None",
+    }) };
+    n += 1;
+    return engine.createDictionaryObject(realm, members[0..n]);
+}
 
 const dom_visibility = @import("dom").visibility_state;
 const VisibilityState = dom_visibility.State;
@@ -837,6 +943,19 @@ fn startCommand(driver: *TestDriver, realm: runtime.Context, native: Native, arg
             };
             const context_index: usize = if (native == .set_window_rect) 1 else 0;
             const target = windowArgument(realm, argument(args, context_index)) orelse caller;
+            command.target_window = if (target) |w| Weak.of(w) else null;
+            break :blk null;
+        },
+        .get_all_cookies, .delete_all_cookies => blk: {
+            command.kind = if (native == .get_all_cookies) .get_cookies else .delete_cookies;
+            const target = windowArgument(realm, argument(args, 0)) orelse caller;
+            command.target_window = if (target) |w| Weak.of(w) else null;
+            break :blk null;
+        },
+        .get_named_cookie => blk: {
+            command.kind = .get_named_cookie;
+            command.text = engine.convertToDOMString(realm, argument(args, 0), allocator) catch break :blk .{ .code = "invalid argument", .message = "name is not a string" };
+            const target = windowArgument(realm, argument(args, 1)) orelse caller;
             command.target_window = if (target) |w| Weak.of(w) else null;
             break :blk null;
         },

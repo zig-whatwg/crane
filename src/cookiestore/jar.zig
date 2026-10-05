@@ -271,6 +271,21 @@ pub const CookieJar = struct {
         return self.cookies.items.len;
     }
 
+    /// Set the expiry time of every cookie matching `options` in the past and
+    /// remove them (WebDriver "delete cookies": the change hook hears each as
+    /// `deleted`). Returns how many went.
+    pub fn expireMatching(self: *Self, options: RetrieveOptions) usize {
+        const past = clock.wallMillis() - 1000;
+        var expired: usize = 0;
+        for (self.cookies.items) |*cookie| {
+            if (!cookieMatches(cookie, options)) continue;
+            cookie.expiry_time = past;
+            expired += 1;
+        }
+        if (expired > 0) self.removeExpired();
+        return expired;
+    }
+
     /// Remove all expired cookies (layered cookies "Remove Expired Cookies").
     pub fn removeExpired(self: *Self) void {
         var i: usize = 0;

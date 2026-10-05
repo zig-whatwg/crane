@@ -4004,6 +4004,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "storage", .module = storage_mod },
                 // File module for blob URL store cleanup
                 .{ .name = "file", .module = file_mod },
+                // The cookie store, for testdriver's cookie commands (test_driver.zig)
+                .{ .name = "cookiestore", .module = cookiestore_mod },
             },
         }),
     });
