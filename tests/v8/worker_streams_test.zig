@@ -26,8 +26,11 @@ fn setup() void {
     // full one, and a 1 MB young generation, so collections land inside the
     // short windows where a wrapper is only weakly held. A release V8 has no
     // --gc-interval (that needs V8_ENABLE_ALLOCATION_TIMEOUT), so this is
-    // pressure, not a schedule.
-    v8.ffi.v8_SetFlagsFromString("--stress-compaction");
+    // pressure, not a schedule. V8 freezes its flags when it starts (setting
+    // one after is a fatal CHECK), and tests/v8 shares one process, so the
+    // pressure applies only when this file is the first to start V8 - the
+    // -Dtest-file run of it alone.
+    if (!v8.ffi.v8_Platform_IsInitialized()) v8.ffi.v8_SetFlagsFromString("--stress-compaction");
     runtime.initializeRuntime(std.heap.page_allocator);
     v8.context_manager.init(std.heap.page_allocator) catch {};
 }

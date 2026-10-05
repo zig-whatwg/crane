@@ -188,6 +188,17 @@ WPT is the bar: `zig build wpt -- <path>`. Unit tests use
 `std.testing.allocator` always, so leaks fail the test. Realistic inputs, spec
 edge cases.
 
+**A test directory is one executable.** `zig build test` compiles each
+`tests/<dir>/` as ONE test binary, from a root build.zig generates
+(`tests/<dir>/.all_tests.zig`, gitignored) - a new `*_test.zig` joins it with
+no list to edit. So a test file shares its process with its directory's other
+files: never assume yours is the first to start V8, initialise a per-thread
+manager, leave no isolate entered, or set a V8 flag (V8 freezes its flags when
+it starts; setting one after is a fatal CHECK). A test that needs a fresh
+per-thread state runs its body on a `std.Thread` of its own. One file alone,
+for a quick red/green:
+`zig build test -Dspec=<dir> -Dtest-file=tests/<dir>/foo_test.zig -j2`.
+
 Two kinds this codebase keeps needing:
 
 1. **Memory.** `std.testing.allocator` does not see C++ allocations. For
