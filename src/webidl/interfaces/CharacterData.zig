@@ -239,4 +239,14 @@ pub const CharacterData = struct {
     pub const legacy_null_to_empty = .{
         .{ "set_data", 0b1 },
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "call_before",
+        "call_remove",
+        "call_after",
+        "call_replaceWith",
+    };
 };

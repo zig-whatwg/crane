@@ -302,4 +302,12 @@ pub const HTMLBaseElement = struct {
         if (comptime @hasDecl(HTMLBaseElementImpl, "set_target")) return try HTMLBaseElementImpl.set_target(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "target" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_href",
+        "set_target",
+    };
 };

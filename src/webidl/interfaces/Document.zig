@@ -2482,6 +2482,34 @@ pub const Document = struct {
         "call_hasUnpartitionedCookieAccess",
     };
 
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_title",
+        "set_dir",
+        "set_body",
+        "set_designMode",
+        "set_fgColor",
+        "set_linkColor",
+        "set_vlinkColor",
+        "set_alinkColor",
+        "set_bgColor",
+        "call_open",
+        "call_writeln",
+        "call_append",
+        "call_createElementNS",
+        "call_close",
+        "call_createElement",
+        "call_adoptNode",
+        "call_write",
+        "call_execCommand",
+        "call_importNode",
+        "call_replaceChildren",
+        "call_prepend",
+        "call_moveBefore",
+    };
+
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {

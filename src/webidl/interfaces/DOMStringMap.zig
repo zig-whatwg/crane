@@ -114,6 +114,14 @@ pub const DOMStringMap = struct {
         return try DOMStringMapImpl.call_deleter(instance, name);
     }
 
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "call_setter",
+        "call_deleter",
+    };
+
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {

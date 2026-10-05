@@ -361,6 +361,18 @@ pub const Range = struct {
         return try RangeImpl.call_cloneRange(instance);
     }
 
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "call_insertNode",
+        "call_cloneContents",
+        "call_createContextualFragment",
+        "call_surroundContents",
+        "call_deleteContents",
+        "call_extractContents",
+    };
+
     /// Stringifier delegate - toString() implementation
     /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier
     pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {

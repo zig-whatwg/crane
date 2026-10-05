@@ -345,4 +345,14 @@ pub const HTMLOListElement = struct {
         if (comptime @hasDecl(HTMLOListElementImpl, "set_compact")) return try HTMLOListElementImpl.set_compact(instance, value);
         try reflection.set(bool, instance, .{ .name = "compact" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_reversed",
+        "set_start",
+        "set_type",
+        "set_compact",
+    };
 };

@@ -648,4 +648,26 @@ pub const HTMLScriptElement = struct {
     pub const legacy_null_to_empty = .{
         .{ "set_innerText", 0b1 },
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_type",
+        "set_src",
+        "set_noModule",
+        "set_async",
+        "set_defer",
+        "set_crossOrigin",
+        "set_referrerPolicy",
+        "set_integrity",
+        "set_fetchPriority",
+        "set_text",
+        "set_charset",
+        "set_event",
+        "set_htmlFor",
+        "set_innerText",
+        "set_textContent",
+        "set_attributionSrc",
+    };
 };

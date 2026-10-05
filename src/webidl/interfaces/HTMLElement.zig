@@ -1684,4 +1684,33 @@ pub const HTMLElement = struct {
         .{ "set_innerText", 0b1 },
         .{ "set_outerText", 0b1 },
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_title",
+        "set_lang",
+        "set_translate",
+        "set_dir",
+        "set_hidden",
+        "set_inert",
+        "set_accessKey",
+        "set_draggable",
+        "set_spellcheck",
+        "set_writingSuggestions",
+        "set_autocapitalize",
+        "set_autocorrect",
+        "set_innerText",
+        "set_outerText",
+        "set_popover",
+        "set_headingOffset",
+        "set_headingReset",
+        "set_contentEditable",
+        "set_enterKeyHint",
+        "set_inputMode",
+        "set_virtualKeyboardPolicy",
+        "set_autofocus",
+        "set_tabIndex",
+    };
 };

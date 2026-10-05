@@ -585,6 +585,23 @@ pub const HTMLFormElement = struct {
         return try HTMLFormElementImpl.call_checkValidity(instance);
     }
 
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_acceptCharset",
+        "set_action",
+        "set_autocomplete",
+        "set_enctype",
+        "set_encoding",
+        "set_method",
+        "set_name",
+        "set_noValidate",
+        "set_target",
+        "set_rel",
+        "call_reset",
+    };
+
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {

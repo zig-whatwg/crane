@@ -92,3 +92,13 @@ pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.P
 
     return try ParentNodeImpl.call_replaceChildren(instance, nodes);
 }
+
+/// HTML [CEReactions]: the functions that run a custom element reactions
+/// bracket - the binding dispatches each in a catch scope, where
+/// engine.takePendingException can take what the member leaves pending.
+pub const ce_reactions = .{
+    "call_prepend",
+    "call_moveBefore",
+    "call_append",
+    "call_replaceChildren",
+};

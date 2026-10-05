@@ -393,4 +393,15 @@ pub const HTMLOptionElement = struct {
     pub fn get_index(instance: *runtime.Instance) anyerror!i32 {
         return try HTMLOptionElementImpl.get_index(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_disabled",
+        "set_label",
+        "set_defaultSelected",
+        "set_value",
+        "set_text",
+    };
 };

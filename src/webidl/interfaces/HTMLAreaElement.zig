@@ -607,4 +607,30 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions]
     pub const get_hash = mixins.HTMLHyperlinkElementUtils.get_hash;
     pub const set_hash = mixins.HTMLHyperlinkElementUtils.set_hash;
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_alt",
+        "set_coords",
+        "set_shape",
+        "set_target",
+        "set_download",
+        "set_ping",
+        "set_rel",
+        "set_referrerPolicy",
+        "set_noHref",
+        "set_attributionSrc",
+        "set_href",
+        "set_protocol",
+        "set_username",
+        "set_password",
+        "set_host",
+        "set_hostname",
+        "set_port",
+        "set_pathname",
+        "set_search",
+        "set_hash",
+    };
 };

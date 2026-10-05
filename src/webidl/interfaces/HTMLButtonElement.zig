@@ -590,4 +590,23 @@ pub const HTMLButtonElement = struct {
     pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLButtonElementImpl.call_checkValidity(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_command",
+        "set_commandForElement",
+        "set_disabled",
+        "set_formAction",
+        "set_formEnctype",
+        "set_formMethod",
+        "set_formNoValidate",
+        "set_formTarget",
+        "set_name",
+        "set_type",
+        "set_value",
+        "set_popoverTargetElement",
+        "set_popoverTargetAction",
+    };
 };

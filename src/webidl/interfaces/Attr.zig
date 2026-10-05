@@ -194,4 +194,11 @@ pub const Attr = struct {
     pub fn get_specified(instance: *runtime.Instance) anyerror!bool {
         return try AttrImpl.get_specified(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_value",
+    };
 };

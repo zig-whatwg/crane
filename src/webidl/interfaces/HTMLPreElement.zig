@@ -282,4 +282,11 @@ pub const HTMLPreElement = struct {
         if (comptime @hasDecl(HTMLPreElementImpl, "set_width")) return try HTMLPreElementImpl.set_width(instance, value);
         try reflection.set(i32, instance, .{ .name = "width" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_width",
+    };
 };

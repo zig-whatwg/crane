@@ -638,4 +638,26 @@ pub const HTMLTableElement = struct {
         .{ "set_cellPadding", 0b1 },
         .{ "set_cellSpacing", 0b1 },
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_caption",
+        "set_tHead",
+        "set_tFoot",
+        "set_align",
+        "set_border",
+        "set_frame",
+        "set_rules",
+        "set_summary",
+        "set_width",
+        "set_bgColor",
+        "set_cellPadding",
+        "set_cellSpacing",
+        "call_deleteCaption",
+        "call_deleteRow",
+        "call_deleteTFoot",
+        "call_deleteTHead",
+    };
 };

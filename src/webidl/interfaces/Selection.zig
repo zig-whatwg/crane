@@ -288,6 +288,13 @@ pub const Selection = struct {
         return try SelectionImpl.call_removeAllRanges(instance);
     }
 
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "call_deleteFromDocument",
+    };
+
     /// Stringifier delegate - toString() implementation
     /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier
     pub fn serialize(instance: *runtime.Instance) anyerror!runtime.USVString {

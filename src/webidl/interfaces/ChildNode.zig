@@ -145,4 +145,14 @@ pub const ChildNode = struct {
 
         return try ChildNodeImpl.call_after(instance, nodes);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "call_before",
+        "call_replaceWith",
+        "call_remove",
+        "call_after",
+    };
 };

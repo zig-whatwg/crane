@@ -529,4 +529,18 @@ pub const Node = struct {
     pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) anyerror!bool {
         return try NodeImpl.call_contains(instance, other);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_nodeValue",
+        "set_textContent",
+        "call_insertBefore",
+        "call_replaceChild",
+        "call_normalize",
+        "call_appendChild",
+        "call_cloneNode",
+        "call_removeChild",
+    };
 };

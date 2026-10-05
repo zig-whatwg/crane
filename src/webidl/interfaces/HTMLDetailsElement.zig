@@ -303,4 +303,12 @@ pub const HTMLDetailsElement = struct {
         if (comptime @hasDecl(HTMLDetailsElementImpl, "set_open")) return try HTMLDetailsElementImpl.set_open(instance, value);
         try reflection.set(bool, instance, .{ .name = "open" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_name",
+        "set_open",
+    };
 };

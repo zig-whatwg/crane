@@ -417,4 +417,15 @@ pub const HTMLTrackElement = struct {
     pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTrackElementImpl.get_track(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_kind",
+        "set_src",
+        "set_srclang",
+        "set_label",
+        "set_default",
+    };
 };

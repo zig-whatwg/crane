@@ -169,3 +169,19 @@ pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!
 
     try HTMLHyperlinkElementUtilsImpl.set_hash(instance, value);
 }
+
+/// HTML [CEReactions]: the functions that run a custom element reactions
+/// bracket - the binding dispatches each in a catch scope, where
+/// engine.takePendingException can take what the member leaves pending.
+pub const ce_reactions = .{
+    "set_href",
+    "set_protocol",
+    "set_username",
+    "set_password",
+    "set_host",
+    "set_hostname",
+    "set_port",
+    "set_pathname",
+    "set_search",
+    "set_hash",
+};

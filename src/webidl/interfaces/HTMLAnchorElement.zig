@@ -727,4 +727,36 @@ pub const HTMLAnchorElement = struct {
     /// Extended attributes: [CEReactions]
     pub const get_hash = mixins.HTMLHyperlinkElementUtils.get_hash;
     pub const set_hash = mixins.HTMLHyperlinkElementUtils.set_hash;
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_target",
+        "set_download",
+        "set_ping",
+        "set_rel",
+        "set_hreflang",
+        "set_type",
+        "set_text",
+        "set_referrerPolicy",
+        "set_coords",
+        "set_charset",
+        "set_name",
+        "set_rev",
+        "set_shape",
+        "set_attributionSourceId",
+        "set_attributionDestination",
+        "set_attributionSrc",
+        "set_href",
+        "set_protocol",
+        "set_username",
+        "set_password",
+        "set_host",
+        "set_hostname",
+        "set_port",
+        "set_pathname",
+        "set_search",
+        "set_hash",
+    };
 };

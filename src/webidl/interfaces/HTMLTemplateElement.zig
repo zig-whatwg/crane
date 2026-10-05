@@ -373,4 +373,15 @@ pub const HTMLTemplateElement = struct {
         if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootCustomElementRegistry")) return try HTMLTemplateElementImpl.set_shadowRootCustomElementRegistry(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "shadowrootcustomelementregistry" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_shadowRootMode",
+        "set_shadowRootDelegatesFocus",
+        "set_shadowRootClonable",
+        "set_shadowRootSerializable",
+        "set_shadowRootCustomElementRegistry",
+    };
 };

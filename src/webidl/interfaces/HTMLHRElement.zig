@@ -366,4 +366,15 @@ pub const HTMLHRElement = struct {
         if (comptime @hasDecl(HTMLHRElementImpl, "set_width")) return try HTMLHRElementImpl.set_width(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "width" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_align",
+        "set_color",
+        "set_noShade",
+        "set_size",
+        "set_width",
+    };
 };

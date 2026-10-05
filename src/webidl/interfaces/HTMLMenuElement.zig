@@ -282,4 +282,11 @@ pub const HTMLMenuElement = struct {
         if (comptime @hasDecl(HTMLMenuElementImpl, "set_compact")) return try HTMLMenuElementImpl.set_compact(instance, value);
         try reflection.set(bool, instance, .{ .name = "compact" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_compact",
+    };
 };

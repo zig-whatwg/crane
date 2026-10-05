@@ -685,4 +685,26 @@ pub const HTMLObjectElement = struct {
     pub const legacy_null_to_empty = .{
         .{ "set_border", 0b1 },
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_data",
+        "set_type",
+        "set_name",
+        "set_width",
+        "set_height",
+        "set_align",
+        "set_archive",
+        "set_code",
+        "set_declare",
+        "set_hspace",
+        "set_standby",
+        "set_vspace",
+        "set_codeBase",
+        "set_codeType",
+        "set_useMap",
+        "set_border",
+    };
 };

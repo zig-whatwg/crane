@@ -303,4 +303,12 @@ pub const HTMLModElement = struct {
         if (comptime @hasDecl(HTMLModElementImpl, "set_dateTime")) return try HTMLModElementImpl.set_dateTime(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "datetime" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_cite",
+        "set_dateTime",
+    };
 };

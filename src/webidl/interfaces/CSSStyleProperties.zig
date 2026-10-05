@@ -132,6 +132,13 @@ pub const CSSStyleProperties = struct {
         .{ "set_cssFloat", 0b1 },
     };
 
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_cssFloat",
+    };
+
     /// Named property getter for CSS property access
     /// Maps style.color, style.backgroundColor to getPropertyValue()
     /// Per CSS OM spec §6.6.1

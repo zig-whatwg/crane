@@ -783,4 +783,32 @@ pub const HTMLImageElement = struct {
     pub const promise_returning = .{
         "call_decode",
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_alt",
+        "set_src",
+        "set_srcset",
+        "set_sizes",
+        "set_crossOrigin",
+        "set_useMap",
+        "set_isMap",
+        "set_width",
+        "set_height",
+        "set_referrerPolicy",
+        "set_decoding",
+        "set_loading",
+        "set_fetchPriority",
+        "set_name",
+        "set_lowsrc",
+        "set_align",
+        "set_hspace",
+        "set_vspace",
+        "set_longDesc",
+        "set_border",
+        "set_attributionSrc",
+        "set_sharedStorageWritable",
+    };
 };

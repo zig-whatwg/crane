@@ -455,4 +455,12 @@ pub const HTMLFrameSetElement = struct {
 
     pub const get_onportalactivate = mixins.WindowEventHandlers.get_onportalactivate;
     pub const set_onportalactivate = mixins.WindowEventHandlers.set_onportalactivate;
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_cols",
+        "set_rows",
+    };
 };

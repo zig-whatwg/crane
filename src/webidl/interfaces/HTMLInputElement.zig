@@ -1270,4 +1270,46 @@ pub const HTMLInputElement = struct {
     pub const legacy_null_to_empty = .{
         .{ "set_value", 0b1 },
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_accept",
+        "set_alpha",
+        "set_alt",
+        "set_autocomplete",
+        "set_defaultChecked",
+        "set_colorSpace",
+        "set_dirName",
+        "set_disabled",
+        "set_formAction",
+        "set_formEnctype",
+        "set_formMethod",
+        "set_formNoValidate",
+        "set_formTarget",
+        "set_height",
+        "set_max",
+        "set_maxLength",
+        "set_min",
+        "set_minLength",
+        "set_multiple",
+        "set_name",
+        "set_pattern",
+        "set_placeholder",
+        "set_readOnly",
+        "set_required",
+        "set_size",
+        "set_src",
+        "set_step",
+        "set_type",
+        "set_defaultValue",
+        "set_value",
+        "set_width",
+        "set_capture",
+        "set_align",
+        "set_useMap",
+        "set_popoverTargetElement",
+        "set_popoverTargetAction",
+    };
 };

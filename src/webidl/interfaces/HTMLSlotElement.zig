@@ -307,4 +307,11 @@ pub const HTMLSlotElement = struct {
     pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!runtime.JSValue {
         return try HTMLSlotElementImpl.call_assignedNodes(instance, options);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_name",
+    };
 };

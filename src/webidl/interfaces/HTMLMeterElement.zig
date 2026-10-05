@@ -401,4 +401,16 @@ pub const HTMLMeterElement = struct {
         .{ "set_high", 0b1 },
         .{ "set_optimum", 0b1 },
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_value",
+        "set_min",
+        "set_max",
+        "set_low",
+        "set_high",
+        "set_optimum",
+    };
 };

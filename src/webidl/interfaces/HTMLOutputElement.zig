@@ -429,4 +429,13 @@ pub const HTMLOutputElement = struct {
     pub fn call_checkValidity(instance: *runtime.Instance) anyerror!bool {
         return try HTMLOutputElementImpl.call_checkValidity(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_name",
+        "set_defaultValue",
+        "set_value",
+    };
 };

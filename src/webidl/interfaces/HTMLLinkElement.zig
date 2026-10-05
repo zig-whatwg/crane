@@ -696,4 +696,26 @@ pub const HTMLLinkElement = struct {
     pub fn get_sheet(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLLinkElementImpl.get_sheet(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_href",
+        "set_crossOrigin",
+        "set_rel",
+        "set_as",
+        "set_media",
+        "set_integrity",
+        "set_hreflang",
+        "set_type",
+        "set_imageSrcset",
+        "set_imageSizes",
+        "set_referrerPolicy",
+        "set_disabled",
+        "set_fetchPriority",
+        "set_charset",
+        "set_rev",
+        "set_target",
+    };
 };

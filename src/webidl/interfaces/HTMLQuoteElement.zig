@@ -282,4 +282,11 @@ pub const HTMLQuoteElement = struct {
         if (comptime @hasDecl(HTMLQuoteElementImpl, "set_cite")) return try HTMLQuoteElementImpl.set_cite(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "cite", .url = true }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_cite",
+    };
 };

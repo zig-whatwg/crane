@@ -82,3 +82,13 @@ pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: DOMString) 
 
     try ElementContentEditableImpl.set_virtualKeyboardPolicy(instance, value);
 }
+
+/// HTML [CEReactions]: the functions that run a custom element reactions
+/// bracket - the binding dispatches each in a catch scope, where
+/// engine.takePendingException can take what the member leaves pending.
+pub const ce_reactions = .{
+    "set_contentEditable",
+    "set_enterKeyHint",
+    "set_inputMode",
+    "set_virtualKeyboardPolicy",
+};

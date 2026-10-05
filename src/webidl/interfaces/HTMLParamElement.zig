@@ -345,4 +345,14 @@ pub const HTMLParamElement = struct {
         if (comptime @hasDecl(HTMLParamElementImpl, "set_valueType")) return try HTMLParamElementImpl.set_valueType(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "valuetype" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_name",
+        "set_value",
+        "set_type",
+        "set_valueType",
+    };
 };

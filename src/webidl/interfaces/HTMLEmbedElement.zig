@@ -397,4 +397,16 @@ pub const HTMLEmbedElement = struct {
     pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
         return try HTMLEmbedElementImpl.call_getSVGDocument(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_src",
+        "set_type",
+        "set_width",
+        "set_height",
+        "set_align",
+        "set_name",
+    };
 };

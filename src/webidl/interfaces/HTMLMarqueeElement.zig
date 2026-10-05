@@ -507,4 +507,21 @@ pub const HTMLMarqueeElement = struct {
     pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return try HTMLMarqueeElementImpl.call_stop(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_behavior",
+        "set_bgColor",
+        "set_direction",
+        "set_height",
+        "set_hspace",
+        "set_loop",
+        "set_scrollAmount",
+        "set_scrollDelay",
+        "set_trueSpeed",
+        "set_vspace",
+        "set_width",
+    };
 };

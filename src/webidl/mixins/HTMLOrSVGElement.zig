@@ -78,3 +78,11 @@ pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)
 pub fn call_blur(instance: *runtime.Instance) anyerror!void {
     return try HTMLOrSVGElementImpl.call_blur(instance);
 }
+
+/// HTML [CEReactions]: the functions that run a custom element reactions
+/// bracket - the binding dispatches each in a catch scope, where
+/// engine.takePendingException can take what the member leaves pending.
+pub const ce_reactions = .{
+    "set_autofocus",
+    "set_tabIndex",
+};

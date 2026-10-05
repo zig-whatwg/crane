@@ -303,4 +303,12 @@ pub const HTMLOptGroupElement = struct {
         if (comptime @hasDecl(HTMLOptGroupElementImpl, "set_label")) return try HTMLOptGroupElementImpl.set_label(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "label" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_disabled",
+        "set_label",
+    };
 };

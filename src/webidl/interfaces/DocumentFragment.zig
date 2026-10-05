@@ -220,4 +220,14 @@ pub const DocumentFragment = struct {
     pub const call_moveBefore = mixins.ParentNode.call_moveBefore;
 
     pub const call_append = mixins.ParentNode.call_append;
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "call_prepend",
+        "call_replaceChildren",
+        "call_moveBefore",
+        "call_append",
+    };
 };

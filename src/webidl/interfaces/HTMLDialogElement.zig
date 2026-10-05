@@ -366,4 +366,16 @@ pub const HTMLDialogElement = struct {
 
         return try HTMLDialogElementImpl.call_show(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_open",
+        "set_closedBy",
+        "call_showModal",
+        "call_close",
+        "call_requestClose",
+        "call_show",
+    };
 };

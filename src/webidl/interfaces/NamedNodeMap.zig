@@ -176,6 +176,16 @@ pub const NamedNodeMap = struct {
         return try NamedNodeMapImpl.call_item(instance, index);
     }
 
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "call_removeNamedItem",
+        "call_setNamedItem",
+        "call_setNamedItemNS",
+        "call_removeNamedItemNS",
+    };
+
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration
     pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {

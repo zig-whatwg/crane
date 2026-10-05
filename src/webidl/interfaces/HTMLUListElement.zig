@@ -303,4 +303,12 @@ pub const HTMLUListElement = struct {
         if (comptime @hasDecl(HTMLUListElementImpl, "set_type")) return try HTMLUListElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_compact",
+        "set_type",
+    };
 };

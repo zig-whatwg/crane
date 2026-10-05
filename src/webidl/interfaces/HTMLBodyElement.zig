@@ -561,4 +561,16 @@ pub const HTMLBodyElement = struct {
         .{ "set_aLink", 0b1 },
         .{ "set_bgColor", 0b1 },
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_text",
+        "set_link",
+        "set_vLink",
+        "set_aLink",
+        "set_bgColor",
+        "set_background",
+    };
 };

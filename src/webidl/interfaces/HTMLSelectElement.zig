@@ -619,4 +619,21 @@ pub const HTMLSelectElement = struct {
             .{ .function = "call_remove__1", .implemented = @hasDecl(HTMLSelectElementImpl, "call_remove__1"), .args = &.{.{ .kinds = &.{.numeric} }} },
         } },
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_autocomplete",
+        "set_disabled",
+        "set_multiple",
+        "set_name",
+        "set_required",
+        "set_size",
+        "set_length",
+        "call_remove",
+        "call_setter",
+        "call_add",
+        "call_remove__1",
+    };
 };

@@ -767,4 +767,29 @@ pub const HTMLIFrameElement = struct {
         .{ "set_marginHeight", 0b1 },
         .{ "set_marginWidth", 0b1 },
     };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.takePendingException can take what the member leaves pending.
+    pub const ce_reactions = .{
+        "set_src",
+        "set_srcdoc",
+        "set_name",
+        "set_allow",
+        "set_allowFullscreen",
+        "set_width",
+        "set_height",
+        "set_referrerPolicy",
+        "set_loading",
+        "set_csp",
+        "set_align",
+        "set_scrolling",
+        "set_frameBorder",
+        "set_longDesc",
+        "set_marginHeight",
+        "set_marginWidth",
+        "set_browsingTopics",
+        "set_adAuctionHeaders",
+        "set_sharedStorageWritable",
+    };
 };
