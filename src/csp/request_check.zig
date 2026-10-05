@@ -24,6 +24,38 @@ pub const Url = struct {
     port: ?u16 = null,
     /// The path, serialized.
     path: []const u8 = "",
+
+    /// The parts of a serialized URL - one the URL parser made, so its
+    /// scheme and host are in their normal forms - as slices of it. The
+    /// path ends at the query or the fragment; credentials are not a part.
+    pub fn ofSerialized(url: []const u8) Url {
+        const colon = std.mem.indexOfScalar(u8, url, ':') orelse return .{ .scheme = "" };
+        var parts: Url = .{ .scheme = url[0..colon] };
+        var rest = url[colon + 1 ..];
+        const path_end = std.mem.indexOfAny(u8, rest, "?#") orelse rest.len;
+        rest = rest[0..path_end];
+        if (!std.mem.startsWith(u8, rest, "//")) {
+            // No authority: no host, and the rest is the path.
+            parts.path = rest;
+            return parts;
+        }
+        const after = rest[2..];
+        const authority_end = std.mem.indexOfScalar(u8, after, '/') orelse after.len;
+        var authority = after[0..authority_end];
+        parts.path = after[authority_end..];
+        // Credentials end at the last '@'.
+        if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at| authority = authority[at + 1 ..];
+        // The host - an IPv6 address keeps its brackets - then a port.
+        const host_end = if (authority.len > 0 and authority[0] == '[')
+            (std.mem.indexOfScalar(u8, authority, ']') orelse authority.len - 1) + 1
+        else
+            std.mem.indexOfScalar(u8, authority, ':') orelse authority.len;
+        parts.host = if (host_end > 0) authority[0..host_end] else null;
+        if (host_end < authority.len and authority[host_end] == ':') {
+            parts.port = std.fmt.parseInt(u16, authority[host_end + 1 ..], 10) catch null;
+        }
+        return parts;
+    }
 };
 
 /// A request, as the pre-request checks read it.
@@ -384,4 +416,16 @@ test "integrity metadata matches when every hash it names is a hash-source of th
     try std.testing.expect(!doesIntegrityMetadataMatchSourceList("sha256-abc sha512-zzz", list));
     try std.testing.expect(!doesIntegrityMetadataMatchSourceList("", list));
     try std.testing.expect(!doesIntegrityMetadataMatchSourceList("md5-abc", list));
+}
+
+test "Url.ofSerialized: scheme, host, port and path; no authority, no host" {
+    const u = Url.ofSerialized("https://u:p@[::1]:8443/a/b?q#f");
+    try std.testing.expectEqualStrings("https", u.scheme);
+    try std.testing.expectEqualStrings("[::1]", u.host.?);
+    try std.testing.expectEqual(@as(?u16, 8443), u.port);
+    try std.testing.expectEqualStrings("/a/b", u.path);
+    const data = Url.ofSerialized("data:text/plain,x");
+    try std.testing.expectEqualStrings("data", data.scheme);
+    try std.testing.expect(data.host == null);
+    try std.testing.expectEqualStrings("text/plain,x", data.path);
 }

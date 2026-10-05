@@ -32,12 +32,42 @@ pub const NavigationRequest = struct {
     /// pre-navigation violation's resource.
     serialized_url: []const u8,
     redirect_count: u32 = 0,
+
+    /// The request for the serialized URL `serialized` (BORROWED: the
+    /// request's parts are slices of it).
+    pub fn ofSerialized(serialized: []const u8) NavigationRequest {
+        return .{ .url = request_check.Url.ofSerialized(serialized), .serialized_url = serialized };
+    }
 };
 
 /// 4.2.4 for `request` of `navigation_type` under `csp_list` - the request's
 /// policy container's. Each violation goes to `reporter`, the request's
 /// client's global's (null: none is reported).
+///
+/// Steps 2-3 here are the pre-navigation checks this module holds
+/// (form-action's). require-trusted-types-for's runs the default policy -
+/// script - so a caller with a global runs it first and continues with
+/// `preNavigationChecks` and `javascriptUrlInlineChecks`
+/// (dom.csp_violations.shouldJavascriptNavigationBeBlocked).
 pub fn shouldNavigationRequestBeBlocked(
+    csp_list: *const types.CSPList,
+    request: NavigationRequest,
+    navigation_type: NavigationType,
+    reporter: ?violation_events.Reporter,
+) Result {
+    // 1-3.
+    const result = preNavigationChecks(csp_list, request, navigation_type, reporter);
+    // 4. "If result is "Allowed", and if navigation request's current URL's
+    // scheme is javascript".
+    if (result == .blocked) return .blocked;
+    // 5. Return result.
+    return javascriptUrlInlineChecks(csp_list, request, reporter);
+}
+
+/// 4.2.4 steps 1-3 with form-action's pre-navigation check (6.4.1.1), the
+/// one directive here that has one: "Blocked" when an enforced policy's
+/// check fails, each failing policy reported.
+pub fn preNavigationChecks(
     csp_list: *const types.CSPList,
     request: NavigationRequest,
     navigation_type: NavigationType,
@@ -72,30 +102,38 @@ pub fn shouldNavigationRequestBeBlocked(
         // 3.1.5.
         if (policy.disposition == .enforce) result = .blocked;
     }
-    // 4. "If result is "Allowed", and if navigation request's current URL's
-    // scheme is javascript":
-    if (result == .allowed and std.ascii.eqlIgnoreCase(request.url.scheme, "javascript")) {
-        for (csp_list.policies.items) |*policy| {
-            // 4.1.1.1-4.1.1.2. The inline check upon null, "navigation",
-            // policy and the URL; only the directive §6.8.4 picks runs.
-            const directive = inline_check.blockingDirective(policy, .{}, .navigation, request.serialized_url) orelse continue;
-            // 4.1.1.3-4.1.1.5. A violation of the effective directive for
-            // inline checks, its resource "inline". The sample - the URL's
-            // first 40 characters under 'report-sample' - is not in 4.2.4;
-            // Blink sets it, and WPT reads it
-            // (securitypolicyviolation/script-sample.html: "javascript:'inline
-            // url'").
-            if (reporter) |r| r.reportViolation(&.{
-                .policy = policy,
-                .effective_directive = inline_check.effectiveDirectiveForInlineCheck(.navigation),
-                .resource = .@"inline",
-                .sample = violation_events.sampleFor(directive, request.serialized_url),
-            });
-            // 4.1.1.6.
-            if (policy.disposition == .enforce) result = .blocked;
-        }
+    return result;
+}
+
+/// 4.2.4 step 4, for a result still "Allowed": a javascript: URL is checked
+/// by each policy's inline check of type "navigation"; any other URL is
+/// Allowed.
+pub fn javascriptUrlInlineChecks(
+    csp_list: *const types.CSPList,
+    request: NavigationRequest,
+    reporter: ?violation_events.Reporter,
+) Result {
+    if (!std.ascii.eqlIgnoreCase(request.url.scheme, "javascript")) return .allowed;
+    var result: Result = .allowed;
+    for (csp_list.policies.items) |*policy| {
+        // 4.1.1.1-4.1.1.2. The inline check upon null, "navigation",
+        // policy and the URL; only the directive §6.8.4 picks runs.
+        const directive = inline_check.blockingDirective(policy, .{}, .navigation, request.serialized_url) orelse continue;
+        // 4.1.1.3-4.1.1.5. A violation of the effective directive for
+        // inline checks, its resource "inline". The sample - the URL's
+        // first 40 characters under 'report-sample' - is not in 4.2.4;
+        // Blink sets it, and WPT reads it
+        // (securitypolicyviolation/script-sample.html: "javascript:'inline
+        // url'").
+        if (reporter) |r| r.reportViolation(&.{
+            .policy = policy,
+            .effective_directive = inline_check.effectiveDirectiveForInlineCheck(.navigation),
+            .resource = .@"inline",
+            .sample = violation_events.sampleFor(directive, request.serialized_url),
+        });
+        // 4.1.1.6.
+        if (policy.disposition == .enforce) result = .blocked;
     }
-    // 5. Return result.
     return result;
 }
 
@@ -193,4 +231,60 @@ test "4.2.4 step 3: form-action blocks a form submission whose URL it does not m
     try testing.expectEqual(Result.allowed, shouldNavigationRequestBeBlocked(&list, other, .other, null));
     const allowed: NavigationRequest = .{ .url = .{ .scheme = "https", .host = "allowed.test", .path = "/x" }, .serialized_url = "https://allowed.test/x" };
     try testing.expectEqual(Result.allowed, shouldNavigationRequestBeBlocked(&list, allowed, .form_submission, null));
+}
+
+test "NavigationRequest.ofSerialized: the parts source matching reads" {
+    const js = NavigationRequest.ofSerialized("javascript:void(0)");
+    try testing.expectEqualStrings("javascript", js.url.scheme);
+    try testing.expect(js.url.host == null);
+    try testing.expectEqualStrings("void(0)", js.url.path);
+    try testing.expectEqualStrings("javascript:void(0)", js.serialized_url);
+    const https = NavigationRequest.ofSerialized("https://user@a.test:8443/p/q?x=1#f");
+    try testing.expectEqualStrings("https", https.url.scheme);
+    try testing.expectEqualStrings("a.test", https.url.host.?);
+    try testing.expectEqual(@as(?u16, 8443), https.url.port);
+    try testing.expectEqualStrings("/p/q", https.url.path);
+}
+
+test "4.2.4 steps 1-3 alone: form-action's pre-navigation check, no javascript: inline check" {
+    var list = try listOf("form-action 'none'; script-src 'none'", .enforce);
+    defer list.deinit();
+    var seen: Seen = .{};
+    // A form submission to a javascript: URL: form-action's violation, the
+    // resource its URL - and step 4 is not this function's.
+    try testing.expectEqual(Result.blocked, preNavigationChecks(&list, NavigationRequest.ofSerialized("javascript:void(0)"), .form_submission, seen.reporter()));
+    try testing.expectEqual(@as(usize, 1), seen.count);
+    try testing.expectEqualStrings("form-action", seen.directive);
+    try testing.expect(!seen.inline_resource);
+    // An anchor's navigation is not a form submission: form-action does not
+    // apply.
+    seen = .{};
+    try testing.expectEqual(Result.allowed, preNavigationChecks(&list, NavigationRequest.ofSerialized("javascript:void(0)"), .other, seen.reporter()));
+    try testing.expectEqual(@as(usize, 0), seen.count);
+}
+
+test "4.2.4 step 4 alone: the javascript: URL's inline check, whatever the navigation type" {
+    var list = try listOf("form-action 'none'; script-src 'none'", .enforce);
+    defer list.deinit();
+    var seen: Seen = .{};
+    try testing.expectEqual(Result.blocked, javascriptUrlInlineChecks(&list, NavigationRequest.ofSerialized("javascript:void(0)"), seen.reporter()));
+    try testing.expectEqual(@as(usize, 1), seen.count);
+    try testing.expectEqualStrings("script-src-elem", seen.directive);
+    try testing.expect(seen.inline_resource);
+    // Not a javascript: URL: nothing to check.
+    try testing.expectEqual(Result.allowed, javascriptUrlInlineChecks(&list, NavigationRequest.ofSerialized("https://a.test/"), null));
+}
+
+test "4.2.4: a form submission blocked by form-action skips step 4 - one violation, form-action's" {
+    var list = try listOf("form-action 'none'; script-src 'none'", .enforce);
+    defer list.deinit();
+    var seen: Seen = .{};
+    try testing.expectEqual(Result.blocked, shouldNavigationRequestBeBlocked(&list, NavigationRequest.ofSerialized("javascript:void(0)"), .form_submission, seen.reporter()));
+    try testing.expectEqual(@as(usize, 1), seen.count);
+    try testing.expectEqualStrings("form-action", seen.directive);
+    // As an anchor's navigation it reaches step 4: script-src-elem's.
+    seen = .{};
+    try testing.expectEqual(Result.blocked, shouldNavigationRequestBeBlocked(&list, NavigationRequest.ofSerialized("javascript:void(0)"), .other, seen.reporter()));
+    try testing.expectEqual(@as(usize, 1), seen.count);
+    try testing.expectEqualStrings("script-src-elem", seen.directive);
 }
