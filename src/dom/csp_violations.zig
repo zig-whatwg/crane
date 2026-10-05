@@ -13,9 +13,11 @@
 //! (the realm's document URL - a worker's creation URL), its referrer a
 //! Window's document's referrer. Not modelled, stated: its status - the
 //! HTTP status of the resource the global was made from is not kept, so a
-//! global whose URL is HTTP(S) reports 200 and any other 0; source file,
-//! line and column (§2.4.1 step 2); report-uri and report-to (§5.5 steps
-//! 4-5).
+//! global whose URL is HTTP(S) reports 200 and any other 0; report-uri and
+//! report-to (§5.5 steps 4-5). Its source file, line and column (§2.4.1
+//! step 2) are the running script's, when the engine can say
+//! (engine.runningScriptLocation: V8 can; JavaScriptCore and QuickJS
+//! cannot, and report none).
 //!
 //! Spec: https://w3c.github.io/webappsec-csp/#report-violation
 
@@ -177,10 +179,15 @@ const ViolationTask = struct {
     sample: []const u8,
     disposition: enums.SecurityPolicyViolationEventDisposition,
     status_code: u16,
+    /// §2.4.1 step 2: the running script's URL, stripped for reports, and
+    /// position; "" and 0 when no script was running.
+    source_file: []const u8 = "",
+    line_number: u32 = 0,
+    column_number: u32 = 0,
 
     fn deinit(self: *ViolationTask) void {
         const allocator = self.allocator;
-        for ([_][]const u8{ self.document_uri, self.referrer, self.blocked_uri, self.effective_directive, self.original_policy, self.sample }) |owned| {
+        for ([_][]const u8{ self.document_uri, self.referrer, self.blocked_uri, self.effective_directive, self.original_policy, self.sample, self.source_file }) |owned| {
             allocator.free(owned);
         }
         allocator.destroy(self);
@@ -244,12 +251,12 @@ const ViolationTask = struct {
             .effectiveDirective = runtime.DOMString.initInterned(self.effective_directive),
             .violatedDirective = runtime.DOMString.initInterned(self.effective_directive),
             .originalPolicy = runtime.DOMString.initInterned(self.original_policy),
-            .sourceFile = "",
+            .sourceFile = self.source_file,
             .sample = runtime.DOMString.initInterned(self.sample),
             .disposition = self.disposition,
             .statusCode = self.status_code,
-            .lineNumber = 0,
-            .columnNumber = 0,
+            .lineNumber = self.line_number,
+            .columnNumber = self.column_number,
         };
         const event = try interfaces.SecurityPolicyViolationEvent.call_constructor(
             self.global.ctx,
@@ -328,6 +335,19 @@ fn queueViolationTask(global: *runtime.Instance, violation: *const Violation) !v
     task.effective_directive = try allocator.dupe(u8, violation.effective_directive);
     task.original_policy = try csp.parsing.serializePolicy(allocator, violation.policy);
     task.sample = try allocator.dupe(u8, violation.sample);
+    // §2.4.1 step 2: "If the user agent is currently executing script, and
+    // can extract a source file's URL, line number, and column number from
+    // the global, set violation's source file, line number, and column
+    // number accordingly" - the script running in the global's agent, now,
+    // as the violation is made.
+    if (global.ctx.agent) |agent| {
+        if (engine.runningScriptLocation(agent, allocator) catch null) |location| {
+            defer location.deinit(allocator);
+            task.source_file = try csp.violation_events.sourceFileForReports(allocator, location.url);
+            task.line_number = location.line;
+            task.column_number = location.column;
+        }
+    }
 
     // 3. "Queue a task": on the global's event loop. A worker's realm has
     // none of its own and runs its tasks as timers on the page's.
