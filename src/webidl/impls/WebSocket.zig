@@ -427,7 +427,9 @@ fn pump(token: *PollToken, instance: *runtime.Instance) bool {
         // Policy?" (CSP 4.1.2): blocked is a network error, and "if response
         // is a network error, then fail the WebSocket connection" - the close
         // task below fires `error` and `close`.
-        if (blockedByContentSecurityPolicy(instance, internal.url_string)) {
+        // Mixed Content 4.4, also called by main fetch step 7, produces
+        // the same network-error -> fail-the-WebSocket-connection path.
+        if (blockedByContentSecurityPolicy(instance, internal.url_string) or blockedByMixedContent(instance, internal.url_string)) {
             connection.fail();
         } else {
             const origin = clientOrigin(instance);
@@ -578,13 +580,35 @@ fn blockedByContentSecurityPolicy(instance: *runtime.Instance, url: []const u8) 
     const settings = dom.global_settings.of(global_instance) orelse return false;
     const container_of = settings.policy_container orelse return false;
     const container = container_of(global_instance) orelse return false;
-    // "Let requestURL be a copy of url, with its scheme set to "http", if
-    // url's scheme is "ws"; otherwise to "https"."
-    const colon = std.mem.indexOfScalar(u8, url, ':') orelse return false;
-    const scheme: []const u8 = if (std.mem.eql(u8, url[0..colon], "ws")) "http" else "https";
-    var buffer: [2048]u8 = undefined;
-    const request_url = std.fmt.bufPrint(&buffer, "{s}{s}", .{ scheme, url[colon..] }) catch url;
+    const request_url = handshakeRequestUrl(instance.ctx.allocator, url) catch return true;
+    defer instance.ctx.allocator.free(request_url);
     return @import("fetch").algorithms.csp_check.isBlockedFor(container, request_url, .empty, dom.csp_violations.reporterFor(global_instance));
+}
+
+/// WebSockets "establish a WebSocket connection" step 1: requestURL is a
+/// copy of url with its scheme set to http for ws, otherwise https.
+fn handshakeRequestUrl(allocator: std.mem.Allocator, url: []const u8) error{OutOfMemory}![]u8 {
+    const colon = std.mem.indexOfScalar(u8, url, ':') orelse return allocator.dupe(u8, url);
+    const scheme: []const u8 = if (std.mem.eql(u8, url[0..colon], "ws")) "http" else "https";
+    return std.mem.concat(allocator, u8, &.{ scheme, url[colon..] });
+}
+
+/// The WebSocket handshake fetches a request with destination "". Fetch
+/// main fetch step 7 calls Mixed Content 4.4; blocked becomes a network
+/// error, which fails the connection before any network traffic starts.
+fn blockedByMixedContent(instance: *runtime.Instance, url: []const u8) bool {
+    const global = relevantGlobal(instance) orelse return false;
+    var client = @import("dom").global_settings.requestClient(global) catch return true;
+    defer client.deinit();
+    const allocator = instance.ctx.allocator;
+    const request_url = handshakeRequestUrl(allocator, url) catch return true;
+    defer allocator.free(request_url);
+    const fetch = @import("fetch");
+    const request = fetch.internal.InternalRequest.init(allocator, request_url) catch return true;
+    defer request.deinit();
+    request.mode = .websocket;
+    fetch.internal.populateRequestFromClient(request, client.request) catch return true;
+    return fetch.mixed_content.shouldBlockRequest(request) catch true;
 }
 
 /// The user agent's cookie jar, as this's relevant settings object reaches
