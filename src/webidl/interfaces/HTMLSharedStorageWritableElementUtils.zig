@@ -102,8 +102,8 @@ pub const HTMLSharedStorageWritableElementUtils = struct {
     /// Extended attributes: [CEReactions], [SecureContext]
     pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLSharedStorageWritableElementUtilsImpl.set_sharedStorageWritable(instance, value);
     }

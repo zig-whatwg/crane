@@ -907,8 +907,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_title(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLElementImpl, "set_title")) return try HTMLElementImpl.set_title(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "title" }, value);
@@ -923,8 +923,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_lang(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLElementImpl, "set_lang")) return try HTMLElementImpl.set_lang(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "lang" }, value);
@@ -938,8 +938,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_translate(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_translate(instance, value);
     }
@@ -952,8 +952,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_dir(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_dir(instance, value);
     }
@@ -966,8 +966,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_hidden(instance: *runtime.Instance, value: ?runtime.JSValue) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_hidden(instance, value);
     }
@@ -981,8 +981,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_inert(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLElementImpl, "set_inert")) return try HTMLElementImpl.set_inert(instance, value);
         try reflection.set(bool, instance, .{ .name = "inert" }, value);
@@ -997,8 +997,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_accessKey(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLElementImpl, "set_accessKey")) return try HTMLElementImpl.set_accessKey(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "accesskey" }, value);
@@ -1016,8 +1016,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_draggable(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_draggable(instance, value);
     }
@@ -1030,8 +1030,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_spellcheck(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_spellcheck(instance, value);
     }
@@ -1044,8 +1044,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_writingSuggestions(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLElementImpl, "set_writingSuggestions")) return try HTMLElementImpl.set_writingSuggestions(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "writingsuggestions" }, value);
@@ -1059,8 +1059,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_autocapitalize(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLElementImpl, "set_autocapitalize")) return try HTMLElementImpl.set_autocapitalize(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "autocapitalize" }, value);
@@ -1074,8 +1074,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_autocorrect(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_autocorrect(instance, value);
     }
@@ -1088,8 +1088,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn set_innerText(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_innerText(instance, value);
     }
@@ -1102,8 +1102,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn set_outerText(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_outerText(instance, value);
     }
@@ -1116,8 +1116,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_popover(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_popover(instance, value);
     }
@@ -1131,8 +1131,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [ReflectRange=(0,8)]
     pub fn set_headingOffset(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLElementImpl, "set_headingOffset")) return try HTMLElementImpl.set_headingOffset(instance, value);
         try reflection.set(u32, instance, .{ .name = "headingoffset", .range = .{ 0, 8 } }, value);
@@ -1147,8 +1147,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_headingReset(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLElementImpl, "set_headingReset")) return try HTMLElementImpl.set_headingReset(instance, value);
         try reflection.set(bool, instance, .{ .name = "headingreset" }, value);
@@ -1547,8 +1547,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_contentEditable(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_contentEditable(instance, value);
     }
@@ -1561,8 +1561,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_enterKeyHint(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_enterKeyHint(instance, value);
     }
@@ -1579,8 +1579,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_inputMode(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_inputMode(instance, value);
     }
@@ -1593,8 +1593,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_virtualKeyboardPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLElementImpl.set_virtualKeyboardPolicy(instance, value);
     }
@@ -1628,8 +1628,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLElementImpl, "set_autofocus")) return try HTMLElementImpl.set_autofocus(instance, value);
         try reflection.set(bool, instance, .{ .name = "autofocus" }, value);
@@ -1643,8 +1643,8 @@ pub const HTMLElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLElementImpl, "set_tabIndex")) return try HTMLElementImpl.set_tabIndex(instance, value);
         try reflection.set(i32, instance, .{ .name = "tabindex" }, value);

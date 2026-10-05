@@ -281,8 +281,8 @@ pub const HTMLOptGroupElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLOptGroupElementImpl, "set_disabled")) return try HTMLOptGroupElementImpl.set_disabled(instance, value);
         try reflection.set(bool, instance, .{ .name = "disabled" }, value);
@@ -297,8 +297,8 @@ pub const HTMLOptGroupElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_label(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLOptGroupElementImpl, "set_label")) return try HTMLOptGroupElementImpl.set_label(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "label" }, value);

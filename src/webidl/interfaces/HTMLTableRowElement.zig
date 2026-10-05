@@ -339,8 +339,8 @@ pub const HTMLTableRowElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableRowElementImpl, "set_align")) return try HTMLTableRowElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);
@@ -355,8 +355,8 @@ pub const HTMLTableRowElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="char"]
     pub fn set_ch(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableRowElementImpl, "set_ch")) return try HTMLTableRowElementImpl.set_ch(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "char" }, value);
@@ -371,8 +371,8 @@ pub const HTMLTableRowElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
     pub fn set_chOff(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableRowElementImpl, "set_chOff")) return try HTMLTableRowElementImpl.set_chOff(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "charoff" }, value);
@@ -387,8 +387,8 @@ pub const HTMLTableRowElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_vAlign(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableRowElementImpl, "set_vAlign")) return try HTMLTableRowElementImpl.set_vAlign(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "valign" }, value);
@@ -403,8 +403,8 @@ pub const HTMLTableRowElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_bgColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableRowElementImpl, "set_bgColor")) return try HTMLTableRowElementImpl.set_bgColor(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "bgcolor" }, value);
@@ -417,8 +417,8 @@ pub const HTMLTableRowElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_deleteCell(instance: *runtime.Instance, index: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try HTMLTableRowElementImpl.call_deleteCell(instance, index);
     }

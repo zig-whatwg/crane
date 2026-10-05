@@ -540,8 +540,8 @@ pub const HTMLMediaElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMediaElementImpl, "set_src")) return try HTMLMediaElementImpl.set_src(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
@@ -567,8 +567,8 @@ pub const HTMLMediaElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLMediaElementImpl.set_crossOrigin(instance, value);
     }
@@ -585,8 +585,8 @@ pub const HTMLMediaElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_preload(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLMediaElementImpl.set_preload(instance, value);
     }
@@ -664,8 +664,8 @@ pub const HTMLMediaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_autoplay(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMediaElementImpl, "set_autoplay")) return try HTMLMediaElementImpl.set_autoplay(instance, value);
         try reflection.set(bool, instance, .{ .name = "autoplay" }, value);
@@ -680,8 +680,8 @@ pub const HTMLMediaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_loop(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMediaElementImpl, "set_loop")) return try HTMLMediaElementImpl.set_loop(instance, value);
         try reflection.set(bool, instance, .{ .name = "loop" }, value);
@@ -696,8 +696,8 @@ pub const HTMLMediaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_controls(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMediaElementImpl, "set_controls")) return try HTMLMediaElementImpl.set_controls(instance, value);
         try reflection.set(bool, instance, .{ .name = "controls" }, value);
@@ -728,8 +728,8 @@ pub const HTMLMediaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="muted"]
     pub fn set_defaultMuted(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMediaElementImpl, "set_defaultMuted")) return try HTMLMediaElementImpl.set_defaultMuted(instance, value);
         try reflection.set(bool, instance, .{ .name = "muted" }, value);
@@ -817,8 +817,8 @@ pub const HTMLMediaElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_disableRemotePlayback(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLMediaElementImpl.set_disableRemotePlayback(instance, value);
     }

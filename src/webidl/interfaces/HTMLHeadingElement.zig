@@ -276,8 +276,8 @@ pub const HTMLHeadingElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLHeadingElementImpl, "set_align")) return try HTMLHeadingElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);

@@ -364,8 +364,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="accept-charset"]
     pub fn set_acceptCharset(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLFormElementImpl, "set_acceptCharset")) return try HTMLFormElementImpl.set_acceptCharset(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "accept-charset" }, value);
@@ -379,8 +379,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_action(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLFormElementImpl, "set_action")) return try HTMLFormElementImpl.set_action(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "action" }, value);
@@ -394,8 +394,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_autocomplete(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLFormElementImpl.set_autocomplete(instance, value);
     }
@@ -408,8 +408,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_enctype(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLFormElementImpl.set_enctype(instance, value);
     }
@@ -422,8 +422,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_encoding(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLFormElementImpl.set_encoding(instance, value);
     }
@@ -436,8 +436,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_method(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLFormElementImpl.set_method(instance, value);
     }
@@ -451,8 +451,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLFormElementImpl, "set_name")) return try HTMLFormElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -467,8 +467,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_noValidate(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLFormElementImpl, "set_noValidate")) return try HTMLFormElementImpl.set_noValidate(instance, value);
         try reflection.set(bool, instance, .{ .name = "novalidate" }, value);
@@ -483,8 +483,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_target(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLFormElementImpl, "set_target")) return try HTMLFormElementImpl.set_target(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "target" }, value);
@@ -499,8 +499,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_rel(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLFormElementImpl, "set_rel")) return try HTMLFormElementImpl.set_rel(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "rel" }, value);
@@ -548,8 +548,8 @@ pub const HTMLFormElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_reset(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try HTMLFormElementImpl.call_reset(instance);
     }

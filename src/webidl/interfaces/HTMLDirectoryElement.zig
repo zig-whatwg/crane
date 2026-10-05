@@ -276,8 +276,8 @@ pub const HTMLDirectoryElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_compact(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLDirectoryElementImpl, "set_compact")) return try HTMLDirectoryElementImpl.set_compact(instance, value);
         try reflection.set(bool, instance, .{ .name = "compact" }, value);

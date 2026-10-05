@@ -132,8 +132,8 @@ pub const XSLTProcessor = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_transformToDocument(instance: *runtime.Instance, source: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try XSLTProcessorImpl.call_transformToDocument(instance, source);
     }
@@ -153,8 +153,8 @@ pub const XSLTProcessor = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.Instance, output: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try XSLTProcessorImpl.call_transformToFragment(instance, source, output);
     }

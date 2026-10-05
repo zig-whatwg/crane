@@ -31,8 +31,8 @@ pub fn get_attributionSrc(instance: *runtime.Instance) anyerror!runtime.USVStrin
 /// Extended attributes: [CEReactions], [SecureContext]
 pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
-    runtime.CEReactions.begin();
-    defer runtime.CEReactions.end();
+    runtime.CEReactions.begin(instance);
+    defer runtime.CEReactions.end(instance);
 
     try HTMLAttributionSrcElementUtilsImpl.set_attributionSrc(instance, value);
 }

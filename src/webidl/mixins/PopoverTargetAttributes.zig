@@ -32,8 +32,8 @@ pub fn get_popoverTargetElement(instance: *runtime.Instance) anyerror!?*runtime.
 /// Extended attributes: [CEReactions], [Reflect]
 pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
-    runtime.CEReactions.begin();
-    defer runtime.CEReactions.end();
+    runtime.CEReactions.begin(instance);
+    defer runtime.CEReactions.end(instance);
 
     try PopoverTargetAttributesImpl.set_popoverTargetElement(instance, value);
 }
@@ -46,8 +46,8 @@ pub fn get_popoverTargetAction(instance: *runtime.Instance) anyerror!DOMString {
 /// Extended attributes: [CEReactions]
 pub fn set_popoverTargetAction(instance: *runtime.Instance, value: DOMString) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
-    runtime.CEReactions.begin();
-    defer runtime.CEReactions.end();
+    runtime.CEReactions.begin(instance);
+    defer runtime.CEReactions.end(instance);
 
     try PopoverTargetAttributesImpl.set_popoverTargetAction(instance, value);
 }

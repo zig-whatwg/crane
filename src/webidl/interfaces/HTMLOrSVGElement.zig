@@ -152,8 +152,8 @@ pub const HTMLOrSVGElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLOrSVGElementImpl, "set_autofocus")) return try HTMLOrSVGElementImpl.set_autofocus(instance, value);
         try reflection.set(bool, instance, .{ .name = "autofocus" }, value);
@@ -167,8 +167,8 @@ pub const HTMLOrSVGElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLOrSVGElementImpl, "set_tabIndex")) return try HTMLOrSVGElementImpl.set_tabIndex(instance, value);
         try reflection.set(i32, instance, .{ .name = "tabindex" }, value);

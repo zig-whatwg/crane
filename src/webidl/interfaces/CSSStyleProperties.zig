@@ -120,8 +120,8 @@ pub const CSSStyleProperties = struct {
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn set_cssFloat(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try CSSStylePropertiesImpl.set_cssFloat(instance, value);
     }

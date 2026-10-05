@@ -394,8 +394,8 @@ pub const Animation = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_commitStyles(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try AnimationImpl.call_commitStyles(instance);
     }

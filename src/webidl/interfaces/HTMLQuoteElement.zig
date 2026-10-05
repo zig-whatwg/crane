@@ -276,8 +276,8 @@ pub const HTMLQuoteElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_cite(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLQuoteElementImpl, "set_cite")) return try HTMLQuoteElementImpl.set_cite(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "cite", .url = true }, value);

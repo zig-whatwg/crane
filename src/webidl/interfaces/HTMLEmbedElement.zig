@@ -307,8 +307,8 @@ pub const HTMLEmbedElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLEmbedElementImpl, "set_src")) return try HTMLEmbedElementImpl.set_src(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
@@ -323,8 +323,8 @@ pub const HTMLEmbedElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLEmbedElementImpl, "set_type")) return try HTMLEmbedElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);
@@ -339,8 +339,8 @@ pub const HTMLEmbedElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLEmbedElementImpl, "set_width")) return try HTMLEmbedElementImpl.set_width(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "width" }, value);
@@ -355,8 +355,8 @@ pub const HTMLEmbedElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_height(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLEmbedElementImpl, "set_height")) return try HTMLEmbedElementImpl.set_height(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "height" }, value);
@@ -371,8 +371,8 @@ pub const HTMLEmbedElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLEmbedElementImpl, "set_align")) return try HTMLEmbedElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);
@@ -387,8 +387,8 @@ pub const HTMLEmbedElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLEmbedElementImpl, "set_name")) return try HTMLEmbedElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);

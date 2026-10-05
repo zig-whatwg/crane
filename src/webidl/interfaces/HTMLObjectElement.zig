@@ -393,8 +393,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_data(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_data")) return try HTMLObjectElementImpl.set_data(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "data", .url = true }, value);
@@ -409,8 +409,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_type")) return try HTMLObjectElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);
@@ -425,8 +425,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_name")) return try HTMLObjectElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -445,8 +445,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_width")) return try HTMLObjectElementImpl.set_width(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "width" }, value);
@@ -461,8 +461,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_height(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_height")) return try HTMLObjectElementImpl.set_height(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "height" }, value);
@@ -497,8 +497,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_align")) return try HTMLObjectElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);
@@ -513,8 +513,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_archive(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_archive")) return try HTMLObjectElementImpl.set_archive(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "archive" }, value);
@@ -529,8 +529,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_code(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_code")) return try HTMLObjectElementImpl.set_code(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "code" }, value);
@@ -545,8 +545,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_declare(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_declare")) return try HTMLObjectElementImpl.set_declare(instance, value);
         try reflection.set(bool, instance, .{ .name = "declare" }, value);
@@ -561,8 +561,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_hspace(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_hspace")) return try HTMLObjectElementImpl.set_hspace(instance, value);
         try reflection.set(u32, instance, .{ .name = "hspace" }, value);
@@ -577,8 +577,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_standby(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_standby")) return try HTMLObjectElementImpl.set_standby(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "standby" }, value);
@@ -593,8 +593,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_vspace(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_vspace")) return try HTMLObjectElementImpl.set_vspace(instance, value);
         try reflection.set(u32, instance, .{ .name = "vspace" }, value);
@@ -609,8 +609,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_codeBase(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_codeBase")) return try HTMLObjectElementImpl.set_codeBase(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "codebase", .url = true }, value);
@@ -625,8 +625,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_codeType(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_codeType")) return try HTMLObjectElementImpl.set_codeType(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "codetype" }, value);
@@ -641,8 +641,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_useMap(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_useMap")) return try HTMLObjectElementImpl.set_useMap(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "usemap" }, value);
@@ -657,8 +657,8 @@ pub const HTMLObjectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_border(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLObjectElementImpl, "set_border")) return try HTMLObjectElementImpl.set_border(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "border" }, value);

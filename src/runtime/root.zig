@@ -14,14 +14,20 @@ pub const Instance = @import("instance.zig").Instance;
 
 /// CEReactions - Custom Element Reactions
 ///
-/// Stubs for DOM mutation tracking per Custom Elements spec.
-/// Used by [CEReactions] extended attribute in WebIDL.
+/// The bracket every [CEReactions] member's generated delegate runs (HTML
+/// 4.13.6): `begin(instance)` pushes a new element queue onto "this object's
+/// relevant agent's custom element reactions stack", `end(instance)` pops it
+/// and invokes its reactions. `this_object` is the member's instance, or null
+/// for a static member (the agent is then the current realm's).
+/// Stubs for now: the custom element reactions stack replaces them.
 pub const CEReactions = struct {
-    pub fn begin() void {
+    pub fn begin(this_object: ?*Instance) void {
+        _ = this_object;
         // TODO: Implement Custom Element reaction queue
     }
 
-    pub fn end() void {
+    pub fn end(this_object: ?*Instance) void {
+        _ = this_object;
         // TODO: Invoke queued Custom Element callbacks
     }
 };

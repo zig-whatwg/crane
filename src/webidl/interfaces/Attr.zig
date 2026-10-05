@@ -181,8 +181,8 @@ pub const Attr = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try AttrImpl.set_value(instance, value);
     }

@@ -299,8 +299,8 @@ pub const HTMLPortalElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLPortalElementImpl.set_src(instance, value);
     }
@@ -313,8 +313,8 @@ pub const HTMLPortalElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLPortalElementImpl.set_referrerPolicy(instance, value);
     }

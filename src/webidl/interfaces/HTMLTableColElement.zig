@@ -301,8 +301,8 @@ pub const HTMLTableColElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1], [ReflectRange=(1,1000)]
     pub fn set_span(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_span")) return try HTMLTableColElementImpl.set_span(instance, value);
         try reflection.set(u32, instance, .{ .name = "span", .default = 1, .range = .{ 1, 1000 } }, value);
@@ -317,8 +317,8 @@ pub const HTMLTableColElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_align")) return try HTMLTableColElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);
@@ -333,8 +333,8 @@ pub const HTMLTableColElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="char"]
     pub fn set_ch(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_ch")) return try HTMLTableColElementImpl.set_ch(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "char" }, value);
@@ -349,8 +349,8 @@ pub const HTMLTableColElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
     pub fn set_chOff(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_chOff")) return try HTMLTableColElementImpl.set_chOff(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "charoff" }, value);
@@ -365,8 +365,8 @@ pub const HTMLTableColElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_vAlign(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_vAlign")) return try HTMLTableColElementImpl.set_vAlign(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "valign" }, value);
@@ -381,8 +381,8 @@ pub const HTMLTableColElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableColElementImpl, "set_width")) return try HTMLTableColElementImpl.set_width(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "width" }, value);

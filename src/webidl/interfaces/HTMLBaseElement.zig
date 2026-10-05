@@ -280,8 +280,8 @@ pub const HTMLBaseElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLBaseElementImpl, "set_href")) return try HTMLBaseElementImpl.set_href(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "href" }, value);
@@ -296,8 +296,8 @@ pub const HTMLBaseElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_target(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLBaseElementImpl, "set_target")) return try HTMLBaseElementImpl.set_target(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "target" }, value);

@@ -417,8 +417,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_alt(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_alt")) return try HTMLImageElementImpl.set_alt(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "alt" }, value);
@@ -433,8 +433,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_src")) return try HTMLImageElementImpl.set_src(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
@@ -449,8 +449,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_srcset(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_srcset")) return try HTMLImageElementImpl.set_srcset(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "srcset" }, value);
@@ -465,8 +465,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_sizes(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_sizes")) return try HTMLImageElementImpl.set_sizes(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "sizes" }, value);
@@ -480,8 +480,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLImageElementImpl.set_crossOrigin(instance, value);
     }
@@ -495,8 +495,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_useMap(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_useMap")) return try HTMLImageElementImpl.set_useMap(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "usemap" }, value);
@@ -511,8 +511,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_isMap(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_isMap")) return try HTMLImageElementImpl.set_isMap(instance, value);
         try reflection.set(bool, instance, .{ .name = "ismap" }, value);
@@ -526,8 +526,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_width")) return try HTMLImageElementImpl.set_width(instance, value);
         try reflection.set(u32, instance, .{ .name = "width" }, value);
@@ -541,8 +541,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_height")) return try HTMLImageElementImpl.set_height(instance, value);
         try reflection.set(u32, instance, .{ .name = "height" }, value);
@@ -572,8 +572,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLImageElementImpl.set_referrerPolicy(instance, value);
     }
@@ -586,8 +586,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_decoding(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLImageElementImpl.set_decoding(instance, value);
     }
@@ -600,8 +600,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_loading(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLImageElementImpl.set_loading(instance, value);
     }
@@ -614,8 +614,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_fetchPriority(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLImageElementImpl.set_fetchPriority(instance, value);
     }
@@ -637,8 +637,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_name")) return try HTMLImageElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -653,8 +653,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_lowsrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_lowsrc")) return try HTMLImageElementImpl.set_lowsrc(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "lowsrc", .url = true }, value);
@@ -669,8 +669,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_align")) return try HTMLImageElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);
@@ -685,8 +685,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_hspace(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_hspace")) return try HTMLImageElementImpl.set_hspace(instance, value);
         try reflection.set(u32, instance, .{ .name = "hspace" }, value);
@@ -701,8 +701,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_vspace(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_vspace")) return try HTMLImageElementImpl.set_vspace(instance, value);
         try reflection.set(u32, instance, .{ .name = "vspace" }, value);
@@ -717,8 +717,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_longDesc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_longDesc")) return try HTMLImageElementImpl.set_longDesc(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "longdesc", .url = true }, value);
@@ -733,8 +733,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_border(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLImageElementImpl, "set_border")) return try HTMLImageElementImpl.set_border(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "border" }, value);
@@ -748,8 +748,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [SecureContext]
     pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLImageElementImpl.set_attributionSrc(instance, value);
     }
@@ -762,8 +762,8 @@ pub const HTMLImageElement = struct {
     /// Extended attributes: [CEReactions], [SecureContext]
     pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLImageElementImpl.set_sharedStorageWritable(instance, value);
     }

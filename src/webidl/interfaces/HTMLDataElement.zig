@@ -276,8 +276,8 @@ pub const HTMLDataElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLDataElementImpl, "set_value")) return try HTMLDataElementImpl.set_value(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "value" }, value);

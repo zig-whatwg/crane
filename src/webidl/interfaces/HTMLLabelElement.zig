@@ -289,8 +289,8 @@ pub const HTMLLabelElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="for"]
     pub fn set_htmlFor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLLabelElementImpl, "set_htmlFor")) return try HTMLLabelElementImpl.set_htmlFor(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "for" }, value);

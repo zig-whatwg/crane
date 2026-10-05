@@ -276,8 +276,8 @@ pub const HTMLTimeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_dateTime(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTimeElementImpl, "set_dateTime")) return try HTMLTimeElementImpl.set_dateTime(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "datetime" }, value);

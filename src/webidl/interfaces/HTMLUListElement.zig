@@ -281,8 +281,8 @@ pub const HTMLUListElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_compact(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLUListElementImpl, "set_compact")) return try HTMLUListElementImpl.set_compact(instance, value);
         try reflection.set(bool, instance, .{ .name = "compact" }, value);
@@ -297,8 +297,8 @@ pub const HTMLUListElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLUListElementImpl, "set_type")) return try HTMLUListElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);

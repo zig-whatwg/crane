@@ -276,8 +276,8 @@ pub const HTMLBRElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_clear(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLBRElementImpl, "set_clear")) return try HTMLBRElementImpl.set_clear(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "clear" }, value);

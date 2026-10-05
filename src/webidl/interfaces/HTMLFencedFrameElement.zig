@@ -301,8 +301,8 @@ pub const HTMLFencedFrameElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_config(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLFencedFrameElementImpl.set_config(instance, value);
     }
@@ -315,8 +315,8 @@ pub const HTMLFencedFrameElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLFencedFrameElementImpl.set_width(instance, value);
     }
@@ -329,8 +329,8 @@ pub const HTMLFencedFrameElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_height(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLFencedFrameElementImpl.set_height(instance, value);
     }
@@ -366,8 +366,8 @@ pub const HTMLFencedFrameElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_allow(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLFencedFrameElementImpl.set_allow(instance, value);
     }

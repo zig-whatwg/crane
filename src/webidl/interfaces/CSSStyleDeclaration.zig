@@ -138,8 +138,8 @@ pub const CSSStyleDeclaration = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_cssText(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try CSSStyleDeclarationImpl.set_cssText(instance, value);
     }
@@ -159,8 +159,8 @@ pub const CSSStyleDeclaration = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setProperty(instance: *runtime.Instance, property: CSSOMString, value: CSSOMString, priority: webidl.Opt(CSSOMString)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try CSSStyleDeclarationImpl.call_setProperty(instance, property, value, priority);
     }
@@ -168,8 +168,8 @@ pub const CSSStyleDeclaration = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_removeProperty(instance: *runtime.Instance, property: CSSOMString) anyerror!CSSOMString {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try CSSStyleDeclarationImpl.call_removeProperty(instance, property);
     }

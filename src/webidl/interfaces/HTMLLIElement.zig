@@ -281,8 +281,8 @@ pub const HTMLLIElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_value(instance: *runtime.Instance, value: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLLIElementImpl, "set_value")) return try HTMLLIElementImpl.set_value(instance, value);
         try reflection.set(i32, instance, .{ .name = "value" }, value);
@@ -297,8 +297,8 @@ pub const HTMLLIElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLLIElementImpl, "set_type")) return try HTMLLIElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);

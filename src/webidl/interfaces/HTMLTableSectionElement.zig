@@ -318,8 +318,8 @@ pub const HTMLTableSectionElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableSectionElementImpl, "set_align")) return try HTMLTableSectionElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);
@@ -334,8 +334,8 @@ pub const HTMLTableSectionElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="char"]
     pub fn set_ch(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableSectionElementImpl, "set_ch")) return try HTMLTableSectionElementImpl.set_ch(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "char" }, value);
@@ -350,8 +350,8 @@ pub const HTMLTableSectionElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
     pub fn set_chOff(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableSectionElementImpl, "set_chOff")) return try HTMLTableSectionElementImpl.set_chOff(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "charoff" }, value);
@@ -366,8 +366,8 @@ pub const HTMLTableSectionElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_vAlign(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableSectionElementImpl, "set_vAlign")) return try HTMLTableSectionElementImpl.set_vAlign(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "valign" }, value);
@@ -380,8 +380,8 @@ pub const HTMLTableSectionElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_deleteRow(instance: *runtime.Instance, index: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try HTMLTableSectionElementImpl.call_deleteRow(instance, index);
     }

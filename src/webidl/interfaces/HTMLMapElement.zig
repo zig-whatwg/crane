@@ -281,8 +281,8 @@ pub const HTMLMapElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMapElementImpl, "set_name")) return try HTMLMapElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);

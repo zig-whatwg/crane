@@ -2722,6 +2722,19 @@ fn writeSingleOperation(
 /// delegate then compiles either way and answers `error.NotImplemented` until
 /// the impl declares it; the `overloads` table records which is which, so the
 /// binding never picks an overload the impl lacks.
+/// HTML 4.13.6 [CEReactions]: "Push a new element queue onto this object's
+/// relevant agent's custom element reactions stack", run the member's steps,
+/// then pop it and invoke its reactions - so the bracket names "this object",
+/// the member's `instance`. A static member has none and passes null: the
+/// reactions side resolves the agent through the current realm.
+fn writeCEReactionsBracket(writer: anytype, is_static: bool) !void {
+    const this_object = if (is_static) "null" else "instance";
+    try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
+    try writer.print("        runtime.CEReactions.begin({s});\n", .{this_object});
+    try writer.print("        defer runtime.CEReactions.end({s});\n", .{this_object});
+    try writer.writeAll("        \n");
+}
+
 fn writeOperationDelegate(
     writer: anytype,
     impl_name: []const u8,
@@ -2890,12 +2903,7 @@ fn writeOperationDelegate(
         }
     }
 
-    if (has_ce_reactions) {
-        try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
-        try writer.writeAll("        runtime.CEReactions.begin();\n");
-        try writer.writeAll("        defer runtime.CEReactions.end();\n");
-        try writer.writeAll("        \n");
-    }
+    if (has_ce_reactions) try writeCEReactionsBracket(writer, is_static);
 
     if (has_new_object) {
         try writer.writeAll("        // [NewObject] - Caller owns the returned object\n");
@@ -3969,12 +3977,7 @@ pub fn writeDelegateFunctions(
             // The setter takes a string value (per WebIDL spec, the forwarded property is typically a DOMString)
             try writer.print("    pub fn set_{s}(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {{\n", .{sanitized_name});
 
-            if (has_ce_reactions) {
-                try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
-                try writer.writeAll("        runtime.CEReactions.begin();\n");
-                try writer.writeAll("        defer runtime.CEReactions.end();\n");
-                try writer.writeAll("        \n");
-            }
+            if (has_ce_reactions) try writeCEReactionsBracket(writer, attr.static);
 
             try writer.writeAll("        // [PutForwards] - Get target object and set the forwarded property\n");
             try writer.print("        // Per WebIDL spec: setting '{s}' forwards to '{s}' on the attribute's value\n", .{ attr.name, forwarded_property });
@@ -4050,13 +4053,7 @@ pub fn writeDelegateFunctions(
                 try writer.print("    pub fn {s}{s}(instance: *runtime.Instance, value: {s}) anyerror!void {{\n", .{ set_prefix, sanitized_name, setter_type });
             }
 
-            if (has_ce_reactions) {
-                // [CEReactions] - Wrap in Custom Element reactions
-                try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
-                try writer.writeAll("        runtime.CEReactions.begin();\n");
-                try writer.writeAll("        defer runtime.CEReactions.end();\n");
-                try writer.writeAll("        \n");
-            }
+            if (has_ce_reactions) try writeCEReactionsBracket(writer, attr.static);
 
             if (caches) {
                 // If [SameObject], invalidate cache on set (all attributes here are own)

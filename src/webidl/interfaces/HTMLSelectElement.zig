@@ -380,8 +380,8 @@ pub const HTMLSelectElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_autocomplete(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLSelectElementImpl, "set_autocomplete")) return try HTMLSelectElementImpl.set_autocomplete(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "autocomplete" }, value);
@@ -396,8 +396,8 @@ pub const HTMLSelectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLSelectElementImpl, "set_disabled")) return try HTMLSelectElementImpl.set_disabled(instance, value);
         try reflection.set(bool, instance, .{ .name = "disabled" }, value);
@@ -416,8 +416,8 @@ pub const HTMLSelectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_multiple(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLSelectElementImpl, "set_multiple")) return try HTMLSelectElementImpl.set_multiple(instance, value);
         try reflection.set(bool, instance, .{ .name = "multiple" }, value);
@@ -432,8 +432,8 @@ pub const HTMLSelectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLSelectElementImpl, "set_name")) return try HTMLSelectElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -448,8 +448,8 @@ pub const HTMLSelectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_required(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLSelectElementImpl, "set_required")) return try HTMLSelectElementImpl.set_required(instance, value);
         try reflection.set(bool, instance, .{ .name = "required" }, value);
@@ -464,8 +464,8 @@ pub const HTMLSelectElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=0]
     pub fn set_size(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLSelectElementImpl, "set_size")) return try HTMLSelectElementImpl.set_size(instance, value);
         try reflection.set(u32, instance, .{ .name = "size", .default = 0 }, value);
@@ -495,8 +495,8 @@ pub const HTMLSelectElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_length(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLSelectElementImpl.set_length(instance, value);
     }
@@ -564,8 +564,8 @@ pub const HTMLSelectElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_remove(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try HTMLSelectElementImpl.call_remove(instance);
     }
@@ -581,8 +581,8 @@ pub const HTMLSelectElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try HTMLSelectElementImpl.call_setter(instance, index, option);
     }
@@ -590,8 +590,8 @@ pub const HTMLSelectElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_add(instance: *runtime.Instance, element: HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try HTMLSelectElementImpl.call_add(instance, element, before);
     }
@@ -600,8 +600,8 @@ pub const HTMLSelectElement = struct {
     pub fn call_remove__1(instance: *runtime.Instance, index: i32) anyerror!void {
         if (comptime @hasDecl(HTMLSelectElementImpl, "call_remove__1")) {
             // [CEReactions] - Trigger Custom Element lifecycle callbacks
-            runtime.CEReactions.begin();
-            defer runtime.CEReactions.end();
+            runtime.CEReactions.begin(instance);
+            defer runtime.CEReactions.end(instance);
 
             return try HTMLSelectElementImpl.call_remove__1(instance, index);
         } else {

@@ -321,8 +321,8 @@ pub const HTMLFieldSetElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLFieldSetElementImpl, "set_disabled")) return try HTMLFieldSetElementImpl.set_disabled(instance, value);
         try reflection.set(bool, instance, .{ .name = "disabled" }, value);
@@ -341,8 +341,8 @@ pub const HTMLFieldSetElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLFieldSetElementImpl, "set_name")) return try HTMLFieldSetElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);

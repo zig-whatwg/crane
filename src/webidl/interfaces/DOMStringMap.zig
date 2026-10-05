@@ -95,8 +95,8 @@ pub const DOMStringMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setter(instance: *runtime.Instance, name: DOMString, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try DOMStringMapImpl.call_setter(instance, name, value);
     }
@@ -108,8 +108,8 @@ pub const DOMStringMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_deleter(instance: *runtime.Instance, name: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         return try DOMStringMapImpl.call_deleter(instance, name);
     }

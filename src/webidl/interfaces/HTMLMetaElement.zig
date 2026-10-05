@@ -296,8 +296,8 @@ pub const HTMLMetaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMetaElementImpl, "set_name")) return try HTMLMetaElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -312,8 +312,8 @@ pub const HTMLMetaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="http-equiv"]
     pub fn set_httpEquiv(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMetaElementImpl, "set_httpEquiv")) return try HTMLMetaElementImpl.set_httpEquiv(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "http-equiv" }, value);
@@ -328,8 +328,8 @@ pub const HTMLMetaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_content(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMetaElementImpl, "set_content")) return try HTMLMetaElementImpl.set_content(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "content" }, value);
@@ -344,8 +344,8 @@ pub const HTMLMetaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_media(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMetaElementImpl, "set_media")) return try HTMLMetaElementImpl.set_media(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "media" }, value);
@@ -360,8 +360,8 @@ pub const HTMLMetaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_scheme(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLMetaElementImpl, "set_scheme")) return try HTMLMetaElementImpl.set_scheme(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "scheme" }, value);

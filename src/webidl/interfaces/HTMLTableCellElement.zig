@@ -345,8 +345,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1], [ReflectRange=(1,1000)]
     pub fn set_colSpan(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_colSpan")) return try HTMLTableCellElementImpl.set_colSpan(instance, value);
         try reflection.set(u32, instance, .{ .name = "colspan", .default = 1, .range = .{ 1, 1000 } }, value);
@@ -361,8 +361,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1], [ReflectRange=(0,65534)]
     pub fn set_rowSpan(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_rowSpan")) return try HTMLTableCellElementImpl.set_rowSpan(instance, value);
         try reflection.set(u32, instance, .{ .name = "rowspan", .default = 1, .range = .{ 0, 65534 } }, value);
@@ -377,8 +377,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_headers(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_headers")) return try HTMLTableCellElementImpl.set_headers(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "headers" }, value);
@@ -396,8 +396,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_scope(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         try HTMLTableCellElementImpl.set_scope(instance, value);
     }
@@ -411,8 +411,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_abbr(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_abbr")) return try HTMLTableCellElementImpl.set_abbr(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "abbr" }, value);
@@ -427,8 +427,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_align")) return try HTMLTableCellElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);
@@ -443,8 +443,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_axis(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_axis")) return try HTMLTableCellElementImpl.set_axis(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "axis" }, value);
@@ -459,8 +459,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_height(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_height")) return try HTMLTableCellElementImpl.set_height(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "height" }, value);
@@ -475,8 +475,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_width")) return try HTMLTableCellElementImpl.set_width(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "width" }, value);
@@ -491,8 +491,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="char"]
     pub fn set_ch(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_ch")) return try HTMLTableCellElementImpl.set_ch(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "char" }, value);
@@ -507,8 +507,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="charoff"]
     pub fn set_chOff(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_chOff")) return try HTMLTableCellElementImpl.set_chOff(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "charoff" }, value);
@@ -523,8 +523,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_noWrap(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_noWrap")) return try HTMLTableCellElementImpl.set_noWrap(instance, value);
         try reflection.set(bool, instance, .{ .name = "nowrap" }, value);
@@ -539,8 +539,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_vAlign(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_vAlign")) return try HTMLTableCellElementImpl.set_vAlign(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "valign" }, value);
@@ -555,8 +555,8 @@ pub const HTMLTableCellElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_bgColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(instance);
 
         if (comptime @hasDecl(HTMLTableCellElementImpl, "set_bgColor")) return try HTMLTableCellElementImpl.set_bgColor(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "bgcolor" }, value);
