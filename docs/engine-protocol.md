@@ -193,6 +193,7 @@ capability the branch compiles out.
 | `heap_statistics`, `heap_snapshots`, `diagnostic_counters` | native | unsupported | the diagnostics tier reports nothing |
 | `script_abort` | native (TerminateExecution) | unsupported - no public way to end a running script (JSContextGroupSetExecutionTimeLimit is SPI) | a script that never returns holds its agent's thread; the host's bound is outside the process (the WPT runner's stall watchdog) |
 | `code_generation_checks` | native (ModifyCodeGenerationFromStringsCallback, AllowWasmCodeGenerationCallback) | unsupported - no hook before eval, the Function constructor or WebAssembly compilation compiles | the HostHooks below are never called: eval, Function and WebAssembly compile unchecked - CSP's 'unsafe-eval' / 'wasm-unsafe-eval' and Trusted Types' eval sink go unenforced (security-relevant) |
+| `html_constructor` | native (the construct callback's FunctionCallbackInfo::NewTarget) | unsupported - a JSObjectCallAsConstructorCallback is handed no NewTarget, so `super()` from a custom element class cannot reach the host | `HostHooks.htmlConstructor` is never called: HTMLElement and the other [HTMLConstructor] interfaces construct as their own constructors do, so custom element construction - `new MyElement()`, createElement of a defined name, an upgrade - is unavailable on iOS until JavaScriptCore's C API offers NewTarget |
 
 Flip a JavaScriptCore capability when an iOS release makes the API public.
 Structured serialization has no JSC API and is not a capability: the JSC
@@ -236,7 +237,18 @@ rejected promises"), and [code_generation_checks] `ensureCanCompileStrings`
 is code-like - and answering allowed or blocked, blocked being the EvalError
 the engine throws), `getCodeForEval` (HostGetCodeForEval: a TrustedScript
 argument's code) and `ensureCanCompileWasmBytes`
-(HostEnsureCanCompileWasmBytes: false is a WebAssembly.CompileError). Every
+(HostEnsureCanCompileWasmBytes: false is a WebAssembly.CompileError), and
+[html_constructor] `htmlConstructor` (HTML 3.2.3 "HTML element constructors"
+for an [HTMLConstructor] interface, its generated `Meta.html_constructor`: the
+engine does step 1 and steps 10-11, 14 and 16, the host steps 2-9, 12, 13 and
+15, given the current realm, NewTarget BORROWED and the active function's
+interface; it answers `HTMLConstructed` - `.created`, a new element OWNED and
+handed to the engine to wrap with NewTarget's prototype, or `.upgrading`, the
+construction stack's element BORROWED, whose wrapper - the one it has or a new
+one - gets NewTarget's prototype and is the construction's result; no hook
+installed, the interface constructs as its own constructor does. V8 gets
+NewTarget's prototype when it makes the receiver, before step 1, as Blink's
+V8HTMLConstructor does). Every
 eval and Function call in a realm of an agent with `ensureCanCompileStrings`
 costs one host call: V8 asks only contexts that disallow code generation
 from strings, so every realm of such an agent disallows it, whether or not

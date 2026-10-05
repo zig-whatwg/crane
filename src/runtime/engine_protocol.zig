@@ -524,6 +524,54 @@ pub const HostHooks = struct {
     /// WebAssembly.CompileError (a compile that returns a promise rejects
     /// with one).
     ensureCanCompileWasmBytes: ?*const fn (host: ?*anyopaque, realm: Context) bool = null,
+    /// HTML 3.2.3 "HTML element constructors" [html_constructor]: the
+    /// overridden constructor steps of an [HTMLConstructor] interface (its
+    /// generated `Meta.html_constructor`), split across the seam. The engine
+    /// does step 1 - NewTarget equal to the active function object is a
+    /// TypeError - and rejects a call without `new` (which step 5 also
+    /// would), before calling this; and steps 10-11, 14 and 16 after it, as
+    /// `HTMLConstructed` says. The host does steps 2-9, 12, 13 and 15.
+    ///
+    /// `realm`: the current realm - the active function object's; its
+    /// global's associated Document is step 4's and step 9.2's. `new_target`:
+    /// NewTarget, BORROWED for the call - compared by identity
+    /// (`sameValue`) with the active custom element constructor map's keys
+    /// and the definitions' constructors. `interface`: the active function
+    /// object's interface identifier ("HTMLElement", "HTMLParagraphElement"),
+    /// static. Runs no script and leaves nothing pending.
+    ///
+    /// Errors: `error.TypeError` (steps 5, 7.1, 8.2 and 13) - the engine
+    /// throws a TypeError of `realm`; any other error the engine throws as
+    /// the binding throws a member's.
+    ///
+    /// Not installed: an [HTMLConstructor] interface constructs as its own
+    /// constructor does (HTMLElement makes a plain element).
+    ///
+    /// Order (V8, as Blink's V8HTMLConstructor::HtmlConstructor): V8 performs
+    /// Get(NewTarget, "prototype") when it makes the receiver, before any of
+    /// these steps runs, so a throwing or side-effecting prototype getter is
+    /// observed before the TypeErrors of steps 1-9, 12 and 13, where the spec
+    /// has it after them.
+    htmlConstructor: ?*const fn (host: ?*anyopaque, realm: Context, new_target: JSValue, interface: []const u8) Error!HTMLConstructed = null,
+};
+
+/// What HostHooks.htmlConstructor hands the engine: the element the
+/// [HTMLConstructor] construction results in.
+pub const HTMLConstructed = union(enum) {
+    /// Step 9, the definition's construction stack empty: step 9.1's new
+    /// object implementing the hook's `interface`, steps 9.2-9.9 done. OWNED,
+    /// handed to the engine: it wraps it in the object it made for NewTarget
+    /// - so its prototype is NewTarget's (steps 9.1 and 10-11) - and from
+    /// then the wrapper holds it, as any constructor's result; if the
+    /// wrapping fails the engine destroys it.
+    created: *Instance,
+    /// Steps 12, 13 and 15: the construction stack's last entry - the
+    /// element being upgraded - BORROWED (the stack and its tree hold it),
+    /// its entry already replaced by the already-constructed marker. The
+    /// engine does step 14, [[SetPrototypeOf]] to NewTarget's prototype, on
+    /// its wrapper (the one it has, else a new one made for NewTarget), and
+    /// step 16: that wrapper is the construction's result.
+    upgrading: *Instance,
 };
 
 /// HostEnsureCanCompileStrings's compilationType (Dynamic Code Brand Checks;
@@ -694,6 +742,13 @@ pub const Capabilities = struct {
     /// or 'wasm-unsafe-eval', and Trusted Types' eval sink, are not
     /// enforced. A security-relevant difference, declared.
     code_generation_checks: Support,
+    /// HTML 3.2.3 "HTML element constructors": an [HTMLConstructor]
+    /// interface's construction reaches the host (HostHooks.htmlConstructor)
+    /// with NewTarget. Unsupported: the interfaces construct as their own
+    /// constructors do - a custom element class cannot construct, nor an
+    /// element upgrade run its constructor (JavaScriptCore's public C API
+    /// hands a JSObjectCallAsConstructorCallback no NewTarget).
+    html_constructor: Support,
 };
 
 /// The capabilities of the engine this build selected.

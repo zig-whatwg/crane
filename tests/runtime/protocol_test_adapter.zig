@@ -36,6 +36,7 @@ pub const capabilities: engine.Capabilities = .{
     .diagnostic_counters = .unsupported,
     .script_abort = .unsupported,
     .code_generation_checks = .unsupported,
+    .html_constructor = .unsupported,
 };
 
 /// No engine behind it.

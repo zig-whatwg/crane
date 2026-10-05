@@ -73,6 +73,8 @@ pub const capabilities: engine.Capabilities = .{
     // Isolate::SetModifyCodeGenerationFromStringsCallback and
     // SetAllowWasmCodeGenerationCallback (protocol_agents.zig).
     .code_generation_checks = .native,
+    // The construct callback sees NewTarget (FunctionCallbackInfo::NewTarget).
+    .html_constructor = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.

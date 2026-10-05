@@ -135,6 +135,21 @@ pub fn recordOf(isolate: *ffi.Isolate) ?*AgentRecord {
     return agents.get(isolate);
 }
 
+/// HostHooks.htmlConstructor [html_constructor] of the agent whose isolate
+/// this is, with the host it is handed - what an [HTMLConstructor]
+/// interface's construction runs (interface.zig). Null for an agent without
+/// the hook, or an isolate createAgent did not make.
+pub const HTMLConstructorHook = struct {
+    call: *const fn (host: ?*anyopaque, realm: Context, new_target: engine.JSValue, interface: []const u8) Error!engine.HTMLConstructed,
+    host: ?*anyopaque,
+};
+
+pub fn htmlConstructorHookOf(isolate: *ffi.Isolate) ?HTMLConstructorHook {
+    const record = recordOf(isolate) orelse return null;
+    const call = record.hooks.htmlConstructor orelse return null;
+    return .{ .call = call, .host = record.host };
+}
+
 /// engine.agentHost: the host pointer `agent` was made with; null once
 /// endAgent has forgotten it, or for an isolate createAgent did not make.
 pub fn agentHost(agent: *Agent) ?*anyopaque {

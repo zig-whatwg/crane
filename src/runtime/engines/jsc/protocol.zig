@@ -60,6 +60,10 @@ pub const capabilities: engine.Capabilities = .{
     // WebAssembly compilation compiles: CSP's 'unsafe-eval' and
     // 'wasm-unsafe-eval', and Trusted Types' eval sink, go unenforced.
     .code_generation_checks = .unsupported,
+    // A JSObjectCallAsConstructorCallback is handed no NewTarget, so
+    // `super()` from a custom element class cannot reach the host: custom
+    // element construction is unavailable until the C API offers it.
+    .html_constructor = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.
