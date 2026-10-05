@@ -30,65 +30,6 @@ const WorkerOptions = types.WorkerOptions;
 const fetch = @import("fetch");
 
 // ============================================================================
-// Blob URL Resolution Callback
-// ============================================================================
-
-/// Result of resolving a blob URL
-pub const BlobResolveResult = struct {
-    /// The blob's bytes
-    bytes: []const u8,
-    /// The blob's MIME type
-    content_type: []const u8,
-    /// Whether we own the bytes and the MIME type (caller should free both:
-    /// `freeResolved`)
-    owns_bytes: bool,
-
-    /// Free what the result owns.
-    fn freeResolved(self: BlobResolveResult, allocator: Allocator) void {
-        if (!self.owns_bytes) return;
-        allocator.free(@constCast(self.bytes));
-        allocator.free(@constCast(self.content_type));
-    }
-};
-
-/// Callback function type for resolving blob URLs.
-/// This allows external code (with access to the file module) to register
-/// a resolver that can access the BlobURLStore.
-///
-/// Parameters:
-///   - allocator: Allocator for any needed allocations
-///   - url: The full blob URL (e.g., "blob:http://localhost:8000/uuid")
-///   - origin: The requesting origin for same-origin validation
-///
-/// Returns: BlobResolveResult with blob bytes and content type, or null if not found
-pub const BlobResolverFn = *const fn (
-    allocator: Allocator,
-    url: []const u8,
-    origin: []const u8,
-) ?BlobResolveResult;
-
-/// Thread-local storage for the blob resolver callback.
-/// Set by browser context initialization when it has access to the file module.
-threadlocal var blob_resolver_callback: ?BlobResolverFn = null;
-
-/// Register a blob resolver callback.
-/// This should be called by the browser context during initialization,
-/// when it has access to the file module's BlobURLStore.
-pub fn setBlobResolver(resolver: BlobResolverFn) void {
-    blob_resolver_callback = resolver;
-}
-
-/// Get the currently registered blob resolver.
-pub fn getBlobResolver() ?BlobResolverFn {
-    return blob_resolver_callback;
-}
-
-/// Clear the blob resolver (for cleanup).
-pub fn clearBlobResolver() void {
-    blob_resolver_callback = null;
-}
-
-// ============================================================================
 // Worker Script Fetch Errors
 // ============================================================================
 
@@ -340,75 +281,55 @@ fn handleDataUrl(allocator: Allocator, url: []const u8) WorkerScriptError!Fetche
 
 /// Handle blob: URL for worker scripts
 ///
-/// Per HTML Standard § 10.2.5 and Fetch Standard § 4.3:
-/// - Blob URLs must be same-origin with the requesting context
-/// - The blob URL entry is used to obtain the blob object
-/// - Returns the blob's bytes as the script source
-///
-/// This uses a callback-based approach to access the BlobURLStore,
-/// which is registered by the browser context during initialization.
-/// This design avoids circular module dependencies (html_core cannot import file).
+/// Per HTML Standard § 10.2.5 and Fetch Standard § 4.3: the blob URL
+/// entry's blob, obtained for the requesting environment - same-origin only
+/// - is the script. Fetch's scheme fetch "blob" does exactly that, through
+/// the blob URL store's resolver its owner installs once, at process start
+/// (fetch.algorithms.scheme_fetch.installBlobResolver): so a worker on any
+/// thread resolves the same store. (This used to be a resolver of its own,
+/// a threadlocal the WPT runner set on its thread only: a nested worker's
+/// blob: script, fetched on the outer worker's thread, found none.)
 fn handleBlobUrl(allocator: Allocator, url: []const u8, requesting_origin: ?[]const u8, worker_type: WorkerType) WorkerScriptError!FetchedScript {
-    std.log.debug("handleBlobUrl: resolving URL: {s}", .{url});
-
-    // Get the blob resolver callback
-    const resolver = blob_resolver_callback orelse {
-        // No resolver registered - blob URL resolution not available
-        std.log.warn("handleBlobUrl: No blob resolver registered", .{});
-        return WorkerScriptError.FetchFailed;
-    };
-
-    std.log.debug("handleBlobUrl: blob resolver callback is set", .{});
-
-    // The requesting origin, for same-origin validation: the creating
+    // The requesting origin, for the same-origin check: the creating
     // context's (document or worker), passed by the caller.
     const origin = requesting_origin orelse {
-        std.log.warn("handleBlobUrl: no requesting origin for blob URL resolution", .{});
+        std.log.debug("handleBlobUrl: no requesting origin for blob URL resolution", .{});
         return WorkerScriptError.FetchFailed;
     };
 
-    std.log.debug("handleBlobUrl: requesting with origin: {s}", .{origin});
-
-    // Call the resolver to get the blob data
-    // The resolver handles:
-    // 1. Looking up the blob URL in the BlobURLStore
-    // 2. Validating same-origin policy
-    // 3. Returning the blob's bytes and content type
-    const result = resolver(allocator, url, origin) orelse {
-        // Blob URL not found or cross-origin access denied
-        std.log.warn("handleBlobUrl: Blob URL not found or access denied: {s}", .{url});
-        return WorkerScriptError.FetchFailed;
+    const request = fetch.internal.InternalRequest.init(allocator, url) catch return WorkerScriptError.OutOfMemory;
+    defer request.deinit();
+    request.setOrigin(origin) catch return WorkerScriptError.OutOfMemory;
+    const result = fetch.algorithms.scheme_fetch.schemeFetchRequest(allocator, request) catch return WorkerScriptError.OutOfMemory;
+    const response = switch (result) {
+        .response => |response| response,
+        .network_error => |reason| {
+            std.log.debug("handleBlobUrl: {s}: {s}", .{ url, reason orelse "network error" });
+            return WorkerScriptError.FetchFailed;
+        },
     };
+    defer response.deinit();
+    const bytes: []const u8 = if (response.body) |body| body.data.items else "";
+    const content_type = response.header_list.getFirstValue("content-type") orelse "";
+    return scriptFromBlob(allocator, url, worker_type, bytes, content_type);
+}
 
-    // HTML "fetch a classic worker script", processResponseConsumeBody step
-    // 3, refuses a script for its MIME type only when "response's URL's
-    // scheme is an HTTP(S) scheme": a classic worker's blob script runs
-    // whatever the blob's type. A module worker's script is a module script,
-    // which "fetch a single module script" accepts only with a JavaScript
-    // MIME type, whatever its scheme.
-    if (worker_type == .module and !isJavaScriptMimeType(result.content_type)) {
-        std.log.debug("handleBlobUrl: Blob has non-JavaScript MIME type: {s}", .{result.content_type});
-        result.freeResolved(allocator);
+/// A worker script from a blob's `bytes` and its `content_type`, for the
+/// blob URL `url` (its final URL).
+///
+/// HTML "fetch a classic worker script", processResponseConsumeBody step 3,
+/// refuses a script for its MIME type only when "response's URL's scheme is
+/// an HTTP(S) scheme": a classic worker's blob script runs whatever the
+/// blob's type. A module worker's script is a module script, which "fetch a
+/// single module script" accepts only with a JavaScript MIME type, whatever
+/// its scheme.
+pub fn scriptFromBlob(allocator: Allocator, url: []const u8, worker_type: WorkerType, bytes: []const u8, content_type: []const u8) WorkerScriptError!FetchedScript {
+    if (worker_type == .module and !isJavaScriptMimeType(content_type)) {
+        std.log.debug("handleBlobUrl: Blob has non-JavaScript MIME type: {s}", .{content_type});
         return WorkerScriptError.ParseError;
     }
-
-    // Create FetchedScript from blob data
-    // Note: FetchedScript.init duplicates the source, so we free our copy after if owned
-    const fetched = FetchedScript.init(
-        allocator,
-        result.bytes,
-        url, // Blob URL is the final URL
-        result.content_type,
-        true, // Blob URLs are always same-origin (enforced by resolver)
-    ) catch {
-        result.freeResolved(allocator);
-        return WorkerScriptError.OutOfMemory;
-    };
-
-    // Free what we own (FetchedScript made copies)
-    result.freeResolved(allocator);
-
-    return fetched;
+    // Blob URLs are same-origin (the store answers only its origin).
+    return FetchedScript.init(allocator, bytes, url, content_type, true) catch WorkerScriptError.OutOfMemory;
 }
 
 /// Fetch an HTTP(S) worker script using the fetch module.

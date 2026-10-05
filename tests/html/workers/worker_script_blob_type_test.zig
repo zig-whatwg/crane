@@ -6,37 +6,32 @@
 //! classic worker made from a blob (or data:) URL runs whatever the blob's
 //! type. A module worker's script is a module script, which "fetch a single
 //! module script" accepts only with a JavaScript MIME type, whatever the
-//! scheme.
+//! scheme. (The blob's bytes and type come from fetch's scheme fetch "blob",
+//! whose resolver the blob URL store's owner installs at process start.)
 
 const std = @import("std");
 const testing = std.testing;
-const workers = @import("html_core").workers;
+const script_fetch = @import("html_core").workers.script_fetch;
 
-fn plainTextBlob(allocator: std.mem.Allocator, _: []const u8, _: []const u8) ?workers.BlobResolveResult {
-    const bytes = allocator.dupe(u8, "postMessage(1);") catch return null;
-    const content_type = allocator.dupe(u8, "text/plain") catch {
-        allocator.free(bytes);
-        return null;
-    };
-    return .{ .bytes = bytes, .content_type = content_type, .owns_bytes = true };
-}
+const url = "blob:http://web-platform.test:8000/x";
 
 test "a classic worker's blob script runs whatever the blob's type" {
-    workers.setBlobResolver(plainTextBlob);
-    defer workers.clearBlobResolver();
-    var fetched = try workers.fetchWorkerScript(testing.allocator, "blob:http://web-platform.test:8000/x", .{
-        .worker_type = .classic,
-        .requesting_origin = "http://web-platform.test:8000",
-    });
+    var fetched = try script_fetch.scriptFromBlob(testing.allocator, url, .classic, "postMessage(1);", "text/plain");
     defer fetched.deinit();
     try testing.expectEqualStrings("postMessage(1);", fetched.source);
+    try testing.expectEqualStrings(url, fetched.final_url);
 }
 
 test "a module worker's blob script with a type that is not JavaScript is refused" {
-    workers.setBlobResolver(plainTextBlob);
-    defer workers.clearBlobResolver();
-    try testing.expectError(error.ParseError, workers.fetchWorkerScript(testing.allocator, "blob:http://web-platform.test:8000/x", .{
-        .worker_type = .module,
-        .requesting_origin = "http://web-platform.test:8000",
-    }));
+    try testing.expectError(error.ParseError, script_fetch.scriptFromBlob(testing.allocator, url, .module, "export {};", "text/plain"));
+}
+
+test "a module worker's blob script with a JavaScript type is accepted" {
+    var fetched = try script_fetch.scriptFromBlob(testing.allocator, url, .module, "export {};", "text/javascript");
+    defer fetched.deinit();
+    try testing.expectEqualStrings("export {};", fetched.source);
+}
+
+test "a blob: worker script with no requesting origin is a network error" {
+    try testing.expectError(error.FetchFailed, script_fetch.fetchWorkerScript(testing.allocator, url, .{ .worker_type = .classic }));
 }
