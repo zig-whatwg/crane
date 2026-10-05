@@ -26,6 +26,7 @@ pub const ElementSteps = struct {
     initialize: *const fn (*runtime.Instance, ?[]const u8, ?[]const u8, State) anyerror!void,
     set_state: *const fn (*runtime.Instance, State) void,
     set_definition: *const fn (*runtime.Instance, ?*Definition) void,
+    shadow_root_of: *const fn (*runtime.Instance) ?*runtime.Instance,
 };
 pub const Creation = struct {
     document: *runtime.Instance,
@@ -66,6 +67,11 @@ pub fn setState(element: *runtime.Instance, state: State) void {
 }
 pub fn setDefinition(element: *runtime.Instance, definition: ?*Definition) void {
     (implementation.element orelse return).set_definition(element, definition);
+}
+/// DOM's shadow root concept, including closed roots. The IDL shadowRoot
+/// getter deliberately hides closed roots and cannot serve tree algorithms.
+pub fn shadowRootOf(element: *runtime.Instance) ?*runtime.Instance {
+    return (implementation.element orelse return null).shadow_root_of(element);
 }
 /// The registry is explicit: lookup never substitutes an entered realm.
 pub fn lookup(registry: ?*runtime.Instance, namespace: ?[]const u8, local_name: []const u8, is_value: ?[]const u8) ?*Definition {

@@ -10,6 +10,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+const runtime = @import("runtime");
+const instance_bridge = @import("instance_bridge.zig");
+const custom_elements = @import("custom_elements.zig");
 
 // Import DOM types
 // NodeBase is the single source of truth for tree structure per unified DOM tree model
@@ -728,21 +731,22 @@ pub fn getShadowIncludingInclusiveDescendants(allocator: Allocator, root: *NodeB
 }
 
 /// Helper: Recursively collect shadow-including descendants in tree order
-fn collectShadowIncludingDescendants(result: *infra.List(*NodeBase), node: *const NodeBase) !void {
-    // Visit each child in order using NodeBase's child_nodes
+fn collectShadowIncludingDescendants(result: *infra.List(*NodeBase), node: *NodeBase) !void {
+    // DOM shadow-including tree order: the host's shadow tree immediately
+    // follows the host, before its light children. Include the root host too.
+    if (node.node_type == NodeBase.ELEMENT_NODE) {
+        if (instance_bridge.getInstance(node)) |opaque_instance| {
+            const element: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
+            if (custom_elements.shadowRootOf(element)) |shadow| {
+                if (instance_bridge.getNodeBase(shadow)) |shadow_base| {
+                    try result.append(shadow_base);
+                    try collectShadowIncludingDescendants(result, shadow_base);
+                }
+            }
+        }
+    }
     for (node.child_nodes.items()) |child| {
-        // Add the child
         try result.append(child);
-
-        // Per spec: If child is a shadow host, traverse its shadow tree immediately
-        // after adding the child, before traversing the child's own children
-        // Check if child is an Element (node_type == 1) with a shadow root
-        // TODO: Shadow DOM integration - check for shadow root when implemented
-        // if (child.node_type == NodeBase.ELEMENT_NODE) {
-        //     // Check for shadow root and traverse if present
-        // }
-
-        // After shadow tree (if any), recursively traverse child's light DOM descendants
         try collectShadowIncludingDescendants(result, child);
     }
 }

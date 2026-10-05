@@ -550,7 +550,12 @@ pub fn installHooks() void {
         .initialize = &initializeCustomElement,
         .set_state = &setCustomElementState,
         .set_definition = &setCustomElementDefinition,
+        .shadow_root_of = &shadowRootOf,
     });
+}
+
+fn shadowRootOf(instance: *runtime.Instance) ?*runtime.Instance {
+    return (getInternal(instance) orelse return null).shadow_root;
 }
 
 fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementData {

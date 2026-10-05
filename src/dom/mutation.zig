@@ -278,11 +278,37 @@ fn runInsertionStepsRecursive(node: anytype) void {
     }
 }
 
-/// Recursively run post-connection steps for a node and all its descendants
-fn runPostConnectionStepsRecursive(node: anytype) void {
-    runPostConnectionSteps(node);
-    for (node.child_nodes.items()) |child| {
-        runPostConnectionStepsRecursive(child);
+/// DOM insert steps 10–12: snapshot the whole batch before a step can run
+/// script. A callback can remove nodes, retire a realm, and reuse slab slots.
+fn runPostConnectionStepsForTrees(allocator: std.mem.Allocator, roots: []const *NodeBase) !void {
+    const Entry = struct {
+        node: *NodeBase,
+        instance: ?*runtime.Instance,
+        generation: u64,
+    };
+    var entries = infra.List(Entry).init(allocator);
+    defer entries.deinit();
+    for (roots) |root| {
+        var descendants = try tree_helpers.getShadowIncludingInclusiveDescendants(allocator, root);
+        defer descendants.deinit();
+        for (descendants.toSlice()) |node| {
+            const instance: ?*runtime.Instance = if (instance_bridge.getInstance(node)) |object| @ptrCast(@alignCast(object)) else null;
+            try entries.append(.{
+                .node = node,
+                .instance = instance,
+                .generation = if (instance) |object| runtime.SlabAllocator.generationOf(object) else 0,
+            });
+        }
+    }
+    for (entries.toSlice()) |entry| {
+        if (entry.instance) |object| {
+            if (runtime.SlabAllocator.generationOf(object) != entry.generation) continue;
+        }
+        // Native parser nodes have no script-visible Instance to retire.
+        // For registered nodes, validate the generation BEFORE reading NodeBase.
+        if (entry.node.is_connected or entry.node.node_type == DOCUMENT_NODE or isConnectedThroughShadow(entry.node)) {
+            runPostConnectionSteps(entry.node);
+        }
     }
 }
 
@@ -346,6 +372,16 @@ fn isConnectedThroughShadow(node: anytype) bool {
 /// Uses sibling pointers instead of child_nodes.items() for safety during tree construction
 fn setConnectedRecursive(node: anytype, connected: bool) void {
     node.is_connected = connected;
+    // DOM connectedness follows the shadow-including root, including closed
+    // roots. Update a host's shadow tree before its light children.
+    if (node.node_type == ELEMENT_NODE) {
+        if (instance_bridge.getInstance(node)) |opaque_instance| {
+            const element: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
+            if (custom_elements.shadowRootOf(element)) |shadow| {
+                if (instance_bridge.getNodeBase(shadow)) |shadow_base| setConnectedRecursive(shadow_base, connected);
+            }
+        }
+    }
     // Use first_child/next_sibling which are always safely initialized to null
     var child = node.first_child;
     while (child) |c| {
@@ -992,13 +1028,7 @@ pub fn insert(
     //
     // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
     if (hasPostConnectionStepsCallbacks()) {
-        for (nodes) |inserted_node| {
-            runPostConnectionSteps(inserted_node);
-            // Recursively run for all descendants
-            for (inserted_node.child_nodes.items()) |descendant| {
-                runPostConnectionStepsRecursive(descendant);
-            }
-        }
+        try runPostConnectionStepsForTrees(parent.allocator, nodes);
     }
 }
 
@@ -1150,13 +1180,7 @@ pub fn appendChildren(
     // Step 10: Run post-connection steps for all inserted nodes
     // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
     if (hasPostConnectionStepsCallbacks()) {
-        for (children) |child| {
-            runPostConnectionSteps(child);
-            // Recursively run for all descendants
-            for (child.child_nodes.items()) |descendant| {
-                runPostConnectionStepsRecursive(descendant);
-            }
-        }
+        try runPostConnectionStepsForTrees(parent.allocator, children);
     }
 }
 
@@ -1306,12 +1330,7 @@ pub fn insertChildrenBefore(
     // Run post-connection steps
     // OPTIMIZATION: Skip expensive descendant traversal if no callbacks registered.
     if (hasPostConnectionStepsCallbacks()) {
-        for (children) |child| {
-            runPostConnectionSteps(child);
-            for (child.child_nodes.items()) |descendant| {
-                runPostConnectionStepsRecursive(descendant);
-            }
-        }
+        try runPostConnectionStepsForTrees(parent.allocator, children);
     }
 }
 
@@ -2472,24 +2491,10 @@ pub fn adopt(
 
     // Step 3: If document is not oldDocument
     if (document != oldDocument) {
-        // Step 3.1: For each inclusiveDescendant in node's shadow-including inclusive descendants
-        // For now, just update node itself and tree descendants (shadow DOM TODO)
-
-        // Collect all descendants first
-        var descendants = infra.List(*NodeBase).init(node.allocator);
+        // Step 3.1: Collect the shadow-including inclusive descendants in
+        // tree order, including closed shadow roots and their descendants.
+        var descendants = try tree_helpers.getShadowIncludingInclusiveDescendants(node.allocator, node);
         defer descendants.deinit();
-
-        try descendants.append(node);
-
-        var i: usize = 0;
-        while (i < descendants.len) : (i += 1) {
-            const current = descendants.get(i) orelse continue;
-
-            // Add children
-            for (current.child_nodes.items()) |child| {
-                try descendants.append(child);
-            }
-        }
 
         // The node document is also held by each node's Node state, which
         // the ownerDocument getter and everything outside src/dom read; the
@@ -2562,9 +2567,7 @@ pub fn adopt(
         if (oldDocument) |old_document| {
             if (instance_bridge.getInstance(@ptrCast(@alignCast(old_document)))) |old_opaque| {
                 if (document_instance) |new_document| {
-                    var custom_descendants = try tree_helpers.getShadowIncludingInclusiveDescendants(node.allocator, node);
-                    defer custom_descendants.deinit();
-                    for (custom_descendants.toSlice()) |descendant| enqueueCustomElementCallback(descendant, .adopted, .{
+                    for (descendants.toSlice()) |descendant| enqueueCustomElementCallback(descendant, .adopted, .{
                         .adopted = .{ .old_document = @ptrCast(@alignCast(old_opaque)), .new_document = new_document },
                     });
                 }
