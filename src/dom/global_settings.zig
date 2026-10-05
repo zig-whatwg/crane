@@ -55,6 +55,9 @@ pub const Settings = struct {
     /// associated Document's, a WorkerGlobalScope's own. Borrowed; null where
     /// the global has none.
     policy_container: ?*const fn (global: *runtime.Instance) ?*const fetch.internal.PolicyContainer = null,
+    /// Mixed Content 4.3 for this settings object, including embedding
+    /// documents. Absence means this kind of global does not prohibit.
+    prohibits_mixed_security_contexts: ?*const fn (global: *runtime.Instance) error{OutOfMemory}!bool = null,
 };
 
 /// The cookie jar `global`'s settings object reaches, if any.
@@ -83,6 +86,7 @@ pub const Client = struct {
 pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     const allocator = global.ctx.allocator;
     var client: Client = .{ .allocator = allocator };
+    errdefer client.deinit();
     const settings = of(global) orelse return client;
     // The origin, serialized; one the global does not know yet is left
     // unset.
@@ -99,6 +103,8 @@ pub fn requestClient(global: *runtime.Instance) error{OutOfMemory}!Client {
     client.request.cookie_jar = cookieJarOf(global);
     // The policy container "populate request from client" step 3 clones.
     if (settings.policy_container) |container_of| client.request.policy_container = container_of(global);
+    // Mixed Content 4.3 is captured by value, like the policy snapshot.
+    if (settings.prohibits_mixed_security_contexts) |prohibits| client.request.prohibits_mixed_security_contexts = try prohibits(global);
     // CSP 2.4.2: the global its requests' violations are reported to.
     client.request.csp_violation_reporter = @import("csp_violations.zig").reporterFor(global);
     // Fetch "report timing": the global its requests' resource timing is

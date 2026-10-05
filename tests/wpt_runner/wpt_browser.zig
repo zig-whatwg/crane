@@ -39,13 +39,6 @@ const Browser = browser_mod.Browser;
 const Context = browser_mod.Context;
 const navigation = browser_mod.navigation;
 
-// File module for blob URL store access
-const file = @import("file");
-
-// HTML workers module for blob resolver registration
-const html = @import("html");
-const workers = html.workers;
-
 const test_harness = @import("test_harness.zig");
 const test_driver = @import("test_driver.zig");
 const test_parser = @import("test_parser.zig");
@@ -69,41 +62,6 @@ const log = std.log.scoped(.wpt_browser);
 const WPT_ORIGIN = "http://web-platform.test:8000";
 
 const originOfUrl = wpt_server.originOfUrl;
-
-/// Blob URL resolver callback for Web Workers.
-/// This function is registered with the workers module to resolve blob: URLs
-/// when Workers are created with blob URLs (e.g., new Worker(URL.createObjectURL(blob))).
-///
-/// Per HTML spec, blob URLs are same-origin with their creating context.
-/// This resolver accesses the global BlobURLStore to look up blobs.
-fn resolveBlobUrl(allocator: std.mem.Allocator, url: []const u8, origin: []const u8) ?workers.BlobResolveResult {
-    // Get the global blob URL store
-    const store = file.getGlobalBlobURLStore() orelse {
-        log.warn("resolveBlobUrl: no global blob URL store available", .{});
-        return null;
-    };
-
-    // Resolve the blob URL (handles same-origin validation)
-    const blob_data = store.resolve(url, origin) orelse {
-        log.warn("resolveBlobUrl: blob not found for URL {s} (origin {s})", .{ url, origin });
-        return null;
-    };
-
-    // The store hands out a reference of our own; copies outlive it - a
-    // revoke on another thread could free the entry's data once released.
-    // Note: BlobData uses mime_type field (not content_type)
-    defer blob_data.deinit();
-    const bytes = allocator.dupe(u8, blob_data.bytes) catch return null;
-    const content_type = allocator.dupe(u8, blob_data.mime_type) catch {
-        allocator.free(bytes);
-        return null;
-    };
-    return .{
-        .bytes = bytes,
-        .content_type = content_type,
-        .owns_bytes = true, // both copies are the caller's
-    };
-}
 
 /// Apply WPT URL rewrites (matching wpt serve behavior from tools/serve/serve.py)
 /// These rewrites map friendly URLs to the actual file locations
@@ -165,10 +123,9 @@ pub const WptBrowser = struct {
         };
         if (comptime engine.capabilities.script_abort != .unsupported) try self.script_deadline.start();
 
-        // Register the blob URL resolver for Web Workers.
-        // This allows Workers created with blob URLs (new Worker(URL.createObjectURL(blob)))
-        // to resolve their script content from the BlobURLStore.
-        workers.setBlobResolver(resolveBlobUrl);
+        // A Web Worker's blob: script is resolved by fetch's scheme fetch
+        // "blob", whose resolver crane.Process installs at start - on every
+        // thread, a nested worker's too.
 
         // Frame and popup documents get the testdriver vendor file too - the
         // embedder's hook, registered once here, before any page loads.
@@ -212,9 +169,6 @@ pub const WptBrowser = struct {
         // Before the agent goes: the thread holds its address.
         _ = self.endScriptDeadline();
         self.script_deadline.stop();
-
-        // Clear the blob resolver registration
-        workers.clearBlobResolver();
 
         // Pending testdriver commands give their promises back while the
         // engine is still up.

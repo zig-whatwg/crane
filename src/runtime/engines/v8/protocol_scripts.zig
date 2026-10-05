@@ -119,6 +119,13 @@ const Evaluation = struct {
     compiled: *ffi.V8ScriptCompileResult,
     run: ?*ffi.V8ScriptRunResult = null,
 
+    /// Whether the script failed to compile: its parse error is what it
+    /// "threw" (HTML "create a classic script": parse error and error to
+    /// rethrow).
+    fn parseFailed(self: Evaluation) bool {
+        return self.compiled.script == null;
+    }
+
     /// What the evaluation threw - a parse error, or an exception - as V8
     /// caught it; null for a normal completion.
     fn thrown(self: Evaluation) ?*const ffi.V8ErrorInfo {
@@ -216,7 +223,9 @@ const EvaluateAndReport = struct {
         // 8. An abrupt completion, rethrow errors false (8.3): 1. report an
         // exception for the global.
         if (evaluation.thrown()) |info| {
-            const error_info = protocolErrorInfo(info, self.realm);
+            var error_info = protocolErrorInfo(info, self.realm);
+            // The parse error, as opposed to what evaluation threw.
+            error_info.parse_error = evaluation.parseFailed();
             self.reporter.report(self.reporter.host, &error_info);
             self.threw = true;
             return;
@@ -406,6 +415,32 @@ pub fn compileEventHandler(realm: Context, source: *const engine.EventHandlerSou
 // ============================================================================
 // Extract error information (HTML 8.1.4.6)
 // ============================================================================
+
+/// CSP 2.4.1 step 2's running script position, for `agent` (its isolate):
+/// StackTrace::CurrentStackTrace's top frame - the topmost JavaScript frame,
+/// a script's - read for its script name or sourceURL
+/// (GetScriptNameOrSourceURL: a `//# sourceURL=` when the script has one -
+/// V8's Script::GetNameOrSourceURL, whatever v8-debug.h's comment says -
+/// else the name it was compiled with) and its 1-based line and column. Blink's
+/// SourceLocation::Capture reads the same frame. Null when the isolate is not
+/// this thread's current one (no script of it can be running here) or the
+/// stack has no frame.
+pub fn runningScriptLocation(agent: *engine.Agent, allocator: Allocator) Error!?engine.ScriptLocation {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    if (ffi.v8_Isolate_GetCurrent() != isolate) return null;
+    var url: ?[*]u8 = null;
+    var url_len: usize = 0;
+    var line: c_int = 0;
+    var column: c_int = 0;
+    if (!ffi.v8_Isolate_RunningScriptLocation(isolate, &url, &url_len, &line, &column)) return null;
+    defer if (url) |p| std.c.free(p);
+    return .{
+        .url = try allocator.dupe(u8, if (url) |p| p[0..url_len] else ""),
+        // Message::kNoLineNumberInfo and kNoColumnInfo are 0: unknown.
+        .line = if (line > 0) @intCast(line) else 0,
+        .column = if (column > 0) @intCast(column) else 0,
+    };
+}
 
 /// HTML "extract error information" from `value`. `message` and `filename`
 /// are allocated with `allocator` (the caller frees both); `error_value` is

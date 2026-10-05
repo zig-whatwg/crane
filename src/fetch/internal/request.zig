@@ -306,6 +306,11 @@ pub const InternalRequest = struct {
     /// Client environment settings object (internal HTML spec concept, not WebIDL)
     client: ?*anyopaque = null,
 
+    /// Mixed Content 4.3, captured from the client's settings at population.
+    /// Owned by value, preserved across clones and redirects; false for a
+    /// null/UA client. Never inferred from the request URL or current realm.
+    prohibits_mixed_security_contexts: bool = false,
+
     /// Reserved client for navigation/worker requests (internal HTML spec concept)
     reserved_client: ?*anyopaque = null,
 
@@ -717,6 +722,7 @@ pub const InternalRequest = struct {
             .header_list = try self.header_list.clone(self.allocator),
             .body = null, // Handle body separately
             .client = self.client,
+            .prohibits_mixed_security_contexts = self.prohibits_mixed_security_contexts,
             .reserved_client = self.reserved_client,
             .replaces_client_id = self.replaces_client_id,
             .traversable_for_user_prompts = self.traversable_for_user_prompts,

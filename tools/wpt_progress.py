@@ -244,11 +244,7 @@ def load_results():
             rec.pop('_sub_hw_pre', None)
             rec['_hw_model'] = HW_MODEL
 
-    # Subdirectories too, so archived journals can be dropped in without
-    # colliding with the filenames the runner reuses.
-    files = sorted(glob.glob(os.path.join(RESULTS, '*.jsonl')) +
-                   glob.glob(os.path.join(RESULTS, '*', '*.jsonl')),
-                   key=os.path.getmtime)
+    files = journal_files()
     for fn in files:
         for line in open(fn, errors='replace'):
             line = line.strip()
@@ -283,6 +279,16 @@ def load_results():
     os.replace(tmp_path, STATE)  # atomic: a crash mid-write cannot truncate it
 
     return records, files
+
+
+def journal_files():
+    """The journals under wpt-results/, oldest first: its top level and ONE
+    directory deep (subdirectories too, so archived journals can be dropped in
+    without colliding with the filenames the runner reuses). A result stream
+    beside a journal (`X.wptreport.jsonl`, the site's per-subtest detail) is not
+    a journal and is never read here."""
+    files = glob.glob(os.path.join(RESULTS, '*.jsonl')) + glob.glob(os.path.join(RESULTS, '*', '*.jsonl'))
+    return sorted((f for f in files if not f.endswith('.wptreport.jsonl')), key=os.path.getmtime)
 
 
 def area_of(path, depth=2):
@@ -593,10 +599,7 @@ def heap_trend(min_files=30):
     process's records in order, is read. Readings without CRANE_HEAP_GC include
     garbage not yet collected; over dozens of files the slope is retention.
     """
-    files = sorted(glob.glob(os.path.join(RESULTS, '*.jsonl')) +
-                   glob.glob(os.path.join(RESULTS, '*', '*.jsonl')),
-                   key=os.path.getmtime, reverse=True)
-    for fn in files:
+    for fn in reversed(journal_files()):
         base = os.path.basename(fn)
         if base == 'journal.jsonl' and glob.glob(os.path.join(os.path.dirname(fn), 'journal.shard*.jsonl')):
             continue
@@ -1823,6 +1826,15 @@ def _check_history_sources():
             assert g['checkout'] == 'cef789b3a'
             assert g['sources'] == [{'label': 'flakes-3d0cf4ef0', 'journal': 'journal.jsonl',
                                      'commit': '3d0cf4ef0', 'files': 1, 'moved': 1}], g['sources']
+
+            # A result stream beside a journal (X.wptreport.jsonl, the site's subtest
+            # detail - 200 MB for a sweep) is never read as a journal, even newer.
+            write('flakes-3d0cf4ef0/journal.wptreport.jsonl', [{'path': 'b.html', 'status': 'CRASH', 'passed': 0}], 2_500)
+            records, files = load_results()
+            assert records['b.html']['status'] == 'OK', records['b.html']
+            assert not any(f.endswith('.wptreport.jsonl') for f in files), files
+            assert not any(f.endswith('.wptreport.jsonl') for f in journal_files()), 'retention reads journals only'
+            os.remove(os.path.join(RESULTS, 'flakes-3d0cf4ef0/journal.wptreport.jsonl'))
 
             # Regenerating with nothing new: no generation, and nothing is attributed
             # to the next one that was not new by then.

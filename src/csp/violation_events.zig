@@ -93,6 +93,29 @@ pub fn stripUrlForReports(allocator: std.mem.Allocator, url: []const u8) error{O
     return std.mem.concat(allocator, u8, &.{ without_fragment[0..authority_start], rest[at + 1 ..] });
 }
 
+/// A violation's source file (§2.4.1 step 2) for use in reports: the
+/// running script's URL - a sourceURL a script named itself - stripped as
+/// §5.4 strips a URL; a string that is no absolute URL (no scheme) is no
+/// source file, "". "User agents need to ensure that the source file is the
+/// URL requested by the page, pre-redirects. If that's not possible, user
+/// agents need to strip the URL down to an origin." Blink strips the same
+/// way (StripURLForUseInReport over a KURL, invalid -> ""). Owned.
+pub fn sourceFileForReports(allocator: std.mem.Allocator, url: []const u8) error{OutOfMemory}![]u8 {
+    if (!hasScheme(url)) return allocator.dupe(u8, "");
+    return stripUrlForReports(allocator, url);
+}
+
+/// Whether `url` starts with a URL scheme and its ':' - ASCII alpha, then
+/// ASCII alphanumerics, '+', '-' or '.'.
+fn hasScheme(url: []const u8) bool {
+    const colon = std.mem.indexOfScalar(u8, url, ':') orelse return false;
+    if (colon == 0 or !std.ascii.isAlphabetic(url[0])) return false;
+    for (url[1..colon]) |c| {
+        if (!std.ascii.isAlphanumeric(c) and c != '+' and c != '-' and c != '.') return false;
+    }
+    return true;
+}
+
 /// §5.2 Obtain the blockedURI of a violation's resource. Owned.
 pub fn blockedUri(allocator: std.mem.Allocator, resource: Resource) error{OutOfMemory}![]u8 {
     return switch (resource) {
@@ -162,4 +185,24 @@ test "a sample is the first 40 characters, only under 'report-sample'" {
     try std.testing.expectEqualStrings("", sampleFor(without.directive_set.get("script-src").?, source));
     // Short sources are whole; a multi-byte character is not split.
     try std.testing.expectEqualStrings("\u{e9}\u{e9}", sampleFor(with.directive_set.get("script-src").?, "\u{e9}\u{e9}"));
+}
+
+test "a source file for reports: stripped like a URL, and no URL is no source file" {
+    const cases = [_][2][]const u8{
+        .{ "https://dummy.test/script1.js#frag", "https://dummy.test/script1.js" },
+        .{ "https://user:password@dummy.test/script1.js", "https://dummy.test/script1.js" },
+        .{ "https://dummy.test:8080/script1.js", "https://dummy.test:8080/script1.js" },
+        .{ "script2.js", "" },
+        .{ "", "" },
+        .{ "file:///temp/script3.js", "file" },
+        .{ "webpack://node_modules/sample/script4.js", "webpack" },
+        .{ "about:blank", "about" },
+        .{ "javascript:void(0)", "javascript" },
+        .{ "blob:http://test.test/0123", "blob" },
+    };
+    for (cases) |case| {
+        const got = try sourceFileForReports(std.testing.allocator, case[0]);
+        defer std.testing.allocator.free(got);
+        try std.testing.expectEqualStrings(case[1], got);
+    }
 }

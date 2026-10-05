@@ -187,6 +187,9 @@ areas = ["html/browsers/origin/", "html/browsers/the-window-object/"]
 progress = [
   "75bda94c8a (merged 3998de390) - Location members' same origin-domain checks (SecurityError), src/html/origin_domain.zig",
   "c5e5b6f1f3 (merged aa6406b5b) - policy containers on Documents and workers; CSP (fetch checks, hashes, violation events, frame-ancestors), Referrer Policy and Upgrade Insecure Requests delivered and enforced",
+  "3ddeba9cbc (merged b410f65587) - CSP enforcement 1: inline checks for <style>, style attributes and event handler attributes, report-sample, and string compilation (eval, Function, wasm) through the engine's code-generation host hooks (cspenforce lane)",
+  "a5a5e38ead (merged 369506887a) - CSP enforcement 2: javascript: URL navigations under 4.2.4 with Trusted Types, string timers checked at the call (as all three engines), violations carry the running script's location, requestIdleCallback in reused Windows (csp2 lane)",
+  "79a43f2163 (merged 5669503a7b) - Mixed Content: upgrade, request and response blocking per the Editor's Draft, inherited prohibition, per-hop redirect checks, WebSocket handshakes with UIR (Codex)",
 ]
 
   [[infra.items]]
@@ -452,6 +455,7 @@ progress = [
   "50ce17ce17 (merged 392538d86) - B0: crane.Process starts the engine and installs every src/dom hook once (owners' installHooks, written once while starting); zig build lint-global-state ratchets process-global and threadlocal state",
   "e263d652b8 (merged c9182f97f6) - workers 1A: every process-wide structure a worker thread reaches is locked, atomic or per isolate; an agent's end frees only its own isolate's entries; two-thread stress tests (workers lane)",
   "7b497b9d03 - workers 1B-i: TaskSink (cross-thread task queue), owned timers, minimal BrowserScope + WorkerRegistry (instances B1 first piece), cross-thread MessagePort channels, worker link/event loop/thread (unused by Worker until 1B-ii) (workers lane)",
+  "016aa604a4 (merged 24e8583960) - workers 1B-ii part 1: every dedicated worker on a thread of its own (agent made on the thread, implicit ports a cross-thread channel, terminate() aborts the running script, a Worker's realm ending terminates its worker); a worker's blob: script through fetch's process-wide resolver; loops free the microtasks their agent dropped; shared workers stay on their creator's thread until batch 2; BroadcastChannel's registry on the BrowserScope, delivered across threads; a worker script that does not parse fires a plain error (engine ErrorInfo.parse_error) (workers lane)",
 ]
 
   [[infra.items]]
@@ -464,7 +468,7 @@ progress = [
 
   [[infra.items]]
   name = "Cross-tab registries (BroadcastChannel, SharedWorker, Web Locks, service worker registrations and clients, permissions) belong to the instance"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Tab state (session history, sessionStorage per top-level traversable, timers, animation frames, visibility and focus) belongs to the tab"

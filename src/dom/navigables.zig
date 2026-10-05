@@ -41,6 +41,7 @@ const fire_event = @import("fire_event.zig");
 const webidl = @import("webidl");
 const dictionaries = @import("dictionaries");
 const NodeBase = @import("node_base.zig").NodeBase;
+const csp = @import("csp");
 
 const BrowsingContext = html_core.BrowsingContext;
 const IFrameIntegration = html_core.IFrameIntegration;
@@ -80,6 +81,9 @@ pub const Request = struct {
     /// With it, the form's entry list as a FormData, for the navigate event.
     /// BORROWED for the call.
     form_data: ?*runtime.Instance = null,
+    /// "Navigate"'s cspNavigationType: "form-submission" for a form's
+    /// planned navigation, "other" for everything else (CSP 4.2.4's type).
+    csp_navigation_type: csp.navigation_check.NavigationType = .other,
 };
 
 /// HTML "POST resource": a request body and its request content-type.

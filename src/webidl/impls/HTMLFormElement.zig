@@ -1194,6 +1194,8 @@ fn navigateSteps(data: ?*anyopaque) void {
         .source_element = task.form,
         .post_resource = if (task.post) |post| .{ .body = post.body, .content_type = post.content_type } else null,
         .form_data = task.form_data,
+        // "Navigate" with cspNavigationType "form-submission".
+        .csp_navigation_type = .form_submission,
     });
 }
 

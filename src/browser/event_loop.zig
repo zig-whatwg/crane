@@ -61,6 +61,13 @@ pub const EventLoop = struct {
     /// Track if we're inside runOnce to prevent reentrancy
     in_run_once: bool,
 
+    /// The host microtasks queued in the agent and not yet run (each one's
+    /// record is linked here until it runs). The loop ends before its agent
+    /// (Browser.deinit), whose end still runs what is queued: a record left
+    /// at the loop's end is orphaned - it frees itself when the agent runs
+    /// it, without its steps, whose context was the loop's promise arena.
+    microtasks: ?*QueuedMicrotask = null,
+
     /// The door other threads post this loop's tasks through (a worker's
     /// messages and its end, a port's "has messages"): taken into `tasks` at
     /// each turn's step 2, closed - what it still holds dropped - when the
@@ -138,6 +145,13 @@ pub const EventLoop = struct {
         // idle callbacks went with its document (Window's unloading cleanup
         // step), and a request holds no data of its own.
         self.idle_requests.deinit(self.allocator);
+        // Microtasks the agent has not run: orphaned. Their contexts are the
+        // promise arena's, which goes next, so their steps never run; each
+        // record frees itself when the agent's end runs it.
+        while (self.microtasks) |queued| {
+            queued.unlink();
+            queued.orphaned = true;
+        }
         self.promise_arena.deinit();
     }
 
@@ -519,8 +533,10 @@ pub const EventLoop = struct {
             std.log.err("event loop: out of memory queueing a microtask; dropped", .{});
             return;
         };
-        queued.* = .{ .task = task, .allocator = self.allocator };
+        queued.* = .{ .task = task, .allocator = self.allocator, .list = &self.microtasks };
+        queued.link();
         engine.queueMicrotask(self.agent, QueuedMicrotask.run, queued) catch |err| {
+            queued.unlink();
             self.allocator.destroy(queued);
             std.log.err("event loop: a microtask was not queued: {}", .{err});
         };
@@ -573,11 +589,33 @@ const IdleRequest = struct {
 const QueuedMicrotask = struct {
     task: Microtask,
     allocator: Allocator,
+    /// The loop's list head (`EventLoop.microtasks`), while the loop lives.
+    list: *?*QueuedMicrotask,
+    prev: ?*QueuedMicrotask = null,
+    next: ?*QueuedMicrotask = null,
+    /// The loop has ended: free this when it runs, and run nothing.
+    orphaned: bool = false,
+
+    fn link(self: *QueuedMicrotask) void {
+        self.next = self.list.*;
+        if (self.next) |next| next.prev = self;
+        self.list.* = self;
+    }
+
+    fn unlink(self: *QueuedMicrotask) void {
+        if (self.prev) |prev| prev.next = self.next else self.list.* = self.next;
+        if (self.next) |next| next.prev = self.prev;
+        self.prev = null;
+        self.next = null;
+    }
 
     fn run(data: ?*anyopaque) void {
         const self: *QueuedMicrotask = @ptrCast(@alignCast(data.?));
         const task = self.task;
+        const orphaned = self.orphaned;
+        if (!orphaned) self.unlink();
         self.allocator.destroy(self);
+        if (orphaned) return;
         task.callback(task.context);
     }
 };
@@ -777,4 +815,49 @@ test "a loop that owns a running worker is not idle, and its end drops what was 
     }
     try testing.expectEqual(@as(u32, 1), tally.dropped);
     try testing.expectEqual(@as(u32, 0), tally.ran);
+}
+
+/// A host microtask still queued when its loop ends.
+const LateMicrotask = struct {
+    ran: bool = false,
+    failed: bool = false,
+    leaked: bool = false,
+
+    fn markRan(data: ?*anyopaque) void {
+        const self: *LateMicrotask = @ptrCast(@alignCast(data.?));
+        self.ran = true;
+    }
+
+    /// On a thread of its own: its agent is that thread's host agent, and
+    /// its end takes down only that thread's engine state.
+    fn body(self: *LateMicrotask) void {
+        var counted: std.heap.DebugAllocator(.{}) = .init;
+        {
+            const agent = engine.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &.{} }) catch {
+                self.failed = true;
+                return;
+            };
+            var loop = EventLoop.init(agent, counted.allocator()) catch {
+                engine.destroyAgent(agent);
+                self.failed = true;
+                return;
+            };
+            loop.eventLoop().queueMicrotask(.{ .callback = markRan, .context = self });
+            // The loop ends before its agent (Browser.deinit's order); the
+            // agent's end runs its microtask queue.
+            loop.deinit();
+            engine.destroyAgent(agent);
+        }
+        self.leaked = counted.deinit() == .leak;
+    }
+};
+
+test "a microtask still queued at the loop's end runs nothing and is freed when the agent runs it" {
+    try @import("process.zig").Process.ensureStarted(.{});
+    var probe: LateMicrotask = .{};
+    const thread = try std.Thread.spawn(.{}, LateMicrotask.body, .{&probe});
+    thread.join();
+    try testing.expect(!probe.failed);
+    try testing.expect(!probe.ran);
+    try testing.expect(!probe.leaked);
 }
