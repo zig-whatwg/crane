@@ -637,6 +637,11 @@ pub const WorkerHost = struct {
     /// discards it ("run a worker" step 17: disentangle the worker's ports).
     inside_end: ?*port_channels.End = null,
 
+    /// The worker's creation time in milliseconds since the epoch ("run a
+    /// worker" step 3), its global scope's time origin; null when the host
+    /// has none (a shared worker: now, when its global scope is made).
+    time_origin_ms: ?f64 = null,
+
     /// A dedicated worker's Worker object, as its owner's tasks find it: an
     /// address and slab generation, never dereferenced on this thread - an
     /// error report carries them to the owner's loop
@@ -654,6 +659,14 @@ pub const WorkerHost = struct {
     /// exception"): an error reported while one is being reported goes no
     /// further.
     reporting_error: bool = false,
+
+    /// The worker's own classic script is running ("run a worker"
+    /// onComplete step 10), and whether it failed to PARSE: a script whose
+    /// error to rethrow is non-null takes onComplete step 1 instead - a plain
+    /// `error` at the worker object, nothing reported at the global scope,
+    /// nothing run.
+    running_own_script: bool = false,
+    own_script_parse_failed: bool = false,
 
     /// The timer that runs the next teardown step, while one is armed.
     teardown_timer: ?MessageDispatchTimer = null,
@@ -794,6 +807,7 @@ pub const WorkerHost = struct {
             .link = thread.link,
             .owner_worker = start.owner_worker,
             .cookie_jar = start.cookie_jar,
+            .time_origin_ms = start.time_origin_ms,
         };
         thread_host.host = self;
         hosts.append(std.heap.page_allocator, self) catch {};
@@ -1251,20 +1265,31 @@ pub const WorkerHost = struct {
         // Only performance still needs a bootstrap fallback: WorkerGlobalScope
         // has no native performance getter. Its crypto and indexedDB accessors
         // already supply native objects (WebIDL 3.7.6); never shadow them.
-        try self.runSetupScript(
-            \\(function() {
-            \\  function define(name, value) {
-            \\    Object.defineProperty(globalThis, name, { value: value, writable: true, enumerable: true, configurable: true });
-            \\  }
+        // Its time origin is the worker's creation time ("run a worker" step
+        // 3, the unsafe worker creation time - taken by the Worker
+        // constructor, before the worker's thread starts) when the host has
+        // it, else now.
+        var origin_buffer: [64]u8 = undefined;
+        const time_origin: []const u8 = if (self.time_origin_ms) |ms|
+            std.fmt.bufPrint(&origin_buffer, "{d}", .{ms}) catch "Date.now()"
+        else
+            "Date.now()";
+        const performance_setup = try std.fmt.allocPrint(self.allocator,
+            \\(function() {{
+            \\  function define(name, value) {{
+            \\    Object.defineProperty(globalThis, name, {{ value: value, writable: true, enumerable: true, configurable: true }});
+            \\  }}
             \\  // Performance API - https://w3c.github.io/hr-time/
-            \\  var timeOrigin = Date.now();
-            \\  define('performance', {
+            \\  var timeOrigin = {s};
+            \\  define('performance', {{
             \\    timeOrigin: timeOrigin,
-            \\    now: function() { return Date.now() - timeOrigin; },
-            \\    toJSON: function() { return { timeOrigin: this.timeOrigin }; }
-            \\  });
-            \\})();
-        );
+            \\    now: function() {{ return Date.now() - timeOrigin; }},
+            \\    toJSON: function() {{ return {{ timeOrigin: this.timeOrigin }}; }}
+            \\  }});
+            \\}})();
+        , .{time_origin});
+        defer self.allocator.free(performance_setup);
+        try self.runSetupScript(performance_setup);
     }
 
     /// `createWorkerRealm`'s `on_realm`: the realm exists, and its global
@@ -1332,6 +1357,8 @@ pub const WorkerHost = struct {
         // A worker whose closing flag is set runs no further task.
         if (!self.runsTasks()) return error.WorkerClosed;
 
+        self.running_own_script = true;
+        defer self.running_own_script = false;
         try self.runScript(source, self.script_url, true);
 
         // A shared worker, whose tasks are its creator's timers: what the
@@ -1439,6 +1466,15 @@ pub const WorkerHost = struct {
     /// listener's preventDefault(), handles it); if not handled, the worker's
     /// Worker object hears it, with `error` null.
     fn reportEngineException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+        // The worker's own script did not parse: "run a worker" onComplete
+        // step 1, which its caller takes - not "report an exception".
+        if (host) |h| {
+            const self: *Self = @ptrCast(@alignCast(h));
+            if (self.running_own_script and info.parse_error) {
+                self.own_script_parse_failed = true;
+                return;
+            }
+        }
         const runtime_info: runtime.ErrorInfo = .{
             .message = info.message,
             .filename = info.filename,
@@ -2069,7 +2105,17 @@ const SharedConnect = struct {
         switch (self.worker_type) {
             // onComplete 10: run the classic script. An exception it throws
             // is reported to the worker's global scope; the worker runs on.
-            .classic => host.executeScript(fetched.source) catch |err| log.debug("shared worker script: {}", .{err}),
+            .classic => {
+                host.executeScript(fetched.source) catch |err| log.debug("shared worker script: {}", .{err});
+                // onComplete 1: a script that did not parse has an error to
+                // rethrow - `error` at the worker, and its settings are
+                // discarded.
+                if (host.own_script_parse_failed) {
+                    message_ports.discard(inside_end);
+                    host.terminate();
+                    return self.fireError();
+                }
+            },
             // A module worker's graph: onComplete 1 - a null script, or one
             // with an error to rethrow, fires `error` at the worker, and the
             // inside settings are discarded. Else run the module script.
@@ -2641,6 +2687,9 @@ pub const DedicatedWorkerStart = struct {
     /// The implicit port: the end of the Worker's channel that its global
     /// scope receives on. Taken on success.
     inside_end: ?*port_channels.End,
+    /// "Run a worker" step 3, the unsafe worker creation time, in
+    /// milliseconds since the epoch: the global scope's time origin.
+    time_origin_ms: ?f64 = null,
 };
 
 /// Start a dedicated worker on a thread of its own: a link shared with the
@@ -2727,6 +2776,7 @@ const ThreadHost = struct {
         browser_scope: ?*runtime.BrowserScope,
         owner_worker: OwnerWorker,
         inside_end: ?*port_channels.End,
+        time_origin_ms: ?f64,
     };
 
     fn create(allocator: Allocator, start: *const DedicatedWorkerStart) !*ThreadHost {
@@ -2749,6 +2799,7 @@ const ThreadHost = struct {
                 .browser_scope = start.owner_realm.browser_scope,
                 .owner_worker = start.owner_worker,
                 .inside_end = start.inside_end,
+                .time_origin_ms = start.time_origin_ms,
             },
         };
         return self;
@@ -2807,7 +2858,15 @@ const ThreadHost = struct {
         switch (self.start.worker_type) {
             // An exception it throws is reported to the global scope, then
             // the Worker; the worker runs on.
-            .classic => worker_host.executeScript(self.start.source) catch |err| log.debug("worker script: {}", .{err}),
+            .classic => {
+                worker_host.executeScript(self.start.source) catch |err| log.debug("worker script: {}", .{err});
+                // onComplete 1: a script that did not parse has an error to
+                // rethrow - `error` at the Worker, and the worker runs nothing.
+                if (worker_host.own_script_parse_failed) {
+                    self.reportStartFailure(thread.link);
+                    return false;
+                }
+            },
             // onComplete 1: a module graph that is null, or has an error to
             // rethrow, fires `error` at the Worker, and the worker's settings
             // are discarded.

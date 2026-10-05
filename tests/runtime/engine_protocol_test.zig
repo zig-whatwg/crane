@@ -162,3 +162,34 @@ test "the Agent a realm records is the one the protocol's agent operations take"
     const agent: *engine.Agent = @ptrCast(&agent_storage);
     engine.requestGarbageCollection(agent);
 }
+
+const ParseReport = struct {
+    count: usize = 0,
+    parse_error: bool = false,
+
+    fn report(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+        const self: *ParseReport = @ptrCast(@alignCast(host.?));
+        self.count += 1;
+        self.parse_error = info.parse_error;
+    }
+};
+
+test "the test adapter reports a script it cannot parse as its parse error" {
+    // Only the runtime tier's test adapter runs classic scripts this way; the
+    // JavaScriptCore and QuickJS roots answer NotSupported until they have an
+    // engine.
+    if (!std.mem.eql(u8, engine.name, "test")) return error.SkipZigTest;
+    var data = try runtime.ContextData.init(std.testing.allocator, .{});
+    defer data.deinit();
+    const realm: engine.Context = &data;
+
+    var seen: ParseReport = .{};
+    const reporter: engine.Reporter = .{ .report = ParseReport.report, .host = &seen };
+    try std.testing.expectError(error.ExceptionReported, engine.runClassicScript(realm, .{ .utf8 = "postMessage(1);" }, "w.js", null, reporter));
+    try std.testing.expectEqual(@as(usize, 1), seen.count);
+    try std.testing.expect(seen.parse_error);
+    // Nothing to parse: a normal completion, nothing reported.
+    seen = .{};
+    try engine.runClassicScript(realm, .{ .utf8 = "" }, "w.js", null, reporter);
+    try std.testing.expectEqual(@as(usize, 0), seen.count);
+}
