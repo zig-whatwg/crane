@@ -60,6 +60,13 @@ pub const NavigationFetchResult = struct {
     /// response status. Owned; null for a response from no network.
     timing: ?Timing = null,
 
+    /// The navigation request's referrer as main fetch left it (a URL), for
+    /// the new document's referrer ("create and initialize a Document
+    /// object" step 14). Owned; null for no referrer, and for a response no
+    /// request was fetched for (about:blank, srcdoc, data:, javascript:),
+    /// whose navigation params' request is null.
+    referrer: ?[]u8 = null,
+
     pub const HeaderMap = std.StringHashMap([]const u8);
 
     pub const Timing = struct {
@@ -93,6 +100,8 @@ pub const NavigationFetchResult = struct {
     }
 
     pub fn deinit(self: *NavigationFetchResult) void {
+        if (self.referrer) |r| self.allocator.free(r);
+        self.referrer = null;
         if (self.final_url.len > 0 and !isStaticString(self.final_url)) {
             self.allocator.free(self.final_url);
         }
@@ -424,6 +433,8 @@ pub fn resultFromResponse(
         "x-frame-options",
         // HTML "create a policy container from a fetch response" step 5.
         "referrer-policy",
+        // HTML "create and initialize a Document object" step 17.
+        "refresh",
     };
     for (security_headers) |header_name| {
         // Each header's values combined (Fetch "get" a header list value), as

@@ -1233,12 +1233,26 @@ fn entryDocument() ?*runtime.Instance {
     return interfaces.Window.get_document(window) catch null;
 }
 
+/// The incumbent global object's associated Document: the document of the
+/// window whose realm is the incumbent realm (engine.incumbentRealm). Null
+/// when no script is running, or the incumbent global is no Window.
+fn incumbentDocument() ?*runtime.Instance {
+    const realm = engine.incumbentRealm() orelse return null;
+    const record = realm.getRealm() orelse return null;
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (window.stateAs(interfaces.Window.State) == null) return null;
+    return interfaces.Window.get_document(window) catch null;
+}
+
 /// HTML "Location-object navigate" this Location's navigable to `url`
 /// (serialized), with `behavior`. Steps 1-2 and 4 are the navigable's
 /// engine's (the navigate callback); step 3 is too, since it reads the
 /// navigable's own record of its document.
 fn locationObjectNavigate(internal: *InternalState, url: []const u8, behavior: navigate_steps.HistoryBehavior) !void {
-    const source = entryDocument();
+    // Step 2: "Let sourceDocument be the incumbent global object's associated
+    // Document" - whose URL the request's referrer is
+    // (multiple-globals/context-for-location*).
+    const source = incumbentDocument();
     const callback = internal.navigate_callback orelse {
         // The top-level page, "navigate"d as far as this engine can.
         const window = internal.window orelse return;

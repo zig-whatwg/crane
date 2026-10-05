@@ -2912,6 +2912,10 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // Steps 6-12: tokenize the features; noreferrer implies noopener.
     const window_features = WindowFeatures.parse(if (features.wasPassed()) features.getValue().asSlice() else "");
     const noopener = window_features.noopener or window_features.noreferrer;
+    // Steps 11-12: "Let referrerPolicy be the empty string. If noreferrer is
+    // true, then set noopener to true and set referrerPolicy to
+    // "no-referrer"."
+    const referrer_policy: @FieldType(html_core.window.iframe_integration.NavigateRequest, "referrer_policy") = if (window_features.noreferrer) .no_referrer else .empty;
 
     // Step 13: the rules for choosing a navigable. The keywords name this
     // one (see the deviation above).
@@ -2965,7 +2969,7 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
             // Step 16.1: "If urlRecord is not null, then navigate targetNavigable
             // to urlRecord using sourceDocument, with referrerPolicy and
             // exceptionsEnabled set to true."
-            if (url_record) |u| found.integration.navigate(u, .{ .source_document = @ptrCast(source_document) });
+            if (url_record) |u| found.integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy });
             return if (noopener) null else found.window;
         }
     }
@@ -3002,7 +3006,7 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // commits in a later task, so open() returns the window before its page
     // loads, as it must for `w.onload = f` to hear the load.
     if (url_record) |u| {
-        if (!std.mem.startsWith(u8, u, "about:blank")) integration.navigate(u, .{ .source_document = @ptrCast(source_document) });
+        if (!std.mem.startsWith(u8, u, "about:blank")) integration.navigate(u, .{ .source_document = @ptrCast(source_document), .referrer_policy = referrer_policy });
     }
 
     // Steps 17-18: "If noopener is true or windowType is "new with no

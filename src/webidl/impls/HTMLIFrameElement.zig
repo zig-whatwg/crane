@@ -404,6 +404,8 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     };
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
+    giveReferrer(document_instance, browsing_ctx_ptr);
+    giveRefresh(document_instance, browsing_ctx_ptr);
     // HTML "create a new browsing context and document" step 15: the initial
     // about:blank document's type is "html" and its content type
     // "text/html". Set before the elements below are created, which it makes
@@ -529,6 +531,8 @@ fn parseHtmlForIframe(
     document_internals.setContentType(document_instance, "text/html") catch {};
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
+    giveReferrer(document_instance, browsing_ctx_ptr);
+    giveRefresh(document_instance, browsing_ctx_ptr);
 
     const DocumentImpl = @import("Document.zig");
     if (window_instance) |window_inst| {
@@ -1495,6 +1499,12 @@ fn fetchDone(context: *anyopaque, outcome: fetch_mod.algorithms.FetchError!fetch
         navigation_fetch.resultFromResponse(record.allocator, record.url, r.response, .{}) catch null
     else
         null;
+    // The request's referrer as main fetch left it, for the new document.
+    if (record.response) |*response| {
+        if (result) |r| {
+            if (r.referrer) |referrer| response.referrer = record.allocator.dupe(u8, referrer) catch null;
+        }
+    }
     // The fetch's timing info goes with the response, for the new document's
     // navigation timing entry (its redirect count: the URLs past the first).
     if (record.response) |*response| {
@@ -1617,6 +1627,12 @@ fn runCommit(context: ?*anyopaque) void {
     // container, waiting for whatever makes the document.
     integration.setNextPolicyContainer(navigationParamsPolicyContainer(integration, record, response));
     defer integration.setNextPolicyContainer(null);
+    // Step 14: its referrer, the request's as main fetch left it.
+    integration.setNextReferrer(response.referrer);
+    defer integration.setNextReferrer(null);
+    // Step 17: the response's Refresh header.
+    integration.setNextRefresh(if (response.headers) |h| h.get("refresh") else null);
+    defer integration.setNextRefresh(null);
     commitNavigation(integration, record, response);
 }
 
@@ -1743,6 +1759,27 @@ fn containerDocumentOf(integration: *IFrameIntegration) ?*runtime.Instance {
 fn givePolicyContainer(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
     const integration = integrationOfBrowsingContext(browsing_context) orelse return;
     if (integration.takeNextPolicyContainer()) |container| dom_module.policy_containers.set(document, container);
+}
+
+/// HTML "create and initialize a Document object" step 14: the new
+/// document's referrer - the navigation request's referrer as main fetch
+/// left it, waiting on the navigable (IFrameIntegration.next_referrer). The
+/// empty string when there is none, or no request was fetched.
+fn giveReferrer(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse return;
+    const referrer = integration.next_referrer orelse return;
+    document_internals.setReferrer(document, referrer) catch {};
+}
+
+/// HTML "create and initialize a Document object" step 17: "If
+/// navigationParams's response has a `Refresh` header", the shared
+/// declarative refresh steps with the document and the header's value
+/// (isomorphic decoded, waiting on the navigable) - before the parser runs,
+/// so a later meta refresh finds "will declaratively refresh" set.
+fn giveRefresh(document: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
+    const integration = integrationOfBrowsingContext(browsing_context) orelse return;
+    const value = integration.next_refresh orelse return;
+    document_lifecycle.declarativeRefresh(document, value, null);
 }
 
 /// `document`'s document base URL, serialized, owned by `allocator`; null
@@ -2851,6 +2888,7 @@ fn navigateFromIntegration(integration: *IFrameIntegration, url: []const u8, req
     navigate(integration, url, .{
         .source_document = if (request.source_document) |d| @ptrCast(@alignCast(d)) else null,
         .history_behavior = request.history_behavior,
+        .referrer_policy = request.referrer_policy,
     });
 }
 
@@ -3225,9 +3263,17 @@ fn attachNavigableContext(
     if (createDocumentForIframe(@ptrCast(realm), browsing_context)) |document_ptr| {
         const document: *runtime.Instance = @ptrCast(@alignCast(document_ptr));
         dom_module.document_lifecycle.markInitialAboutBlank(document);
-        // Step 19.2: "If creator is non-null, set document's policy container
-        // to a clone of creator's policy container."
-        if (creator) |creator_document| inheritPolicyContainer(document, creator_document);
+        if (creator) |creator_document| {
+            // Step 19.1: "Set document's referrer to the serialization of
+            // creator's URL."
+            if (interfaces.Document.get_URL(creator_document)) |creator_url| {
+                defer creator_document.ctx.allocator.free(creator_url);
+                document_internals.setReferrer(document, creator_url) catch {};
+            } else |_| {}
+            // Step 19.2: "Set document's policy container to a clone of
+            // creator's policy container."
+            inheritPolicyContainer(document, creator_document);
+        }
     }
     return realm;
 }
