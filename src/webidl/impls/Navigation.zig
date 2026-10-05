@@ -272,6 +272,7 @@ pub fn installHooks() void {
         .entries_removed = &entriesRemovedHook,
         .fire_push_replace_reload = &firePushReplaceReloadHook,
         .fire_traverse = &fireTraverseHook,
+        .fire_download_request = &fireDownloadRequestHook,
         .inform_about_aborting_navigation = &informAboutAbortingNavigationHook,
         .inform_about_child_navigable_destruction = &informAboutChildNavigableDestructionHook,
         .intercept = &interceptHook,
@@ -1178,6 +1179,40 @@ fn fireTraverseHook(window: *runtime.Instance, entry_id: u64, user_involvement: 
     });
 }
 
+/// dom.navigation_api: HTML "fire a download request navigate event".
+fn fireDownloadRequestHook(window: *runtime.Instance, destination_url: []const u8, user_involvement: dom.navigation_api.UserInvolvement, source_element: ?*runtime.Instance, filename: []const u8) bool {
+    const target = targetOf(window) orelse return true;
+    const instance = target.instance;
+    const internal = target.internal;
+    // Deviation, stated: the navigation in progress is aborted first, as
+    // "fire a push/replace/reload navigate event" step 2 does - the download
+    // request steps leave it ongoing (the inner algorithm's step 2 asserts no
+    // ongoing API method tracker), and Blink aborts it
+    // (ordering-and-transition/anchor-download-aborts-previous-navigation).
+    informAboutAbortingNavigation(instance, internal);
+    const s = scopeOf(instance, internal) orelse return true;
+    // Steps 2-7: classic history API state null, and a destination at
+    // destinationURL with no entry, state StructuredSerializeForStorage(null)
+    // and is same document false.
+    const destination = makeDestination(instance, .{
+        .url = destination_url,
+        .state = .null,
+        .is_same_document = false,
+    }) orelse return true;
+    // Step 8: "Return the result of performing the inner navigate event
+    // firing algorithm given navigation, "push", event, destination,
+    // userInvolvement, sourceElement, null, and filename."
+    return innerFire(instance, internal, s, .{
+        .navigation_type = .push,
+        .destination = destination,
+        .destination_url = destination_url,
+        .is_same_document = false,
+        .user_involvement = user_involvement,
+        .source_element = source_element,
+        .download_request = filename,
+    });
+}
+
 /// A new NavigationDestination in `instance`'s relevant realm; null when it
 /// could not be made (the navigation then goes on without an event).
 fn makeDestination(instance: *runtime.Instance, init_state: dom.navigation_objects.DestinationInit) ?*runtime.Instance {
@@ -1201,6 +1236,9 @@ const Firing = struct {
     classic_state: ?joint_history.SerializedState = null,
     /// "formDataEntryList", as a FormData holding it. BORROWED.
     form_data: ?*runtime.Instance = null,
+    /// "downloadRequestFilename": a download's filename (the hyperlink's
+    /// download attribute value), null for a navigation. BORROWED.
+    download_request: ?[]const u8 = null,
     tracker: ?*Tracker = null,
 };
 
@@ -1298,7 +1336,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
         .hashChange = hash_change,
         .signal = signal,
         .formData = form_data,
-        .downloadRequest = null,
+        .downloadRequest = if (firing.download_request) |filename| runtime.DOMString.initInterned(filename) else null,
         .info = if (info) |i| i.borrow() else null,
         .hasUAVisualTransition = false,
         .sourceElement = firing.source_element,

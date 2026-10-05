@@ -174,6 +174,7 @@ pub fn installHooks() void {
     dom_module.navigables.install(.{
         .navigate_by_target = &navigateByTarget,
         .follow_hyperlink = &followHyperlink,
+        .download_hyperlink = &downloadHyperlink,
         .traverse_navigable = &traverseNavigable,
         .find_by_name = &frameWindowByName,
     });
@@ -2868,6 +2869,42 @@ fn followHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navi
 
     // Steps 7-11: navigate with the given user involvement.
     navigateByTargetWithReferrerPolicy(document, .{ .target = target, .url = url, .noopener = noopener, .source_element = subject, .user_involvement = user_involvement }, referrer_policy);
+}
+
+/// HTML "download the hyperlink" created by `subject` (an `a` or `area`
+/// element with a download attribute), with no hyperlink suffix.
+fn downloadHyperlink(subject: *runtime.Instance, user_involvement: dom_module.navigation_api.UserInvolvement) void {
+    const document = (interfaces.Node.get_ownerDocument(subject) catch null) orelse return;
+    // Step 1: "If subject cannot navigate, then return."
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    const is_anchor = subject.stateAs(interfaces.HTMLAnchorElement.State) != null;
+    if (!is_anchor and !(interfaces.Node.get_isConnected(subject) catch false)) return;
+    // Step 2: "If subject's node document's active sandboxing flag set has
+    // the sandboxed downloads browsing context flag set, then return." The
+    // document's flags are its navigable's (as for scripts and forms).
+    if (html_core.BrowsingContext.ofWindow(@ptrCast(window))) |bc| {
+        if (bc.sandbox_flags) |flags| if (!flags.allow_downloads) return;
+    }
+    // Steps 3-4: "Let urlString be the result of encoding-parsing-and-
+    // serializing a URL given subject's href attribute value, relative to
+    // subject's node document. If urlString is failure, then return."
+    const href = (interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("href")) catch null) orelse return;
+    const url = parseRelativeToDocument(document, href.asSlice()) orelse return;
+    defer document.ctx.allocator.free(url);
+    // Step 6: not "browser UI": the download request navigate event, with
+    // the download attribute's value as its filename.
+    if (user_involvement != .browser_ui) {
+        const filename = (interfaces.Element.call_getAttribute(subject, runtime.DOMString.initInterned("download")) catch null) orelse runtime.DOMString.initEmpty();
+        // 6.4-6.5: "If continue is false, then return."
+        if (!dom_module.navigation_api.fireDownloadRequest(window, url, user_involvement, subject, filename.asSlice())) return;
+        // 6.6: "Inform the navigation API about aborting navigation given
+        // subject's node navigable."
+        dom_module.navigation_api.informAboutAbortingNavigation(window);
+    }
+    // Steps 7-9 (fetch the URL and "handle as a download") are not modelled,
+    // stated: Crane has no download manager, so the request is never made and
+    // nothing is saved - the step 7 option ("the user agent may return")
+    // taken for every download.
 }
 
 /// The target of the first base element in `document` that has one, or "".

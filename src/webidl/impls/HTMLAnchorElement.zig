@@ -376,8 +376,9 @@ fn hasActivationBehavior(target: *runtime.Instance) bool {
 /// dom.activation: the a element's activation behaviour (HTML 4.6.4): "if
 /// element has no href attribute, then return"; otherwise follow the
 /// hyperlink (dom.navigables), auditing it (hyperlink_auditing: the ping
-/// attribute). Downloading (the download attribute) and the image map
-/// coordinates of an ismap image are not modelled.
+/// attribute) - or, with a download attribute, download it (its download
+/// request navigate event). The image map coordinates of an ismap image are
+/// not modelled.
 fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) void {
     const elem_internal = ElementImpl.getInternal(target) orelse return;
     if (elem_internal.findAttribute(null, "href") == null) return;
@@ -385,6 +386,10 @@ fn runActivationBehavior(target: *runtime.Instance, event: *runtime.Instance) vo
     // HTML 4.6.6: following it sends the element's pings, before the
     // navigation starts.
     @import("html").hyperlink_auditing.audit(target);
-    // "With userInvolvement set to event's user navigation involvement."
-    navigables.followHyperlink(target, @import("html").user_activation.userNavigationInvolvement(event));
+    // "Let userInvolvement be event's user navigation involvement." "If
+    // element has a download attribute ... download the hyperlink created by
+    // element ... with userInvolvement"; otherwise follow it.
+    const user_involvement = @import("html").user_activation.userNavigationInvolvement(event);
+    if (elem_internal.findAttribute(null, "download") != null) return navigables.downloadHyperlink(target, user_involvement);
+    navigables.followHyperlink(target, user_involvement);
 }
