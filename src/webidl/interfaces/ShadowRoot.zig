@@ -276,8 +276,8 @@ pub const ShadowRoot = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try ShadowRootImpl.set_innerHTML(instance, value);
     }
@@ -338,8 +338,8 @@ pub const ShadowRoot = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try ShadowRootImpl.call_setHTMLUnsafe(instance, html);
     }
@@ -352,5 +352,14 @@ pub const ShadowRoot = struct {
     /// (bit i = argument i; an attribute setter's value is bit 0).
     pub const legacy_null_to_empty = .{
         .{ "set_innerHTML", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_innerHTML",
+        "call_setHTMLUnsafe",
     };
 };

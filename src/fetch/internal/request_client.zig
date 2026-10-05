@@ -39,6 +39,8 @@ pub const RequestClient = struct {
     /// Document's, a WorkerGlobalScope's own. BORROWED for the call; the
     /// request takes a clone. Null for a global that has none.
     policy_container: ?*const PolicyContainer = null,
+    /// Mixed Content 4.3's answer for this settings object, captured by value.
+    prohibits_mixed_security_contexts: bool = false,
     /// Where the settings object's global hears of CSP violations its
     /// requests cause (CSP §5.5). BORROWED: the request keeps it while its
     /// client is there. Null for a global that reports none.
@@ -78,6 +80,10 @@ pub fn populateRequestFromClient(request: *InternalRequest, client: RequestClien
             request.setPolicyContainer(try container.clone(request.allocator));
         }
     }
+
+    // Mixed Content 4.3: take the client's answer now; redirects and clones
+    // must not ask a later document or retain the settings object.
+    request.prohibits_mixed_security_contexts = client.prohibits_mixed_security_contexts;
 
     // Referrer Policy "determine request's referrer", step 3's "client" case,
     // resolved here where the client is known; main fetch step 9 takes it

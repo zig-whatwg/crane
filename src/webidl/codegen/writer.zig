@@ -2710,9 +2710,80 @@ fn writeSingleOperation(
     impl_name: []const u8,
     op: types.Operation,
     type_registry: ?*const @import("ir.zig").TypeRegistry,
-    _: bool, // has_static_collision - no longer used
+    ce_functions: *CEReactionsFunctions,
 ) !void {
-    return writeOperationDelegate(writer, impl_name, op, type_registry, "", false);
+    return writeOperationDelegate(writer, impl_name, op, type_registry, "", false, ce_functions);
+}
+
+/// Whether an operation's delegate runs a [CEReactions] bracket. The one test
+/// both the bracket and the `ce_reactions` table use.
+fn operationRunsCEReactions(op: types.Operation) bool {
+    return hasExtendedAttribute(op.extAttrs, "CEReactions");
+}
+
+/// Whether an attribute's setter delegate runs a [CEReactions] bracket: a
+/// [CEReactions] attribute's [PutForwards] setter or regular setter - not a
+/// [Replaceable] or [LegacyLenientSetter] one, whose setter steps are the
+/// binding's own. The one test both the bracket and the `ce_reactions` table
+/// use; the setter delegates are chosen in this order.
+fn setterRunsCEReactions(attr: types.Attribute) bool {
+    if (!hasExtendedAttribute(attr.extAttrs, "CEReactions")) return false;
+    const extattr_mod = @import("extattr.zig");
+    if (extattr_mod.getPutForwards(attr.extAttrs) != null) return true;
+    if (extattr_mod.isReplaceable(attr.extAttrs) or extattr_mod.isLegacyLenientSetter(attr.extAttrs)) return false;
+    return !attr.readonly;
+}
+
+/// The generated functions of one file that run a [CEReactions] bracket -
+/// recorded where each bracket is written, and where an inherited mixin
+/// member's alias of one is - for the `ce_reactions` table.
+pub const CEReactionsFunctions = struct {
+    names: std.ArrayList([]const u8) = .empty,
+
+    fn add(self: *CEReactionsFunctions, comptime fmt: []const u8, args: anytype) !void {
+        const allocator = std.heap.page_allocator;
+        try self.names.append(allocator, try std.fmt.allocPrint(allocator, fmt, args));
+    }
+
+    fn deinit(self: *CEReactionsFunctions) void {
+        const allocator = std.heap.page_allocator;
+        for (self.names.items) |name| allocator.free(name);
+        self.names.deinit(allocator);
+    }
+};
+
+/// HTML 4.13.6 [CEReactions]: the table of the functions that run a bracket,
+/// keyed like `promise_returning`. The binding dispatches each in a catch
+/// scope, so `engine.withPendingExceptionSetAside` can set aside what the
+/// member leaves pending (V8 hands an exception only to a TryCatch made
+/// before the throw - Blink's CEReactionsScope holds one the same way):
+///
+///     pub const ce_reactions = .{ "call_setter", "set_id" };
+fn writeCEReactionsTable(writer: anytype, functions: *const CEReactionsFunctions) !void {
+    if (functions.names.items.len == 0) return;
+    try writer.writeAll("    /// HTML [CEReactions]: the functions that run a custom element reactions\n");
+    try writer.writeAll("    /// bracket - the binding dispatches each in a catch scope, where\n");
+    try writer.writeAll("    /// engine.withPendingExceptionSetAside sets aside what the member leaves\n");
+    try writer.writeAll("    /// pending.\n");
+    try writer.writeAll("    pub const ce_reactions = .{\n");
+    for (functions.names.items) |name| try writer.print("        \"{s}\",\n", .{name});
+    try writer.writeAll("    };\n\n");
+}
+
+/// HTML 4.13.6 [CEReactions]: "Push a new element queue onto this object's
+/// relevant agent's custom element reactions stack", run the member's steps,
+/// then pop it and invoke its reactions - so `begin` is handed "this object",
+/// the member's `instance` (a static member has none and passes null: the
+/// reactions side resolves the agent through the current realm). `end` is
+/// handed what `begin` captured, never the receiver: the member's steps run
+/// script, which can end the receiver's realm and free its Instance
+/// (codex-ce Q21).
+fn writeCEReactionsBracket(writer: anytype, is_static: bool) !void {
+    const this_object = if (is_static) "null" else "instance";
+    try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
+    try writer.print("        const ce_scope = runtime.CEReactions.begin({s});\n", .{this_object});
+    try writer.writeAll("        defer runtime.CEReactions.end(ce_scope);\n");
+    try writer.writeAll("        \n");
 }
 
 /// Write one operation's delegate, named `call_<name><suffix>`.
@@ -2729,6 +2800,7 @@ fn writeOperationDelegate(
     type_registry: ?*const @import("ir.zig").TypeRegistry,
     suffix: []const u8,
     gated: bool,
+    ce_functions: *CEReactionsFunctions,
 ) !void {
     const allocator = std.heap.page_allocator;
     const name = op.name orelse if (op.special) |special| @tagName(special) else return; // Skip unnamed operations without special type
@@ -2791,7 +2863,7 @@ fn writeOperationDelegate(
     // Check if return type is nullable (WebIDL T? type)
     const is_nullable_return = op.idlType.nullable;
 
-    const has_ce_reactions = hasExtendedAttribute(op.extAttrs, "CEReactions");
+    const has_ce_reactions = operationRunsCEReactions(op);
     const has_new_object = hasExtendedAttribute(op.extAttrs, "NewObject");
 
     // Write extended attributes as comment
@@ -2891,10 +2963,8 @@ fn writeOperationDelegate(
     }
 
     if (has_ce_reactions) {
-        try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
-        try writer.writeAll("        runtime.CEReactions.begin();\n");
-        try writer.writeAll("        defer runtime.CEReactions.end();\n");
-        try writer.writeAll("        \n");
+        try writeCEReactionsBracket(writer, is_static);
+        try ce_functions.add("{s}{s}{s}", .{ if (is_static) "call_static_" else "call_", name, suffix });
     }
 
     if (has_new_object) {
@@ -2987,6 +3057,7 @@ fn writeOverloadDelegates(
     type_registry: ?*const @import("ir.zig").TypeRegistry,
     overload_ops: []const types.Operation,
     options: DelegateOptions,
+    ce_functions: *CEReactionsFunctions,
 ) !void {
     const allocator = std.heap.page_allocator;
     const overload_sets = try overload.groupOperationsByName(allocator, overload_ops);
@@ -2999,11 +3070,13 @@ fn writeOverloadDelegates(
         for (set.operations[1..], 1..) |op, k| {
             if (inheritedFrom(options, op.mixin)) |mixin| {
                 try writer.print("    pub const call_{s}__{d} = mixins.{s}.call_{s}__{d};\n\n", .{ set.name, k, mixin, set.name, k });
+                // The mixin module's delegate runs the bracket.
+                if (operationRunsCEReactions(op)) try ce_functions.add("call_{s}__{d}", .{ set.name, k });
                 continue;
             }
             var suffix_buf: [16]u8 = undefined;
             const suffix = try std.fmt.bufPrint(&suffix_buf, "__{d}", .{k});
-            try writeOperationDelegate(writer, impl_name, op, type_registry, suffix, true);
+            try writeOperationDelegate(writer, impl_name, op, type_registry, suffix, true, ce_functions);
         }
     }
     if (!any) return;
@@ -3825,6 +3898,11 @@ pub fn writeDelegateFunctions(
     // `reflection` is declared once, before the first accessor that uses it.
     var reflection_declared = false;
 
+    // Every function written below that runs a [CEReactions] bracket, for
+    // the `ce_reactions` table at the end.
+    var ce_functions: CEReactionsFunctions = .{};
+    defer ce_functions.deinit();
+
     // Write attribute getters - ONLY for own attributes (not inherited)
     for (own_attributes) |attr| {
         // Check if this is an interface type - if so, use *runtime.Instance
@@ -3896,6 +3974,8 @@ pub fn writeDelegateFunctions(
             try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ get_prefix, sanitized_name, mixin, get_prefix, sanitized_name });
             if (mixinModuleHasSetter(attr)) {
                 try writer.print("    pub const {s}{s} = mixins.{s}.{s}{s};\n", .{ set_prefix, sanitized_name, mixin, set_prefix, sanitized_name });
+                // The mixin module's setter runs the bracket.
+                if (setterRunsCEReactions(attr)) try ce_functions.add("{s}{s}", .{ set_prefix, sanitized_name });
             }
             try writer.writeAll("\n");
             continue;
@@ -3962,7 +4042,7 @@ pub fn writeDelegateFunctions(
         // Write setter: [PutForwards] > [Replaceable] > regular non-readonly
         if (put_forwards) |forwarded_property| {
             // [PutForwards] setter - forwards assignment to property on the attribute's value
-            const has_ce_reactions = hasExtendedAttribute(attr.extAttrs, "CEReactions");
+            const has_ce_reactions = setterRunsCEReactions(attr);
 
             try writeExtendedAttributesComment(writer, attr.extAttrs);
 
@@ -3970,10 +4050,8 @@ pub fn writeDelegateFunctions(
             try writer.print("    pub fn set_{s}(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {{\n", .{sanitized_name});
 
             if (has_ce_reactions) {
-                try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
-                try writer.writeAll("        runtime.CEReactions.begin();\n");
-                try writer.writeAll("        defer runtime.CEReactions.end();\n");
-                try writer.writeAll("        \n");
+                try writeCEReactionsBracket(writer, attr.static);
+                try ce_functions.add("set_{s}", .{sanitized_name});
             }
 
             try writer.writeAll("        // [PutForwards] - Get target object and set the forwarded property\n");
@@ -4029,7 +4107,7 @@ pub fn writeDelegateFunctions(
             try writer.writeAll("    }\n\n");
         } else if (!attr.readonly) {
             // Regular setter for non-readonly attributes (no [PutForwards])
-            const has_ce_reactions = hasExtendedAttribute(attr.extAttrs, "CEReactions");
+            const has_ce_reactions = setterRunsCEReactions(attr);
 
             // Extended attributes apply to setter too
             try writeExtendedAttributesComment(writer, attr.extAttrs);
@@ -4051,11 +4129,8 @@ pub fn writeDelegateFunctions(
             }
 
             if (has_ce_reactions) {
-                // [CEReactions] - Wrap in Custom Element reactions
-                try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
-                try writer.writeAll("        runtime.CEReactions.begin();\n");
-                try writer.writeAll("        defer runtime.CEReactions.end();\n");
-                try writer.writeAll("        \n");
+                try writeCEReactionsBracket(writer, attr.static);
+                try ce_functions.add("{s}{s}", .{ set_prefix, sanitized_name });
             }
 
             if (caches) {
@@ -4087,6 +4162,8 @@ pub fn writeDelegateFunctions(
         // An inherited mixin operation is the includer's by inheritance.
         if (inheritedFrom(options, set.operations[0].mixin)) |mixin| {
             try writer.print("    pub const call_{s} = mixins.{s}.call_{s};\n\n", .{ set.name, mixin, set.name });
+            // The mixin module's delegate runs the bracket.
+            if (operationRunsCEReactions(set.operations[0])) try ce_functions.add("call_{s}", .{set.name});
             continue;
         }
         if (set.isOverloaded()) {
@@ -4097,13 +4174,13 @@ pub fn writeDelegateFunctions(
             const op = set.operations[0];
             // Static methods use call_static_<name>, instance methods use call_<name>
             // No collision detection needed - convention handles it
-            try writeSingleOperation(writer, impl_name, op, type_registry, false);
+            try writeSingleOperation(writer, impl_name, op, type_registry, &ce_functions);
         }
     }
 
     // The other overloads of each overloaded operation, and the table the
     // binding resolves among them with.
-    try writeOverloadDelegates(writer, impl_name, type_registry, overload_ops, options);
+    try writeOverloadDelegates(writer, impl_name, type_registry, overload_ops, options, &ce_functions);
 
     // Which string arguments and attribute values null converts to "" for.
     try writeLegacyNullToEmpty(writer, own_attributes, overload_ops);
@@ -4114,6 +4191,9 @@ pub fn writeDelegateFunctions(
     // [Clamp]'s conversion.
     try writeIntegerConversions(writer, own_attributes, overload_ops);
     try writePromiseReturning(writer, overload_ops);
+    // Which functions run a [CEReactions] bracket: the binding dispatches
+    // them in a catch scope.
+    try writeCEReactionsTable(writer, &ce_functions);
 
     // Write serialize delegate for stringifier interfaces
     // Per WebIDL spec, bare stringifier declarations generate a toString() method

@@ -370,8 +370,8 @@ pub const HTMLFrameSetElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_cols(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameSetElementImpl, "set_cols")) return try HTMLFrameSetElementImpl.set_cols(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "cols" }, value);
@@ -386,8 +386,8 @@ pub const HTMLFrameSetElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_rows(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameSetElementImpl, "set_rows")) return try HTMLFrameSetElementImpl.set_rows(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "rows" }, value);
@@ -455,4 +455,13 @@ pub const HTMLFrameSetElement = struct {
 
     pub const get_onportalactivate = mixins.WindowEventHandlers.get_onportalactivate;
     pub const set_onportalactivate = mixins.WindowEventHandlers.set_onportalactivate;
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_cols",
+        "set_rows",
+    };
 };

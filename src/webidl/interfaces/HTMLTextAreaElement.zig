@@ -407,8 +407,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_autocomplete(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_autocomplete")) return try HTMLTextAreaElementImpl.set_autocomplete(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "autocomplete" }, value);
@@ -423,8 +423,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [ReflectPositiveWithFallback], [ReflectDefault=20]
     pub fn set_cols(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_cols")) return try HTMLTextAreaElementImpl.set_cols(instance, value);
         try reflection.set(u32, instance, .{ .name = "cols", .limit = .positive_with_fallback, .default = 20 }, value);
@@ -439,8 +439,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_dirName(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_dirName")) return try HTMLTextAreaElementImpl.set_dirName(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "dirname" }, value);
@@ -455,8 +455,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_disabled")) return try HTMLTextAreaElementImpl.set_disabled(instance, value);
         try reflection.set(bool, instance, .{ .name = "disabled" }, value);
@@ -475,8 +475,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
     pub fn set_maxLength(instance: *runtime.Instance, value: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_maxLength")) return try HTMLTextAreaElementImpl.set_maxLength(instance, value);
         try reflection.set(i32, instance, .{ .name = "maxlength", .limit = .non_negative }, value);
@@ -491,8 +491,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [ReflectNonNegative]
     pub fn set_minLength(instance: *runtime.Instance, value: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_minLength")) return try HTMLTextAreaElementImpl.set_minLength(instance, value);
         try reflection.set(i32, instance, .{ .name = "minlength", .limit = .non_negative }, value);
@@ -507,8 +507,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_name")) return try HTMLTextAreaElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -523,8 +523,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_placeholder(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_placeholder")) return try HTMLTextAreaElementImpl.set_placeholder(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "placeholder" }, value);
@@ -539,8 +539,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_readOnly(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_readOnly")) return try HTMLTextAreaElementImpl.set_readOnly(instance, value);
         try reflection.set(bool, instance, .{ .name = "readonly" }, value);
@@ -555,8 +555,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_required(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_required")) return try HTMLTextAreaElementImpl.set_required(instance, value);
         try reflection.set(bool, instance, .{ .name = "required" }, value);
@@ -571,8 +571,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [ReflectPositiveWithFallback], [ReflectDefault=2]
     pub fn set_rows(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_rows")) return try HTMLTextAreaElementImpl.set_rows(instance, value);
         try reflection.set(u32, instance, .{ .name = "rows", .limit = .positive_with_fallback, .default = 2 }, value);
@@ -587,8 +587,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_wrap(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTextAreaElementImpl, "set_wrap")) return try HTMLTextAreaElementImpl.set_wrap(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "wrap" }, value);
@@ -606,8 +606,8 @@ pub const HTMLTextAreaElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_defaultValue(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLTextAreaElementImpl.set_defaultValue(instance, value);
     }
@@ -713,5 +713,25 @@ pub const HTMLTextAreaElement = struct {
     /// (bit i = argument i; an attribute setter's value is bit 0).
     pub const legacy_null_to_empty = .{
         .{ "set_value", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_autocomplete",
+        "set_cols",
+        "set_dirName",
+        "set_disabled",
+        "set_maxLength",
+        "set_minLength",
+        "set_name",
+        "set_placeholder",
+        "set_readOnly",
+        "set_required",
+        "set_rows",
+        "set_wrap",
+        "set_defaultValue",
     };
 };

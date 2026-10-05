@@ -109,8 +109,8 @@ pub const PopoverTargetAttributes = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_popoverTargetElement(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try PopoverTargetAttributesImpl.set_popoverTargetElement(instance, value);
     }
@@ -123,9 +123,18 @@ pub const PopoverTargetAttributes = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_popoverTargetAction(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try PopoverTargetAttributesImpl.set_popoverTargetAction(instance, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_popoverTargetElement",
+        "set_popoverTargetAction",
+    };
 };

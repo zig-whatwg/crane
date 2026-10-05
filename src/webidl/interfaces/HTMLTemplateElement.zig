@@ -302,8 +302,8 @@ pub const HTMLTemplateElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_shadowRootMode(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLTemplateElementImpl.set_shadowRootMode(instance, value);
     }
@@ -319,8 +319,8 @@ pub const HTMLTemplateElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_shadowRootDelegatesFocus(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootDelegatesFocus")) return try HTMLTemplateElementImpl.set_shadowRootDelegatesFocus(instance, value);
         try reflection.set(bool, instance, .{ .name = "shadowrootdelegatesfocus" }, value);
@@ -335,8 +335,8 @@ pub const HTMLTemplateElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_shadowRootClonable(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootClonable")) return try HTMLTemplateElementImpl.set_shadowRootClonable(instance, value);
         try reflection.set(bool, instance, .{ .name = "shadowrootclonable" }, value);
@@ -351,8 +351,8 @@ pub const HTMLTemplateElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_shadowRootSerializable(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootSerializable")) return try HTMLTemplateElementImpl.set_shadowRootSerializable(instance, value);
         try reflection.set(bool, instance, .{ .name = "shadowrootserializable" }, value);
@@ -367,10 +367,22 @@ pub const HTMLTemplateElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_shadowRootCustomElementRegistry(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTemplateElementImpl, "set_shadowRootCustomElementRegistry")) return try HTMLTemplateElementImpl.set_shadowRootCustomElementRegistry(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "shadowrootcustomelementregistry" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_shadowRootMode",
+        "set_shadowRootDelegatesFocus",
+        "set_shadowRootClonable",
+        "set_shadowRootSerializable",
+        "set_shadowRootCustomElementRegistry",
+    };
 };

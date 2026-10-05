@@ -175,6 +175,35 @@ pub const ErrorInfo = struct {
     /// The realm whose global object the exception is reported for, when the
     /// engine knows it.
     realm: ?Context,
+    /// The exception is the script's PARSE ERROR: HTML "create a classic
+    /// script" found its source text unparsable and set the script's parse
+    /// error and error to rethrow - not an exception its evaluation threw (a
+    /// top-level `throw`, even of a SyntaxError, is false). Set by the
+    /// classic-script operations (runClassicScript, evaluateClassicScript*).
+    /// Its consumer is "run a worker" onComplete step 1: a worker whose
+    /// script has an error to rethrow fires a plain `error` event at its
+    /// Worker and runs nothing, rather than reporting the exception. A window
+    /// ignores it ("run a classic script" reports both alike). An engine that
+    /// cannot tell leaves it false (docs/engine-protocol.md: JavaScriptCore
+    /// and QuickJS, for now).
+    parse_error: bool = false,
+};
+
+/// A script's position: where `runningScriptLocation` finds the running
+/// script.
+pub const ScriptLocation = struct {
+    /// The script's URL: the `//# sourceURL=` it names itself with, if any
+    /// (eval and Function code have no other), else the URL it was compiled
+    /// with; "" for none. OWNED by the allocator the operation was given.
+    url: []u8,
+    /// 1-based; 0 when unknown.
+    line: u32,
+    /// 1-based, as ErrorEvent.colno counts; 0 when unknown.
+    column: u32,
+
+    pub fn deinit(self: ScriptLocation, allocator: std.mem.Allocator) void {
+        allocator.free(self.url);
+    }
 };
 
 /// HTML "report an exception", as the host supplies it to an operation that
@@ -941,6 +970,17 @@ pub inline fn extractErrorInformation(realm: Context, value: JSValue, allocator:
     return impl.extractErrorInformation(realm, value, allocator);
 }
 
+/// CSP 2.4.1 step 2: "if the user agent is currently executing script, and
+/// can extract a source file's URL, line number, and column number" - where
+/// `agent`'s running script is: the topmost frame of the agent's execution
+/// context stack that belongs to a script, and the call being made there.
+/// Runs no script. Null when no script is running, or when the engine
+/// cannot say (JavaScriptCore and QuickJS: always). Blink's
+/// SourceLocation::Capture.
+pub inline fn runningScriptLocation(agent: *Agent, allocator: std.mem.Allocator) Error!?ScriptLocation {
+    return impl.runningScriptLocation(agent, allocator);
+}
+
 /// ECMAScript ParseModule. `host_defined` is the host's, handed back to its
 /// hooks.
 pub inline fn parseModule(realm: Context, source: []const u8, url: []const u8, host_defined: ?*anyopaque) Error!ParseResult {
@@ -1145,6 +1185,46 @@ pub inline fn throwValue(realm: Context, value: JSValue) Error!void {
 /// Streams size algorithm's result conversion, say.
 pub inline fn completionOf(realm: Context, steps: *const fn (data: ?*anyopaque) Error!void, data: ?*anyopaque) Error!?Owned {
     return impl.completionOf(realm, steps, data);
+}
+
+/// Run `steps` with the exception the running operation has left pending set
+/// aside, then make it pending again - the agent's, so no realm and no
+/// exception value crosses the seam. For HTML 4.13.6 [CEReactions], whose
+/// steps are "2. Run the originally-specified steps for this construct,
+/// catching any exceptions. ... 4. Invoke custom element reactions in queue.
+/// 5. If an exception exception was thrown by the original steps, rethrow
+/// exception.": the bracket's `end`, when the popped element queue is not
+/// empty, invokes the queue's reactions as `steps`. An empty queue makes no
+/// engine call. `agent` is the one `begin` captured (agent lifetime): any
+/// realm - the receiver's, the member function's, even the calling script's
+/// when a frame's own script removes its frame - can end while the member
+/// runs. (WebKit: CustomElementQueue::processQueue saves, clears and
+/// restores the VM's exception; Blink: CEReactionsScope holds it in a
+/// v8::TryCatch.)
+///
+/// - Nothing pending: `steps` runs.
+/// - An exception pending that the engine can set aside: it is set aside,
+///   `steps` runs, and the same value is made pending again, as the
+///   operation left it - the caller sees the original value.
+/// - `steps` must leave nothing pending (each reaction reports its own
+///   exception); if they do anyway, the engine clears it first.
+/// - `error.NotSupported`, and `steps` does NOT run: an exception is pending
+///   that the engine cannot set aside. On V8 that is one left pending outside
+///   a binding catch scope: the binding dispatches every [CEReactions] member
+///   (its generated interface's `ce_reactions` table) in one, so a member
+///   called by script is always covered, but a [CEReactions] member reached
+///   from Zig code is not. The exception stays pending, and the caller must
+///   run no script before it returns: invoking a callback would clear it
+///   (V8's next call does). So `end` then moves the popped queue's elements,
+///   in order, onto the agent's backup element queue and, unless processing
+///   the backup element queue is set, sets it and queues the microtask that
+///   invokes the backup queue's reactions (HTML "enqueue an element on the
+///   appropriate element queue" step 1) - they run once the exception has
+///   propagated.
+/// - `error.ExceptionPending`, and `steps` does not run: the agent is
+///   terminating - `end` does the same as for NotSupported.
+pub inline fn withPendingExceptionSetAside(agent: *Agent, steps: *const fn (data: ?*anyopaque) void, data: ?*anyopaque) Error!void {
+    return impl.withPendingExceptionSetAside(agent, steps, data);
 }
 
 /// Infra "parse JSON bytes to a JavaScript value".

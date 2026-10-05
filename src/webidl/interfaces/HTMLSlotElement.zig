@@ -289,8 +289,8 @@ pub const HTMLSlotElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSlotElementImpl, "set_name")) return try HTMLSlotElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -307,4 +307,12 @@ pub const HTMLSlotElement = struct {
     pub fn call_assignedNodes(instance: *runtime.Instance, options: webidl.Opt(AssignedNodesOptions)) anyerror!runtime.JSValue {
         return try HTMLSlotElementImpl.call_assignedNodes(instance, options);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_name",
+    };
 };

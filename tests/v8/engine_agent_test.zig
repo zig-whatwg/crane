@@ -218,3 +218,42 @@ test "an abort requested while no script runs ends the next script; resumeScript
     try protocol.runClassicScript(realm, .{ .utf8 = "if (globalThis.resumed !== 1) throw new Error('not run');" }, "", null, reporter);
 }
 // ---- end lane: speed ----
+
+/// What a classic-script operation reported: how often, and whether it was
+/// the script's parse error.
+const ParseReport = struct {
+    count: usize = 0,
+    parse_error: bool = false,
+
+    fn report(host: ?*anyopaque, info: *const protocol.ErrorInfo) void {
+        const self: *ParseReport = @ptrCast(@alignCast(host.?));
+        self.count += 1;
+        self.parse_error = info.parse_error;
+    }
+
+    fn reporter(self: *ParseReport) protocol.Reporter {
+        return .{ .report = report, .host = self };
+    }
+};
+
+test "a classic script that fails to parse is reported as its parse error; one that throws, even a SyntaxError, is not" {
+    try setup();
+    // HTML "create a classic script": unparsable source text - the script's
+    // parse error and error to rethrow ("run a worker" onComplete step 1).
+    var seen: ParseReport = .{};
+    try std.testing.expectError(error.ExceptionReported, protocol.runClassicScript(worker_realm.?, .{ .utf8 = "this is not javascript" }, "bad.js", null, seen.reporter()));
+    try std.testing.expectEqual(@as(usize, 1), seen.count);
+    try std.testing.expect(seen.parse_error);
+
+    // Evaluation threw: an exception, whatever its type.
+    seen = .{};
+    try std.testing.expectError(error.ExceptionReported, protocol.runClassicScript(worker_realm.?, .{ .utf8 = "throw new SyntaxError('at run time');" }, "throws.js", null, seen.reporter()));
+    try std.testing.expectEqual(@as(usize, 1), seen.count);
+    try std.testing.expect(!seen.parse_error);
+
+    // evaluateClassicScript shares the path.
+    seen = .{};
+    try std.testing.expectError(error.ExceptionReported, protocol.evaluateClassicScript(worker_realm.?, .{ .utf8 = "1 +" }, "bad2.js", null, seen.reporter()));
+    try std.testing.expectEqual(@as(usize, 1), seen.count);
+    try std.testing.expect(seen.parse_error);
+}

@@ -59,7 +59,7 @@ test "a [Reflect] DOMString falls back to reflecting its lowercased name when th
     try testing.expect(contains(out, "if (comptime @hasDecl(CellImpl, \"set_vAlign\")) return try CellImpl.set_vAlign(instance, value);"));
     try testing.expect(contains(out, "try reflection.set(runtime.DOMString, instance, .{ .name = \"valign\" }, value);"));
     // The setter still runs its custom element reactions around all of it.
-    try testing.expect(contains(out, "runtime.CEReactions.begin();"));
+    try testing.expect(contains(out, "runtime.CEReactions.begin(instance);"));
 }
 
 test "a [Reflect=\"name\"] string reflects the named content attribute" {

@@ -90,11 +90,6 @@ src/webidl/impls/Attr.zig Node.deinit 1
 src/webidl/impls/Attr.zig Node.init 1
 src/webidl/impls/Attr.zig Node.setNodeType 2
 src/webidl/impls/Attr.zig Node.setOwnerDocument 1
-src/webidl/impls/BroadcastChannel.zig EventTarget.deinit 2
-src/webidl/impls/BroadcastChannel.zig EventTarget.dispatchTrusted 1
-src/webidl/impls/BroadcastChannel.zig EventTarget.eventHandler 2
-src/webidl/impls/BroadcastChannel.zig EventTarget.init 1
-src/webidl/impls/BroadcastChannel.zig EventTarget.setEventHandler 2
 src/webidl/impls/CDATASection.zig CharacterData.deinit 1
 src/webidl/impls/CDATASection.zig CharacterData.init 1
 src/webidl/impls/CSSStyleDeclaration.zig Element.getInternal 1
@@ -614,10 +609,6 @@ src/webidl/impls/Window.zig Screen.init 1
 src/webidl/impls/Window.zig Storage.initWithStorage 2
 src/webidl/impls/WindowEventHandlers.zig EventTarget.eventHandler 1
 src/webidl/impls/WindowEventHandlers.zig EventTarget.setEventHandler 1
-src/webidl/impls/Worker.zig EventTarget.dispatchTrusted 2
-src/webidl/impls/Worker.zig EventTarget.eventHandler 3
-src/webidl/impls/Worker.zig EventTarget.init 1
-src/webidl/impls/Worker.zig EventTarget.setEventHandler 3
 src/webidl/impls/WorkerGlobalScope.zig EventTarget.deinit 2
 src/webidl/impls/WorkerGlobalScope.zig EventTarget.eventHandler 1
 src/webidl/impls/WorkerGlobalScope.zig EventTarget.init 1

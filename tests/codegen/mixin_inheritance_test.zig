@@ -131,7 +131,7 @@ test "a mixin module delegates its members to the mixin's impl and keeps no stat
     try testing.expect(contains(out, "return try WalkableImpl.get_leash(instance);"));
     try testing.expect(contains(out, "WalkableImpl.call_walk(instance"));
     // [CEReactions] wraps the mixin's delegate, which is what an includer inherits.
-    try testing.expect(contains(out, "runtime.CEReactions.begin();"));
+    try testing.expect(contains(out, "runtime.CEReactions.begin(instance);"));
     // A mixin has no instances and so no State of its own.
     try testing.expect(!contains(out, "getState(State)"));
 }

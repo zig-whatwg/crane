@@ -1,22 +1,29 @@
-//! The worker host: the HTML half of "run a worker" for a dedicated worker.
+//! The worker host: the HTML half of "run a worker".
 //!
 //! Spec: HTML Standard § 10.2.4 Processing model
 //! https://html.spec.whatwg.org/#run-a-worker
 //!
 //! A worker is an agent and a realm in it whose global object is a
-//! DedicatedWorkerGlobalScope. The ENGINE half - making the agent and the
-//! realm, binding the global object, running script, the engine's own posted
-//! tasks, the realm's end - is the JavaScript engine's, and this file reaches
-//! it only through the engine protocol (`@import("engine")`; AGENTS.md, "The
-//! engine boundary"; V8's side is src/runtime/engines/v8/worker_realm.zig).
-//! What is here is the worker as HTML describes it:
+//! DedicatedWorkerGlobalScope or a SharedWorkerGlobalScope. The ENGINE half -
+//! making the agent and the realm, binding the global object, running script,
+//! the engine's own posted tasks, the realm's end - is the JavaScript
+//! engine's, and this file reaches it only through the engine protocol
+//! (`@import("engine")`; AGENTS.md, "The engine boundary"; V8's side is
+//! src/runtime/engines/v8/worker_realm.zig). What is here is the worker as
+//! HTML describes it:
 //!
-//! - its event loop: the worker's tasks run as timers on the page's loop, and
-//!   each ends the worker's way (`endTask`) - a microtask checkpoint, the
-//!   engine's posted tasks, and whatever the worker posted leaving for its
-//!   owner;
-//! - its timers (§ 8.6), messages in both directions (the implicit ports),
-//!   errors reported to its global scope and then to its Worker object;
+//! - its event loop. A DEDICATED worker runs on a thread of its own
+//!   (docs/instances.md, "Decisions"; html/worker_thread.zig): its agent, its
+//!   realm and this host are made on that thread, its tasks and timers run on
+//!   the thread's WorkerEventLoop, and its end runs there synchronously once
+//!   its loop stops (`startDedicatedWorker`, `ThreadHost`). A SHARED worker
+//!   still runs its tasks as timers on its creator's loop (until workers
+//!   batch 2 moves it to a thread of its own too), each ended the worker's
+//!   way (`endTask`) - a microtask checkpoint, the engine's posted tasks;
+//! - its timers (§ 8.6), messages in both directions (a dedicated worker's
+//!   implicit port is one end of a dom.port_channels Channel, whose other end
+//!   is its Worker object's outside port), errors reported to its global
+//!   scope and then to its Worker object;
 //! - its life: running, closing (close() or "terminate a worker"), the
 //!   realm's end, the agent's;
 //! - its agent's host hooks: import() in the worker, and import.meta of the
@@ -56,31 +63,18 @@ const async_fetch = @import("fetch").algorithms.async_fetch;
 // Worker types from html_core
 const html_core = @import("html_core");
 const workers = html_core.workers;
-const WorkerContext = workers.WorkerContext;
-
-const EngineCallbacks = workers.worker_context.EngineCallbacks;
 const WorkerType = workers.WorkerType;
-const DedicatedWorker = workers.DedicatedWorker;
-const script_fetch = workers.script_fetch;
-const EngineMessage = workers.message_channel.EngineMessage;
-const QueuedMessage = workers.message_channel.QueuedMessage;
 
-/// Opaque engine context type expected by WorkerContext
-const EngineContext = workers.worker_context.EngineContext;
+// A dedicated worker on a thread of its own: the link both threads share,
+// the thread's body and loop, and the Browser's registry of live workers.
+const WorkerLink = @import("worker_link.zig").WorkerLink;
+const WorkerThread = @import("worker_thread.zig").WorkerThread;
+const WorkerEventLoop = @import("worker_event_loop.zig").WorkerEventLoop;
+const WorkerRegistry = @import("worker_registry.zig").WorkerRegistry;
 
-// Thread-local storage for the worker whose script is running (used by the
-// built-ins, and by nested workers made from inside one).
-threadlocal var current_worker_context: ?*WorkerHost = null;
-
-/// Set the current worker context (for use by external code before invoking worker callbacks)
-pub fn setCurrentWorkerContext(ctx: ?*WorkerHost) void {
-    current_worker_context = ctx;
-}
-
-/// Get the current worker context (for internal use)
-pub fn getCurrentWorkerContext() ?*WorkerHost {
-    return current_worker_context;
-}
+// The implicit ports' channel, whose ends cross threads.
+const port_channels = @import("dom").port_channels;
+const PortMessage = port_channels.PortMessage;
 
 // ============================================================================
 // Timers (HTML § 8.6)
@@ -144,81 +138,20 @@ fn cancelWorkerTimers(owner: *WorkerHost) void {
     for (ids.items) |id| owner.clearTimer(id);
 }
 
-// ============================================================================
-// Worker Error Handling Support
-// ============================================================================
-
-/// Callback to dispatch worker error events to the parent context.
-/// This is scheduled after an error occurs in the worker and self.onerror
-/// didn't handle it.
-fn workerErrorDispatchCallback(context_ptr: ?*anyopaque) void {
-    const error_ctx: *WorkerErrorDispatchContext = @ptrCast(@alignCast(context_ptr orelse return));
-    defer error_ctx.allocator.destroy(error_ctx);
-
-    // Fire the error event to the parent Worker object
-    error_ctx.dedicated_worker.fireErrorToParent(error_ctx.error_event);
-}
-
-/// Context for scheduling error dispatch to parent
-const WorkerErrorDispatchContext = struct {
-    dedicated_worker: *DedicatedWorker,
-    error_event: *workers.worker_error.WorkerErrorEvent,
-    allocator: Allocator,
-};
-
-/// Arm a 0ms timer that dispatches the worker's queued messages on the owner's
-/// event loop, unless one is already armed - the callback drains the whole
-/// queue, so one is enough.
-///
-/// The timer carries the WorkerHost, which records it so that `deinit`
-/// can disarm it. It used to carry a bare `*DedicatedWorker` that nothing
-/// cancelled: a Worker collected, or torn down with its page, while the timer
-/// was armed left it to fire into freed memory - SIGSEGV at 0xAAAA...AAAA in
-/// `processQueuedMessages`, in whichever test the same process ran next.
-/// One crash per sharded `html/webappapis/timers/` run, in a file with no
-/// worker in it.
-fn scheduleMessageDispatch(wctx: *WorkerHost) void {
-    if (wctx.message_dispatch != null) return;
-    const dedicated_worker = wctx.dedicated_worker orelse return;
-    if (dedicated_worker.port_pair.outside_port.message_queue.items.len == 0) return;
-    const timer = wctx.timer orelse return;
-    const id = timer.setTimeout(0, workerMessageDispatchCallback, wctx);
-    if (id == 0) return;
-    wctx.message_dispatch = .{ .timer = timer, .id = id };
-}
-
-/// Every worker whose realm is still there, for `finishTaskIn` and
-/// `scopeSettings`.
+/// Every worker on this thread whose realm is still there, for
+/// `scopeSettings` and the realm hooks: a dedicated worker's thread has its
+/// one; its creator's thread has every shared worker. Freed when it empties,
+/// so a worker thread that ends leaves nothing of it.
 threadlocal var live_contexts: std.ArrayListUnmanaged(*WorkerHost) = .empty;
 
 fn removeLive(wctx: *WorkerHost) void {
     for (live_contexts.items, 0..) |live, i| {
         if (live == wctx) {
             _ = live_contexts.swapRemove(i);
-            return;
+            break;
         }
     }
-}
-
-/// The end of a task that ran script in `agent` from outside the worker's
-/// own timers, if `agent` is a worker's: what a timer task does after its
-/// callback. The microtask checkpoint runs, and whatever the worker posted
-/// leaves it for the page. Without this the worker's messages sat in its
-/// queue, and a test that reports its results by message timed out. Call it
-/// with `agent` entered.
-///
-/// Callers that still name the agent (XMLHttpRequest, Response and
-/// WindowOrWorkerGlobalScope pass their V8 isolate, which is what the V8
-/// adapter's agent is) are moving to the Engine table's `runTaskInRealm`,
-/// which ends a task through the realm's `end_of_task` instead.
-pub fn finishTaskIn(agent: *anyopaque) void {
-    const wctx = for (live_contexts.items) |live| {
-        if (@intFromPtr(live.agent) == @intFromPtr(agent)) break live;
-    } else return;
-    const prev_context = current_worker_context;
-    current_worker_context = wctx;
-    defer current_worker_context = prev_context;
-    wctx.endTask();
+    if (live_contexts.items.len == 0) live_contexts.clearAndFree(std.heap.page_allocator);
 }
 
 /// What a worker's global scope takes from the worker that runs it: "run a
@@ -244,7 +177,7 @@ pub fn scopeSettings(ctx: runtime.Context) ?ScopeSettings {
     return .{
         .url = wctx.script_url,
         .worker_type = wctx.worker_type,
-        .name = if (wctx.dedicated_worker) |dw| dw.getName() else if (wctx.shared) |shared| shared.name else "",
+        .name = if (wctx.shared) |shared| shared.name else wctx.name,
         .cookie_jar = wctx.cookie_jar,
         .policy_container = &wctx.policy_container,
     };
@@ -264,9 +197,6 @@ pub fn installRealmHooks(realm: *runtime.ContextData) void {
 /// runs any more reports nothing.
 pub fn reportExceptionOfRealm(realm: *runtime.ContextData, info: *const runtime.ErrorInfo) void {
     const wctx = forScope(realm) orelse return;
-    const prev_context = current_worker_context;
-    current_worker_context = wctx;
-    defer current_worker_context = prev_context;
     WorkerHost.reportException(wctx, info);
 }
 
@@ -274,9 +204,6 @@ pub fn reportExceptionOfRealm(realm: *runtime.ContextData, info: *const runtime.
 /// `finishTaskIn` does, found by the realm instead of the agent.
 pub fn endTaskOfRealm(ctx: runtime.Context) void {
     const wctx = forScope(ctx) orelse return;
-    const prev_context = current_worker_context;
-    current_worker_context = wctx;
-    defer current_worker_context = prev_context;
     wctx.endTask();
 }
 
@@ -407,9 +334,6 @@ pub fn runImportedScript(ctx: runtime.Context, script: *const ImportedScript) an
     defer if (rethrow.value) |value| value.release();
     wctx.entered += 1;
     defer wctx.entered -= 1;
-    const prev_context = current_worker_context;
-    current_worker_context = wctx;
-    defer current_worker_context = prev_context;
     engine.runClassicScript(realm, .{ .utf8 = script.source }, script.url, record, rethrow.reporter()) catch |err| switch (err) {
         error.ExceptionReported => {},
         else => return err,
@@ -459,9 +383,11 @@ fn removeHost(wctx: *WorkerHost) void {
     for (hosts.items, 0..) |host, i| {
         if (host == wctx) {
             _ = hosts.swapRemove(i);
-            return;
+            break;
         }
     }
+    // A worker thread's one host is gone: nothing of the list outlives it.
+    if (hosts.items.len == 0) hosts.clearAndFree(std.heap.page_allocator);
 }
 
 /// The end of the event loop whose timers are `timers`: its owner, the
@@ -470,8 +396,9 @@ fn removeHost(wctx: *WorkerHost) void {
 /// then what "run a worker" does once the worker's event loop has exited:
 /// the realm goes, then the agent.
 ///
-/// A worker's steps are timers on its owner's loop, and so is its end
-/// (`scheduleTeardown`). A Browser that ended with a worker still running
+/// A shared worker's steps are timers on its owner's loop, and so is its end
+/// (`scheduleTeardown`); a dedicated worker's thread is ended and joined by
+/// the Browser's WorkerRegistry first, and has no step on this loop. A Browser that ended with a worker still running
 /// let the Worker object go in its page's teardown, which armed the end, and
 /// then dropped the loop with the end unfired: the worker's realm, its agent
 /// and this host - every classic script the realm ran - stayed until the
@@ -507,33 +434,6 @@ fn nextToEnd(timers: runtime.TimerInterface) ?*WorkerHost {
         if (armed_here or runs_here) return host;
     }
     return null;
-}
-
-/// Worker agents disposed on this thread so far. A worker that ends and
-/// never gets here keeps its whole heap for the life of the process.
-threadlocal var disposed_isolates: usize = 0;
-
-pub fn disposedIsolateCount() usize {
-    return disposed_isolates;
-}
-
-/// Workers on this thread whose realm has not been torn down.
-pub fn liveWorkerCount() usize {
-    return live_contexts.items.len;
-}
-
-/// Callback to dispatch worker messages in the main thread context.
-/// This is scheduled after worker timer callbacks flush messages to ensure
-/// messages are processed in a clean state.
-fn workerMessageDispatchCallback(context_ptr: ?*anyopaque) void {
-    const wctx: *WorkerHost = @ptrCast(@alignCast(context_ptr orelse return));
-    // Fired: nothing left to cancel, and a message queued from here on arms a
-    // fresh timer.
-    wctx.message_dispatch = null;
-    const dedicated_worker = wctx.dedicated_worker orelse return;
-
-    // Process queued messages - this fires `message` at the Worker object.
-    dedicated_worker.processQueuedMessages();
 }
 
 /// Timer callback trampoline - invoked by the timer manager
@@ -606,9 +506,6 @@ fn runWorkerTimerCallback(ctx: *WorkerTimerContext) void {
     defer runtime.timer.nesting_level = saved_nesting;
 
     // The built-ins (postMessage, the timers) find their worker here.
-    const prev_context = current_worker_context;
-    current_worker_context = wctx;
-    defer current_worker_context = prev_context;
 
     // A task of the worker's realm: its agent entered from the page's loop,
     // and ended the worker's way (`endTaskOfRealm`).
@@ -685,6 +582,10 @@ pub const WorkerHost = struct {
     /// as its own ("run a worker" step 9 - HTML takes the response's URL) and
     /// the one importScripts() resolves against. Owned.
     script_url: []const u8,
+    /// A dedicated worker's global scope's name ("run a worker" step 8:
+    /// options["name"]). Owned; empty for a shared worker, whose name is in
+    /// `shared`.
+    name: []const u8 = "",
     /// The user agent's cookie jar, from the global that created this
     /// worker (BORROWED: the Browser outlives its workers). The worker's
     /// global scope takes it through `scopeSettings`.
@@ -698,39 +599,54 @@ pub const WorkerHost = struct {
     /// container" chose (`setPolicyContainer`). Owned.
     policy_container: fetch_mod.internal.PolicyContainer,
 
-    /// The loop the worker's tasks run on: HTML gives a worker an event loop
-    /// of its own, and here its tasks - timers, message delivery, fetch
-    /// settling, its end - are timers on its creator's loop. Recorded when
-    /// the worker is made, from the creator's realm; a nested worker's
-    /// creator is a worker, whose realm has its host's. It used to be one
-    /// thread-local that every Worker constructor overwrote, so a worker's
-    /// tasks went to whichever loop the last worker made had.
+    /// The timers the worker's tasks run on. A dedicated worker's are its
+    /// own thread's loop's (WorkerEventLoop.timerInterface). A shared
+    /// worker's are its creator's loop's: its tasks - timers, message
+    /// delivery, fetch settling, its end - are timers there, recorded when
+    /// the worker is made, from the creator's realm.
     timer: ?runtime.TimerInterface,
 
-    /// The creator's Browser scope and the cross-thread inbox of the loop
-    /// the worker's tasks run on - its creator's, while a worker's tasks are
-    /// timers on that loop. The worker's realm carries both
+    /// The worker's Browser scope (its creator's), and the cross-thread inbox
+    /// of the loop its tasks run on - a dedicated worker's own loop's, a
+    /// shared worker's creator's. The worker's realm carries both
     /// (ContextData.browser_scope, .task_sink): a MessagePort made in it
-    /// binds its channel end to that inbox. BORROWED, from the creator's
-    /// realm.
+    /// binds its channel end to that inbox, and a Worker made in it is owned
+    /// through it. BORROWED.
     browser_scope: ?*runtime.BrowserScope = null,
     task_sink: ?*runtime.TaskSink = null,
 
-    /// Allocator
+    /// Allocator. Thread-safe: a dedicated worker's messages are freed on
+    /// the other thread.
     allocator: Allocator,
 
-    /// Reference to the DedicatedWorker (set during setupWorkerGlobalScope).
-    /// Cleared when the owner lets go (`deinit`): it is freed right after.
-    dedicated_worker: ?*DedicatedWorker = null,
+    /// A dedicated worker's own event loop (WorkerEventLoop.eventLoop), which
+    /// its realm records for host algorithms that queue tasks. Null for a
+    /// shared worker.
+    event_loop: ?runtime.EventLoop = null,
 
-    /// The owner-side timer armed by `scheduleMessageDispatch`, while it is
-    /// armed. `deinit` cancels it: it reaches `dedicated_worker`, which is freed
-    /// right after this context is deinitialized.
-    message_dispatch: ?MessageDispatchTimer = null,
+    /// A dedicated worker on a thread of its own: what this host shares with
+    /// its owner's thread (the worker side's reference is the thread's, not
+    /// this host's). Null for a shared worker. Its state is the closing flag
+    /// of the worker's global scope.
+    link: ?*WorkerLink = null,
 
-    /// Set by the owner's first `deinit` (Worker.deinit, or the agent's
-    /// WorkerContext through disposeContextCallback); the second does nothing.
-    is_deinitialized: bool = false,
+    /// A dedicated worker's implicit port: its end of the channel whose other
+    /// end is its Worker object's outside port ("run a worker" onComplete
+    /// steps 3-5). Bound to this host on the worker's loop - its messages are
+    /// fired at the global scope - from setup until the realm's end, which
+    /// discards it ("run a worker" step 17: disentangle the worker's ports).
+    inside_end: ?*port_channels.End = null,
+
+    /// The worker's creation time in milliseconds since the epoch ("run a
+    /// worker" step 3), its global scope's time origin; null when the host
+    /// has none (a shared worker: now, when its global scope is made).
+    time_origin_ms: ?f64 = null,
+
+    /// A dedicated worker's Worker object, as its owner's tasks find it: an
+    /// address and slab generation, never dereferenced on this thread - an
+    /// error report carries them to the owner's loop
+    /// (`sendErrorToParent`), which checks the generation there.
+    owner_worker: ?OwnerWorker = null,
 
     /// How deep this host has run script in the worker on the current stack.
     /// While it is above zero the worker's script may be running, and the
@@ -744,6 +660,14 @@ pub const WorkerHost = struct {
     /// further.
     reporting_error: bool = false,
 
+    /// The worker's own classic script is running ("run a worker"
+    /// onComplete step 10), and whether it failed to PARSE: a script whose
+    /// error to rethrow is non-null takes onComplete step 1 instead - a plain
+    /// `error` at the worker object, nothing reported at the global scope,
+    /// nothing run.
+    running_own_script: bool = false,
+    own_script_parse_failed: bool = false,
+
     /// The timer that runs the next teardown step, while one is armed.
     teardown_timer: ?MessageDispatchTimer = null,
 
@@ -751,12 +675,8 @@ pub const WorkerHost = struct {
     /// would (`armPlatformPump`), while one is armed.
     platform_pump: ?MessageDispatchTimer = null,
 
-    /// The timer that asks again whether the Worker object's pending activity
-    /// has ended (`releaseOwnerWhenIdle`), while one is armed.
-    release_owner_timer: ?MessageDispatchTimer = null,
-
-    /// The owner has let go (`destroy`). The memory goes once this is set and
-    /// the agent is disposed, whichever comes last.
+    /// A shared worker's manager has let go. Its memory goes once this is set
+    /// and the agent is disposed.
     owner_released: bool = false,
 
     /// A shared worker's: what its SharedWorkerGlobalScope was made with,
@@ -802,13 +722,12 @@ pub const WorkerHost = struct {
 
     const Self = @This();
 
-    /// A worker for `script_url`: "run a worker" step 4, obtain a dedicated
-    /// worker agent - [[CanBlock]] true - with this host's hooks
+    /// A SHARED worker for `script_url`, on its creator's thread: "run a
+    /// worker" step 4, obtain a shared worker agent with this host's hooks
     /// (`worker_hooks`). The realm follows when the global scope is set up.
     ///
     /// `creator` is the realm that made the worker: its timers are the loop
-    /// the worker's tasks run on - a nested worker's creator, a worker, has
-    /// them from its own host - and its scope and inbox the worker realm's.
+    /// the worker's tasks run on, and its scope and inbox the worker realm's.
     pub fn init(
         allocator: Allocator,
         script_url: []const u8,
@@ -859,9 +778,68 @@ pub const WorkerHost = struct {
     const freeImport = WorkerModules.freeImport;
     const finishPendingImports = WorkerModules.finishPendingImports;
 
-    /// Whether the worker runs tasks: not once its closing flag is set.
+    /// A DEDICATED worker's host, made on the worker's own thread by its
+    /// start step (`ThreadHost.start`): "run a worker" step 4, obtain a
+    /// dedicated worker agent - [[CanBlock]] true - with this host's hooks.
+    /// It is made here with no isolate entered, so the engine records it as
+    /// this thread's host agent: its end takes down this thread's engine
+    /// state, which is the worker's alone (lesson: an agent's role is
+    /// recorded when it is made). The agent is published through the link -
+    /// from then on the owner can abort script in it - and is the thread's:
+    /// WorkerThread destroys it after the realm's end, then this host is
+    /// freed (`free`). `thread_host.host` is set before anything can fail,
+    /// so a host half made is freed the same way. Whether the worker still
+    /// runs: false when it was terminated before its agent existed.
+    fn initOnThread(allocator: Allocator, thread_host: *ThreadHost, thread: *WorkerThread) !bool {
+        const start = &thread_host.start;
+        const self = try allocator.create(Self);
+        self.* = .{
+            .agent = undefined,
+            .agent_host = html_core.agent_host.AgentHost.init(allocator),
+            .script_url = "",
+            .worker_type = start.worker_type,
+            .policy_container = fetch_mod.internal.PolicyContainer.init(allocator),
+            .timer = thread.loop.timerInterface(),
+            .event_loop = thread.loop.eventLoop(),
+            .browser_scope = start.browser_scope,
+            .task_sink = thread.loop.sink,
+            .allocator = allocator,
+            .link = thread.link,
+            .owner_worker = start.owner_worker,
+            .cookie_jar = start.cookie_jar,
+            .time_origin_ms = start.time_origin_ms,
+        };
+        thread_host.host = self;
+        hosts.append(std.heap.page_allocator, self) catch {};
+        const agent = try engine.createAgent(.{
+            .can_block = true,
+            .from_snapshot = false,
+            .hooks = &worker_hooks,
+            .host = &self.agent_host,
+            .allocator = allocator,
+        });
+        self.agent = agent;
+        thread.loop.agent = agent;
+        const runs = thread.link.publishAgent(agent);
+        self.script_url = try allocator.dupe(u8, start.script_url);
+        self.name = try allocator.dupe(u8, start.name);
+        // "Run a worker" onComplete: the global scope's policy container,
+        // chosen when the script was fetched. Taken.
+        if (start.policy_container) |container| {
+            self.setPolicyContainer(container);
+            start.policy_container = null;
+        }
+        live_contexts.append(std.heap.page_allocator, self) catch {};
+        return runs;
+    }
+
+    /// Whether the worker runs tasks: not once its closing flag is set -
+    /// close() in its script, or (a dedicated worker's) "terminate a worker"
+    /// from its owner's thread.
     pub fn runsTasks(self: *const Self) bool {
-        return self.phase == .running;
+        if (self.phase != .running) return false;
+        const link = self.link orelse return true;
+        return link.runsTasks();
     }
 
     /// Run `steps` as a task of the worker's realm - its agent entered, and
@@ -875,13 +853,14 @@ pub const WorkerHost = struct {
     }
 
     /// The end of a task that ran script in this worker: a microtask
-    /// checkpoint, the tasks the engine has posted for its agent, and whatever
-    /// the worker posted leaving for the page. Call with the agent entered.
+    /// checkpoint. A shared worker, whose tasks are timers on its creator's
+    /// loop, also runs the tasks the engine has posted for its agent, and
+    /// keeps a pump armed while background work is left; a dedicated
+    /// worker's own loop does both every turn. Call with the agent entered.
     fn endTask(self: *Self) void {
         if (self.realm != null) engine.performMicrotaskCheckpoint(self.agent) catch {};
+        if (self.link != null) return;
         _ = engine.runEngineTasks(self.agent);
-        DedicatedWorker.flushPendingMessages();
-        scheduleMessageDispatch(self);
         self.armPlatformPump(false);
     }
 
@@ -915,10 +894,6 @@ pub const WorkerHost = struct {
         const self: *Self = @ptrCast(@alignCast(context_ptr orelse return));
         self.platform_pump = null;
         if (!self.runsTasks()) return;
-
-        const prev_context = current_worker_context;
-        current_worker_context = self;
-        defer current_worker_context = prev_context;
 
         var pumped = Pump{ .host = self };
         self.runTask(Pump.steps, &pumped);
@@ -1000,42 +975,39 @@ pub const WorkerHost = struct {
     // The end of a worker
     // ------------------------------------------------------------------
 
-    /// HTML "terminate a worker", from the owner's side (worker.terminate()):
-    /// 1. set the closing flag, 2. discard the worker's tasks, 3. abort its
-    /// script, 4. empty the port message queue of the port its implicit port
-    /// is entangled with - the page's side, so nothing the worker posted is
-    /// delivered from now on. The realm and the agent then go, from later
-    /// tasks (`scheduleTeardown`). Step 3 has nothing to abort: the owner's
-    /// script runs on this thread, so the worker's cannot be running.
+    /// HTML "terminate a worker" for a SHARED worker, on its creator's
+    /// thread (a failed start, or the end of its creator's loop): 1. set the
+    /// closing flag, 2. discard the worker's tasks. Step 3 has nothing to
+    /// abort - its script runs on this thread, so it cannot be running - and
+    /// step 4 is a dedicated worker's. The realm and the agent then go, from
+    /// later tasks (`scheduleTeardown`). A dedicated worker is terminated
+    /// through its link (WorkerLink.terminate), from its owner's thread.
     pub fn terminate(self: *Self) void {
         if (self.phase == .realm_gone or self.phase == .disposed) return;
         self.phase = .closing;
         cancelWorkerTimers(self);
         self.cancelConnects();
         disarm(&self.platform_pump);
-        disarm(&self.message_dispatch);
-        if (self.dedicated_worker) |dw| {
-            emptyPortQueue(dw.port_pair.outside_port);
-            emptyPortQueue(dw.port_pair.inside_port);
-        }
         self.scheduleTeardown();
     }
 
-    /// DedicatedWorkerGlobalScope close(), from the worker's own script:
-    /// 1. discard the tasks queued for the worker's agent, 2. set the closing
-    /// flag. The task that called it runs to its end, and what it posts is
-    /// delivered (workers/interfaces/WorkerGlobalScope/close/sending-messages);
-    /// then the realm goes.
+    /// WorkerGlobalScope close(), from the worker's own script: 1. discard
+    /// the tasks queued for the worker's agent, 2. set the closing flag. The
+    /// task that called it runs to its end, and what it posts is delivered
+    /// (workers/interfaces/WorkerGlobalScope/close/sending-messages); then
+    /// the realm goes - a dedicated worker's at its thread's end, once its
+    /// loop sees the flag; a shared worker's from a later timer.
     fn closeFromScript(self: *Self) void {
         if (self.phase != .running) return;
-        // What the task posted so far joins the port's queue; its end posts
-        // the rest.
-        DedicatedWorker.flushPendingMessages();
-        if (self.dedicated_worker) |dw| dw.close();
         self.phase = .closing;
         cancelWorkerTimers(self);
         self.cancelConnects();
         disarm(&self.platform_pump);
+        if (self.link) |link| {
+            // The loop runs no further task; its end discards them.
+            _ = link.requestClose();
+            return;
+        }
         self.scheduleTeardown();
     }
 
@@ -1078,6 +1050,11 @@ pub const WorkerHost = struct {
         cancelWorkerTimers(self);
         self.cancelConnects();
         disarm(&self.platform_pump);
+        // "Run a worker" step 17: disentangle the worker's ports - its
+        // implicit port first. Its Worker object's outside port is no longer
+        // entangled; what the worker was sent and never ran goes with it.
+        if (self.inside_end) |end| end.discard();
+        self.inside_end = null;
 
         const realm = self.realm orelse return;
         // The import()s still waiting for their fetch task are discarded with
@@ -1105,38 +1082,6 @@ pub const WorkerHost = struct {
         engine.destroyWorkerRealm(realm, sweepFetches, null);
         // Nothing can call import() in the realm any more.
         self.freeClassicScripts();
-        self.releaseOwnerWhenIdle();
-    }
-
-    /// The worker has ended, so its Worker object has no pending activity
-    /// left once nothing the worker posted remains to be delivered - Blink's
-    /// DedicatedWorker::HasPendingActivity() turning false. Then the engine's
-    /// `releasePlatformObject` undoes the Worker's `keepPlatformObjectAlive`,
-    /// and a Worker script no longer references is
-    /// collected like any other object. Always from a timer turn on the
-    /// owner's loop, never from inside a dispatch: a handler that drops the
-    /// last reference must not have its Worker collected while the port is
-    /// still being walked.
-    fn releaseOwnerWhenIdle(self: *Self) void {
-        const dedicated_worker = self.dedicated_worker orelse return;
-        if (dedicated_worker.port_pair.outside_port.message_queue.items.len > 0) {
-            log.debug("owner release deferred: {d} messages to deliver", .{dedicated_worker.port_pair.outside_port.message_queue.items.len});
-            // Delivered by later turns: ask again after them.
-            if (self.release_owner_timer != null) return;
-            const timer = self.timer orelse return;
-            const id = timer.setTimeout(0, ownerReleaseCallback, self);
-            if (id != 0) self.release_owner_timer = .{ .timer = timer, .id = id };
-            return;
-        }
-        const owner: *runtime.Instance = @ptrCast(@alignCast(dedicated_worker.getUserData() orelse return));
-        log.debug("owner released: {*}", .{owner});
-        engine.releasePlatformObject(owner);
-    }
-
-    fn ownerReleaseCallback(context_ptr: ?*anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(context_ptr orelse return));
-        self.release_owner_timer = null;
-        self.releaseOwnerWhenIdle();
     }
 
     /// Fetches still in flight for the realm release their promises, while the
@@ -1170,7 +1115,6 @@ pub const WorkerHost = struct {
     fn disposeAgent(self: *Self) void {
         engine.destroyAgent(self.agent);
         self.phase = .disposed;
-        disposed_isolates += 1;
         if (self.owner_released) self.free();
     }
 
@@ -1185,50 +1129,13 @@ pub const WorkerHost = struct {
         // HTML "terminate a worker": what the worker posted is not delivered.
         if (self.phase == .running) self.terminate();
         disarm(&self.teardown_timer);
-        if (self.phase == .closing) {
-            self.teardownRealm();
-            // An owner waiting for the worker's last messages (after close())
-            // hears nothing more: the loop that would deliver them is ending.
-            // Its Worker object's hold goes when the Worker does.
-            disarm(&self.release_owner_timer);
-        }
+        if (self.phase == .closing) self.teardownRealm();
         if (self.phase == .realm_gone) self.disposeAgent();
     }
 
-    /// The owner is done with the worker: the Worker object is going away, or
-    /// the agent's WorkerContext is (both reach here; the second call does
-    /// nothing). The DedicatedWorker this points at is freed right after, so
-    /// nothing may reach it again. A worker still running is terminated.
-    pub fn deinit(self: *Self) void {
-        if (self.is_deinitialized) return;
-        self.is_deinitialized = true;
-
-        // Disarm the pending message dispatch before the DedicatedWorker it
-        // reaches is freed. The callback clears this record the moment it
-        // fires, so a record still here is a timer that has not fired, and
-        // clearTimeout removes it from the manager - `poll` re-checks each due
-        // id before firing, so it cannot still run.
-        disarm(&self.message_dispatch);
-        disarm(&self.release_owner_timer);
-        self.dedicated_worker = null;
-
-        if (self.phase == .running or self.phase == .closing) {
-            self.phase = .closing;
-            cancelWorkerTimers(self);
-            disarm(&self.platform_pump);
-            self.scheduleTeardown();
-        }
-    }
-
-    /// The owner lets go of this object. Its memory goes once the owner has
-    /// let go and the agent is disposed, whichever comes last; a worker with
-    /// no teardown ahead of it (no loop to run one on) goes now, leaving its
-    /// realm and agent to the process, as they always were.
-    pub fn destroy(self: *Self) void {
-        self.owner_released = true;
-        if (self.phase == .disposed or self.teardown_timer == null) self.free();
-    }
-
+    /// This host's memory, after its agent's end: a shared worker's from
+    /// `disposeAgent`, a dedicated worker's from its thread's last step
+    /// (`ThreadHost.free`), on the thread that made it.
     fn free(self: *Self) void {
         removeLive(self);
         removeHost(self);
@@ -1242,17 +1149,18 @@ pub const WorkerHost = struct {
         self.pending_connects.deinit(self.allocator);
         disarm(&self.teardown_timer);
         disarm(&self.platform_pump);
-        disarm(&self.message_dispatch);
-        disarm(&self.release_owner_timer);
         // A worker with no teardown ahead of it (no loop to run one on) still
         // has its realm and agent: what they hold of this host goes now.
         self.finishPendingImports();
         self.pending_imports.deinit(self.allocator);
         self.disposeModules();
         self.freeClassicScripts();
+        if (self.inside_end) |end| end.discard();
+        self.inside_end = null;
         self.policy_container.deinit();
         self.agent_host.deinit();
         self.allocator.free(self.script_url);
+        self.allocator.free(self.name);
         self.allocator.destroy(self);
     }
 
@@ -1282,25 +1190,22 @@ pub const WorkerHost = struct {
     /// WorkerGlobalScope), which reach this host. Built-ins remain for the
     /// timers, whose bound operations (WindowOrWorkerGlobalScope) return
     /// NotImplemented.
-    pub fn setupWorkerGlobalScope(self: *Self, dedicated_worker: ?*DedicatedWorker) !void {
-        self.dedicated_worker = dedicated_worker;
-
+    pub fn setupWorkerGlobalScope(self: *Self) !void {
         const made = try engine.createWorkerRealm(self.agent, &.{
             .url = self.script_url,
             // "Run a worker" step 5: a SharedWorkerGlobalScope when `is shared`.
             .global = if (self.shared != null) .shared else .dedicated,
             .timer = self.timer,
+            // A dedicated worker's own loop, which host algorithms queue
+            // their tasks on; a shared worker's tasks are its creator's
+            // loop's timers.
+            .event_loop = self.event_loop,
             .end_of_task = endTaskOfRealm,
             .on_realm = recordRealm,
             .data = self,
             .allocator = self.allocator,
         });
         self.global_scope = made.global_scope;
-
-        // The built-ins find their worker here while setup scripts run.
-        const prev_context = current_worker_context;
-        current_worker_context = self;
-        defer current_worker_context = prev_context;
 
         // HTML § 8.6: the timers, as built-ins on the global - own data
         // properties, shadowing the bound operations further up the chain.
@@ -1360,20 +1265,31 @@ pub const WorkerHost = struct {
         // Only performance still needs a bootstrap fallback: WorkerGlobalScope
         // has no native performance getter. Its crypto and indexedDB accessors
         // already supply native objects (WebIDL 3.7.6); never shadow them.
-        try self.runSetupScript(
-            \\(function() {
-            \\  function define(name, value) {
-            \\    Object.defineProperty(globalThis, name, { value: value, writable: true, enumerable: true, configurable: true });
-            \\  }
+        // Its time origin is the worker's creation time ("run a worker" step
+        // 3, the unsafe worker creation time - taken by the Worker
+        // constructor, before the worker's thread starts) when the host has
+        // it, else now.
+        var origin_buffer: [64]u8 = undefined;
+        const time_origin: []const u8 = if (self.time_origin_ms) |ms|
+            std.fmt.bufPrint(&origin_buffer, "{d}", .{ms}) catch "Date.now()"
+        else
+            "Date.now()";
+        const performance_setup = try std.fmt.allocPrint(self.allocator,
+            \\(function() {{
+            \\  function define(name, value) {{
+            \\    Object.defineProperty(globalThis, name, {{ value: value, writable: true, enumerable: true, configurable: true }});
+            \\  }}
             \\  // Performance API - https://w3c.github.io/hr-time/
-            \\  var timeOrigin = Date.now();
-            \\  define('performance', {
+            \\  var timeOrigin = {s};
+            \\  define('performance', {{
             \\    timeOrigin: timeOrigin,
-            \\    now: function() { return Date.now() - timeOrigin; },
-            \\    toJSON: function() { return { timeOrigin: this.timeOrigin }; }
-            \\  });
-            \\})();
-        );
+            \\    now: function() {{ return Date.now() - timeOrigin; }},
+            \\    toJSON: function() {{ return {{ timeOrigin: this.timeOrigin }}; }}
+            \\  }});
+            \\}})();
+        , .{time_origin});
+        defer self.allocator.free(performance_setup);
+        try self.runSetupScript(performance_setup);
     }
 
     /// `createWorkerRealm`'s `on_realm`: the realm exists, and its global
@@ -1395,24 +1311,6 @@ pub const WorkerHost = struct {
         try engine.performMicrotaskCheckpoint(self.agent);
     }
 
-    /// Get the engine context pointer for WorkerContext.setEngineContext()
-    pub fn getEngineContext(self: *Self) *EngineContext {
-        return @ptrCast(self);
-    }
-
-    /// Get the engine callbacks for WorkerContext.setEngineContext()
-    pub fn getCallbacks(self: *const Self) EngineCallbacks {
-        _ = self;
-        return .{
-            .compileAndRunScript = compileAndRunScriptCallback,
-            .compileAndRunModule = compileAndRunModuleCallback,
-            .runMicrotasks = runMicrotasksCallback,
-            .disposeContext = disposeContextCallback,
-            .configureImportMeta = null, // TODO: Implement for module workers
-            .registerDynamicImportHandler = null, // TODO: Implement for module workers
-        };
-    }
-
     // ------------------------------------------------------------------
     // Running script
     // ------------------------------------------------------------------
@@ -1426,9 +1324,6 @@ pub const WorkerHost = struct {
         const script = try self.classicScript(url);
         self.entered += 1;
         defer self.entered -= 1;
-        const prev_context = current_worker_context;
-        current_worker_context = self;
-        defer current_worker_context = prev_context;
         try engine.runClassicScript(realm, .{ .utf8 = source }, url, script, self.reporter());
         if (!checkpoint_after) return;
         try engine.performMicrotaskCheckpoint(self.agent);
@@ -1455,30 +1350,25 @@ pub const WorkerHost = struct {
         self.classic_scripts = .empty;
     }
 
-    /// Execute a script in this worker's realm (with optional message
-    /// processing afterwards).
-    ///
-    /// If process_messages is true, also processes any pending incoming messages
-    /// after script execution, allowing the worker's onmessage handler to be invoked.
-    fn executeScriptEx(self: *Self, source: []const u8, process_messages: bool) !void {
+    /// "Run a worker" onComplete step 10 for a classic worker: run the
+    /// classic script `source` - the worker's own, its base URL the worker's
+    /// URL - then "clean up after running script" (a microtask checkpoint).
+    pub fn executeScript(self: *Self, source: []const u8) !void {
         // A worker whose closing flag is set runs no further task.
         if (!self.runsTasks()) return error.WorkerClosed;
 
+        self.running_own_script = true;
+        defer self.running_own_script = false;
         try self.runScript(source, self.script_url, true);
 
-        // Process any incoming messages from the main thread (only if requested)
-        // This allows the worker's onmessage handler (set up by the script) to run
-        if (process_messages) self.processIncomingMessagesInternal();
-
-        // What the engine posted while the script ran; and if it left
-        // background work (an asynchronous compile), a pump to finish it.
-        _ = engine.runEngineTasks(self.agent);
-        self.armPlatformPump(false);
-    }
-
-    /// Execute a script in this worker's realm (processes messages after)
-    pub fn executeScript(self: *Self, source: []const u8) !void {
-        return self.executeScriptEx(source, true);
+        // A shared worker, whose tasks are its creator's timers: what the
+        // engine posted while the script ran, and if it left background work
+        // (an asynchronous compile), a pump to finish it. A dedicated
+        // worker's loop does both every turn.
+        if (self.link == null) {
+            _ = engine.runEngineTasks(self.agent);
+            self.armPlatformPump(false);
+        }
     }
 
     /// "Run a worker" for a module worker, from "obtain script" on: fetch a
@@ -1493,18 +1383,16 @@ pub const WorkerHost = struct {
     pub fn executeModuleScript(self: *Self, url: []const u8, source: []const u8) bool {
         if (!module_script.supported) return false;
         if (!self.runsTasks()) return false;
-        const prev_context = current_worker_context;
-        current_worker_context = self;
-        defer current_worker_context = prev_context;
 
         const env = self.moduleEnvironment() orelse return false;
         const graph = module_script.moduleWorkerScriptGraph(&env, url, self.script_url, source) orelse return false;
         if (graph.error_to_rethrow != null) return false;
 
         self.runModuleScript(&env, graph);
-        self.processIncomingMessagesInternal();
-        _ = engine.runEngineTasks(self.agent);
-        self.armPlatformPump(false);
+        if (self.link == null) {
+            _ = engine.runEngineTasks(self.agent);
+            self.armPlatformPump(false);
+        }
         return true;
     }
 
@@ -1578,6 +1466,15 @@ pub const WorkerHost = struct {
     /// listener's preventDefault(), handles it); if not handled, the worker's
     /// Worker object hears it, with `error` null.
     fn reportEngineException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+        // The worker's own script did not parse: "run a worker" onComplete
+        // step 1, which its caller takes - not "report an exception".
+        if (host) |h| {
+            const self: *Self = @ptrCast(@alignCast(h));
+            if (self.running_own_script and info.parse_error) {
+                self.own_script_parse_failed = true;
+                return;
+            }
+        }
         const runtime_info: runtime.ErrorInfo = .{
             .message = info.message,
             .filename = info.filename,
@@ -1624,15 +1521,13 @@ pub const WorkerHost = struct {
         return not_canceled;
     }
 
-    /// Send an error event to the parent Worker object via the callback mechanism.
-    ///
-    /// This schedules a WorkerErrorEvent to be dispatched on the parent thread.
-    /// The main thread's event loop will dispatch the error via Worker.onerror
-    /// or addEventListener('error').
-    ///
-    /// Spec: HTML Standard "report an exception": "queue a global task on the
-    /// DOM manipulation task source with the global's associated Worker's
-    /// relevant global object" to fire `error` at the Worker.
+    /// HTML "report an exception" step 7, for a dedicated worker's global
+    /// scope when the error went unhandled there: "queue a global task on
+    /// the DOM manipulation task source given workerObject's relevant global
+    /// object" to fire an ErrorEvent at the Worker object, with the error's
+    /// message, filename, line and column, and `error` null - the value stays
+    /// in this realm. The task goes to the Worker's own loop (the link's
+    /// owner sink); a shared worker has no Worker object to tell.
     fn sendErrorToParent(
         self: *Self,
         message: []const u8,
@@ -1640,97 +1535,85 @@ pub const WorkerHost = struct {
         lineno: u32,
         colno: u32,
     ) void {
-        const dedicated_worker = self.dedicated_worker orelse return;
-
-        // Create error event data
-        const error_event = workers.worker_error.WorkerErrorEvent.init(
-            self.allocator,
-            message,
-            if (filename.len > 0) filename else self.script_url,
-            lineno,
-            colno,
-            null, // "The actual exception value will not be available in the owner realm"
-        ) catch return;
-
-        // Schedule error dispatch to parent thread via timer (0ms)
-        if (self.timer) |timer| {
-            const dispatch_ctx = self.allocator.create(WorkerErrorDispatchContext) catch {
-                error_event.deinit();
-                return;
-            };
-            dispatch_ctx.* = .{
-                .dedicated_worker = dedicated_worker,
-                .error_event = error_event,
-                .allocator = self.allocator,
-            };
-            _ = timer.setTimeout(0, workerErrorDispatchCallback, dispatch_ctx);
-        } else {
-            // No timer interface, dispatch synchronously (may not be ideal but better than dropping)
-            dedicated_worker.fireErrorToParent(error_event);
-        }
+        const owner = self.owner_worker orelse return;
+        const link = self.link orelse return;
+        const report = ErrorReport.create(self.allocator, owner, .{
+            .message = message,
+            .filename = if (filename.len > 0) filename else self.script_url,
+            .lineno = lineno,
+            .colno = colno,
+        }) catch {
+            log.debug("out of memory reporting a worker's error to its owner; dropped", .{});
+            return;
+        };
+        // A closed sink - the owner's loop has ended - drops it.
+        _ = link.owner_sink.post(.{ .run = ErrorReport.run, .drop = ErrorReport.drop, .data = report });
     }
 
     // ------------------------------------------------------------------
-    // Messages
+    // Messages: a dedicated worker's implicit port
     // ------------------------------------------------------------------
 
-    /// Process incoming messages - each one a task of the worker's realm.
-    fn processIncomingMessagesInternal(self: *Self) void {
-        const dedicated_worker = self.dedicated_worker orelse return;
-        const inside_port = dedicated_worker.port_pair.inside_port;
+    /// What the implicit port does with what reaches it, on the worker's own
+    /// loop: its message event target is the global scope ("run a worker"
+    /// onComplete step 4.1).
+    const inside_port_hooks: port_channels.ReceiverHooks = .{
+        .deliver = deliverToScope,
+        .closed = insidePortClosed,
+    };
 
-        while (inside_port.message_queue.items.len > 0) {
-            const msg = inside_port.message_queue.orderedRemove(0);
-            defer msg.deinit();
-            // A closing worker's tasks are discarded, the message's among them.
-            if (!self.runsTasks()) continue;
-            var delivery = Delivery{ .host = self, .msg = msg };
-            self.runTask(Delivery.steps, &delivery);
-        }
+    /// Bind the implicit port to this host on the worker's loop - its
+    /// messages wait in its queue until it is enabled ("run a worker"
+    /// onComplete step 12, after the script has run).
+    fn bindInsidePort(self: *Self) void {
+        const end = self.inside_end orelse return;
+        const sink = self.task_sink orelse return;
+        end.bind(.{ .sink = sink, .receiver = self, .generation = 0, .hooks = &inside_port_hooks });
     }
 
-    const Delivery = struct {
+    /// One task of the implicit port's message queue: the message port post
+    /// message steps' step 7 - deserialized into the worker's realm, its
+    /// transferred ports received there, and `message` fired at the global
+    /// scope (or `messageerror`). A closing worker's tasks are discarded. The
+    /// host outlives the binding: its realm's end discards the port first.
+    fn deliverToScope(receiver: *anyopaque, _: u64, delivery: *port_channels.Delivery) void {
+        const self: *Self = @ptrCast(@alignCast(receiver));
+        if (!self.runsTasks()) return;
+        var task: ScopeDelivery = .{ .host = self, .delivery = delivery };
+        self.runTask(ScopeDelivery.steps, &task);
+    }
+
+    /// The Worker object's outside port was disentangled - its Worker went
+    /// away. The implicit port is not script-visible: no event.
+    fn insidePortClosed(_: *anyopaque, _: u64) void {}
+
+    const ScopeDelivery = struct {
         host: *Self,
-        msg: *QueuedMessage,
+        delivery: *port_channels.Delivery,
 
         fn steps(data: ?*anyopaque) void {
-            const self: *Delivery = @ptrCast(@alignCast(data orelse return));
-            self.host.deliverMessage(self.msg);
+            const self: *ScopeDelivery = @ptrCast(@alignCast(data orelse return));
+            const realm = self.host.realm orelse return;
+            const global_scope = self.host.global_scope orelse return;
+            const message = self.delivery.next() orelse return;
+            defer message.destroy();
+            deliverPortMessage(realm, global_scope, message, fireMessageEvent);
         }
     };
 
-    /// Deliver one message the page posted: StructuredDeserializeWithTransfer
-    /// into the worker's realm, MessagePorts of the realm for the ports it
-    /// transferred, and `message` fired at the global scope - or
-    /// `messageerror`, when it does not deserialize. Run as a task of the
-    /// worker's realm.
-    fn deliverMessage(self: *Self, msg: *QueuedMessage) void {
-        const realm = self.realm orelse return;
-        const global_scope = self.global_scope orelse return;
-        const message = if (msg.engine_message) |*m| m else return;
-        deliverEngineMessage(realm, global_scope, message, fireMessageEvent);
-    }
-
-    /// The worker's side of the message port post message steps, for its
-    /// implicit port: serialize `message` with `transfer` in the worker's
-    /// realm, ship the transferred ports, and queue the message for the
-    /// Worker object. It leaves for the page when the task ends.
+    /// DedicatedWorkerGlobalScope postMessage(): the message port post
+    /// message steps for the implicit port - serialized with transfer in the
+    /// worker's realm (its transferred ports shipped), and queued at the
+    /// Worker object's outside port, whose loop delivers it. A closing
+    /// worker's messages still go: the task that called close() runs to its
+    /// end (workers/interfaces/WorkerGlobalScope/close/sending-messages); a
+    /// terminated one's are emptied by its owner ("terminate a worker" step
+    /// 4) and discarded by its Worker object.
     fn postMessageToOwner(self: *Self, message: runtime.JSValue, transfer: []const runtime.JSValue) !void {
         const realm = self.realm orelse return;
-        const dedicated_worker = self.dedicated_worker orelse return;
-        // A terminated worker's messages are never delivered ("terminate a
-        // worker" step 4). A closing one's are: the task that called close()
-        // runs to its end, and what it posts goes out
-        // (workers/interfaces/WorkerGlobalScope/close/sending-messages).
-        if (dedicated_worker.agent.isTerminated() or self.phase == .realm_gone) return;
-
-        var serialized = try serializeMessage(realm, message, transfer, self.allocator);
-        const queued = QueuedMessage.initEngine(self.allocator, serialized) catch |err| {
-            serialized.deinit();
-            return err;
-        };
-        errdefer queued.deinit();
-        try DedicatedWorker.appendPendingMessage(dedicated_worker.port_pair.outside_port, queued);
+        const end = self.inside_end orelse return;
+        const port_message = try serializePortMessage(realm, message, transfer, self.allocator);
+        end.post(port_message);
     }
 
     fn setTimeoutSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
@@ -1855,58 +1738,65 @@ pub const WorkerHost = struct {
     }
 };
 
-/// Serialize `message` with `transfer` in `realm` for a worker's implicit
-/// port - from either side: StructuredSerializeWithTransfer, then the
-/// transfer steps of every MessagePort in `transfer`. OWNED (`deinit`).
-pub fn serializeMessage(
+/// The message port post message steps' steps 2-5 for a worker's implicit
+/// port or a Worker's outside port, from either side: serialize `message`
+/// with `transfer` in `realm` (StructuredSerializeWithTransfer), running the
+/// transfer steps of every MessagePort in `transfer` - each ships its channel
+/// end. OWNED (`PortMessage.destroy`, or posted to an end, which takes it).
+pub fn serializePortMessage(
     realm: runtime.Context,
     message: runtime.JSValue,
     transfer: []const runtime.JSValue,
     allocator: Allocator,
-) !EngineMessage {
+) !*PortMessage {
     var result = try engine.structuredSerializeWithTransfer(realm, message, transfer, transferablePort, null, allocator);
-    errdefer result.deinit(allocator);
+    // What the message does not take: the platform object list, or all of
+    // it on failure.
+    defer result.deinit(allocator);
 
     // The transfer steps for each MessagePort: its end - queue and
-    // entanglement - is the data holder.
-    const ends = try allocator.alloc(*anyopaque, result.platform_objects.len);
-    errdefer allocator.free(ends);
-    for (result.platform_objects, 0..) |port, i| {
-        ends[i] = message_ports.ship(port) orelse return error.DataCloneError;
+    // entanglement - is the data holder. An end shipped and then not taken
+    // by a message is discarded (its peer hears `close`).
+    var ends: std.ArrayListUnmanaged(*port_channels.End) = .empty;
+    defer {
+        for (ends.items) |shipped| shipped.discard();
+        ends.deinit(allocator);
     }
-    allocator.free(result.platform_objects);
-
-    return .{
-        .allocator = allocator,
-        .serialized = result.serialized,
-        .array_buffers = result.array_buffers,
-        .port_ends = ends,
+    try ends.ensureTotalCapacity(allocator, result.platform_objects.len);
+    for (result.platform_objects) |port| {
+        const shipped = message_ports.ship(port) orelse return error.DataCloneError;
+        ends.appendAssumeCapacity(@ptrCast(@alignCast(shipped)));
+    }
+    const owned = try ends.toOwnedSlice(allocator);
+    return PortMessage.create(allocator, &result, owned) catch |err| {
+        for (owned) |shipped| shipped.discard();
+        allocator.free(owned);
+        return err;
     };
 }
 
-/// Deliver an engine-serialized `message` at `target` in `realm` - the
-/// receiving half of the message port post message steps (step 7): the
-/// transferred ports received into `realm`, StructuredDeserializeWithTransfer,
-/// and `message` fired (or `messageerror`, when it does not deserialize).
-/// Call with `realm` entered. The message's port ends are taken.
-pub fn deliverEngineMessage(
+/// The message port post message steps' step 7 at `target` in `realm`, for
+/// a message that reached a worker's implicit port or a Worker's outside
+/// port: the transferred ports received into `realm` (their
+/// transfer-receiving steps), StructuredDeserializeWithTransfer, and
+/// `message` fired - or `messageerror`, when it does not deserialize. Call
+/// with `realm` entered. The message's ends are taken; the message is the
+/// caller's to destroy.
+pub fn deliverPortMessage(
     realm: runtime.Context,
     target: *runtime.Instance,
-    message: *EngineMessage,
+    message: *PortMessage,
     fire: *const fn (realm: runtime.Context, target: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, ports: []const *runtime.Instance) void,
 ) void {
     const allocator = message.allocator;
     var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
     defer ports.deinit(allocator);
-    // The transferred ports' transfer-receiving steps: MessagePorts of the
-    // receiving realm on the shipped ends.
-    for (message.port_ends) |end| {
-        const port = message_ports.receive(realm, end) catch continue;
+    const ends = message.takeEnds();
+    defer allocator.free(ends);
+    for (ends) |end| {
+        const port = message_ports.receive(realm, @ptrCast(end)) catch continue;
         ports.append(allocator, port) catch continue;
     }
-    // The ports belong to the message's receiver now, not the queue.
-    allocator.free(message.port_ends);
-    message.port_ends = &.{};
 
     const data = engine.structuredDeserializeWithTransfer(realm, message.serialized, message.array_buffers) catch {
         fire(realm, target, "messageerror", runtime.JSValue.jsUndefined, &.{});
@@ -2205,7 +2095,7 @@ const SharedConnect = struct {
         shared_scopes.append(std.heap.page_allocator, host) catch {};
 
         // 5-7. The realm, whose global object is a SharedWorkerGlobalScope.
-        host.setupWorkerGlobalScope(null) catch {
+        host.setupWorkerGlobalScope() catch {
             host.terminate();
             return self.fireError();
         };
@@ -2215,7 +2105,17 @@ const SharedConnect = struct {
         switch (self.worker_type) {
             // onComplete 10: run the classic script. An exception it throws
             // is reported to the worker's global scope; the worker runs on.
-            .classic => host.executeScript(fetched.source) catch |err| log.debug("shared worker script: {}", .{err}),
+            .classic => {
+                host.executeScript(fetched.source) catch |err| log.debug("shared worker script: {}", .{err});
+                // onComplete 1: a script that did not parse has an error to
+                // rethrow - `error` at the worker, and its settings are
+                // discarded.
+                if (host.own_script_parse_failed) {
+                    message_ports.discard(inside_end);
+                    host.terminate();
+                    return self.fireError();
+                }
+            },
             // A module worker's graph: onComplete 1 - a null script, or one
             // with an error to rethrow, fires `error` at the worker, and the
             // inside settings are discarded. Else run the module script.
@@ -2349,9 +2249,6 @@ const ConnectTask = struct {
         host.forgetConnect(self);
         if (!host.runsTasks()) return;
         if (runtime.SlabAllocator.generationOf(self.port) != self.generation) return;
-        const prev_context = current_worker_context;
-        current_worker_context = host;
-        defer current_worker_context = prev_context;
         host.runTask(fire, self);
     }
 
@@ -2543,10 +2440,6 @@ fn runDynamicImport(context_ptr: ?*anyopaque) void {
     // discarded, and its request finished to release what it holds.
     if (!self.runsTasks()) return finishImport(task.request, .{ .failure = runtime.JSValue.jsUndefined });
 
-    const prev_context = current_worker_context;
-    current_worker_context = self;
-    defer current_worker_context = prev_context;
-
     self.runTask(dynamicImportSteps, task);
     // runTask runs nothing in a realm that has gone: the request is finished
     // either way.
@@ -2670,88 +2563,356 @@ const WorkerModules = struct {
 };
 
 // ============================================================================
-// Engine Callbacks Implementation
+// A dedicated worker on a thread of its own
 // ============================================================================
 
-/// Compile and run a script, returns result value pointer
-fn compileAndRunScriptCallback(
-    engine_ctx: *EngineContext,
+/// A Worker object, as its worker's tasks for it find it: its address and
+/// slab generation - checked on the owner's thread before every use, since a
+/// collected Worker's slot can be reissued - and its owner side's steps. The
+/// worker's thread never dereferences it.
+pub const OwnerWorker = struct {
+    instance: *runtime.Instance,
+    generation: u64,
+    steps: *const OwnerSteps,
+
+    /// The Worker, if it is still the object this was made for. Owner's
+    /// thread only.
+    fn live(self: OwnerWorker) ?*runtime.Instance {
+        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
+        return self.instance;
+    }
+};
+
+/// What a worker's tasks do at its Worker object, on the Worker's thread -
+/// the Worker impl's steps (its state is its own).
+pub const OwnerSteps = struct {
+    /// HTML "report an exception" step 7: an error the worker's global scope
+    /// did not handle - fire an ErrorEvent at the Worker.
+    error_reported: *const fn (worker: *runtime.Instance, report: *const ErrorReport.Info) void,
+    /// "Run a worker" onComplete step 1.1: the worker could not start (its
+    /// module graph failed, or its realm could not be made) - fire `error`.
+    start_failed: *const fn (worker: *runtime.Instance) void,
+    /// The worker has ended: its thread is joined, its link unregistered.
+    ended: *const fn (worker: *runtime.Instance) void,
+};
+
+/// A task of the Worker's loop, posted by its worker: an error it reported,
+/// or its failure to start. Its strings are owned (the worker's allocator,
+/// which is thread-safe).
+pub const ErrorReport = struct {
+    allocator: Allocator,
+    owner: OwnerWorker,
+    kind: enum { exception, start_failed },
+    info: Info,
+
+    pub const Info = struct {
+        message: []const u8,
+        filename: []const u8,
+        lineno: u32,
+        colno: u32,
+    };
+
+    fn create(allocator: Allocator, owner: OwnerWorker, info: Info) Allocator.Error!*ErrorReport {
+        const message = try allocator.dupe(u8, info.message);
+        errdefer allocator.free(message);
+        const filename = try allocator.dupe(u8, info.filename);
+        errdefer allocator.free(filename);
+        const self = try allocator.create(ErrorReport);
+        self.* = .{
+            .allocator = allocator,
+            .owner = owner,
+            .kind = .exception,
+            .info = .{ .message = message, .filename = filename, .lineno = info.lineno, .colno = info.colno },
+        };
+        return self;
+    }
+
+    fn startFailed(allocator: Allocator, owner: OwnerWorker) Allocator.Error!*ErrorReport {
+        const self = try allocator.create(ErrorReport);
+        self.* = .{
+            .allocator = allocator,
+            .owner = owner,
+            .kind = .start_failed,
+            .info = .{ .message = "", .filename = "", .lineno = 0, .colno = 0 },
+        };
+        return self;
+    }
+
+    /// On the owner's thread.
+    fn run(data: ?*anyopaque) void {
+        const self: *ErrorReport = @ptrCast(@alignCast(data.?));
+        defer destroy(self);
+        const worker = self.owner.live() orelse return;
+        switch (self.kind) {
+            .exception => self.owner.steps.error_reported(worker, &self.info),
+            .start_failed => self.owner.steps.start_failed(worker),
+        }
+    }
+
+    /// Never run: its owner's loop has ended. Any thread.
+    fn drop(data: ?*anyopaque) void {
+        destroy(@ptrCast(@alignCast(data.?)));
+    }
+
+    fn destroy(self: *ErrorReport) void {
+        self.allocator.free(self.info.message);
+        self.allocator.free(self.info.filename);
+        self.allocator.destroy(self);
+    }
+};
+
+/// "Run a worker" for a dedicated worker, as its Worker constructor hands
+/// it over (step 9: "run this step in parallel"). The constructor fetched the
+/// script - it must, before it returns: a blob URL revoked right after
+/// `new Worker(url)` still runs - so the thread starts with it in hand.
+pub const DedicatedWorkerStart = struct {
+    /// The classic script's source, or a module graph's root's. BORROWED
+    /// (copied).
     source: []const u8,
-    source_url: []const u8,
-) anyerror!?*anyopaque {
-    _ = source_url;
-    const self: *WorkerHost = @ptrCast(@alignCast(engine_ctx));
-    try self.executeScript(source);
-    return null;
+    /// The script's response URL: the worker global scope's URL. BORROWED
+    /// (copied).
+    script_url: []const u8,
+    worker_type: WorkerType,
+    /// options["name"]. BORROWED (copied).
+    name: []const u8,
+    /// The global scope's policy container, as "initialize a worker global
+    /// scope's policy container" chose it. Taken on success.
+    policy_container: ?fetch_mod.internal.PolicyContainer,
+    /// The user agent's cookie jar, the creating global's (Browser-lifetime,
+    /// locked).
+    cookie_jar: ?*CookieJar,
+    /// The Worker object's realm - the worker's owner.
+    owner_realm: runtime.Context,
+    owner_worker: OwnerWorker,
+    /// The implicit port: the end of the Worker's channel that its global
+    /// scope receives on. Taken on success.
+    inside_end: ?*port_channels.End,
+    /// "Run a worker" step 3, the unsafe worker creation time, in
+    /// milliseconds since the epoch: the global scope's time origin.
+    time_origin_ms: ?f64 = null,
+};
+
+/// Start a dedicated worker on a thread of its own: a link shared with the
+/// owner's thread (`owner_realm`'s loop hears the worker through its sink),
+/// registered with the Browser's WorkerRegistry, and a WorkerThread whose
+/// host is `ThreadHost`. The owner's reference to the link, which it ends
+/// with `terminate()` and `release()`. On success `start.policy_container`
+/// and `start.inside_end` are taken (null); on failure the caller still
+/// holds them, and nothing runs.
+pub fn startDedicatedWorker(allocator: Allocator, start: *DedicatedWorkerStart) !*WorkerLink {
+    // The owner's loop's inbox: where the worker's messages, errors and end
+    // go. A realm with none (no event loop made it) runs no worker.
+    const owner_sink = start.owner_realm.task_sink orelse return error.NoEventLoop;
+    const registry = WorkerRegistry.of(start.owner_realm);
+    const link = try WorkerLink.create(allocator, owner_sink);
+    errdefer link.release();
+    link.owner_realm = start.owner_realm;
+    if (registry) |r| try r.register(link);
+    errdefer if (registry) |r| r.unregister(link);
+
+    const thread_host = try ThreadHost.create(allocator, start);
+    errdefer thread_host.destroyUnstarted();
+    const owner_end = try allocator.create(OwnerEnd);
+    errdefer allocator.destroy(owner_end);
+    owner_end.* = .{ .allocator = allocator, .owner = start.owner_worker, .registry = registry };
+
+    try WorkerThread.spawn(allocator, link, thread_host.asHost(), owner_end.asOwner(), registry);
+    // The thread has them now.
+    start.policy_container = null;
+    start.inside_end = null;
+    return link;
 }
 
-/// Compile and run a module
-fn compileAndRunModuleCallback(
-    engine_ctx: *EngineContext,
-    source: []const u8,
-    source_url: []const u8,
-) anyerror!void {
-    _ = source_url; // TODO: Used for import resolution
-    const self: *WorkerHost = @ptrCast(@alignCast(engine_ctx));
+/// The owner's side of a worker's end: a task of the Worker's loop once the
+/// worker's thread is at its last instruction (WorkerThread.Owner).
+const OwnerEnd = struct {
+    allocator: Allocator,
+    owner: OwnerWorker,
+    registry: ?*WorkerRegistry,
 
-    // For now, execute as script.
-    try self.executeScript(source);
-}
-
-/// Run microtask checkpoint
-fn runMicrotasksCallback(engine_ctx: *EngineContext) void {
-    const self: *WorkerHost = @ptrCast(@alignCast(engine_ctx));
-    if (self.realm == null) return;
-    engine.performMicrotaskCheckpoint(self.agent) catch {};
-}
-
-/// Dispose engine context
-fn disposeContextCallback(engine_ctx: *EngineContext) void {
-    const self: *WorkerHost = @ptrCast(@alignCast(engine_ctx));
-    self.deinit();
-}
-
-/// Process incoming messages from the main thread
-///
-/// This should be called after the worker script has set up its onmessage
-/// handler.
-pub fn processIncomingMessages(worker_ctx: *WorkerHost) void {
-    const dedicated_worker = worker_ctx.dedicated_worker orelse return;
-
-    // A closing worker runs no further task; its messages are discarded
-    // (close() step 1, "terminate a worker" step 2), and once its realm is
-    // gone there is nothing to deliver them to.
-    if (!worker_ctx.runsTasks()) {
-        emptyPortQueue(dedicated_worker.port_pair.inside_port);
-        return;
+    fn asOwner(self: *OwnerEnd) WorkerThread.Owner {
+        return .{ .data = self, .ended = ended, .drop = dropped };
     }
 
-    {
-        // Set current_worker_context for any callbacks
-        const prev_context = current_worker_context;
-        current_worker_context = worker_ctx;
-        defer current_worker_context = prev_context;
-
-        worker_ctx.processIncomingMessagesInternal();
-
-        // The end of the turn: the engine's posted tasks, and a pump if
-        // background work is left.
-        _ = engine.runEngineTasks(worker_ctx.agent);
-        worker_ctx.armPlatformPump(false);
+    /// The owner's thread: join the worker's thread, forget it, and tell the
+    /// Worker - whose pending activity can end now.
+    fn ended(data: ?*anyopaque, link: *WorkerLink) void {
+        const self: *OwnerEnd = @ptrCast(@alignCast(data.?));
+        defer self.allocator.destroy(self);
+        link.join();
+        if (self.registry) |registry| registry.unregister(link);
+        if (self.owner.live()) |worker| self.owner.steps.ended(worker);
     }
 
-    // What the worker posted while its handlers ran joins its outside port's
-    // queue now.
-    DedicatedWorker.flushPendingMessages();
-}
-
-/// Drop every message queued on `port`.
-fn emptyPortQueue(port: anytype) void {
-    while (port.message_queue.items.len > 0) {
-        const msg = port.message_queue.orderedRemove(0);
-        msg.deinit();
+    /// The end never reaches the owner: its loop ended first (an outer
+    /// worker's end, which has joined this thread already; the Browser's,
+    /// which joins every thread first). A thread not yet joined stays
+    /// registered for whoever joins it.
+    fn dropped(data: ?*anyopaque, link: *WorkerLink) void {
+        const self: *OwnerEnd = @ptrCast(@alignCast(data.?));
+        defer self.allocator.destroy(self);
+        if (link.hasThread()) return;
+        if (self.registry) |registry| registry.unregister(link);
     }
-}
+};
+
+/// The worker host's part of a dedicated worker's thread
+/// (WorkerThread.Host): "run a worker" from step 4 on, the realm's end, and
+/// the host's memory - all on the worker's thread.
+const ThreadHost = struct {
+    allocator: Allocator,
+    start: Start,
+    /// The worker's host, once its start step made it.
+    host: ?*WorkerHost = null,
+
+    /// What the thread starts with: the owner's inputs, copied.
+    const Start = struct {
+        source: []u8,
+        script_url: []u8,
+        worker_type: WorkerType,
+        name: []u8,
+        policy_container: ?fetch_mod.internal.PolicyContainer,
+        cookie_jar: ?*CookieJar,
+        browser_scope: ?*runtime.BrowserScope,
+        owner_worker: OwnerWorker,
+        inside_end: ?*port_channels.End,
+        time_origin_ms: ?f64,
+    };
+
+    fn create(allocator: Allocator, start: *const DedicatedWorkerStart) !*ThreadHost {
+        const source = try allocator.dupe(u8, start.source);
+        errdefer allocator.free(source);
+        const script_url = try allocator.dupe(u8, start.script_url);
+        errdefer allocator.free(script_url);
+        const name = try allocator.dupe(u8, start.name);
+        errdefer allocator.free(name);
+        const self = try allocator.create(ThreadHost);
+        self.* = .{
+            .allocator = allocator,
+            .start = .{
+                .source = source,
+                .script_url = script_url,
+                .worker_type = start.worker_type,
+                .name = name,
+                .policy_container = start.policy_container,
+                .cookie_jar = start.cookie_jar,
+                .browser_scope = start.owner_realm.browser_scope,
+                .owner_worker = start.owner_worker,
+                .inside_end = start.inside_end,
+                .time_origin_ms = start.time_origin_ms,
+            },
+        };
+        return self;
+    }
+
+    /// A thread host whose thread never started: what it copied goes; what
+    /// it would have taken stays the caller's.
+    fn destroyUnstarted(self: *ThreadHost) void {
+        self.start.policy_container = null;
+        self.start.inside_end = null;
+        self.freeStart();
+        self.allocator.destroy(self);
+    }
+
+    fn freeStart(self: *ThreadHost) void {
+        self.allocator.free(self.start.source);
+        self.allocator.free(self.start.script_url);
+        self.allocator.free(self.start.name);
+        if (self.start.policy_container) |*container| container.deinit();
+        self.start.policy_container = null;
+        if (self.start.inside_end) |end| end.discard();
+        self.start.inside_end = null;
+    }
+
+    fn asHost(self: *ThreadHost) WorkerThread.Host {
+        return .{ .data = self, .start = startSteps, .end_realm = endRealm, .free = free };
+    }
+
+    /// "Run a worker" steps 4-13 on the worker's thread. False when the
+    /// worker does not run: terminated before it started, or failed.
+    fn startSteps(data: ?*anyopaque, thread: *WorkerThread) bool {
+        const self: *ThreadHost = @ptrCast(@alignCast(data.?));
+        // 4. The agent, on this thread.
+        const runs = WorkerHost.initOnThread(self.allocator, self, thread) catch {
+            self.reportStartFailure(thread.link);
+            return false;
+        };
+        const worker_host = self.host.?;
+        // The implicit port, until the realm's end.
+        worker_host.inside_end = self.start.inside_end;
+        self.start.inside_end = null;
+        if (!runs) return false;
+
+        // 5-9. The realm, whose global object is a new
+        // DedicatedWorkerGlobalScope, and the host's built-ins on it.
+        worker_host.setupWorkerGlobalScope() catch {
+            self.reportStartFailure(thread.link);
+            return false;
+        };
+        // onComplete 3-5: the inside port, its message event target the
+        // global scope, entangled with the Worker's outside port (they are
+        // one channel already) - bound to this thread's loop.
+        worker_host.bindInsidePort();
+
+        // onComplete 10: run the script.
+        switch (self.start.worker_type) {
+            // An exception it throws is reported to the global scope, then
+            // the Worker; the worker runs on.
+            .classic => {
+                worker_host.executeScript(self.start.source) catch |err| log.debug("worker script: {}", .{err});
+                // onComplete 1: a script that did not parse has an error to
+                // rethrow - `error` at the Worker, and the worker runs nothing.
+                if (worker_host.own_script_parse_failed) {
+                    self.reportStartFailure(thread.link);
+                    return false;
+                }
+            },
+            // onComplete 1: a module graph that is null, or has an error to
+            // rethrow, fires `error` at the Worker, and the worker's settings
+            // are discarded.
+            .module => if (!worker_host.executeModuleScript(self.start.script_url, self.start.source)) {
+                self.reportStartFailure(thread.link);
+                return false;
+            },
+        }
+        // The source is not needed again.
+        self.allocator.free(self.start.source);
+        self.start.source = &.{};
+
+        // onComplete 12: enable the implicit port's message queue - what the
+        // owner posted before now is delivered from the next turn on. (Step
+        // 11, the outside port's queue, is enabled by the Worker
+        // constructor: see Worker.zig.)
+        if (worker_host.inside_end) |end| end.enable();
+        return true;
+    }
+
+    /// Post "run a worker" onComplete 1.1 to the Worker's loop.
+    fn reportStartFailure(self: *ThreadHost, link: *WorkerLink) void {
+        const report = ErrorReport.startFailed(self.allocator, self.start.owner_worker) catch return;
+        _ = link.owner_sink.post(.{ .run = ErrorReport.run, .drop = ErrorReport.drop, .data = report });
+    }
+
+    /// The realm's end, with the agent alive and the loop's tasks dropped
+    /// (WorkerThread step c): "run a worker" steps 16-17 and the engine's end
+    /// of the realm.
+    fn endRealm(data: ?*anyopaque, _: *WorkerThread) void {
+        const self: *ThreadHost = @ptrCast(@alignCast(data.?));
+        const worker_host = self.host orelse return;
+        worker_host.teardownRealm();
+        // The loop - its timers - ends next: nothing may reach them after.
+        worker_host.timer = null;
+    }
+
+    /// After the agent's end: the host's memory and the thread host's, on
+    /// the worker's thread.
+    fn free(data: ?*anyopaque) void {
+        const self: *ThreadHost = @ptrCast(@alignCast(data.?));
+        if (self.host) |worker_host| worker_host.free();
+        self.freeStart();
+        self.allocator.destroy(self);
+    }
+};
 
 // ============================================================================
 // Tests

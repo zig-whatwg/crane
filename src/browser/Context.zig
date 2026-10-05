@@ -537,6 +537,9 @@ fn runTimerSteps(opaque_data: ?*anyopaque) void {
         // URL, which is also where its errors are reported from - and run it.
         .string => |source| {
             const window = realmWindow(data.realm) orelse return;
+            // Step 10.8.2's CSP check ran at the call instead
+            // (initializeTimer, a stated deviation): a handler here was
+            // allowed then.
             const base_url = apiBaseUrl(data.realm, window);
             defer base_url.deinit();
             engine.runClassicScript(data.realm, .{ .string = source }, base_url.url, null, windowReporter(data.realm)) catch |err| switch (err) {
@@ -646,6 +649,34 @@ fn initializeTimer(realm: runtime.Context, handler: runtime.WindowTimerHandler, 
         }
         for (arguments) |argument| releaseValue(argument);
     };
+
+    // Not in the spec, stated: a string handler is checked by CSP here, at
+    // the call, and not by step 10.8.2 when the timer fires
+    // (EnsureCSPDoesNotBlockStringCompilation(realm, « », handler, handler,
+    // timer, « », handler), whose EvalError the spec reports for the
+    // global). An enforced policy that blocks it reports its violation and
+    // the call returns 0, scheduling nothing and reporting no exception; a
+    // report-only one reports and the timer is set. That is what all three
+    // engines do - Blink's DOMTimer::setTimeout/setInterval (IsAllowed:
+    // ContentSecurityPolicy::AllowEval, kReport, kWillNotThrowException,
+    // then `return 0`), Gecko's nsGlobalWindowInner::SetTimeoutOrInterval
+    // (CSPEvalChecker::CheckForWindow: GetAllowsEval, LogViolationDetails,
+    // `return 0`) and WebKit's LocalDOMWindow::setTimeout/setInterval
+    // (ContentSecurityPolicy::allowEval, `return 0`) - and what WPT asserts:
+    // unsafe-eval/eval-scripts-set{Timeout,Interval}-blocked.sub.html expect
+    // the id 0, and files that call setTimeout(string) under such a policy
+    // expect no error event (the spec's report made testharness end them
+    // in ERROR). A blocked interval is thereby checked once, as the engines
+    // do. (Step 1's Trusted Types step is not run yet: a TrustedScript
+    // reaches here already a string.)
+    switch (handler) {
+        .function => {},
+        .string => |source| if (realmWindow(realm)) |window| {
+            const text = engine.convertToDOMString(realm, source, window.ctx.allocator) catch return 0;
+            defer window.ctx.allocator.free(text);
+            if (!html_mod.code_generation.timerHandlerAllowed(window, text)) return 0;
+        },
+    }
 
     const timer = getTimerInterface() orelse return 0;
     const allocator = current_allocator orelse return 0;

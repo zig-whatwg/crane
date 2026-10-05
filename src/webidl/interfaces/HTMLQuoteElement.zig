@@ -276,10 +276,18 @@ pub const HTMLQuoteElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_cite(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLQuoteElementImpl, "set_cite")) return try HTMLQuoteElementImpl.set_cite(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "cite", .url = true }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_cite",
+    };
 };

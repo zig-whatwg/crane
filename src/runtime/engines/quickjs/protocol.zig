@@ -140,6 +140,10 @@ pub fn queueMicrotask(_: *Agent, _: engine.RealmSteps, _: ?*anyopaque) Error!voi
 pub fn extractErrorInformation(_: Context, _: JSValue, _: Allocator) Error!engine.ErrorInfo {
     return error.NotSupported;
 }
+/// Not answered: a violation carries no source location here.
+pub fn runningScriptLocation(_: *Agent, _: Allocator) Error!?engine.ScriptLocation {
+    return null;
+}
 pub fn parseModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
     return error.NotSupported;
 }
@@ -245,6 +249,12 @@ pub fn throwValue(_: Context, _: JSValue) Error!void {
 }
 pub fn completionOf(_: Context, _: *const fn (data: ?*anyopaque) Error!void, _: ?*anyopaque) Error!?Owned {
     return error.NotSupported;
+}
+/// No engine is linked, so nothing is ever pending (throwValue is
+/// NotSupported): the steps run. Linked: JS_GetException takes the context's
+/// pending exception (clearing it), the steps run, JS_Throw puts it back.
+pub fn withPendingExceptionSetAside(_: *engine.Agent, steps: *const fn (data: ?*anyopaque) void, data: ?*anyopaque) Error!void {
+    steps(data);
 }
 pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {
     return error.NotSupported;

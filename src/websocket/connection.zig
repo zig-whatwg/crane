@@ -368,6 +368,17 @@ pub const WebSocketConnection = struct {
         return self;
     }
 
+    /// WebSockets 2.2 step 11 fetches the handshake request; Fetch's UIR
+    /// step may change its URL before "obtain a WebSocket connection".
+    /// Copy that final URL before any backend or handshake owns the target.
+    pub fn setHandshakeUrl(self: *Self, url: []const u8) error{ InvalidState, OutOfMemory }!void {
+        if (self.state != .CONNECTING or self.backend != null or self.handshake_started or self.closed) return error.InvalidState;
+        if (std.mem.eql(u8, self.url, url)) return;
+        const copy = try self.allocator.dupe(u8, url);
+        self.allocator.free(self.url);
+        self.url = copy;
+    }
+
     /// Clean up the connection and free all resources.
     ///
     /// A connection still OPEN here is being made to disappear: the WebSocket

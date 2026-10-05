@@ -258,8 +258,8 @@ pub const Selection = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_deleteFromDocument(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try SelectionImpl.call_deleteFromDocument(instance);
     }
@@ -287,6 +287,14 @@ pub const Selection = struct {
     pub fn call_removeAllRanges(instance: *runtime.Instance) anyerror!void {
         return try SelectionImpl.call_removeAllRanges(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "call_deleteFromDocument",
+    };
 
     /// Stringifier delegate - toString() implementation
     /// Per WebIDL spec: https://webidl.spec.whatwg.org/#es-stringifier

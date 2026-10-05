@@ -418,8 +418,8 @@ pub const Node = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_nodeValue(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try NodeImpl.set_nodeValue(instance, value);
     }
@@ -432,8 +432,8 @@ pub const Node = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_textContent(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try NodeImpl.set_textContent(instance, value);
     }
@@ -441,8 +441,8 @@ pub const Node = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NodeImpl.call_insertBefore(instance, node, child);
     }
@@ -454,8 +454,8 @@ pub const Node = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NodeImpl.call_replaceChild(instance, node, child);
     }
@@ -467,8 +467,8 @@ pub const Node = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_normalize(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NodeImpl.call_normalize(instance);
     }
@@ -480,8 +480,8 @@ pub const Node = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NodeImpl.call_appendChild(instance, node);
     }
@@ -497,8 +497,8 @@ pub const Node = struct {
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         // [NewObject] - Caller owns the returned object
 
@@ -512,8 +512,8 @@ pub const Node = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NodeImpl.call_removeChild(instance, child);
     }
@@ -529,4 +529,19 @@ pub const Node = struct {
     pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) anyerror!bool {
         return try NodeImpl.call_contains(instance, other);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_nodeValue",
+        "set_textContent",
+        "call_insertBefore",
+        "call_replaceChild",
+        "call_normalize",
+        "call_appendChild",
+        "call_cloneNode",
+        "call_removeChild",
+    };
 };

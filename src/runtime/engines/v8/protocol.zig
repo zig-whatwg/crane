@@ -276,6 +276,10 @@ pub fn extractErrorInformation(realm: Context, value: JSValue, allocator: Alloca
     return protocol_scripts.extractErrorInformation(realm, value, allocator);
 }
 
+pub fn runningScriptLocation(agent: *Agent, allocator: Allocator) Error!?engine.ScriptLocation {
+    return protocol_scripts.runningScriptLocation(agent, allocator);
+}
+
 pub const parseModule = protocol_modules.parseModule;
 pub const parseJSONModule = protocol_modules.parseJSONModule;
 pub const createDefaultExportSyntheticModule = protocol_modules.createDefaultExportSyntheticModule;
@@ -353,6 +357,30 @@ pub fn throwValue(realm: Context, value: JSValue) Error!void {
 }
 
 pub const completionOf = @import("protocol_completion.zig").completionOf;
+
+/// The innermost binding catch scope's exception set aside around `steps`
+/// (v8_wrapper.cpp, "Binding catch scopes"): V8 hands a thrown exception only
+/// to a TryCatch made before the throw, so the binding dispatches every
+/// [CEReactions] member in one, and this sets aside and restores what it
+/// holds.
+pub fn withPendingExceptionSetAside(agent: *Agent, steps: *const fn (data: ?*anyopaque) void, data: ?*anyopaque) Error!void {
+    const Trampoline = struct {
+        steps: *const fn (data: ?*anyopaque) void,
+        data: ?*anyopaque,
+        fn call(raw: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(raw.?));
+            self.steps(self.data);
+        }
+    };
+    var trampoline: Trampoline = .{ .steps = steps, .data = data };
+    switch (ffi.v8_WithBindingExceptionSetAside(isolateOf(agent), Trampoline.call, &trampoline)) {
+        0 => return,
+        // Pending outside any binding catch scope: V8 cannot reach it.
+        -1 => return error.NotSupported,
+        // Terminating: nothing may run.
+        else => return error.ExceptionPending,
+    }
+}
 
 pub const parseJsonToValue = protocol_values.parseJsonToValue;
 pub const parseJsonInNewGlobal = protocol_values.parseJsonInNewGlobal;

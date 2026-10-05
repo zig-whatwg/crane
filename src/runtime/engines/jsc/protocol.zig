@@ -162,6 +162,12 @@ pub fn queueMicrotask(_: *Agent, _: engine.RealmSteps, _: ?*anyopaque) Error!voi
 pub fn extractErrorInformation(_: Context, _: JSValue, _: Allocator) Error!engine.ErrorInfo {
     return error.NotSupported;
 }
+/// The public C API has no stack inspection but JSContextCreateBacktrace,
+/// a formatted string (URL and line, no column) - the route for this later.
+/// Until then a violation carries no source location here.
+pub fn runningScriptLocation(_: *Agent, _: Allocator) Error!?engine.ScriptLocation {
+    return null;
+}
 pub fn parseModule(_: Context, _: []const u8, _: []const u8, _: ?*anyopaque) Error!engine.ParseResult {
     return error.NotSupported;
 }
@@ -267,6 +273,15 @@ pub fn throwValue(_: Context, _: JSValue) Error!void {
 }
 pub fn completionOf(_: Context, _: *const fn (data: ?*anyopaque) Error!void, _: ?*anyopaque) Error!?Owned {
     return error.NotSupported;
+}
+/// No engine is linked, so nothing is ever pending (throwValue is
+/// NotSupported): the steps run. Linked, JSC reports a throw through each
+/// call's `JSValueRef* exception` out-parameter, never as engine state: the
+/// adapter keeps the value an operation's call reported in its own pending
+/// slot (that is what ExceptionPending means here), and this stashes it
+/// around the steps and puts it back.
+pub fn withPendingExceptionSetAside(_: *engine.Agent, steps: *const fn (data: ?*anyopaque) void, data: ?*anyopaque) Error!void {
+    steps(data);
 }
 pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {
     return error.NotSupported;

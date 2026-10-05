@@ -95,8 +95,8 @@ pub const DOMStringMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setter(instance: *runtime.Instance, name: DOMString, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DOMStringMapImpl.call_setter(instance, name, value);
     }
@@ -108,11 +108,20 @@ pub const DOMStringMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_deleter(instance: *runtime.Instance, name: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DOMStringMapImpl.call_deleter(instance, name);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "call_setter",
+        "call_deleter",
+    };
 
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
     /// Per WebIDL spec §3.9.3, returns names in list order for proper enumeration

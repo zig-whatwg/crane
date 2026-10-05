@@ -470,6 +470,7 @@ pub fn installHooks() void {
         .trusted_types = &settingsTrustedTypes,
         .cookie_jar = &settingsCookieJar,
         .policy_container = &settingsPolicyContainer,
+        .prohibits_mixed_security_contexts = &settingsProhibitsMixedSecurityContexts,
     });
 }
 
@@ -526,6 +527,33 @@ fn setUserActivationTimestamps(window: *runtime.Instance, timestamps: @import("d
 fn settingsOrigin(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     return instance.ctx.allocator.dupe(u8, effectiveOrigin(instance, internal));
+}
+
+/// Mixed Content 4.3: any authenticated embedding document prohibits
+/// mixed content, even when this document's own origin is opaque.
+fn settingsProhibitsMixedSecurityContexts(instance: *runtime.Instance) error{OutOfMemory}!bool {
+    const internal = getInternal(instance) orelse return false;
+    const mixed = @import("fetch").mixed_content;
+    // 1. Check this environment settings object's origin.
+    if (try mixed.isOriginAuthenticated(instance.ctx.allocator, effectiveOrigin(instance, internal))) return true;
+    // 2.2.1. Check each ancestor navigable's active document origin. This is not
+    // isSecureContext: one authenticated ancestor is sufficient.
+    const navigable = navigableOf(instance, internal) orelse return false;
+    var parent = navigable.parent;
+    while (parent) |ancestor| : (parent = ancestor.parent) {
+        const active = ancestor.getActiveWindow() orelse continue;
+        const global: *runtime.Instance = @ptrCast(@alignCast(active));
+        const settings = @import("dom").global_settings.of(global) orelse continue;
+        const ancestor_origin = settings.origin(global) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            // An unreadable embedding origin must not authorize a downgrade.
+            else => return true,
+        };
+        defer global.ctx.allocator.free(ancestor_origin);
+        if (try mixed.isOriginAuthenticated(instance.ctx.allocator, ancestor_origin)) return true;
+    }
+    // 3. Does not restrict mixed security contexts.
+    return false;
 }
 
 /// The user agent's cookie jar, which a window reaches through its browsing
@@ -863,7 +891,16 @@ pub fn setDocument(instance: *runtime.Instance, document: *runtime.Instance) voi
     // detaches the old document and the collector takes it once script lets
     // it go. (It used to be kept, with a pending-activity hold, until the
     // realm ended.)
-    if (internal.document) |previous| if (previous != document) @import("dom").document_browsing_context.clearWindow(previous);
+    if (internal.document) |previous| if (previous != document) {
+        @import("dom").document_browsing_context.clearWindow(previous);
+        // The window's idle callbacks are the new document's from here
+        // (endIdleCallbacks): ended with the replaced document - Crane unloads
+        // it, running its cleanup steps, before the new one is set here - or,
+        // were its cleanup still to come, ending with that cleanup nothing of
+        // the new document's.
+        if (!internal.idle.ended) internal.idle.replaced_pending_end = true;
+        internal.idle.ended = false;
+    };
     internal.document = document;
     // A Window's associated Document is its browsing context's active
     // document while the Window is that context's active window.
@@ -2495,8 +2532,14 @@ const IdleCallbacks = struct {
     /// started yet.
     period_requested: bool = false,
     /// The window's document was unloaded or destroyed: its tasks are not
-    /// runnable again (Crane keeps no bfcache), so nothing more is kept.
+    /// runnable again (Crane keeps no bfcache), so nothing more is kept -
+    /// until a new document becomes the window's (setDocument), which a
+    /// window reused for a navigable's first document is.
     ended: bool = false,
+    /// setDocument replaced a document whose unloading document cleanup has
+    /// not run yet: the next end step (endIdleCallbacks) is that document's,
+    /// and must not end the new one's callbacks.
+    replaced_pending_end: bool = false,
 
     /// Ask the event loop for an idle period, once until it starts.
     fn askForIdlePeriod(self: *IdleCallbacks, realm: runtime.Context) void {
@@ -2760,9 +2803,23 @@ fn reportIdleCallbackException(host: ?*anyopaque, info: *const engine.ErrorInfo)
 /// idle callbacks never run - their tasks are not runnable, and Crane keeps
 /// no bfcache to make them so again. They are let go and their timeouts
 /// cancelled now, while the event loop that holds the timers lives.
+///
+/// The step is keyed on the realm, which a window reused for a navigable's
+/// first document shares with the initial about:blank one (HTML "create and
+/// initialize a Document object" step 6). It ends the state of the document
+/// that unloaded, never its successor's: Crane runs it before setDocument
+/// gives the window its new document (the frame's commit unloads and destroys
+/// the old document first, Blink's FrameLoader::DetachDocument order), and
+/// setDocument then lets the window ask for idle periods again; were it to
+/// run after, setDocument has marked it as the replaced document's, and it
+/// ends nothing of the new one's.
 fn endIdleCallbacks(environment: runtime.Context) void {
     const found = idleCallbacksOf(environment) orelse return;
     const idle = &found.internal.idle;
+    if (idle.replaced_pending_end) {
+        idle.replaced_pending_end = false;
+        return;
+    }
     idle.ended = true;
     idle.end(found.internal.allocator);
 }

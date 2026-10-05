@@ -394,8 +394,8 @@ pub const Animation = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_commitStyles(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try AnimationImpl.call_commitStyles(instance);
     }
@@ -412,5 +412,13 @@ pub const Animation = struct {
         .{ "set_currentTime", 0b1 },
         .{ "set_playbackRate", 0b1 },
         .{ "call_updatePlaybackRate", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "call_commitStyles",
     };
 };

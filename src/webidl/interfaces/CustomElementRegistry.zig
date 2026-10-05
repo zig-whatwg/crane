@@ -138,8 +138,8 @@ pub const CustomElementRegistry = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_define(instance: *runtime.Instance, name: DOMString, constructor: CustomElementConstructor, options: webidl.Opt(ElementDefinitionOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try CustomElementRegistryImpl.call_define(instance, name, constructor, options);
     }
@@ -147,8 +147,8 @@ pub const CustomElementRegistry = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try CustomElementRegistryImpl.call_initialize(instance, root);
     }
@@ -156,8 +156,8 @@ pub const CustomElementRegistry = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_upgrade(instance: *runtime.Instance, root: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try CustomElementRegistryImpl.call_upgrade(instance, root);
     }
@@ -166,5 +166,15 @@ pub const CustomElementRegistry = struct {
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
         "call_whenDefined",
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "call_define",
+        "call_initialize",
+        "call_upgrade",
     };
 };
