@@ -742,8 +742,9 @@ fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8) void {
 //   navigate()         steps 1-22: history handling, a fragment navigation
 //                      (committed on the spot), the ongoing navigation, and
 //                      a javascript: URL, which runs in a task of its own
-//   runBeforeUnload    step 23.1: beforeunload at the active document
-//   (the fetch)        step 23.9: about:, data: and file: answered at once,
+//   runBeforeUnload    step 24.1: beforeunload at the active document - run
+//                      by navigate() itself, as browsers do (see there)
+//   (the fetch)        step 24.9: about:, data: and file: answered at once,
 //                      http(s) through the event loop's AsyncFetch
 //   runCommit          "finalize a cross-document navigation" and the history
 //                      step it applies: unload the active document and its
@@ -1221,8 +1222,16 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             if (navigationById(id) == null or !isOngoing(integration, id)) return;
         }
     }
-    // Step 23: "In parallel": beforeunload, then the fetch.
-    queueNavigationTask(integration, id, &runBeforeUnload);
+    // Step 24: "In parallel": beforeunload, then the fetch. Deviation,
+    // stated: "checking if unloading is canceled" runs now, inside the call
+    // that navigates, not from a task - as Blink (FrameLoader::StartNavigation
+    // asks the frame's ShouldClose) and Gecko (nsDocShell::InternalLoad's
+    // PermitUnload) do, and as WPT expects of a same-agent navigation
+    // (unloading-documents/beforeunload-synchronous.html, prompt/001.html,
+    // navigation-api/navigation-methods/return-value/*-beforeunload.html:
+    // the beforeunload handler has run when location.href= or navigate()
+    // returns).
+    runBeforeUnload(@ptrFromInt(id));
 }
 
 /// Fetch "determine request's referrer" step 2 for a request whose
@@ -1273,10 +1282,10 @@ fn navigableContext(integration: *IFrameIntegration) ?runtime.Context {
     return @ptrCast(@alignCast(integration.runtime_context orelse return null));
 }
 
-/// Step 23.1: "checking if unloading is canceled" for the active document's
+/// Step 24.1: "checking if unloading is canceled" for the active document's
 /// inclusive descendant navigables - beforeunload at each, parents first.
-/// Step 23.2: canceled, or navigated again meanwhile, and this navigation
-/// ends. Step 23.3 (abort the active document) is not modelled.
+/// Step 24.2: canceled, or navigated again meanwhile, and this navigation
+/// ends. Step 24.3 (abort the active document) is not modelled.
 fn runBeforeUnload(context: ?*anyopaque) void {
     const id = idOf(context);
     const record = navigationById(id) orelse return;
