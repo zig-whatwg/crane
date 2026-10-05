@@ -77,11 +77,26 @@ pub const TimerId = u64;
 /// Called when the timer fires with the user-provided data.
 pub const TimerCallback = *const fn (user_data: ?*anyopaque) void;
 
+/// Frees a timer's user_data when the timer will never fire: its timer
+/// manager ended with it armed. Never called for a timer that fired, or one
+/// a successful clearTimeout removed (the caller frees then, as for any
+/// timer).
+pub const TimerDrop = *const fn (user_data: ?*anyopaque) void;
+
 /// VTable for timer operations.
 /// Host implementations provide these function pointers.
 pub const TimerVTable = struct {
     /// Schedule a one-shot timer.
     setTimeout: *const fn (ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque) TimerId,
+
+    /// Schedule a one-shot timer that owns `user_data`: if the timer manager
+    /// ends with it still armed - its loop is gone and it will never fire -
+    /// `drop(user_data)` runs then. A task deferred to a loop that never
+    /// turns again otherwise leaks what it carries (docs/lessons, "A task
+    /// queued on a loop that never runs again leaks its data"). Null for an
+    /// implementation that cannot promise the drop:
+    /// `TimerInterface.setTimeoutOwned` then arms nothing (returns 0).
+    setTimeoutOwned: ?*const fn (ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId = null,
 
     /// Cancel a pending timer.
     ///
@@ -117,6 +132,16 @@ pub const TimerInterface = struct {
     /// (typically on the next event loop iteration).
     pub fn setTimeout(self: Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque) TimerId {
         return self.vtable.setTimeout(self.ctx, ms, callback, user_data);
+    }
+
+    /// Schedule a one-shot timer that owns `user_data`: `drop(user_data)`
+    /// runs if the timer manager ends with the timer still armed. 0 when no
+    /// timer was armed - the implementation cannot promise the drop, or it
+    /// failed - and the caller still owns `user_data`. A successful
+    /// clearTimeout hands it back to the caller, as for any timer.
+    pub fn setTimeoutOwned(self: Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId {
+        const owned = self.vtable.setTimeoutOwned orelse return 0;
+        return owned(self.ctx, ms, callback, user_data, drop);
     }
 
     /// Cancel a pending timer.

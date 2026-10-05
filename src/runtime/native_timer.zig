@@ -40,6 +40,7 @@ const TimerId = runtime.TimerId;
 const TimerCallback = runtime.TimerCallback;
 const TimerInterface = runtime.TimerInterface;
 const TimerVTable = runtime.TimerVTable;
+const TimerDrop = runtime.TimerDrop;
 
 const log = std.log.scoped(.native_timer);
 
@@ -79,6 +80,9 @@ const Due = struct {
 const Entry = struct {
     callback: TimerCallback,
     user_data: ?*anyopaque,
+    /// For a timer armed with `setTimeoutOwned`: frees `user_data` when the
+    /// manager ends with the timer unfired.
+    drop: ?TimerDrop = null,
     id: TimerId,
     /// Absolute monotonic deadline in nanoseconds. Monotonic, NOT wall clock: a
     /// wall-clock deadline moves under an NTP step and the timer fires early or
@@ -109,16 +113,42 @@ pub const NativeTimerManager = struct {
         return self;
     }
 
+    /// The manager's end: every timer still armed will never fire. One armed
+    /// with `setTimeoutOwned` has its user_data dropped now; a plain one's is
+    /// left to whoever armed it, as it always was.
     pub fn deinit(self: *Self) void {
-        var iter = self.timers.iterator();
-        while (iter.next()) |entry| self.allocator.destroy(entry.value_ptr.*);
-        self.timers.deinit();
+        // Take the map first: a drop may free something whose own teardown
+        // reaches this manager (a clearTimeout of a sibling timer), which then
+        // finds nothing.
+        var timers = self.timers;
+        self.timers = std.AutoHashMap(TimerId, *Entry).init(self.allocator);
         self.initialized = false;
+        var iter = timers.iterator();
+        while (iter.next()) |kv| {
+            const entry = kv.value_ptr.*;
+            if (entry.drop) |drop| {
+                if (!entry.cancelled) drop(entry.user_data);
+            }
+            self.allocator.destroy(entry);
+        }
+        timers.deinit();
+        self.timers.deinit();
         self.allocator.destroy(self);
     }
 
     /// Schedule a one-shot timer. Returns 0 on failure.
     pub fn setTimeout(self: *Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque) TimerId {
+        return self.arm(ms, callback, user_data, null);
+    }
+
+    /// Schedule a one-shot timer that owns `user_data`: `drop(user_data)`
+    /// runs if this manager ends with the timer unfired (`deinit`). Returns
+    /// 0 on failure, and the caller still owns `user_data`.
+    pub fn setTimeoutOwned(self: *Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId {
+        return self.arm(ms, callback, user_data, drop);
+    }
+
+    fn arm(self: *Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: ?TimerDrop) TimerId {
         if (!self.initialized) return 0;
 
         const id = self.next_id;
@@ -126,6 +156,7 @@ pub const NativeTimerManager = struct {
         entry.* = .{
             .callback = callback,
             .user_data = user_data,
+            .drop = drop,
             .id = id,
             .deadline_ns = clock.monotonicNanos() + @as(i128, @intCast(ms)) * std.time.ns_per_ms,
             .cancelled = false,
@@ -248,12 +279,18 @@ pub const NativeTimerManager = struct {
 
     const vtable: TimerVTable = .{
         .setTimeout = setTimeoutVTable,
+        .setTimeoutOwned = setTimeoutOwnedVTable,
         .clearTimeout = clearTimeoutVTable,
     };
 
     fn setTimeoutVTable(ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque) TimerId {
         const self: *Self = @ptrCast(@alignCast(ctx));
         return self.setTimeout(ms, callback, user_data);
+    }
+
+    fn setTimeoutOwnedVTable(ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.setTimeoutOwned(ms, callback, user_data, drop);
     }
 
     fn clearTimeoutVTable(ctx: *anyopaque, id: TimerId) bool {
