@@ -450,6 +450,7 @@ thread-local mutable state and only goes down."""
 progress = [
   "6a2f249a9 - design: instance/tab model, 345-variable inventory, host API, BiDi map, ratchet, batches B0-B9 (instances lane); docs/instances.md",
   "50ce17ce17 (merged 392538d86) - B0: crane.Process starts the engine and installs every src/dom hook once (owners' installHooks, written once while starting); zig build lint-global-state ratchets process-global and threadlocal state",
+  "e263d652b8 (merged c9182f97f6) - workers 1A: every process-wide structure a worker thread reaches is locked, atomic or per isolate; an agent's end frees only its own isolate's entries; two-thread stress tests (workers lane)",
 ]
 
   [[infra.items]]
@@ -482,7 +483,7 @@ progress = [
 
   [[infra.items]]
   name = "Every worker (dedicated, shared, service) runs on its own thread with its own agent; cross-thread messaging through the Browser's thread-safe task queues; termination aborts the running script"
-  status = "todo"
+  status = "doing"
 
 # ---------------------------------------------------------------------------
 # Prerequisites for parallel work
