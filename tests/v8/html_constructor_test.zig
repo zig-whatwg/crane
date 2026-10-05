@@ -190,6 +190,19 @@ const Page = struct {
         return read.bytes;
     }
 
+    /// V8's live global handle bytes left by 64 rounds of `body` (after 2 to
+    /// warm up), each run as one script, after a collection.
+    fn handleBytesLeftBy(self: Page, comptime body: []const u8) !i64 {
+        const warm = try self.eval("(() => { for (let i = 0; i < 2; i++) { " ++ body ++ " } return 'ok' })()");
+        std.testing.allocator.free(warm);
+        try self.collect();
+        const before: i64 = @intCast(try self.globalHandleBytes());
+        const run = try self.eval("(() => { for (let i = 0; i < 64; i++) { " ++ body ++ " } return 'ok' })()");
+        std.testing.allocator.free(run);
+        try self.collect();
+        return @as(i64, @intCast(try self.globalHandleBytes())) - before;
+    }
+
     /// A full collection, inside the realm.
     fn collect(self: Page) !void {
         const Collect = struct {
@@ -231,7 +244,7 @@ test "created: a customized built-in's super() names its own interface" {
     defer page.close();
     // Before the page closes: the hook's retained NewTarget is of its agent.
     defer host.deinit();
-    _ = try page.eval("class P extends HTMLParagraphElement {}; void new P()");
+    try page.expect("class P extends HTMLParagraphElement {}; void new P(); 'ok'", "ok");
     try std.testing.expectEqualStrings("HTMLParagraphElement", host.seenInterface());
 }
 
@@ -291,14 +304,16 @@ test "upgrading an element with a wrapper: that wrapper, its prototype set, is t
         \\String(again === first && Object.getPrototypeOf(first) === Y.prototype && first.marked === true)
     , "true");
 
-    // The receiver V8 made for Y is discarded: no handle of it is kept, and
-    // nothing registered it for the element - a later wrap still answers the
-    // original wrapper.
-    try page.collect();
-    const before = try page.globalHandleBytes();
-    _ = try page.eval("for (let i = 0; i < 32; i++) { if (new Y() !== first) throw new Error('identity'); } 'ok'");
-    try page.collect();
-    try std.testing.expect(try page.globalHandleBytes() <= before);
+    // The receiver V8 made for Y is discarded: no handle of it is kept -
+    // 64 upgrades leave no more global handles than 64 rounds of a control
+    // that constructs nothing - and nothing registered it for the element: a
+    // later wrap still answers the original wrapper.
+    const control = try page.handleBytesLeftBy("if (first.marked !== true) throw new Error('marked');");
+    const upgrades = try page.handleBytesLeftBy("if (new Y() !== first) throw new Error('identity');");
+    if (upgrades - control >= 512) {
+        std.debug.print("64 upgrades left {d} bytes of global handles; the control left {d}\n", .{ upgrades, control });
+        return error.HandlesLeaked;
+    }
     try page.expect("String(new Y() === first)", "true");
     try std.testing.expectEqual(element, try page.instance("first"));
 }

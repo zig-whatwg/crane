@@ -4879,6 +4879,17 @@ pub fn V8Interface(comptime Interface: type) type {
             var receiver_taken = false;
             defer if (!receiver_taken) v8.v8_Object_Dispose(this_obj);
 
+            // The active function object: this interface's interface object.
+            // A construct call's FunctionCallbackInfo names its target as the
+            // FunctionTemplateInfo rather than the function (V8's
+            // GetTargetFunctionTemplateInfo reads either), so info.getFunction()
+            // is null there; the interface object is then the template's
+            // instantiation in the current context - the callee's, which V8
+            // entered for the call.
+            const own_active: ?*v8.Function = if (active_function == null) activeInterfaceObject(current_context) else null;
+            defer if (own_active) |f| v8.v8_Function_Dispose(f);
+            const active = active_function orelse own_active;
+
             // A construct call always has NewTarget.
             const new_target = info.getNewTarget() orelse {
                 conv.throwTypeErrorFromContext(isolate, function_context, "Illegal constructor");
@@ -4888,7 +4899,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // 1. If NewTarget is equal to the active function object, then
             //    throw a TypeError.
-            if (active_function) |function| {
+            if (active) |function| {
                 if (v8.v8_Value_StrictEquals(new_target, @ptrCast(function))) {
                     conv.throwTypeErrorFromContext(isolate, function_context, "Illegal constructor");
                     return;
@@ -4905,7 +4916,7 @@ pub fn V8Interface(comptime Interface: type) type {
             //        every constructor's path); a prototype of NewTarget's own
             //        is never re-read, so its getter's script ran once, before
             //        the host's steps (the hook's single-call contract).
-            if (receiverHasActivePrototype(this_obj, active_function, current_context)) {
+            if (receiverHasActivePrototype(this_obj, active, current_context)) {
                 handleNewTargetPrototypeFallback(info, this_obj, isolate, current_context, interface_name);
             }
 
@@ -4948,6 +4959,13 @@ pub fn V8Interface(comptime Interface: type) type {
                     info.setReturnValue(@ptrCast(wrapper));
                 },
             }
+        }
+
+        /// This interface's interface object in `context`: its FunctionTemplate's
+        /// instantiation there (one per context, so identity holds). OWNED.
+        fn activeInterfaceObject(context: *v8.Context) ?*v8.Function {
+            const template = template_registry.getTemplate(interface_name) orelse return null;
+            return v8.v8_FunctionTemplate_GetFunction(template, context);
         }
 
         /// Whether V8 gave `receiver` the active function's own `prototype` -
