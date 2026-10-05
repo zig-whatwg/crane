@@ -2862,11 +2862,18 @@ pub fn call_stop(instance: *runtime.Instance) anyerror!void {
         return; // No-op if window is closed
     }
 
-    // HTML "stop loading" this's navigable, as far as this engine keeps one:
-    // step 2's "set the ongoing navigation for navigable to null" informs the
-    // navigation API about aborting navigation - which aborts its ongoing
-    // navigate event. Not modelled, stated: ending a frame's ongoing fetch
-    // and "abort a document" (step 3).
+    // Step 1: "If this's navigable is null, then return."
+    if (navigableOf(instance, internal) == null) return;
+    // Step 2: "Stop loading this's navigable": a frame's or popup's ongoing
+    // navigation is set to null (dom.content_navigables) - its fetch ends,
+    // and nothing commits - which informs the navigation API about aborting
+    // navigation. The top-level page has no navigation of Crane's to end:
+    // its navigation API is informed directly (an intercepted navigation's
+    // navigate event is aborted either way). Step 3 of "stop loading",
+    // aborting the document, is not modelled, stated.
+    if (get_document(instance)) |document| {
+        @import("dom").content_navigables.stopLoading(document);
+    } else |_| {}
     @import("dom").navigation_api.informAboutAbortingNavigation(instance);
 }
 
