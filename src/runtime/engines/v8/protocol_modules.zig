@@ -73,6 +73,10 @@ fn unregister(record: *Record) void {
         list.deinit(registry_allocator);
         _ = records.remove(record.identity_hash);
     }
+    // The map's own memory goes with its last record: a worker thread's
+    // records all go before it ends, and what a threadlocal still holds
+    // when its thread exits is never freed.
+    if (records.count() == 0) records.clearAndFree(registry_allocator);
 }
 
 /// The record whose module `module` is (a handle V8 lent a callback).

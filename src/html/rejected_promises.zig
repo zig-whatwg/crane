@@ -326,9 +326,11 @@ const Notification = struct {
 /// `runNotification`. Takes ownership of every entry in `promises` (the
 /// slice itself is copied).
 ///
-/// A window's realm has an event loop. A worker's has none of its own: its
-/// tasks run as timers on its owner's loop, and so does this one - tracked,
-/// so that the worker's end can cancel it (`forgetGlobal`).
+/// A window's realm and a dedicated worker's have an event loop, which owns
+/// the task until it runs or is dropped (`dropNotification`). A shared
+/// worker's realm has none of its own until workers batch 2 moves it to a
+/// thread: its tasks run as timers on its creator's loop, and so does this
+/// one - tracked, so that the worker's end can cancel it (`forgetGlobal`).
 fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const Rejected) void {
     const loop = global.ctx.getOptionalEventLoop();
     const timer = if (loop == null) global.ctx.getOptionalTimer() else null;
@@ -345,7 +347,7 @@ fn queueNotification(global: *runtime.Instance, kind: Kind, promises: []const Re
         .kind = kind,
         .promises = copy,
     };
-    if (loop) |l| return l.queueTask(.{ .callback = &runNotification, .context = task });
+    if (loop) |l| return l.queueTask(.{ .callback = &runNotification, .context = task, .drop = &dropNotification });
     const t = trackedFor(global, true) orelse return task.discard();
     const id = timer.?.setTimeout(0, &runNotification, task);
     if (id == 0) return task.discard();
@@ -363,6 +365,18 @@ fn runNotification(data: ?*anyopaque) void {
     }
     if (runtime.SlabAllocator.generationOf(task.global) != task.generation) return releaseAll(task.promises);
     engine.runTaskInRealm(task.global.ctx, notificationSteps, task) catch releaseAll(task.promises);
+}
+
+/// The queued global task will never run: its loop dropped it - a closing
+/// dedicated worker's loop discards its tasks (HTML close() and "terminate a
+/// worker"), and a window's loop drops a task it ends with. What it carries
+/// is released: its record, its list, and the promises and reasons it holds.
+/// Both loops drop while the task's agent lives (a worker's queueTask drops
+/// a closing worker's task at once; the window loop ends before its agent),
+/// so the handles are released into a live isolate.
+fn dropNotification(data: ?*anyopaque) void {
+    const task: *Notification = @ptrCast(@alignCast(data orelse return));
+    task.discard();
 }
 
 /// `task` has fired: it is no longer armed. Only its own agent's entries are

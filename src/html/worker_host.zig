@@ -57,6 +57,12 @@ const rejected_promises = @import("rejected_promises.zig");
 const fire_event = @import("dom").fire_event;
 const message_ports = @import("dom").message_ports;
 
+// A string timer handler's checks at the call: Trusted Types' "get trusted
+// type compliant string", and CSP's EnsureCSPDoesNotBlockStringCompilation
+// over the global scope's CSP list.
+const trusted_types = @import("dom").trusted_types;
+const code_generation = @import("code_generation.zig");
+
 // A realm's fetches in flight, released when the realm goes.
 const async_fetch = @import("fetch").algorithms.async_fetch;
 
@@ -84,10 +90,70 @@ const PortMessage = port_channels.PortMessage;
 // (runtime.timer): a worker's task saves and restores the level around its
 // callback, so the page's tasks, which never run inside it, keep theirs.
 
+/// What a timer runs: the timer initialization steps' `handler` after step 1.
+const TimerHandler = union(enum) {
+    /// A Function, invoked with the timer's arguments (step 10.7). OWNED,
+    /// with its callback context.
+    function: engine.CallbackFunction,
+    /// A string, compiled as a classic script when the timer fires (step
+    /// 10.8) - what step 1's Trusted Types check left of the handler. OWNED
+    /// (the timer's allocator).
+    string: []u8,
+};
+
+/// setTimeout()'s and setInterval()'s `handler` as WebIDL converts it: a
+/// member of the TimerHandler union, (DOMString or Function or
+/// TrustedScript).
+const ConvertedHandler = union(enum) {
+    /// BORROWED: the call's argument.
+    function: runtime.JSValue,
+    /// BORROWED: the call's argument.
+    trusted_script: *runtime.Instance,
+    /// What ToString made of the argument. OWNED.
+    string: []u8,
+
+    fn deinit(self: ConvertedHandler, allocator: Allocator) void {
+        switch (self) {
+            .string => |text| allocator.free(text),
+            .function, .trusted_script => {},
+        }
+    }
+};
+
+/// WebIDL 3.2.24, an ECMAScript value to the TimerHandler union, in the
+/// union algorithm's order: a platform object that implements TrustedScript
+/// (step 4), then a callable - the Function member (step 10) - and anything
+/// else converted to the DOMString member by ToString (step 15), which runs
+/// script and can throw (a Symbol is a TypeError).
+fn convertTimerHandler(realm: runtime.Context, value: runtime.JSValue, allocator: Allocator) runtime.EngineError!ConvertedHandler {
+    if (engine.convertToPlatformObject(realm, value)) |instance| {
+        if (trusted_types.dataOf(instance, .script) != null) return .{ .trusted_script = instance };
+    }
+    if (engine.isCallable(realm, value)) return .{ .function = value };
+    const text = engine.convertToDOMString(realm, value, allocator) catch |err| return engineError(err);
+    return .{ .string = text };
+}
+
+/// An engine operation's error as a built-in function's steps return it:
+/// what the operation threw stays pending, and its TypeError is thrown.
+fn engineError(err: engine.Error) runtime.EngineError {
+    return switch (err) {
+        error.ExceptionPending => error.ExceptionPending,
+        error.TypeError => error.TypeError,
+        error.OutOfMemory => error.OutOfMemory,
+        error.DataCloneError => error.DataCloneError,
+        error.NotSupported => error.NotSupported,
+        error.OperationFailed, error.ExceptionReported => error.OperationFailed,
+    };
+}
+
 /// One active timer.
 const WorkerTimerContext = struct {
-    /// The timer's handler (OWNED), with its callback context.
-    callback: engine.CallbackFunction,
+    /// The timer's handler (OWNED).
+    handler: TimerHandler,
+    /// The timer's `arguments` (each OWNED), for a Function handler; empty
+    /// for a string, which runs none.
+    arguments: []engine.Owned = &.{},
     /// The id script holds: HTML's key in the global's map of setTimeout and
     /// setInterval IDs, and its key in its host's `timers`. It names the
     /// timer for as long as it lives - a repeating timer keeps it across
@@ -120,10 +186,26 @@ const WorkerTimerContext = struct {
     worker_host: *WorkerHost,
 };
 
-/// Release a timer context and the handler it holds.
+/// Release a timer context, the handler it holds and its arguments.
 fn freeWorkerTimer(ctx: *WorkerTimerContext) void {
-    ctx.callback.release();
+    switch (ctx.handler) {
+        .function => |function| function.release(),
+        .string => |source| ctx.allocator.free(source),
+    }
+    for (ctx.arguments) |argument| argument.release();
+    ctx.allocator.free(ctx.arguments);
     ctx.allocator.destroy(ctx);
+}
+
+/// WebIDL's conversion of a `long` (ConvertToInt(V, 32, "signed"), steps
+/// 5-12) from the Number ToNumber gave: NaN and the infinities are 0, the
+/// integer part is taken modulo 2^32 and read as two's complement - so 2^32
+/// is 0, as a Window's timeout is (the V8 adapter's ToInt32).
+pub fn convertToLong(number: f64) i32 {
+    if (std.math.isNan(number) or std.math.isInf(number)) return 0;
+    const modulo = @mod(@trunc(number), 4294967296.0);
+    const unsigned: u32 = @intFromFloat(modulo);
+    return @bitCast(unsigned);
 }
 
 /// Cancel and free every timer `owner` armed: HTML "terminate a worker" step 2
@@ -513,17 +595,26 @@ fn runWorkerTimerCallback(ctx: *WorkerTimerContext) void {
 }
 
 const TimerCall = struct {
-    /// Timer initialization step 7.1: "invoke handler given arguments and
-    /// "report", and with callback this value set to thisArg" - the global.
+    /// The timer's task, steps 10.7-10.8.
     fn steps(data: ?*anyopaque) void {
         const ctx: *WorkerTimerContext = @ptrCast(@alignCast(data orelse return));
         const wctx = ctx.worker_host;
         const realm = wctx.realm orelse return;
-        const completion = engine.invokeCallbackFunction(realm, &ctx.callback, .global_this, &.{}, .{
-            .report = wctx.reporter(),
-        }) catch return;
-        switch (completion) {
-            inline else => |value| value.release(),
+        switch (ctx.handler) {
+            // 10.7: "invoke handler given arguments and "report", and with
+            // callback this value set to thisArg" - the global.
+            .function => |*function| {
+                const arguments = wctx.allocator.alloc(runtime.JSValue, ctx.arguments.len) catch return;
+                defer wctx.allocator.free(arguments);
+                for (arguments, ctx.arguments) |*argument, owned| argument.* = owned.value;
+                const completion = engine.invokeCallbackFunction(realm, function, .global_this, arguments, .{
+                    .report = wctx.reporter(),
+                }) catch return;
+                switch (completion) {
+                    inline else => |value| value.release(),
+                }
+            },
+            .string => |source| wctx.runTimerString(realm, source),
         }
     }
 };
@@ -715,6 +806,10 @@ pub const WorkerHost = struct {
     /// names: their base URLs. They live as long as the realm, since a
     /// function one defined can call import() at any time.
     classic_scripts: std.ArrayListUnmanaged(*module_script.ClassicScript) = .empty,
+
+    /// The classic script every string timer handler runs as (one of
+    /// `classic_scripts`), made on first use (`timerScript`).
+    timer_script: ?*module_script.ClassicScript = null,
 
     /// import()s whose fetch task is queued and has not run: each holds an
     /// engine request that must be finished while the agent lives.
@@ -1348,6 +1443,7 @@ pub const WorkerHost = struct {
         }
         self.classic_scripts.deinit(self.allocator);
         self.classic_scripts = .empty;
+        self.timer_script = null;
     }
 
     /// "Run a worker" onComplete step 10 for a classic worker: run the
@@ -1618,25 +1714,25 @@ pub const WorkerHost = struct {
 
     fn setTimeoutSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
         const self: *Self = @ptrCast(@alignCast(data orelse return runtime.JSValue.fromNumber(0)));
-        return runtime.JSValue.fromNumber(@floatFromInt(self.setTimer(args, false)));
+        return runtime.JSValue.fromNumber(@floatFromInt(try self.setTimer(args, false)));
     }
 
     fn setIntervalSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
         const self: *Self = @ptrCast(@alignCast(data orelse return runtime.JSValue.fromNumber(0)));
-        return runtime.JSValue.fromNumber(@floatFromInt(self.setTimer(args, true)));
+        return runtime.JSValue.fromNumber(@floatFromInt(try self.setTimer(args, true)));
     }
 
     /// clearTimeout() and clearInterval(): remove this's map of setTimeout
-    /// and setInterval IDs[id] - the same map for both.
+    /// and setInterval IDs[id] - the same map for both. `optional long id =
+    /// 0` converts as WebIDL does - ToNumber, which can run script and
+    /// throw, then modulo 2^32 - so "5" is 5; an id no timer has (zero, a
+    /// negative one) names nothing.
     fn clearTimerSteps(data: ?*anyopaque, args: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
         const self: *Self = @ptrCast(@alignCast(data orelse return runtime.JSValue.jsUndefined));
-        if (args.len < 1) return runtime.JSValue.jsUndefined;
-        const id = switch (args[0]) {
-            .number => |n| n,
-            else => return runtime.JSValue.jsUndefined,
-        };
-        if (std.math.isNan(id) or std.math.isInf(id) or id < 0) return runtime.JSValue.jsUndefined;
-        self.clearTimer(@intFromFloat(id));
+        if (args.len < 1 or args[0] == .undefined) return runtime.JSValue.jsUndefined;
+        const realm = self.realm orelse return runtime.JSValue.jsUndefined;
+        const id = convertToLong(engine.convertToUnrestrictedDouble(realm, args[0]) catch |err| return engineError(err));
+        if (id > 0) self.clearTimer(@intCast(id));
         return runtime.JSValue.jsUndefined;
     }
 
@@ -1674,57 +1770,133 @@ pub const WorkerHost = struct {
         return runtime.JSValue.jsUndefined;
     }
 
-    /// The timer initialization steps (HTML § 8.6) for setTimeout() or
-    /// setInterval(): the new timer's id, or 0 when none was armed.
-    fn setTimer(self: *Self, args: []const runtime.JSValue, repeat: bool) u32 {
+    /// setTimeout() and setInterval(): WebIDL's conversion of their
+    /// arguments - `TimerHandler handler, optional long timeout = 0, any...
+    /// arguments` - then the timer initialization steps (HTML § 8.6) with no
+    /// previousId. The new timer's id, or 0 when none was armed. The
+    /// conversions run script (a handler's toString(), a timeout's
+    /// valueOf()), so they happen here, at the call, in the order WebIDL
+    /// gives, and what they throw reaches the caller.
+    fn setTimer(self: *Self, args: []const runtime.JSValue, repeat: bool) runtime.EngineError!u32 {
         const realm = self.realm orelse return 0;
-        // The handler: only a function is supported (a string handler is not).
-        if (args.len < 1) return 0;
-        if (!engine.isCallable(realm, args[0])) return 0;
+        const global = self.global_scope orelse return 0;
+        // `handler` is not optional: "not enough arguments" is a TypeError.
+        if (args.len < 1) return error.TypeError;
 
-        // The timeout (second argument, default 0).
-        var delay_ms: i64 = 0;
-        if (args.len >= 2) {
-            switch (args[1]) {
-                .number => |n| {
-                    if (!std.math.isNan(n) and !std.math.isInf(n) and n >= 0) delay_ms = @intFromFloat(@min(n, @as(f64, std.math.maxInt(i32))));
-                },
-                else => {},
-            }
+        // `handler`: TimerHandler, (DOMString or Function or TrustedScript),
+        // by WebIDL's union conversion (3.2.24): a platform object that is a
+        // TrustedScript (step 4), then a callable (step 10), else the string
+        // ToString makes of it (step 15).
+        var handler: ConvertedHandler = try convertTimerHandler(realm, args[0], self.allocator);
+        defer handler.deinit(self.allocator);
+
+        // `timeout`: optional long, 0 when undefined or not passed.
+        var timeout: i32 = 0;
+        if (args.len >= 2 and args[1] != .undefined) {
+            timeout = convertToLong(engine.convertToUnrestrictedDouble(realm, args[1]) catch |err| return engineError(err));
         }
 
-        const timer = self.timer orelse return 0;
-        // Room for the entry first: a timer armed and then not tracked could
-        // be neither cleared nor freed with its global.
-        self.timers.ensureUnusedCapacity(self.allocator, 1) catch return 0;
+        // Step 1: a handler that is not a Function, and no previousId: "Set
+        // handler to the result of invoking the get trusted type compliant
+        // string algorithm with TrustedScript, global, handler, sink, and
+        // "script"", the sink being "WorkerGlobalScope setTimeout" or
+        // "WorkerGlobalScope setInterval" - a TrustedScript's data, or the
+        // default policy's value, or a TypeError where Trusted Types are
+        // required. The default policy runs script.
+        var source: ?[]u8 = null;
+        errdefer if (source) |text| self.allocator.free(text);
+        switch (handler) {
+            .function => {},
+            .trusted_script, .string => {
+                const sink: []const u8 = if (repeat) "WorkerGlobalScope setInterval" else "WorkerGlobalScope setTimeout";
+                const input: trusted_types.Input = switch (handler) {
+                    .trusted_script => |instance| .{ .object = instance },
+                    .string => |text| .{ .string = text },
+                    .function => unreachable,
+                };
+                source = trusted_types.getCompliantString(self.allocator, .script, global, input, sink, trusted_types.script_sink_group) catch |err| return switch (err) {
+                    error.TypeError => error.TypeError,
+                    error.ExceptionPending => error.ExceptionPending,
+                    error.OutOfMemory => error.OutOfMemory,
+                    else => error.OperationFailed,
+                };
+                // Not in the spec, stated: step 10.8.2's CSP check runs here,
+                // at the call, as the window's does (src/browser/Context.zig
+                // initializeTimer cites the three engines - Blink's
+                // DOMTimer, Gecko's SetTimeoutOrInterval, WebKit's
+                // setTimeout, each `return 0` after reporting - and the
+                // lesson "a spec step no engine runs breaks tests that never
+                // test it"). The worker's CSP list is its global scope's
+                // policy container's: an enforced policy that blocks the
+                // string reports its violation at the global scope and the
+                // call returns 0, scheduling nothing and reporting no
+                // exception; a report-only one reports and the timer is set.
+                if (!code_generation.timerHandlerAllowed(global, source.?)) {
+                    self.allocator.free(source.?);
+                    source = null;
+                    return 0;
+                }
+            },
+        }
 
-        // The handler as a callback function, with the incumbent realm - the
-        // worker's, whose built-in this is - as its callback context.
-        const handler: engine.CallbackFunction = .{
-            .function = engine.retainValue(realm, args[0]) catch return 0,
-            .context = engine.incumbentRealm() orelse realm,
-        };
-        const timer_ctx = self.allocator.create(WorkerTimerContext) catch {
-            handler.release();
+        const timer = self.timer orelse {
+            if (source) |text| self.allocator.free(text);
+            source = null;
             return 0;
         };
+        // Room for the entry first: a timer armed and then not tracked could
+        // be neither cleared nor freed with its global.
+        try self.timers.ensureUnusedCapacity(self.allocator, 1);
 
-        // Apply HTML §8.6's clamp against the CURRENT nesting level: the spec
-        // reads it in step 4, clamps in step 6, and only then increments for
-        // the timer it is creating.
-        const clamped_ms = runtime.timer.clampTimeout(delay_ms, runtime.timer.nesting_level);
-        const delay_u64: u64 = if (clamped_ms >= 0) @intCast(clamped_ms) else 0;
+        const timer_ctx = try self.allocator.create(WorkerTimerContext);
+        errdefer self.allocator.destroy(timer_ctx);
         timer_ctx.* = .{
-            .callback = handler,
+            .handler = undefined,
             .id = 0, // Given once the timer is armed
             .current_timer_id = 0, // Updated after scheduling
             .is_interval = repeat,
-            .interval_delay_ms = delay_u64,
+            .interval_delay_ms = 0,
             .nesting_level = runtime.timer.nesting_level +| 1,
             .allocator = self.allocator,
             .cancelled = false,
             .worker_host = self,
         };
+        switch (handler) {
+            // The handler as a callback function, with the incumbent realm -
+            // the worker's, whose built-in this is - as its callback
+            // context; and `arguments`, each kept for every run.
+            .function => |function| {
+                const kept = try self.allocator.alloc(engine.Owned, args.len -| 2);
+                var retained: usize = 0;
+                errdefer {
+                    for (kept[0..retained]) |argument| argument.release();
+                    self.allocator.free(kept);
+                }
+                for (kept, 2..) |*argument, i| {
+                    argument.* = engine.retainValue(realm, args[i]) catch |err| return engineError(err);
+                    retained += 1;
+                }
+                const retained_function = engine.retainValue(realm, function) catch |err| return engineError(err);
+                timer_ctx.handler = .{ .function = .{
+                    .function = retained_function,
+                    .context = engine.incumbentRealm() orelse realm,
+                } };
+                timer_ctx.arguments = kept;
+            },
+            // A string runs no arguments.
+            .trusted_script, .string => {
+                timer_ctx.handler = .{ .string = source.? };
+                source = null;
+            },
+        }
+
+        // Steps 3-6: the timeout, 0 when negative, and HTML §8.6's clamp
+        // against the CURRENT nesting level: the spec reads it in step 4,
+        // clamps in step 6, and only then increments for the timer it is
+        // creating (steps 11-12).
+        const clamped_ms = runtime.timer.clampTimeout(@max(timeout, 0), runtime.timer.nesting_level);
+        const delay_u64: u64 = if (clamped_ms >= 0) @intCast(clamped_ms) else 0;
+        timer_ctx.interval_delay_ms = delay_u64;
 
         const timer_id = timer.setTimeout(delay_u64, workerTimerTrampoline, timer_ctx);
         if (timer_id == 0) {
@@ -1735,6 +1907,39 @@ pub const WorkerHost = struct {
         timer_ctx.id = self.takeTimerId();
         self.timers.putAssumeCapacityNoClobber(timer_ctx.id, timer_ctx);
         return @intCast(timer_ctx.id);
+    }
+
+    /// The timer task's step 10.8 for a string handler `source` whose CSP
+    /// check passed at the call (setTimer): create a classic script with the
+    /// default script fetch options and the settings object's API base URL -
+    /// the worker's URL - and run it, its exception reported for the global
+    /// scope.
+    ///
+    /// Step 10.8.5 would take the INITIATING script's base URL and fetch
+    /// options instead (the active script when setTimeout was called): the
+    /// engine protocol has no "active script" (GetActiveScriptOrModule) yet,
+    /// and a window's string timer (src/browser/Context.zig runTimerSteps)
+    /// takes its API base URL the same way. The two differ only for an
+    /// import() inside the string when the script that called setTimeout
+    /// came from importScripts().
+    fn runTimerString(self: *Self, realm: runtime.Context, source: []const u8) void {
+        const script = self.timerScript() catch return;
+        engine.runClassicScript(realm, .{ .utf8 = source }, self.script_url, script, self.reporter()) catch |err| switch (err) {
+            // Reported for the global scope already.
+            error.ExceptionReported => {},
+            else => log.debug("a timer's string handler did not run: {}", .{err}),
+        };
+    }
+
+    /// The classic script every string timer handler runs as - its base URL
+    /// the worker's API base URL, its fetch options the defaults - made on
+    /// first use and kept with the realm's other classic scripts, since a
+    /// function the string defined can call import() at any time.
+    fn timerScript(self: *Self) !*module_script.ClassicScript {
+        if (self.timer_script) |script| return script;
+        const script = try self.classicScript(self.script_url);
+        self.timer_script = script;
+        return script;
     }
 };
 
