@@ -143,12 +143,16 @@ fn evalStringIn(agent: *runtime.Agent, realm: runtime.Context, code: []const u8,
 }
 
 test "two agents on two threads make worker realms and churn platform objects at once" {
-    // The platform and the process-wide runtime start on this thread first,
-    // as crane.Process starts them before any Browser or worker thread.
-    // tests/v8 runs in one process: start the runtime only if no file
-    // before this one has.
-    ffi.v8_Platform_Initialize();
+    // The engine, the process-wide runtime and every src/dom hook start on
+    // this thread first, as crane.Process starts them before any Browser or
+    // worker thread: the engine's teardown handlers are written once there
+    // (two threads making their first agents at once would race on them),
+    // and MessageChannel makes its ports through MessagePort's hook. tests/v8
+    // runs in one process: each is idempotent, and the runtime starts only if
+    // no file before this one started it.
+    try protocol.initializeEngine(.{});
     if (runtime.SlabAllocator.tryGet()) |_| {} else |_| runtime.initializeRuntime(std.heap.page_allocator);
+    @import("interfaces").process_hooks.startHooksForTest();
 
     var agents = [_]Agent{ .{}, .{} };
     var threads: [2]std.Thread = undefined;

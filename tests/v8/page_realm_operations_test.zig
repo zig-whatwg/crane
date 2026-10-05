@@ -3203,6 +3203,12 @@ test "protocol: a MessageEvent made with ports keeps one frozen array, the one e
     // argument conversion of `ports` leaves handles of its own (one per
     // sequence and two per element, on main as well), so a handle count
     // after a collection cannot single the constructor out.
+    //
+    // MessageChannel makes its ports through the hook MessagePort installs
+    // (dom.message_ports) - with no Browser here, crane.Process is not
+    // started, so the test installs the hooks itself rather than relying on
+    // a file before it in the shared process.
+    @import("interfaces").process_hooks.startHooksForTest();
     var host: WindowHost = .{};
     const w = try windowRealm(&host, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(w, .global_detached);
