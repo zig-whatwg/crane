@@ -76,7 +76,7 @@ pub const TopLevelChooser = struct {
 /// A hook like `implementation`: one stateless function, installed once at
 /// process start by Window's installHooks, the same for every Browser and
 /// thread.
-// process-wide: a hook installed once at process start; its function keeps no state
+// process-wide: only a function pointer (Window's chooser), set once by installHooks at process start; it keeps no state, so one serves every Browser and thread
 var top_level_chooser: ?TopLevelChooser = null;
 
 /// Called by Window's installHooks, once, at process start (process_start.zig).
