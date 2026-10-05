@@ -1,0 +1,15 @@
+# Architecture: V8 asks its code generation callback only where code generation is disallowed
+
+**Date**: 2026-10-05
+**Lesson**: Installing Isolate::SetModifyCodeGenerationFromStringsCallback does nothing by itself: V8 calls it only for a context whose allow_code_gen_from_strings is false, so a host hook for HostEnsureCanCompileStrings needs every realm of the agent made with code generation disallowed.
+
+**Why**: Compiler::ValidateDynamicCompilationSource (V8's eval and CreateDynamicFunction path) returns the source unchecked when the context allows code generation and the source is a string; only then does it look for the callback. `v8_Context_AllowCodeGenerationFromStrings` had existed unused in v8_wrapper.cpp for months, and Document.isEvalAllowedByCSP had no caller: every eval on every page compiled, whatever its CSP said. Blink pairs the two the same way - ScriptController::DisableEval sets the flag false when a policy without 'unsafe-eval' arrives, and the callback decides from there. The WebAssembly callback (SetAllowWasmCodeGenerationCallback) is the opposite: V8 calls it for every compile, whatever the context's flag.
+
+**What Happened**: The cspenforce batch added three HostHooks members (ensureCanCompileStrings, getCodeForEval, ensureCanCompileWasmBytes) with a capability, code_generation_checks. Crane cannot toggle the flag when a policy arrives the way Blink does - a `<meta>` policy lands long after the realm is made, through code that knows nothing of the engine - so the V8 adapter makes every realm of a hooked agent (window, frame, worker; restrictCodeGenerationFromStrings in protocol_realms and worker_realm) with the flag false, and the host answers "allowed" at once for a global whose CSP list is empty. Three more things V8 does not say, found on the way:
+- The callback names no compilationType: a source CreateDynamicFunction built - "(function anonymous(" ... "\n})", or the async / generator prefixes - is a Function constructor's, its parentheses stripped back to ECMA-262's sourceString (Trusted Types' "Function" sink samples it without "function anonymous").
+- An eval argument that is an object reaches the callback as the object; returning "allowed" with no source makes eval return it, so a TrustedScript compiles only when the host hands back its code (HostGetCodeForEval).
+- The linked V8 (13.1) throws WebAssembly.compile()'s CompileError synchronously when the callback refuses; the checkout (14.6) rejects the promise. WPT's "WebAssembly.compile() is blocked" subtests fail on that alone.
+
+**Fix**: engine_protocol.zig HostHooks + StringCompilation; protocol_agents.zig installs the callbacks per agent and restrictCodeGenerationFromStrings marks each realm; html/code_generation.zig is CSP 4.4.1 / 4.5.1 over the realm's global; tests/v8/code_generation_checks_test.zig checks every realm path, and that an agent without the hooks keeps V8's default.
+
+**Takeaway**: **Before wiring an engine callback, read where the engine calls it - a callback behind a per-context flag is dead code until every context the host cares about sets that flag.**
