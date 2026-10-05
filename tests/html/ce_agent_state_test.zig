@@ -109,6 +109,20 @@ test "CE agent: rejected microtask scheduling drops work and permits reschedulin
     try testing.expectEqual(counts.held, counts.released);
 }
 
+test "CE agent: deferring a scope keeps its roots until the backup invocation" {
+    var state = State.init(testing.allocator);
+    defer state.deinit();
+    var counts = Counts{};
+    var log = Log{ .state = &state, .counts = &counts };
+    state.begin();
+    _ = try state.enqueue(&counts, 1, 10, .{ .value = 1, .counts = &counts }, acquire);
+    try testing.expect(try state.deferCurrent());
+    try testing.expectEqual(@as(usize, 0), counts.released);
+    state.invokeBackup(&log, Log.invoke);
+    try testing.expectEqualSlices(u32, &.{1}, log.values[0..log.len]);
+    try testing.expectEqual(counts.held, counts.released);
+}
+
 test "CE agent: realm cleanup preserves constructor scope slots until they pop" {
     var state = State.init(testing.allocator);
     defer state.deinit();

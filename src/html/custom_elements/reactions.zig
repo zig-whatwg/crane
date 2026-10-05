@@ -70,6 +70,36 @@ pub fn Reactions(comptime Element: type, comptime Payload: type) type {
             for (frame.elements.toSlice()) |element| self.invokeElement(element, context, invoke);
         }
 
+        /// The engine cannot set aside the pending exception in this native
+        /// call. Pop the scope without invoking script, and let a checkpoint
+        /// invoke its elements after the exception has unwound. True asks the
+        /// owner to schedule the backup microtask; payload ownership never moves.
+        pub fn deferCurrent(self: *Self) !bool {
+            std.debug.assert(self.depth != 0);
+            const depth = self.depth;
+            self.depth -= 1;
+            if (self.frames.len == 0 or self.frames.get(self.frames.len - 1).?.depth != depth) return false;
+            var frame = self.frames.remove(self.frames.len - 1) catch unreachable;
+            defer frame.elements.deinit();
+            if (self.backup.len == 0) {
+                // Transfer the entire queue without allocating in the common
+                // first-deferred-scope case, including its inline storage.
+                self.backup.deinit();
+                self.backup = frame.elements;
+                frame.elements = ElementQueue.init(self.allocator);
+            } else {
+                self.backup.appendSlice(frame.elements.toSlice()) catch |err| {
+                    // No frame now owns these slots. Dropping their payloads
+                    // leaves any partially appended backup slots harmless.
+                    for (frame.elements.toSlice()) |element| self.clearElement(element);
+                    return err;
+                };
+            }
+            if (self.processing_backup) return false;
+            self.processing_backup = true;
+            return true;
+        }
+
         /// Enqueue a reaction, then enqueue the element on the appropriate queue.
         /// On error the caller still owns payload. A true result asks the owner
         /// to queue ONE backup-processing microtask (appropriate-queue step 1.4).

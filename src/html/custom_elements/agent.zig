@@ -129,6 +129,13 @@ pub fn AgentState(comptime Element: type, comptime Realm: type, comptime Payload
             self.collectQuiescent();
         }
 
+        /// Pop without script when the engine cannot suspend an exception.
+        /// Roots stay live until the transferred backup work runs or is dropped.
+        pub fn deferCurrent(self: *Self) !bool {
+            defer self.collectQuiescent();
+            return self.queues.deferCurrent();
+        }
+
         /// Upgrade step 10's failure path clears the element's reaction queue.
         pub fn clearElement(self: *Self, element: Element) void {
             const record = self.elements.get(element) orelse return;

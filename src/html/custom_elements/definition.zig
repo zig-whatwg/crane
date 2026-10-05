@@ -72,6 +72,20 @@ pub fn Definition(comptime runtime: type, comptime engine: type) type {
             return self;
         }
 
+        /// HTMLConstructor steps 9, 12–13 and 15. The adapter has completed
+        /// prototype access before this non-script step (HostHooks contract).
+        /// An upgrade owns the entry until it pops it, including on failure.
+        pub fn takeConstructionElement(self: *Self) error{TypeError}!?*runtime.Instance {
+            if (self.construction_stack.items.len == 0) return null;
+            const entry = &self.construction_stack.items[self.construction_stack.items.len - 1];
+            const element = switch (entry.*) {
+                .already_constructed => return error.TypeError,
+                .element => |element| element,
+            };
+            entry.* = .already_constructed;
+            return element;
+        }
+
         /// Registry, element and upgrade reactions each release their own hold.
         pub fn deinit(self: *Self) void {
             std.debug.assert(self.references != 0);
