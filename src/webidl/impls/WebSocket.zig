@@ -422,14 +422,11 @@ fn pump(token: *PollToken, instance: *runtime.Instance) bool {
     //    step per turn so that script keeps running while it is in flight.
     if (!internal.connect_attempted and !connection.closed) {
         internal.connect_attempted = true;
-        // "Establish a WebSocket connection" fetches its request, and main
-        // fetch step 7 asks "should request be blocked by Content Security
-        // Policy?" (CSP 4.1.2): blocked is a network error, and "if response
-        // is a network error, then fail the WebSocket connection" - the close
-        // task below fires `error` and `close`.
-        // Mixed Content 4.4, also called by main fetch step 7, produces
-        // the same network-error -> fail-the-WebSocket-connection path.
-        if (blockedByContentSecurityPolicy(instance, internal.url_string) or blockedByMixedContent(instance, internal.url_string)) {
+        // "Establish a WebSocket connection" step 11 fetches its request:
+        // main fetch steps 5/6 upgrade, then step 7 checks CSP and Mixed
+        // Content. Connect to the final URL. A policy or allocation failure
+        // fails the connection; the close task fires `error` and `close`.
+        if (!(prepareHandshakeRequest(instance, connection, internal.url_string) catch false)) {
             connection.fail();
         } else {
             const origin = clientOrigin(instance);
@@ -568,23 +565,6 @@ fn clientOrigin(instance: *runtime.Instance) ?[]const u8 {
     return origin;
 }
 
-/// Main fetch step 7 for the handshake's request (pump step 1): would CSP
-/// block it? The request is the one "establish a WebSocket connection" makes
-/// - its URL `url` with the scheme "http" for "ws" and "https" for "wss",
-/// destination "" (so connect-src governs it), its client this's relevant
-/// settings object, whose policy container's CSP list is checked and whose
-/// global each violation is reported to (CSP 5.5).
-fn blockedByContentSecurityPolicy(instance: *runtime.Instance, url: []const u8) bool {
-    const global_instance = relevantGlobal(instance) orelse return false;
-    const dom = @import("dom");
-    const settings = dom.global_settings.of(global_instance) orelse return false;
-    const container_of = settings.policy_container orelse return false;
-    const container = container_of(global_instance) orelse return false;
-    const request_url = handshakeRequestUrl(instance.ctx.allocator, url) catch return true;
-    defer instance.ctx.allocator.free(request_url);
-    return @import("fetch").algorithms.csp_check.isBlockedFor(container, request_url, .empty, dom.csp_violations.reporterFor(global_instance));
-}
-
 /// WebSockets "establish a WebSocket connection" step 1: requestURL is a
 /// copy of url with its scheme set to http for ws, otherwise https.
 fn handshakeRequestUrl(allocator: std.mem.Allocator, url: []const u8) error{OutOfMemory}![]u8 {
@@ -593,22 +573,41 @@ fn handshakeRequestUrl(allocator: std.mem.Allocator, url: []const u8) error{OutO
     return std.mem.concat(allocator, u8, &.{ scheme, url[colon..] });
 }
 
-/// The WebSocket handshake fetches a request with destination "". Fetch
-/// main fetch step 7 calls Mixed Content 4.4; blocked becomes a network
-/// error, which fails the connection before any network traffic starts.
-fn blockedByMixedContent(instance: *runtime.Instance, url: []const u8) bool {
-    const global = relevantGlobal(instance) orelse return false;
-    var client = @import("dom").global_settings.requestClient(global) catch return true;
-    defer client.deinit();
+/// WebSockets 2.2 steps 1-2: the handshake's policy request has an HTTP(S)
+/// URL, destination "", and this's relevant settings object as its client.
+/// Step 11 fetches it; the transport must use that request's final URL.
+fn prepareHandshakeRequest(instance: *runtime.Instance, connection: *WebSocketConnection, url: []const u8) !bool {
     const allocator = instance.ctx.allocator;
-    const request_url = handshakeRequestUrl(allocator, url) catch return true;
+    const request_url = try handshakeRequestUrl(allocator, url);
     defer allocator.free(request_url);
     const fetch = @import("fetch");
-    const request = fetch.internal.InternalRequest.init(allocator, request_url) catch return true;
+    const request = try fetch.internal.InternalRequest.init(allocator, request_url);
     defer request.deinit();
     request.mode = .websocket;
-    fetch.internal.populateRequestFromClient(request, client.request) catch return true;
-    return fetch.mixed_content.shouldBlockRequest(request) catch true;
+    if (relevantGlobal(instance)) |global| {
+        var client = try @import("dom").global_settings.requestClient(global);
+        defer client.deinit();
+        try fetch.internal.populateRequestFromClient(request, client.request);
+    }
+    // Main fetch steps 5/6: UIR precedes Mixed Content's upgrade. Reuse the
+    // same operation and client-policy predicate as ordinary Fetch.
+    try fetch.algorithms.main_fetch.upgradeRequestToPotentiallyTrustworthyUrl(request);
+    try fetch.mixed_content.upgradeRequest(request);
+    // Main fetch step 7: CSP (connect-src) and Mixed Content see the same
+    // final URL. The request carries the client's violation reporter.
+    if (fetch.algorithms.csp_check.shouldRequestBeBlocked(request)) return false;
+    if (try fetch.mixed_content.shouldBlockRequest(request)) return false;
+
+    // "Obtain a WebSocket connection" uses the request's current URL. Map
+    // HTTP(S) back for libcurl; the WebSocket object's constructor URL stays
+    // untouched. The connection copies this URL before its backend exists.
+    const current_url = request.currentUrl();
+    const colon = std.mem.indexOfScalar(u8, current_url, ':') orelse return error.InvalidUrl;
+    const scheme: []const u8 = if (std.mem.eql(u8, current_url[0..colon], "https")) "wss" else "ws";
+    const connection_url = try std.mem.concat(allocator, u8, &.{ scheme, current_url[colon..] });
+    defer allocator.free(connection_url);
+    try connection.setHandshakeUrl(connection_url);
+    return true;
 }
 
 /// The user agent's cookie jar, as this's relevant settings object reaches

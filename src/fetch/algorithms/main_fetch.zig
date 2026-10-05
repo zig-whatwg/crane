@@ -313,7 +313,8 @@ pub fn mainFetchStart(
 /// Not modelled, stated: the "upgrade insecure navigations set" (step 2.3-
 /// 2.4) - a top-level navigation is never upgraded - and HSTS preload
 /// knowledge for the header (step 1).
-fn upgradeRequestToPotentiallyTrustworthyUrl(request: *InternalRequest) !void {
+/// Shared with the WebSocket handshake, which connects outside main fetch.
+pub fn upgradeRequestToPotentiallyTrustworthyUrl(request: *InternalRequest) !void {
     const url = request.currentUrl();
     const scheme = extractScheme(url);
     const is_navigation = isNavigationDestination(request.destination);
