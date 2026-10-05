@@ -77,6 +77,7 @@ src/dom/indexeddb.zig transactions 1 G P-res decl:0aff5c30d889fb93
 src/dom/instance_bridge.zig instance_to_nodebase 1 G I/engine decl:2f2aefbbd5d3307c
 src/dom/intersection_targets.zig implementation 1 G H decl:9c737e7125e9c3d4
 src/dom/live_collections.zig implementation 1 G H decl:9c737e7125e9c3d4
+src/dom/media_elements.zig implementation 1 G P-res decl:9c737e7125e9c3d4
 src/dom/message_ports.zig steps 1 G H decl:da3da99c8e42439e
 src/dom/mutation.zig children_changed_callbacks 1 G H decl:953ea8bb2d43fd58
 src/dom/mutation.zig insertion_steps_callbacks 1 G H decl:a9a68b5e4b303a01
