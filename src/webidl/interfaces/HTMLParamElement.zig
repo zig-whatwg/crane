@@ -291,8 +291,8 @@ pub const HTMLParamElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLParamElementImpl, "set_name")) return try HTMLParamElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -307,8 +307,8 @@ pub const HTMLParamElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLParamElementImpl, "set_value")) return try HTMLParamElementImpl.set_value(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "value" }, value);
@@ -323,8 +323,8 @@ pub const HTMLParamElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLParamElementImpl, "set_type")) return try HTMLParamElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);
@@ -339,8 +339,8 @@ pub const HTMLParamElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_valueType(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLParamElementImpl, "set_valueType")) return try HTMLParamElementImpl.set_valueType(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "valuetype" }, value);

@@ -15,19 +15,36 @@ pub const Instance = @import("instance.zig").Instance;
 /// CEReactions - Custom Element Reactions
 ///
 /// The bracket every [CEReactions] member's generated delegate runs (HTML
-/// 4.13.6): `begin(instance)` pushes a new element queue onto "this object's
-/// relevant agent's custom element reactions stack", `end(instance)` pops it
-/// and invokes its reactions. `this_object` is the member's instance, or null
-/// for a static member (the agent is then the current realm's).
-/// Stubs for now: the custom element reactions stack replaces them.
+/// 4.13.6): `const ce_scope = begin(instance); defer end(ce_scope);`. `begin`
+/// pushes a new element queue onto "this object's relevant agent's custom
+/// element reactions stack" - `this_object` is the member's instance, or null
+/// for a static member (the agent is then the current realm's) - and returns
+/// what `end` needs, captured while the receiver is certainly alive. `end`
+/// pops the queue and invokes its reactions from that alone: it dereferences
+/// neither the receiver nor any realm that may have ended while the member
+/// ran script (removing an iframe ends its realm and frees its Instances), so
+/// whatever it needs is captured by `begin` with the agent's lifetime, or
+/// re-resolved at `end` from the calling script's realm
+/// (`engine.currentRealm()`, alive while its script is on the stack) - the
+/// realm `engine.takePendingException` is given, never the receiver's.
+/// Stubs for now: the custom element reactions stack replaces them, and its
+/// `Scope`; a null scope is the zero-cost path.
 pub const CEReactions = struct {
-    pub fn begin(this_object: ?*Instance) void {
+    /// What `begin` captured for `end`.
+    pub const Scope = struct {
+        /// The agent's custom element reactions state; null: nothing to do at
+        /// `end` (no state, no definitions).
+        agent_state: ?*anyopaque = null,
+    };
+
+    pub fn begin(this_object: ?*Instance) Scope {
         _ = this_object;
         // TODO: Implement Custom Element reaction queue
+        return .{};
     }
 
-    pub fn end(this_object: ?*Instance) void {
-        _ = this_object;
+    pub fn end(scope: Scope) void {
+        _ = scope;
         // TODO: Invoke queued Custom Element callbacks
     }
 };

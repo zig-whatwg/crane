@@ -286,8 +286,8 @@ pub const HTMLFontElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_color(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFontElementImpl, "set_color")) return try HTMLFontElementImpl.set_color(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "color" }, value);
@@ -302,8 +302,8 @@ pub const HTMLFontElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_face(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFontElementImpl, "set_face")) return try HTMLFontElementImpl.set_face(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "face" }, value);
@@ -318,8 +318,8 @@ pub const HTMLFontElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_size(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFontElementImpl, "set_size")) return try HTMLFontElementImpl.set_size(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "size" }, value);

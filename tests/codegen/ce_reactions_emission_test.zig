@@ -1,12 +1,17 @@
-//! [CEReactions] brackets name the object whose relevant agent they push onto.
+//! [CEReactions] brackets name the object whose relevant agent they push onto,
+//! and only while it is certainly alive.
 //!
 //! HTML 4.13.6 [CEReactions]: "1. Push a new element queue onto this object's
 //! relevant agent's custom element reactions stack. ... 3. Let queue be the
 //! result of popping from this object's relevant agent's custom element
 //! reactions stack." So the generated bracket passes the member's `instance`
-//! - `runtime.CEReactions.begin(instance)` / `end(instance)` - and a static
-//! member, which has no "this object", passes null (the reactions side then
-//! resolves the agent through the current realm).
+//! to `begin`, and a static member, which has no "this object", passes null
+//! (the reactions side then resolves the agent through the current realm).
+//! `end` is handed what `begin` captured - `const ce_scope =
+//! runtime.CEReactions.begin(instance); defer runtime.CEReactions.end(ce_scope);`
+//! - never the receiver: the member ran script in between, which can end the
+//! receiver's realm (remove its iframe) and so free its Instance (codex-ce
+//! Q21).
 //!
 //! Operations, special operations (a named setter or deleter), regular and
 //! [PutForwards] attribute setters, and a mixin's members (which an includer
@@ -35,13 +40,15 @@ fn body(out: []const u8, name: []const u8) ![]const u8 {
 }
 
 fn expectInstanceBracket(fn_body: []const u8) !void {
-    try testing.expect(contains(fn_body, "runtime.CEReactions.begin(instance);"));
-    try testing.expect(contains(fn_body, "defer runtime.CEReactions.end(instance);"));
+    try testing.expect(contains(fn_body, "const ce_scope = runtime.CEReactions.begin(instance);"));
+    try testing.expect(contains(fn_body, "defer runtime.CEReactions.end(ce_scope);"));
+    // end() never reads the receiver.
+    try testing.expect(!contains(fn_body, "CEReactions.end(instance)"));
 }
 
 fn expectNullBracket(fn_body: []const u8) !void {
-    try testing.expect(contains(fn_body, "runtime.CEReactions.begin(null);"));
-    try testing.expect(contains(fn_body, "defer runtime.CEReactions.end(null);"));
+    try testing.expect(contains(fn_body, "const ce_scope = runtime.CEReactions.begin(null);"));
+    try testing.expect(contains(fn_body, "defer runtime.CEReactions.end(ce_scope);"));
 }
 
 test "a [CEReactions] operation and attribute setter bracket on their instance" {

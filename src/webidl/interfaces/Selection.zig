@@ -258,8 +258,8 @@ pub const Selection = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_deleteFromDocument(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try SelectionImpl.call_deleteFromDocument(instance);
     }

@@ -301,8 +301,8 @@ pub const HTMLDialogElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_open(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLDialogElementImpl, "set_open")) return try HTMLDialogElementImpl.set_open(instance, value);
         try reflection.set(bool, instance, .{ .name = "open" }, value);
@@ -324,8 +324,8 @@ pub const HTMLDialogElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_closedBy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLDialogElementImpl, "set_closedBy")) return try HTMLDialogElementImpl.set_closedBy(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "closedby" }, value);
@@ -334,8 +334,8 @@ pub const HTMLDialogElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_showModal(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try HTMLDialogElementImpl.call_showModal(instance);
     }
@@ -343,8 +343,8 @@ pub const HTMLDialogElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_close(instance: *runtime.Instance, returnValue: webidl.Opt(DOMString)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try HTMLDialogElementImpl.call_close(instance, returnValue);
     }
@@ -352,8 +352,8 @@ pub const HTMLDialogElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_requestClose(instance: *runtime.Instance, returnValue: webidl.Opt(DOMString)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try HTMLDialogElementImpl.call_requestClose(instance, returnValue);
     }
@@ -361,8 +361,8 @@ pub const HTMLDialogElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_show(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try HTMLDialogElementImpl.call_show(instance);
     }

@@ -135,8 +135,8 @@ pub const NamedNodeMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_removeNamedItem(instance: *runtime.Instance, qualifiedName: DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NamedNodeMapImpl.call_removeNamedItem(instance, qualifiedName);
     }
@@ -144,8 +144,8 @@ pub const NamedNodeMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setNamedItem(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NamedNodeMapImpl.call_setNamedItem(instance, attr);
     }
@@ -153,8 +153,8 @@ pub const NamedNodeMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setNamedItemNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NamedNodeMapImpl.call_setNamedItemNS(instance, attr);
     }
@@ -162,8 +162,8 @@ pub const NamedNodeMap = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_removeNamedItemNS(instance: *runtime.Instance, namespace: ?DOMString, localName: DOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try NamedNodeMapImpl.call_removeNamedItemNS(instance, namespace, localName);
     }

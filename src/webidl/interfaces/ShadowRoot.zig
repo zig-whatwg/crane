@@ -276,8 +276,8 @@ pub const ShadowRoot = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try ShadowRootImpl.set_innerHTML(instance, value);
     }
@@ -338,8 +338,8 @@ pub const ShadowRoot = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try ShadowRootImpl.call_setHTMLUnsafe(instance, html);
     }

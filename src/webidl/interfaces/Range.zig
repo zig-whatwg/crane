@@ -256,8 +256,8 @@ pub const Range = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_insertNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try RangeImpl.call_insertNode(instance, node);
     }
@@ -269,8 +269,8 @@ pub const Range = struct {
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_cloneContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         // [NewObject] - Caller owns the returned object
         return try RangeImpl.call_cloneContents(instance);
@@ -279,8 +279,8 @@ pub const Range = struct {
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_createContextualFragment(instance: *runtime.Instance, string: TrustedHTMLOrDOMString) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         // [NewObject] - Caller owns the returned object
 
@@ -294,8 +294,8 @@ pub const Range = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_surroundContents(instance: *runtime.Instance, newParent: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try RangeImpl.call_surroundContents(instance, newParent);
     }
@@ -303,8 +303,8 @@ pub const Range = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_deleteContents(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try RangeImpl.call_deleteContents(instance);
     }
@@ -316,8 +316,8 @@ pub const Range = struct {
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_extractContents(instance: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         // [NewObject] - Caller owns the returned object
         return try RangeImpl.call_extractContents(instance);

@@ -370,8 +370,8 @@ pub const HTMLFrameSetElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_cols(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameSetElementImpl, "set_cols")) return try HTMLFrameSetElementImpl.set_cols(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "cols" }, value);
@@ -386,8 +386,8 @@ pub const HTMLFrameSetElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_rows(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFrameSetElementImpl, "set_rows")) return try HTMLFrameSetElementImpl.set_rows(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "rows" }, value);

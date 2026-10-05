@@ -314,8 +314,8 @@ pub const HTMLStyleElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_media(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLStyleElementImpl, "set_media")) return try HTMLStyleElementImpl.set_media(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "media" }, value);
@@ -353,8 +353,8 @@ pub const HTMLStyleElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLStyleElementImpl, "set_type")) return try HTMLStyleElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);

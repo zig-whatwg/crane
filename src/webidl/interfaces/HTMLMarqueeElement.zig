@@ -335,8 +335,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_behavior(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_behavior")) return try HTMLMarqueeElementImpl.set_behavior(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "behavior" }, value);
@@ -351,8 +351,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_bgColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_bgColor")) return try HTMLMarqueeElementImpl.set_bgColor(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "bgcolor" }, value);
@@ -367,8 +367,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_direction(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_direction")) return try HTMLMarqueeElementImpl.set_direction(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "direction" }, value);
@@ -383,8 +383,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_height(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_height")) return try HTMLMarqueeElementImpl.set_height(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "height" }, value);
@@ -399,8 +399,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_hspace(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_hspace")) return try HTMLMarqueeElementImpl.set_hspace(instance, value);
         try reflection.set(u32, instance, .{ .name = "hspace" }, value);
@@ -414,8 +414,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_loop(instance: *runtime.Instance, value: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLMarqueeElementImpl.set_loop(instance, value);
     }
@@ -429,8 +429,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=6]
     pub fn set_scrollAmount(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_scrollAmount")) return try HTMLMarqueeElementImpl.set_scrollAmount(instance, value);
         try reflection.set(u32, instance, .{ .name = "scrollamount", .default = 6 }, value);
@@ -445,8 +445,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=85]
     pub fn set_scrollDelay(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_scrollDelay")) return try HTMLMarqueeElementImpl.set_scrollDelay(instance, value);
         try reflection.set(u32, instance, .{ .name = "scrolldelay", .default = 85 }, value);
@@ -461,8 +461,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_trueSpeed(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_trueSpeed")) return try HTMLMarqueeElementImpl.set_trueSpeed(instance, value);
         try reflection.set(bool, instance, .{ .name = "truespeed" }, value);
@@ -477,8 +477,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_vspace(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_vspace")) return try HTMLMarqueeElementImpl.set_vspace(instance, value);
         try reflection.set(u32, instance, .{ .name = "vspace" }, value);
@@ -493,8 +493,8 @@ pub const HTMLMarqueeElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMarqueeElementImpl, "set_width")) return try HTMLMarqueeElementImpl.set_width(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "width" }, value);

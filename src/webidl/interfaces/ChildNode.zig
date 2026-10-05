@@ -113,8 +113,8 @@ pub const ChildNode = struct {
     /// Extended attributes: [CEReactions], [Unscopable]
     pub fn call_before(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try ChildNodeImpl.call_before(instance, nodes);
     }
@@ -122,8 +122,8 @@ pub const ChildNode = struct {
     /// Extended attributes: [CEReactions], [Unscopable]
     pub fn call_replaceWith(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try ChildNodeImpl.call_replaceWith(instance, nodes);
     }
@@ -131,8 +131,8 @@ pub const ChildNode = struct {
     /// Extended attributes: [CEReactions], [Unscopable]
     pub fn call_remove(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try ChildNodeImpl.call_remove(instance);
     }
@@ -140,8 +140,8 @@ pub const ChildNode = struct {
     /// Extended attributes: [CEReactions], [Unscopable]
     pub fn call_after(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try ChildNodeImpl.call_after(instance, nodes);
     }

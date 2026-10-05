@@ -131,8 +131,8 @@ pub const HTMLOptionsCollection = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_length(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLOptionsCollectionImpl.set_length(instance, value);
     }
@@ -148,8 +148,8 @@ pub const HTMLOptionsCollection = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_setter(instance: *runtime.Instance, index: u32, option: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try HTMLOptionsCollectionImpl.call_setter(instance, index, option);
     }
@@ -157,8 +157,8 @@ pub const HTMLOptionsCollection = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_remove(instance: *runtime.Instance, index: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try HTMLOptionsCollectionImpl.call_remove(instance, index);
     }
@@ -166,8 +166,8 @@ pub const HTMLOptionsCollection = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_add(instance: *runtime.Instance, element: HTMLOptionElementOrHTMLOptGroupElement, before: webidl.Opt(?runtime.JSValue)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try HTMLOptionsCollectionImpl.call_add(instance, element, before);
     }

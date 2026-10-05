@@ -281,8 +281,8 @@ pub const HTMLModElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_cite(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLModElementImpl, "set_cite")) return try HTMLModElementImpl.set_cite(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "cite", .url = true }, value);
@@ -297,8 +297,8 @@ pub const HTMLModElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_dateTime(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLModElementImpl, "set_dateTime")) return try HTMLModElementImpl.set_dateTime(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "datetime" }, value);

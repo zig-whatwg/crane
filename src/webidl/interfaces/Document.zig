@@ -1342,8 +1342,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_title(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try DocumentImpl.set_title(instance, value);
     }
@@ -1356,8 +1356,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_dir(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try DocumentImpl.set_dir(instance, value);
     }
@@ -1370,8 +1370,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try DocumentImpl.set_body(instance, value);
     }
@@ -1468,8 +1468,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_designMode(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try DocumentImpl.set_designMode(instance, value);
     }
@@ -1508,8 +1508,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn set_fgColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try DocumentImpl.set_fgColor(instance, value);
     }
@@ -1522,8 +1522,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn set_linkColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try DocumentImpl.set_linkColor(instance, value);
     }
@@ -1536,8 +1536,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn set_vlinkColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try DocumentImpl.set_vlinkColor(instance, value);
     }
@@ -1550,8 +1550,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn set_alinkColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try DocumentImpl.set_alinkColor(instance, value);
     }
@@ -1564,8 +1564,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions], [LegacyNullToEmptyString]
     pub fn set_bgColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try DocumentImpl.set_bgColor(instance, value);
     }
@@ -2089,8 +2089,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_open(instance: *runtime.Instance, unused1: webidl.Opt(DOMString), unused2: webidl.Opt(DOMString)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DocumentImpl.call_open(instance, unused1, unused2);
     }
@@ -2106,8 +2106,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_writeln(instance: *runtime.Instance, text: []const TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DocumentImpl.call_writeln(instance, text);
     }
@@ -2144,8 +2144,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_createElementNS(instance: *runtime.Instance, namespace: ?DOMString, qualifiedName: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         // [NewObject] - Caller owns the returned object
 
@@ -2159,8 +2159,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_close(instance: *runtime.Instance) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DocumentImpl.call_close(instance);
     }
@@ -2189,8 +2189,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_createElement(instance: *runtime.Instance, localName: DOMString, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         // [NewObject] - Caller owns the returned object
 
@@ -2274,8 +2274,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_adoptNode(instance: *runtime.Instance, node: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DocumentImpl.call_adoptNode(instance, node);
     }
@@ -2283,8 +2283,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_write(instance: *runtime.Instance, text: []const TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DocumentImpl.call_write(instance, text);
     }
@@ -2296,8 +2296,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_execCommand(instance: *runtime.Instance, commandId: DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(TrustedHTMLOrDOMString)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try DocumentImpl.call_execCommand(instance, commandId, showUI, value);
     }
@@ -2367,8 +2367,8 @@ pub const Document = struct {
     /// Extended attributes: [CEReactions], [NewObject]
     pub fn call_importNode(instance: *runtime.Instance, node: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         // [NewObject] - Caller owns the returned object
 

@@ -385,8 +385,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_href")) return try HTMLLinkElementImpl.set_href(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "href", .url = true }, value);
@@ -400,8 +400,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLLinkElementImpl.set_crossOrigin(instance, value);
     }
@@ -415,8 +415,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_rel(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_rel")) return try HTMLLinkElementImpl.set_rel(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "rel" }, value);
@@ -430,8 +430,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_as(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLLinkElementImpl.set_as(instance, value);
     }
@@ -468,8 +468,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_media(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_media")) return try HTMLLinkElementImpl.set_media(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "media" }, value);
@@ -484,8 +484,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_integrity(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_integrity")) return try HTMLLinkElementImpl.set_integrity(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "integrity" }, value);
@@ -500,8 +500,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_hreflang(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_hreflang")) return try HTMLLinkElementImpl.set_hreflang(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "hreflang" }, value);
@@ -516,8 +516,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_type")) return try HTMLLinkElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);
@@ -555,8 +555,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_imageSrcset(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_imageSrcset")) return try HTMLLinkElementImpl.set_imageSrcset(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "imagesrcset" }, value);
@@ -571,8 +571,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_imageSizes(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_imageSizes")) return try HTMLLinkElementImpl.set_imageSizes(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "imagesizes" }, value);
@@ -586,8 +586,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLLinkElementImpl.set_referrerPolicy(instance, value);
     }
@@ -624,8 +624,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_disabled")) return try HTMLLinkElementImpl.set_disabled(instance, value);
         try reflection.set(bool, instance, .{ .name = "disabled" }, value);
@@ -639,8 +639,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_fetchPriority(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLLinkElementImpl.set_fetchPriority(instance, value);
     }
@@ -654,8 +654,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_charset(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_charset")) return try HTMLLinkElementImpl.set_charset(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "charset" }, value);
@@ -670,8 +670,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_rev(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_rev")) return try HTMLLinkElementImpl.set_rev(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "rev" }, value);
@@ -686,8 +686,8 @@ pub const HTMLLinkElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_target(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLLinkElementImpl, "set_target")) return try HTMLLinkElementImpl.set_target(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "target" }, value);

@@ -1142,8 +1142,8 @@ pub const SVGElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(SVGElementImpl, "set_autofocus")) return try SVGElementImpl.set_autofocus(instance, value);
         try reflection.set(bool, instance, .{ .name = "autofocus" }, value);
@@ -1157,8 +1157,8 @@ pub const SVGElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(SVGElementImpl, "set_tabIndex")) return try SVGElementImpl.set_tabIndex(instance, value);
         try reflection.set(i32, instance, .{ .name = "tabindex" }, value);

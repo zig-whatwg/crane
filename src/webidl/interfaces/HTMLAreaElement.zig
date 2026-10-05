@@ -396,8 +396,8 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_alt(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAreaElementImpl, "set_alt")) return try HTMLAreaElementImpl.set_alt(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "alt" }, value);
@@ -412,8 +412,8 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_coords(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAreaElementImpl, "set_coords")) return try HTMLAreaElementImpl.set_coords(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "coords" }, value);
@@ -428,8 +428,8 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_shape(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAreaElementImpl, "set_shape")) return try HTMLAreaElementImpl.set_shape(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "shape" }, value);
@@ -444,8 +444,8 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_target(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAreaElementImpl, "set_target")) return try HTMLAreaElementImpl.set_target(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "target" }, value);
@@ -460,8 +460,8 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_download(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAreaElementImpl, "set_download")) return try HTMLAreaElementImpl.set_download(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "download" }, value);
@@ -476,8 +476,8 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_ping(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAreaElementImpl, "set_ping")) return try HTMLAreaElementImpl.set_ping(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "ping" }, value);
@@ -492,8 +492,8 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_rel(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAreaElementImpl, "set_rel")) return try HTMLAreaElementImpl.set_rel(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "rel" }, value);
@@ -530,8 +530,8 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLAreaElementImpl.set_referrerPolicy(instance, value);
     }
@@ -545,8 +545,8 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_noHref(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLAreaElementImpl, "set_noHref")) return try HTMLAreaElementImpl.set_noHref(instance, value);
         try reflection.set(bool, instance, .{ .name = "nohref" }, value);
@@ -560,8 +560,8 @@ pub const HTMLAreaElement = struct {
     /// Extended attributes: [CEReactions], [SecureContext]
     pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLAreaElementImpl.set_attributionSrc(instance, value);
     }

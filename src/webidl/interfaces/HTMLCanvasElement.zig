@@ -300,8 +300,8 @@ pub const HTMLCanvasElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLCanvasElementImpl.set_width(instance, value);
     }
@@ -314,8 +314,8 @@ pub const HTMLCanvasElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLCanvasElementImpl.set_height(instance, value);
     }

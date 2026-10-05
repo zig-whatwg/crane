@@ -296,8 +296,8 @@ pub const HTMLHRElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHRElementImpl, "set_align")) return try HTMLHRElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);
@@ -312,8 +312,8 @@ pub const HTMLHRElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_color(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHRElementImpl, "set_color")) return try HTMLHRElementImpl.set_color(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "color" }, value);
@@ -328,8 +328,8 @@ pub const HTMLHRElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_noShade(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHRElementImpl, "set_noShade")) return try HTMLHRElementImpl.set_noShade(instance, value);
         try reflection.set(bool, instance, .{ .name = "noshade" }, value);
@@ -344,8 +344,8 @@ pub const HTMLHRElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_size(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHRElementImpl, "set_size")) return try HTMLHRElementImpl.set_size(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "size" }, value);
@@ -360,8 +360,8 @@ pub const HTMLHRElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHRElementImpl, "set_width")) return try HTMLHRElementImpl.set_width(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "width" }, value);

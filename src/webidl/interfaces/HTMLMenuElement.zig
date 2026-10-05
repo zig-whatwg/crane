@@ -276,8 +276,8 @@ pub const HTMLMenuElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_compact(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMenuElementImpl, "set_compact")) return try HTMLMenuElementImpl.set_compact(instance, value);
         try reflection.set(bool, instance, .{ .name = "compact" }, value);

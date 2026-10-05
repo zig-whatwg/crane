@@ -1170,7 +1170,11 @@ pub inline fn completionOf(realm: Context, steps: *const fn (data: ?*anyopaque) 
 /// by the original steps, rethrow exception.": the bracket's `end`, when the
 /// popped element queue is not empty, takes the exception, invokes the
 /// queue's reactions (each reports its own exception), then rethrows the
-/// taken value with `throwValue`. An empty queue makes no engine call. (WebKit:
+/// taken value with `throwValue`. An empty queue makes no engine call.
+/// `realm` there is re-resolved at `end` - `currentRealm()` - never a realm
+/// read from the receiver or captured before the member ran: the member ran
+/// script, which can have ended the receiver's realm (runtime.CEReactions).
+/// With none, nothing can be taken: `end` takes the NotSupported path. (WebKit:
 /// CustomElementQueue::processQueue saves, clears and restores the VM's
 /// exception; Blink: CEReactionsScope holds it in a v8::TryCatch.)
 ///

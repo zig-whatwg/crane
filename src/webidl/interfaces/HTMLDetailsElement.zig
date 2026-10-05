@@ -281,8 +281,8 @@ pub const HTMLDetailsElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLDetailsElementImpl, "set_name")) return try HTMLDetailsElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -297,8 +297,8 @@ pub const HTMLDetailsElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_open(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLDetailsElementImpl, "set_open")) return try HTMLDetailsElementImpl.set_open(instance, value);
         try reflection.set(bool, instance, .{ .name = "open" }, value);

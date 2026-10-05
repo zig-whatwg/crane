@@ -354,8 +354,8 @@ pub const HTMLVideoElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLVideoElementImpl, "set_width")) return try HTMLVideoElementImpl.set_width(instance, value);
         try reflection.set(u32, instance, .{ .name = "width" }, value);
@@ -370,8 +370,8 @@ pub const HTMLVideoElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLVideoElementImpl, "set_height")) return try HTMLVideoElementImpl.set_height(instance, value);
         try reflection.set(u32, instance, .{ .name = "height" }, value);
@@ -394,8 +394,8 @@ pub const HTMLVideoElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_poster(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLVideoElementImpl, "set_poster")) return try HTMLVideoElementImpl.set_poster(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "poster", .url = true }, value);
@@ -410,8 +410,8 @@ pub const HTMLVideoElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_playsInline(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLVideoElementImpl, "set_playsInline")) return try HTMLVideoElementImpl.set_playsInline(instance, value);
         try reflection.set(bool, instance, .{ .name = "playsinline" }, value);
@@ -441,8 +441,8 @@ pub const HTMLVideoElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_disablePictureInPicture(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLVideoElementImpl.set_disablePictureInPicture(instance, value);
     }

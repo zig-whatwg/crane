@@ -2771,14 +2771,17 @@ fn writeCEReactionsTable(writer: anytype, functions: *const CEReactionsFunctions
 
 /// HTML 4.13.6 [CEReactions]: "Push a new element queue onto this object's
 /// relevant agent's custom element reactions stack", run the member's steps,
-/// then pop it and invoke its reactions - so the bracket names "this object",
-/// the member's `instance`. A static member has none and passes null: the
-/// reactions side resolves the agent through the current realm.
+/// then pop it and invoke its reactions - so `begin` is handed "this object",
+/// the member's `instance` (a static member has none and passes null: the
+/// reactions side resolves the agent through the current realm). `end` is
+/// handed what `begin` captured, never the receiver: the member's steps run
+/// script, which can end the receiver's realm and free its Instance
+/// (codex-ce Q21).
 fn writeCEReactionsBracket(writer: anytype, is_static: bool) !void {
     const this_object = if (is_static) "null" else "instance";
     try writer.writeAll("        // [CEReactions] - Trigger Custom Element lifecycle callbacks\n");
-    try writer.print("        runtime.CEReactions.begin({s});\n", .{this_object});
-    try writer.print("        defer runtime.CEReactions.end({s});\n", .{this_object});
+    try writer.print("        const ce_scope = runtime.CEReactions.begin({s});\n", .{this_object});
+    try writer.writeAll("        defer runtime.CEReactions.end(ce_scope);\n");
     try writer.writeAll("        \n");
 }
 

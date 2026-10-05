@@ -311,8 +311,8 @@ pub const HTMLOptionElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_disabled(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOptionElementImpl, "set_disabled")) return try HTMLOptionElementImpl.set_disabled(instance, value);
         try reflection.set(bool, instance, .{ .name = "disabled" }, value);
@@ -330,8 +330,8 @@ pub const HTMLOptionElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_label(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOptionElementImpl, "set_label")) return try HTMLOptionElementImpl.set_label(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "label" }, value);
@@ -346,8 +346,8 @@ pub const HTMLOptionElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="selected"]
     pub fn set_defaultSelected(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOptionElementImpl, "set_defaultSelected")) return try HTMLOptionElementImpl.set_defaultSelected(instance, value);
         try reflection.set(bool, instance, .{ .name = "selected" }, value);
@@ -369,8 +369,8 @@ pub const HTMLOptionElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_value(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOptionElementImpl, "set_value")) return try HTMLOptionElementImpl.set_value(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "value" }, value);
@@ -384,8 +384,8 @@ pub const HTMLOptionElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_text(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(instance);
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLOptionElementImpl.set_text(instance, value);
     }
