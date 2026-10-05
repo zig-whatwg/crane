@@ -247,7 +247,6 @@ pub fn installHooks() void {
         .legacy_canceled_activation = &legacyCanceledActivation,
     });
     dom.form_controls.install(.{ .is = &isInput, .reset = &resetAlgorithm });
-    dom.teardown_sweeps.install(&cleanupAllRemainingInternal);
     dom.mutation.registerInsertionStepsCallback(&insertionStepsCallback) catch |err| {
         log.warn("input insertion steps not registered: {}", .{err});
     };
@@ -281,12 +280,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     Registry.remove(instance);
 
     interfaces.HTMLElement.deinit(instance);
-}
-
-/// dom.teardown_sweeps: an input still alive when the browser ends is never
-/// deinit'd one by one, and its dirty value is its own allocation.
-pub fn cleanupAllRemainingInternal() void {
-    Registry.deinitAllAndClear();
 }
 
 /// Constructor implementation

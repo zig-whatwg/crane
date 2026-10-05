@@ -140,8 +140,13 @@ pub fn init(
     const instance = try HTMLElementImpl.init(allocator, StateType, vtable, ctx);
     errdefer HTMLElementImpl.deinit(instance);
 
-    // Initialize internal state for image loading
-    _ = try getOrCreateInternal(instance);
+    // Initialize internal state for image loading - registered, never looked
+    // up: an entry already at this address is a dead img's, and a new img
+    // that took it for its own inherited the dead one's request state (or,
+    // from an earlier runtime, a block that is gone). createIn frees and
+    // reports a dead one's (docs/lessons/architecture-an-address-keyed-entry-a-teardown-misses-is-inherited.md).
+    const internal = try Registry.createIn(instance, runtime.ArenaAllocator.get());
+    internal.* = .{ .allocator = instance.ctx.allocator };
 
     return instance;
 }

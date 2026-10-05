@@ -205,15 +205,18 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // Guard against double-deinit. This can happen when:
-    // 1. Tree cleanup (Node.deinit → deinitNodeByType) deinits this iframe
-    // 2. GC cleanup (onObjectFreed) also tries to deinit the same iframe
-    // Only one path should proceed with cleanup.
+    // Guard against double-deinit. Every caller checks that the teardown has
+    // not begun: the tree's (deinitNodeByType) marks it begun BEFORE it
+    // dispatches here, and the others - the wrapper's finalizer, the realm
+    // end's orphaned-iframe phase - skip an iframe whose teardown started. So
+    // only a finished one is refused here, and one not yet marked is marked
+    // before anything of the iframe is freed.
     log.debug("[HTMLIFrameElement.deinit] Called for instance {*}", .{instance});
-    if (!runtime.instance_lifecycle.markCleanupStarted(instance)) {
-        log.debug("[HTMLIFrameElement.deinit] Already cleaning up, skipping", .{});
-        return; // Already being cleaned up, skip
+    if (runtime.instance_lifecycle.isCleanedUp(instance)) {
+        log.debug("[HTMLIFrameElement.deinit] Already cleaned up, skipping", .{});
+        return;
     }
+    _ = runtime.instance_lifecycle.markCleanupStarted(instance);
 
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
