@@ -4899,9 +4899,15 @@ pub fn V8Interface(comptime Interface: type) type {
             //        not an Object, the interface prototype object of
             //        GetFunctionRealm(NewTarget) whose interface is the active
             //        function's. V8 made the receiver with NewTarget's
-            //        prototype; this replaces a non-object's fallback with the
-            //        right realm's.
-            handleNewTargetPrototypeFallback(info, this_obj, isolate, current_context, interface_name);
+            //        prototype, or - for a non-object - the active function's
+            //        own realm's. Only then can the realm be wrong, so only then
+            //        is NewTarget read again (its getter runs twice there, as on
+            //        every constructor's path); a prototype of NewTarget's own
+            //        is never re-read, so its getter's script ran once, before
+            //        the host's steps (the hook's single-call contract).
+            if (receiverHasActivePrototype(this_obj, active_function, current_context)) {
+                handleNewTargetPrototypeFallback(info, this_obj, isolate, current_context, interface_name);
+            }
 
             // 2-9, 12, 13 and 15: the host's. NewTarget BORROWED for the call.
             const constructed = hook.call(hook.host, realm, .{ .handle = .{ .ptr = @ptrCast(new_target) } }, interface_name) catch |err| {
@@ -4942,6 +4948,23 @@ pub fn V8Interface(comptime Interface: type) type {
                     info.setReturnValue(@ptrCast(wrapper));
                 },
             }
+        }
+
+        /// Whether V8 gave `receiver` the active function's own `prototype` -
+        /// what it does when NewTarget's is not an object (and when it is that
+        /// very object). The active function is an interface object, whose
+        /// `prototype` is a non-writable, non-configurable data property: the
+        /// read runs no script.
+        fn receiverHasActivePrototype(receiver: *v8.Object, active_function: ?*v8.Function, context: *v8.Context) bool {
+            const function = active_function orelse return true;
+            const isolate = v8.v8_Isolate_GetCurrent() orelse return true;
+            const key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return true;
+            defer v8.v8_String_Dispose(key);
+            const active_prototype = v8.v8_Object_Get(@ptrCast(function), context, @ptrCast(key)) orelse return true;
+            defer v8.v8_Value_Dispose(active_prototype);
+            const prototype = v8.v8_Object_GetPrototypeV2(receiver) orelse return true;
+            defer v8.v8_Value_Dispose(prototype);
+            return v8.v8_Value_StrictEquals(prototype, active_prototype);
         }
 
         /// The wrapper cache of `element`'s relevant realm.

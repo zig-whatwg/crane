@@ -32,7 +32,13 @@ const Host = struct {
     /// NewTarget as the hook saw it, retained to compare.
     new_target: ?protocol.Owned = null,
 
-    const Answer = enum { created, upgrading, type_error };
+    /// A definition's construction stack, as the custom elements side keeps
+    /// one (`answer = .stack`): steps 9, 12, 13 and 15 over it.
+    stack: [4]Entry = undefined,
+    stack_len: usize = 0,
+
+    const Answer = enum { created, upgrading, type_error, stack };
+    const Entry = union(enum) { element: *runtime.Instance, already_constructed };
 
     const hooks: protocol.HostHooks = .{ .htmlConstructor = construct };
 
@@ -52,6 +58,21 @@ const Host = struct {
                 interfaces.HTMLElement.call_constructor(realm)) catch return error.OperationFailed },
             .upgrading => .{ .upgrading = self.upgrading.? },
             .type_error => error.TypeError,
+            .stack => blk: {
+                // 9. The stack is empty: a new element.
+                if (self.stack_len == 0) break :blk .{ .created = interfaces.HTMLElement.call_constructor(realm) catch return error.OperationFailed };
+                // 12. Let element be the last entry.
+                const last = &self.stack[self.stack_len - 1];
+                switch (last.*) {
+                    // 13. An already constructed marker: TypeError.
+                    .already_constructed => return error.TypeError,
+                    .element => |element| {
+                        // 15. Replace it with an already constructed marker.
+                        last.* = .already_constructed;
+                        break :blk .{ .upgrading = element };
+                    },
+                }
+            },
         };
     }
 
@@ -313,4 +334,58 @@ test "the legacy factory functions are their own constructors: Image, Audio and 
         defer std.testing.allocator.free(plain);
         try std.testing.expectEqualStrings(plain, outcomes[i]);
     }
+}
+
+test "a NewTarget whose prototype getter constructs another element of the definition: the inner construction completes, the outer still meets steps 12-13, and the stack is consistent" {
+    var host: Host = .{ .answer = .stack };
+    const page = try Page.open(&Host.hooks, &host);
+    defer page.close();
+    defer host.deinit();
+    // An upgrade in progress: the element on the definition's construction
+    // stack.
+    const element = try interfaces.HTMLElement.call_constructor(page.realm);
+    host.stack[0] = .{ .element = element };
+    host.stack_len = 1;
+
+    try page.expect(
+        \\globalThis.X = class X extends HTMLElement {};
+        \\let getterCalls = 0, inner = null, innerError = null, outer = null, outerError = null;
+        \\const P = new Proxy(X, { get(target, key, receiver) {
+        \\  if (key === "prototype") {
+        \\    getterCalls++;
+        \\    if (inner === null && innerError === null) { try { inner = new X(); } catch (e) { innerError = e; } }
+        \\  }
+        \\  return Reflect.get(target, key, receiver);
+        \\} });
+        \\try { outer = Reflect.construct(HTMLElement, [], P); } catch (e) { outerError = e; }
+        \\globalThis.inner = inner;
+        \\[getterCalls, inner instanceof X, innerError === null, outer === null, outerError instanceof TypeError].join()
+    , "1,true,true,true,true");
+    // The inner construction took the stack's element (12, 15); the outer
+    // then read the already constructed marker (12-13) - as in spec order,
+    // where the outer's Get(NewTarget, "prototype") (step 10) also runs the
+    // inner construction before its step 12.
+    try std.testing.expectEqual(element, try page.instance("inner"));
+    try std.testing.expectEqual(@as(usize, 2), host.calls);
+    try std.testing.expectEqual(@as(usize, 1), host.stack_len);
+    try std.testing.expect(host.stack[0] == .already_constructed);
+}
+
+test "a NewTarget whose prototype getter constructs another element, with nothing to upgrade: both construct new elements" {
+    var host: Host = .{ .answer = .stack };
+    const page = try Page.open(&Host.hooks, &host);
+    defer page.close();
+    defer host.deinit();
+    try page.expect(
+        \\globalThis.X = class X extends HTMLElement {};
+        \\let inner = null;
+        \\const P = new Proxy(X, { get(target, key, receiver) {
+        \\  if (key === "prototype" && inner === null) inner = new X();
+        \\  return Reflect.get(target, key, receiver);
+        \\} });
+        \\const outer = Reflect.construct(HTMLElement, [], P);
+        \\String(inner instanceof X && outer instanceof X && inner !== outer)
+    , "true");
+    try std.testing.expectEqual(@as(usize, 2), host.calls);
+    try std.testing.expectEqual(@as(usize, 0), host.stack_len);
 }

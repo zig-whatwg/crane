@@ -552,6 +552,16 @@ pub const HostHooks = struct {
     /// these steps runs, so a throwing or side-effecting prototype getter is
     /// observed before the TypeErrors of steps 1-9, 12 and 13, where the spec
     /// has it after them.
+    ///
+    /// This single call relies on that: the engine does steps 10-11 -
+    /// Get(NewTarget, "prototype") with the GetFunctionRealm fallback - BEFORE
+    /// it calls the hook, so the hook's steps 2-9, 12, 13 and 15 run with no
+    /// author script between them; and step 15 may come before step 14,
+    /// because [[SetPrototypeOf]] on an ordinary wrapper never throws. An
+    /// engine that does steps 10-11 in spec order, between the decision and
+    /// the construction stack's read (a native QuickJS adapter, say), needs a
+    /// phased hook instead: resolve (steps 1-9), initialize (9.2-9.9),
+    /// take_entry (12-13), commit (15).
     htmlConstructor: ?*const fn (host: ?*anyopaque, realm: Context, new_target: JSValue, interface: []const u8) Error!HTMLConstructed = null,
 };
 
