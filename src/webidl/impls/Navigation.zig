@@ -2130,6 +2130,14 @@ fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
         for (disposed.items) |handed| {
             _ = internal.handed.remove(dom.navigation_history_entries.entryId(handed.instance));
         }
+        // Steps 5.3 and 6 append them in entry list order; the map has none.
+        // The entries are gone from the history, so their ids - made in the
+        // order the entries were - stand for their places in the list.
+        std.mem.sort(*Handed, disposed.items, {}, struct {
+            fn lessThan(_: void, a: *Handed, b: *Handed) bool {
+                return dom.navigation_history_entries.entryId(a.instance) < dom.navigation_history_entries.entryId(b.instance);
+            }
+        }.lessThan);
     }
 
     const new_current = entryObject(internal, s.window, destination) catch return;
