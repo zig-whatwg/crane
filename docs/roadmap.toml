@@ -451,6 +451,7 @@ progress = [
   "6a2f249a9 - design: instance/tab model, 345-variable inventory, host API, BiDi map, ratchet, batches B0-B9 (instances lane); docs/instances.md",
   "50ce17ce17 (merged 392538d86) - B0: crane.Process starts the engine and installs every src/dom hook once (owners' installHooks, written once while starting); zig build lint-global-state ratchets process-global and threadlocal state",
   "e263d652b8 (merged c9182f97f6) - workers 1A: every process-wide structure a worker thread reaches is locked, atomic or per isolate; an agent's end frees only its own isolate's entries; two-thread stress tests (workers lane)",
+  "7b497b9d03 - workers 1B-i: TaskSink (cross-thread task queue), owned timers, minimal BrowserScope + WorkerRegistry (instances B1 first piece), cross-thread MessagePort channels, worker link/event loop/thread (unused by Worker until 1B-ii) (workers lane)",
 ]
 
   [[infra.items]]
