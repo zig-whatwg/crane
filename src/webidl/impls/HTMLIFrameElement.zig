@@ -118,11 +118,7 @@ pub const InternalState = struct {
         // struct held for the life of the process. A navigation step running
         // script with it in hand puts that off until it is done (see
         // `IFrameIntegration.busy`).
-        if (self.integration.busy > 0) {
-            self.integration.deinit_pending = true;
-        } else {
-            destroyIntegration(self.integration);
-        }
+        dom_module.navigables.releaseContentNavigable(self.integration);
 
         // NOTE: Do NOT call DOMTokenList.deinit() on sandbox_token_list here.
         // The [SameObject] DOMTokenList instances are managed by the V8 wrapper cache.
@@ -177,6 +173,7 @@ pub fn installHooks() void {
         .download_hyperlink = &downloadHyperlink,
         .traverse_navigable = &traverseNavigable,
         .find_by_name = &frameWindowByName,
+        .create_browsing_context_and_document = &createBrowsingContextAndDocument,
     });
 }
 
@@ -263,7 +260,7 @@ fn destroyRetiredRealm(data: *anyopaque, global: ?*anyopaque, allocator: std.mem
 /// its element: the navigable's realm, if it still has one, ends
 /// (engine.destroyWindowRealm, which ends its frames' realms first) - its
 /// page is ending with the element in it. A removed iframe's realm is not
-/// here any more: the removal took it (`endRemovedFrameRealm`).
+/// here any more: the removal took it (dom.navigables.destroyChildNavigable).
 fn iframeContextCleanup(integration: *IFrameIntegration) void {
     if (integration.context_cleanup_data) |data| {
         // Cleared first: nothing re-entered below may reach a realm that is
@@ -271,123 +268,6 @@ fn iframeContextCleanup(integration: *IFrameIntegration) void {
         integration.context_cleanup_data = null;
         engine.destroyWindowRealm(@ptrCast(@alignCast(data)), .global_detached);
     }
-}
-
-/// HTML "destroy a child navigable", for the realm: an iframe removed from
-/// its document takes its navigable's realm with it, and the realm ends at a
-/// task queued by the removal - never with the frame's own script on the
-/// stack (a frame can remove its own container), and never at whatever point
-/// the collector frees the removed element, which is when it used to end:
-/// html/browsers/the-window-object/self-et-al.window.js read anything from 0
-/// to 7 of 8 by when that happened. Blink ends it in
-/// LocalWindowProxy::DisposeContext(kFrameIsDetached), which leaves the
-/// global attached (engine.WindowRealmEnd.navigable_destroyed).
-///
-/// The element hands the realm over (`context_cleanup_data`), so neither its
-/// collection nor an insertion that makes a new navigable ends or retires it
-/// again. A task its loop drops needs nothing: the loop goes as its page
-/// ends, and the page's realm ends its frames' realms first.
-///
-/// The realm does not end with this task (engine.WindowRealmEnd
-/// .navigable_destroyed): its script activity stops, and its Window lives on
-/// for as long as script holds its WindowProxy - `closed` reads true (its
-/// browsing context is discarded), `document` answers - as the spec says and
-/// Chrome, Edge and Firefox do (crane/fl-removed-frame-window-survives-gc.html).
-/// The engine ends it once the collector takes it, or with its page.
-///
-/// The navigable's RETIRED realms - Windows its earlier navigations replaced
-/// (IFrameIntegration.retired_realms) - end from tasks queued here too: the
-/// whole navigable is destroyed. Left to the integration, they ended with the
-/// element, which a removed element meets when the collector frees it - inside
-/// V8's first-pass weak callback, where no engine call may be made: a wrapper
-/// of the retired realm that died in the same collection had been zapped,
-/// and the realm's end read it (fetch/origin/assorted.window.js, SIGSEGV in
-/// v8::Value::IsProxy; crane/c4-removed-frame-retired-realm-gc.html).
-fn queueRemovedFrameRealmEnd(element: *runtime.Instance, integration: *IFrameIntegration) void {
-    const loop = element.ctx.getOptionalEventLoop() orelse return;
-    // Every retired realm here was retired with `destroyRetiredRealm` as its
-    // end (`retired_realm_destroy`), whose only input is the realm.
-    for (integration.retired_realms.items) |retired| {
-        loop.queueTask(.{ .callback = endRetiredRealm, .context = retired.data, .drop = null });
-    }
-    integration.retired_realms.clearRetainingCapacity();
-    const data = integration.context_cleanup_data orelse return;
-    integration.context_cleanup_data = null;
-    loop.queueTask(.{ .callback = endRemovedFrameRealm, .context = data, .drop = null });
-}
-
-fn endRemovedFrameRealm(data: ?*anyopaque) void {
-    engine.destroyWindowRealm(@ptrCast(@alignCast(data.?)), .navigable_destroyed);
-}
-
-/// A retired realm of a destroyed navigable: its WindowProxy went on to a
-/// later realm, so nothing reaches its Window through it any more - it ends
-/// as a navigation's old realm does (`destroyRetiredRealm`).
-fn endRetiredRealm(data: ?*anyopaque) void {
-    engine.destroyWindowRealm(@ptrCast(@alignCast(data.?)), .global_detached);
-}
-
-/// HTML "destroy a child navigable", for the documents: the active
-/// documents of `bc`'s navigable and of every navigable inside it are
-/// destroyed, so their windows' timers and animation frames end
-/// (dom.window_documents) - though their realms live on for as long as
-/// script holds the windows.
-fn destroyWindowDocuments(bc: *html_core.BrowsingContext) void {
-    var tree: std.ArrayListUnmanaged(*html_core.BrowsingContext) = .empty;
-    defer tree.deinit(std.heap.page_allocator);
-    tree.append(std.heap.page_allocator, bc) catch return;
-    bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
-    for (tree.items) |navigable| {
-        const window: *runtime.Instance = @ptrCast(@alignCast(navigable.getActiveWindow() orelse continue));
-        // "Destroy a document" step 2, "abort a document" step 2: the
-        // fetches its script started are canceled, firing nothing.
-        dom_module.document_fetches.abortAll(window.ctx);
-        dom_module.window_documents.destroyed(window.ctx);
-    }
-}
-
-/// Parse an origin string (e.g., "http://localhost:8000") into an Origin struct.
-/// Returns an opaque origin for invalid or "null" strings.
-fn parseOriginFromString(origin_str: []const u8) Origin {
-    // "null" means opaque origin
-    if (std.mem.eql(u8, origin_str, "null")) {
-        return Origin.createOpaque();
-    }
-
-    // Parse "http://host:port" format
-    if (std.mem.startsWith(u8, origin_str, "http://")) {
-        const rest = origin_str[7..]; // Skip "http://"
-        const host_port_end = std.mem.indexOf(u8, rest, "/") orelse rest.len;
-        const host_port = rest[0..host_port_end];
-
-        // Check for port
-        if (std.mem.lastIndexOf(u8, host_port, ":")) |colon_idx| {
-            const host = host_port[0..colon_idx];
-            const port_str = host_port[colon_idx + 1 ..];
-            const port = std.fmt.parseInt(u16, port_str, 10) catch 80;
-            return Origin.init("http", host, port);
-        }
-        return Origin.init("http", host_port, 80);
-    }
-
-    // Parse "https://host:port" format
-    if (std.mem.startsWith(u8, origin_str, "https://")) {
-        const rest = origin_str[8..]; // Skip "https://"
-        const host_port_end = std.mem.indexOf(u8, rest, "/") orelse rest.len;
-        const host_port = rest[0..host_port_end];
-
-        // Check for port
-        if (std.mem.lastIndexOf(u8, host_port, ":")) |colon_idx| {
-            const host = host_port[0..colon_idx];
-            const port_str = host_port[colon_idx + 1 ..];
-            const port = std.fmt.parseInt(u16, port_str, 10) catch 443;
-            return Origin.init("https", host, port);
-        }
-        return Origin.init("https", host_port, 443);
-    }
-
-    // Unknown format - return opaque
-    return Origin.createOpaque();
 }
 
 /// Document creation callback for iframe navigation
@@ -1321,7 +1201,7 @@ fn runBeforeUnload(context: ?*anyopaque) void {
 
     if (activeDocumentOf(integration)) |document| {
         var canceled = false;
-        var documents = collectInclusiveDescendantDocuments(document, integration.allocator);
+        var documents = dom_module.navigables.inclusiveDescendantDocuments(document, integration.allocator);
         defer documents.deinit(integration.allocator);
         for (documents.items) |entry| {
             if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
@@ -2166,7 +2046,7 @@ fn unloadDocumentAndDescendants(document: *runtime.Instance, integration: *IFram
 /// none is salvageable without a bfcache), and then so are the navigables
 /// of `document`'s iframes (`destroyChildNavigables`).
 fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep) bool {
-    var documents = collectInclusiveDescendantDocuments(document, integration.allocator);
+    var documents = dom_module.navigables.inclusiveDescendantDocuments(document, integration.allocator);
     defer documents.deinit(integration.allocator);
     // Children first: the list is parents-first, so walk it backwards.
     var i = documents.items.len;
@@ -2174,8 +2054,10 @@ fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration
         i -= 1;
         const entry = documents.items[i];
         if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
-        if (entry.integration) |child| {
-            if (child != integration) abandonNavigationsOf(child);
+        if (entry.browsing_context) |child_bc| {
+            if (integrationOfBrowsingContext(child_bc)) |child| {
+                if (child != integration) abandonNavigationsOf(child);
+            }
         }
         if (i == 0) if (page_swap) |step| {
             if (!firePageSwapAt(entry.document, entry.generation, integration, step)) return false;
@@ -2187,7 +2069,7 @@ fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration
             if (bc.getTop().joint_history) |history| history.forgetDocument(@ptrCast(entry.document));
         }
     }
-    if (integration.browsing_context) |bc| destroyWindowDocuments(bc);
+    if (integration.browsing_context) |bc| dom_module.navigables.destroyWindowDocuments(bc);
     destroyChildNavigables(integration);
     return true;
 }
@@ -2234,61 +2116,6 @@ fn destroyChildNavigables(integration: *IFrameIntegration) void {
             // to destroy, but not `bc`'s child either.
             child.removeFromParent();
         }
-    }
-}
-
-const DocumentEntry = struct {
-    document: *runtime.Instance,
-    generation: u64,
-    /// The navigable whose active document this is; null for the root.
-    integration: ?*IFrameIntegration,
-};
-
-/// `document` and the active documents of its descendant navigables, parents
-/// first - HTML "inclusive descendant navigables" by their active documents.
-/// Each is held with its slab generation, since script runs between the
-/// collection and the use.
-fn collectInclusiveDescendantDocuments(document: *runtime.Instance, allocator: std.mem.Allocator) std.ArrayListUnmanaged(DocumentEntry) {
-    var out: std.ArrayListUnmanaged(DocumentEntry) = .empty;
-    out.append(allocator, .{ .document = document, .generation = runtime.SlabAllocator.generationOf(document), .integration = null }) catch return out;
-    var index: usize = 0;
-    while (index < out.items.len and out.items.len < 256) : (index += 1) {
-        const parent = out.items[index].document;
-        var iframes = iframesIn(parent, allocator);
-        defer iframes.deinit(allocator);
-        for (iframes.items) |iframe| {
-            const internal = getInternal(iframe) orelse continue;
-            const child = activeDocumentOf(internal.integration) orelse continue;
-            out.append(allocator, .{
-                .document = child,
-                .generation = runtime.SlabAllocator.generationOf(child),
-                .integration = internal.integration,
-            }) catch break;
-        }
-    }
-    return out;
-}
-
-/// The iframe elements in `document`, in tree order.
-fn iframesIn(document: *runtime.Instance, allocator: std.mem.Allocator) std.ArrayListUnmanaged(*runtime.Instance) {
-    var out: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-    const NodeImpl = @import("Node.zig");
-    const node_internal = NodeImpl.getInternalState(document) orelse return out;
-    const root = node_internal.node_base orelse return out;
-    collectIframes(root, &out, allocator, 0);
-    return out;
-}
-
-fn collectIframes(node: *NodeBase, out: *std.ArrayListUnmanaged(*runtime.Instance), allocator: std.mem.Allocator, depth: usize) void {
-    if (depth > 512) return;
-    for (node.child_nodes.items()) |child| {
-        if (child.node_type == 1 and std.ascii.eqlIgnoreCase(child.node_name, "iframe")) {
-            if (instance_bridge.getInstance(child)) |ptr| {
-                const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
-                if (instance.stateAs(State) != null) out.append(allocator, instance) catch return;
-            }
-        }
-        collectIframes(child, out, allocator, depth + 1);
     }
 }
 
@@ -2606,14 +2433,7 @@ fn percentDecode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
 /// element was deinited meanwhile, the deinit it put off happens now.
 fn finishBusy(integration: *IFrameIntegration) void {
     integration.busy -= 1;
-    if (integration.busy == 0 and integration.deinit_pending) destroyIntegration(integration);
-}
-
-/// Deinit `integration` and return its block to the arena it came from.
-fn destroyIntegration(integration: *IFrameIntegration) void {
-    integration.deinit();
-    const Arena = runtime.ArenaAllocator;
-    if (Arena.tryGet() catch null) |arena| arena.destroy(IFrameIntegration, integration);
+    if (integration.busy == 0 and integration.deinit_pending) dom_module.navigables.destroyContentNavigable(integration);
 }
 
 // ----------------------------------------------------------------------------
@@ -2636,11 +2456,11 @@ fn endLoadDelay(integration: *IFrameIntegration) void {
 /// event - its content navigable is navigating, and has not yet run the
 /// iframe load event steps for it.
 fn iframesDelayLoadEvent(document: *runtime.Instance) bool {
-    var iframes = iframesIn(document, std.heap.page_allocator);
-    defer iframes.deinit(std.heap.page_allocator);
-    for (iframes.items) |iframe| {
-        const internal = getInternal(iframe) orelse continue;
-        if (internal.integration.delaying_load) return true;
+    var children = dom_module.navigables.childNavigablesOf(document, std.heap.page_allocator);
+    defer children.deinit(std.heap.page_allocator);
+    for (children.items) |child| {
+        const integration = integrationOfBrowsingContext(child.browsing_context) orelse continue;
+        if (integration.delaying_load) return true;
     }
     return false;
 }
@@ -2757,12 +2577,12 @@ fn topDocumentOf(document: *runtime.Instance) *runtime.Instance {
 /// back to.
 fn findNavigableByName(document: *runtime.Instance, name: []const u8) ?*IFrameIntegration {
     const top = topDocumentOf(document);
-    var documents = collectInclusiveDescendantDocuments(top, std.heap.page_allocator);
+    var documents = dom_module.navigables.inclusiveDescendantDocuments(top, std.heap.page_allocator);
     defer documents.deinit(std.heap.page_allocator);
     for (documents.items) |entry| {
-        const integration = entry.integration orelse continue;
-        const browsing_context = integration.browsing_context orelse continue;
-        if (std.mem.eql(u8, browsing_context.target_name, name)) return integration;
+        const browsing_context = entry.browsing_context orelse continue;
+        if (!std.mem.eql(u8, browsing_context.target_name, name)) continue;
+        if (integrationOfBrowsingContext(browsing_context)) |integration| return integration;
     }
     return null;
 }
@@ -3286,20 +3106,30 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
     return null;
 }
 
-/// HTML "create a new child navigable" for `instance`: a browsing context in
-/// its node document's navigable, and a V8 context with a Window and the
-/// initial about:blank document. False when the element's node document has
-/// no browsing context - a document made by createHTMLDocument() or
-/// DOMParser has no navigable to be the parent - or creation failed.
+/// HTML "create a new child navigable" for `instance` (dom.navigables): a
+/// browsing context in its node document's navigable, and a realm with a
+/// Window and the initial about:blank document. False when the element's
+/// node document has no browsing context - a document made by
+/// createHTMLDocument() or DOMParser has no navigable to be the parent - or
+/// creation failed.
 fn createChildNavigable(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
+    return dom_module.navigables.createChildNavigable(instance, internal.integration);
+}
+
+/// dom.navigables' `create_browsing_context_and_document`: "create a new
+/// child navigable" step 3 for `container` - any navigable container - whose
+/// content navigable is `integration`'s: the browsing context, a child of the
+/// container document's, and its realm, Window and initial about:blank
+/// document, with `container` as the navigable's container.
+fn createBrowsingContextAndDocument(container: *runtime.Instance, integration: *IFrameIntegration) bool {
     const NodeImpl = @import("Node.zig");
     const DocumentImpl = @import("Document.zig");
 
     // The parent is the window of the element's node document - for a frame
     // nested in another frame's document, that frame's window - and the
     // parent realm is that window's.
-    const owner_doc = NodeImpl.getOwnerDocument(instance) orelse return false;
+    const owner_doc = NodeImpl.getOwnerDocument(container) orelse return false;
     const parent_window: *runtime.Instance = (DocumentImpl.get_defaultView(owner_doc) catch null) orelse return false;
     const WindowImpl = @import("Window.zig");
     const parent_window_internal = WindowImpl.getInternal(parent_window) orelse return false;
@@ -3308,21 +3138,21 @@ fn createChildNavigable(instance: *runtime.Instance) bool {
     // contentDocument. The Window stores its origin as a string (e.g.,
     // "http://localhost:8000").
     const parent_origin_str = parent_window_internal.origin;
-    const parent_origin = parseOriginFromString(parent_origin_str);
-    internal.integration.container_origin = parent_origin;
+    const parent_origin = dom_module.navigables.parseOriginFromString(parent_origin_str);
+    integration.container_origin = parent_origin;
 
     // The browsing context, a child of the container document's.
-    const existing_bc = internal.integration.ensureBrowsingContext(
+    const existing_bc = integration.ensureBrowsingContext(
         @ptrCast(parent_window_internal.browsing_context),
     ) orelse return false;
     // This element is the new navigable's container.
-    existing_bc.container = instance;
+    existing_bc.container = container;
 
     // Sandboxed without allow-same-origin, the navigable's origin is opaque
     // - decided before the context exists, since V8's security token is set
     // as it is created.
     const use_opaque_origin = blk: {
-        if (internal.integration.sandbox_flags) |flags| {
+        if (integration.sandbox_flags) |flags| {
             break :blk !flags.allow_same_origin;
         }
         break :blk false;
@@ -3330,21 +3160,18 @@ fn createChildNavigable(instance: *runtime.Instance) bool {
 
     // This element is the navigable's container: its load event steps run
     // once a navigation completes.
-    internal.integration.iframe_element = @ptrCast(instance);
+    integration.iframe_element = @ptrCast(container);
 
     // The navigable's context, Window and initial about:blank document,
     // whose creator is the element's node document.
     _ = attachNavigableContext(
-        internal.integration,
+        integration,
         parent_window.ctx,
         existing_bc,
         if (use_opaque_origin) null else parent_origin_str,
-        NodeImpl.getOwnerDocument(instance),
-        internal.allocator,
+        NodeImpl.getOwnerDocument(container),
+        integration.allocator,
     ) orelse return false;
-    // "Create a new child navigable" step 12: its initial entry, at the
-    // traversable's current step.
-    _ = existing_bc.ensureHistoryEntries(&history_documents.infoOf) catch {};
     return true;
 }
 
@@ -3618,7 +3445,7 @@ fn definitelyCloseTraversable(window: *runtime.Instance) bool {
     // "continue" unless a prompt was shown and the user stayed; none is
     // shown without sticky activation.
     {
-        var documents = collectInclusiveDescendantDocuments(document, allocator);
+        var documents = dom_module.navigables.inclusiveDescendantDocuments(document, allocator);
         defer documents.deinit(allocator);
         var canceled = false;
         for (documents.items) |entry| {
@@ -3638,7 +3465,7 @@ fn definitelyCloseTraversable(window: *runtime.Instance) bool {
     // descendants" - pagehide and unload, children first - and, after all
     // unloads, "destroy" it.
     const active: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveDocument() orelse return true));
-    var documents = collectInclusiveDescendantDocuments(active, allocator);
+    var documents = dom_module.navigables.inclusiveDescendantDocuments(active, allocator);
     defer documents.deinit(allocator);
     const made = integration orelse {
         // The host's page: unloaded, children first, and its windows'
@@ -3648,10 +3475,12 @@ fn definitelyCloseTraversable(window: *runtime.Instance) bool {
             i -= 1;
             const entry = documents.items[i];
             if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
-            if (entry.integration) |child| abandonNavigationsOf(child);
+            if (entry.browsing_context) |child_bc| {
+                if (integrationOfBrowsingContext(child_bc)) |child| abandonNavigationsOf(child);
+            }
             document_lifecycle.unload(entry.document);
         }
-        destroyWindowDocuments(bc);
+        dom_module.navigables.destroyWindowDocuments(bc);
         return true;
     };
     abandonNavigationsOf(made);
@@ -3697,7 +3526,7 @@ fn createAuxiliaryNavigable(
     // A new top-level context, but the same user agent: the opener's cookie
     // jar (it has no parent to reach one through).
     browsing_context.cookie_jar = opener_bc.cookieJar();
-    integration.container_origin = parseOriginFromString(opener_origin);
+    integration.container_origin = dom_module.navigables.parseOriginFromString(opener_origin);
     integration.state = .creating_initial_document;
     // Its WindowProxy, whose document origin - the initial about:blank's, the
     // opener's - decides whether its first navigation keeps its Window.
@@ -4389,76 +4218,9 @@ fn iframeRemovingStepsCallback(node: *NodeBase, old_parent: ?*NodeBase) void {
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
 
-    // Get the iframe's internal state and call onRemovedFromDocument
+    // HTML "destroy a child navigable" (dom.navigables).
     const internal = getInternal(instance) orelse return;
-    // Deviation, stated: before "destroy a child navigable" runs, the
-    // frame's document and its descendants are unloaded - pagehide and
-    // unload fire at each, children first - as Chrome, Firefox and Safari
-    // all do when an iframe is removed. HTML's "destroy a child navigable"
-    // does not unload, and WPT's
-    // dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe
-    // removal subtests, which assert it, fail in all three browsers; pages
-    // rely on the browsers' order (fetch/api/cors/cors-keepalive's
-    // "in unload" posts to its parent from the frame's unload handler).
-    if (internal.integration.state != .discarded) {
-        if (activeDocumentOf(internal.integration)) |active| {
-            var documents = collectInclusiveDescendantDocuments(active, internal.integration.allocator);
-            defer documents.deinit(internal.integration.allocator);
-            var i = documents.items.len;
-            while (i > 0) {
-                i -= 1;
-                const entry = documents.items[i];
-                if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
-                dom_module.document_lifecycle.unload(entry.document);
-            }
-        }
-    }
-    // "Destroy a child navigable" step 4: "Inform the navigation API about
-    // child navigable destruction given navigable."
-    if (internal.integration.state != .discarded) {
-        if (internal.integration.browsing_context) |bc| {
-            if (bc.getActiveWindow()) |window| dom_module.navigation_api.informAboutChildNavigableDestruction(@ptrCast(@alignCast(window)));
-        }
-    }
-    // "Destroy a child navigable" destroys the documents of the frame and of
-    // every frame in it: their windows' timers and animation frames end here,
-    // though the contexts live on while script holds the windows.
-    if (internal.integration.state != .discarded) {
-        if (internal.integration.browsing_context) |bc| destroyWindowDocuments(bc);
-    }
-    // "Destroy a child navigable": its entries, and its descendants', leave
-    // the traversable's history.
-    if (internal.integration.browsing_context) |bc| {
-        if (bc.getTop().joint_history) |history| {
-            var tree: std.ArrayListUnmanaged(*html_core.BrowsingContext) = .empty;
-            defer tree.deinit(std.heap.page_allocator);
-            bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
-            for (tree.items) |gone| history.removeNavigable(gone.id);
-        }
-    }
-    // "Destroy a child navigable" step 5: "destroy a document and its
-    // descendants" given its active document - children first.
-    if (activeDocumentOf(internal.integration)) |active| {
-        var documents = collectInclusiveDescendantDocuments(active, internal.integration.allocator);
-        defer documents.deinit(internal.integration.allocator);
-        var i = documents.items.len;
-        while (i > 0) {
-            i -= 1;
-            const entry = documents.items[i];
-            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
-            dom_module.document_lifecycle.destroy(entry.document);
-        }
-    }
-    const was_delaying = internal.integration.delaying_load;
-    // "Destroy a child navigable": its realm ends at a task of its own.
-    if (internal.integration.state != .discarded) queueRemovedFrameRealmEnd(instance, internal.integration);
-    internal.integration.onRemovedFromDocument();
-    // The node document may have been waiting on this frame's navigation to
-    // fire its load event. It has no content navigable now.
-    if (was_delaying) {
-        const NodeImpl = @import("Node.zig");
-        if (NodeImpl.getOwnerDocument(instance)) |document| dom_module.document_lifecycle.loadDelayMayHaveEnded(document);
-    }
+    dom_module.navigables.destroyChildNavigable(instance, internal.integration);
 }
 
 // ============================================================================
@@ -4515,43 +4277,12 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
             const owned = internal.allocator.dupe(u8, n) catch return;
             defer internal.allocator.free(owned);
             internal.integration.setName(owned) catch {};
-            registerNamedPropertyOnParentGlobal(instance, owned);
+            dom_module.navigables.registerNamedProperty(internal.integration, owned);
         }
     }
 
     // Step 3.
     processIframeAttributes(instance, true);
-}
-
-/// Register a named property on the parent window's global object for iframe access.
-/// This sets window[name] = iframe.contentWindow, enabling window.frames['name'] to work.
-///
-/// This is called when an iframe with a name is inserted into the document.
-/// V8's named property interceptors don't survive snapshot restore, so we use this
-/// direct property approach instead.
-fn registerNamedPropertyOnParentGlobal(iframe_instance: *runtime.Instance, name: []const u8) void {
-    // Get the iframe's internal state
-    const internal = getInternal(iframe_instance) orelse return;
-
-    // Get the child browsing context (contains the contentWindow)
-    const child_bc = internal.integration.browsing_context orelse return;
-
-    // Get the parent browsing context
-    const parent_bc = child_bc.parent orelse return;
-
-    // Get the parent's Window instance
-    const parent_window_ptr = parent_bc.active_window orelse return;
-    const parent_window: *runtime.Instance = @ptrCast(@alignCast(parent_window_ptr));
-
-    // The child Window - the navigable's active window.
-    const child_window_ptr = child_bc.active_window orelse return;
-    const child_window: *runtime.Instance = @ptrCast(@alignCast(child_window_ptr));
-
-    // window[name] = the child's WindowProxy, set on the parent's global in
-    // the parent's realm. A Window converts to its WindowProxy.
-    engine.setProperty(parent_window.ctx, .{ .instance = parent_window }, name, .{ .instance = child_window }) catch |err| {
-        log.debug("window[{s}] was not set: {}", .{ name, err });
-    };
 }
 
 /// dom.child_navigables: the Window of `bc_ptr`'s navigable (an html_core
