@@ -387,8 +387,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_type")) return try HTMLScriptElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);
@@ -402,8 +402,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_src(instance: *runtime.Instance, value: typedefs.TrustedScriptURLOrUSVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLScriptElementImpl.set_src(instance, value);
     }
@@ -417,8 +417,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_noModule(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_noModule")) return try HTMLScriptElementImpl.set_noModule(instance, value);
         try reflection.set(bool, instance, .{ .name = "nomodule" }, value);
@@ -432,8 +432,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_async(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLScriptElementImpl.set_async(instance, value);
     }
@@ -447,8 +447,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_defer(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_defer")) return try HTMLScriptElementImpl.set_defer(instance, value);
         try reflection.set(bool, instance, .{ .name = "defer" }, value);
@@ -485,8 +485,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_crossOrigin(instance: *runtime.Instance, value: ?DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLScriptElementImpl.set_crossOrigin(instance, value);
     }
@@ -499,8 +499,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLScriptElementImpl.set_referrerPolicy(instance, value);
     }
@@ -514,8 +514,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_integrity(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_integrity")) return try HTMLScriptElementImpl.set_integrity(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "integrity" }, value);
@@ -529,8 +529,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_fetchPriority(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLScriptElementImpl.set_fetchPriority(instance, value);
     }
@@ -543,8 +543,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_text(instance: *runtime.Instance, value: typedefs.TrustedScriptOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLScriptElementImpl.set_text(instance, value);
     }
@@ -558,8 +558,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_charset(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_charset")) return try HTMLScriptElementImpl.set_charset(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "charset" }, value);
@@ -574,8 +574,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_event(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_event")) return try HTMLScriptElementImpl.set_event(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "event" }, value);
@@ -590,8 +590,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions], [Reflect="for"]
     pub fn set_htmlFor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLScriptElementImpl, "set_htmlFor")) return try HTMLScriptElementImpl.set_htmlFor(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "for" }, value);
@@ -605,8 +605,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_innerText(instance: *runtime.Instance, value: typedefs.TrustedScriptOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLScriptElementImpl.set_innerText(instance, value);
     }
@@ -619,8 +619,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_textContent(instance: *runtime.Instance, value: ?typedefs.TrustedScriptOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLScriptElementImpl.set_textContent(instance, value);
     }
@@ -633,8 +633,8 @@ pub const HTMLScriptElement = struct {
     /// Extended attributes: [CEReactions], [SecureContext]
     pub fn set_attributionSrc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLScriptElementImpl.set_attributionSrc(instance, value);
     }
@@ -647,5 +647,28 @@ pub const HTMLScriptElement = struct {
     /// (bit i = argument i; an attribute setter's value is bit 0).
     pub const legacy_null_to_empty = .{
         .{ "set_innerText", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_type",
+        "set_src",
+        "set_noModule",
+        "set_async",
+        "set_defer",
+        "set_crossOrigin",
+        "set_referrerPolicy",
+        "set_integrity",
+        "set_fetchPriority",
+        "set_text",
+        "set_charset",
+        "set_event",
+        "set_htmlFor",
+        "set_innerText",
+        "set_textContent",
+        "set_attributionSrc",
     };
 };

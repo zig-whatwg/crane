@@ -306,8 +306,8 @@ pub const HTMLSourceElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSourceElementImpl, "set_src")) return try HTMLSourceElementImpl.set_src(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
@@ -322,8 +322,8 @@ pub const HTMLSourceElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSourceElementImpl, "set_type")) return try HTMLSourceElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);
@@ -338,8 +338,8 @@ pub const HTMLSourceElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_srcset(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSourceElementImpl, "set_srcset")) return try HTMLSourceElementImpl.set_srcset(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "srcset" }, value);
@@ -354,8 +354,8 @@ pub const HTMLSourceElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_sizes(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSourceElementImpl, "set_sizes")) return try HTMLSourceElementImpl.set_sizes(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "sizes" }, value);
@@ -370,8 +370,8 @@ pub const HTMLSourceElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_media(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSourceElementImpl, "set_media")) return try HTMLSourceElementImpl.set_media(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "media" }, value);
@@ -386,8 +386,8 @@ pub const HTMLSourceElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_width(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSourceElementImpl, "set_width")) return try HTMLSourceElementImpl.set_width(instance, value);
         try reflection.set(u32, instance, .{ .name = "width" }, value);
@@ -402,10 +402,24 @@ pub const HTMLSourceElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_height(instance: *runtime.Instance, value: u32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLSourceElementImpl, "set_height")) return try HTMLSourceElementImpl.set_height(instance, value);
         try reflection.set(u32, instance, .{ .name = "height" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_src",
+        "set_type",
+        "set_srcset",
+        "set_sizes",
+        "set_media",
+        "set_width",
+        "set_height",
+    };
 };

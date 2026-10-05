@@ -250,6 +250,12 @@ pub fn throwValue(_: Context, _: JSValue) Error!void {
 pub fn completionOf(_: Context, _: *const fn (data: ?*anyopaque) Error!void, _: ?*anyopaque) Error!?Owned {
     return error.NotSupported;
 }
+/// No engine is linked, so nothing is ever pending (throwValue is
+/// NotSupported): the steps run. Linked: JS_GetException takes the context's
+/// pending exception (clearing it), the steps run, JS_Throw puts it back.
+pub fn withPendingExceptionSetAside(_: *engine.Agent, steps: *const fn (data: ?*anyopaque) void, data: ?*anyopaque) Error!void {
+    steps(data);
+}
 pub fn parseJsonToValue(_: Context, _: []const u8) Error!Owned {
     return error.NotSupported;
 }

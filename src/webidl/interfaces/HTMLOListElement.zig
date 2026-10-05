@@ -291,8 +291,8 @@ pub const HTMLOListElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_reversed(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOListElementImpl, "set_reversed")) return try HTMLOListElementImpl.set_reversed(instance, value);
         try reflection.set(bool, instance, .{ .name = "reversed" }, value);
@@ -307,8 +307,8 @@ pub const HTMLOListElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [ReflectDefault=1]
     pub fn set_start(instance: *runtime.Instance, value: i32) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOListElementImpl, "set_start")) return try HTMLOListElementImpl.set_start(instance, value);
         try reflection.set(i32, instance, .{ .name = "start", .default = 1 }, value);
@@ -323,8 +323,8 @@ pub const HTMLOListElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_type(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOListElementImpl, "set_type")) return try HTMLOListElementImpl.set_type(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "type" }, value);
@@ -339,10 +339,21 @@ pub const HTMLOListElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_compact(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLOListElementImpl, "set_compact")) return try HTMLOListElementImpl.set_compact(instance, value);
         try reflection.set(bool, instance, .{ .name = "compact" }, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_reversed",
+        "set_start",
+        "set_type",
+        "set_compact",
+    };
 };

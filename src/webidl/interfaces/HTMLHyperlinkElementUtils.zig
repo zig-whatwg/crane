@@ -158,8 +158,8 @@ pub const HTMLHyperlinkElementUtils = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter], [Stringifier]
     pub fn set_href(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLHyperlinkElementUtilsImpl, "set_href")) return try HTMLHyperlinkElementUtilsImpl.set_href(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "href" }, value);
@@ -177,8 +177,8 @@ pub const HTMLHyperlinkElementUtils = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_protocol(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLHyperlinkElementUtilsImpl.set_protocol(instance, value);
     }
@@ -191,8 +191,8 @@ pub const HTMLHyperlinkElementUtils = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_username(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLHyperlinkElementUtilsImpl.set_username(instance, value);
     }
@@ -205,8 +205,8 @@ pub const HTMLHyperlinkElementUtils = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_password(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLHyperlinkElementUtilsImpl.set_password(instance, value);
     }
@@ -219,8 +219,8 @@ pub const HTMLHyperlinkElementUtils = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_host(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLHyperlinkElementUtilsImpl.set_host(instance, value);
     }
@@ -233,8 +233,8 @@ pub const HTMLHyperlinkElementUtils = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_hostname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLHyperlinkElementUtilsImpl.set_hostname(instance, value);
     }
@@ -247,8 +247,8 @@ pub const HTMLHyperlinkElementUtils = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_port(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLHyperlinkElementUtilsImpl.set_port(instance, value);
     }
@@ -261,8 +261,8 @@ pub const HTMLHyperlinkElementUtils = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_pathname(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLHyperlinkElementUtilsImpl.set_pathname(instance, value);
     }
@@ -275,8 +275,8 @@ pub const HTMLHyperlinkElementUtils = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLHyperlinkElementUtilsImpl.set_search(instance, value);
     }
@@ -289,9 +289,26 @@ pub const HTMLHyperlinkElementUtils = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_hash(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLHyperlinkElementUtilsImpl.set_hash(instance, value);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_href",
+        "set_protocol",
+        "set_username",
+        "set_password",
+        "set_host",
+        "set_hostname",
+        "set_port",
+        "set_pathname",
+        "set_search",
+        "set_hash",
+    };
 };

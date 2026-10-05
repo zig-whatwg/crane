@@ -338,8 +338,8 @@ pub const HTMLTrackElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_kind(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLTrackElementImpl.set_kind(instance, value);
     }
@@ -355,8 +355,8 @@ pub const HTMLTrackElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTrackElementImpl, "set_src")) return try HTMLTrackElementImpl.set_src(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
@@ -371,8 +371,8 @@ pub const HTMLTrackElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_srclang(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTrackElementImpl, "set_srclang")) return try HTMLTrackElementImpl.set_srclang(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "srclang" }, value);
@@ -387,8 +387,8 @@ pub const HTMLTrackElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_label(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTrackElementImpl, "set_label")) return try HTMLTrackElementImpl.set_label(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "label" }, value);
@@ -403,8 +403,8 @@ pub const HTMLTrackElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_default(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLTrackElementImpl, "set_default")) return try HTMLTrackElementImpl.set_default(instance, value);
         try reflection.set(bool, instance, .{ .name = "default" }, value);
@@ -417,4 +417,16 @@ pub const HTMLTrackElement = struct {
     pub fn get_track(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLTrackElementImpl.get_track(instance);
     }
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_kind",
+        "set_src",
+        "set_srclang",
+        "set_label",
+        "set_default",
+    };
 };

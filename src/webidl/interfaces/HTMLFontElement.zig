@@ -286,8 +286,8 @@ pub const HTMLFontElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_color(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFontElementImpl, "set_color")) return try HTMLFontElementImpl.set_color(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "color" }, value);
@@ -302,8 +302,8 @@ pub const HTMLFontElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_face(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFontElementImpl, "set_face")) return try HTMLFontElementImpl.set_face(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "face" }, value);
@@ -318,8 +318,8 @@ pub const HTMLFontElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_size(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLFontElementImpl, "set_size")) return try HTMLFontElementImpl.set_size(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "size" }, value);
@@ -329,5 +329,15 @@ pub const HTMLFontElement = struct {
     /// (bit i = argument i; an attribute setter's value is bit 0).
     pub const legacy_null_to_empty = .{
         .{ "set_color", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_color",
+        "set_face",
+        "set_size",
     };
 };

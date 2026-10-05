@@ -304,8 +304,8 @@ pub const HTMLMeterElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_value(instance: *runtime.Instance, value: f64) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMeterElementImpl, "set_value")) return try HTMLMeterElementImpl.set_value(instance, value);
         try reflection.set(f64, instance, .{ .name = "value" }, value);
@@ -319,8 +319,8 @@ pub const HTMLMeterElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_min(instance: *runtime.Instance, value: f64) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMeterElementImpl, "set_min")) return try HTMLMeterElementImpl.set_min(instance, value);
         try reflection.set(f64, instance, .{ .name = "min" }, value);
@@ -334,8 +334,8 @@ pub const HTMLMeterElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_max(instance: *runtime.Instance, value: f64) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMeterElementImpl, "set_max")) return try HTMLMeterElementImpl.set_max(instance, value);
         try reflection.set(f64, instance, .{ .name = "max" }, value);
@@ -349,8 +349,8 @@ pub const HTMLMeterElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_low(instance: *runtime.Instance, value: f64) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMeterElementImpl, "set_low")) return try HTMLMeterElementImpl.set_low(instance, value);
         try reflection.set(f64, instance, .{ .name = "low" }, value);
@@ -364,8 +364,8 @@ pub const HTMLMeterElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_high(instance: *runtime.Instance, value: f64) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMeterElementImpl, "set_high")) return try HTMLMeterElementImpl.set_high(instance, value);
         try reflection.set(f64, instance, .{ .name = "high" }, value);
@@ -379,8 +379,8 @@ pub const HTMLMeterElement = struct {
     /// Extended attributes: [CEReactions], [ReflectSetter]
     pub fn set_optimum(instance: *runtime.Instance, value: f64) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLMeterElementImpl, "set_optimum")) return try HTMLMeterElementImpl.set_optimum(instance, value);
         try reflection.set(f64, instance, .{ .name = "optimum" }, value);
@@ -400,5 +400,18 @@ pub const HTMLMeterElement = struct {
         .{ "set_low", 0b1 },
         .{ "set_high", 0b1 },
         .{ "set_optimum", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_value",
+        "set_min",
+        "set_max",
+        "set_low",
+        "set_high",
+        "set_optimum",
     };
 };

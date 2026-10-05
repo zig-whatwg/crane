@@ -415,8 +415,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_src")) return try HTMLIFrameElementImpl.set_src(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "src", .url = true }, value);
@@ -430,8 +430,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_srcdoc(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLIFrameElementImpl.set_srcdoc(instance, value);
     }
@@ -445,8 +445,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_name(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_name")) return try HTMLIFrameElementImpl.set_name(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "name" }, value);
@@ -484,8 +484,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_allow(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_allow")) return try HTMLIFrameElementImpl.set_allow(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "allow" }, value);
@@ -500,8 +500,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_allowFullscreen(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_allowFullscreen")) return try HTMLIFrameElementImpl.set_allowFullscreen(instance, value);
         try reflection.set(bool, instance, .{ .name = "allowfullscreen" }, value);
@@ -516,8 +516,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_width(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_width")) return try HTMLIFrameElementImpl.set_width(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "width" }, value);
@@ -532,8 +532,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_height(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_height")) return try HTMLIFrameElementImpl.set_height(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "height" }, value);
@@ -547,8 +547,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_referrerPolicy(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLIFrameElementImpl.set_referrerPolicy(instance, value);
     }
@@ -561,8 +561,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_loading(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLIFrameElementImpl.set_loading(instance, value);
     }
@@ -591,8 +591,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_csp(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLIFrameElementImpl.set_csp(instance, value);
     }
@@ -606,8 +606,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_align(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_align")) return try HTMLIFrameElementImpl.set_align(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "align" }, value);
@@ -622,8 +622,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_scrolling(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_scrolling")) return try HTMLIFrameElementImpl.set_scrolling(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "scrolling" }, value);
@@ -638,8 +638,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_frameBorder(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_frameBorder")) return try HTMLIFrameElementImpl.set_frameBorder(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "frameborder" }, value);
@@ -654,8 +654,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [ReflectURL]
     pub fn set_longDesc(instance: *runtime.Instance, value: runtime.USVString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_longDesc")) return try HTMLIFrameElementImpl.set_longDesc(instance, value);
         try reflection.set(runtime.USVString, instance, .{ .name = "longdesc", .url = true }, value);
@@ -670,8 +670,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_marginHeight(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_marginHeight")) return try HTMLIFrameElementImpl.set_marginHeight(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "marginheight" }, value);
@@ -686,8 +686,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_marginWidth(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLIFrameElementImpl, "set_marginWidth")) return try HTMLIFrameElementImpl.set_marginWidth(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "marginwidth" }, value);
@@ -713,8 +713,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_browsingTopics(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLIFrameElementImpl.set_browsingTopics(instance, value);
     }
@@ -737,8 +737,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions]
     pub fn set_adAuctionHeaders(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLIFrameElementImpl.set_adAuctionHeaders(instance, value);
     }
@@ -751,8 +751,8 @@ pub const HTMLIFrameElement = struct {
     /// Extended attributes: [CEReactions], [SecureContext]
     pub fn set_sharedStorageWritable(instance: *runtime.Instance, value: bool) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         try HTMLIFrameElementImpl.set_sharedStorageWritable(instance, value);
     }
@@ -766,5 +766,31 @@ pub const HTMLIFrameElement = struct {
     pub const legacy_null_to_empty = .{
         .{ "set_marginHeight", 0b1 },
         .{ "set_marginWidth", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_src",
+        "set_srcdoc",
+        "set_name",
+        "set_allow",
+        "set_allowFullscreen",
+        "set_width",
+        "set_height",
+        "set_referrerPolicy",
+        "set_loading",
+        "set_csp",
+        "set_align",
+        "set_scrolling",
+        "set_frameBorder",
+        "set_longDesc",
+        "set_marginHeight",
+        "set_marginWidth",
+        "set_browsingTopics",
+        "set_adAuctionHeaders",
+        "set_sharedStorageWritable",
     };
 };

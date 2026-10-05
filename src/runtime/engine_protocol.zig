@@ -1187,6 +1187,46 @@ pub inline fn completionOf(realm: Context, steps: *const fn (data: ?*anyopaque) 
     return impl.completionOf(realm, steps, data);
 }
 
+/// Run `steps` with the exception the running operation has left pending set
+/// aside, then make it pending again - the agent's, so no realm and no
+/// exception value crosses the seam. For HTML 4.13.6 [CEReactions], whose
+/// steps are "2. Run the originally-specified steps for this construct,
+/// catching any exceptions. ... 4. Invoke custom element reactions in queue.
+/// 5. If an exception exception was thrown by the original steps, rethrow
+/// exception.": the bracket's `end`, when the popped element queue is not
+/// empty, invokes the queue's reactions as `steps`. An empty queue makes no
+/// engine call. `agent` is the one `begin` captured (agent lifetime): any
+/// realm - the receiver's, the member function's, even the calling script's
+/// when a frame's own script removes its frame - can end while the member
+/// runs. (WebKit: CustomElementQueue::processQueue saves, clears and
+/// restores the VM's exception; Blink: CEReactionsScope holds it in a
+/// v8::TryCatch.)
+///
+/// - Nothing pending: `steps` runs.
+/// - An exception pending that the engine can set aside: it is set aside,
+///   `steps` runs, and the same value is made pending again, as the
+///   operation left it - the caller sees the original value.
+/// - `steps` must leave nothing pending (each reaction reports its own
+///   exception); if they do anyway, the engine clears it first.
+/// - `error.NotSupported`, and `steps` does NOT run: an exception is pending
+///   that the engine cannot set aside. On V8 that is one left pending outside
+///   a binding catch scope: the binding dispatches every [CEReactions] member
+///   (its generated interface's `ce_reactions` table) in one, so a member
+///   called by script is always covered, but a [CEReactions] member reached
+///   from Zig code is not. The exception stays pending, and the caller must
+///   run no script before it returns: invoking a callback would clear it
+///   (V8's next call does). So `end` then moves the popped queue's elements,
+///   in order, onto the agent's backup element queue and, unless processing
+///   the backup element queue is set, sets it and queues the microtask that
+///   invokes the backup queue's reactions (HTML "enqueue an element on the
+///   appropriate element queue" step 1) - they run once the exception has
+///   propagated.
+/// - `error.ExceptionPending`, and `steps` does not run: the agent is
+///   terminating - `end` does the same as for NotSupported.
+pub inline fn withPendingExceptionSetAside(agent: *Agent, steps: *const fn (data: ?*anyopaque) void, data: ?*anyopaque) Error!void {
+    return impl.withPendingExceptionSetAside(agent, steps, data);
+}
+
 /// Infra "parse JSON bytes to a JavaScript value".
 pub inline fn parseJsonToValue(realm: Context, bytes: []const u8) Error!Owned {
     return impl.parseJsonToValue(realm, bytes);

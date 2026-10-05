@@ -132,8 +132,8 @@ pub const XSLTProcessor = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_transformToDocument(instance: *runtime.Instance, source: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try XSLTProcessorImpl.call_transformToDocument(instance, source);
     }
@@ -153,8 +153,8 @@ pub const XSLTProcessor = struct {
     /// Extended attributes: [CEReactions]
     pub fn call_transformToFragment(instance: *runtime.Instance, source: *runtime.Instance, output: *runtime.Instance) anyerror!*runtime.Instance {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         return try XSLTProcessorImpl.call_transformToFragment(instance, source, output);
     }
@@ -177,5 +177,14 @@ pub const XSLTProcessor = struct {
         .{ "call_setParameter", 0b1 },
         .{ "call_removeParameter", 0b1 },
         .{ "call_getParameter", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "call_transformToDocument",
+        "call_transformToFragment",
     };
 };

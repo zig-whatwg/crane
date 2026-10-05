@@ -402,8 +402,8 @@ pub const HTMLBodyElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_text(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_text")) return try HTMLBodyElementImpl.set_text(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "text" }, value);
@@ -418,8 +418,8 @@ pub const HTMLBodyElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_link(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_link")) return try HTMLBodyElementImpl.set_link(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "link" }, value);
@@ -434,8 +434,8 @@ pub const HTMLBodyElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_vLink(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_vLink")) return try HTMLBodyElementImpl.set_vLink(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "vlink" }, value);
@@ -450,8 +450,8 @@ pub const HTMLBodyElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_aLink(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_aLink")) return try HTMLBodyElementImpl.set_aLink(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "alink" }, value);
@@ -466,8 +466,8 @@ pub const HTMLBodyElement = struct {
     /// Extended attributes: [CEReactions], [Reflect], [LegacyNullToEmptyString]
     pub fn set_bgColor(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_bgColor")) return try HTMLBodyElementImpl.set_bgColor(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "bgcolor" }, value);
@@ -482,8 +482,8 @@ pub const HTMLBodyElement = struct {
     /// Extended attributes: [CEReactions], [Reflect]
     pub fn set_background(instance: *runtime.Instance, value: DOMString) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        runtime.CEReactions.begin();
-        defer runtime.CEReactions.end();
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
 
         if (comptime @hasDecl(HTMLBodyElementImpl, "set_background")) return try HTMLBodyElementImpl.set_background(instance, value);
         try reflection.set(DOMString, instance, .{ .name = "background" }, value);
@@ -560,5 +560,18 @@ pub const HTMLBodyElement = struct {
         .{ "set_vLink", 0b1 },
         .{ "set_aLink", 0b1 },
         .{ "set_bgColor", 0b1 },
+    };
+
+    /// HTML [CEReactions]: the functions that run a custom element reactions
+    /// bracket - the binding dispatches each in a catch scope, where
+    /// engine.withPendingExceptionSetAside sets aside what the member leaves
+    /// pending.
+    pub const ce_reactions = .{
+        "set_text",
+        "set_link",
+        "set_vLink",
+        "set_aLink",
+        "set_bgColor",
+        "set_background",
     };
 };

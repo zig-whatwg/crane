@@ -60,8 +60,8 @@ pub fn call_querySelectorAll(instance: *runtime.Instance, selectors: DOMString) 
 /// Extended attributes: [CEReactions], [Unscopable]
 pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
-    runtime.CEReactions.begin();
-    defer runtime.CEReactions.end();
+    const ce_scope = runtime.CEReactions.begin(instance);
+    defer runtime.CEReactions.end(ce_scope);
 
     return try ParentNodeImpl.call_prepend(instance, nodes);
 }
@@ -69,8 +69,8 @@ pub fn call_prepend(instance: *runtime.Instance, nodes: []const mixins.ParentNod
 /// Extended attributes: [CEReactions]
 pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, child: ?*runtime.Instance) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
-    runtime.CEReactions.begin();
-    defer runtime.CEReactions.end();
+    const ce_scope = runtime.CEReactions.begin(instance);
+    defer runtime.CEReactions.end(ce_scope);
 
     return try ParentNodeImpl.call_moveBefore(instance, node, child);
 }
@@ -78,8 +78,8 @@ pub fn call_moveBefore(instance: *runtime.Instance, node: *runtime.Instance, chi
 /// Extended attributes: [CEReactions], [Unscopable]
 pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
-    runtime.CEReactions.begin();
-    defer runtime.CEReactions.end();
+    const ce_scope = runtime.CEReactions.begin(instance);
+    defer runtime.CEReactions.end(ce_scope);
 
     return try ParentNodeImpl.call_append(instance, nodes);
 }
@@ -87,8 +87,19 @@ pub fn call_append(instance: *runtime.Instance, nodes: []const mixins.ParentNode
 /// Extended attributes: [CEReactions], [Unscopable]
 pub fn call_replaceChildren(instance: *runtime.Instance, nodes: []const mixins.ParentNode.NodeOrString) anyerror!void {
     // [CEReactions] - Trigger Custom Element lifecycle callbacks
-    runtime.CEReactions.begin();
-    defer runtime.CEReactions.end();
+    const ce_scope = runtime.CEReactions.begin(instance);
+    defer runtime.CEReactions.end(ce_scope);
 
     return try ParentNodeImpl.call_replaceChildren(instance, nodes);
 }
+
+/// HTML [CEReactions]: the functions that run a custom element reactions
+/// bracket - the binding dispatches each in a catch scope, where
+/// engine.withPendingExceptionSetAside sets aside what the member leaves
+/// pending.
+pub const ce_reactions = .{
+    "call_prepend",
+    "call_moveBefore",
+    "call_append",
+    "call_replaceChildren",
+};
