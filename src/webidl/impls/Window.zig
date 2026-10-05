@@ -1175,9 +1175,32 @@ pub fn get_status(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Per spec: Returns true if the browsing context has been discarded.
 pub fn get_closed(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // "Return true if this's browsing context is null or its is closing is
-    // true; otherwise false."
-    return internal.closed or internal.browsing_context.is_closed or internal.browsing_context.is_closing;
+    // "Return true if this's navigable is null or its is closing is true;
+    // otherwise false."
+    const navigable = navigableOf(instance, internal) orelse return true;
+    return internal.closed or navigable.is_closing;
+}
+
+/// HTML "a Window's navigable": "the navigable whose active document is the
+/// Window's associated Document's, or null if there is no such navigable."
+/// Null for a Window a navigation replaced - its browsing context's active
+/// window is its successor - and for one whose navigable was destroyed: its
+/// container removed (BrowsingContext.discard) or an ancestor's, which closes
+/// every descendant, or a top-level traversable definitely closed. HTML
+/// "destroy a document" sets the document state's document to null, so the
+/// navigable has no active document left that is this Window's. Blink's
+/// DOMWindow::parent()/top() answer null for a detached frame (no GetFrame()).
+/// A browsing context that has no active window yet (a Window being made) is
+/// this Window's.
+fn navigableOf(instance: *runtime.Instance, internal: *InternalState) ?*BrowsingContext {
+    const bc_ptr = @intFromPtr(internal.browsing_context);
+    if (bc_ptr == 0 or bc_ptr < 0x1000) return null;
+    const bc = internal.browsing_context;
+    if (bc.orphaned or bc.is_closed) return null;
+    if (bc.getActiveWindow()) |active| {
+        if (active != @as(*anyopaque, @ptrCast(instance))) return null;
+    }
+    return bc;
 }
 
 /// Getter for frames - Same as window
@@ -1190,7 +1213,12 @@ pub fn get_frames(instance: *runtime.Instance) anyerror!typedefs.WindowProxy {
 /// Per spec: Returns the number of child navigables.
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return @intCast(internal.browsing_context.children.items.len);
+    // "Return this's associated Document's document-tree child navigables's
+    // size." A Window with no navigable has a destroyed document, whose child
+    // navigables were destroyed with it - the context's list is its
+    // successor's.
+    const navigable = navigableOf(instance, internal) orelse return 0;
+    return @intCast(navigable.children.items.len);
 }
 
 /// Indexed getter for frames[index] access
@@ -1202,7 +1230,10 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Spec: https://html.spec.whatwg.org/#windowproxy-getownproperty
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    const children = internal.browsing_context.children.items;
+    // The document-tree child navigables of this's associated Document: none
+    // once it has no navigable (see get_length).
+    const navigable = navigableOf(instance, internal) orelse return null;
+    const children = navigable.children.items;
 
     // Out of bounds check
     if (index >= children.len) {
@@ -1221,32 +1252,25 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
 /// Per spec: Returns the WindowProxy of the top-level traversable.
 pub fn get_top(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Walk up the parent chain to find the top-level context
-    var ctx = internal.browsing_context;
-    while (ctx.parent) |parent| {
-        ctx = parent;
-    }
-
-    // If we're already at the top, return self
-    if (ctx == internal.browsing_context) {
-        return getWindowProxy(instance);
-    }
-
-    // Get the active Window from the top browsing context
-    if (ctx.getActiveWindow()) |top_window_ptr| {
-        const top_window: *runtime.Instance = @ptrCast(@alignCast(top_window_ptr));
-        return @ptrCast(top_window);
-    }
-
-    // Fallback to self if top window not found (shouldn't happen if browsing context is set up correctly)
-    return getWindowProxy(instance);
+    // "1. If this's navigable is null, then return null."
+    const navigable = navigableOf(instance, internal) orelse return null;
+    // "2. Return this's navigable's top-level traversable's active
+    // WindowProxy."
+    const top = navigable.getTop();
+    if (top == navigable) return getWindowProxy(instance);
+    const top_window = top.getActiveWindow() orelse return null;
+    return @ptrCast(@alignCast(top_window));
 }
 
 /// Getter for opener
 /// Per spec: Returns the WindowProxy of the opener browsing context.
 pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
+
+    // "1. Let current be this's browsing context. 2. If current is null, then
+    // return null." A destroyed document's browsing context is null ("destroy
+    // a document" step 8): a Window with no navigable has none.
+    if (navigableOf(instance, internal) == null) return runtime.JSValue.jsNull;
 
     // If disowned, return null
     if (internal.browsing_context.disowned) {
@@ -1276,34 +1300,14 @@ pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// Per spec: Returns the WindowProxy of the parent browsing context.
 pub fn get_parent(instance: *runtime.Instance) anyerror!?typedefs.WindowProxy {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Safety check: browsing_context should never be null for a valid Window,
-    // but check anyway to prevent segfault in case of corruption/cleanup race
-    const bc_ptr = @intFromPtr(internal.browsing_context);
-    if (bc_ptr == 0 or bc_ptr < 0x1000) {
-        // Invalid pointer - check if this Window has a bound V8 global to return
-        if (internal.bound_v8_global) |bound_global| {
-            // Return the bound global directly - this will be dereferenced by SetReturnValueGlobal
-            // Cast through usize to satisfy alignment requirements
-            return @ptrFromInt(@intFromPtr(bound_global));
-        }
-        return getWindowProxy(instance);
-    }
-
-    // Per HTML spec §7.2.2, the parent getter:
-    // 1. If this browsing context has a parent, return parent's WindowProxy
-    // 2. Otherwise, return this Window's WindowProxy (self)
-    if (internal.browsing_context.parent) |parent_bc| {
-        // Get the active Window from the parent browsing context
-        if (parent_bc.getActiveWindow()) |parent_window_ptr| {
-            // Cast from *anyopaque to *runtime.Instance
-            const parent_window: *runtime.Instance = @ptrCast(@alignCast(parent_window_ptr));
-            return @ptrCast(parent_window);
-        }
-    }
-
-    // If no parent or no parent window, return self per spec
-    return getWindowProxy(instance);
+    // "1. Let navigable be this's navigable. 2. If navigable is null, then
+    // return null."
+    const navigable = navigableOf(instance, internal) orelse return null;
+    // "3. If navigable's parent is not null, then set navigable to
+    // navigable's parent. 4. Return navigable's active WindowProxy."
+    const parent = navigable.parent orelse return getWindowProxy(instance);
+    const parent_window = parent.getActiveWindow() orelse return null;
+    return @ptrCast(@alignCast(parent_window));
 }
 
 /// Getter for frameElement
