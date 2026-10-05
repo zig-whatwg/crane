@@ -3,19 +3,21 @@
 //! Spec: HTML Standard § 9.4.3 Message ports
 //! https://html.spec.whatwg.org/multipage/web-messaging.html#message-ports
 //!
-//! A MessagePort is one end of a channel. The channel's ends are the streams
-//! layer's internal ports (`streams_internal.MessagePort`): each holds the
-//! port message queue for its end - serialized messages, in order - and its
-//! entanglement. A MessagePort object wraps one end; transferring the port
-//! ships that end, queue and entanglement included, to a new MessagePort in
-//! the receiving realm (the transfer and transfer-receiving steps), so the
-//! channel keeps working across realms and agents.
+//! A MessagePort is one end of a channel. The channel - both ends' port
+//! message queues and their entanglement - is a `dom.port_channels.Channel`,
+//! which may have its two ends on two threads: a port transferred to a
+//! worker lives in the worker's realm, on the worker's thread. A MessagePort
+//! object owns one END of a channel and receives what arrives there, from
+//! tasks posted to its realm's event loop (`ContextData.task_sink`);
+//! transferring the port ships the end, queue and entanglement included, to a
+//! new MessagePort in the receiving realm (the transfer and transfer-receiving
+//! steps), so the channel keeps working across realms, agents and threads.
 //!
 //! Every message goes the spec's way, whether the other end is in this realm,
 //! another window's or a worker's: StructuredSerializeWithTransfer at the
 //! sender, a task on the receiving end's port message queue, and there
 //! StructuredDeserializeWithTransfer into the receiver's realm and a `message`
-//! event fired at the port. Both halves go through the Engine table.
+//! event fired at the port. Both halves go through the engine protocol.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -26,18 +28,17 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
+const dom = @import("dom");
 const MessagePort = interfaces.MessagePort;
 
-// A MessagePort is an EventTarget, and reaches its state through its impl.
-const EventTargetImpl = @import("EventTarget.zig");
-
-// The channel ends.
-const message_port = @import("streams_internal");
-const InternalMessagePort = message_port.MessagePort;
+// The channel ends, which cross threads.
+const port_channels = dom.port_channels;
+const End = port_channels.End;
+const PortMessage = port_channels.PortMessage;
 
 /// The hook other types transfer ports through (no IDL member runs the
 /// transfer steps).
-const message_ports = @import("dom").message_ports;
+const message_ports = dom.message_ports;
 
 pub const State = MessagePort.State;
 
@@ -50,16 +51,13 @@ pub const ImplError = error{
 
 /// Internal state for MessagePort implementation
 pub const InternalState = struct {
-    /// This port's end of its channel: its port message queue and its
-    /// entanglement.
-    internal_port: *InternalMessagePort,
+    /// This port's end of its channel - its port message queue and its
+    /// entanglement - while this port has it: null once it is shipped (the
+    /// transfer steps hand it to the port the receiving realm makes of it).
+    end: ?*End,
 
     /// Allocator used for this state
     allocator: std.mem.Allocator,
-
-    /// Whether this object owns `internal_port`. A transfer hands the end to
-    /// the port the receiving realm makes of it.
-    owns_port: bool = true,
 
     /// HTML: "has been shipped".
     has_been_shipped: bool = false,
@@ -67,55 +65,11 @@ pub const InternalState = struct {
     /// [[Detached]]: set by close(), and by the transfer steps.
     detached: bool = false,
 
-    /// What `internal_port` calls when a message is queued on it, while this
-    /// object is the end's owner. Freed with this state.
-    receiver: ?*Receiver = null,
-
-    /// The tasks queued for this port and not yet run - a message's
-    /// delivery, its peer's `close` - which "destroy a document" removes
-    /// unrun (`dropTasks`). A task takes itself off when it runs. The list
-    /// (not the tasks: a queued one frees itself when it runs, finding its
-    /// port gone) is allocated with `allocator`.
-    armed: std.ArrayListUnmanaged(*PortTask) = .empty,
-
     pub fn deinit(self: *InternalState) void {
-        self.armed.deinit(self.allocator);
-        self.disconnect();
-        // Only deinit the port if we own it: a transferred port's end belongs
-        // to the port the receiving realm made of it.
-        if (self.owns_port) self.internal_port.deinit();
-    }
-
-    /// Stop hearing about messages queued on the end.
-    fn disconnect(self: *InternalState) void {
-        const receiver = self.receiver orelse return;
-        if (self.internal_port.callback_user_data == @as(?*anyopaque, @ptrCast(receiver))) {
-            self.internal_port.callback_user_data = null;
-            self.internal_port.on_serialized_message = null;
-        }
-        self.allocator.destroy(receiver);
-        self.receiver = null;
-    }
-
-    /// A task of this port's ran: it is no longer queued.
-    fn forgetTask(self: *InternalState, task: *PortTask) void {
-        for (self.armed.items, 0..) |armed, i| {
-            if (armed != task) continue;
-            _ = self.armed.swapRemove(i);
-            return;
-        }
-    }
-
-    /// HTML "destroy a document" step 6.2: "Remove any tasks whose document is
-    /// document from any task queue (without running those tasks)" - this
-    /// port's. Each is freed once its timer has let it go; one its timer no
-    /// longer knows may still run, and then finds itself off the list and its
-    /// port's document gone, and frees itself.
-    fn dropTasks(self: *InternalState) void {
-        for (self.armed.items) |task| {
-            if (task.timer.clearTimeout(task.id)) task.allocator.destroy(task);
-        }
-        self.armed.clearRetainingCapacity();
+        // The port goes, and its end with it: disentangled (its peer hears
+        // `close`), its queue dropped.
+        if (self.end) |end| end.discard();
+        self.end = null;
     }
 
     /// HTML's MessagePort transfer steps (value = this port): set its "has
@@ -123,24 +77,13 @@ pub const InternalState = struct {
     /// message queue ([[PortMessageQueue]]) and the entanglement
     /// ([[RemotePort]]) - as the data holder. The port is detached; it no
     /// longer hears its end's messages, and the end is no longer its to free.
-    pub fn transfer(self: *InternalState) *InternalMessagePort {
+    pub fn transfer(self: *InternalState) ?*End {
         self.has_been_shipped = true;
         self.detached = true;
-        self.disconnect();
-        self.owns_port = false;
-        return self.internal_port;
-    }
-};
-
-/// The link from an end back to the MessagePort that owns it, held as
-/// (address, slab generation): a collected port's slot can be reissued.
-const Receiver = struct {
-    instance: *runtime.Instance,
-    generation: u64,
-
-    fn get(self: Receiver) ?*runtime.Instance {
-        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
-        return self.instance;
+        const end = self.end orelse return null;
+        end.unbind();
+        self.end = null;
+        return end;
     }
 };
 
@@ -152,50 +95,65 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// The hooks this type owns (src/dom), installed once, at process start,
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
-    message_ports.install(.{ .transferable_state = transferableState, .ship = ship, .receive = receive, .discard = discard });
-    @import("dom").unloading_cleanup.install(&disentangleIn);
+    message_ports.install(.{
+        .transferable_state = transferableState,
+        .ship = ship,
+        .receive = receive,
+        .adopt = adopt,
+        .discard = discard,
+    });
+    dom.unloading_cleanup.install(&disentangleIn);
 }
 
-/// Initialize instance (creates the instance)
+/// Initialize instance: a port on no channel - entangled with nothing. (Every
+/// port script sees comes from a MessageChannel, or a transfer: `adopt`,
+/// `receive`.)
 pub fn init(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    const internal_port = try InternalMessagePort.init(allocator);
-    errdefer internal_port.deinit();
-    return initWithInternal(allocator, StateType, vtable, ctx, internal_port);
+    const channel = try port_channels.Channel.create(allocator);
+    // The other end goes at once: this one is disentangled.
+    channel.end(1).discard();
+    errdefer channel.end(0).discard();
+    return initWithEnd(allocator, StateType, vtable, ctx, channel.end(0));
 }
 
-/// A MessagePort for an existing end: MessageChannel's two, and a transferred
-/// port's in the receiving realm - HTML's transfer-receiving steps, which
-/// give the new port the end's queue and entanglement. The new port owns the
-/// end and hears its messages from now on.
-pub fn initWithInternal(
+/// A MessagePort for an existing end, which it takes: MessageChannel's two,
+/// and a transferred port's in the receiving realm - HTML's transfer-receiving
+/// steps, which give the new port the end's queue and entanglement. The new
+/// port owns the end and hears its messages from now on, from tasks of its
+/// realm's event loop; its queue starts disabled, whatever it was before the
+/// end was shipped, until this port's start() or onmessage.
+fn initWithEnd(
     allocator: std.mem.Allocator,
     comptime StateType: type,
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
-    internal_port: *InternalMessagePort,
+    end: *End,
 ) !*runtime.Instance {
     // A MessagePort is an EventTarget: `message` is fired at it and heard.
-    const instance = try EventTargetImpl.init(allocator, StateType, vtable, ctx);
-    errdefer EventTargetImpl.deinit(instance);
+    const instance = try interfaces.EventTarget.initWithState(allocator, StateType, vtable, ctx);
+    errdefer interfaces.EventTarget.deinit(instance);
 
     const internal_state = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal_state);
     internal_state.* = .{
-        .internal_port = internal_port,
+        .end = end,
         .allocator = allocator,
     };
     instance.getState(StateType).own._internal = internal_state;
 
-    try connect(instance, internal_state);
-    // A queue that was enabled before the end was shipped (the sender's
-    // start()) is not the receiver's: HTML's transfer-receiving steps leave
-    // it disabled until this port's start() or onmessage.
-    internal_port.queue_enabled = false;
+    // The receiver: this port, on its realm's event loop. A realm with no
+    // loop to post to (none made it) leaves the end unbound: its messages
+    // wait, as for a port whose queue is not enabled.
+    if (ctx.task_sink) |sink| end.bind(.{
+        .sink = sink,
+        .receiver = instance,
+        .generation = runtime.SlabAllocator.generationOf(instance),
+        .hooks = &port_hooks,
+    });
     live_ports.append(std.heap.page_allocator, instance) catch {};
     // Its document's destruction disentangles it (`disentangleIn`).
     return instance;
@@ -216,17 +174,22 @@ fn forgetPort(instance: *runtime.Instance) void {
 /// HTML "destroy a document" steps 4-5: "Let ports be the list of
 /// MessagePorts whose relevant global object's associated Document is
 /// document. For each port in ports, disentangle port." - for the ports of
-/// `realm`, whose document is destroyed. A disentangled port has no pending
-/// activity left, so the hold that kept it - and through it its realm -
-/// while its channel lived goes (Blink: MessagePort::ContextDestroyed
+/// `realm`, whose document is destroyed. Each port's end is unbound too: a
+/// task already queued for it then finds a later epoch and runs nothing -
+/// HTML "destroy a document" step 6.2 removes the document's tasks from
+/// their queues unrun - and the task itself is freed by whichever loop holds
+/// it, when it runs or when that loop ends (a loop that never runs again
+/// drops what it holds: runtime.TaskSink). A disentangled port has no
+/// pending activity left, so the hold that kept it - and through it its
+/// realm - while its channel lived goes (Blink: MessagePort::ContextDestroyed
 /// closes the port). Installed into the unloading document cleanup steps
-/// (dom.unloading_cleanup), which "destroy a document" runs right after
-/// these (step 6); a document Crane unloads is always destroyed - it keeps
-/// no back/forward cache - so they run at the same moment either way, and a
+/// (dom.unloading_cleanup), which "destroy a document" runs right after these
+/// (step 6); a document Crane unloads is always destroyed - it keeps no
+/// back/forward cache - so they run at the same moment either way, and a
 /// worker's ports go when it ends.
 pub fn disentangleIn(realm: runtime.Context) void {
-    // Backwards: disentangling queues the peer's close event, frees nothing
-    // here, but stay safe if it did.
+    // Backwards: disentangling posts the peer's close event and frees
+    // nothing here, but stay safe if it did.
     var i = live_ports.items.len;
     while (i > 0) {
         i -= 1;
@@ -234,44 +197,20 @@ pub fn disentangleIn(realm: runtime.Context) void {
         const port = live_ports.items[i];
         if (port.ctx != realm) continue;
         disentangle(port);
-    }
-    // "Destroy a document" step 6.2 removes the document's tasks from their
-    // queues unrun: the ports' tasks queued on this realm's event loop - with
-    // the close events the loop above queued for peers in this realm. Never
-    // left to the loop's own end: Browser.deinit ends the workers first, so a
-    // worker's ports queue `close` for their peers on the page's loop, which
-    // does not run again, and the loop's end dropped each task unfreed (leaks
-    // lane, 2026-10-02: 6 per sharedworker-import file run alone).
-    for (live_ports.items) |port| {
-        if (port.ctx != realm) continue;
         const internal = getInternal(port) orelse continue;
-        internal.dropTasks();
+        if (internal.end) |end| end.unbind();
     }
 }
 
 /// HTML "disentangle" (9.4.4), initiated by `instance`: the two ports are
-/// disentangled and the other one hears `close`.
+/// disentangled and the other one hears `close`, from a task of its own realm
+/// - which may be another agent's, on another thread.
 fn disentangle(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     // A shipped port is not entangled: its end is another port's now.
-    if (!internal.owns_port) return;
-    // 1. otherPort, if this is entangled.
-    const other = internal.internal_port.entangled_port;
-    // 3. Disentangle the two ports (and close this end).
-    internal.internal_port.close();
+    const end = internal.end orelse return;
+    end.disentangle();
     syncPendingActivity(instance);
-    // 4. Fire an event named close at otherPort - from a task of its own
-    // realm, which may be another agent's.
-    if (other) |end| scheduleClose(end);
-}
-
-/// Make `instance` the owner that hears messages queued on its end.
-fn connect(instance: *runtime.Instance, internal: *InternalState) !void {
-    const receiver = try internal.allocator.create(Receiver);
-    receiver.* = .{ .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
-    internal.receiver = receiver;
-    internal.internal_port.callback_user_data = receiver;
-    internal.internal_port.on_serialized_message = messageQueued;
 }
 
 /// Deinitialize instance
@@ -285,14 +224,8 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    EventTargetImpl.deinit(instance);
+    interfaces.EventTarget.deinit(instance);
     // NOTE: Do NOT call runtime.Instance.deinit() - GC layer handles slab freeing
-}
-
-/// Get internal MessagePort (for streams integration)
-pub fn getInternalPort(instance: *runtime.Instance) ?*InternalMessagePort {
-    const internal = getInternal(instance) orelse return null;
-    return internal.internal_port;
 }
 
 // ============================================================================
@@ -302,31 +235,31 @@ pub fn getInternalPort(instance: *runtime.Instance) ?*InternalMessagePort {
 // ============================================================================
 
 pub fn get_onclose(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "close");
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "close");
 }
 
 pub fn get_onmessage(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "message");
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "message");
 }
 
 pub fn get_onmessageerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "messageerror");
+    return dom.event_handlers.get(typedefs.EventHandler, instance, "messageerror");
 }
 
 pub fn set_onclose(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "close", value);
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "close", value);
 }
 
 /// "The first time a MessagePort object's onmessage IDL attribute is set, the
 /// port's port message queue must be enabled, as if the start() method had
 /// been called."
 pub fn set_onmessage(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "message", value);
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "message", value);
     enableQueue(instance);
 }
 
 pub fn set_onmessageerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "messageerror", value);
+    try dom.event_handlers.set(typedefs.EventHandler, instance, "messageerror", value);
 }
 
 /// Operation: start
@@ -337,15 +270,13 @@ pub fn call_start(instance: *runtime.Instance) anyerror!void {
 }
 
 /// Enable the port message queue: its tasks may run now, so the first is
-/// scheduled.
+/// posted to the port's loop.
 fn enableQueue(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     // A shipped port's end is another port's now.
-    if (!internal.owns_port) return;
-    if (internal.internal_port.queue_enabled) return;
-    internal.internal_port.enableQueue();
+    const end = internal.end orelse return;
+    end.enable();
     syncPendingActivity(instance);
-    scheduleDelivery(instance);
 }
 
 /// Blink's MessagePort::HasPendingActivity(): a port whose message queue is
@@ -356,12 +287,15 @@ fn enableQueue(instance: *runtime.Instance) void {
 /// could receive a message, the channel will be maintained". A port nobody
 /// references that has been started - `channel.port2.onmessage = f` and no
 /// other reference - was collected before its message arrived. Kept through
-/// the Engine table's pending-activity hold, taken and released here as the
-/// port's state changes: started, closed, shipped, or its peer closed.
+/// the engine's pending-activity hold, taken and released here as the port's
+/// state changes: started, closed, shipped, or its peer closed - decided on
+/// the port's thread from its end's state read under the channel's lock.
 fn syncPendingActivity(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
-    const port = internal.internal_port;
-    const active = internal.owns_port and !internal.detached and port.queue_enabled and port.entangled_port != null;
+    const active = if (internal.end) |end| blk: {
+        const state = end.state();
+        break :blk !internal.detached and state.enabled and state.entangled;
+    } else false;
     if (active) {
         engine.keepPlatformObjectAlive(instance);
     } else releasePendingActivity(instance);
@@ -433,24 +367,32 @@ fn transferableState(instance: *runtime.Instance) runtime.TransferableState {
 /// The transfer steps for `instance`: its end.
 fn ship(instance: *runtime.Instance) ?*anyopaque {
     const internal = getInternal(instance) orelse return null;
-    const end = internal.transfer();
+    const end = internal.transfer() orelse return null;
     // Detached: no pending activity is left on this object.
     syncPendingActivity(instance);
     return @ptrCast(end);
 }
 
 /// Free an end no port took: disentangled from its other end (whose port
-/// then has nothing to post to), its queue freed.
+/// hears `close`), its queue freed.
 fn discard(end: *anyopaque) void {
-    const port: *InternalMessagePort = @ptrCast(@alignCast(end));
-    port.deinit();
+    const channel_end: *End = @ptrCast(@alignCast(end));
+    channel_end.discard();
 }
 
 /// The transfer-receiving steps: a new MessagePort of `realm` on `end`.
 fn receive(realm: runtime.Context, end: *anyopaque) anyerror!*runtime.Instance {
-    const port = try initWithInternal(realm.allocator, State, &MessagePort.vtable, realm, @ptrCast(@alignCast(end)));
+    const port = try adopt(realm, end);
     getInternal(port).?.has_been_shipped = true;
     return port;
+}
+
+/// A new MessagePort of `realm` on `end`, a fresh channel's: MessageChannel's
+/// ports, a SharedWorker's outside port.
+fn adopt(realm: runtime.Context, end: *anyopaque) anyerror!*runtime.Instance {
+    const channel_end: *End = @ptrCast(@alignCast(end));
+    errdefer channel_end.discard();
+    return initWithEnd(realm.allocator, State, &MessagePort.vtable, realm, channel_end);
 }
 
 /// The message port post message steps, given this, the entangled port (if
@@ -461,95 +403,66 @@ fn postMessageSteps(source: *runtime.Instance, message: runtime.JSValue, transfe
 
     // 1. targetPort: the end this one is entangled with, if any. A detached
     // port (closed, or shipped - its end is another port's) has none.
-    const target = if (internal.detached or !internal.owns_port) null else internal.internal_port.entangled_port;
+    const end: ?*End = if (internal.detached) null else internal.end;
+    const has_target = if (end) |e| e.state().entangled else false;
 
     // Steps 2 and 5: StructuredSerializeWithTransfer(message, transfer) -
     // which throws a DataCloneError when transfer contains sourcePort
     // (`transferableFrom`), and ships every port in transfer.
     var result = try engine.structuredSerializeWithTransfer(source.ctx, message, transfer, transferableFrom, source, allocator);
     defer result.deinit(allocator);
-    var ends: std.ArrayListUnmanaged(*InternalMessagePort) = .empty;
-    defer ends.deinit(allocator);
+    var ends: std.ArrayListUnmanaged(*End) = .empty;
+    // Ends no message took go with the list.
+    defer {
+        for (ends.items) |shipped| shipped.discard();
+        ends.deinit(allocator);
+    }
     // Step 3-4: doomed when targetPort is in transfer: its end is shipped
     // with the message posted to it, and the channel is lost.
     var doomed = false;
     for (result.platform_objects) |port| {
         const port_internal = getInternal(port) orelse continue;
-        const end = port_internal.transfer();
-        if (target != null and end == target.?) doomed = true;
-        try ends.append(allocator, end);
+        const shipped = port_internal.transfer() orelse continue;
+        syncPendingActivity(port);
+        if (end) |e| {
+            if (e.isEntangledWith(shipped)) doomed = true;
+        }
+        ends.append(allocator, shipped) catch |err| {
+            shipped.discard();
+            return err;
+        };
     }
 
     // 6. If targetPort is null, or if doomed is true, then return.
-    if (target == null or doomed) return;
+    if (!has_target or doomed) return;
 
     // 7. Add a task to targetPort's port message queue: the message waits on
     // the entangled end, in order, until that end's port enables its queue.
-    const record = try frame(allocator, &result, ends.items);
-    defer allocator.free(record);
-    internal.internal_port.postSerializedMessage(record) catch |err| switch (err) {
-        error.PortClosed, error.NotEntangled => return,
-        else => return err,
+    const owned_ends = try ends.toOwnedSlice(allocator);
+    const port_message = PortMessage.create(allocator, &result, owned_ends) catch |err| {
+        for (owned_ends) |shipped| shipped.discard();
+        allocator.free(owned_ends);
+        return err;
     };
+    end.?.post(port_message);
 }
 
 // ============================================================================
 // The port message queue's task
 // ============================================================================
 
-/// A task queued for a port: the owner, held as (address, generation), and
-/// where it is queued - the port's realm's timer and the id there - for
-/// "destroy a document" to remove it unrun (`InternalState.dropTasks`).
-const PortTask = struct {
-    instance: *runtime.Instance,
-    generation: u64,
-    allocator: std.mem.Allocator,
-    timer: runtime.TimerInterface,
-    id: runtime.TimerId = 0,
-
-    fn target(self: *const PortTask) ?*runtime.Instance {
-        if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return null;
-        return self.instance;
-    }
+/// What this port does with what reaches its end, on its realm's loop.
+const port_hooks: port_channels.ReceiverHooks = .{
+    .deliver = deliverHook,
+    .closed = closedHook,
 };
 
-/// `on_serialized_message`: a message was added to this end's queue.
-fn messageQueued(end: *InternalMessagePort) void {
-    const receiver: *Receiver = @ptrCast(@alignCast(end.callback_user_data orelse return));
-    const instance = receiver.get() orelse return;
-    scheduleDelivery(instance);
-}
-
-/// Arm one task on the owner's event loop to deliver the next message, while
-/// the queue is enabled and holds one.
-fn scheduleDelivery(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    if (!internal.owns_port) return;
-    if (!internal.internal_port.queue_enabled or !internal.internal_port.hasSerializedMessages()) return;
-    armTask(instance, deliverNext);
-}
-
-fn armTask(instance: *runtime.Instance, comptime run: fn (?*anyopaque) void) void {
-    const internal = getInternal(instance) orelse return;
-    const timer = instance.ctx.getOptionalTimer() orelse return;
-    const task = instance.ctx.allocator.create(PortTask) catch return;
-    task.* = .{
-        .instance = instance,
-        .generation = runtime.SlabAllocator.generationOf(instance),
-        .allocator = instance.ctx.allocator,
-        .timer = timer,
-    };
-    // Recorded with its port before it is queued: nothing can fail between
-    // queuing it and the record.
-    internal.armed.append(internal.allocator, task) catch {
-        task.allocator.destroy(task);
-        return;
-    };
-    task.id = timer.setTimeout(0, run, task);
-    if (task.id == 0) {
-        internal.forgetTask(task);
-        task.allocator.destroy(task);
-    }
+/// The port, if `receiver` is still the port its end was bound to: a
+/// collected port's slot can be reissued.
+fn liveReceiver(receiver: *anyopaque, generation: u64) ?*runtime.Instance {
+    const port: *runtime.Instance = @ptrCast(@alignCast(receiver));
+    if (runtime.SlabAllocator.generationOf(port) != generation) return null;
+    return port;
 }
 
 /// HTML event loop processing model step 2: a task whose document is not
@@ -570,27 +483,28 @@ fn documentIsFullyActive(instance: *runtime.Instance) bool {
     return location != null;
 }
 
+/// Whether `instance`'s realm is a worker's whose closing flag is set: HTML
+/// close() and "terminate a worker" discard every task added to the worker's
+/// event loop - a port's among them (webmessaging/message-channels/
+/// worker-post-after-close: a channel made and used after close() delivers
+/// nothing). While a worker's tasks run on its creator's loop, that loop
+/// cannot tell; a worker's own loop discards them itself.
+fn inClosingWorker(instance: *runtime.Instance) bool {
+    return @import("html").worker_host.scopeClosing(instance.ctx) orelse false;
+}
+
 /// One task of the port message queue: the message port post message steps'
 /// step 7, as a task of the receiving port's realm.
-fn deliverNext(data: ?*anyopaque) void {
-    const task: *PortTask = @ptrCast(@alignCast(data orelse return));
-    defer task.allocator.destroy(task);
-    const instance = task.target() orelse return;
-    const internal = getInternal(instance) orelse return;
-    internal.forgetTask(task);
-    if (!internal.owns_port or !internal.internal_port.queue_enabled) return;
-    if (!internal.internal_port.hasSerializedMessages()) return;
-
-    var delivery = Delivery{ .port = instance };
-    engine.runTaskInRealm(instance.ctx, Delivery.steps, &delivery) catch {};
-
-    // One message per task: the next gets its own - once this one ran.
-    if (delivery.ran and task.target() != null) scheduleDelivery(instance);
+fn deliverHook(receiver: *anyopaque, generation: u64, delivery: *port_channels.Delivery) void {
+    const port = liveReceiver(receiver, generation) orelse return;
+    if (inClosingWorker(port)) return;
+    var task = Delivery{ .port = port, .delivery = delivery };
+    engine.runTaskInRealm(port.ctx, Delivery.steps, &task) catch {};
 }
 
 const Delivery = struct {
     port: *runtime.Instance,
-    ran: bool = false,
+    delivery: *port_channels.Delivery,
 
     fn steps(data: ?*anyopaque) void {
         const self: *Delivery = @ptrCast(@alignCast(data orelse return));
@@ -598,37 +512,32 @@ const Delivery = struct {
         // the message stays queued. Asked in the realm: the question reads
         // its global.
         if (!documentIsFullyActive(self.port)) return;
-        const internal = getInternal(self.port) orelse return;
-        const message = internal.internal_port.popSerializedMessage() orelse return;
-        defer message.deinit();
-        self.ran = true;
-        deliver(self.port, message.data);
+        const message = self.delivery.next() orelse return;
+        defer message.destroy();
+        deliver(self.port, message);
     }
 };
 
 /// Step 7 of the message port post message steps, in the receiving port's
 /// realm: deserialize, make the transferred ports, fire `message`.
-fn deliver(port: *runtime.Instance, record_bytes: []const u8) void {
+fn deliver(port: *runtime.Instance, message: *PortMessage) void {
     const ctx = port.ctx;
     const allocator = ctx.allocator;
-    const record = unframe(allocator, record_bytes) catch {
-        fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
-        return;
-    };
-    defer record.deinit(allocator);
 
     // 7.3-7.4: StructuredDeserializeWithTransfer(serializeWithTransferResult,
     // targetRealm). The transferred ports first (their transfer-receiving
     // steps): new MessagePorts of targetRealm on the shipped ends.
     var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
     defer ports.deinit(allocator);
-    for (record.ends) |end| {
+    const ends = message.takeEnds();
+    defer message.allocator.free(ends);
+    for (ends) |end| {
         const received = receive(ctx, @ptrCast(end)) catch continue;
         ports.append(allocator, received) catch continue;
     }
 
     // On an exception, fire `messageerror` at messageEventTarget.
-    const clone = engine.structuredDeserializeWithTransfer(ctx, record.serialized, record.array_buffers) catch {
+    const clone = engine.structuredDeserializeWithTransfer(ctx, message.serialized, message.array_buffers) catch {
         fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };
@@ -654,23 +563,16 @@ fn fire(port: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, 
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
     // Fired by the user agent: trusted (DOM 2.10).
-    _ = EventTargetImpl.dispatchTrusted(port, event) catch {};
+    _ = dom.fire_event.dispatchTrusted(port, event) catch {};
     event.releaseIfUnwrapped(generation);
 }
 
-/// Disentangle step 4, for the other end's port, from a task of its realm.
-fn scheduleClose(end: *InternalMessagePort) void {
-    const receiver: *Receiver = @ptrCast(@alignCast(end.callback_user_data orelse return));
-    const instance = receiver.get() orelse return;
-    armTask(instance, fireClose);
-}
-
-fn fireClose(data: ?*anyopaque) void {
-    const task: *PortTask = @ptrCast(@alignCast(data orelse return));
-    defer task.allocator.destroy(task);
-    const instance = task.target() orelse return;
-    if (getInternal(instance)) |internal| internal.forgetTask(task);
-    engine.runTaskInRealm(instance.ctx, fireCloseSteps, instance) catch {};
+/// Disentangle step 4, for this port: its peer disentangled, and this is
+/// the task of its realm that fires `close` at it.
+fn closedHook(receiver: *anyopaque, generation: u64) void {
+    const port = liveReceiver(receiver, generation) orelse return;
+    if (inClosingWorker(port)) return;
+    engine.runTaskInRealm(port.ctx, fireCloseSteps, port) catch {};
 }
 
 fn fireCloseSteps(data: ?*anyopaque) void {
@@ -685,101 +587,6 @@ fn fireCloseSteps(data: ?*anyopaque) void {
         webidl.Opt(dictionaries.EventInit).notPassed(),
     ) catch return;
     const generation = runtime.SlabAllocator.generationOf(event);
-    _ = EventTargetImpl.dispatchTrusted(port, event) catch {};
+    _ = dom.fire_event.dispatchTrusted(port, event) catch {};
     event.releaseIfUnwrapped(generation);
-}
-
-// ============================================================================
-// The queued record
-// ============================================================================
-
-/// A queued message as its end holds it: the serialization, the transferred
-/// ArrayBuffers' contents, and the shipped ends of the transferred ports.
-/// Laid out in one buffer, since an end queues bytes:
-///   u32 serialized length, the bytes; u32 buffer count, each a u64 length
-///   and its bytes; u32 port count, each the end's address as a u64.
-/// Within one process only - the ends are addresses.
-const Record = struct {
-    serialized: []const u8,
-    array_buffers: []const []const u8,
-    ends: []const *InternalMessagePort,
-
-    fn deinit(self: Record, allocator: std.mem.Allocator) void {
-        allocator.free(self.array_buffers);
-        allocator.free(self.ends);
-    }
-};
-
-fn frame(allocator: std.mem.Allocator, result: *const runtime.SerializedWithTransfer, ends: []const *InternalMessagePort) ![]u8 {
-    var out: std.ArrayListUnmanaged(u8) = .empty;
-    errdefer out.deinit(allocator);
-    try appendInt(allocator, &out, u32, @intCast(result.serialized.len));
-    try out.appendSlice(allocator, result.serialized);
-    try appendInt(allocator, &out, u32, @intCast(result.array_buffers.len));
-    for (result.array_buffers) |contents| {
-        try appendInt(allocator, &out, u64, contents.len);
-        try out.appendSlice(allocator, contents);
-    }
-    try appendInt(allocator, &out, u32, @intCast(ends.len));
-    for (ends) |end| try appendInt(allocator, &out, u64, @intFromPtr(end));
-    return out.toOwnedSlice(allocator);
-}
-
-fn appendInt(allocator: std.mem.Allocator, out: *std.ArrayListUnmanaged(u8), comptime T: type, value: T) !void {
-    var bytes: [@sizeOf(T)]u8 = undefined;
-    std.mem.writeInt(T, &bytes, value, .little);
-    try out.appendSlice(allocator, &bytes);
-}
-
-/// The record `bytes` holds. Its slices point into `bytes`; the two lists are
-/// allocated (`Record.deinit`).
-fn unframe(allocator: std.mem.Allocator, bytes: []const u8) !Record {
-    var reader = Reader{ .bytes = bytes };
-    const serialized = try reader.slice(try reader.int(u32));
-    const buffer_count = try reader.int(u32);
-    const buffers = try allocator.alloc([]const u8, buffer_count);
-    errdefer allocator.free(buffers);
-    for (buffers) |*buffer| buffer.* = try reader.slice(@intCast(try reader.int(u64)));
-    const end_count = try reader.int(u32);
-    const ends = try allocator.alloc(*InternalMessagePort, end_count);
-    errdefer allocator.free(ends);
-    for (ends) |*end| end.* = @ptrFromInt(@as(usize, @intCast(try reader.int(u64))));
-    return .{ .serialized = serialized, .array_buffers = buffers, .ends = ends };
-}
-
-const Reader = struct {
-    bytes: []const u8,
-    at: usize = 0,
-
-    fn int(self: *Reader, comptime T: type) !T {
-        const data = try self.slice(@sizeOf(T));
-        return std.mem.readInt(T, data[0..@sizeOf(T)], .little);
-    }
-
-    fn slice(self: *Reader, len: usize) ![]const u8 {
-        if (self.bytes.len - self.at < len) return error.Truncated;
-        defer self.at += len;
-        return self.bytes[self.at..][0..len];
-    }
-};
-
-test "a queued record round-trips" {
-    const allocator = std.testing.allocator;
-    var buffers = [_][]u8{ @constCast("abc"), @constCast("") };
-    const result = runtime.SerializedWithTransfer{
-        .serialized = @constCast("serialized"),
-        .array_buffers = &buffers,
-        .platform_objects = &.{},
-    };
-    const fake: *InternalMessagePort = @ptrFromInt(0x1000);
-    const bytes = try frame(allocator, &result, &.{fake});
-    defer allocator.free(bytes);
-    const record = try unframe(allocator, bytes);
-    defer record.deinit(allocator);
-    try std.testing.expectEqualStrings("serialized", record.serialized);
-    try std.testing.expectEqual(@as(usize, 2), record.array_buffers.len);
-    try std.testing.expectEqualStrings("abc", record.array_buffers[0]);
-    try std.testing.expectEqual(@as(usize, 0), record.array_buffers[1].len);
-    try std.testing.expectEqual(fake, record.ends[0]);
-    try std.testing.expectError(error.Truncated, unframe(allocator, bytes[0 .. bytes.len - 1]));
 }

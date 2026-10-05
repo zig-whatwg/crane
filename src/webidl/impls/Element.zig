@@ -1426,6 +1426,9 @@ fn attributeChangeSteps(
     // HTML §8.1.8.1: event handler content attributes.
     eventHandlerAttributeChangeSteps(instance, local_name, value);
 
+    // HTML 3.2.6.5: the style attribute.
+    if (std.mem.eql(u8, local_name, "style")) styleAttributeChangeSteps(instance, internal, value);
+
     // The steps the element's own type defines (an iframe's src and srcdoc),
     // which its impl installs (dom.attribute_change_steps) - for an HTML
     // element only, as the hook's contract says: its steps are keyed by HTML
@@ -3099,6 +3102,12 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
         return;
     };
 
+    // Step 5.1: "If the Should element's inline behavior be blocked by
+    // Content Security Policy? algorithm returns "Blocked" when executed upon
+    // element, "script attribute", and value, then return." The handler is
+    // not compiled, and its value stays what it was.
+    if (dom.csp_violations.shouldBlockInline(instance, .script_attribute, body, .{})) return;
+
     // Getting the current value of the event handler, step 3: the function,
     // compiled in the settings object's realm. Its scope (3.9) is the global
     // environment, then - for an element's handler - the document and the
@@ -3130,6 +3139,39 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     // Step 3.12: the handler's value is the function - through the IDL
     // attribute, which stores it exactly as `element.onload = fn` would.
     engine.setProperty(realm, target_value, local_name, function.value) catch {};
+}
+
+/// HTML 3.2.6.5, the style attribute, when it "is added or has its value
+/// changed" - by the parser, setAttribute, an Attr node, cloning: every
+/// write reaches here, as the attribute change steps of an attribute in no
+/// namespace named "style" on an element with ElementCSSInlineStyle (HTML,
+/// SVG and MathML elements). "However, if the Should element's inline
+/// behavior be blocked by Content Security Policy? algorithm returns
+/// "Blocked" when executed upon the attribute's element, "style attribute",
+/// and the attribute's value, then the style rules defined in the
+/// attribute's value must not be applied to the element." Removing the
+/// attribute is not checked: there is nothing to apply.
+///
+/// CSSOM's own writes (element.style) would set the attribute with the
+/// declaration block's updating flag set, and its attribute change steps
+/// then do nothing; Crane's CSSOM does not write the attribute back at all,
+/// so they never reach here.
+///
+/// Not modelled, stated: an allowed value is not parsed into the element's
+/// inline declaration block (CSSOM's attribute change steps for it) - nothing
+/// reflects the style attribute into element.style yet; that step goes after
+/// this check. Blink, Gecko and WebKit skip the check for an attribute
+/// copied by cloning (WPT style-src/inline-style-allowed-while-cloning-
+/// objects reads the clone's style); HTML has no such exception, and with no
+/// declaration block to fill, this checks every write.
+fn styleAttributeChangeSteps(instance: *runtime.Instance, internal: *InternalState, value: ?[]const u8) void {
+    const v = value orelse return;
+    const ns = if (internal.namespace_uri) |n| n.asSlice() else return;
+    if (!std.mem.eql(u8, ns, "http://www.w3.org/1999/xhtml") and
+        !std.mem.eql(u8, ns, "http://www.w3.org/2000/svg") and
+        !std.mem.eql(u8, ns, "http://www.w3.org/1998/Math/MathML")) return;
+    if (dom.csp_violations.shouldBlockInline(instance, .style_attribute, v, .{})) return;
+    // TODO(cssom): parse `v` into the element's inline declaration block.
 }
 
 /// HTML "report an exception" for the global of the realm the engine names -

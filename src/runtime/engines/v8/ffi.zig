@@ -381,6 +381,11 @@ pub extern fn v8_ObjectTemplate_SetImmutableProto(self: *ObjectTemplate) void;
 /// Spec: https://tc39.es/ecma262/#sec-IsHTMLDDA-internal-slot
 pub extern fn v8_ObjectTemplate_MarkAsUndetectable(self: *ObjectTemplate) void;
 
+/// Mark the template's instances code-like ([[HostDefinedIsCodeLike]], TC39
+/// Dynamic Code Brand Checks): eval/Function hand them to the code generation
+/// callback as code (is_code_like). TrustedScript's instances are.
+pub extern fn v8_ObjectTemplate_SetCodeLike(self: *ObjectTemplate) void;
+
 /// Set a call-as-function handler on an ObjectTemplate.
 /// This allows instances to be called like functions.
 /// Required for objects marked as undetectable (like document.all).
@@ -3530,3 +3535,29 @@ pub extern fn v8_Isolate_CancelTerminateExecution(isolate: *Isolate) void;
 /// Isolate::IsExecutionTerminating.
 pub extern fn v8_Isolate_IsExecutionTerminating(isolate: *Isolate) bool;
 // ---- end lane: speed ----
+// ---- lane: cspenforce ----
+/// The code generation checks' strings dispatcher (v8_wrapper.cpp): 0
+/// blocked, 1 allowed as given, 2 allowed with `code.*` (malloc'd, freed by
+/// the caller) as the source. `source` is the UTF-8 source when it is a
+/// string, else null and `object` the value, borrowed.
+pub const ProtocolCodeGenerationDispatch = *const fn (
+    isolate: *Isolate,
+    context: *Context,
+    source: ?[*]const u8,
+    source_len: usize,
+    object: ?*Value,
+    is_code_like: bool,
+    code: *?[*]u8,
+    code_len: *usize,
+) callconv(.c) c_int;
+/// The WebAssembly compilation dispatcher: whether `context` may compile.
+pub const ProtocolWasmCodeGenerationDispatch = *const fn (isolate: *Isolate, context: *Context) callconv(.c) bool;
+/// The process's two code generation dispatchers: once, at process start
+/// (initializeEngine).
+pub extern fn v8_SetProtocolCodeGenerationDispatchers(strings: ?ProtocolCodeGenerationDispatch, wasm: ?ProtocolWasmCodeGenerationDispatch) void;
+/// Isolate::SetModifyCodeGenerationFromStringsCallback and
+/// SetAllowWasmCodeGenerationCallback on `isolate`, each only when asked.
+pub extern fn v8_Isolate_SetProtocolCodeGenerationHooks(isolate: *Isolate, strings: bool, wasm: bool) void;
+/// Context::IsCodeGenerationFromStringsAllowed.
+pub extern fn v8_Context_IsCodeGenerationFromStringsAllowed(context: *Context) bool;
+// ---- end lane: cspenforce ----

@@ -239,6 +239,20 @@ pub const EventLoopTask = @import("event_loop").Task;
 pub const EventLoopMicrotask = @import("event_loop").Microtask;
 pub const TimerVTable = timer.TimerVTable;
 pub const TimerError = timer.TimerError;
+/// A timer's destructor for its user_data: run when the timer will never
+/// fire (`TimerInterface.setTimeoutOwned`).
+pub const TimerDrop = timer.TimerDrop;
+
+/// A loop's inbox for tasks posted from other threads (a worker's messages,
+/// a port's "has messages", a worker's end): engine-neutral, reference
+/// counted, closed by its loop's end.
+pub const task_sink = @import("task_sink.zig");
+pub const TaskSink = task_sink.TaskSink;
+pub const CrossThreadTask = task_sink.CrossThreadTask;
+
+/// A Browser's scope: its per-Browser state, as supplements reached through
+/// the realm (ContextData.browser_scope; docs/instances.md rule 2).
+pub const BrowserScope = @import("browser_scope.zig").BrowserScope;
 
 // Typed callback wrappers for type-safe callback handling
 // Replaces *anyopaque user data with typed alternatives

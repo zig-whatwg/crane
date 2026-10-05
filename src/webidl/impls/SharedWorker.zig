@@ -20,8 +20,9 @@ const webidl = @import("webidl");
 const engine = @import("engine");
 const SharedWorker = interfaces.SharedWorker;
 
-// A SharedWorker is an EventTarget, and reaches its state through its impl.
-const EventTargetImpl = @import("EventTarget.zig");
+// A SharedWorker is an EventTarget: made and ended through EventTarget's
+// interface, its event handlers in EventTarget's map (dom.event_handlers).
+const event_handlers = @import("dom").event_handlers;
 
 // Keeping the port's wrapper alive for as long as this object.
 const same_object = @import("same_object.zig");
@@ -31,12 +32,12 @@ const api_parser = @import("api_parser");
 const url_serializer = @import("url_serializer");
 const url_origin = @import("origin");
 
-// The channel ends a port pair is made of. The outside port is a new
-// MessagePort made on one (no IDL member makes a port on a given end); the
-// worker host makes the inside port on the other, through the
-// `message_ports` hook this installs.
-const streams_internal = @import("streams_internal");
-const MessagePortImpl = @import("MessagePort.zig");
+// The channel the port pair is made of. The outside port is a new
+// MessagePort made on one end (no IDL member makes a port on a given end:
+// MessagePort's `message_ports` hook does); the worker host makes the inside
+// port on the other the same way.
+const port_channels = @import("dom").port_channels;
+const message_ports = @import("dom").message_ports;
 
 /// The worker host: "run a worker", and the shared worker manager.
 const worker_host = @import("html").worker_host;
@@ -73,7 +74,7 @@ pub fn init(
     vtable: *const runtime.VTable,
     ctx: runtime.Context,
 ) !*runtime.Instance {
-    return EventTargetImpl.init(allocator, StateType, vtable, ctx);
+    return interfaces.EventTarget.initWithState(allocator, StateType, vtable, ctx);
 }
 
 /// Deinitialize instance
@@ -84,7 +85,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         internal.allocator.destroy(internal);
         state.own._internal = null;
     }
-    EventTargetImpl.deinit(instance);
+    interfaces.EventTarget.deinit(instance);
 }
 
 /// The SharedWorker(scriptURL, options) constructor steps.
@@ -121,19 +122,12 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // 6-7. outsidePort: a new MessagePort in outsideSettings' realm, this's
     // port. Its channel's other end waits for the worker's realm, where it
     // becomes the inside port (manager step 5.5, or "run a worker").
-    const ends = try streams_internal.createMessagePortPair(allocator);
+    const channel = try port_channels.Channel.create(allocator);
+    const inside_end = channel.end(1);
     var inside_end_owned = true;
-    errdefer if (inside_end_owned) ends[1].deinit();
-    const outside_port = MessagePortImpl.initWithInternal(
-        allocator,
-        interfaces.MessagePort.State,
-        &interfaces.MessagePort.vtable,
-        ctx,
-        ends[0],
-    ) catch |err| {
-        ends[0].deinit();
-        return err;
-    };
+    errdefer if (inside_end_owned) inside_end.discard();
+    // `adopt` takes the outside end whatever happens.
+    const outside_port = try message_ports.adopt(ctx, channel.end(0));
     const internal = try allocator.create(InternalState);
     internal.* = .{ .port = outside_port, .allocator = allocator };
     instance.getState(State).own._internal = internal;
@@ -157,7 +151,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         .name = worker_options.name,
         .worker_type = worker_options.worker_type,
         .credentials = worker_options.credentials,
-        .inside_end = @ptrCast(ends[1]),
+        .inside_end = @ptrCast(inside_end),
     });
 
     return instance;
@@ -288,10 +282,10 @@ pub fn get_port(instance: *runtime.Instance) anyerror!*runtime.Instance {
 
 /// Getter for onerror
 pub fn get_onerror(instance: *runtime.Instance) anyerror!typedefs.EventHandler {
-    return EventTargetImpl.eventHandler(typedefs.EventHandler, instance, "error");
+    return event_handlers.get(typedefs.EventHandler, instance, "error");
 }
 
 /// Setter for onerror
 pub fn set_onerror(instance: *runtime.Instance, value: typedefs.EventHandler) anyerror!void {
-    try EventTargetImpl.setEventHandler(typedefs.EventHandler, instance, "error", value);
+    try event_handlers.set(typedefs.EventHandler, instance, "error", value);
 }

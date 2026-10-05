@@ -5243,26 +5243,6 @@ pub fn isInlineScriptAllowedByCSP(
     return allowed;
 }
 
-/// Check if eval() is allowed by CSP
-/// Spec: https://www.w3.org/TR/CSP3/ §6.7.4
-pub fn isEvalAllowedByCSP(instance: *runtime.Instance) bool {
-    const internal = getInternal(instance) orelse return true;
-    const csp_list = &internal.policy_container.csp_list;
-
-    for (csp_list.policies.items) |*policy| {
-        if (policy.disposition != .enforce) continue;
-
-        const directive = csp.fallback.getEffectiveScriptSrc(&policy.directive_set) orelse continue;
-
-        // Check for 'unsafe-eval'
-        if (!csp.matching.allowsUnsafeEval(&directive.value)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 // =============================================================================
 // Speculation Rules Support (HTML Standard §7.6)
 // =============================================================================

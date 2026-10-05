@@ -182,6 +182,10 @@ pub const microtask_checkpoint = @import("microtask_checkpoint.zig");
 /// unhandledrejection / rejectionhandled events.
 pub const rejected_promises = @import("rejected_promises.zig");
 
+/// HostEnsureCanCompileStrings, HostGetCodeForEval and
+/// HostEnsureCanCompileWasmBytes: CSP over eval, Function and WebAssembly.
+pub const code_generation = @import("code_generation.zig");
+
 /// Script runner for coordinating script scheduling
 pub const script_runner = @import("script_runner.zig");
 
@@ -246,6 +250,19 @@ pub const WorkerHost = worker_host.WorkerHost;
 /// WindowOrWorkerGlobalScope) still call `finishTaskIn` through. Goes when
 /// they move onto runTaskInRealm.
 pub const worker_v8_context = worker_host;
+
+/// A worker on a thread of its own: the link both threads share (its life,
+/// its agent for "terminate a worker", its thread), the event loop the thread
+/// spins, the thread's body, and the Browser's registry of live workers (a
+/// BrowserScope supplement).
+pub const worker_link = @import("worker_link.zig");
+pub const WorkerLink = worker_link.WorkerLink;
+pub const worker_event_loop = @import("worker_event_loop.zig");
+pub const WorkerEventLoop = worker_event_loop.WorkerEventLoop;
+pub const worker_thread = @import("worker_thread.zig");
+pub const WorkerThread = worker_thread.WorkerThread;
+pub const worker_registry = @import("worker_registry.zig");
+pub const WorkerRegistry = worker_registry.WorkerRegistry;
 
 /// The embedder's answer for the scripts of frame and popup documents
 /// (the WPT runner's testdriver vendor file).

@@ -189,6 +189,9 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
     // does the same with the interface template's InstanceTemplate().
     const context = ffi.v8_Context_NewWithGlobalConstructor(isolate, globalScopeTemplate(Kind.Interface, isolate)) orelse
         return EngineError.OperationFailed;
+    // [code_generation_checks]: eval and Function in it reach the agent's
+    // host, when the host checks them.
+    @import("protocol_agents.zig").restrictCodeGenerationFromStrings(isolate, context);
     ffi.v8_Context_Enter(context);
     defer ffi.v8_Context_Exit(context);
 
@@ -200,7 +203,10 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
 
     // The realm's runtime context: the context manager's entry for it. Every
     // Instance created in the realm points here - the global scope first.
-    const realm = context_manager.getOrCreateWithExternalEventLoop(context, options.timer, null, options.allocator) catch {
+    // The context manager is per thread, and a worker on a thread of its own
+    // makes the first realm there.
+    context_manager.init(options.allocator) catch {};
+    const realm = context_manager.getOrCreateWithExternalEventLoop(context, options.timer, options.event_loop, options.allocator) catch {
         ffi.v8_Context_Dispose(context);
         return EngineError.OperationFailed;
     };

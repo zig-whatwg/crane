@@ -3,10 +3,10 @@
 //! postMessage, a worker's implicit port. No IDL member runs either, so
 //! MessagePort installs them here, the shape of `abort_algorithms.zig`.
 //!
-//! A port's END is its channel end - the port message queue and the
-//! entanglement - opaque at this seam. Shipping a port hands its end over as
-//! the data holder; receiving it makes a new MessagePort on it in the
-//! receiving realm.
+//! A port's END is its channel end (dom.port_channels.End) - the port
+//! message queue and the entanglement - opaque at this seam. Shipping a port
+//! hands its end over as the data holder; receiving it makes a new
+//! MessagePort on it in the receiving realm, which may be another thread's.
 //!
 //! lint-impls: hook for MessagePort
 const process_start = @import("process_start.zig");
@@ -24,6 +24,10 @@ pub const Steps = struct {
     /// The transfer-receiving steps: a new MessagePort of `realm` on `end`,
     /// which it takes.
     receive: *const fn (realm: runtime.Context, end: *anyopaque) anyerror!*runtime.Instance,
+    /// A new MessagePort of `realm` on `end`, an end of a fresh channel
+    /// (dom.port_channels.Channel) - not a transferred one: MessageChannel's
+    /// ports, a SharedWorker's outside port. Takes `end`, also on failure.
+    adopt: *const fn (realm: runtime.Context, end: *anyopaque) anyerror!*runtime.Instance,
     /// Free `end`, which no port will take: its queue goes, and its
     /// entangled port is disentangled.
     discard: *const fn (end: *anyopaque) void,
@@ -55,6 +59,13 @@ pub fn ship(instance: *runtime.Instance) ?*anyopaque {
 pub fn receive(realm: runtime.Context, end: *anyopaque) !*runtime.Instance {
     const installed = steps orelse return error.NotSupported;
     return installed.receive(realm, end);
+}
+
+/// A new MessagePort of `realm` on `end`, an end of a fresh channel. Takes
+/// `end`.
+pub fn adopt(realm: runtime.Context, end: *anyopaque) !*runtime.Instance {
+    const installed = steps orelse return error.NotSupported;
+    return installed.adopt(realm, end);
 }
 
 /// Free the channel end `end`, which no MessagePort took - a shared worker's

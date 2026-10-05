@@ -151,6 +151,17 @@ the caller's.
   the agent's entered realm for its life. A realm whose WindowProxy went on
   to a later one (`window_proxy_of`) is severed from its Window at its end:
   a function of it that script still holds finds no Window, not a freed one.
+- **Threads:** an agent is used only on the thread that made it - every
+  operation that takes the agent, or a realm or value of it, runs there. The
+  one exception is `abortRunningScript`, which may be called from any thread
+  for as long as the agent lives (the host serialises it against the agent's
+  end with a lock of its own: html/worker_link.zig's `agent_lock`).
+  `destroyAgent` runs on the agent's thread. Each worker makes its agent on a
+  thread of its own with no other agent entered there, so that agent is its
+  thread's host agent (`AgentRecord.host_agent`), and its end takes the
+  thread's engine state down with it. A worker realm records its own event
+  loop (`WorkerRealmOptions.event_loop`) as a window realm does; the engine
+  stores it and never runs it.
 
 ## 4. Capabilities
 
@@ -181,6 +192,7 @@ capability the branch compiles out.
 | `can_block_control` | native | unsupported | [[CanBlock]] is the engine's default |
 | `heap_statistics`, `heap_snapshots`, `diagnostic_counters` | native | unsupported | the diagnostics tier reports nothing |
 | `script_abort` | native (TerminateExecution) | unsupported - no public way to end a running script (JSContextGroupSetExecutionTimeLimit is SPI) | a script that never returns holds its agent's thread; the host's bound is outside the process (the WPT runner's stall watchdog) |
+| `code_generation_checks` | native (ModifyCodeGenerationFromStringsCallback, AllowWasmCodeGenerationCallback) | unsupported - no hook before eval, the Function constructor or WebAssembly compilation compiles | the HostHooks below are never called: eval, Function and WebAssembly compile unchecked - CSP's 'unsafe-eval' / 'wasm-unsafe-eval' and Trusted Types' eval sink go unenforced (security-relevant) |
 
 Flip a JavaScriptCore capability when an iOS release makes the API public.
 Structured serialization has no JSC API and is not a capability: the JSC
@@ -218,9 +230,21 @@ per agent by `createAgent` and nowhere else: `loadImportedModule`
 resolve a module specifier given the module's realm and base URL - null is
 the TypeError), `promiseRejectionTracker` (HostPromiseRejectionTracker, with
 the rejection reason) and `afterMicrotaskCheckpoint` (HTML "notify about
-rejected promises"). The Window host's hooks are `html/rejected_promises.zig`'s
-`hooks` and `html/script_execution.zig`'s `module_hooks`; a worker's are
-`html/worker_host.zig`'s `worker_hooks`. A hook whose capability the engine
+rejected promises"), and [code_generation_checks] `ensureCanCompileStrings`
+(HostEnsureCanCompileStrings: eval and the Function constructors, told the
+`StringCompilation` - compilation type, codeString, whether every argument
+is code-like - and answering allowed or blocked, blocked being the EvalError
+the engine throws), `getCodeForEval` (HostGetCodeForEval: a TrustedScript
+argument's code) and `ensureCanCompileWasmBytes`
+(HostEnsureCanCompileWasmBytes: false is a WebAssembly.CompileError). Every
+eval and Function call in a realm of an agent with `ensureCanCompileStrings`
+costs one host call: V8 asks only contexts that disallow code generation
+from strings, so every realm of such an agent disallows it, whether or not
+a policy exists yet (Blink instead disallows it when a policy without
+'unsafe-eval' arrives). The Window host's hooks are
+`html/rejected_promises.zig`'s `hooks`, `html/script_execution.zig`'s
+`module_hooks` and `html/code_generation.zig`'s `hooks`; a worker's are
+`html/worker_host.zig`'s `worker_hooks` (not yet the code generation ones). A hook whose capability the engine
 lacks is never called. Every hook defaults to null; an adapter that does not
 wire `importMetaResolve` (JavaScriptCore and QuickJS today, which have no
 module hooks) leaves import.meta without `resolve`.
@@ -257,6 +281,18 @@ from the integrator, who owns engine_protocol.zig. It lands in one change:
 - No ByteString string conversion yet (Headers).
 - An asynchronous iterator object gets a per-object prototype with no class
   string (a shared per-interface one needs the interface's identity).
+- V8's code generation callback names no compilationType: the adapter reads
+  CreateDynamicFunction's source shape - `(function anonymous(`,
+  `(async function anonymous(`, `(function* anonymous(` or
+  `(async function* anonymous(` ... `\n})` - as a constructor's, its outer
+  parentheses stripped to ECMA-262's sourceString, and anything else as
+  eval's. An eval of a string of exactly that shape is reported as a
+  constructor's.
+- `arguments_are_code_like` is V8's is_code_like: true only for objects whose
+  template is SetCodeLike, which TrustedScript's is not yet - so a Function
+  constructor given TrustedScripts is checked as one given strings (eval of
+  a TrustedScript is exact, through `getCodeForEval`). V8 also says
+  is_code_like for a Function constructor given no arguments at all.
 
 ## 8. Transitional pieces
 

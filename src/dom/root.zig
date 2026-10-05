@@ -57,6 +57,10 @@ pub const crypto_keys = @import("crypto_keys.zig");
 pub const dom_exceptions = @import("dom_exceptions.zig");
 pub const fire_event = @import("fire_event.zig");
 pub const message_ports = @import("message_ports.zig");
+/// Message channels whose two ends may live on two threads: the port
+/// message queues and entanglement MessagePort and a worker's implicit
+/// ports share.
+pub const port_channels = @import("port_channels.zig");
 pub const cloning_steps = @import("cloning_steps.zig");
 pub const range_boundaries = @import("range_boundaries.zig");
 pub const node_document = @import("node_document.zig");

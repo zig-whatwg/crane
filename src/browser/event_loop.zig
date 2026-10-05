@@ -15,6 +15,16 @@
 //! that finds no task queued starts an idle period for the windows that asked
 //! for one (HTML 8.1.7.3 step 5; requestIdleCallback).
 //!
+//! ## Tasks from other threads
+//!
+//! Every worker runs on a thread of its own, and what crosses to this loop -
+//! a message a worker posted, a port's "has messages", a worker's end - is
+//! posted to the loop's TaskSink. Each turn takes what was posted into the
+//! task queue (step 2), where it runs as any other task, followed by a
+//! checkpoint. A loop that owns a running worker is not idle: the worker
+//! may post at any time (`hasPendingWork`). The wait is sliced at 1 ms
+//! (native_timer.zig), so a post is seen within a slice.
+//!
 //! ## Bfcache support
 //!
 //! freeze() suspends all timer and task processing and thaw() resumes it:
@@ -50,6 +60,12 @@ pub const EventLoop = struct {
 
     /// Track if we're inside runOnce to prevent reentrancy
     in_run_once: bool,
+
+    /// The door other threads post this loop's tasks through (a worker's
+    /// messages and its end, a port's "has messages"): taken into `tasks` at
+    /// each turn's step 2, closed - what it still holds dropped - when the
+    /// loop ends. The loop holds one reference; every poster holds its own.
+    sink: *runtime.TaskSink,
 
     /// The timers setTimeout/setInterval and the loop's own waits run on.
     timer_manager: ?*TimerManager,
@@ -88,6 +104,8 @@ pub const EventLoop = struct {
     pub fn init(agent: *engine.Agent, allocator: Allocator) !Self {
         const timer_mgr = try TimerManager.init(allocator);
         errdefer timer_mgr.deinit();
+        const sink = try runtime.TaskSink.create(allocator);
+        errdefer sink.release();
 
         return .{
             .agent = agent,
@@ -95,26 +113,38 @@ pub const EventLoop = struct {
             .promise_arena = std.heap.ArenaAllocator.init(allocator),
             .tasks = .empty,
             .in_run_once = false,
+            .sink = sink,
             .timer_manager = timer_mgr,
             .frozen = false,
         };
     }
 
-    /// Free all resources: the timers (every pending one cancelled), the
-    /// tasks still queued (each told it will never run), the promise arena.
-    /// Microtasks still in the agent's queue are the engine's.
+    /// Free all resources: the timers (every pending one cancelled, an owned
+    /// one's data dropped), the tasks still queued and the ones other threads
+    /// posted (each told it will never run), the promise arena. Microtasks
+    /// still in the agent's queue are the engine's.
     pub fn deinit(self: *Self) void {
         if (self.timer_manager) |mgr| mgr.deinit();
+        // Other threads post nothing more; what they posted is dropped.
+        self.sink.close();
         // A task still queued will never run: let it free what it carries.
         for (self.tasks.items) |task| {
             if (task.drop) |drop| drop(task.context);
         }
         self.tasks.deinit(self.allocator);
+        // A poster still holding the sink finds it closed.
+        self.sink.release();
         // A window still waiting for an idle period is told nothing: its
         // idle callbacks went with its document (Window's unloading cleanup
         // step), and a request holds no data of its own.
         self.idle_requests.deinit(self.allocator);
         self.promise_arena.deinit();
+    }
+
+    /// The sink other threads post this loop's tasks to. BORROWED: a holder
+    /// that keeps it past the call takes a reference (`retain`).
+    pub fn taskSink(self: *Self) *runtime.TaskSink {
+        return self.sink;
     }
 
     /// The timer interface realms schedule on (setTimeout, AbortSignal.timeout).
@@ -204,7 +234,9 @@ pub const EventLoop = struct {
 
         const work_start = monotonicNs();
 
-        // Step 2: the tasks queued before this turn began.
+        // Step 2: the tasks queued before this turn began - with the ones
+        // other threads posted, taken into the queue now.
+        self.takePosted();
         if (self.runQueuedTasks()) did_work = true;
 
         // Step 2b: the tasks the engine has posted for itself (a bounded
@@ -229,8 +261,8 @@ pub const EventLoop = struct {
         // Step 3: how long to wait - until the next timer or max_wait_ms.
         const wait_time = blk: {
             // A task left for the next turn is work waiting now: poll, but
-            // do not block.
-            if (self.tasks.items.len > 0) break :blk 0;
+            // do not block. So is one another thread posted meanwhile.
+            if (self.tasks.items.len > 0 or self.sink.hasPosted()) break :blk 0;
             var wait = max_wait_ms;
             if (self.timer_manager) |mgr| {
                 if (mgr.getNextTimerDeadline()) |deadline| wait = @min(deadline, wait);
@@ -239,6 +271,14 @@ pub const EventLoop = struct {
             if (self.idleWaitMs(now)) |idle_wait| wait = @min(idle_wait, wait);
             break :blk wait;
         };
+
+        // Step 3b: what other threads - or this one's channels - posted while
+        // this turn ran: a port's message posted by a task above runs before
+        // the timers that task armed, as it did when a port's delivery was a
+        // 0 ms timer armed at the post, and as browsers deliver a port's
+        // message ahead of a setTimeout(0) (one batch: what these post waits
+        // for the next turn).
+        if (self.runPosted()) did_work = true;
 
         // Step 4: wait for a timer or I/O, and run the timer callbacks.
         if (self.timer_manager) |mgr| {
@@ -256,6 +296,35 @@ pub const EventLoop = struct {
         // callbacks - wait for the next one, which a non-empty queue makes
         // the caller start at once.
         return did_work or self.hasPendingWork();
+    }
+
+    /// Move what other threads posted to the end of the task queue, in the
+    /// order it was posted: each runs as a task of this loop. A task the
+    /// queue cannot take is dropped.
+    fn takePosted(self: *Self) void {
+        var posted: std.ArrayListUnmanaged(runtime.CrossThreadTask) = .empty;
+        defer posted.deinit(self.allocator);
+        self.sink.takeAll(&posted, self.allocator) catch {
+            // Left in the sink for the next turn.
+            std.log.err("event loop: out of memory taking posted tasks", .{});
+            return;
+        };
+        for (posted.items) |item| {
+            queueTask(self, .{ .callback = item.run, .context = item.data, .drop = item.drop });
+        }
+    }
+
+    /// Run what other threads posted so far - a snapshot: what these tasks
+    /// post waits - each followed by a checkpoint. Whether any ran.
+    fn runPosted(self: *Self) bool {
+        var posted: std.ArrayListUnmanaged(runtime.CrossThreadTask) = .empty;
+        defer posted.deinit(self.allocator);
+        self.sink.takeAll(&posted, self.allocator) catch return false;
+        for (posted.items) |task| {
+            task.run(task.data);
+            self.checkpoint();
+        }
+        return posted.items.len > 0;
     }
 
     /// HTML "perform a microtask checkpoint", the agent's.
@@ -301,6 +370,10 @@ pub const EventLoop = struct {
     /// Whether there is pending work that should keep the loop from idling.
     pub fn hasPendingWork(self: *Self) bool {
         if (self.tasks.items.len > 0) return true;
+        // Posted by another thread, and not taken yet.
+        if (self.sink.hasPosted()) return true;
+        // A worker this loop owns is running: it may post at any time.
+        if (self.sink.sourceCount() > 0) return true;
         // A window waiting for an idle period: one will start.
         if (self.idle_requests.items.len > 0) return true;
         // A fetch in flight will queue a task when it ends.
@@ -459,9 +532,11 @@ pub const EventLoop = struct {
         // it must be able to free what it carries.
         std.debug.assert(task.document == null or task.drop != null);
         self.tasks.append(self.allocator, task) catch {
-            // If allocation fails, log and drop the task
-            // This is safer than crashing the runtime
-            std.log.err("event loop: out of memory queueing a task; dropped", .{});
+            // The interface cannot fail, so the task is dropped - and a task
+            // that will never run frees what it carries, as at the loop's end:
+            // a client counting its outstanding tasks hears of this one too.
+            if (task.drop) |drop| drop(task.context);
+            std.log.debug("event loop: out of memory queueing a task; dropped", .{});
         };
     }
 
@@ -627,4 +702,79 @@ test "work a frame long keeps idle periods away for a frame" {
 
 test "a task with no document is runnable" {
     try testing.expect(EventLoop.isRunnable(.{ .callback = &noop, .context = null }));
+}
+
+/// What a test task carries: whether it ran or was dropped.
+const Tally = struct {
+    ran: u32 = 0,
+    dropped: u32 = 0,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *Tally = @ptrCast(@alignCast(data.?));
+        self.ran += 1;
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *Tally = @ptrCast(@alignCast(data.?));
+        self.dropped += 1;
+    }
+};
+
+test "a task the queue cannot take is dropped, not leaked" {
+    var failing = testing.FailingAllocator.init(testing.allocator, .{});
+    var loop = try EventLoop.init(@ptrFromInt(@alignOf(usize)), failing.allocator());
+    defer loop.deinit();
+    var tally: Tally = .{};
+    // The next allocation - the queue's growth - fails.
+    failing.fail_index = failing.alloc_index;
+    loop.eventLoop().queueTask(.{ .callback = &Tally.run, .context = &tally, .drop = &Tally.drop });
+    try testing.expectEqual(@as(usize, 0), loop.tasks.items.len);
+    try testing.expectEqual(@as(u32, 1), tally.dropped);
+    try testing.expectEqual(@as(u32, 0), tally.ran);
+}
+
+/// Posts one task to `sink` from a thread of its own.
+const Poster = struct {
+    sink: *runtime.TaskSink,
+    tally: *Tally,
+
+    fn run(self: *Poster) void {
+        defer self.sink.release();
+        _ = self.sink.post(.{ .run = &Tally.run, .drop = &Tally.drop, .data = self.tally });
+    }
+};
+
+test "a task another thread posted joins the task queue at the next turn" {
+    var loop = try testLoop();
+    defer loop.deinit();
+    var tally: Tally = .{};
+    var poster: Poster = .{ .sink = loop.taskSink().retain(), .tally = &tally };
+    const thread = try std.Thread.spawn(.{}, Poster.run, .{&poster});
+    thread.join();
+
+    // Posted and not taken: work is waiting.
+    try testing.expect(loop.hasPendingWork());
+    loop.takePosted();
+    try testing.expectEqual(@as(usize, 1), loop.tasks.items.len);
+    const task = loop.tasks.orderedRemove(0);
+    task.callback(task.context);
+    try testing.expectEqual(@as(u32, 1), tally.ran);
+    try testing.expect(!loop.hasPendingWork());
+}
+
+test "a loop that owns a running worker is not idle, and its end drops what was posted" {
+    var tally: Tally = .{};
+    {
+        var loop = try testLoop();
+        defer loop.deinit();
+        const sink = loop.taskSink();
+        sink.addSource();
+        try testing.expect(loop.hasPendingWork());
+        sink.removeSource();
+        try testing.expect(!loop.hasPendingWork());
+        // Posted in the loop's last turn: never taken.
+        try testing.expect(sink.post(.{ .run = &Tally.run, .drop = &Tally.drop, .data = &tally }));
+    }
+    try testing.expectEqual(@as(u32, 1), tally.dropped);
+    try testing.expectEqual(@as(u32, 0), tally.ran);
 }

@@ -466,12 +466,6 @@ src/webidl/impls/HTMLUListElement.zig HTMLElement.init 2
 src/webidl/impls/HTMLVideoElement.zig HTMLElement.deinit 2
 src/webidl/impls/HTMLVideoElement.zig HTMLElement.init 2
 src/webidl/impls/IntersectionObserver.zig IntersectionObserverEntry.createEntry 1
-src/webidl/impls/MessageChannel.zig MessagePort.initWithInternal 2
-src/webidl/impls/MessagePort.zig EventTarget.deinit 2
-src/webidl/impls/MessagePort.zig EventTarget.dispatchTrusted 2
-src/webidl/impls/MessagePort.zig EventTarget.eventHandler 3
-src/webidl/impls/MessagePort.zig EventTarget.init 1
-src/webidl/impls/MessagePort.zig EventTarget.setEventHandler 3
 src/webidl/impls/MouseEvent.zig Event.InternalState 2
 src/webidl/impls/NavigateEvent.zig Event.getDispatchFlag 1
 src/webidl/impls/NavigateEvent.zig Event.get_cancelable 1
@@ -567,11 +561,6 @@ src/webidl/impls/ShadowRoot.zig DocumentFragment.init 1
 src/webidl/impls/ShadowRoot.zig Node.InternalState 1
 src/webidl/impls/ShadowRoot.zig Node.NodeType 2
 src/webidl/impls/ShadowRoot.zig Node.getInternalState 4
-src/webidl/impls/SharedWorker.zig EventTarget.deinit 1
-src/webidl/impls/SharedWorker.zig EventTarget.eventHandler 1
-src/webidl/impls/SharedWorker.zig EventTarget.init 1
-src/webidl/impls/SharedWorker.zig EventTarget.setEventHandler 1
-src/webidl/impls/SharedWorker.zig MessagePort.initWithInternal 1
 src/webidl/impls/SharedWorkerGlobalScope.zig EventTarget.eventHandler 1
 src/webidl/impls/SharedWorkerGlobalScope.zig EventTarget.setEventHandler 1
 src/webidl/impls/SharedWorkerGlobalScope.zig WorkerGlobalScope.deinit 2

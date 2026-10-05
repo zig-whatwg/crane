@@ -1,7 +1,11 @@
 # Instances and tabs
 
 Status: design (2026-10-01). Batch B0 built (2026-10-02): `zig build lint-global-state` and
-`crane.Process` (src/browser/process.zig) with every src/dom hook written once at start-up. The full design, with the inventory of every
+`crane.Process` (src/browser/process.zig) with every src/dom hook written once at start-up.
+B1 started (2026-10-04, workers lane 1B): `runtime.BrowserScope` (src/runtime/browser_scope.zig),
+owned by each Browser and carried by every realm as `ContextData.browser_scope` (frames copy their
+parent's, a worker realm its creator's), with one supplement so far - `html.WorkerRegistry`, the
+Browser's live workers. B1's allocators and registries join it as supplements. The full design, with the inventory of every
 process-global and threadlocal variable in src/, was written by the instances lane; this note is
 the part every lane needs to know before it adds state.
 

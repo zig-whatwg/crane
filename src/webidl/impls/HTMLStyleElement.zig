@@ -11,10 +11,12 @@
 //! rules), the load or error event after them, and the delay they put on
 //! the document's load event are `style_sheet_loading`'s.
 //!
+//! Step 5, Content Security Policy's inline check, is
+//! dom.csp_violations.shouldBlockInline; a blocked block fires `error`.
+//!
 //! Not modelled, stated: the style sheet is not parsed into CSSOM, so
-//! `sheet` is null and `disabled` has no sheet to disable; Content Security
-//! Policy's inline check (step 5) is not run; render-blocking and the
-//! script-blocking style sheet set are not kept. HTML names the XML parser
+//! `sheet` is null and `disabled` has no sheet to disable; render-blocking
+//! and the script-blocking style sheet set are not kept. HTML names the XML parser
 //! too, but Crane has none (DOMParser's XML types are a TODO): only the HTML
 //! parser drivers make style elements. The fragment parser's (innerHTML)
 //! elements are not marked, and update as they are inserted and filled.
@@ -141,16 +143,35 @@ fn updateStyleBlock(element: *runtime.Instance) void {
         const value = type_attr.asSlice();
         if (value.len != 0 and !std.ascii.eqlIgnoreCase(value, "text/css")) return;
     }
-    // 5. Content Security Policy's inline check: not modelled.
-    // 6. Create a CSS style sheet - its text, the element's child text
-    // content - and, once its critical subresources are fetched, queue the
-    // task that fires load or error at the element.
     const text = childTextContent(element) catch |err| {
         log.warn("style block not updated: {}", .{err});
         return;
     };
     defer element.ctx.allocator.free(text);
+    // 5. "If the Should element's inline behavior be blocked by Content
+    // Security Policy? algorithm returns "Blocked" when executed upon
+    // element, "style", and element's child text content, then return."
+    // The element is nonceable when it has a nonce attribute (CSP 6.7.3.1
+    // step 1; steps 2-3 concern script elements and the parser). A blocked
+    // block fires error, as a failed sheet would (startBlockedStyle states
+    // that deviation).
+    if (dom_module.csp_violations.shouldBlockInline(element, .style, text, .{ .nonce = nonceOf(element) })) {
+        internal.load = style_sheet_loading.startBlockedStyle(element) orelse 0;
+        return;
+    }
+    // 6. Create a CSS style sheet - its text, the element's child text
+    // content - and, once its critical subresources are fetched, queue the
+    // task that fires load or error at the element.
     internal.load = style_sheet_loading.startStyle(element, text) orelse 0;
+}
+
+/// The element's nonce attribute, when it has a non-empty one: what CSP
+/// 6.7.3.3 step 2 matches nonce-sources against. Borrowed from the
+/// attribute, for the check.
+fn nonceOf(element: *runtime.Instance) ?[]const u8 {
+    const nonce = (interfaces.Element.call_getAttributeNS(element, null, runtime.DOMString.initInterned("nonce")) catch null) orelse return null;
+    const value = nonce.asSlice();
+    return if (value.len == 0) null else value;
 }
 
 /// DOM "child text content": the data of the element's Text node children,
