@@ -56,6 +56,10 @@ pub const capabilities: engine.Capabilities = .{
     // The public C API has no way to end a running script from outside
     // (JSContextGroupSetExecutionTimeLimit is SPI).
     .script_abort = .unsupported,
+    // The public C API has no hook before eval, the Function constructor or
+    // WebAssembly compilation compiles: CSP's 'unsafe-eval' and
+    // 'wasm-unsafe-eval', and Trusted Types' eval sink, go unenforced.
+    .code_generation_checks = .unsupported,
 };
 
 /// No engine is linked yet: every operation answers without one.

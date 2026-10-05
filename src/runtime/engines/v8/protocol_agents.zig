@@ -23,6 +23,7 @@ const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
 const isolate_templates = @import("isolate_templates.zig");
 const template_registry = @import("template_registry.zig");
+const context_manager = @import("context_manager.zig");
 /// worker_realm.zig's agent operations.
 const worker_realm = @import("worker_realm.zig");
 
@@ -179,6 +180,19 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     }
     if (options.hooks.afterMicrotaskCheckpoint != null) {
         ffi.v8_Isolate_AddMicrotasksCompletedCallback(isolate, onMicrotasksCompleted, record);
+    }
+    // [code_generation_checks]: HostEnsureCanCompileStrings (with
+    // HostGetCodeForEval) and HostEnsureCanCompileWasmBytes. The strings
+    // check reaches the host only from realms made with code generation
+    // from strings disallowed (`restrictCodeGenerationFromStrings`).
+    const strings = options.hooks.ensureCanCompileStrings != null;
+    const wasm = options.hooks.ensureCanCompileWasmBytes != null;
+    if (strings or wasm) {
+        ffi.v8_Isolate_SetProtocolCodeGenerationHooks(
+            isolate,
+            if (strings) onCodeGenerationFromStrings else null,
+            if (wasm) onWasmCodeGeneration else null,
+        );
     }
     // [module_scripts]: import() and import.meta.
     const load = options.hooks.loadImportedModule != null;
@@ -399,6 +413,107 @@ fn onPromiseReject(isolate: *ffi.Isolate, event: c_int, promise: *ffi.Value, rea
     };
     tracker(record.host, realm, support.owned(promise), operation, handed_reason);
 }
+
+// ---- lane: cspenforce ----
+
+/// A realm of `isolate`'s agent, just made as `context`: when the agent's
+/// host checks string compilation (HostHooks.ensureCanCompileStrings), the
+/// context disallows code generation from strings, which is when V8 asks
+/// the ModifyCodeGenerationFromStringsCallback
+/// (Compiler::ValidateDynamicCompilationSource) - so every eval and Function
+/// call in it reaches the host. Every realm path calls this: a window realm
+/// (fresh, restored from the snapshot, a frame's) and a worker realm. The
+/// isolate is entered. A realm of an agent with no such hook keeps V8's
+/// default and never asks.
+pub fn restrictCodeGenerationFromStrings(isolate: *ffi.Isolate, context: *ffi.Context) void {
+    const record = recordOf(isolate) orelse return;
+    if (record.hooks.ensureCanCompileStrings == null) return;
+    ffi.v8_Context_AllowCodeGenerationFromStrings(context, false);
+}
+
+/// The prefixes CreateDynamicFunction gives the source it compiles, one per
+/// constructor: V8 wraps ECMAScript's sourceString in parentheses
+/// (builtins-function.cc: "(" + token + " anonymous(" ... "\n})").
+const dynamic_function_prefixes = [_][]const u8{
+    "(function anonymous(",
+    "(async function anonymous(",
+    "(function* anonymous(",
+    "(async function* anonymous(",
+};
+
+/// What HostEnsureCanCompileStrings is told of a source V8 hands its
+/// callback, which names no compilationType: a source of
+/// CreateDynamicFunction's shape is a constructor's, its outer parentheses
+/// stripped to ECMAScript's sourceString; anything else is eval's. Stated
+/// V8 deviation (docs/engine-protocol.md): an eval of a string of exactly
+/// that shape is reported as a constructor's.
+pub fn stringCompilationOf(source: []const u8, is_code_like: bool) engine.StringCompilation {
+    if (std.mem.endsWith(u8, source, "\n})")) {
+        for (dynamic_function_prefixes) |prefix| {
+            if (std.mem.startsWith(u8, source, prefix)) return .{
+                .compilation_type = .function,
+                .code_string = source[1 .. source.len - 1],
+                .arguments_are_code_like = is_code_like,
+            };
+        }
+    }
+    return .{ .compilation_type = .eval, .code_string = source, .arguments_are_code_like = is_code_like };
+}
+
+/// V8's ModifyCodeGenerationFromStringsCallback, through
+/// v8_wrapper.cpp's dispatcher: HostEnsureCanCompileStrings for a string;
+/// for an object, HostGetCodeForEval first - its code, if it has any, is
+/// checked as eval's with every argument code-like, and compiled in the
+/// object's place. 0 blocked, 1 allowed as given, 2 allowed with `code.*`
+/// (malloc'd; the dispatcher frees it). A context with no realm - a scratch
+/// context the adapter made - and an agent the host never hooked are
+/// allowed.
+fn onCodeGenerationFromStrings(
+    isolate: *ffi.Isolate,
+    context: *ffi.Context,
+    source: ?[*]const u8,
+    source_len: usize,
+    object: ?*ffi.Value,
+    is_code_like: bool,
+    code: *?[*]u8,
+    code_len: *usize,
+) callconv(.c) c_int {
+    const allowed: c_int = 1;
+    const record = recordOf(isolate) orelse return allowed;
+    const ensure = record.hooks.ensureCanCompileStrings orelse return allowed;
+    const realm = context_manager.get(context) orelse return allowed;
+    if (source) |bytes| {
+        const compilation = stringCompilationOf(bytes[0..source_len], is_code_like);
+        return if (ensure(record.host, realm, &compilation) == .allowed) allowed else 0;
+    }
+    // An object: HostGetCodeForEval(argument). No code: eval returns it.
+    const get_code = record.hooks.getCodeForEval orelse return allowed;
+    const argument = object orelse return allowed;
+    const eval_code = get_code(record.host, realm, .{ .handle = .{ .ptr = argument } }, std.heap.c_allocator) orelse return allowed;
+    defer std.heap.c_allocator.free(eval_code);
+    // PerformEval: HostEnsureCanCompileStrings with the code, the object as
+    // bodyArg - a TrustedScript, so isTrusted.
+    const compilation: engine.StringCompilation = .{ .compilation_type = .eval, .code_string = eval_code, .arguments_are_code_like = true };
+    if (ensure(record.host, realm, &compilation) != .allowed) return 0;
+    // The code goes back as V8's modified source: malloc'd for the
+    // dispatcher's free().
+    const copy: [*]u8 = @ptrCast(std.c.malloc(eval_code.len + 1) orelse return 0);
+    @memcpy(copy[0..eval_code.len], eval_code);
+    copy[eval_code.len] = 0;
+    code.* = copy;
+    code_len.* = eval_code.len;
+    return 2;
+}
+
+/// V8's AllowWasmCodeGenerationCallback: HostEnsureCanCompileWasmBytes.
+fn onWasmCodeGeneration(isolate: *ffi.Isolate, context: *ffi.Context) callconv(.c) bool {
+    const record = recordOf(isolate) orelse return true;
+    const ensure = record.hooks.ensureCanCompileWasmBytes orelse return true;
+    const realm = context_manager.get(context) orelse return true;
+    return ensure(record.host, realm);
+}
+
+// ---- end lane: cspenforce ----
 
 /// HTML "perform a microtask checkpoint" step 5 - "notify about rejected
 /// promises" - after every checkpoint of the agent's queue: V8's automatic

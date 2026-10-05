@@ -3530,3 +3530,26 @@ pub extern fn v8_Isolate_CancelTerminateExecution(isolate: *Isolate) void;
 /// Isolate::IsExecutionTerminating.
 pub extern fn v8_Isolate_IsExecutionTerminating(isolate: *Isolate) bool;
 // ---- end lane: speed ----
+// ---- lane: cspenforce ----
+/// The code generation checks' strings dispatcher (v8_wrapper.cpp): 0
+/// blocked, 1 allowed as given, 2 allowed with `code.*` (malloc'd, freed by
+/// the caller) as the source. `source` is the UTF-8 source when it is a
+/// string, else null and `object` the value, borrowed.
+pub const ProtocolCodeGenerationDispatch = *const fn (
+    isolate: *Isolate,
+    context: *Context,
+    source: ?[*]const u8,
+    source_len: usize,
+    object: ?*Value,
+    is_code_like: bool,
+    code: *?[*]u8,
+    code_len: *usize,
+) callconv(.c) c_int;
+/// The WebAssembly compilation dispatcher: whether `context` may compile.
+pub const ProtocolWasmCodeGenerationDispatch = *const fn (isolate: *Isolate, context: *Context) callconv(.c) bool;
+/// Isolate::SetModifyCodeGenerationFromStringsCallback and
+/// SetAllowWasmCodeGenerationCallback, each only when given.
+pub extern fn v8_Isolate_SetProtocolCodeGenerationHooks(isolate: *Isolate, strings: ?ProtocolCodeGenerationDispatch, wasm: ?ProtocolWasmCodeGenerationDispatch) void;
+/// Context::IsCodeGenerationFromStringsAllowed.
+pub extern fn v8_Context_IsCodeGenerationFromStringsAllowed(context: *Context) bool;
+// ---- end lane: cspenforce ----

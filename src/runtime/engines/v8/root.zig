@@ -274,6 +274,9 @@ pub const structured_serialization = @import("structured_serialization.zig");
 /// HTML 2.7.1 serializable objects: the [Serializable] interfaces' steps behind
 /// the serializer delegates.
 pub const serializable_objects = @import("serializable_objects.zig");
+/// Agents and their host hooks; the code generation checks' reading of
+/// V8's source (stringCompilationOf).
+pub const protocol_agents = @import("protocol_agents.zig");
 
 /// Bfcache (Back-Forward Cache) Frozen Context Manager
 pub const frozen_context_manager = @import("frozen_context_manager.zig");
